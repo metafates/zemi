@@ -114,7 +114,9 @@ Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/mod
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/tasks`, `/lsp`, `/errors`, `/config`,
-`/reflect`, `/remember`, `/reload`. MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
+`/reflect`, `/remember`, `/reload`. HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the
+browser, and zemi keeps and refreshes the grant (`/mcp sign-out <name>` forgets it).
+MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
 or `{ url = ... }` in `init.lua`.
 
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure

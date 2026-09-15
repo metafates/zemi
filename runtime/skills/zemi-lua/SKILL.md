@@ -53,7 +53,7 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
 | `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` |
-| `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` |
+| `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules` |
 | `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |

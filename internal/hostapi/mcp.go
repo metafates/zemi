@@ -12,7 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -96,10 +99,20 @@ func (h *Host) startMCP(s *mcpServer) {
 		Stderr: mcpLogWriter{h: h, server: s.name},
 		URL:    s.spec.URL, Headers: headers,
 	}
+	if s.spec.URL != "" && !hasHeader(headers, "Authorization") {
+		cfg.Auth = h.mcpAuth(s)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	fail := func(err error) {
 		s.mu.Lock()
+		if errors.Is(err, mcp.ErrAuthRequired) {
+			s.status, s.err = "needs sign-in", ""
+			s.mu.Unlock()
+			h.memNotify("info", "mcp", s.name+" needs you to sign in: open /mcp")
+			h.refresh()
+			return
+		}
 		s.status, s.err = "failed", err.Error()
 		s.mu.Unlock()
 		h.Log.Warn("mcp", "server failed", map[string]any{"server": s.name, "error": err.Error()})
@@ -413,10 +426,14 @@ func (h *Host) MCPCommandsStep() lua.BootStep {
 						return h.openMCP()
 					case "restart":
 						return h.restartMCP(strings.TrimSpace(name))
+					case "sign-in":
+						return h.signInMCP(strings.TrimSpace(name))
+					case "sign-out":
+						return h.signOutMCP(strings.TrimSpace(name))
 					}
 					return fmt.Errorf("unknown /mcp subcommand %q", sub)
 				},
-				GoComplete: subcommandCompleter([]string{"restart"}, func(h *Host, _ string) []string {
+				GoComplete: subcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
 					var names []string
 					for _, s := range h.mcp.list() {
 						names = append(names, s.name)
@@ -451,9 +468,12 @@ func (h *Host) openMCP() error {
 	items := make([]any, 0, len(servers))
 	for _, s := range servers {
 		s.mu.Lock()
-		state := fmt.Sprintf("%d tools", len(s.tools))
+		state, run := fmt.Sprintf("%d tools", len(s.tools)), "mcp restart "+s.name
 		if s.status != "ready" {
 			state = s.status
+		}
+		if s.status == "needs sign-in" {
+			state, run = "needs sign-in, enter opens your browser", "mcp sign-in "+s.name
 		}
 		if s.err != "" {
 			state += ": " + truncRunes(s.err, 60)
@@ -461,11 +481,96 @@ func (h *Host) openMCP() error {
 		s.mu.Unlock()
 		items = append(items, map[string]any{
 			"text": fmt.Sprintf("%-16s %-10s %s", s.name, s.spec.Source, state),
-			"run":  "mcp restart " + s.name,
+			"run":  run,
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers (enter restarts)", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers (enter restarts or signs in)", Origin: lua.OriginBuiltin, Items: items})
 	return nil
+}
+
+func hasHeader(headers map[string]string, name string) bool {
+	for k := range headers {
+		if strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// mcpAuth is the stored sign-in of an HTTP server, keyed by name and URL.
+func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
+	return &mcp.Auth{Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json")}
+}
+
+func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {
+	for _, s := range h.mcp.list() {
+		if s.name == name {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("no MCP server %q", name)
+}
+
+// signInMCP runs the browser sign-in in the background and restarts the
+// server once it succeeds.
+func (h *Host) signInMCP(name string) error {
+	s, err := h.mcpServerNamed(name)
+	if err != nil {
+		return err
+	}
+	if s.spec.URL == "" {
+		return fmt.Errorf("%s runs a local command; only HTTP servers sign in", name)
+	}
+	auth := h.mcpAuth(s)
+	h.GoSafe("mcp sign-in "+name, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		err := auth.Authorize(ctx, func(u string) {
+			h.memNotify("info", "Sign in to "+name, "Finish in your browser. If it did not open, visit "+u)
+			h.openBrowser(u)
+		})
+		if err != nil {
+			h.memNotify("error", "mcp", "signing in to "+name+" failed: "+err.Error())
+			return
+		}
+		h.memNotify("info", "mcp", "signed in to "+name)
+		if err := h.restartMCP(name); err != nil {
+			h.memNotify("error", "mcp", err.Error())
+		}
+	})
+	return nil
+}
+
+func (h *Host) signOutMCP(name string) error {
+	s, err := h.mcpServerNamed(name)
+	if err != nil {
+		return err
+	}
+	if err := h.mcpAuth(s).Logout(); err != nil {
+		return err
+	}
+	h.memNotify("info", "mcp", "signed out of "+name)
+	return h.restartMCP(name)
+}
+
+// openBrowser opens an http(s) URL with the platform's opener; the URL is
+// one argument, never shell text.
+func (h *Host) openBrowser(u string) {
+	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+		return
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", u)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+	default:
+		cmd = exec.Command("xdg-open", u)
+	}
+	if cmd.Start() == nil {
+		h.GoSafe("open browser", func() { _ = cmd.Wait() })
+	}
 }
 
 // ImportCrushMCP registers the enabled servers from crush.json's mcp

@@ -36,6 +36,7 @@ type Config struct {
 
 	URL     string
 	Headers map[string]string
+	Auth    *Auth // OAuth grant for a server that requires sign-in; nil sends none
 }
 
 // Tool is one tool a server lists.
@@ -398,26 +399,22 @@ var httpClient = &http.Client{}
 // send POSTs one message. The reply is JSON or an SSE stream whose events
 // are messages; both are routed through handle before send returns.
 func (t *httpTransport) send(ctx context.Context, msg []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.cfg.URL, bytes.NewReader(msg))
+	resp, bearer, err := t.post(ctx, msg)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	for k, v := range t.cfg.Headers {
-		req.Header.Set(k, v)
-	}
-	t.mu.Lock()
-	if t.session != "" {
-		req.Header.Set("Mcp-Session-Id", t.session)
-	}
-	if t.version != "" {
-		req.Header.Set("MCP-Protocol-Version", t.version)
-	}
-	t.mu.Unlock()
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
+	if resp.StatusCode == http.StatusUnauthorized && t.cfg.Auth != nil {
+		resp.Body.Close()
+		if bearer == "" || !t.cfg.Auth.reject(bearer) {
+			return ErrAuthRequired
+		}
+		if resp, _, err = t.post(ctx, msg); err != nil {
+			return err
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			resp.Body.Close()
+			return ErrAuthRequired
+		}
 	}
 	defer resp.Body.Close()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
@@ -440,6 +437,39 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 	}
 	t.c.handle(body)
 	return nil
+}
+
+// post sends one request with the session headers and, when signed in,
+// the bearer token it used.
+func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.cfg.URL, bytes.NewReader(msg))
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range t.cfg.Headers {
+		req.Header.Set(k, v)
+	}
+	bearer := ""
+	if t.cfg.Auth != nil && req.Header.Get("Authorization") == "" {
+		if bearer, err = t.cfg.Auth.bearer(ctx); err != nil {
+			return nil, "", err
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+	}
+	t.mu.Lock()
+	if t.session != "" {
+		req.Header.Set("Mcp-Session-Id", t.session)
+	}
+	if t.version != "" {
+		req.Header.Set("MCP-Protocol-Version", t.version)
+	}
+	t.mu.Unlock()
+	resp, err := httpClient.Do(req)
+	return resp, bearer, err
 }
 
 func (t *httpTransport) close() error { return nil }
