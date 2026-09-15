@@ -363,6 +363,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
+	r.Compose = h.composeUserMessage
 	return r, nil
 }
 
@@ -418,7 +419,7 @@ func (h *Host) runTurns(runner *agent.Runner, text string) {
 		if h.compactDue() {
 			h.compactReporting(runner)
 		}
-		if err := runner.Send(context.Background(), h.expandAttachments(text)); err != nil && !errors.Is(err, agent.ErrTurnActive) {
+		if err := runner.Send(context.Background(), text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
 			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
 		}
 		text = h.nextTurn()
@@ -478,7 +479,7 @@ func (h *Host) deliverSteering() []string {
 	for i, m := range msgs {
 		shown, _, _ := strings.Cut(m, attachMarker)
 		h.AppendMessage("user", shown)
-		out[i] = h.expandAttachments(m)
+		out[i] = m // Runner.Compose expands it
 	}
 	return out
 }

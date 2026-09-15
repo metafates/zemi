@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"charm.land/fantasy"
 )
 
 // TestExpandAttachments: project files referenced with @ attach; secret-
@@ -27,7 +29,7 @@ func TestExpandAttachments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go")
+	got, _ := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go")
 	if !strings.HasPrefix(got, "look at @main.go, @.env, @notes.md and @missing.go"+attachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
@@ -39,7 +41,29 @@ func TestExpandAttachments(t *testing.T) {
 			t.Fatalf("%q must not attach: %q", leak, got)
 		}
 	}
-	if plain := h.expandAttachments("no references here"); plain != "no references here" {
+	if plain, _ := h.expandAttachments("no references here"); plain != "no references here" {
 		t.Fatalf("plain text changed: %q", plain)
+	}
+}
+
+// TestImageAttachment: an @image becomes a file part after the text, with a
+// note naming it behind the marker.
+func TestImageAttachment(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	msg := h.composeUserMessage("what is wrong in @shot.png")
+	if len(msg.Content) != 2 {
+		t.Fatalf("parts = %d", len(msg.Content))
+	}
+	text, ok := msg.Content[0].(fantasy.TextPart)
+	if !ok || !strings.HasPrefix(text.Text, "what is wrong in @shot.png"+attachMarker) || !strings.Contains(text.Text, `<image path="shot.png">`) {
+		t.Fatalf("text part = %#v", msg.Content[0])
+	}
+	img, ok := msg.Content[1].(fantasy.FilePart)
+	if !ok || img.MediaType != "image/png" || string(img.Data) != string(png) {
+		t.Fatalf("file part = %#v", msg.Content[1])
 	}
 }

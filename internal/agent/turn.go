@@ -46,6 +46,10 @@ type Runner struct {
 	// the running turn as user messages (DESIGN §4 steering).
 	Steer func() []string
 
+	// Compose builds the user message for a sent or steered text (the host
+	// expands attachments and images); nil sends the text as is.
+	Compose func(text string) fantasy.Message
+
 	active bool
 	cancel context.CancelFunc
 }
@@ -104,7 +108,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		cancel()
 	}()
 
-	userMsg := userMessage(userText)
+	userMsg := r.compose(userText)
 	if persist != nil {
 		if err := persist(string(userMsg.Role), userMsg); err != nil {
 			hooks.TurnDone(err, fantasy.Usage{})
@@ -150,7 +154,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		resp := stepMessages(o.Steps)
 		if steer != nil {
 			for _, text := range steer() {
-				steered = append(steered, steeredMsg{at: len(resp), msg: userMessage(text)})
+				steered = append(steered, steeredMsg{at: len(resp), msg: r.compose(text)})
 			}
 		}
 		if len(steered) == 0 {
@@ -202,6 +206,13 @@ func retryErr(err *fantasy.ProviderError) error {
 type steeredMsg struct {
 	at  int // number of step response messages that preceded it
 	msg fantasy.Message
+}
+
+func (r *Runner) compose(text string) fantasy.Message {
+	if r.Compose != nil {
+		return r.Compose(text)
+	}
+	return userMessage(text)
 }
 
 func userMessage(text string) fantasy.Message {
