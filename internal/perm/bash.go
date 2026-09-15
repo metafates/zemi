@@ -1,0 +1,461 @@
+package perm
+
+import (
+	"strings"
+	"unicode"
+)
+
+// Normalized is the result of normalizing a bash command (DESIGN §9).
+type Normalized struct {
+	// Segments are the collapsed command segments: separator-split,
+	// quote-aware argv, assignment prefixes unwrapped, sh -c recursion
+	// applied. Each segment is matched against rules on its own.
+	Segments []string
+	// ReadPaths and WritePaths are redirect targets gating as fs.read /
+	// fs.write (device exemptions already applied).
+	ReadPaths  []string
+	WritePaths []string
+	// ForceAsk is a non-empty reason when the whole call must ask
+	// regardless of allow rules (environment assignment gate, heredoc).
+	ForceAsk string
+	// Fail is a non-empty reason when the call must fail outright
+	// (unbalanced quotes or parens, emptied redirect target).
+	Fail string
+}
+
+// envGateNames are the environment-affecting variables whose assignment
+// forces ask (curated denylist, case-insensitive).
+var envGateNames = []string{
+	"path", "bash_env", "env", "ifs", "pythonpath", "pythonhome",
+	"pythonstartup", "node_options", "node_path", "rubyopt", "rubylib",
+	"perl5opt", "perl5lib", "perllib", "lua_path", "lua_init",
+	"shellopts", "bash_xtracefd", "editor", "visual", "pager",
+	"git_ssh_command", "git_editor", "git_pager",
+}
+
+func envGated(name string) bool {
+	n := strings.ToLower(name)
+	for _, g := range envGateNames {
+		if n == g {
+			return true
+		}
+	}
+	for _, p := range []string{"ld_", "dyld_", "bash_func_", "git_config_"} {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// Normalize turns a raw bash command into matched-form segments plus the
+// redirect gates. It never errors: problems surface in Fail/ForceAsk.
+func Normalize(cmd string) Normalized {
+	var n Normalized
+	n.scan(cmd)
+	return n
+}
+
+type tokKind int
+
+const (
+	tokWord tokKind = iota
+	tokSep
+	tokRedirect
+	tokTarget // word following a redirect operator
+	tokHeredoc
+)
+
+type token struct {
+	kind tokKind
+	text string
+	op   string
+}
+
+// scanner walks the command producing the token stream. Quote-aware:
+// separators and redirects inside quotes are literal text.
+type scanner struct {
+	toks   []token
+	depth  int
+	failed bool
+}
+
+func (s *scanner) fail(reason string) {
+	if !s.failed {
+		s.failed = true
+		s.toks = append(s.toks, token{kind: tokSep, op: "!" + reason})
+	}
+}
+
+func (n *Normalized) scan(cmd string) {
+	var sc scanner
+	var cur strings.Builder
+	any := false
+	flush := func() {
+		if any {
+			sc.toks = append(sc.toks, token{kind: tokWord, text: cur.String()})
+		}
+		cur.Reset()
+		any = false
+	}
+	rs := []rune(cmd)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		switch {
+		case r == '\'':
+			any = true
+			j := i + 1
+			for ; j < len(rs) && rs[j] != '\''; j++ {
+				cur.WriteRune(rs[j])
+			}
+			if j >= len(rs) {
+				sc.fail("unbalanced quotes")
+				flush()
+				n.eat(&sc)
+				return
+			}
+			i = j
+		case r == '"':
+			any = true
+			j := i + 1
+			for ; j < len(rs) && rs[j] != '"'; j++ {
+				if rs[j] == '\\' && j+1 < len(rs) {
+					j++
+				}
+				cur.WriteRune(rs[j])
+			}
+			if j >= len(rs) {
+				sc.fail("unbalanced quotes")
+				flush()
+				n.eat(&sc)
+				return
+			}
+			i = j
+		case r == '\\':
+			any = true
+			if i+1 < len(rs) {
+				i++
+				cur.WriteRune(rs[i])
+			}
+		case r == '`':
+			flush()
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '$' && i+1 < len(rs) && rs[i+1] == '(':
+			flush()
+			i++
+			sc.depth++
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '<' && i+1 < len(rs) && rs[i+1] == '(':
+			flush()
+			i++
+			sc.depth++
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '>' && i+1 < len(rs) && rs[i+1] == '(':
+			flush()
+			i++
+			sc.depth++
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '(':
+			flush()
+			sc.depth++
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == ')':
+			flush()
+			sc.depth--
+			if sc.depth < 0 {
+				sc.fail("unbalanced parens")
+			}
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case unicode.IsSpace(r):
+			flush()
+			if r == '\n' {
+				sc.toks = append(sc.toks, token{kind: tokSep})
+			}
+		case r == ';':
+			flush()
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '&':
+			flush()
+			if i+1 < len(rs) && rs[i+1] == '&' {
+				i++
+			}
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '|':
+			flush()
+			if i+1 < len(rs) && rs[i+1] == '|' {
+				i++
+			}
+			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '>' || r == '<':
+			flush()
+			op, n2 := readRedirectOp(rs, i)
+			i += n2 - 1
+			// classify: heredoc forms, fd forms, file forms
+			switch op {
+			case "<<", "<<-":
+				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op})
+			case "<<<":
+				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op})
+			default:
+				sc.toks = append(sc.toks, token{kind: tokRedirect, op: op})
+			}
+		default:
+			any = true
+			cur.WriteRune(r)
+		}
+	}
+	flush()
+	if sc.depth != 0 {
+		sc.fail("unbalanced parens")
+	}
+	n.eat(&sc)
+}
+
+// readRedirectOp reads a redirect operator starting at rs[i]; returns the
+// operator text and how many runes it consumed.
+func readRedirectOp(rs []rune, i int) (string, int) {
+	n := 0
+	r := rs[i]
+	n++
+	i++
+	switch {
+	case r == '>' && i < len(rs) && rs[i] == '>':
+		n++
+		return ">>", n
+	case r == '>' && i < len(rs) && rs[i] == '|':
+		n++
+		return ">|", n
+	case r == '>' && i < len(rs) && rs[i] == '&':
+		n++
+		return ">&", n
+	case r == '<' && i < len(rs) && rs[i] == '<':
+		n++
+		if i < len(rs) && rs[i] == '-' {
+			n++
+			return "<<-", n
+		}
+		if i < len(rs) && rs[i] == '<' {
+			n++
+			return "<<<", n
+		}
+		return "<<", n
+	case r == '<' && i < len(rs) && rs[i] == '&':
+		n++
+		return "<&", n
+	case r == '<' && i < len(rs) && rs[i] == '>':
+		n++
+		return "<>", n
+	case r == '>':
+		return ">", n
+	default:
+		return string(r), n
+	}
+}
+
+// eat walks the token stream: redirects take the next word as target,
+// separators cut segments, heredocs force ask.
+func (n *Normalized) eat(sc *scanner) {
+	var seg []string
+	toks := sc.toks
+	for i := 0; i < len(toks); i++ {
+		t := toks[i]
+		switch t.kind {
+		case tokSep:
+			if strings.HasPrefix(t.op, "!") {
+				n.Fail = strings.TrimPrefix(t.op, "!")
+			}
+			n.fold(seg)
+			seg = nil
+		case tokHeredoc:
+			n.ForceAsk = "heredoc or herestring body is shell-executed input"
+		case tokRedirect:
+			if i+1 < len(toks) && toks[i+1].kind == tokWord {
+				n.gate(t.op, toks[i+1].text)
+				i++
+			} else {
+				n.Fail = "empty redirect target"
+			}
+		case tokWord:
+			seg = append(seg, t.text)
+		}
+	}
+	n.fold(seg)
+	if sc.failed {
+		n.Fail = "unbalanced quotes or parens"
+	}
+}
+
+// gate classifies one redirect with its target into fs.read/fs.write
+// operations (device exemptions applied).
+func (n *Normalized) gate(op, target string) {
+	if target == "" {
+		n.Fail = "empty redirect target"
+		return
+	}
+	plain := devNull(target)
+	switch op {
+	case ">", ">>", ">|", "&>", "&>>":
+		if !plain {
+			n.WritePaths = append(n.WritePaths, target)
+		}
+	case "<", "<>":
+		if !plain {
+			n.ReadPaths = append(n.ReadPaths, target)
+		}
+		if op == "<>" && !plain {
+			n.WritePaths = append(n.WritePaths, target)
+		}
+	case ">&":
+		if isAllDigits(target) || target == "-" {
+			return
+		}
+		if !plain {
+			n.WritePaths = append(n.WritePaths, target)
+		}
+	case "<&":
+		if isAllDigits(target) || target == "-" {
+			return
+		}
+		if !plain {
+			n.ReadPaths = append(n.ReadPaths, target)
+		}
+	}
+}
+
+// attachedRedirect handles the glued forms the scanner leaves inside a
+// word: `2>file`, `2>>file`, `>&file`, `2>&1`, `<&3`.
+func attachedRedirect(word string) (op, target string, ok bool) {
+	i := 0
+	for i < len(word) && word[i] >= '0' && word[i] <= '9' {
+		i++
+	}
+	rest := word[i:]
+	for _, cand := range []string{"&>>", ">>", ">&", "<&", "&>", ">|", "<>", ">", "<"} {
+		if strings.HasPrefix(rest, cand) {
+			t := rest[len(cand):]
+			if t == "" {
+				return "", "", false
+			}
+			switch cand {
+			case ">&", "<&":
+				if isAllDigits(t) || t == "-" {
+					return "", "", false
+				}
+				if cand == ">&" {
+					return ">&", t, true
+				}
+				return "<&", t, true
+			}
+			return cand, t, true
+		}
+	}
+	return "", "", false
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func devNull(p string) bool {
+	return p == "/dev/null" || p == "/dev/zero"
+}
+
+// fold collapses one segment: assignment gate, prefix unwrap, sh -c
+// recursion, then the joined argv becomes the matched form.
+func (n *Normalized) fold(seg []string) {
+	if len(seg) == 0 {
+		return
+	}
+	// peel redirect-glued words into their own gates first
+	var argv []string
+	for _, w := range seg {
+		if op, target, ok := attachedRedirect(w); ok {
+			n.gate(op, target)
+			continue
+		}
+		argv = append(argv, w)
+	}
+	if len(argv) == 0 {
+		return
+	}
+	for _, a := range argv {
+		if name, ok := assignmentName(a); ok && envGated(name) {
+			n.ForceAsk = "environment assignment: " + name
+			return
+		}
+	}
+	for len(argv) > 0 {
+		if _, ok := assignmentName(argv[0]); ok {
+			argv = argv[1:]
+			continue
+		}
+		break
+	}
+	if len(argv) == 0 {
+		return
+	}
+	if len(argv) >= 3 && isShell(argv[0]) {
+		for i := 1; i < len(argv); i++ {
+			if argv[i] == "-c" && i+1 < len(argv) {
+				inner := Normalize(argv[i+1])
+				n.absorb(inner)
+				return
+			}
+		}
+	}
+	n.Segments = append(n.Segments, strings.Join(argv, " "))
+}
+
+func (n *Normalized) absorb(inner Normalized) {
+	n.Segments = append(n.Segments, inner.Segments...)
+	n.ReadPaths = append(n.ReadPaths, inner.ReadPaths...)
+	n.WritePaths = append(n.WritePaths, inner.WritePaths...)
+	if inner.Fail != "" && n.Fail == "" {
+		n.Fail = inner.Fail
+	}
+	if inner.ForceAsk != "" && n.ForceAsk == "" {
+		n.ForceAsk = inner.ForceAsk
+	}
+}
+
+func isShell(s string) bool {
+	switch s {
+	case "sh", "bash", "zsh", "dash", "ksh", "ash":
+		return true
+	}
+	return false
+}
+
+// assignmentName recognizes NAME=value and NAME+=value.
+func assignmentName(tok string) (string, bool) {
+	if i := strings.Index(tok, "+="); i > 0 {
+		return tok[:i], isName(tok[:i])
+	}
+	i := strings.Index(tok, "=")
+	if i <= 0 {
+		return "", false
+	}
+	return tok[:i], isName(tok[:i])
+}
+
+func isName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
