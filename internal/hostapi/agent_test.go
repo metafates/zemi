@@ -271,11 +271,23 @@ func TestSteeringQueue(t *testing.T) {
 	}
 
 	send("a", "b")
-	if text := h.nextTurn(); text != "a\n\nb" || !h.AgentActive() {
+	if text := h.nextTurn(false); text != "a\n\nb" || !h.AgentActive() {
 		t.Fatalf("follow-up = %q, active = %v", text, h.AgentActive())
 	}
-	if text := h.nextTurn(); text != "" || h.AgentActive() {
+	if text := h.nextTurn(false); text != "" || h.AgentActive() {
 		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
+	}
+
+	// a cancelled turn starts nothing: the queue waits for the composer
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.mu.Unlock()
+	send("c")
+	if text := h.nextTurn(true); text != "" || h.AgentActive() {
+		t.Fatalf("cancelled handoff = %q, active = %v", text, h.AgentActive())
+	}
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "c" {
+		t.Fatalf("queue after a cancel = %q", q)
 	}
 
 	h.AgentCancel() // no runner: must not panic

@@ -186,11 +186,16 @@ func (h *Host) CompactNow(focus string) error {
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
 		h.compactReporting(ctx, runner, compactManual, strings.TrimSpace(focus))
+		stopped := ctx.Err() != nil
 		h.turn.Store(nil)
 		cancel()
 		ag.mu.Lock()
-		queued := strings.Join(ag.steering, "\n\n")
-		ag.steering, ag.active = nil, false
+		queued := ""
+		if !stopped { // a cancel leaves the queue for the UI to hand back
+			queued = strings.Join(ag.steering, "\n\n")
+			ag.steering = nil
+		}
+		ag.active = false
 		ag.mu.Unlock()
 		h.refresh()
 		if queued != "" {

@@ -560,9 +560,10 @@ func (h *Host) runTurns(runner *agent.Runner, text string) {
 			h.compactReporting(ctx, runner, compactAuto, "")
 		}
 		h.sendCompacting(ctx, runner, text)
+		cancelled := ctx.Err() != nil
 		h.turn.Store(nil)
 		cancel()
-		text = h.nextTurn()
+		text = h.nextTurn(cancelled)
 	}
 }
 
@@ -578,12 +579,16 @@ func (h *Host) startTurn(text string) {
 // nextTurn runs after each turn: messages queued after the last step
 // boundary become one follow-up turn, otherwise the agent goes idle.
 // active stays held across the handoff, so a submit in between queues
-// instead of starting a turn out of order.
-func (h *Host) nextTurn() string {
+// instead of starting a turn out of order. After a cancelled turn nothing
+// starts: the queue waits for the UI to hand it back to the composer.
+func (h *Host) nextTurn(cancelled bool) string {
 	ag := h.agents
 	ag.mu.Lock()
-	text := strings.Join(ag.steering, "\n\n")
-	ag.steering = nil
+	text := ""
+	if !cancelled {
+		text = strings.Join(ag.steering, "\n\n")
+		ag.steering = nil
+	}
 	if text == "" {
 		ag.active = false
 	} else {
