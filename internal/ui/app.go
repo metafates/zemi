@@ -551,8 +551,9 @@ func (a *App) compose(w, h int) string {
 	} else if row := a.workingRow(); row != nil {
 		working = [][]hostapi.Segment{row}
 	}
-	// + statusline + composer (+ its popups and the working row)
-	reserved := len(header) + 1 + len(compRows) + len(compPopup) + len(palPopup) + len(working)
+	// + statusline + composer and the working row; popups float over the
+	// chat (floatPopup), so opening one never moves the transcript
+	reserved := len(header) + 1 + len(compRows) + len(working)
 	chatH := h - reserved
 	if chatH < 1 {
 		chatH = 1
@@ -600,10 +601,10 @@ func (a *App) compose(w, h int) string {
 		y--
 	}
 
-	// The working row and popups render above the composer.
+	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
+
+	// The working row renders above the composer.
 	rows = append(rows, working...)
-	rows = append(rows, compPopup...)
-	rows = append(rows, palPopup...)
 	rows = append(rows, compRows...)
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
@@ -640,6 +641,23 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	return b.String()
+}
+
+// floatPopup frames a completion popup and lays it over the bottom rows of
+// the chat area, left-aligned with the composer. The rows it covers are
+// blanked to the right of the frame (word fragments beside a dropdown read
+// as garbage); a popup taller than the chat is clipped.
+func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
+	if len(popup) == 0 {
+		return rows
+	}
+	box := hostBox("", "", "", popup, w)
+	bottom := min(headerH+chatH, len(rows))
+	y0 := max(headerH, bottom-len(box))
+	for i := y0; i < bottom; i++ {
+		rows[i] = padSegs(box[i-y0], w)
+	}
+	return rows
 }
 
 // chatStep is one page of transcript scroll with a one-row overlap, from
