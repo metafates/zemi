@@ -127,7 +127,17 @@ func (h *Host) storeProposal(res *learn.Result) error {
 	if db == nil {
 		return errors.New("memory store unavailable")
 	}
-	return db.AddMemory(&res.Memory)
+	if err := db.AddMemory(&res.Memory); err != nil {
+		return err
+	}
+	h.emitMemoryWritten(res.Memory)
+	return nil
+}
+
+func (h *Host) emitMemoryWritten(m store.Memory) {
+	h.EmitAsync("memory.written", map[string]any{
+		"id": m.ID, "scope": m.Scope, "kind": m.Kind, "origin": m.Origin, "text": m.Text,
+	})
 }
 
 // Remember stores a user-typed /remember text (origin user, project
@@ -151,6 +161,7 @@ func (h *Host) Remember(text string) error {
 	if res.Scrubbed {
 		note = " (secrets redacted)"
 	}
+	h.emitMemoryWritten(res.Memory)
 	h.memNotify("info", "remember", "stored"+note)
 	return nil
 }

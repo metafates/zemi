@@ -199,6 +199,7 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 		note = " (secrets redacted)"
 	}
 	h.memNotify("info", "config", "applied: "+p.Title+note)
+	h.EmitAsync("config.applied", map[string]any{"id": p.ID, "title": p.Title})
 }
 
 // autoApplyCfgOK reports whether a patch may apply without review
@@ -230,6 +231,7 @@ func (h *Host) queueCfgProposal(p *cfgProposal) {
 	ag.cfgProposals = append(ag.cfgProposals, p)
 	ag.mu.Unlock()
 	h.refreshPending()
+	h.EmitAsync("config.proposed", map[string]any{"id": p.ID, "title": p.Title})
 }
 
 // takeCfgProposal removes and returns one queued patch by id, or nil.

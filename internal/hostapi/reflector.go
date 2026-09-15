@@ -466,6 +466,7 @@ func (h *Host) applySkillDrafts(sid string, p *reflectProposal) (drafted int) {
 			h.Log.Debug("reflector", "skill draft skipped", map[string]any{"name": s.Name, "error": err.Error()})
 			continue
 		}
+		h.EmitAsync("skill.learned", map[string]any{"name": s.Name, "session": sid})
 		drafted++
 	}
 	if drafted > 0 {
