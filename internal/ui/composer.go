@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -313,33 +314,43 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 	return []hostapi.Segment{{Text: string(r[:cursor]), HL: hl}, {Text: under, HL: "Host:Cursor"}, {Text: rest, HL: hl}}
 }
 
-// wrapComposer splits the text into visual rows of at most width runes,
-// splitting on newlines, and reports the cursor's row and column.
+// wrapComposer splits the text into visual rows of at most w cells, on
+// newlines and after the last space that fits (a word longer than a row is
+// split), and reports the cursor's row and rune column.
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 	w = max(w, 1)
 	r := []rune(a.composer.text)
-	cur := []rune{}
-	row := 0
+	type span struct{ s, e int }
+	var spans []span
+	start, width, brk := 0, 0, 0 // brk: the rune after the row's last space
 	for i, x := range r {
-		if i == a.composer.cursor {
-			cursorRow, cursorCol = row, len(cur)
-		}
 		if x == '\n' {
-			rows = append(rows, cur)
-			cur = nil
-			row++
+			spans = append(spans, span{start, i})
+			start, width, brk = i+1, 0, 0
 			continue
 		}
-		cur = append(cur, x)
-		if len(cur) == w {
-			rows = append(rows, cur)
-			cur = nil
-			row++
+		cw := ansi.StringWidth(string(x))
+		if width+cw > w && i > start {
+			end := i
+			if brk > start {
+				end = brk
+			}
+			spans = append(spans, span{start, end})
+			start, width, brk = end, ansi.StringWidth(string(r[end:i])), 0
+		}
+		width += cw
+		if x == ' ' {
+			brk = i + 1
 		}
 	}
-	rows = append(rows, cur)
-	if a.composer.cursor >= len(r) {
-		cursorRow, cursorCol = row, len(cur)
+	spans = append(spans, span{start, len(r)})
+	cur := a.composer.cursor
+	for n, sp := range spans {
+		// at a soft wrap the cursor belongs to the next row, at a newline to this one
+		if cur >= sp.s && (cur < sp.e || cur == sp.e && (n == len(spans)-1 || spans[n+1].s > sp.e)) {
+			cursorRow, cursorCol = n, cur-sp.s
+		}
+		rows = append(rows, r[sp.s:sp.e])
 	}
 	return cursorRow, cursorCol, rows
 }
