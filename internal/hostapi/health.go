@@ -6,7 +6,6 @@ package hostapi
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -42,19 +41,14 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "model", id)
 	}
 
-	if path := h.permanentRulesPath(); path != "" {
-		data, err := os.ReadFile(path)
-		switch {
-		case os.IsNotExist(err):
-			add("ok", "permissions", "no permanent rules yet")
+	if h.permanentRulesPath() != "" {
+		switch rules, err := h.readPermanentRules(); {
 		case err != nil:
 			add("error", "permissions", err.Error())
+		case len(rules) == 0:
+			add("ok", "permissions", "no permanent rules yet")
 		default:
-			if rules, err := parsePermissionsDump(data); err != nil {
-				add("error", "permissions", "permissions.lua refused: "+err.Error())
-			} else {
-				add("ok", "permissions", fmt.Sprintf("%d permanent rules", len(rules)))
-			}
+			add("ok", "permissions", fmt.Sprintf("%d permanent rules", len(rules)))
 		}
 	}
 

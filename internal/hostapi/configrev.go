@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -78,7 +79,7 @@ type rawCfgRule struct {
 // decodeStrict decodes exactly one JSON value with unknown fields
 // refused.
 func decodeStrict(data []byte, v any) error {
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }
@@ -105,10 +106,7 @@ func (h *Host) intakeConfigPatch(sid string, raw json.RawMessage) (*cfgProposal,
 	if title == "" {
 		title = "config patch"
 	}
-	if r := []rune(title); len(r) > cfgTitleMax {
-		title = string(r[:cfgTitleMax])
-	}
-	p := &cfgProposal{ID: store.NewID(), Title: title, SessionID: sid, Scrubbed: scrubbed}
+	p := &cfgProposal{ID: store.NewID(), Title: clipRunes(title, cfgTitleMax), SessionID: sid, Scrubbed: scrubbed}
 	for i, rr := range rp.Rules {
 		e, didScrub, err := intakeCfgRule(rr)
 		if err != nil {
@@ -411,18 +409,12 @@ func (h *Host) ConfigCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "config commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			for _, c := range []*Command{
-				{Name: "config", NArgs: "*", Hidden: true,
-					Desc:       "review pending config changes; revisions, revert <id>",
-					GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
-					GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
-					Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)},
-			} {
-				if _, err := h.Commands.Add(c); err != nil {
-					return err
-				}
-			}
-			return nil
+			_, err := h.Commands.Add(&Command{Name: "config", NArgs: "*", Hidden: true,
+				Desc:       "review pending config changes; revisions, revert <id>",
+				GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
+				GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
+				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
+			return err
 		},
 	}
 }

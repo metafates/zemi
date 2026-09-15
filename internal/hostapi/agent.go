@@ -41,15 +41,10 @@ type Profile struct {
 // AgentEvent is one streaming update delivered to the UI (hostapi stays
 // UI-agnostic; internal/ui implements the display).
 type AgentEvent struct {
-	Kind             string // turn_start, text, reasoning, tool_start, tool_end, turn_done
-	Text             string
-	CallID           string
-	Tool             string
-	Input            string
-	OK               bool
-	Err              string
-	PromptTokens     int64
-	CompletionTokens int64
+	Kind   string // turn_start, text, reasoning, tool_start, tool_end, tool_progress, retry, turn_done
+	Text   string
+	CallID string
+	Err    string
 }
 
 // PermRequest is one interactive permission ask for the overlay.
@@ -92,7 +87,6 @@ type agentHost struct {
 	textBuf   string
 	reasonBuf string
 	tools     []StreamTool
-	usage     fantasy.Usage
 	steering  []string
 	modelSeed string
 
@@ -303,10 +297,11 @@ func (h *Host) buildSystem(p *Profile) string {
 		files = p.ContextFiles
 	}
 	sys += h.zemiPrompt()
-	if def := h.permModeDef(); def.Base == "plan" {
+	def := h.permModeDef()
+	if def.Base == "plan" {
 		sys += planPrompt
 	}
-	if def := h.permModeDef(); def.Prompt != "" {
+	if def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
 	return h.systemWith(sys, files)
@@ -730,7 +725,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	}
-	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
+	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id})
 }
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
@@ -746,7 +741,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 		}
 	}
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id, Tool: name, OK: ok, Input: output})
+	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id})
 	s.h.recordToolCall(name, ok, output)
 }
 
@@ -756,7 +751,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.usage = usage
 	ag.sessCost += cost
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
@@ -777,10 +771,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	sid := ag.sessionID
 	ag.mu.Unlock()
 
-	h.agentEvent(AgentEvent{
-		Kind: "turn_done", Err: errString(err),
-		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
-	})
+	h.agentEvent(AgentEvent{Kind: "turn_done", Err: errString(err)})
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()
@@ -881,14 +872,8 @@ func errString(err error) string {
 
 // persistMessage writes one fantasy message into the project store.
 func (h *Host) persistMessage(role string, msg fantasy.Message) error {
-	if h.DB == nil {
-		return nil
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid := ag.sessionID
-	ag.mu.Unlock()
-	if sid == "" {
+	sid := h.AgentSessionID()
+	if h.DB == nil || sid == "" {
 		return nil
 	}
 	parts, err := json.Marshal(msg)
@@ -900,9 +885,9 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 		return err
 	}
 	if role == "user" {
-		ag.mu.Lock()
-		ag.turnMsgID = row.ID
-		ag.mu.Unlock()
+		h.agents.mu.Lock()
+		h.agents.turnMsgID = row.ID
+		h.agents.mu.Unlock()
 	}
 	return nil
 }
@@ -910,14 +895,8 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 // recordToolCall stores one tool telemetry row (each tool call gets its
 // own "tool" message row so tool_calls.message_id stays a real FK).
 func (h *Host) recordToolCall(name string, ok bool, output string) {
-	if h.DB == nil {
-		return
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid := ag.sessionID
-	ag.mu.Unlock()
-	if sid == "" {
+	sid := h.AgentSessionID()
+	if h.DB == nil || sid == "" {
 		return
 	}
 	parts, _ := json.Marshal(map[string]any{"tool": name, "output": output})
@@ -954,10 +933,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	if p != nil {
 		name = p.Name
 	}
-	title := strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0]
-	if r := []rune(title); len(r) > 60 {
-		title = string(r[:60])
-	}
+	title := clipRunes(strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0], 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
@@ -1679,16 +1655,9 @@ func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
 	return func(name string, input map[string]any, ok bool, output string) {
 		h.EmitAsync("tool.post", map[string]any{
 			"tool": name, "input": input, "ok": ok,
-			"output": truncateString(output, 4096),
+			"output": truncRunes(output, 4096),
 		})
 	}
-}
-
-func truncateString(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls.

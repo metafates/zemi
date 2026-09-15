@@ -472,25 +472,32 @@ func (h *Host) PermissionsLoadStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "permissions load",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			path := h.permanentRulesPath()
-			if path == "" {
-				return nil
-			}
-			data, err := os.ReadFile(path)
-			if os.IsNotExist(err) {
-				return nil
-			}
-			if err != nil {
-				return fmt.Errorf("permissions.lua: %w", err)
-			}
-			rules, err := parsePermissionsDump(data)
-			if err != nil {
-				return fmt.Errorf("permissions.lua refused (fix or delete the file): %w", err)
-			}
+			rules, err := h.readPermanentRules()
 			for _, rule := range rules {
 				h.Perm.Add(rule)
 			}
-			return nil
+			return err
 		},
 	}
+}
+
+// readPermanentRules loads permissions.lua; no config home or no file
+// means no rules.
+func (h *Host) readPermanentRules() ([]perm.Rule, error) {
+	path := h.permanentRulesPath()
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("permissions.lua: %w", err)
+	}
+	rules, err := parsePermissionsDump(data)
+	if err != nil {
+		return nil, fmt.Errorf("permissions.lua refused (fix or delete the file): %w", err)
+	}
+	return rules, nil
 }

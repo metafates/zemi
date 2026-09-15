@@ -23,16 +23,10 @@ import (
 
 const gitTimeout = 15 * time.Second
 
-// EnsureConfigRepo makes the config home a git repo (idempotent, §5).
-// Called once at startup before the boot steps. A missing git binary or
-// a failed init is logged and otherwise ignored: the config dir keeps
-// working unversioned.
-func (h *Host) EnsureConfigRepo() { h.ensureConfigRepo() }
-
-// ensureConfigRepo makes the config home a git repo (idempotent). A
+// EnsureConfigRepo makes the config home a git repo (idempotent, §5). A
 // missing git binary or a failed init is logged and otherwise ignored:
 // the config dir keeps working unversioned.
-func (h *Host) ensureConfigRepo() {
+func (h *Host) EnsureConfigRepo() {
 	dir := h.Dirs.ConfigHome
 	if dir == "" {
 		return
@@ -77,7 +71,7 @@ func (h *Host) commitConfigPaths(msg string, paths []string) error {
 	if dir == "" {
 		return fmt.Errorf("config repo: no config home")
 	}
-	h.ensureConfigRepo()
+	h.EnsureConfigRepo()
 	args := []string{"add", "--"}
 	args = append(args, paths...)
 	if _, err := h.git(dir, args...); err != nil {

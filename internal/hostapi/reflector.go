@@ -81,9 +81,6 @@ func (h *Host) reflectEveryN() int {
 // the closed session is reflected when the closed-session counter hits
 // the every-N gate and it has messages the reflector has not seen.
 func (h *Host) reflectOnClose(prevID string) {
-	if prevID == "" {
-		return
-	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.reflected++
@@ -301,11 +298,17 @@ func concatText[T any](parts []T) string {
 }
 
 func truncRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
+	if c := clipRunes(s, n); c != s {
+		return c + "..."
 	}
-	return string(r[:n]) + "..."
+	return s
+}
+
+func clipRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }
 
 // generateText runs one tool-less, single-step model call (reflector,
