@@ -519,3 +519,7 @@ zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
 zemi.keymap.set("ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
 zemi.keymap.set("ctrl+end", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })
+
+-- require("zemi.defaultui").splash(ctx) builds the default splash rows, so a
+-- custom splash widget can add to it instead of copying it.
+return { splash = splash }

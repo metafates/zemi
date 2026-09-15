@@ -10,8 +10,11 @@ below is a file you write with your file tools; show the user what you wrote and
 
 | Scope | Directory | Loads |
 | --- | --- | --- |
-| every project | `~/.config/zemi/` | always (user origin, most trusted) |
-| this repository | `<repo>/.zemi/` | after the user trusts the project config (a prompt at start) |
+| every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, on `/Reload` for Lua and commands |
+| this repository | `<repo>/.zemi/` | after the user trusts the project config: a prompt at start or on `/Reload` |
+
+Always use the exact directories from the system prompt: `ZEMI_CONFIG_HOME` can move the
+user directory, and writing to a guessed `~/.config/zemi` changes the wrong config.
 
 Use the user's directory for personal habits, `.zemi/` for things the team should share
 through git. When unsure, ask which one.
@@ -77,15 +80,22 @@ Registering a widget with a builtin id replaces it; a new id adds one. Builtin i
 `statusline.left`, `statusline.right`. Changes apply on `/Reload`.
 
 ```lua
--- ~/.config/zemi/init.lua
+-- <user config>/init.lua
+-- Add a line to the default splash instead of rewriting it: defaultui returns
+-- its splash builder.
+local default = require("zemi.defaultui")
 zemi.ui.widget.register({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
-    if #ctx.transcript > 0 then return { { { text = "" } } } end
-    return {
-      { { text = "  zemi " .. ctx.version, hl = "Title" } },
-      { { text = "  " .. ctx.model .. " in " .. ctx.cwd, hl = "Comment" } },
-    }
+    if #ctx.transcript > 0 or ctx.agent_active then return { { { text = "" } } } end
+    local rows = default.splash(ctx)
+    for i, row in ipairs(rows) do
+      if row[2] and row[2].hl == "Logo6" then -- after the last logo row
+        table.insert(rows, i + 1, { row[1], { text = "hack the planet", hl = "Title" } })
+        break
+      end
+    end
+    return rows
   end,
 })
 

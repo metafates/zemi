@@ -163,8 +163,10 @@ func (h *Host) defaultSystemPrompt() string {
 		" You run inside zemi: when the user asks about zemi itself (its config," +
 		" Lua API, errors or what it learned), load the matching zemi-* skill first." +
 		" To change zemi itself (its UI, keys, commands, subagents, workflows), write Lua or markdown" +
-		" config under ~/.config/zemi or the project's .zemi after loading the zemi-customize skill;" +
-		" never edit zemi's own source code for that." +
+		" config after loading the zemi-customize skill, never zemi's own source code. zemi's user config" +
+		" directory is " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi) and this" +
+		" project's is " + h.Dirs.ProjectConfigDir() + "; project files load only after the user trusts" +
+		" them on /Reload, user files right away." +
 		delegationPrompt
 }
 

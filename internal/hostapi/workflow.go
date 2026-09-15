@@ -121,6 +121,11 @@ func (h *Host) workflowSource(name string) (string, error) {
 		}
 		names = append(names, w.Name)
 	}
+	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.projectTrusted.Load() {
+		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
+			return "", fmt.Errorf("workflow %q is in %s, which is not trusted yet: the user runs /Reload and trusts it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
+		}
+	}
 	if len(names) == 0 {
 		return "", fmt.Errorf("no saved workflow %q (save one as workflows/%s.lua)", name, name)
 	}
@@ -559,7 +564,7 @@ The script runs in a sandbox with Lua's base, string, table and math libraries a
 - phase(name) labels progress for the user; log(...) records a line returned with the result.
 - json.encode(v), json.decode(s) (decode tolerates prose around the JSON); args holds the tool's args.
 The script's return value is the tool result (tables come back as JSON). agent() and parallel() cannot run inside pcall or library callbacks (table.sort, string.gsub). No file or network access: only agents act.
-To keep a workflow the user wants again, write the script with your file tools to ~/.config/zemi/workflows/<name>.lua (every project) or <project>/.zemi/workflows/<name>.lua (this repository), starting with -- comment lines that describe it; it then runs as /workflow <name> or with name instead of script.
+To keep a workflow the user wants again, write the script with your file tools to <user config>/workflows/<name>.lua (every project, usable at once) or <project config>/workflows/<name>.lua (this repository, usable after the user trusts the project config on /Reload), starting with -- comment lines that describe it; it then runs as /workflow <name> or with name instead of script. The system prompt names both directories.
 
 Example:
   phase("review")
