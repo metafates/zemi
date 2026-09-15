@@ -35,6 +35,19 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
+func TestNormalizeVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                             "dev",
+		"(devel)":                      "dev",
+		"v0.0.0-20240101120000-abcdef": "dev",
+		"v1.2.3":                       "v1.2.3",
+	} {
+		if got := normalizeVersion(in); got != want {
+			t.Errorf("normalizeVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestTurnReport(t *testing.T) {
 	rep := turnReport([]hostapi.ChatMessage{
 		{Role: "user", Text: "go"},

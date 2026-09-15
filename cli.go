@@ -99,12 +99,22 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 
 func versionString() string {
 	if version != "" {
-		return version
+		return normalizeVersion(version)
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
-		return bi.Main.Version
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		return normalizeVersion(bi.Main.Version)
 	}
-	return "(unknown)"
+	return normalizeVersion("")
+}
+
+// normalizeVersion is the one name a build answers to: --version, the
+// splash and /health all print this. A pseudo-version (untagged build)
+// says nothing to a person, so it reads "dev".
+func normalizeVersion(v string) string {
+	if v == "" || v == "(devel)" || strings.HasPrefix(v, "v0.0.0-") {
+		return "dev"
+	}
+	return v
 }
 
 // readStdin appends piped stdin to the prompt in print mode. The TUI needs
