@@ -53,6 +53,7 @@ func NewStore() *Store {
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
 		{Path: "agent.model", Kind: "string", Default: "", UserWritable: true, Desc: "active model id (provider/model)"},
+		{Path: "providers.crush_json", Kind: "string", Default: "~/.config/crush/crush.json", UserWritable: true, Desc: "crush.json imported at boot for providers (empty disables)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
 		{Path: "ui.sidebar.width", Kind: "int", Default: 30, UserWritable: true, Desc: "sidebar width in cells"},
 		{Path: "ui.sidebar.open", Kind: "bool", Default: false, UserWritable: true, Desc: "sidebar visible"},

@@ -34,23 +34,33 @@ type Spec struct {
 	Models   []Model `json:"models"`
 }
 
-// Registry holds provider specs; ids are unique.
+// Registry holds provider specs; ids are unique. API keys resolved from
+// files (not env vars) live in a side map keyed by provider id; they are
+// never exposed through List or Lookup.
 type Registry struct {
 	specs []Spec
+	keys  map[string]string
 }
 
 // NewRegistry returns an empty registry. zemi ships no providers: every
 // provider and its model catalog comes from user config (config.lua calls
-// zemi.provider.register, DESIGN §6.3); without one the agent fails closed
+// zemi.provider.register) or an imported crush.json (config key
+// providers.crush_json, DESIGN §6.3); without one the agent fails closed
 // with "no models registered".
 func NewRegistry() *Registry {
-	return &Registry{}
+	return &Registry{keys: map[string]string{}}
 }
 
 // Register adds a provider spec; a duplicate id is an error. Requires a
 // user-owned registration origin (the Lua boundary enforces it, DESIGN
 // §6.3).
 func (r *Registry) Register(spec Spec) error {
+	return r.RegisterKeyed(spec, "")
+}
+
+// RegisterKeyed adds a provider spec with a literal API key (crush.json
+// import). The key stays in the side map, invisible to List and Lookup.
+func (r *Registry) RegisterKeyed(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
 		return fmt.Errorf("provider needs id and kind")
 	}
@@ -60,6 +70,12 @@ func (r *Registry) Register(spec Spec) error {
 		}
 	}
 	r.specs = append(r.specs, spec)
+	if apiKey != "" {
+		if r.keys == nil {
+			r.keys = map[string]string{}
+		}
+		r.keys[spec.ID] = apiKey
+	}
 	return nil
 }
 
@@ -93,6 +109,9 @@ func (r *Registry) HasKey(providerID string) bool {
 // apiKeys reports which providers have an api key available (for the
 // picker to grey out unusable providers without leaking values).
 func (r *Registry) apiKeys(spec Spec) string {
+	if k, ok := r.keys[spec.ID]; ok && k != "" {
+		return k
+	}
 	env := spec.APIKeyEnv
 	switch spec.Kind {
 	case "anthropic":

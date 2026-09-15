@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/config"
@@ -67,6 +68,7 @@ func run() error {
 		pluginsStep(dirs),
 		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
 		projectConfigStep(host, app, dirs),
+		crushImportStep(host, settings),
 		readyStep(host, settings),
 	}
 
@@ -86,6 +88,45 @@ func run() error {
 
 	_, err := p.Run()
 	return err
+}
+
+// crushImportStep imports providers from the user's crush.json (config
+// key providers.crush_json, default ~/.config/crush/crush.json) after
+// user config ran, so init.lua can point the knob elsewhere or disable
+// it. Import problems never fail boot; they are logged.
+func crushImportStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
+	return lua.BootStep{
+		Name: "crush providers import",
+		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			path, _ := settings.Get("providers.crush_json")
+			p, _ := path.(string)
+			p = expandPath(p)
+			if p == "" {
+				return nil
+			}
+			res, err := h.Providers.ImportCrushFile(p)
+			if err != nil {
+				h.Log.Warn("providers", "crush.json import failed", map[string]any{"error": err.Error()})
+				return nil
+			}
+			for _, id := range res.Imported {
+				h.Log.Info("providers", "imported from crush.json", map[string]any{"provider": id})
+			}
+			for _, w := range res.Warnings {
+				h.Log.Warn("providers", w, nil)
+			}
+			return nil
+		},
+	}
+}
+
+func expandPath(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return p
 }
 
 // builtinCommandsStep registers the Go-owned shell commands (:q, :qa,
