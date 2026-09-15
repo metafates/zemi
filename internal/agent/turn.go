@@ -261,6 +261,10 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		usage.InputTokens += s.Usage.InputTokens
 		usage.OutputTokens += s.Usage.OutputTokens
 		usage.TotalTokens += s.Usage.TotalTokens
+		// cache reads and writes are billed apart from input, and providers
+		// report them apart: keep them for the price
+		usage.CacheReadTokens += s.Usage.CacheReadTokens
+		usage.CacheCreationTokens += s.Usage.CacheCreationTokens
 	}
 	r.mu.Lock()
 	r.cut = cut && err == nil

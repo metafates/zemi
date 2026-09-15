@@ -377,7 +377,7 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
-	cost := h.turnCost(s.modelID, usage.InputTokens, usage.OutputTokens)
+	cost := h.turnCost(s.modelID, usage)
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.sessionID == s.run.parent { // a background run may outlive its session

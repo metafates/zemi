@@ -53,6 +53,10 @@ rejects a prompt as too long, and stops for the session after 3 failed tries (`/
 `/new` then). Without a window zemi compacts only on that rejection or on
 `/compact <what to keep>` (refused while a turn runs).
 
+`cost_per_1m_in_cached` and `cost_per_1m_out_cached` price prompt cache writes and reads,
+which providers bill apart from prompt tokens; without them cached turns read as cheaper
+than they were.
+
 `max_output` caps each reply in tokens. Unset, Anthropic models get 32000 and other kinds
 the provider's default; set it lower for a model that rejects that. A reply that hits the
 cap ends the turn with an error row.

@@ -796,7 +796,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return // sendCompacting compacts and resends, or reports it
 	}
-	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
+	cost := h.turnCost(h.currentModelID(nil), usage)
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost
@@ -1198,6 +1198,12 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				if c, ok := mt.RawGetString("cost_per_1m_out").(glua.LNumber); ok && c > 0 {
 					m.CostPer1MOut = float64(c)
 				}
+				if c, ok := mt.RawGetString("cost_per_1m_in_cached").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MInCached = float64(c)
+				}
+				if c, ok := mt.RawGetString("cost_per_1m_out_cached").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MOutCached = float64(c)
+				}
 				spec.Models = append(spec.Models, m)
 			}
 		})
@@ -1273,10 +1279,14 @@ func (h *Host) modelSpec(id string) (agent.Model, bool) {
 }
 
 // turnCost prices one turn's tokens from the model spec; 0 when the spec
-// carries no prices.
-func (h *Host) turnCost(modelID string, in, out int64) float64 {
+// carries no prices. Cache writes and reads are priced apart: providers bill
+// them apart and do not count them as prompt tokens.
+func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 	m, _ := h.modelSpec(modelID)
-	return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+	return (float64(u.InputTokens)*m.CostPer1MIn +
+		float64(u.OutputTokens)*m.CostPer1MOut +
+		float64(u.CacheCreationTokens)*m.CostPer1MInCached +
+		float64(u.CacheReadTokens)*m.CostPer1MOutCached) / 1e6
 }
 
 // contextWindow: agent.context_window, then the model spec, else 0
