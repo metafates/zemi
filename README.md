@@ -171,7 +171,7 @@ Instructions reach the model from `~/.config/zemi/AGENTS.md` (yours, every proje
 started zemi; a directory with neither contributes its `CLAUDE.md`.
 
 Run `zemi` in your project. `/health` checks the model key, the store, `permissions.lua`,
-git and the reflector.
+git, ripgrep and the reflector; `zemi --health` runs the same checks without the TUI.
 
 ## Command line
 
@@ -182,6 +182,7 @@ zemi -c                           # continue the last session (-r <id> for anoth
 zemi -p "explain main.go"         # answer on stdout, no TUI
 git diff | zemi -p "review this"  # piped stdin joins the prompt
 zemi -p --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
+zemi --health                     # run the /health checks, exit 1 if any failed
 ```
 
 With `-p` nobody can answer a permission ask, so asks are denied unless `--mode` is

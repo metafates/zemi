@@ -76,11 +76,11 @@ func run(args []string) int {
 
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	host.Version = versionString()
-	// Print mode has no UI: nothing to quit, and an untrusted project
-	// config is skipped instead of asked about.
+	// Headless: nothing to quit, and an untrusted project config is skipped
+	// instead of asked about.
 	quit, askTrust := func() {}, func(string, string) string { return "once" }
 	var app *ui.App
-	if !opts.print {
+	if !opts.print && !opts.health {
 		app = ui.NewApp(host, log)
 		host.SetUIHooks(app)
 		quit, askTrust = app.Quit, app.AskTrust
@@ -107,6 +107,13 @@ func run(args []string) int {
 		host.MarkdownCommandsStep(),
 		readyStep(host, !opts.print),
 		host.SkillsLearnedHooksStep(),
+	}
+
+	if opts.health {
+		if err := rt.Boot(ctx, steps); err != nil {
+			return fail(err)
+		}
+		return printHealth(host, os.Stdout)
 	}
 
 	if opts.print {

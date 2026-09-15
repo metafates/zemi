@@ -35,6 +35,7 @@ Flags:
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: manual, plan, auto or yolo
       --output fmt    with -p: text (the reply) or json (reply, tools, usage)
+      --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
   -h, --help          show this help
 
@@ -55,6 +56,7 @@ var version string
 
 type options struct {
 	print, cont   bool
+	health        bool
 	resume, model string
 	mode, prompt  string
 	output        string
@@ -66,7 +68,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	fs := flag.NewFlagSet("zemi", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var help, ver bool
-	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "h": &help, "help": &help, "v": &ver, "version": &ver} {
+	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "health": &o.health, "h": &help, "help": &help, "v": &ver, "version": &ver} {
 		fs.BoolVar(p, name, false, "")
 	}
 	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "output": &o.output} {
@@ -171,6 +173,19 @@ func applyOptions(h *hostapi.Host, o options) error {
 		return h.ResumeSession(o.resume)
 	}
 	return nil
+}
+
+// printHealth writes the /health checks for a headless run; any failed
+// check makes the exit status 1, so a script can gate on it.
+func printHealth(h *hostapi.Host, stdout io.Writer) int {
+	code := 0
+	for _, r := range h.HealthRows() {
+		if r.Level == "error" {
+			code = 1
+		}
+		fmt.Fprintf(stdout, "%-5s %-12s %s\n", r.Level, r.Name, r.Detail)
+	}
+	return code
 }
 
 // printTurn runs one turn without the TUI: the reply goes to stdout (or a

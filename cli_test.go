@@ -27,6 +27,7 @@ func TestParseArgs(t *testing.T) {
 		{"json output", []string{"-p", "--output", "json", "hi"}, -1, options{print: true, output: "json", prompt: "hi"}},
 		{"json output needs print", []string{"--output", "json"}, 2, options{}},
 		{"bad output", []string{"-p", "--output", "yaml"}, 2, options{}},
+		{"health", []string{"--health"}, -1, options{health: true}},
 	} {
 		got, code := parseArgs(c.args, io.Discard, io.Discard)
 		if code != c.code || (code == -1 && got != c.want) {
