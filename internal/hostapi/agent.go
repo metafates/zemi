@@ -4,6 +4,8 @@
 package hostapi
 
 import (
+	"regexp"
+	"net/url"
 	"context"
 	"encoding/json"
 	"errors"
@@ -51,6 +53,8 @@ type AgentEvent struct {
 
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
+	Tool    string // the asking tool (bash, edit, mcp_github_search)
+	Always  string // the "don't ask again" choice, "" when none is offered
 	Subject string
 	Arg     string
 	Reason  string
@@ -1501,30 +1505,87 @@ func (h *Host) askHook() tools.Asker {
 		if ui == nil {
 			return resolved(false, "default")
 		}
-		allowed, by := ui.AskPermission(PermRequest{Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview})
+		label, rules := h.alwaysChoice(req)
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview})
 		if allowed && by == "user:always" {
-			h.storeAlwaysRules(req)
+			for _, r := range rules {
+				h.Perm.Add(r)
+			}
 		}
 		return resolved(allowed, by)
 	}
 }
 
-// storeAlwaysRules records an "always" answer as session rules (DESIGN
-// §6.2): for bash, one exact rule per normalized segment; otherwise the
-// exact argument. Scoped to the model principal.
-func (h *Host) storeAlwaysRules(req tools.Request) {
-	const principal = "model"
-	if req.Subject == "tool.bash" {
+// alwaysChoice is the "don't ask again" option for a request: the label the
+// prompt shows and the session rules (model principal) accepting it adds.
+// Commands allow their two-word prefix ("go test"), file access its
+// directory, fetches their host; the rest the exact request. Gate-forced
+// asks (environment assignments, heredocs) offer no choice.
+func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
+	rule := func(subject, pattern string) perm.Rule {
+		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: "model"}
+	}
+	switch {
+	case req.Subject == "tool.bash":
 		n := perm.Normalize(req.Arg)
 		if n.Fail != "" || n.ForceAsk != "" {
-			return // gate-forced asks always re-ask; no rule satisfies them
+			return "", nil
 		}
+		var names []string
+		var rules []perm.Rule
+		seen := map[string]bool{}
 		for _, seg := range n.Segments {
-			h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: seg, Decision: perm.Allow, Principal: principal})
+			name := seg
+			if p := commandPrefix(seg); p != "" {
+				name = p
+				rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
+			} else {
+				rules = append(rules, rule("tool.bash", seg))
+			}
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, "`"+truncRunes(name, 40)+"`")
+			}
 		}
-		return
+		return "don't ask again for " + strings.Join(names, ", "), rules
+	case req.Subject == "fs.write" || req.Subject == "fs.read":
+		dir := filepath.Dir(req.Arg)
+		shown := dir
+		if rel, err := filepath.Rel(h.Dirs.ProjectDir, dir); err == nil && !strings.HasPrefix(rel, "..") {
+			shown = rel
+		}
+		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
+		where := "in " + shown + "/"
+		if shown == "." {
+			where = "anywhere in the project"
+		}
+		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{rule(req.Subject, filepath.Join(dir, "*"))}
+	case strings.HasPrefix(req.Subject, "net."):
+		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" {
+			base := u.Scheme + "://" + u.Host
+			return "allow " + u.Host, []perm.Rule{rule(req.Subject, base), rule(req.Subject, base+"/*")}
+		}
 	}
-	h.Perm.Add(perm.Rule{Subject: req.Subject, Pattern: req.Arg, Decision: perm.Allow, Principal: principal})
+	return "don't ask again for this", []perm.Rule{rule(req.Subject, req.Arg)}
+}
+
+var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// wrappers whose second word is a program or script, not a subcommand
+var bareCommands = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true, "env": true, "xargs": true, "sudo": true,
+	"doas": true, "nohup": true, "timeout": true, "time": true, "nice": true, "stdbuf": true,
+	"python": true, "python3": true, "node": true, "ruby": true, "perl": true, "exec": true, "eval": true,
+}
+
+// commandPrefix is the two-word prefix "don't ask again" allows for a
+// command segment ("go test ./..." is "go test"), or "" when there is none.
+func commandPrefix(seg string) string {
+	f := strings.Fields(seg)
+	if len(f) < 2 || bareCommands[filepath.Base(f[0])] || !subcommandWord.MatchString(f[1]) {
+		return ""
+	}
+	return f[0] + " " + f[1]
 }
 
 // toolPostHook emits tool.post after every builtin tool run.

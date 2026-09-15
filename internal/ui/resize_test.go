@@ -47,7 +47,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 	boxWidth := func() int {
 		app.renderSync(t)
 		for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
-			if strings.Contains(row, "┌") {
+			if strings.Contains(row, "╭") {
 				return ansi.StringWidth(strings.TrimSpace(row))
 			}
 		}

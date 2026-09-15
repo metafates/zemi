@@ -3,8 +3,8 @@ package ui
 import (
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -21,15 +21,41 @@ func fixedStyle(hl string) (uv.Style, bool) {
 	case "Host:DiffDel":
 		return uv.Style{Fg: ansi.RGBColor{R: 0xf7, G: 0x76, B: 0x8e}}, true
 	}
+	if st, ok := hostStyles[hl]; ok {
+		return st, true
+	}
 	if bg, ok := hostTitleBg[hl]; ok {
 		return uv.Style{Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14}, Bg: bg}, true
 	}
 	return uv.Style{}, false
 }
 
+func rgb(v uint32) ansi.RGBColor {
+	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
+}
+
+// hostStyles are the fixed styles of the permission prompt and other Go
+// chrome: no theme can restyle them, so nothing can dress up a prompt.
+var hostStyles = map[string]uv.Style{
+	"Host:Value":       {Fg: rgb(0xc0caf5)},
+	"Host:Hint":        {Fg: rgb(0x6b7394)},
+	"Host:HintKey":     {Fg: rgb(0xa9b1d6), Attrs: uv.AttrBold},
+	"Host:Warn":        {Fg: rgb(0xe0af68)},
+	"Host:Panel":       {Fg: rgb(0xc0caf5), Bg: rgb(0x242838)},
+	"Host:DiffAddLine": {Fg: rgb(0xd4e8c8), Bg: rgb(0x243427)},
+	"Host:DiffAddNum":  {Fg: rgb(0x7fa36c), Bg: rgb(0x243427)},
+	"Host:DiffDelLine": {Fg: rgb(0xeccad0), Bg: rgb(0x3a2629)},
+	"Host:DiffDelNum":  {Fg: rgb(0xb06d76), Bg: rgb(0x3a2629)},
+	"Host:DiffCtxLine": {Fg: rgb(0x9aa0c0)},
+	"Host:DiffCtxNum":  {Fg: rgb(0x4c5372)},
+	"Host:Btn":         {Fg: rgb(0xa9b1d6), Bg: rgb(0x2b2f45)},
+	"Host:BtnSel":      {Fg: rgb(0x16161e), Bg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
+	"Host:BtnNo":       {Fg: rgb(0x16161e), Bg: rgb(0xf7768e), Attrs: uv.AttrBold},
+}
+
 var hostTitleBg = map[string]ansi.RGBColor{
 	"Host:TrustTitle": {R: 0xf7, G: 0x76, B: 0x8e},
-	"Host:PermTitle":  {R: 0xf7, G: 0x76, B: 0x8e},
+	"Host:PermTitle":  {R: 0xe0, G: 0xaf, B: 0x68},
 	"Host:PickTitle":  {R: 0x7a, G: 0xa2, B: 0xf7},
 	"Host:MemTitle":   {R: 0x5a, G: 0xf7, B: 0x8e},
 	"Host:QTitle":     {R: 0xf7, G: 0xa2, B: 0x5a},

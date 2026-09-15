@@ -9,7 +9,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+
+	"github.com/aymanbagabas/go-udiff"
 
 	"charm.land/fantasy"
 
@@ -19,6 +22,7 @@ import (
 
 // Request is one permission check the pipeline needs answered.
 type Request struct {
+	Tool    string // the tool asking (bash, edit, mcp_github_search); set by the pipeline
 	Subject string // tool.bash, fs.read, fs.write, net.<host>
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
@@ -198,6 +202,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		}
 	}
 	for _, req := range t.subjects(input) {
+		req.Tool = t.info.Name
 		v := pipe.check(req)
 		if v.Decision != perm.Allow && pipe.Denied != nil {
 			pipe.Denied(t.info.Name, req, v)
@@ -339,7 +344,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: ChangePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: ChangeDiff("write", in)}}
 			},
 			runWrite),
 
@@ -355,7 +360,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: ChangePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: ChangeDiff("edit", in)}}
 			},
 			runEdit),
 
@@ -369,7 +374,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "edits"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: ChangePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: ChangeDiff("multiedit", in)}}
 			},
 			runMultiedit),
 
@@ -618,6 +623,44 @@ func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy
 		fmt.Fprintf(&b, "[%s · %s · %s] %s\n", m.Kind, m.Origin, m.Scope, m.Text)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// ChangeDiff renders what write, edit or multiedit would do to its file as
+// a unified diff against the current content. When an edit does not apply
+// (the tool will report that), it falls back to ChangePreview.
+func ChangeDiff(tool string, in map[string]any) string {
+	path := str(in["path"])
+	data, _ := os.ReadFile(path)
+	old, updated := string(data), ""
+	switch tool {
+	case "write":
+		updated = str(in["content"])
+	case "edit":
+		all, _ := in["replace_all"].(bool)
+		var n int
+		if updated, n = applyEdit(old, str(in["old_string"]), str(in["new_string"]), all); n == 0 {
+			if updated, n = applyTolerant(old, str(in["old_string"]), str(in["new_string"]), all); n == 0 {
+				return ChangePreview(in)
+			}
+		}
+	case "multiedit":
+		updated = old
+		edits, _ := in["edits"].([]any)
+		for _, e := range edits {
+			m, _ := e.(map[string]any)
+			all, _ := m["replace_all"].(bool)
+			out, n := applyEdit(updated, str(m["old_string"]), str(m["new_string"]), all)
+			if n == 0 {
+				if out, n = applyTolerant(updated, str(m["old_string"]), str(m["new_string"]), all); n == 0 {
+					return ChangePreview(in)
+				}
+			}
+			updated = out
+		}
+	default:
+		return ChangePreview(in)
+	}
+	return udiff.Unified(path, path, old, updated)
 }
 
 // ChangePreview renders a file tool's change for the permission overlay

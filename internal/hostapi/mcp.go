@@ -296,7 +296,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 			return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 		}
 	}
-	req := tools.Request{Subject: "mcp." + name, Arg: t.tool.Name, Reason: "call with " + truncRunes(call.Input, 300)}
+	req := tools.Request{Tool: mcpToolName(name, t.tool.Name), Subject: "mcp." + name, Arg: t.tool.Name, Reason: "call with " + truncRunes(call.Input, 300)}
 	if v := t.pipe.Check(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): mcp." + name + " " + t.tool.Name), nil
 	}

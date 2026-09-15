@@ -290,7 +290,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.permAsk != nil {
 			a.permQueue = append(a.permQueue, msg)
 		} else {
-			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer}
+			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer, opened: a.now()}
 		}
 		a.frameGen++
 		return a, a.notifyIfAway("zemi needs your approval: " + msg.req.Subject)

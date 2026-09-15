@@ -395,16 +395,16 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
 		t.Fatalf("always bash: %v by %q", v.Decision, v.DecidedBy)
 	}
-	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" {
+	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "don't ask again for `git push`" {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 	rules := h.Perm.Rules()
-	if len(rules) != 1 || rules[0].Pattern != "git push origin main" || rules[0].Decision != perm.Allow {
+	if len(rules) != 2 || rules[1].Pattern != "git push *" || rules[1].Decision != perm.Allow {
 		t.Fatalf("stored rules: %+v", rules)
 	}
 
-	// The stored rule answers the next check without asking again.
-	if got := h.PipelineFor().Check(tools.Request{Subject: "tool.bash", Arg: "git push origin main"}); got.Decision != perm.Allow {
+	// The prefix rule answers the next push without asking again.
+	if got := h.PipelineFor().Check(tools.Request{Subject: "tool.bash", Arg: "git push origin feature"}); got.Decision != perm.Allow {
 		t.Fatalf("ruled re-check: %v by %q", got.Decision, got.DecidedBy)
 	}
 	if len(ui.asked) != 1 {
@@ -580,5 +580,30 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	user := h.Session().Transcript[len(h.Session().Transcript)-1]
 	if user.Role != "user" || user.Stat != nil {
 		t.Fatalf("user message must carry no stats: %+v", user)
+	}
+}
+
+func TestAlwaysChoice(t *testing.T) {
+	h, _ := newTestHost(t)
+	proj := h.Dirs.ProjectDir
+	for _, c := range []struct {
+		req      tools.Request
+		label    string
+		patterns []string
+	}{
+		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "don't ask again for `go test`, `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "don't ask again for `ls -la`", []string{"ls -la"}},
+		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
+		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/", []string{filepath.Join(proj, "internal", "*")}},
+		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
+	} {
+		label, rules := h.alwaysChoice(c.req)
+		var pats []string
+		for _, r := range rules {
+			pats = append(pats, r.Pattern)
+		}
+		if label != c.label || strings.Join(pats, "|") != strings.Join(c.patterns, "|") {
+			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
+		}
 	}
 }

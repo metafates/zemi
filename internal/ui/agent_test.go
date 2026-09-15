@@ -20,7 +20,8 @@ import (
 
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
-func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {	t.Helper()
+func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {
+	t.Helper()
 	ctx := context.Background()
 	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
 	resolve := func(p string) string {
@@ -82,9 +83,11 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 	var by string
 	go func() {
 		allowed, by = app.AskPermission(hostapi.PermRequest{
+			Tool:    "bash",
 			Subject: "tool.bash",
 			Arg:     "git push origin main",
 			Reason:  "publishing the release branch",
+			Always:  "don't ask again for `git push`",
 		})
 		close(done)
 	}()
@@ -526,5 +529,53 @@ func TestKeySequence(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if len(app.keySeq) != 0 || app.composer.text != "x" {
 		t.Fatalf("broken sequence: pending=%v composer=%q", app.keySeq, app.composer.text)
+	}
+}
+
+// TestPermissionChoices: arrows move between Yes, the "don't ask again"
+// choice and No, enter answers the highlighted one; without a
+// don't-ask-again choice there are two buttons.
+func TestPermissionChoices(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
+		t.Helper()
+		done := make(chan struct{})
+		var ok bool
+		var by string
+		go func() { ok, by = app.AskPermission(req); close(done) }()
+		waitPrompt(t, app, func() bool { return app.permAsk != nil })
+		for _, k := range keys {
+			app.Update(k)
+		}
+		<-done
+		return ok, by
+	}
+	right, enter := tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyEnter}
+	bash := hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "go test ./...", Always: "don't ask again for `go test`"}
+	if ok, by := ask(bash, right, enter); !ok || by != "user:always" {
+		t.Fatalf("right+enter = %v %q", ok, by)
+	}
+	if ok, by := ask(bash, right, right, enter); ok || by != "user" {
+		t.Fatalf("right+right+enter = %v %q", ok, by)
+	}
+	bash.Always = ""
+	if ok, by := ask(bash, right, enter); ok || by != "user" {
+		t.Fatalf("two buttons, right+enter = %v %q", ok, by)
+	}
+}
+
+func TestDiffRows(t *testing.T) {
+	d := "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n"
+	var got []string
+	for _, row := range diffRows(d, 40) {
+		var b strings.Builder
+		for _, s := range row {
+			b.WriteString(s.Text)
+		}
+		got = append(got, strings.TrimRight(b.String(), " "))
+	}
+	want := []string{"  9  9   one", " 10    - two", "    10 + TWO", " 11 11   three"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("rows = %q", got)
 	}
 }

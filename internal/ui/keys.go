@@ -57,14 +57,41 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// 2b. Permission ask and model picker: Go-owned chrome capturing all
 	// keys (§8).
-	if a.permAsk != nil {
+	if pa := a.permAsk; pa != nil {
+		if a.program != nil && a.now().Sub(pa.opened) < permGrace {
+			return nil
+		}
+		choices := pa.choices()
+		pick := func(by string) {
+			for _, c := range choices {
+				if c.by == by {
+					a.answerPerm(c.ok, c.by)
+					return
+				}
+			}
+		}
 		switch key {
-		case "o":
-			a.answerPerm(true, "user:once")
+		case "left", "shift+tab", "h":
+			pa.sel = (pa.sel + len(choices) - 1) % len(choices)
+		case "right", "tab", "l":
+			pa.sel = (pa.sel + 1) % len(choices)
+		case "enter":
+			c := choices[pa.sel]
+			a.answerPerm(c.ok, c.by)
+		case "y", "o":
+			pick("user:once")
 		case "a":
-			a.answerPerm(true, "user:always")
+			pick("user:always")
 		case "n", "esc":
 			a.answerPerm(false, "user")
+		case "j", "down", "shift+down":
+			pa.scroll++
+		case "k", "up", "shift+up":
+			pa.scroll = max(0, pa.scroll-1)
+		case "pgdown":
+			pa.scroll += 10
+		case "pgup":
+			pa.scroll = max(0, pa.scroll-10)
 		}
 		return nil
 	}
