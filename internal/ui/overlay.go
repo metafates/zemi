@@ -15,7 +15,27 @@ import (
 type overlayState struct {
 	o        hostapi.Overlay
 	itemText []string // rendered item lines (render_item applied at open)
-	selected int
+	selected int      // index into visible
+
+	// query filters the rows as the user types: visible holds the indices
+	// of rows containing every word of it (case-insensitive).
+	query   string
+	visible []int
+}
+
+func (st *overlayState) refilter() {
+	words := strings.Fields(strings.ToLower(st.query))
+	st.visible = st.visible[:0]
+	for i, text := range st.itemText {
+		lower, ok := strings.ToLower(text), true
+		for _, w := range words {
+			ok = ok && strings.Contains(lower, w)
+		}
+		if ok {
+			st.visible = append(st.visible, i)
+		}
+	}
+	st.selected = max(0, min(st.selected, len(st.visible)-1))
 }
 
 // openOverlay pushes an overlay, rendering its items up front (render_item
@@ -41,6 +61,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	if len(st.itemText) == 0 {
 		st.itemText = []string{"(empty)"}
 	}
+	st.refilter()
 	return st
 }
 
@@ -87,24 +108,46 @@ func (a *App) closeOverlayByID(id string) bool {
 	return false
 }
 
-// overlayKey routes keys to the topmost overlay; returns a cmd when Lua
-// ran (select/close paths).
-func (a *App) overlayKey(key string) tea.Cmd {
+// overlayKey routes keys to the topmost overlay; text is what the key types
+// (printable keys filter the list). It returns a cmd when Lua ran
+// (select/close paths).
+func (a *App) overlayKey(key, text string) tea.Cmd {
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
-	if moveSel(&st.selected, len(st.itemText), key) {
+	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
+	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) {
+		return nil
+	}
+	switch {
+	case key == "backspace":
+		if r := []rune(st.query); len(r) > 0 {
+			st.query = string(r[:len(r)-1])
+			st.refilter()
+		}
+		return nil
+	case key == "esc" && st.query != "":
+		st.query = ""
+		st.refilter()
+		return nil
+	case text != "" && !(key == "space" && o.Reload != nil):
+		st.query += text
+		st.refilter()
 		return nil
 	}
 	switch key {
 	case "enter", "space":
-		idx := st.selected
+		if len(st.visible) == 0 {
+			return nil
+		}
+		idx := st.visible[st.selected]
 		switch {
 		case o.Reload != nil:
 			a.runOverlayRow(o, idx)
-			sel := st.selected
+			sel, query := st.selected, st.query
 			o.Items = o.Reload()
 			*st = a.overlayState(o)
-			st.selected = min(sel, len(st.itemText)-1)
+			st.query, st.selected = query, sel
+			st.refilter()
 			a.frameGen++
 		case key == "space":
 		case o.OnSelect != nil:
@@ -115,7 +158,7 @@ func (a *App) overlayKey(key string) tea.Cmd {
 			a.frameGen++
 			a.runOverlayRow(o, idx)
 		}
-	case "esc", "q":
+	case "esc":
 		a.closeOverlayByID(o.ID)
 		a.frameGen++
 		if o.OnClose != nil {
@@ -155,14 +198,21 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	if st.o.Path != "" {
 		badge += ":" + st.o.Path
 	}
-	items := make([]listItem, 0, len(st.itemText))
-	for _, t := range st.itemText {
-		items = append(items, listItem{label: t})
+	items := make([]listItem, 0, len(st.visible))
+	for _, i := range st.visible {
+		items = append(items, listItem{label: st.itemText[i]})
 	}
-	body := listRows(items, st.selected, 10, "Title")
-	hints := keyHints("enter", "select", "esc", "close")
+	var body [][]hostapi.Segment
+	if st.query != "" {
+		body = append(body, []hostapi.Segment{{Text: "/ ", HL: "Comment"}, {Text: st.query, HL: "Host:Bold"}})
+	}
+	body = append(body, listRows(items, st.selected, 10, "Title")...)
+	if len(items) == 0 {
+		body = append(body, []hostapi.Segment{{Text: "  no matches", HL: "Comment"}})
+	}
+	hints := keyHints("enter", "select", "type", "filter", "esc", "close")
 	if st.o.Reload != nil {
-		hints = keyHints("space", "toggle", "esc", "close")
+		hints = keyHints("space", "toggle", "type", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
 	box := hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w)

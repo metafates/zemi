@@ -187,6 +187,7 @@ for scripts. `zemi --help` lists every flag.
 | `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
 | `ctrl+o` | expand reasoning |
 | `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
+| typing in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
 | `/` | command palette (tab completes names and arguments) |
 | `@` | attach a project file |

@@ -140,7 +140,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// 3. Active overlay.
 	if len(a.overlays) > 0 {
-		return a.overlayKey(key)
+		return a.overlayKey(key, keyText(msg))
 	}
 
 	// 4. Keymaps (zemi.keymap.set): single keys, so users attach ctrl/alt
