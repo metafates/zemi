@@ -7,7 +7,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -212,8 +211,8 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 			}
 		}, true
 	}
-	switch {
-	case a.permAsk != nil:
+	switch top := a.topChrome(); {
+	case top == "perm":
 		pa := a.permAsk
 		choices := pa.choices()
 		if hit <= 0 || hit > len(choices) || (a.program != nil && a.now().Sub(pa.opened) < permGrace) {
@@ -222,15 +221,15 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		lo, hi := hitSpan()
 		c := choices[hit-1]
 		return lo, hi, func() { a.answerPerm(c.ok, c.by) }, true
-	case a.trust != nil, a.question != nil, a.cfgReview != nil:
+	case top == "trust", top == "question", top == "cfgReview":
 		return 0, 0, nil, false
-	case a.memReview != nil:
+	case top == "memReview":
 		mr := a.memReview
 		return list(len(mr.items), &mr.sel, func() {})
-	case a.modelPick != nil:
+	case top == "modelPick":
 		mp := a.modelPick
 		return list(len(mp.visible), &mp.selected, func() { a.answerPick(mp.items[mp.visible[mp.selected]].ID, true) })
-	case len(a.overlays) > 0:
+	case top == "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		return list(len(st.visible), &st.selected, func() { a.overlayKey("enter", "") })
 	case y < a.lastChatBottom && a.completion.open && len(a.completion.matches) > 0:
@@ -319,7 +318,7 @@ func wordSpan(text string, x int) (from, to int) {
 func copyCmd(text string) tea.Cmd {
 	return tea.Batch(tea.SetClipboard(text), func() tea.Msg {
 		for _, c := range [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}} {
-			if _, err := exec.LookPath(c[0]); err != nil {
+			if !has(c[0]) {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

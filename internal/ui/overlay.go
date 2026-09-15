@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -158,29 +157,25 @@ func (a *App) closeOverlayByID(id string) bool {
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
-// (printable keys filter the list). It returns a cmd when Lua ran
-// (select/close paths).
-func (a *App) overlayKey(key, text string) tea.Cmd {
+// (printable keys filter the list).
+func (a *App) overlayKey(key, text string) {
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
 	if o.Input {
 		a.inputKey(st, key, text)
-		return nil
-	}
-	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
-	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) {
-		return nil
+		return
 	}
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
-	if st.edit(key, text, st.itemText) {
-		return nil
+	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
+	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) || st.edit(key, text, st.itemText) {
+		return
 	}
 	switch key {
 	case "enter", "space":
 		if len(st.visible) == 0 {
-			return nil
+			return
 		}
 		idx := st.visible[st.selected]
 		switch {
@@ -202,13 +197,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.runOverlayRow(o, idx)
 		}
 	case "esc":
-		a.closeOverlayByID(o.ID)
-		a.frameGen++
-		if o.OnClose != nil {
-			a.host.CancelOverlay(a.ctx(), o)
-		}
+		a.cancelOverlay(o)
 	}
-	return nil
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.
@@ -220,33 +210,22 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 		a.closeOverlayByID(o.ID)
 		a.host.SubmitOverlayInput(a.ctx(), o, value)
 	case "esc":
-		o := st.o
-		a.closeOverlayByID(o.ID)
-		if o.OnClose != nil {
-			a.host.CancelOverlay(a.ctx(), o)
-		}
-	case "backspace":
-		in.backspace()
-	case "delete":
-		in.delete()
-	case "left":
-		in.left()
-	case "right":
-		in.right()
-	case "home", "ctrl+a":
-		in.lineStart()
-	case "end", "ctrl+e":
-		in.lineEnd()
-	case "ctrl+u":
-		in.delToLineStart()
-	case "ctrl+w":
-		in.delWord()
+		a.cancelOverlay(st.o)
 	default:
-		if text != "" {
+		if !in.editKey(key) && text != "" {
 			in.insert(strings.ReplaceAll(text, "\n", " "))
 		}
 	}
 	a.frameGen++
+}
+
+// cancelOverlay closes o and runs its on_close.
+func (a *App) cancelOverlay(o hostapi.Overlay) {
+	a.closeOverlayByID(o.ID)
+	a.frameGen++
+	if o.OnClose != nil {
+		a.host.CancelOverlay(a.ctx(), o)
+	}
 }
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
@@ -270,9 +249,9 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 	}
 }
 
-// spliceOverlay composes the overlay box into the frame rows, centered
-// over the chat area, with the Go-stamped origin badge (DESIGN §8).
-func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, headerH, chatH int) [][]hostapi.Segment {
+// overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
+// §8).
+func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
@@ -285,21 +264,20 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	if st.o.Input {
 		r := []rune(st.input.text)
 		line := []hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:st.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[st.input.cursor:])}}
-		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, keyHints("enter", "confirm", "esc", "cancel")}
-		return spliceBox(rows, hostBox(" "+st.o.Title+" ", "Title", badge, body, w), w, headerH, chatH)
+		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
+		return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
 	}
 	items := make([]listItem, 0, len(st.visible))
 	for _, i := range st.visible {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
 	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
-	hints := keyHints("enter", "select", "type", "filter", "esc", "close")
+	hints := hintLine("enter", "select", "type", "filter", "esc", "close")
 	if st.o.Reload != nil {
-		hints = keyHints("space", "toggle", "type", "filter", "esc", "close")
+		hints = hintLine("space", "toggle", "type", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
-	box := hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
 }
 
 // spliceBox writes box rows centered over the chat area, replacing the
@@ -308,19 +286,12 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	if len(rows) == 0 || len(box) == 0 {
 		return rows
 	}
-	chatTop := headerH
-	chatBottom := headerH + chatH
-	if chatBottom > len(rows) {
-		chatBottom = len(rows)
-	}
-	bh := len(box)
-	if bh > chatBottom-chatTop {
-		bh = chatBottom - chatTop
-	}
+	chatBottom := min(headerH+chatH, len(rows))
+	bh := min(len(box), chatBottom-headerH)
 	if bh <= 0 {
 		return rows
 	}
-	y0 := chatTop + (chatBottom-chatTop-bh)/2
+	y0 := headerH + (chatBottom-headerH-bh)/2
 	for i := 0; i < bh; i++ {
 		bw := segsWidth(box[i])
 		x0 := max((w-bw)/2, 1)
@@ -350,11 +321,4 @@ func dropCells(segs []hostapi.Segment, n int) []hostapi.Segment {
 		out = append(out, s)
 	}
 	return out
-}
-
-func max0(n int) int {
-	if n < 0 {
-		return 0
-	}
-	return n
 }

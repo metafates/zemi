@@ -87,7 +87,7 @@ zemi.ui.widget.register({
 func (a *App) renderSync(tb testing.TB) {
 	gen := a.frameGen
 	for _, w := range a.visibleWidgets() {
-		width := a.widgetWidth(w)
+		width := a.widgetWidth()
 		lines, err := a.host.RenderWidget(context.Background(), w, width, a.uiState())
 		if err != nil {
 			tb.Fatalf("render widget %s: %v", w.ID, err)

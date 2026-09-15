@@ -9,8 +9,8 @@ import (
 
 // cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
 // "/" as the first character lists the registered commands filtered as you
-// type; up/down navigate, tab/enter accept, esc closes. Submitting a
-// "/name args" line runs the command instead of sending a message. The
+// type; up/down navigate, tab accepts, esc closes. Enter runs the typed
+// "/name args" line instead of sending a message. The
 // exact "/reload" is the Go-reserved force-reload trigger
 // and never reaches the command registry (DESIGN §4).
 type cmdPalette struct {
@@ -28,29 +28,12 @@ func (p *cmdPalette) count() int {
 	return len(p.matches)
 }
 
-// paletteTrigger reads the configured trigger character; a config value
-// that is not exactly one rune falls back to "/".
-func (a *App) paletteTrigger() string {
-	if v, ok := a.host.Settings.Get("ui.palette.trigger"); ok {
-		if s, ok := v.(string); ok && len([]rune(s)) == 1 {
-			return s
-		}
-	}
-	return "/"
-}
-
 // updatePalette recomputes the palette after a composer edit: it opens
-// while the cursor sits in the first word and that word starts with the
-// trigger character.
+// while the cursor sits in the first word and that word starts with "/".
 func (a *App) updatePalette() {
-	if !a.paletteEnabled() {
-		a.palette.close()
-		return
-	}
-	tr := a.paletteTrigger()
 	r := a.composer.runes()
 	cur := a.composer.cursor
-	if cur == 0 || len(r) == 0 || r[0] != rune(tr[0]) {
+	if cur == 0 || len(r) == 0 || r[0] != '/' {
 		a.palette.close()
 		return
 	}
@@ -79,8 +62,6 @@ func (a *App) updatePalette() {
 	a.palette.open = len(args) > 0
 	a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
 }
-
-func (a *App) paletteEnabled() bool { return a.cfgBool("ui.palette.enabled", true) }
 
 func (p *cmdPalette) close() {
 	p.open = false
@@ -114,16 +95,11 @@ func (a *App) acceptPalette() {
 		return
 	}
 	if p.args != nil {
-		r := a.composer.runes()
-		repl := p.args[p.selected] + " "
-		a.composer.text = string(r[:p.argStart]) + repl + string(r[a.composer.cursor:])
-		a.composer.cursor = p.argStart + len([]rune(repl))
-		p.close()
-		return
+		a.composer.replace(p.argStart, p.args[p.selected]+" ")
+	} else {
+		a.composer.text = "/" + p.matches[p.selected].Name + " "
+		a.composer.moveEnd()
 	}
-	a.composer.text = "/" + p.matches[p.selected].Name + " "
-	a.composer.cursor = len([]rune(a.composer.text))
-	a.composer.moveEnd()
 	p.close()
 }
 
@@ -140,7 +116,14 @@ func (a *App) paletteRows(w int) [][]hostapi.Segment {
 	for _, s := range p.args {
 		items = append(items, listItem{label: s})
 	}
-	return listRows(items, p.selected, a.cfgInt("ui.palette.max_items", 8, 1, 20), "Title")
+	return listRows(items, p.selected, 8, "Title")
+}
+
+// clearComposer empties the draft and closes both popups.
+func (a *App) clearComposer() {
+	a.composer.text, a.composer.cursor = "", 0
+	a.palette.close()
+	a.completion.close()
 }
 
 // submitComposer routes the composer submit: slash lines run commands,
@@ -152,15 +135,14 @@ func (a *App) submitComposer() {
 		return
 	}
 	a.chatFollow = true
-	if a.paletteEnabled() && strings.HasPrefix(text, a.paletteTrigger()) {
+	if strings.HasPrefix(text, "/") {
 		a.runSlashCommand(text)
 		return
 	}
 	// !command runs in the user's shell; the output joins the next message
 	if cmd, ok := strings.CutPrefix(text, "!"); ok && strings.TrimSpace(cmd) != "" {
 		a.composer.pushHistory(text, a.historySize())
-		a.composer.text, a.composer.cursor = "", 0
-		a.completion.close()
+		a.clearComposer()
 		a.host.RunShell(cmd)
 		return
 	}
@@ -171,10 +153,9 @@ func (a *App) submitComposer() {
 // sensitive, non-abbreviable) is the Go-reserved force-reload trigger and
 // never reaches the Lua-visible command registry (DESIGN §4, §6.2).
 func (a *App) runSlashCommand(text string) {
-	raw := strings.TrimPrefix(text, a.paletteTrigger())
+	raw := strings.TrimPrefix(text, "/")
 	if raw == "reload" {
-		a.composer.text, a.composer.cursor = "", 0
-		a.palette.close()
+		a.clearComposer()
 		if a.reload != nil {
 			// off the UI goroutine: replaying project config may ask for trust
 			go a.reload()
@@ -187,14 +168,12 @@ func (a *App) runSlashCommand(text string) {
 		a.pushToast("warn", "command", "not a command: /"+name)
 		return
 	}
-	a.composer.text, a.composer.cursor = "", 0
-	a.palette.close()
-	a.completion.close()
+	a.clearComposer()
 	a.runCommand(cmd.Name, args)
 }
 
 // sendMessage runs the composer.submit vetoable event, then appends the
-// message to the transcript and drives the agent (M1 data flow).
+// message to the transcript and drives the agent.
 func (a *App) sendMessage(text string) {
 	res := a.host.EmitVetoable(a.ctx(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
 	if res.Denied {
@@ -202,10 +181,7 @@ func (a *App) sendMessage(text string) {
 		return
 	}
 	a.composer.pushHistory(text, a.historySize())
-	a.composer.text = ""
-	a.composer.cursor = 0
-	a.completion.close()
-	a.palette.close()
+	a.clearComposer()
 	if err := a.host.AgentSend(text); err != nil {
 		a.pushToast("error", "agent", err.Error())
 	}

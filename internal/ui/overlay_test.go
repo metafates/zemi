@@ -77,16 +77,42 @@ func TestOverlayFilter(t *testing.T) {
 	}
 }
 
+// TestTopChromeTakesInput: keys, ctrl+c and the wheel reach the prompt
+// drawn on top, never one hidden under it.
+func TestTopChromeTakesInput(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	perm := make(chan permAnswer, 1)
+	a.trust = &trustPrompt{answer: make(chan string, 1)}
+	a.permAsk = &permAskPrompt{answer: perm}
+	a.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if a.permAsk != nil || a.trust == nil || (<-perm).ok {
+		t.Fatal("n should deny the permission prompt drawn over the trust prompt")
+	}
+
+	a.openModelPick(make([]hostapi.ModelOption, 3), "", make(chan modelPick, 1))
+	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3), actions: map[string]string{}}
+	a.wheelChrome(1)
+	if a.memReview.sel != 1 || a.modelPick.selected != 0 {
+		t.Fatalf("wheel: memory sel=%d picker sel=%d", a.memReview.sel, a.modelPick.selected)
+	}
+
+	a.cfgReview = &cfgReviewPrompt{items: make([]hostapi.ConfigRow, 1)}
+	a.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if a.cfgReview != nil || a.memReview == nil {
+		t.Fatal("ctrl+c should close the config review drawn over the memory screen")
+	}
+}
+
 // TestModelPickerFilter: typing narrows the picker by id or display name
 // and enter picks the highlighted match.
 func TestModelPickerFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	answer := make(chan modelPick, 1)
-	a.Update(modelPickMsg{items: []hostapi.ModelOption{
+	a.openModelPick([]hostapi.ModelOption{
 		{ID: "anthropic/claude-sonnet", Display: "Sonnet"},
 		{ID: "openai/gpt-5", Display: "GPT-5"},
 		{ID: "deepseek/deepseek-chat", Display: "DeepSeek V3"},
-	}, answer: answer})
+	}, "", answer)
 	for _, r := range "v3" {
 		a.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}

@@ -76,69 +76,64 @@ func (c *composerState) lineSpan() (int, int) {
 // up moves the cursor one line up, keeping the column; reports whether it
 // moved.
 func (c *composerState) up() bool {
-	r := c.runes()
-	lineStart := 0
-	for i := c.cursor - 1; i >= 0; i-- {
-		if r[i] == '\n' {
-			lineStart = i + 1
-			break
-		}
-	}
-	if lineStart == 0 {
+	start, _ := c.lineSpan()
+	if start == 0 {
 		return false
 	}
-	prevEnd := lineStart - 1
-	prevStart := 0
-	for i := prevEnd - 1; i >= 0; i-- {
-		if r[i] == '\n' {
-			prevStart = i + 1
-			break
-		}
-	}
-	col := c.cursor - lineStart
-	target := prevStart + col
-	if target > prevEnd {
-		target = prevEnd
-	}
-	c.cursor = target
+	col := c.cursor - start
+	c.cursor = start - 1
+	prevStart, _ := c.lineSpan()
+	c.cursor = min(prevStart+col, start-1)
 	return true
 }
 
 // down moves the cursor one line down, keeping the column; reports whether
 // it moved.
 func (c *composerState) down() bool {
-	r := c.runes()
-	lineStart := 0
-	for i := c.cursor - 1; i >= 0; i-- {
-		if r[i] == '\n' {
-			lineStart = i + 1
-			break
-		}
-	}
-	nextStart := -1
-	for i := lineStart; i < len(r); i++ {
-		if r[i] == '\n' {
-			nextStart = i + 1
-			break
-		}
-	}
-	if nextStart < 0 {
+	start, end := c.lineSpan()
+	if end == len(c.runes()) {
 		return false
 	}
-	col := c.cursor - lineStart
-	nextEnd := len(r)
-	for i := nextStart; i < len(r); i++ {
-		if r[i] == '\n' {
-			nextEnd = i
-			break
-		}
-	}
-	target := nextStart + col
-	if target > nextEnd {
-		target = nextEnd
-	}
-	c.cursor = target
+	col := c.cursor - start
+	c.cursor = end + 1
+	_, nextEnd := c.lineSpan()
+	c.cursor = min(end+1+col, nextEnd)
 	return true
+}
+
+// editKey applies a cursor move or deletion key; it reports whether key was
+// one.
+func (c *composerState) editKey(key string) bool {
+	switch key {
+	case "backspace":
+		c.backspace()
+	case "delete":
+		c.delete()
+	case "left":
+		c.left()
+	case "right":
+		c.right()
+	case "home", "ctrl+a":
+		c.lineStart()
+	case "end", "ctrl+e":
+		c.lineEnd()
+	case "ctrl+u":
+		c.delToLineStart()
+	case "ctrl+k":
+		c.delToLineEnd()
+	case "ctrl+w", "alt+backspace":
+		c.delWord()
+	default:
+		return false
+	}
+	return true
+}
+
+// replace swaps the runes from start to the cursor for s.
+func (c *composerState) replace(start int, s string) {
+	r := c.runes()
+	c.text = string(r[:start]) + s + string(r[c.cursor:])
+	c.cursor = start + len([]rune(s))
 }
 
 func (c *composerState) lineStart() { c.cursor, _ = c.lineSpan() }
@@ -244,17 +239,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	cont := "  "
 	// one cell stays free for the cursor mark at the end of a full row
 	cursorRow, cursorCol, rows := a.wrapComposer(w - len(prefix) - 1)
-	if len(rows) == 0 {
-		rows = [][]rune{nil}
-		cursorRow, cursorCol = 0, 0
-	}
-	start := 0
-	if len(rows) > composerMaxRows {
-		start = cursorRow - composerMaxRows + 1
-		if start < 0 {
-			start = 0
-		}
-	}
+	start := max(0, cursorRow-composerMaxRows+1)
 	// The prompt takes the permission mode's color.
 	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
 	if promptHL == "" {
@@ -285,9 +270,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 // wrapComposer splits the text into visual rows of at most width runes,
 // splitting on newlines, and reports the cursor's row and column.
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
-	if w < 1 {
-		w = 1
-	}
+	w = max(w, 1)
 	r := []rune(a.composer.text)
 	cur := []rune{}
 	row := 0

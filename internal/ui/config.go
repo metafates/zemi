@@ -9,7 +9,7 @@ import (
 )
 
 // cfgReviewPrompt is one open review overlay; the answer carries the
-// accepted and rejected indices in row order.
+// accepted and rejected row ids.
 type cfgReviewPrompt struct {
 	items   []hostapi.ConfigRow
 	sel     int
@@ -26,21 +26,16 @@ type cfgReviewVerdict struct {
 // review goroutine) until the overlay closes.
 func (a *App) ReviewConfigs(items []hostapi.ConfigRow) ([]string, []string) {
 	ch := make(chan cfgReviewVerdict, 1)
-	a.dispatch(cfgReviewMsg{items: items, answer: ch})
+	a.do(func() { a.cfgReview = &cfgReviewPrompt{items: items, answer: ch} })
 	v := <-ch
 	return v.accepted, v.rejected
 }
 
 func (a *App) answerCfgReview() {
-	cr := a.cfgReview
-	a.cfgReview = nil
-	var v cfgReviewVerdict
-	if cr != nil {
-		v = cr.verdict
-		if cr.answer != nil {
-			cr.answer <- v
-		}
+	if cr := a.cfgReview; cr != nil && cr.answer != nil {
+		cr.answer <- cr.verdict
 	}
+	a.cfgReview = nil
 	a.frameGen++
 }
 
@@ -57,21 +52,15 @@ func (a *App) cfgDecide(accept bool) {
 		cr.verdict.rejected = append(cr.verdict.rejected, id)
 	}
 	cr.items = append(cr.items[:i:i], cr.items[i+1:]...)
-	if cr.sel >= len(cr.items) {
-		cr.sel = len(cr.items) - 1
-	}
-	if cr.sel < 0 {
-		cr.sel = 0
-	}
+	cr.sel = max(0, min(cr.sel, len(cr.items)-1))
 	if len(cr.items) == 0 {
 		a.answerCfgReview()
 	}
-	a.frameGen++
 }
 
-// spliceCfgReview composes the review overlay over the chat area: title
-// line, provenance, then the rule lines (the diff body).
-func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+// cfgReviewBox draws the review overlay: title line, provenance, then the
+// rule lines (the diff body).
+func cfgReviewBox(cr *cfgReviewPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	if len(cr.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "no pending config proposals", HL: "Comment"}})
@@ -99,7 +88,6 @@ func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, 
 			})
 		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("y", "accept", "n", "reject", "esc", "leave queued"))
-	box := hostBox(" Config review ", "Host:MemTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("y", "accept", "n", "reject", "esc", "leave queued"))
+	return hostBox(" Config review ", "Host:MemTitle", "", body, w)
 }

@@ -25,7 +25,7 @@ type qAnswer struct {
 // the user answers; esc/ctrl+c decline (ok=false).
 func (a *App) AskQuestion(q tools.Question) (string, bool) {
 	ch := make(chan qAnswer, 1)
-	a.dispatch(questionMsg{q: q, answer: ch})
+	a.do(func() { a.question = &questionPrompt{q: q, answer: ch} })
 	ans := <-ch
 	return ans.label, ans.ok
 }
@@ -39,8 +39,7 @@ func (a *App) answerQuestion(label string, ok bool) {
 	a.frameGen++
 }
 
-// spliceQuestion composes the question overlay over the chat area.
-func (a *App) spliceQuestion(rows [][]hostapi.Segment, qp *questionPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	for _, l := range strings.Split(qp.q.Question, "\n") {
 		body = append(body, []hostapi.Segment{{Text: l}})
@@ -56,7 +55,6 @@ func (a *App) spliceQuestion(rows [][]hostapi.Segment, qp *questionPrompt, w, he
 		items = append(items, listItem{opt.Label, opt.Description})
 	}
 	body = append(body, listRows(items, qp.sel, len(items), "Host:Bold")...)
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("up/down", "move", "enter", "answer", "esc", "decline"))
-	box := hostBox(" Question ", "Host:QTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("up/down", "move", "enter", "answer", "esc", "decline"))
+	return hostBox(" Question ", "Host:QTitle", "", body, w)
 }

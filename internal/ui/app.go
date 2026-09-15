@@ -10,6 +10,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,6 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -55,13 +55,12 @@ type App struct {
 	overlays []overlayState
 	trust    *trustPrompt
 	toasts   []toast
-	toastSeq int
 
 	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
 	// (with a queue for concurrent asks), the model picker and the memory
 	// review overlay.
 	permAsk   *permAskPrompt
-	permQueue []permAskMsg
+	permQueue []*permAskPrompt
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
 
@@ -127,23 +126,26 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 // SetProgram wires the running bubbletea program (for Quit/Send).
 func (a *App) SetProgram(p *tea.Program) { a.program = p }
 
-// SetReload installs the Go-reserved :Reload dispatch (built by main).
+// SetReload installs the Go-reserved /reload dispatch (built by main).
 func (a *App) SetReload(fn func()) { a.reload = fn }
 
 // SignalBoot reports the boot outcome from the boot goroutine (posted
 // through the hook channel; safe from any goroutine).
-func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
+func (a *App) SignalBoot(err error) {
+	a.do(func() {
+		a.bootErr = err
+		if err != nil {
+			a.log.Error("ui", "boot failed", map[string]any{"error": err.Error()})
+		}
+	})
+}
 
-// Quit asks the program to exit (/quit). The send must not happen on the
-// UI goroutine: the bubbletea event loop owns the only receive of the
-// (unbuffered) msgs channel and is currently inside our Update, so a
-// direct Quit() deadlocks.
-// The app.quit veto waits on the interpreter, so it runs off the UI
-// goroutine too.
+// Quit asks the program to exit (/quit). The veto waits on the interpreter
+// and program.Quit must not run inside Update, so both run on a goroutine.
 func (a *App) Quit() {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.dispatch(toastMsg{level: "warn", title: "quit", body: "blocked: " + res.Reason})
+			a.Notify("warn", "quit", "blocked: "+res.Reason)
 			return
 		}
 		if a.program != nil {
@@ -170,24 +172,14 @@ type widgetRenderedMsg struct {
 	err   error
 }
 
-type invalidateMsg struct{}
-
-type chatScrollMsg struct{ kind string }
-
-type bootDoneMsg struct{ err error }
-
-type trustAskMsg struct {
-	path   string
-	hash   string
-	answer chan string
-}
-
 type agentEventMsg struct{ ev hostapi.AgentEvent }
 
-type permAskMsg struct {
-	req    hostapi.PermRequest
-	answer chan permAnswer
-}
+// uiFunc is a state change posted from another goroutine; it runs on the
+// Update goroutine.
+type uiFunc func() tea.Cmd
+
+// do posts fn to run on the Update goroutine.
+func (a *App) do(fn func()) { a.dispatch(uiFunc(func() tea.Cmd { fn(); return nil })) }
 
 type permAnswer struct {
 	ok bool
@@ -199,38 +191,6 @@ type modelPick struct {
 	ok bool
 }
 
-type modelPickMsg struct {
-	items   []hostapi.ModelOption
-	sel     int
-	current string
-	answer  chan modelPick
-}
-
-type memReviewMsg struct {
-	items  []hostapi.MemoryRow
-	answer chan map[string]string
-}
-
-type cfgReviewMsg struct {
-	items  []hostapi.ConfigRow
-	answer chan cfgReviewVerdict
-}
-
-type questionMsg struct {
-	q      tools.Question
-	answer chan qAnswer
-}
-
-type toastMsg struct {
-	level string
-	title string
-	body  string
-}
-
-type overlayOpenMsg struct{ o hostapi.Overlay }
-
-type overlayCloseMsg struct{ id string }
-
 // cfgBool reads a bool config key with a fallback.
 func (a *App) cfgBool(key string, def bool) bool {
 	if v, ok := a.host.Settings.Get(key); ok {
@@ -241,27 +201,17 @@ func (a *App) cfgBool(key string, def bool) bool {
 	return def
 }
 
-// cfgInt reads an int config key clamped to [min, max].
-func (a *App) cfgInt(key string, def, min, max int) int {
+// cfgInt reads an int config key clamped to [lo, hi].
+func (a *App) cfgInt(key string, def, lo, hi int) int {
 	if v, ok := a.host.Settings.Get(key); ok {
 		switch n := v.(type) {
 		case int:
-			return clampInt(n, min, max)
+			return min(max(n, lo), hi)
 		case float64:
-			return clampInt(int(n), min, max)
+			return min(max(int(n), lo), hi)
 		}
 	}
 	return def
-}
-
-func clampInt(n, min, max int) int {
-	if n < min {
-		return min
-	}
-	if n > max {
-		return max
-	}
-	return n
 }
 
 // hookMsg wraps a message posted from a non-UI goroutine.
@@ -280,17 +230,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.onFrame()
 	case widgetRenderedMsg:
 		a.onWidgetRendered(msg)
-	case invalidateMsg:
+	case uiFunc:
 		a.frameGen++
-	case bootDoneMsg:
-		a.bootErr = msg.err
-		if msg.err != nil {
-			a.log.Error("ui", "boot failed", map[string]any{"error": msg.err.Error()})
-		}
-		a.frameGen++
-	case trustAskMsg:
-		a.trust = &trustPrompt{path: msg.path, hash: msg.hash, answer: msg.answer}
-		a.frameGen++
+		return a, msg()
 	case agentEventMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.frameGen++
@@ -301,43 +243,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, a.notifyIfAway(text)
 		}
-	case permAskMsg:
-		if a.permAsk != nil {
-			a.permQueue = append(a.permQueue, msg)
-		} else {
-			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer, opened: a.now()}
-		}
-		a.frameGen++
-		return a, a.notifyIfAway("zemi needs your approval: " + msg.req.Subject)
-	case modelPickMsg:
-		mp := &modelPickPrompt{items: msg.items, answer: msg.answer}
-		for _, it := range msg.items {
-			mp.texts = append(mp.texts, it.ID+" "+it.Display)
-		}
-		mp.selected = msg.sel
-		mp.apply(mp.texts)
-		a.modelPick = mp
-		a.frameGen++
-	case memReviewMsg:
-		a.memReview = &memReviewPrompt{items: msg.items, actions: map[string]string{}, answer: msg.answer}
-		a.frameGen++
-	case cfgReviewMsg:
-		a.cfgReview = &cfgReviewPrompt{items: msg.items, sel: 0, answer: msg.answer}
-		a.frameGen++
-	case questionMsg:
-		a.question = &questionPrompt{q: msg.q, sel: 0, answer: msg.answer}
-		a.frameGen++
-	case toastMsg:
-		a.pushToast(msg.level, msg.title, msg.body)
-	case chatScrollMsg:
-		a.applyChatScroll(msg.kind)
-	case composerEditMsg:
-		a.applyComposerEdit(msg)
-	case overlayOpenMsg:
-		a.openOverlay(msg.o)
-	case overlayCloseMsg:
-		a.closeOverlayByID(msg.id)
-		a.frameGen++
 	case hookMsg:
 		_, cmd := a.Update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
@@ -443,9 +348,7 @@ func (a *App) frameTickCmd() tea.Cmd {
 func (a *App) onFrame() tea.Cmd {
 	now := time.Now()
 	a.pruneToasts(now)
-	cmds := []tea.Cmd{a.frameTickCmd()}
-	// The clock plays timer.fire's role in M0: bumping the generation on
-	// a minute change re-renders time-reading widgets (DESIGN §8).
+	// A minute change re-renders time-reading widgets.
 	if ts := now.Format("15:04"); ts != a.timeStr {
 		a.timeStr = ts
 		a.frameGen++
@@ -458,8 +361,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
-	cmds = append(cmds, a.renderStaleWidgetsCmd())
-	return tea.Batch(cmds...)
+	return tea.Batch(a.frameTickCmd(), a.renderStaleWidgetsCmd())
 }
 
 func (a *App) uiState() hostapi.UIState {
@@ -488,11 +390,10 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 // isTolerableRenderErr reports failures the UI expects under load (hot
 // mode, reload in flight): they keep the cached lines without flagging.
 func isTolerableRenderErr(err error) bool {
-	return err == nil || err == lua.ErrHot || err == lua.ErrReloaded || err == lua.ErrCanceled
+	return err == lua.ErrHot || err == lua.ErrReloaded || err == lua.ErrCanceled
 }
 
-// visibleRegions lists the regions composed into the frame together with
-// the width each widget renders at.
+// visibleWidgets lists the widgets of every region composed into the frame.
 func (a *App) visibleWidgets() []*hostapi.Widget {
 	var out []*hostapi.Widget
 	out = append(out, a.host.Widgets.InRegion("header")...)
@@ -502,7 +403,7 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	return out
 }
 
-func (a *App) widgetWidth(w *hostapi.Widget) int {
+func (a *App) widgetWidth() int {
 	if a.width <= 0 {
 		return 80
 	}
@@ -512,16 +413,12 @@ func (a *App) widgetWidth(w *hostapi.Widget) int {
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
 // is missing or stale for the current frame generation.
 func (a *App) renderStaleWidgetsCmd() tea.Cmd {
-	gen := a.frameGen
+	gen, width, st := a.frameGen, a.widgetWidth(), a.uiState()
 	var cmds []tea.Cmd
 	for _, w := range a.visibleWidgets() {
-		c := a.caches[w.ID]
-		width := a.widgetWidth(w)
-		if c != nil && c.gen == gen && c.width == width {
+		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == width {
 			continue
 		}
-		st := a.uiState()
-		w := w
 		cmds = append(cmds, func() tea.Msg {
 			lines, err := a.host.RenderWidget(a.ctx(), w, width, st)
 			return widgetRenderedMsg{id: w.ID, lines: lines, width: width, gen: gen, err: err}
@@ -545,49 +442,41 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 // ---------------------------------------------------------------------------
 // toasts
 
+// toast is a transient notification (zemi.notify, DESIGN §6.1).
+type toast struct {
+	level, title, body string
+	expires            time.Time
+}
+
 func (a *App) pushToast(level, title, body string) {
-	a.toastSeq++
-	a.toasts = append(a.toasts, toast{
-		id: a.toastSeq, level: level, title: title, body: body,
-		expires: time.Now().Add(toastTTL),
-	})
+	a.toasts = append(a.toasts, toast{level, title, body, time.Now().Add(toastTTL)})
 	if len(a.toasts) > 3 {
 		a.toasts = a.toasts[len(a.toasts)-3:]
 	}
 }
 
 func (a *App) pruneToasts(now time.Time) {
-	keep := a.toasts[:0]
-	for _, t := range a.toasts {
-		if now.Before(t.expires) {
-			keep = append(keep, t)
-		}
-	}
-	a.toasts = keep
+	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool { return !now.Before(t.expires) })
 }
 
 // ---------------------------------------------------------------------------
 // hook plumbing (drained by a persistent cmd when a program is attached)
 
 func (a *App) dispatch(msg tea.Msg) {
+	q := a.testQueue
 	if a.program != nil {
-		select {
-		case a.hooks <- hookMsg{inner: msg}:
-		default:
-			a.log.Warn("ui", "hook queue full; dropping message", nil)
-		}
+		q = a.hooks
+	}
+	if q == nil {
+		// No program (headless boot): process inline on the caller's goroutine.
+		a.Update(msg)
 		return
 	}
-	if a.testQueue != nil {
-		select {
-		case a.testQueue <- msg:
-		default:
-			a.log.Warn("ui", "hook queue full; dropping message", nil)
-		}
-		return
+	select {
+	case q <- msg:
+	default:
+		a.log.Warn("ui", "hook queue full; dropping message", nil)
 	}
-	// No program (headless boot): process inline on the caller's goroutine.
-	a.Update(msg)
 }
 
 // CaptureHooks redirects hook dispatch into a queue drained by Pump
@@ -638,11 +527,7 @@ func (a *App) compose(w, h int) string {
 	// + statusline + composer, the working row and a blank row that keeps the
 	// input off the conversation; popups float over the chat (floatPopup), so
 	// opening one never moves the transcript
-	reserved := len(header) + 1 + len(compRows) + len(working) + 1
-	chatH := h - reserved
-	if chatH < 1 {
-		chatH = 1
-	}
+	chatH := max(h-len(header)-1-len(compRows)-len(working)-1, 1)
 
 	chat := a.regionLines("chat", w)
 
@@ -658,8 +543,8 @@ func (a *App) compose(w, h int) string {
 	a.chatViewH = chatH
 	if a.chatFollow {
 		a.chatTop = a.chatRows - chatH
-	} else if maxTop := max0(a.chatRows - chatH); a.chatTop > maxTop {
-		a.chatTop = maxTop
+	} else {
+		a.chatTop = min(a.chatTop, max(0, a.chatRows-chatH))
 	}
 
 	rows := make([][]hostapi.Segment, 0, h)
@@ -680,7 +565,7 @@ func (a *App) compose(w, h int) string {
 		box := toastBox(a.toasts[i], w)
 		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
 			y--
-			x0 := max0(w - segsWidth(box[j]) - 1)
+			x0 := max(0, w-segsWidth(box[j])-1)
 			rows[y] = append(padSegs(truncateSegs(rows[y], x0), x0), box[j]...)
 		}
 		y--
@@ -700,28 +585,29 @@ func (a *App) compose(w, h int) string {
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
 
-	// Lua overlays, then the Go-owned chrome on top: trust prompt, model
-	// picker, permission ask (most urgent).
+	// Lua overlays, then the Go-owned chrome, bottom to top; topChrome must
+	// match this order so input reaches the box drawn on top.
+	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
 	for _, ov := range a.overlays {
-		rows = a.spliceOverlay(rows, ov, w, len(header), chatH)
+		splice(overlayBox(ov, w))
 	}
 	if a.trust != nil {
-		rows = a.spliceTrust(rows, a.trust, w, len(header), chatH)
+		splice(trustBox(a.trust, w))
 	}
 	if a.modelPick != nil {
-		rows = a.splicePick(rows, a.modelPick, w, len(header), chatH)
+		splice(pickBox(a.modelPick, w))
 	}
 	if a.question != nil {
-		rows = a.spliceQuestion(rows, a.question, w, len(header), chatH)
+		splice(questionBox(a.question, w))
 	}
 	if a.memReview != nil {
-		rows = a.spliceMemReview(rows, a.memReview, w, len(header), chatH)
+		splice(memReviewBox(a.memReview, w))
 	}
 	if a.cfgReview != nil {
-		rows = a.spliceCfgReview(rows, a.cfgReview, w, len(header), chatH)
+		splice(cfgReviewBox(a.cfgReview, w))
 	}
 	if a.permAsk != nil {
-		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)
+		splice(a.permBox(a.permAsk, w, chatH))
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
@@ -788,12 +674,7 @@ func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) [][]host
 // chatStep is one page of transcript scroll with a one-row overlap, from
 // the last composed chat height (compose runs every frame, so the value is
 // at most one frame stale).
-func (a *App) chatStep() int {
-	if step := a.chatViewH - 1; step > 0 {
-		return step
-	}
-	return 1
-}
+func (a *App) chatStep() int { return max(a.chatViewH-1, 1) }
 
 // scrollChatRows moves the transcript viewport by n rows (negative =
 // older). Scrolling down re-arms tail follow at the bottom; while
@@ -804,12 +685,9 @@ func (a *App) scrollChatRows(n int) {
 	}
 	if n < 0 && a.chatFollow {
 		a.chatFollow = false
-		a.chatTop = max0(a.chatRows - a.chatViewH)
+		a.chatTop = max(0, a.chatRows-a.chatViewH)
 	}
-	a.chatTop += n
-	if a.chatTop < 0 {
-		a.chatTop = 0
-	}
+	a.chatTop = max(0, a.chatTop+n)
 	if a.chatTop+a.chatViewH >= a.chatRows {
 		a.chatFollow = true
 	}
@@ -908,10 +786,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 			right, rightW = nil, 0
 		}
 	}
-	gap := w - leftW - rightW
-	if gap < 0 {
-		gap = 0
-	}
+	gap := max(0, w-leftW-rightW)
 	out := append([]hostapi.Segment{}, left...)
 	if gap > 0 {
 		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
@@ -1032,9 +907,7 @@ func segsWidth(segs []hostapi.Segment) int {
 // transcript is bottom-anchored, so callers concatenate the rows and take
 // the tail.
 func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
-	if w < 1 {
-		w = 1
-	}
+	w = max(w, 1)
 	if segsWidth(line) <= w {
 		return [][]hostapi.Segment{line}
 	}

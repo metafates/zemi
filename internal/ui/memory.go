@@ -26,7 +26,7 @@ type memUndo struct {
 // host's review goroutine) until the screen closes.
 func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
 	ch := make(chan map[string]string, 1)
-	a.dispatch(memReviewMsg{items: items, answer: ch})
+	a.do(func() { a.memReview = &memReviewPrompt{items: items, actions: map[string]string{}, answer: ch} })
 	return <-ch
 }
 
@@ -76,8 +76,7 @@ func (a *App) undoMemory() {
 	mr.sel = u.at
 }
 
-// spliceMemReview composes the memory screen over the chat area.
-func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+func memReviewBox(mr *memReviewPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	section := ""
 	for i, it := range mr.items {
@@ -113,6 +112,5 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 		hints = append(hints, "u", "undo")
 	}
 	body = append(body, nil, hintLine(append(hints, "esc", "done")...))
-	box := hostBox(" Memory ", "Host:MemTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	return hostBox(" Memory ", "Host:MemTitle", "", body, w)
 }
