@@ -1,7 +1,8 @@
 // tasks.go runs background subagents: the agent tool with background set
 // returns at once, the subagent keeps working after the turn ends, and its
 // report joins the conversation as a message when it finishes (steering a
-// running turn, or starting one). /tasks lists them and cancels one.
+// running turn, or starting one). /agents lists them; /tasks cancel <id>
+// stops one.
 package hostapi
 
 import (
@@ -121,7 +122,7 @@ func (h *Host) TasksCommandsStep() lua.BootStep {
 					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
 					switch sub {
 					case "":
-						return h.openTasks()
+						return h.openAgents()
 					case "cancel":
 						return h.cancelTask(strings.TrimSpace(id))
 					}
@@ -142,29 +143,5 @@ func (h *Host) cancelTask(id string) error {
 		return fmt.Errorf("no background agent %q", id)
 	}
 	t.cancel()
-	return nil
-}
-
-func (h *Host) openTasks() error {
-	ui := h.hooks()
-	list := h.tasks.list()
-	if ui == nil || len(list) == 0 {
-		return errors.New("no background agents in this run")
-	}
-	items := make([]any, 0, len(list))
-	for _, t := range list {
-		t.mu.Lock()
-		took := time.Since(t.started)
-		if !t.finished.IsZero() {
-			took = t.finished.Sub(t.started)
-		}
-		item := map[string]any{"text": fmt.Sprintf("%s  %-9s %-8s %s  %s", t.id, t.status, t.agent, fmtDuration(took), truncRunes(t.description, 50))}
-		if t.status == "running" {
-			item["run"] = "tasks cancel " + t.id
-		}
-		t.mu.Unlock()
-		items = append(items, item)
-	}
-	ui.OpenOverlay(Overlay{ID: "tasks", Title: "Background agents (enter cancels a running one)", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }

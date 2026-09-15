@@ -114,6 +114,22 @@ func TestWorkflowCancel(t *testing.T) {
 	}
 }
 
+func TestWorkflowFileStartingWithDashesIsNotFrontmatter(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "---\nreturn 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "dashes.lua"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := h.workflowSource("dashes"); err != nil || got != src {
+		t.Fatalf("workflowSource = %q, %v; want the file as is", got, err)
+	}
+}
+
 func TestSavedWorkflows(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()

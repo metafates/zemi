@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -64,7 +65,7 @@ func (h *Host) workflows() []Workflow {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
-			src, err := readWorkflowFile(path)
+			src, err := readRegularFile(path)
 			if err != nil {
 				h.Log.Warn("workflows", err.Error(), nil)
 				continue
@@ -92,11 +93,6 @@ func (h *Host) workflows() []Workflow {
 	return out
 }
 
-func readWorkflowFile(path string) (string, error) {
-	_, body, err := readFrontmatterFile(path)
-	return body, err
-}
-
 func leadingComment(src string) string {
 	var lines []string
 	for _, l := range strings.Split(src, "\n") {
@@ -117,7 +113,7 @@ func (h *Host) workflowSource(name string) (string, error) {
 			return string(b), err
 		}
 		if w.Name == name {
-			return readWorkflowFile(w.Path)
+			return readRegularFile(w.Path)
 		}
 		names = append(names, w.Name)
 	}
@@ -687,7 +683,7 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 					// permissions and the result land in the conversation.
 					msg := "Run the saved workflow `" + name + "` with the workflow tool"
 					if rest = strings.TrimSpace(rest); rest != "" {
-						msg += " and args " + strconvQuote(rest)
+						msg += " and args " + strconv.Quote(rest)
 					}
 					return h.AgentSend(msg + ", then relay its result.")
 				},
@@ -713,11 +709,6 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 			return err
 		},
 	}
-}
-
-func strconvQuote(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
 }
 
 func (h *Host) openWorkflows() error {
@@ -746,16 +737,11 @@ func (h *Host) openWorkflows() error {
 func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		var rows []any
 		for _, w := range h.workflows() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(w.Name))
-			row.RawSetString("description", glua.LString(w.Description))
-			row.RawSetString("source", glua.LString(w.Source))
-			row.RawSetString("path", glua.LString(w.Path))
-			out.Append(row)
+			rows = append(rows, map[string]any{"name": w.Name, "description": w.Description, "source": w.Source, "path": w.Path})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
@@ -793,24 +779,13 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			defer cancel()
 			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			res, err := h.runWorkflow(ctx, src, args, nil)
-			if onDone == nil {
-				return
+			switch {
+			case onDone == nil:
+			case err != nil:
+				h.callLuaAsync(gen, onDone, nil, err.Error(), res.Log)
+			default:
+				h.callLuaAsync(gen, onDone, res.Value, nil, res.Log)
 			}
-			_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
-				if h.currentGen() != gen {
-					return nil, nil
-				}
-				L.Push(onDone)
-				if err != nil {
-					L.Push(glua.LNil)
-					L.Push(glua.LString(err.Error()))
-				} else {
-					L.Push(glua.LString(res.Value))
-					L.Push(glua.LNil)
-				}
-				L.Push(lua.FromGo(L, res.Log))
-				return nil, L.PCall(3, 0, nil)
-			})
 		})
 		handle := L.NewTable()
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {

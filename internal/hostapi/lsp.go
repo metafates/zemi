@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +31,6 @@ type lspDef struct {
 	Env     map[string]string
 	Exts    []string // ".go"
 	Markers []string // files at the repository root that enable a builtin
-	Source  string   // builtin or init.lua
 }
 
 var builtinLSP = []lspDef{
@@ -48,6 +48,7 @@ var languageIDs = map[string]string{
 }
 
 type lspProc struct {
+	h      *Host
 	def    lspDef
 	ready  chan struct{} // closed when the start attempt ends
 	client *lsp.Client
@@ -70,13 +71,18 @@ func (r *lspReg) stopAll() {
 	r.running, r.user = map[string]*lspProc{}, nil
 	r.mu.Unlock()
 	for _, p := range procs {
-		go func() {
-			<-p.ready
-			if p.client != nil {
-				p.client.Close()
-			}
-		}()
+		p.close()
 	}
+}
+
+// close stops the server once its start attempt ends.
+func (p *lspProc) close() {
+	p.h.GoSafe("lsp stop "+p.def.Name, func() {
+		<-p.ready
+		if p.client != nil {
+			p.client.Close()
+		}
+	})
 }
 
 // lspFor picks the server for path: user definitions first, then an
@@ -87,7 +93,7 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 	user := append([]lspDef(nil), h.lsp.user...)
 	h.lsp.mu.Unlock()
 	for _, d := range user {
-		if contains(d.Exts, ext) {
+		if slices.Contains(d.Exts, ext) {
 			return d, true
 		}
 	}
@@ -96,7 +102,7 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 	}
 	root := h.Dirs.RepoRoot()
 	for _, d := range builtinLSP {
-		if !contains(d.Exts, ext) {
+		if !slices.Contains(d.Exts, ext) {
 			continue
 		}
 		if _, err := exec.LookPath(d.Command); err != nil {
@@ -104,7 +110,6 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 		}
 		for _, m := range d.Markers {
 			if _, err := os.Stat(filepath.Join(root, m)); err == nil {
-				d.Source = "builtin"
 				return d, true
 			}
 		}
@@ -118,7 +123,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 	h.lsp.mu.Lock()
 	p, ok := h.lsp.running[def.Name]
 	if !ok {
-		p = &lspProc{def: def, ready: make(chan struct{})}
+		p = &lspProc{h: h, def: def, ready: make(chan struct{})}
 		h.lsp.running[def.Name] = p
 	}
 	h.lsp.mu.Unlock()
@@ -133,7 +138,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 			defer cancel()
 			p.client, p.err = lsp.Start(sctx, lsp.Config{
 				Command: def.Command, Args: def.Args, Env: env, Root: h.Dirs.RepoRoot(),
-				Stderr: mcpLogWriter{h: h, server: "lsp " + def.Name},
+				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
 			})
 			if p.err != nil {
 				h.Log.Warn("lsp", "server failed to start", map[string]any{"server": def.Name, "error": p.err.Error()})
@@ -156,17 +161,17 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 	return p.client, nil
 }
 
-// lspCheck syncs path to its server and formats the diagnostics at or
-// above minSeverity (1 errors only ... 4 everything). ok is false when no
-// server covers the file or it did not answer in time.
-func (h *Host) lspCheck(path string, maxSeverity int) (def lspDef, out string, ok bool) {
+// lspCheck syncs path to its server and formats diagnostics with severity
+// <= maxSeverity (1 errors ... 4 all); ok is false when no server covers the
+// file or it did not answer.
+func (h *Host) lspCheck(path string, maxSeverity int) (out string, ok bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return def, "", false
+		return "", false
 	}
-	def, ok = h.lspFor(abs)
+	def, ok := h.lspFor(abs)
 	if !ok {
-		return def, "", false
+		return "", false
 	}
 	// NOTE: a cold gopls or rust-analyzer can take longer than this on a
 	// big workspace; the edit then returns without diagnostics.
@@ -174,11 +179,11 @@ func (h *Host) lspCheck(path string, maxSeverity int) (def lspDef, out string, o
 	defer cancel()
 	c, err := h.lspClient(ctx, def)
 	if err != nil {
-		return def, "", false
+		return "", false
 	}
 	diags, err := c.Touch(ctx, abs, languageIDs[strings.ToLower(filepath.Ext(abs))])
 	if err != nil && len(diags) == 0 {
-		return def, "", false
+		return "", false
 	}
 	rel := abs
 	if r, err := filepath.Rel(h.Dirs.ProjectDir, abs); err == nil && !strings.HasPrefix(r, "..") {
@@ -196,15 +201,15 @@ func (h *Host) lspCheck(path string, maxSeverity int) (def lspDef, out string, o
 		lines = append(lines, fmt.Sprintf("%s %s:%d:%d: %s", lsp.SeverityName(d.Severity), rel, d.Line, d.Col, strings.TrimSpace(d.Message)))
 	}
 	if len(lines) == 0 {
-		return def, fmt.Sprintf("%s reports no problems in %s", def.Name, rel), true
+		return fmt.Sprintf("%s reports no problems in %s", def.Name, rel), true
 	}
-	return def, fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
+	return fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
 }
 
 // lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for
 // the file just changed.
 func (h *Host) lspAfterWrite(path string) string {
-	if _, out, ok := h.lspCheck(path, 2); ok {
+	if out, ok := h.lspCheck(path, 2); ok {
 		return "\n\n" + out
 	}
 	return ""
@@ -212,7 +217,7 @@ func (h *Host) lspAfterWrite(path string) string {
 
 // lspDiagnostics backs the diagnostics tool.
 func (h *Host) lspDiagnostics(path string) (string, error) {
-	if _, out, ok := h.lspCheck(path, 3); ok {
+	if out, ok := h.lspCheck(path, 3); ok {
 		return out, nil
 	}
 	if _, ok := h.lspFor(path); !ok {
@@ -230,7 +235,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
 			return 0
 		}
-		def := lspDef{Name: name, Command: rawString(opts, "command"), Env: map[string]string{}, Source: "init.lua"}
+		def := lspDef{Name: name, Command: rawString(opts, "command"), Env: map[string]string{}}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")
 			return 0
@@ -298,19 +303,15 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 				Name: "lsp", NArgs: "*", Desc: "language servers zemi started; restart <name>", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
+						name = strings.TrimSpace(name)
 						h.lsp.mu.Lock()
-						p := h.lsp.running[strings.TrimSpace(name)]
-						delete(h.lsp.running, strings.TrimSpace(name))
+						p := h.lsp.running[name]
+						delete(h.lsp.running, name)
 						h.lsp.mu.Unlock()
 						if p == nil {
 							return fmt.Errorf("no language server %q", name)
 						}
-						go func() {
-							<-p.ready
-							if p.client != nil {
-								p.client.Close()
-							}
-						}()
+						p.close()
 						return nil
 					}
 					rows := h.lspRows()

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -96,7 +97,7 @@ func (h *Host) startMCP(s *mcpServer) {
 	}
 	cfg := mcp.Config{
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.ProjectDir,
-		Stderr: mcpLogWriter{h: h, server: s.name},
+		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
 	}
 	if s.spec.URL != "" && !hasHeader(headers, "Authorization") {
@@ -211,13 +212,14 @@ func (r *mcpReg) list() []*mcpServer {
 	return out
 }
 
-type mcpLogWriter struct {
-	h      *Host
-	server string
+// serverLogWriter logs an MCP or language server's stderr under source.
+type serverLogWriter struct {
+	h              *Host
+	source, server string
 }
 
-func (w mcpLogWriter) Write(p []byte) (int, error) {
-	w.h.Log.Debug("mcp", "stderr: "+truncRunes(strings.TrimSpace(string(p)), 500), map[string]any{"server": w.server})
+func (w serverLogWriter) Write(p []byte) (int, error) {
+	w.h.Log.Debug(w.source, "stderr: "+truncRunes(strings.TrimSpace(string(p)), 500), map[string]any{"server": w.server})
 	return len(p), nil
 }
 
@@ -246,7 +248,7 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 			continue
 		}
 		for _, t := range list {
-			if (s.spec.EnabledTools != nil && !contains(s.spec.EnabledTools, t.Name)) || contains(s.spec.DisabledTools, t.Name) {
+			if (s.spec.EnabledTools != nil && !slices.Contains(s.spec.EnabledTools, t.Name)) || slices.Contains(s.spec.DisabledTools, t.Name) {
 				continue
 			}
 			if name := mcpToolName(s.name, t.Name); seen[name] {
@@ -259,15 +261,6 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 		}
 	}
 	return out
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 type mcpTool struct {
@@ -390,23 +383,17 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		var rows []any
 		for _, s := range h.mcp.list() {
 			s.mu.Lock()
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(s.name))
-			row.RawSetString("status", glua.LString(s.status))
-			row.RawSetString("error", glua.LString(s.err))
-			row.RawSetString("source", glua.LString(s.spec.Source))
-			names := L.NewTable()
+			names := make([]string, 0, len(s.tools))
 			for _, t := range s.tools {
-				names.Append(glua.LString(t.Name))
+				names = append(names, t.Name)
 			}
-			row.RawSetString("tools", names)
+			rows = append(rows, map[string]any{"name": s.name, "status": s.status, "error": s.err, "source": s.spec.Source, "tools": names})
 			s.mu.Unlock()
-			out.Append(row)
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	return tb
@@ -448,12 +435,11 @@ func (h *Host) MCPCommandsStep() lua.BootStep {
 }
 
 func (h *Host) restartMCP(name string) error {
-	for _, s := range h.mcp.list() {
-		if s.name == name {
-			return h.addMCP(name, s.spec)
-		}
+	s, err := h.mcpServerNamed(name)
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("no MCP server %q", name)
+	return h.addMCP(name, s.spec)
 }
 
 func (h *Host) openMCP() error {

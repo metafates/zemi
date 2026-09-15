@@ -177,24 +177,30 @@ func parseAgentFile(path, source string) (AgentDef, error) {
 	return d, nil
 }
 
+// readRegularFile reads a config file, refusing symlinks and oversized files.
+func readRegularFile(path string) (string, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("%s: not a regular file", path)
+	}
+	if fi.Size() > maxAgentFileBytes {
+		return "", fmt.Errorf("%s: exceeds %d bytes", path, maxAgentFileBytes)
+	}
+	data, err := os.ReadFile(path)
+	return string(data), err
+}
+
 // readFrontmatterFile reads a markdown file with an optional leading
 // `---` yaml block (symlinks and oversized files refused).
 func readFrontmatterFile(path string) (block, body string, err error) {
-	fi, err := os.Lstat(path)
+	data, err := readRegularFile(path)
 	if err != nil {
 		return "", "", err
 	}
-	if !fi.Mode().IsRegular() {
-		return "", "", fmt.Errorf("%s: not a regular file", path)
-	}
-	if fi.Size() > maxAgentFileBytes {
-		return "", "", fmt.Errorf("%s: exceeds %d bytes", path, maxAgentFileBytes)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", "", err
-	}
-	s := strings.ReplaceAll(string(data), "\r\n", "\n")
+	s := strings.ReplaceAll(data, "\r\n", "\n")
 	rest, ok := strings.CutPrefix(s, "---\n")
 	if !ok {
 		return "", s, nil
@@ -207,12 +213,10 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 	return block, body, nil
 }
 
-// subagentProgress receives live progress lines for the caller's UI row.
-type subagentProgress func(line string)
-
 // runSubagent runs def on prompt to completion and returns its final
-// message. The run is recorded as a child session of the live one.
-func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress subagentProgress) (string, error) {
+// message; progress receives live lines for the caller's UI row. The run is
+// recorded as a child session of the live one.
+func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress func(string)) (string, error) {
 	prof := &Profile{Model: def.Model}
 	model, err := h.resolveModel(prof)
 	if err != nil {
@@ -291,7 +295,7 @@ type subagentHooks struct {
 	h        *Host
 	def      AgentDef
 	modelID  string
-	progress subagentProgress
+	progress func(string)
 	sid      string
 	parent   string // the session that started the run
 	calls    atomic.Int32
@@ -551,16 +555,11 @@ func (h *Host) openAgents() error {
 // once the subagent finishes; the returned handle cancels it.
 func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		var rows []any
 		for _, d := range h.agentDefs() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(d.Name))
-			row.RawSetString("description", glua.LString(d.Description))
-			row.RawSetString("source", glua.LString(d.Source))
-			row.RawSetString("model", glua.LString(d.Model))
-			out.Append(row)
+			rows = append(rows, map[string]any{"name": d.Name, "description": d.Description, "source": d.Source, "model": d.Model})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
@@ -594,23 +593,13 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			defer cancel()
 			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			text, err := h.runSubagent(ctx, def, desc, prompt, nil)
-			if onDone == nil {
-				return
+			switch {
+			case onDone == nil:
+			case err != nil:
+				h.callLuaAsync(gen, onDone, nil, friendlyError(err))
+			default:
+				h.callLuaAsync(gen, onDone, text, nil)
 			}
-			_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
-				if h.currentGen() != gen {
-					return nil, nil
-				}
-				L.Push(onDone)
-				if err != nil {
-					L.Push(glua.LNil)
-					L.Push(glua.LString(friendlyError(err)))
-				} else {
-					L.Push(glua.LString(text))
-					L.Push(glua.LNil)
-				}
-				return nil, L.PCall(2, 0, nil)
-			})
 		})
 		handle := L.NewTable()
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
