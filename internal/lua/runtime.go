@@ -343,44 +343,47 @@ func (r *Runtime) installRequire(gen *Generation) {
 }
 
 func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, error) {
-	if cached, ok := gen.modules[name]; ok {
-		return cached, nil
-	}
-	// Cycle detection via a loading marker.
-	if _, loading := gen.modules["<loading:"+name+">"]; loading {
-		return glua.LNil, fmt.Errorf("circular require of %q", name)
-	}
-	gen.modules["<loading:"+name+">"] = glua.LTrue
-	defer delete(gen.modules, "<loading:"+name+">")
-
 	if ns, ok := r.goNamespace(gen, name); ok {
-		gen.modules[name] = ns
 		return ns, nil
 	}
-
-	var (
-		src    []byte
-		origin Origin
-		rel    string
-		err    error
-	)
 	if strings.HasPrefix(name, "zemi.") {
 		// zemi.* resolves to the Go preload or the embedded stdlib only;
 		// userland cannot shadow it (DESIGN §5).
-		src, rel, err = r.readEmbedded(name)
-		origin = OriginBuiltin
-	} else {
-		src, rel, origin, err = r.readOverRuntimepath(name)
+		return r.loadModule(gen, "embedded:"+name, name, func() ([]byte, string, Origin, error) {
+			src, rel, err := r.readEmbedded(name)
+			return src, rel, OriginBuiltin, err
+		})
 	}
+	path, origin, err := r.findModule(gen.L, name)
 	if err != nil {
 		return glua.LNil, err
 	}
+	return r.loadModule(gen, path, name, func() ([]byte, string, Origin, error) {
+		data, err := os.ReadFile(path)
+		return data, path, origin, err
+	})
+}
 
+// loadModule runs a module once per generation, keyed by its resolved file,
+// so "app.util" and "./util" naming one file share one instance.
+func (r *Runtime) loadModule(gen *Generation, key, name string, read func() ([]byte, string, Origin, error)) (glua.LValue, error) {
+	if cached, ok := gen.modules[key]; ok {
+		return cached, nil
+	}
+	if _, loading := gen.modules["<loading:"+key+">"]; loading {
+		return glua.LNil, fmt.Errorf("circular require of %q", name)
+	}
+	gen.modules["<loading:"+key+">"] = glua.LTrue
+	defer delete(gen.modules, "<loading:"+key+">")
+	src, rel, origin, err := read()
+	if err != nil {
+		return glua.LNil, err
+	}
 	mod, err := r.evalModule(gen, src, rel, origin)
 	if err != nil {
 		return glua.LNil, err
 	}
-	gen.modules[name] = mod
+	gen.modules[key] = mod
 	return mod, nil
 }
 
@@ -410,26 +413,65 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 	return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
 }
 
-func (r *Runtime) readOverRuntimepath(name string) ([]byte, string, Origin, error) {
-	rel := strings.ReplaceAll(name, ".", "/") + ".lua"
-	relInit := strings.ReplaceAll(name, ".", "/") + "/init.lua"
-	for _, root := range r.runtimepath() {
-		for _, candidate := range []string{rel, relInit} {
-			path := filepath.Join(root, "lua", candidate)
-			if data, err := os.ReadFile(path); err == nil {
-				resolved, rerr := filepath.EvalSymlinks(path)
-				if rerr != nil {
-					resolved = path
-				}
-				origin := r.paths.Classify(resolved)
-				if origin == "" {
-					return nil, "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
-				}
-				return data, filepath.Join(root, candidate), origin, nil
-			}
+// findModule resolves a module name to a symlink-resolved file. Relative
+// names ("./util", "../lib/x") resolve against the requiring file and must
+// stay inside its origin's tree, so a path cannot reach code of another
+// trust class; dotted names search <root>/lua over the runtimepath.
+func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error) {
+	var bases []string
+	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
+	if relative {
+		from := r.callerFile(L)
+		if !filepath.IsAbs(from) {
+			return "", "", fmt.Errorf("relative require %q: the caller is not a file", name)
+		}
+		bases = []string{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua")))}
+	} else {
+		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
+		for _, root := range r.runtimepath() {
+			bases = append(bases, filepath.Join(root, "lua", rel))
 		}
 	}
-	return nil, "", "", fmt.Errorf("module %q not found on runtimepath", name)
+	for _, base := range bases {
+		for _, p := range []string{base + ".lua", filepath.Join(base, "init.lua")} {
+			resolved, err := filepath.EvalSymlinks(p)
+			if err != nil {
+				continue
+			}
+			origin := r.paths.Classify(resolved)
+			switch {
+			case origin == "":
+				return "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
+			case relative && origin != r.CurrentOrigin():
+				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.CurrentOrigin())
+			}
+			return resolved, origin, nil
+		}
+	}
+	if relative {
+		return "", "", fmt.Errorf("module %q not found next to %s", name, r.callerFile(L))
+	}
+	return "", "", fmt.Errorf("module %q not found on runtimepath", name)
+}
+
+// callerFile is the file of the Lua function calling require, from its
+// chunk name ("@origin:/abs/path", set by Go at compile time), so a
+// function defined in a module still resolves "./x" next to that module
+// when it runs later as a callback. Falls back to the running frame.
+func (r *Runtime) callerFile(L *glua.LState) string {
+	for level := 0; level <= 1; level++ {
+		dbg, ok := L.GetStack(level)
+		if !ok {
+			break
+		}
+		if _, err := L.GetInfo("S", dbg, glua.LNil); err != nil {
+			continue
+		}
+		if _, path, ok := strings.Cut(strings.TrimPrefix(dbg.Source, "@"), ":"); ok && filepath.IsAbs(path) {
+			return path
+		}
+	}
+	return r.CurrentPath()
 }
 
 func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Origin) (glua.LValue, error) {
@@ -453,13 +495,18 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	return out, nil
 }
 
-// runtimepath lists require roots in order: config home, plugins (sorted),
-// then the embedded runtime is consulted separately (DESIGN §5).
+// runtimepath lists require roots in order: the project's .zemi for project
+// code only (user and plugin requires never resolve into a repository's
+// untrusted files), then config home and plugins; the embedded runtime is
+// consulted separately (DESIGN §5).
 func (r *Runtime) runtimepath() []string {
 	var out []string
-	if r.paths != nil {
+	for _, want := range []Origin{OriginProject, OriginUser, OriginPlugin} {
+		if want == OriginProject && r.CurrentOrigin() != OriginProject {
+			continue
+		}
 		for _, c := range r.paths {
-			if c.Origin == OriginUser || c.Origin == OriginPlugin {
+			if c.Origin == want && c.Prefix != "" {
 				out = append(out, c.Prefix)
 			}
 		}
@@ -510,7 +557,8 @@ func LoadFileStep(name, path string, origin Origin) BootStep {
 			if err != nil {
 				return err
 			}
-			return r.runChunk(g.L, string(data), name, class)
+			// The chunk carries its file path so relative requires resolve.
+			return r.runChunk(g.L, string(data), resolved, class)
 		},
 	}
 }

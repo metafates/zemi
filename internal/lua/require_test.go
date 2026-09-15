@@ -101,6 +101,53 @@ func TestRequireCycleDetection(t *testing.T) {
 	}
 }
 
+// TestRequireRelative: "./x" resolves next to the requiring file (also from
+// a function that runs later), shares the instance with the dotted name,
+// and cannot reach another origin's tree.
+func TestRequireRelative(t *testing.T) {
+	r, cfg, plugin := newRequireRuntime(t)
+	writeFile(t, filepath.Join(cfg, "lua", "app", "init.lua"), `return { util = require("./util") }`)
+	writeFile(t, filepath.Join(cfg, "lua", "app", "util.lua"), `return { v = 1 }`)
+	writeFile(t, filepath.Join(cfg, "lua", "app", "lazy.lua"), `return { get = function() return require("../late") end }`)
+	writeFile(t, filepath.Join(cfg, "lua", "late.lua"), `return { v = 2 }`)
+	writeFile(t, filepath.Join(plugin, "lua", "pmod.lua"), `return {}`)
+	toPlugin, err := filepath.Rel(filepath.Join(cfg, "lua"), filepath.Join(plugin, "lua", "pmod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cfg, "lua", "escape.lua"), `return require("./`+filepath.ToSlash(toPlugin)+`")`)
+
+	if err := r.ExecuteChunk(context.Background(), `
+		local app = require("./lua/app")
+		assert(app.util.v == 1, "relative module did not load")
+		assert(require("app.util") == app.util, "dotted and relative names loaded twice")
+		assert(require("app.lazy").get().v == 2, "callback resolved against the wrong file")
+		local ok, err = pcall(require, "escape")
+		assert(not ok and err:find("outside the user tree", 1, true), "escaped the tree: " .. tostring(err))
+	`, filepath.Join(cfg, "init.lua"), OriginUser); err != nil {
+		t.Fatalf("chunk failed: %v", err)
+	}
+}
+
+// TestRequireProjectModules: .zemi/lua is on the path for project code only.
+func TestRequireProjectModules(t *testing.T) {
+	proj, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := NewRuntime(RuntimeOptions{PathClass: PathClasses{{Prefix: proj, Origin: OriginProject}}, RuntimeFS: fstest.MapFS{}})
+	if err := r.Boot(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(proj, "lua", "pmod.lua"), `return { v = 3 }`)
+	if err := r.ExecuteChunk(context.Background(), `assert(require("pmod").v == 3)`, filepath.Join(proj, "init.lua"), OriginProject); err != nil {
+		t.Fatalf("project require: %v", err)
+	}
+	if err := r.ExecuteChunk(context.Background(), `assert(not pcall(require, "pmod"), "user code loaded a project module")`, "init.lua", OriginUser); err != nil {
+		t.Fatalf("user require: %v", err)
+	}
+}
+
 // TestRequireOriginFollowsFile verifies §5: origin comes from the module
 // file's directory class, never from the requirer, so a plugin module
 // required from user code reports plugin origin (and the user chunk itself
