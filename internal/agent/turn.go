@@ -137,7 +137,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		userMsg = append(userMsg, msg)
 	}
 	r.mu.Lock()
-	r.History = append(r.History, userMsg...)
+	r.History = append(closeToolCalls(r.History), userMsg...)
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
 	provOpts := r.ProviderOptions
@@ -318,6 +318,39 @@ func interleave(head, resp []fantasy.Message, steered []steeredMsg) []fantasy.Me
 	}
 	return out
 }
+
+// closeToolCalls inserts an error result after every tool call that has
+// none: fantasy records the calls of a reply cut off by the output limit or
+// a provider error without running them, and providers refuse such history.
+func closeToolCalls(history []fantasy.Message) []fantasy.Message {
+	out := make([]fantasy.Message, 0, len(history))
+	for i, m := range history {
+		out = append(out, m)
+		if m.Role != fantasy.MessageRoleAssistant {
+			continue
+		}
+		answered := map[string]bool{}
+		if i+1 < len(history) && history[i+1].Role == fantasy.MessageRoleTool {
+			for _, p := range history[i+1].Content {
+				if res, ok := p.(fantasy.ToolResultPart); ok {
+					answered[res.ToolCallID] = true
+				}
+			}
+		}
+		var missing []fantasy.MessagePart
+		for _, p := range m.Content {
+			if c, ok := p.(fantasy.ToolCallPart); ok && !c.ProviderExecuted && !answered[c.ToolCallID] {
+				missing = append(missing, fantasy.ToolResultPart{ToolCallID: c.ToolCallID, Output: fantasy.ToolResultOutputContentError{Error: errNotRun}})
+			}
+		}
+		if len(missing) > 0 {
+			out = append(out, fantasy.Message{Role: fantasy.MessageRoleTool, Content: missing})
+		}
+	}
+	return out
+}
+
+var errNotRun = fmt.Errorf("not run: the reply was cut off")
 
 func isErrResult(c fantasy.ToolResultContent) bool {
 	if c.Result == nil {

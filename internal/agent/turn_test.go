@@ -256,6 +256,35 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 	}
 }
 
+// TestCutOffToolCallGetsResult: a reply cut off with a tool call in it
+// leaves the call unrun; the next send answers it with an error result so
+// the provider accepts the history.
+func TestCutOffToolCallGetsResult(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonLength},
+		},
+		textParts("done"),
+	}}
+	r := NewRunner(m, nil, "")
+	for _, text := range []string{"hi", "go on"} {
+		r.Hooks = newRecHooks()
+		_ = r.Send(context.Background(), text)
+	}
+	var roles []string
+	for _, msg := range m.lastCall.Prompt {
+		roles = append(roles, string(msg.Role))
+	}
+	if got := strings.Join(roles, ","); got != "user,assistant,tool,user" {
+		t.Fatalf("prompt roles: %s", got)
+	}
+	res, ok := m.lastCall.Prompt[2].Content[0].(fantasy.ToolResultPart)
+	if !ok || res.ToolCallID != "c1" || res.Output.GetType() != fantasy.ToolResultContentTypeError {
+		t.Fatalf("tool message: %+v", m.lastCall.Prompt[2])
+	}
+}
+
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
 // tool result, and an empty Send continues without a second user message.
