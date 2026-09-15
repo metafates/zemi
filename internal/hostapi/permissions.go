@@ -145,7 +145,11 @@ func parsePermissionsDump(data []byte) ([]perm.Rule, error) {
 		rules              []perm.Rule
 		seenVersion, seenB bool
 	)
-	err := p.expectTable(func(p *permParser, key string) error {
+	err := p.list(func() error {
+		key, err := p.readKey()
+		if err != nil {
+			return err
+		}
 		switch key {
 		case "version":
 			v, err := p.readInt()
@@ -157,7 +161,11 @@ func parsePermissionsDump(data []byte) ([]perm.Rule, error) {
 			}
 			seenVersion = true
 		case "rules":
-			if err := p.expectArrayOfTables(func(row map[string]string) error {
+			if err := p.list(func() error {
+				row, err := p.expectStringFields()
+				if err != nil {
+					return err
+				}
 				r, err := rowToRule(row)
 				if err != nil {
 					return err
@@ -341,9 +349,9 @@ func (p *permParser) readString() (string, error) {
 	return "", fmt.Errorf("unterminated string at offset %d", p.pos)
 }
 
-// expectTable parses `{ key = value, ... }`; the per-key callback consumes
-// the value (int, array-of-tables) and refuses any other kind.
-func (p *permParser) expectTable(field func(*permParser, string) error) error {
+// list parses `{ item, item, ... }` (trailing separator allowed); item
+// consumes one entry and refuses anything it does not expect.
+func (p *permParser) list(item func() error) error {
 	if err := p.expect('{'); err != nil {
 		return err
 	}
@@ -353,20 +361,7 @@ func (p *permParser) expectTable(field func(*permParser, string) error) error {
 			p.pos++
 			return nil
 		}
-		start := p.pos
-		for p.pos < len(p.src) && isWordByte(p.src[p.pos]) {
-			p.pos++
-		}
-		if start == p.pos {
-			return fmt.Errorf("expected key at offset %d", start)
-		}
-		key := p.src[start:p.pos]
-		p.skipSpaceAndComments()
-		if err := p.expect('='); err != nil {
-			return err
-		}
-		p.skipSpaceAndComments()
-		if err := field(p, key); err != nil {
+		if err := item(); err != nil {
 			return err
 		}
 		p.skipSpaceAndComments()
@@ -382,82 +377,44 @@ func (p *permParser) expectTable(field func(*permParser, string) error) error {
 	}
 }
 
-// expectArrayOfTables parses `{ { row }, { row }, ... }`.
-func (p *permParser) expectArrayOfTables(row func(map[string]string) error) error {
-	if err := p.expect('{'); err != nil {
-		return err
+// readKey reads `word =` and leaves the parser at the value.
+func (p *permParser) readKey() (string, error) {
+	start := p.pos
+	for p.pos < len(p.src) && isWordByte(p.src[p.pos]) {
+		p.pos++
 	}
-	for {
-		p.skipSpaceAndComments()
-		if p.peek() == '}' {
-			p.pos++
-			return nil
-		}
-		fields, err := p.expectStringFields()
-		if err != nil {
-			return err
-		}
-		if err := row(fields); err != nil {
-			return err
-		}
-		p.skipSpaceAndComments()
-		switch p.peek() {
-		case ',':
-			p.pos++
-		case '}':
-			p.pos++
-			return nil
-		default:
-			return fmt.Errorf("expected , or } at offset %d", p.pos)
-		}
+	if start == p.pos {
+		return "", fmt.Errorf("expected key at offset %d", start)
 	}
+	key := p.src[start:p.pos]
+	p.skipSpaceAndComments()
+	if err := p.expect('='); err != nil {
+		return "", err
+	}
+	p.skipSpaceAndComments()
+	return key, nil
 }
 
 // expectStringFields parses `{ key = "string", ... }` into a map,
 // refusing duplicate keys and non-string values.
 func (p *permParser) expectStringFields() (map[string]string, error) {
 	out := map[string]string{}
-	if err := p.expect('{'); err != nil {
-		return nil, err
-	}
-	for {
-		p.skipSpaceAndComments()
-		if p.peek() == '}' {
-			p.pos++
-			return out, nil
+	err := p.list(func() error {
+		key, err := p.readKey()
+		if err != nil {
+			return err
 		}
-		start := p.pos
-		for p.pos < len(p.src) && isWordByte(p.src[p.pos]) {
-			p.pos++
-		}
-		if start == p.pos {
-			return nil, fmt.Errorf("expected key at offset %d", start)
-		}
-		key := p.src[start:p.pos]
-		p.skipSpaceAndComments()
-		if err := p.expect('='); err != nil {
-			return nil, err
-		}
-		p.skipSpaceAndComments()
 		v, err := p.readString()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if _, dup := out[key]; dup {
-			return nil, fmt.Errorf("duplicate field %q", key)
+			return fmt.Errorf("duplicate field %q", key)
 		}
 		out[key] = v
-		p.skipSpaceAndComments()
-		switch p.peek() {
-		case ',':
-			p.pos++
-		case '}':
-			p.pos++
-			return out, nil
-		default:
-			return nil, fmt.Errorf("expected , or } at offset %d", p.pos)
-		}
-	}
+		return nil
+	})
+	return out, err
 }
 
 func isWordByte(c byte) bool {
