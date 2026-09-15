@@ -92,10 +92,7 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	if rows := projectMemories(t, h); len(rows) != 0 {
 		t.Fatalf("ask mode stored %d memories", len(rows))
 	}
-	h.agents.mu.Lock()
-	queued := len(h.agents.memProposals)
-	h.agents.mu.Unlock()
-	if queued != 1 {
+	if queued := len(h.memoryProposals()); queued != 1 {
 		t.Fatalf("queued=%d", queued)
 	}
 
@@ -294,7 +291,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 
 	// First open: two rows, the queued proposal first. Mark nothing.
-	ui.reviewDelete = nil
+	ui.reviewDecisions = nil
 	h.openMemoryReview()
 	if len(ui.reviewItems) != 1 || len(ui.reviewItems[0]) != 2 {
 		t.Fatalf("review rows: %+v", ui.reviewItems)
@@ -309,17 +306,17 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 		t.Fatalf("no-mark review changed the store: %d rows", len(rows))
 	}
 
-	// Second open: delete both rows.
-	ui.reviewDelete = []int{0, 1}
+	// Second open: accept the proposal, delete the remembered note.
+	ui.reviewDecisions = map[string]string{
+		ui.reviewItems[0][0].ID: "accept",
+		ui.reviewItems[0][1].ID: "delete",
+	}
 	h.openMemoryReview()
-	h.agents.mu.Lock()
-	queued := len(h.agents.memProposals)
-	h.agents.mu.Unlock()
-	if queued != 0 {
+	if queued := len(h.memoryProposals()); queued != 0 {
 		t.Fatalf("proposals left: %d", queued)
 	}
-	if rows := projectMemories(t, h); len(rows) != 0 {
-		t.Fatalf("memories left: %d", len(rows))
+	if rows := projectMemories(t, h); len(rows) != 1 || rows[0].Text != "queued proposal text" {
+		t.Fatalf("after accept+delete: %+v", rows)
 	}
 }
 

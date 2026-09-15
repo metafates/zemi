@@ -1,12 +1,12 @@
 // memory.go is the M2 memory host API (DESIGN §6.7, §7, §10.4): the
-// zemi.memory namespace, the Go-owned :remember/:memory commands, the
-// session-scoped proposal queue behind the autonomy gate, and the §10.7
-// digest. The proposal queue lives in memory on purpose: proposals not
-// reviewed before shutdown are simply not stored.
+// zemi.memory namespace, the Go-owned /remember and /memory commands, the
+// proposal queue behind the autonomy gate, and the §10.7 digest. Proposals
+// persist in their scope's store until the user accepts or rejects them.
 package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -82,22 +82,30 @@ func (h *Host) memNotify(level, title, body string) {
 	}
 }
 
-// queueProposal parks a policy-clean memory for review. The id is
-// assigned at queue time so the review overlay can drop the proposal
-// unambiguously.
+// queueProposal persists a policy-clean memory for review in its scope's
+// store. The id is assigned here so review decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) {
 	if res.Memory.ID == "" {
 		res.Memory.ID = store.NewID()
 	}
-	ag := h.agents
-	ag.mu.Lock()
-	ag.memProposals = append(ag.memProposals, res)
-	ag.mu.Unlock()
-	h.memNotify("info", "memory", "proposal queued for review: "+res.Memory.Text)
+	db := h.memoryDB(res.Memory.Scope)
+	payload, err := json.Marshal(res.Memory)
+	if err == nil && db == nil {
+		err = errors.New("memory store unavailable")
+	}
+	if err == nil {
+		err = db.AddProposal(&store.Proposal{ID: res.Memory.ID, Kind: "memory", Payload: string(payload)})
+	}
+	if err != nil {
+		h.Log.Warn("memory", "proposal dropped", map[string]any{"error": err.Error()})
+		return
+	}
+	h.refreshPending()
+	h.memNotify("info", "memory", "queued for /memory: "+res.Memory.Text)
 }
 
-// applyProposal stores a proposal and spends one unit of the per-session
-// auto-apply budget.
+// applyProposal stores a proposal under auto autonomy and spends one unit
+// of the per-session auto-apply budget.
 func (h *Host) applyProposal(res *learn.Result) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
@@ -106,25 +114,21 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	ag.mu.Lock()
 	ag.memAuto++
 	ag.mu.Unlock()
-	return nil
-}
-
-// storeProposal writes a policy-clean proposal to its scope's DB and
-// notifies. The auto-apply budget is the caller's concern.
-func (h *Host) storeProposal(res *learn.Result) error {
-	db := h.memoryDB(res.Memory.Scope)
-	if db == nil {
-		return errors.New("memory store unavailable")
-	}
-	if err := db.AddMemory(&res.Memory); err != nil {
-		return err
-	}
 	note := ""
 	if res.Scrubbed {
 		note = " (secrets redacted)"
 	}
 	h.memNotify("info", "memory", "stored: "+res.Memory.Text+note)
 	return nil
+}
+
+// storeProposal writes a policy-clean memory to its scope's DB.
+func (h *Host) storeProposal(res *learn.Result) error {
+	db := h.memoryDB(res.Memory.Scope)
+	if db == nil {
+		return errors.New("memory store unavailable")
+	}
+	return db.AddMemory(&res.Memory)
 }
 
 // Remember stores a user-typed /remember text (origin user, project
@@ -183,10 +187,10 @@ func (h *Host) memoryCommand(args string) error {
 	}
 }
 
-// openMemoryReview shows queued proposals plus live memories from both
-// scopes in the Go-owned review overlay and applies the returned
-// deletions: queued proposals are dropped, stored memories are deleted
-// from their scope's DB.
+// openMemoryReview shows pending proposals plus stored memories from both
+// scopes in the Go-owned review overlay and applies the decisions by row
+// id: accepted proposals are stored, rejected ones dropped, deleted
+// memories removed from their scope's DB.
 func (h *Host) openMemoryReview() {
 	ui := h.hooks()
 	if ui == nil {
@@ -198,71 +202,97 @@ func (h *Host) openMemoryReview() {
 		h.memNotify("info", "memory", "no memories")
 		return
 	}
-	del := ui.ReviewMemories(rows)
-	removed := 0
-	for _, i := range del {
-		if i < 0 || i >= len(rows) {
-			continue
-		}
-		r := rows[i]
-		if r.Queued {
-			h.dropProposal(r.ID)
-			removed++
-			continue
-		}
-		if db := h.memoryDB(r.Scope); db != nil {
-			if err := db.DeleteMemory(r.ID); err != nil {
-				h.Log.Warn("memory", "delete failed", map[string]any{"id": r.ID, "error": err.Error()})
-				continue
+	decisions := ui.ReviewMemories(rows)
+	var accepted, rejected, deleted int
+	for _, r := range rows {
+		switch decisions[r.ID] {
+		case "accept":
+			if res := h.takeProposal(r.ID); res != nil {
+				if err := h.storeProposal(res); err != nil {
+					h.Log.Warn("memory", "accept failed", map[string]any{"id": r.ID, "error": err.Error()})
+					continue
+				}
+				accepted++
 			}
-			removed++
+		case "reject":
+			if h.takeProposal(r.ID) != nil {
+				rejected++
+			}
+		case "delete":
+			if db := h.memoryDB(r.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
+				deleted++
+			}
 		}
 	}
-	if removed > 0 {
-		h.memNotify("info", "memory", fmt.Sprintf("removed %d", removed))
+	if accepted+rejected+deleted > 0 {
+		h.memNotify("info", "memory", fmt.Sprintf("%d accepted, %d rejected, %d deleted", accepted, rejected, deleted))
 	}
 }
 
-func (h *Host) dropProposal(id string) {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	for i, p := range ag.memProposals {
-		if p.Memory.ID == id {
-			ag.memProposals = append(ag.memProposals[:i], ag.memProposals[i+1:]...)
-			return
-		}
-	}
-}
-
-// takeProposal removes and returns one queued proposal by id, or nil.
+// takeProposal removes one pending memory proposal by id and returns it,
+// or nil when no scope holds it.
 func (h *Host) takeProposal(id string) *learn.Result {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	for i, p := range ag.memProposals {
-		if p.Memory.ID == id {
-			ag.memProposals = append(ag.memProposals[:i], ag.memProposals[i+1:]...)
-			return p
+	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
+		if db == nil {
+			continue
 		}
+		p, err := db.TakeProposal(id)
+		if err != nil {
+			continue
+		}
+		h.refreshPending()
+		var m store.Memory
+		if json.Unmarshal([]byte(p.Payload), &m) != nil {
+			return nil
+		}
+		return &learn.Result{Memory: m}
 	}
 	return nil
 }
 
-// memoryRows merges queued proposals (first) and live memories from both
-// scopes, newest first within a scope.
-func (h *Host) memoryRows() []MemoryRow {
-	var rows []MemoryRow
+// memoryProposals lists pending memory proposals from both scopes.
+func (h *Host) memoryProposals() []store.Memory {
+	var out []store.Memory
+	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
+		if db == nil {
+			continue
+		}
+		rows, err := db.Proposals("memory")
+		if err != nil {
+			h.Log.Warn("memory", "proposal list failed", map[string]any{"error": err.Error()})
+			continue
+		}
+		for _, p := range rows {
+			var m store.Memory
+			if json.Unmarshal([]byte(p.Payload), &m) == nil {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// refreshPending recounts what awaits review for the statusline badge.
+func (h *Host) refreshPending() {
 	ag := h.agents
 	ag.mu.Lock()
-	for _, p := range ag.memProposals {
-		m := p.Memory
+	cfg := len(ag.cfgProposals)
+	ag.mu.Unlock()
+	h.pendingMemory.Store(int32(len(h.memoryProposals())))
+	h.pendingConfig.Store(int32(cfg))
+	h.refresh()
+}
+
+// memoryRows merges pending proposals (first) and stored memories from
+// both scopes, newest first within a scope.
+func (h *Host) memoryRows() []MemoryRow {
+	var rows []MemoryRow
+	for _, m := range h.memoryProposals() {
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
 			Text: m.Text, Tags: m.Tags, Queued: true,
 		})
 	}
-	ag.mu.Unlock()
 	appendScope := func(db *store.DB, scope string) {
 		list, err := db.ListMemory(scope, false)
 		if err != nil {

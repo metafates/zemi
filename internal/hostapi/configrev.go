@@ -229,21 +229,27 @@ func (h *Host) queueCfgProposal(p *cfgProposal) {
 	ag.mu.Lock()
 	ag.cfgProposals = append(ag.cfgProposals, p)
 	ag.mu.Unlock()
-	h.memNotify("info", "config", "config patch queued for review: "+p.Title)
+	h.refreshPending()
+	h.memNotify("info", "config", "queued for /config: "+p.Title)
 }
 
 // takeCfgProposal removes and returns one queued patch by id, or nil.
 func (h *Host) takeCfgProposal(id string) *cfgProposal {
 	ag := h.agents
 	ag.mu.Lock()
-	defer ag.mu.Unlock()
+	var taken *cfgProposal
 	for i, p := range ag.cfgProposals {
 		if p.ID == id {
 			ag.cfgProposals = append(ag.cfgProposals[:i], ag.cfgProposals[i+1:]...)
-			return p
+			taken = p
+			break
 		}
 	}
-	return nil
+	ag.mu.Unlock()
+	if taken != nil {
+		h.refreshPending()
+	}
+	return taken
 }
 
 // cfgRows snapshots the pending patches as review rows.

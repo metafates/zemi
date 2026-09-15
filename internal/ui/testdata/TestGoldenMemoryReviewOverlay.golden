@@ -1,14 +1,14 @@
                                                                       
                                                                       
                                                                       
-            ┌[38;2;16;16;20;48;2;90;247;142m Memory review [m─────────────────────────────┐            
-            │ [1m› [m[1m[ ] [m[1mgotcha · learned · project · queued[m  │            
-            │     [1mthe fts join needs m-qualified columns[m │            
-            │ [1m  [m[1m[ ] [mpreference · user · user (style)     │            
-            │     the user prefers short replies         │            
-            │                                            │            
-            │ [1m[d][m mark   [1m[enter][m apply   [1m[esc][m cancel    │            
-            └────────────────────────────────────────────┘            
+  ┌[38;2;16;16;20;48;2;90;247;142m Memory review [m────────────────────────────────────────────────┐   
+  │ [1m› [m[1m[ ] [m[1mgotcha · learned · project · proposal[m                   │   
+  │     [1mthe fts join needs m-qualified columns[m                    │   
+  │ [1m  [m[1m[ ] [mpreference · user · user (style)                        │   
+  │     the user prefers short replies                            │   
+  │                                                               │   
+  │ [1m[a][m accept   [1m[d][m reject/delete   [1m[enter][m apply   [1m[esc][m cancel │   
+  └───────────────────────────────────────────────────────────────┘   
                                                                       
                                                                       
 [38;2;86;95;137mno messages yet - type below, or / for commands[m                       

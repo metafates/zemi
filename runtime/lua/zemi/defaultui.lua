@@ -85,6 +85,26 @@ zemi.ui.widget.register({
   end,
 })
 
+-- Learned proposals waiting for review; they persist across restarts.
+zemi.ui.widget.register({
+  id = "statusline.learn",
+  region = "statusline.left",
+  priority = 30,
+  render = function(ctx)
+    local segs = {}
+    local function add(n, what, cmd)
+      if (n or 0) == 0 then return end
+      if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
+      segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title" }
+      segs[#segs + 1] = { text = " " .. cmd, hl = "Comment" }
+    end
+    add(ctx.pending_memory, "learned", "/memory")
+    add(ctx.pending_config, "config", "/config")
+    if #segs == 0 then return empty() end
+    return { segs }
+  end,
+})
+
 zemi.event.on("reflector.done", function(ev)
   if ev.error then
     zemi.notify.error({ title = "reflect failed", body = ev.error })

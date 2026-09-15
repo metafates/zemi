@@ -34,7 +34,7 @@ type UIHooks interface {
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
-	ReviewMemories(items []MemoryRow) (deleteIdx []int)
+	ReviewMemories(items []MemoryRow) map[string]string // row id -> accept, reject or delete
 	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
 	AskQuestion(q tools.Question) (answer string, ok bool)
 }
@@ -131,6 +131,10 @@ type Host struct {
 
 	md markdownCache
 
+	// pendingMemory/pendingConfig count proposals awaiting review for the
+	// statusline badge (refreshPending).
+	pendingMemory, pendingConfig atomic.Int32
+
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
 
@@ -194,6 +198,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		},
 		"zemi.reload": nil, // Go-reserved; never dispatched here
 	}
+	h.refreshPending()
 	return h
 }
 
@@ -632,6 +637,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
+	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
+	tb.RawSetString("pending_config", glua.LNumber(h.pendingConfig.Load()))
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
 	at := L.NewTable()

@@ -96,10 +96,6 @@ func run() error {
 	}()
 
 	_, err := p.Run()
-	if host.ShutdownReflectPending() {
-		fmt.Fprintln(os.Stderr, "zemi: reflecting on this session (up to 15s, ctrl+c skips)...")
-	}
-	host.ShutdownReflect()
 	return err
 }
 
@@ -304,6 +300,9 @@ func readyStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			settings.CloseBootWindow()
 			h.EmitOnState(g.L, "app.ready", nil)
+			// The last session is reflected in the background at startup,
+			// so quitting never waits on the reflector (DESIGN §10.3).
+			go h.ReflectLastSession()
 			return nil
 		},
 	}

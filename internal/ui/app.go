@@ -176,7 +176,7 @@ type modelPickMsg struct {
 
 type memReviewMsg struct {
 	items  []hostapi.MemoryRow
-	answer chan []int
+	answer chan map[string]string
 }
 
 type cfgReviewMsg struct {
@@ -273,7 +273,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.modelPick = &modelPickPrompt{items: msg.items, sel: msg.sel, answer: msg.answer}
 		a.frameGen++
 	case memReviewMsg:
-		a.memReview = &memReviewPrompt{items: msg.items, marked: map[int]bool{}, answer: msg.answer}
+		a.memReview = &memReviewPrompt{items: msg.items, actions: map[string]string{}, answer: msg.answer}
 		a.frameGen++
 	case cfgReviewMsg:
 		a.cfgReview = &cfgReviewPrompt{items: msg.items, sel: 0, answer: msg.answer}

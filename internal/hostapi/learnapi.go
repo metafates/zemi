@@ -6,7 +6,6 @@
 package hostapi
 
 import (
-	"github.com/metafates/zemi/internal/learn"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -15,12 +14,7 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("proposals", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
-		ag := h.agents
-		ag.mu.Lock()
-		queued := append([]*learn.Result(nil), ag.memProposals...)
-		ag.mu.Unlock()
-		for _, p := range queued {
-			m := p.Memory
+		for _, m := range h.memoryProposals() {
 			row := L.NewTable()
 			row.RawSetString("id", glua.LString(m.ID))
 			row.RawSetString("kind", glua.LString(m.Kind))
@@ -62,6 +56,7 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.learn.decide: %v", err)
 			return 0
 		}
+		h.memNotify("info", "learn", "stored: "+res.Memory.Text)
 		return 0
 	}))
 

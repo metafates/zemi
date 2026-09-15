@@ -17,7 +17,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -109,13 +108,12 @@ type agentHost struct {
 	thought    time.Duration
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
-	// at compaction; memProposals parks model-proposed memories behind the
-	// autonomy gate, memAuto counts auto-applies against the session cap,
-	// cfgProposals parks validated config patches for review, cfgAuto
-	// counts auto-applied rules against the rules cap, reflected counts
-	// closed sessions for the reflector every-N gate.
+	// at compaction; memAuto counts auto-applied memories against the
+	// session cap (memory proposals persist in the store), cfgProposals
+	// parks validated config patches for review, cfgAuto counts
+	// auto-applied rules against the rules cap, reflected counts closed
+	// sessions for the reflector every-N gate.
 	digest       string
-	memProposals []*learn.Result
 	memAuto      int
 	cfgProposals []*cfgProposal
 	cfgAuto      int

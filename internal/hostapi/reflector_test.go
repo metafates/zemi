@@ -124,20 +124,15 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 	if m.calls.Load() != 1 {
 		t.Fatalf("model calls=%d", m.calls.Load())
 	}
-	h.agents.mu.Lock()
-	queued := len(h.agents.memProposals)
-	h.agents.mu.Unlock()
-	if queued != 1 {
-		t.Fatalf("queued proposals=%d", queued)
+	props := h.memoryProposals()
+	if len(props) != 1 {
+		t.Fatalf("queued proposals=%d", len(props))
 	}
 	rows, err := h.DB.ListMemory("project", true)
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("ask mode must not store: rows=%d err=%v", len(rows), err)
 	}
-	h.agents.mu.Lock()
-	text := h.agents.memProposals[0].Memory.Text
-	prov := h.agents.memProposals[0].Memory.ProvenanceSessionID
-	h.agents.mu.Unlock()
+	text, prov := props[0].Text, props[0].ProvenanceSessionID
 	if text != "UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence" {
 		t.Fatalf("proposal text: %q", text)
 	}
@@ -225,10 +220,7 @@ func TestReflectScrubAndInstructionShape(t *testing.T) {
 	if !strings.Contains(rows[0].Text, "[redacted") {
 		t.Fatalf("expected redaction marker: %q", rows[0].Text)
 	}
-	h.agents.mu.Lock()
-	queued := len(h.agents.memProposals)
-	h.agents.mu.Unlock()
-	if queued != 1 {
+	if queued := len(h.memoryProposals()); queued != 1 {
 		t.Fatalf("instruction-shaped proposal not queued: %d", queued)
 	}
 }

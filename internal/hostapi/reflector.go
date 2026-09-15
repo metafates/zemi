@@ -24,10 +24,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// reflectShutdownCap bounds the shutdown reflect so quitting never hangs
-// long even with a generous configured timeout.
-const reflectShutdownCap = 15 * time.Second
-
 // Transcript budget for the reflect prompt: at most reflectMsgsMax
 // messages, each truncated to reflectMsgMax runes, tool outputs harder.
 const (
@@ -99,9 +95,9 @@ func (h *Host) reflectModelID() string {
 	return h.currentModelID(nil)
 }
 
-// reflectOnClose is the session-rollover trigger: a new session started,
-// so the previous one closed. Reflects it when the closed-session counter
-// hits the every-N gate.
+// reflectOnClose is the session-close trigger (/new, /resume, startup):
+// the closed session is reflected when the closed-session counter hits
+// the every-N gate and it has messages the reflector has not seen.
 func (h *Host) reflectOnClose(prevID string) {
 	if prevID == "" {
 		return
@@ -114,8 +110,39 @@ func (h *Host) reflectOnClose(prevID string) {
 	if n := h.reflectEveryN(); n == 0 || count%n != 0 {
 		return
 	}
+	if !h.reflectDue(prevID) {
+		return
+	}
 	h.runReflectDetached(prevID)
 }
+
+// ReflectLastSession runs at startup: the most recent session gets the
+// session-close treatment, so quitting never waits on a model call and
+// its proposals land in the persistent review queue (DESIGN §10.3).
+func (h *Host) ReflectLastSession() {
+	if h.DB == nil {
+		return
+	}
+	if list, err := h.DB.ListSessions(1); err == nil && len(list) == 1 {
+		h.reflectOnClose(list[0].ID)
+	}
+}
+
+// reflectDue reports whether a session has messages the reflector has not
+// seen; the seen count lives in kv, so a restart does not re-reflect.
+func (h *Host) reflectDue(sid string) bool {
+	if h.DB == nil {
+		return false
+	}
+	msgs, err := h.DB.Messages(sid)
+	if err != nil || len(msgs) == 0 {
+		return false
+	}
+	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
+	return seen != fmt.Sprint(len(msgs))
+}
+
+func reflectSeenKey(sid string) string { return "reflector.seen." + sid }
 
 // runReflectDetached starts one reflect run on its own goroutine and
 // reports whether it started; a second concurrent run is skipped (one
@@ -143,59 +170,6 @@ func (h *Host) runReflectDetached(sid string) bool {
 	return true
 }
 
-// ShutdownReflect runs the reflector over the live session once, after the
-// UI is gone: hooks are detached first (a review prompt would block
-// forever on a dead program), the run is bounded by the configured timeout
-// capped at reflectShutdownCap, and failures are logged. Under "ask"
-// autonomy everywhere it is skipped entirely: the proposals would park in
-// memory and die with the process (DESIGN §10.4), so the LLM call would be
-// pure burn and would freeze the quit for seconds.
-func (h *Host) ShutdownReflect() {
-	sid := h.AgentSessionID()
-	if sid == "" {
-		return
-	}
-	if !h.shutdownReflectUseful() {
-		h.Log.Info("reflector", "shutdown reflect skipped: autonomy ask parks proposals that die with the process", map[string]any{"session": sid})
-		return
-	}
-	if !h.reflectMu.TryLock() {
-		h.Log.Info("reflector", "shutdown reflect skipped: run already active", map[string]any{"session": sid})
-		return
-	}
-	defer h.reflectMu.Unlock()
-	h.SetUIHooks(nil)
-	timeout := h.reflectTimeout()
-	if timeout > reflectShutdownCap {
-		timeout = reflectShutdownCap
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	if err := h.reflectSession(ctx, sid); err != nil {
-		h.Log.Warn("reflector", "shutdown reflect failed", map[string]any{"session": sid, "error": err.Error()})
-	}
-}
-
-// ShutdownReflectPending reports whether ShutdownReflect would run: a live
-// session exists and some autonomy knob could persist its proposals.
-// main.go uses it to print a notice before the bounded wait.
-func (h *Host) ShutdownReflectPending() bool {
-	return h.AgentSessionID() != "" && h.shutdownReflectUseful()
-}
-
-// shutdownReflectUseful reports whether any autonomy knob is set to
-// "auto": under "ask" the shutdown reflect's output dies with the process.
-func (h *Host) shutdownReflectUseful() bool {
-	for _, path := range []string{"memory.autonomy", "config.autonomy"} {
-		if v, ok := h.Settings.Get(path); ok {
-			if s, ok := v.(string); ok && s == "auto" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // reflectSession runs one full reflect cycle for a session: prompt, turn,
 // parse, route. Synchronous; the caller owns the timeout.
 func (h *Host) reflectSession(ctx context.Context, sid string) error {
@@ -217,6 +191,9 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
 	cfgQueued, cfgApplied, cfgSkipped := h.applyConfigProposals(sid, proposal)
+	if msgs, err := h.DB.Messages(sid); err == nil {
+		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
+	}
 	h.Log.Info("reflector", "run complete", map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,

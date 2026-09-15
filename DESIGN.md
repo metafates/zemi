@@ -1167,8 +1167,11 @@ session summaries. Additional signals: explicit user teaching
 The reflector is a built-in Lua plugin (`zemi.meta.reflector`) whose
 sub-agent turn is driven by Go: `internal/learn` constructs a fantasy agent
 on the `task` profile (§6.3) and calls the Lua plugin for prompt assembly
-and proposal post-processing. Triggered on `session.close` (configurable:
-every session, every Nth, or manual `/reflect`). The `task` profile toolset
+and proposal post-processing. Triggered on `session.close`: `/new`,
+`/resume`, and at startup for the most recent session, so quitting never
+waits on a model call (configurable: every session, every Nth, or manual
+`/reflect`); a session is reflected again only once it has messages the
+reflector has not seen (the seen count persists in kv). The `task` profile toolset
 is restricted: session and memory read access, no bash, and no filesystem
 writes at all.
 
@@ -1228,9 +1231,9 @@ hide in a deny-rule pattern and ride into the git history. Proposal
 display fields (`provenance`, `risk`,
 `title`) are display-only: Go stamps the actual session id on intake,
 and the auto-apply decision reads only the classifier's verdict, never
-the proposal's own `risk`. The reflector runs detached with a timeout; if
-the app exits first, the
-run is skipped and logged.
+the proposal's own `risk`. The reflector runs detached with a timeout; a
+run cut off by exit is retried at the next startup, since the session
+still has unseen messages.
 
 ### 10.4 Proposal, validation, apply
 
@@ -1240,6 +1243,11 @@ run is skipped and logged.
   auto-accepts surfaced in the review UI; the total of auto-applied rules
   per session is capped too, whichever path added them). Accepting a
   config patch opens the diff view first.
+- Pending memory proposals persist in their scope's store (`proposals`
+  table) until accepted or rejected, so restarts never lose them; the
+  statusline shows how many wait for `/memory` and `/config`. In
+  `/memory`, `a` accepts a proposal, `d` rejects one or deletes a stored
+  memory, enter applies, esc changes nothing.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (512 chars), kind from a fixed enum, provenance required, tags scrubbed
   like text, and

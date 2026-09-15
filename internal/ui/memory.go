@@ -1,8 +1,8 @@
 // memory.go is the Go-owned memory review overlay (DESIGN §8, §10.4):
 // fixed chrome, no Lua participates in drawing or answering it. Rows list
-// queued proposals (flagged "queued") and stored memories from both
-// scopes; d/space toggle the delete mark, enter/esc/q close and return
-// the marked rows to the host.
+// pending proposals and stored memories from both scopes; a accepts a
+// proposal, d rejects a proposal or deletes a memory (again to unmark),
+// enter applies the marks by row id, esc closes without changes.
 package ui
 
 import (
@@ -11,43 +11,61 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// memReviewPrompt is one open review overlay. marked holds per-row delete
-// marks; the answer is the marked indices in row order.
 type memReviewPrompt struct {
-	items  []hostapi.MemoryRow
-	sel    int
-	marked map[int]bool
-	answer chan []int
+	items   []hostapi.MemoryRow
+	sel     int
+	actions map[string]string // row id -> accept | reject | delete
+	answer  chan map[string]string
 }
 
 // ReviewMemories implements hostapi.UIHooks: blocks the caller (the
-// host's review goroutine) until the user closes the overlay; returns the
-// marked row indices to delete.
-func (a *App) ReviewMemories(items []hostapi.MemoryRow) []int {
-	ch := make(chan []int, 1)
+// host's review goroutine) until the overlay closes.
+func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
+	ch := make(chan map[string]string, 1)
 	a.dispatch(memReviewMsg{items: items, answer: ch})
 	return <-ch
 }
 
-func (a *App) answerMemReview() {
+// answerMemReview closes the overlay, handing back the marks on apply.
+func (a *App) answerMemReview(apply bool) {
 	mr := a.memReview
 	a.memReview = nil
-	var del []int
-	if mr != nil {
-		for i := range mr.items {
-			if mr.marked[i] {
-				del = append(del, i)
-			}
+	if mr != nil && mr.answer != nil {
+		out := map[string]string{}
+		if apply {
+			out = mr.actions
 		}
-		if mr.answer != nil {
-			mr.answer <- del
-		}
+		mr.answer <- out
 	}
 	a.frameGen++
 }
 
+// markMemory toggles an action on the selected row: accept applies to
+// proposals only; d rejects a proposal or deletes a stored memory.
+func (a *App) markMemory(accept bool) {
+	mr := a.memReview
+	if mr == nil || mr.sel >= len(mr.items) {
+		return
+	}
+	it := mr.items[mr.sel]
+	action := "delete"
+	switch {
+	case accept && !it.Queued:
+		return
+	case accept:
+		action = "accept"
+	case it.Queued:
+		action = "reject"
+	}
+	if mr.actions[it.ID] == action {
+		delete(mr.actions, it.ID)
+	} else {
+		mr.actions[it.ID] = action
+	}
+}
+
 // spliceMemReview composes the review overlay over the chat area: one
-// header line and one text line per row, queued proposals flagged.
+// header line and one text line per row.
 func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, headerH, chatH int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	if len(mr.items) == 0 {
@@ -58,13 +76,13 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 		if i == mr.sel {
 			cur, hl = "› ", "Host:Bold"
 		}
-		mark := "[ ] "
-		if mr.marked[i] {
-			mark = "[x] "
+		mark := map[string]string{"accept": "[+] ", "reject": "[-] ", "delete": "[-] "}[mr.actions[it.ID]]
+		if mark == "" {
+			mark = "[ ] "
 		}
 		meta := it.Kind + " · " + it.Origin + " · " + it.Scope
 		if it.Queued {
-			meta += " · queued"
+			meta += " · proposal"
 		}
 		if len(it.Tags) > 0 {
 			meta += " (" + strings.Join(it.Tags, ", ") + ")"
@@ -73,13 +91,12 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 			{Text: cur, HL: "Host:Bold"},
 			{Text: mark, HL: "Host:Bold"},
 			{Text: meta, HL: hl},
-		})
-		body = append(body, []hostapi.Segment{
+		}, []hostapi.Segment{
 			{Text: "    "},
 			{Text: it.Text, HL: hl},
 		})
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("d", "mark", "enter", "apply", "esc", "cancel"))
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("a", "accept", "d", "reject/delete", "enter", "apply", "esc", "cancel"))
 	box := hostBox(" Memory review ", "Host:MemTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

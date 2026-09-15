@@ -27,7 +27,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case a.modelPick != nil:
 			a.answerPick("", false)
 		case a.memReview != nil:
-			a.answerMemReview()
+			a.answerMemReview(false)
 		case a.cfgReview != nil:
 			a.answerCfgReview()
 		case a.question != nil:
@@ -89,12 +89,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		switch key {
+		case "a":
+			a.markMemory(true)
 		case "d", " ":
-			if a.memReview.sel < len(a.memReview.items) {
-				a.memReview.marked[a.memReview.sel] = !a.memReview.marked[a.memReview.sel]
-			}
-		case "esc", "enter", "q":
-			a.answerMemReview()
+			a.markMemory(false)
+		case "enter":
+			a.answerMemReview(true)
+		case "esc", "q":
+			a.answerMemReview(false)
 		}
 		return nil
 	}

@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS kv (
 	updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proposals (
+	id TEXT PRIMARY KEY,
+	kind TEXT NOT NULL,
+	payload TEXT NOT NULL,
+	created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS config_revisions (
 	id TEXT PRIMARY KEY,
 	created_at INTEGER NOT NULL,
