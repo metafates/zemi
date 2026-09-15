@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -30,17 +29,6 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
-
-// secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
-
-func pathIsSecret(p string) bool {
-	base := strings.ToLower(filepath.Base(p))
-	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
-		ok, _ := filepath.Match(strings.ToLower(pat), base)
-		return ok
-	})
-}
 
 // inJail reports whether path is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {
@@ -97,17 +85,17 @@ func (h *Host) writeJails() []string {
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
 	case "fs.read", "lua.fs.read":
-		if pathIsSecret(arg) {
+		if perm.PathIsSecret(arg) {
 			return perm.Ask
 		}
 		if h.inJail(arg, h.readJails()...) {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":
-		if subject == "fs.write" && h.inScratch(arg) && !pathIsSecret(arg) {
+		if subject == "fs.write" && h.inScratch(arg) && !perm.PathIsSecret(arg) {
 			return perm.Allow
 		}
-		if h.inJail(arg, h.writeJails()...) && !pathIsSecret(arg) {
+		if h.inJail(arg, h.writeJails()...) && !perm.PathIsSecret(arg) {
 			return perm.Ask // write stays ask inside the jail too
 		}
 	}

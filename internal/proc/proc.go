@@ -21,10 +21,11 @@ import (
 const waitDelay = 2 * time.Second
 
 // NonInteractiveEnv keeps common tools from waiting on a person: no git
-// credential prompts, pagers or editors.
+// credential prompts, pagers or editors, and no colors or progress bars
+// spending the model's tokens.
 var NonInteractiveEnv = []string{
-	"GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "PAGER=cat", "GIT_EDITOR=true",
-	"PIP_NO_INPUT=1", "DEBIAN_FRONTEND=noninteractive",
+	"GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GH_PAGER=cat", "PAGER=cat", "GIT_EDITOR=true",
+	"PIP_NO_INPUT=1", "DEBIAN_FRONTEND=noninteractive", "NO_COLOR=1", "TERM=dumb",
 }
 
 var (

@@ -3,8 +3,20 @@ package perm
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
+
+// secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
+var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
+
+func PathIsSecret(p string) bool {
+	base := strings.ToLower(filepath.Base(p))
+	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
+		ok, _ := filepath.Match(strings.ToLower(pat), base)
+		return ok
+	})
+}
 
 // SafeCommand reports whether a bash command only reads, builds or tests:
 // every segment runs an allowlisted program with harmless arguments, nothing

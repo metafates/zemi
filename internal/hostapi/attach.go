@@ -110,7 +110,7 @@ func (h *Host) AttachPath(path string) string {
 		return "@" + rel
 	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
-	if fi.IsDir() || pathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
+	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return quotePath(path)
 	}
 	data, err := os.ReadFile(path)
