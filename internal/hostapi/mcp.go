@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -28,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -545,17 +545,13 @@ func (h *Host) openBrowser(u string) {
 	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return
 	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", u)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
-	default:
-		cmd = exec.Command("xdg-open", u)
+	argv := map[string][]string{"darwin": {"open"}, "windows": {"rundll32", "url.dll,FileProtocolHandler"}}[runtime.GOOS]
+	if argv == nil {
+		argv = []string{"xdg-open"}
 	}
-	if cmd.Start() == nil {
-		h.GoSafe("open browser", func() { _ = cmd.Wait() })
+	cmd := proc.Command(argv[0], append(argv[1:], u)...)
+	if proc.Start(cmd) == nil {
+		h.GoSafe("open browser", func() { _ = proc.Wait(cmd) })
 	}
 }
 

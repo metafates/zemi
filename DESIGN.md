@@ -823,8 +823,7 @@ UI extensibility contract:
   `keys = function(key) -> handled?` handler for widget-specific keys) ->
   composer (always focused; there are no modes). Overlays capture first,
   user maps override defaults, `zemi.keymap.del` unmaps.
-- Slash palette: typing the trigger character (`/` by default, config
-  `ui.palette.trigger`) in the composer opens a popup listing registered
+- Slash palette: typing `/` in the composer opens a popup listing registered
   commands, filtered case-insensitively as you type; `up`/`down`
   navigate, `tab` accepts (fills `/name `), `enter` submits the typed
   line, so `/name args` runs the command instead of sending to the
