@@ -1,8 +1,6 @@
-// Package tools ships the M1 built-in tools (DESIGN §6.4): bash, read,
-// write, edit, multiedit, glob, grep. Every tool passes the same
-// pipeline: schema validation, tool.pre events, the permission gate, the
-// Go implementation, then tool.post events. A failed gate or hook is a
-// tool error result, never a Go panic path.
+// Package tools ships the builtin model tools. Every call runs schema
+// validation, tool.pre, the permission gate, the tool, then tool.post;
+// failures are tool errors, never panics.
 package tools
 
 import (
@@ -99,13 +97,9 @@ type Pipeline struct {
 	RewriteLoosened bool
 }
 
-// check decides one request; tool.bash is special: the store normalizes
-// the command (segments, redirect gates, assignment gate) in one call.
-// Check exposes one permission check (host-side callers outside the
-// pipeline, e.g. Lua-namespace gates).
-func (p *Pipeline) Check(req Request) Verdict { return p.check(req) }
-
-func (p *Pipeline) check(req Request) Verdict {
+// Check decides one request; for tool.bash the store normalizes the
+// command (segments, redirect gates, assignment gate) in one call.
+func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	if plan && req.Subject == "fs.write" {
 		return Verdict{perm.Deny, "plan mode is on: no file changes (tab switches mode)", "mode:plan"}
@@ -121,17 +115,12 @@ func (p *Pipeline) check(req Request) Verdict {
 		}
 		return v
 	}
+	var o perm.Outcome
 	if req.Subject == "tool.bash" {
-		o := p.Store.CheckCommand(req.Arg, p.Principal)
-		switch o.Decision {
-		case perm.Allow:
-			return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)})
-		case perm.Deny:
-			return Verdict{perm.Deny, o.Reason, decidedBy(o)}
-		}
-		return p.resolveAsk(req, o.Reason)
+		o = p.Store.CheckCommand(req.Arg, p.Principal)
+	} else {
+		o = p.Store.Evaluate(req.Subject, req.Arg, p.Principal)
 	}
-	o := p.Store.Evaluate(req.Subject, req.Arg, p.Principal)
 	switch o.Decision {
 	case perm.Allow:
 		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)})
@@ -204,7 +193,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	}
 	for _, req := range t.subjects(input) {
 		req.Tool = t.info.Name
-		v := pipe.check(req)
+		v := pipe.Check(req)
 		if v.Decision != perm.Allow && pipe.Denied != nil {
 			pipe.Denied(t.info.Name, req, v)
 		}
@@ -215,13 +204,8 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
 		}
 	}
-	return t.runPost(ctx, pipe, input)
-}
-
-// runPost wraps run with the tool.post notification.
-func (t *tool) runPost(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	res, err := t.run(ctx, p, input)
-	return t.post(p, input, res), err
+	res, err := t.run(ctx, pipe, input)
+	return t.post(pipe, input, res), err
 }
 
 // post delivers the tool.post notification with a text summary of the
@@ -234,7 +218,6 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 	return res
 }
 
-// validate checks required fields and their types against the schema.
 func validate(info fantasy.ToolInfo, input map[string]any) error {
 	for _, r := range info.Required {
 		v, ok := input[r]
@@ -287,7 +270,7 @@ func SchemaProperties(schema map[string]any) map[string]any {
 
 // All returns the M1+M2 builtin set bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
-	mk := func(name, desc string, parallel bool, schema map[string]any, required []string,
+	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
 		subjects func(map[string]any) []Request,
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error)) fantasy.AgentTool {
 		if required == nil {
@@ -296,7 +279,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		return &tool{
 			info: fantasy.ToolInfo{
 				Name: name, Description: desc,
-				Parameters: SchemaProperties(schema), Required: required, Parallel: parallel,
+				Parameters: props, Required: required, Parallel: parallel,
 			},
 			subjects: subjects,
 			run:      run,
@@ -314,11 +297,8 @@ The call blocks until the command exits; at the timeout (default 60000 ms, up to
 Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Chain dependent steps with &&; send independent commands as separate calls in one response.`,
 			false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"command":    map[string]any{"type": "string"},
-					"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-				},
+				"command":    map[string]any{"type": "string"},
+				"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -328,12 +308,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. Output is cut at 10000 characters: page large files with offset and limit.", true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path":   map[string]any{"type": "string"},
-					"offset": map[string]any{"type": "number"},
-					"limit":  map[string]any{"type": "number"},
-				},
+				"path":   map[string]any{"type": "string"},
+				"offset": map[string]any{"type": "number"},
+				"limit":  map[string]any{"type": "number"},
 			},
 			[]string{"path"},
 			func(in map[string]any) []Request {
@@ -343,11 +320,8 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for changes to an existing file, and read a file before overwriting it.", false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path":    map[string]any{"type": "string"},
-					"content": map[string]any{"type": "string"},
-				},
+				"path":    map[string]any{"type": "string"},
+				"content": map[string]any{"type": "string"},
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
@@ -357,13 +331,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("edit", "Replace an exact substring in a file you have read. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. A multi-line old_string also matches when only whitespace differs.", false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path":        map[string]any{"type": "string"},
-					"old_string":  map[string]any{"type": "string"},
-					"new_string":  map[string]any{"type": "string"},
-					"replace_all": map[string]any{"type": "boolean"},
-				},
+				"path":        map[string]any{"type": "string"},
+				"old_string":  map[string]any{"type": "string"},
+				"new_string":  map[string]any{"type": "string"},
+				"replace_all": map[string]any{"type": "boolean"},
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
@@ -373,19 +344,16 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same matching rules as edit. If any edit fails, nothing is written.", false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]any{"type": "string"},
-					"edits": map[string]any{"type": "array", "items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"old_string":  map[string]any{"type": "string"},
-							"new_string":  map[string]any{"type": "string"},
-							"replace_all": map[string]any{"type": "boolean"},
-						},
-						"required": []string{"old_string", "new_string"},
-					}},
-				},
+				"path": map[string]any{"type": "string"},
+				"edits": map[string]any{"type": "array", "items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"old_string":  map[string]any{"type": "string"},
+						"new_string":  map[string]any{"type": "string"},
+						"replace_all": map[string]any{"type": "boolean"},
+					},
+					"required": []string{"old_string", "new_string"},
+				}},
 			},
 			[]string{"path", "edits"},
 			func(in map[string]any) []Request {
@@ -395,11 +363,8 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("glob", "List files whose path matches a glob pattern, searched under path (default: the project root). Use it instead of find or ls.", true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"pattern": map[string]any{"type": "string"},
-					"path":    map[string]any{"type": "string"},
-				},
+				"pattern": map[string]any{"type": "string"},
+				"path":    map[string]any{"type": "string"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -409,12 +374,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("grep", "Search file contents under path (default: the project root) with a Go regular expression (RE2: no lookaround or backreferences); include limits the files by glob, such as *.go. Use it instead of grep or rg in bash.", true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"pattern": map[string]any{"type": "string"},
-					"path":    map[string]any{"type": "string"},
-					"include": map[string]any{"type": "string"},
-				},
+				"pattern": map[string]any{"type": "string"},
+				"path":    map[string]any{"type": "string"},
+				"include": map[string]any{"type": "string"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -425,10 +387,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML is stripped). Every redirect hop is re-gated and private addresses are refused.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"url": map[string]any{"type": "string"},
-				},
+				"url": map[string]any{"type": "string"},
 			},
 			[]string{"url"},
 			func(in map[string]any) []Request {
@@ -439,18 +398,15 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("todos", "Track multi-step work (three or more steps, or several tasks from the user) in a list the user sees. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
 			false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"todos": map[string]any{"type": "array", "items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"content":     map[string]any{"type": "string"},
-							"status":      map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done"}},
-							"active_form": map[string]any{"type": "string", "description": "present tense shown while in progress, e.g. Running tests"},
-						},
-						"required": []string{"content", "status"},
-					}},
-				},
+				"todos": map[string]any{"type": "array", "items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"content":     map[string]any{"type": "string"},
+						"status":      map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done"}},
+						"active_form": map[string]any{"type": "string", "description": "present tense shown while in progress, e.g. Running tests"},
+					},
+					"required": []string{"content", "status"},
+				}},
 			},
 			nil,
 			func(in map[string]any) []Request { return nil },
@@ -459,19 +415,16 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("question", "Ask the user to choose between options when the decision is theirs: an ambiguous requirement that changes the result, or a real tradeoff. Returns the chosen label. Do not ask what you can find out yourself.",
 			false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"question":    map[string]any{"type": "string"},
-					"description": map[string]any{"type": "string"},
-					"options": map[string]any{"type": "array", "items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"label":       map[string]any{"type": "string"},
-							"description": map[string]any{"type": "string"},
-						},
-						"required": []string{"label"},
-					}},
-				},
+				"question":    map[string]any{"type": "string"},
+				"description": map[string]any{"type": "string"},
+				"options": map[string]any{"type": "array", "items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"label":       map[string]any{"type": "string"},
+						"description": map[string]any{"type": "string"},
+					},
+					"required": []string{"label"},
+				}},
 			},
 			[]string{"question", "options"},
 			func(in map[string]any) []Request { return nil },
@@ -480,11 +433,8 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("sourcegraph", "Search public open-source repositories on sourcegraph.com.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{"type": "string"},
-					"count": map[string]any{"type": "number"},
-				},
+				"query": map[string]any{"type": "string"},
+				"count": map[string]any{"type": "number"},
 			},
 			[]string{"query"},
 			func(in map[string]any) []Request {
@@ -495,12 +445,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"command": map[string]any{"type": "string"},
-					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-					"env":     map[string]any{"type": "object", "description": "extra environment variables"},
-				},
+				"command": map[string]any{"type": "string"},
+				"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"env":     map[string]any{"type": "object", "description": "extra environment variables"},
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -511,10 +458,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("job_read", "Read a background job's output so far (the first and last part when it is long) and whether it is still running.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id": map[string]any{"type": "string"},
-				},
+				"id": map[string]any{"type": "string"},
 			},
 			[]string{"id"},
 			func(in map[string]any) []Request { return nil },
@@ -522,10 +466,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("job_list", "List background jobs with their state.",
 			true,
-			map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
-			},
+			map[string]any{},
 			nil,
 			func(in map[string]any) []Request { return nil },
 			runJobList),
@@ -533,10 +474,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("job_kill", "Stop a background job and everything it started.",
 			false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id": map[string]any{"type": "string"},
-				},
+				"id": map[string]any{"type": "string"},
 			},
 			[]string{"id"},
 			func(in map[string]any) []Request { return nil },
@@ -545,13 +483,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("memory_add", "Save a durable lesson for future sessions in this project: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
 			false,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
-					"text":  map[string]any{"type": "string"},
-					"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}},
-					"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				},
+				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
+				"text":  map[string]any{"type": "string"},
+				"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}},
+				"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			},
 			[]string{"kind", "text"},
 			func(in map[string]any) []Request { return nil },
@@ -560,11 +495,8 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("memory_search", "Search memories saved in earlier sessions (facts, gotchas, preferences, conventions, decisions).",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{"type": "string"},
-					"limit": map[string]any{"type": "number"},
-				},
+				"query": map[string]any{"type": "string"},
+				"limit": map[string]any{"type": "number"},
 			},
 			[]string{"query"},
 			func(in map[string]any) []Request { return nil },
@@ -573,10 +505,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]any{"type": "string"},
-				},
+				"path": map[string]any{"type": "string"},
 			},
 			[]string{"path"},
 			func(in map[string]any) []Request {
@@ -596,10 +525,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("skill", "Load a skill's full instructions by name. Load it before acting whenever a skill's description matches the task.",
 			true,
 			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name": map[string]any{"type": "string"},
-				},
+				"name": map[string]any{"type": "string"},
 			},
 			[]string{"name"},
 			func(in map[string]any) []Request { return nil },

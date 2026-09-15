@@ -117,7 +117,7 @@ func parseNetURL(raw string) (*url.URL, error) {
 // netGate checks one hop against the net.<host> subject. The resolve-time
 // Control hook covers the IP side; this covers the hostname rules.
 func netGate(p *Pipeline, u *url.URL, reason string) error {
-	v := p.check(Request{Subject: "net." + u.Hostname(), Arg: u.Host, Reason: reason})
+	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.Host, Reason: reason})
 	if v.Decision != perm.Allow {
 		return fmt.Errorf("permission denied for %s: %s", u.Host, v.Reason)
 	}
@@ -216,7 +216,7 @@ func runSourcegraph(ctx context.Context, p *Pipeline, input map[string]any) (fan
 		count = int(v)
 	}
 	const host = "sourcegraph.com"
-	v := p.check(Request{Subject: "net." + host, Arg: host, Reason: "sourcegraph search"})
+	v := p.Check(Request{Subject: "net." + host, Arg: host, Reason: "sourcegraph search"})
 	if v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission denied: " + v.Reason), nil
 	}
