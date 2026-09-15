@@ -220,7 +220,7 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		}
 		lo, hi := hitSpan()
 		c := choices[hit-1]
-		return lo, hi, func() { a.answerPerm(c.ok, c.by) }, true
+		return lo, hi, func() { a.choosePerm(c) }, true
 	case top == "trust", top == "question", top == "cfgReview":
 		return 0, 0, nil, false
 	case top == "memReview":

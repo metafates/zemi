@@ -49,6 +49,24 @@ func TestComposerEdit(t *testing.T) {
 	run("word-to-newline", func(c *composerState) { c.insert("a\nb"); c.delWord() }, "a\n", 2)
 	run("del-start", func(c *composerState) { c.insert("one\ntwo"); c.cursor = 6; c.delToLineStart() }, "one\no", 4)
 	run("del-end", func(c *composerState) { c.insert("one\ntwo"); c.cursor = 1; c.delToLineEnd() }, "o\ntwo", 1)
+	run("word-left", func(c *composerState) { c.insert("one two  "); c.wordLeft() }, "one two  ", 4)
+	run("word-right", func(c *composerState) { c.insert("one two"); c.cursor = 0; c.wordRight(); c.wordRight() }, "one two", 7)
+}
+
+func TestComposerUndo(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	for _, r := range "hi there" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.composerKey("ctrl+w", tea.KeyPressMsg{})
+	var got []string
+	for range 4 {
+		app.composerKey("ctrl+z", tea.KeyPressMsg{})
+		got = append(got, app.composer.text)
+	}
+	if want := "hi there|hi |hi|"; strings.Join(got, "|") != want {
+		t.Fatalf("undo steps %q, want %q", got, want)
+	}
 }
 
 func TestComposerLineMoves(t *testing.T) {
@@ -115,6 +133,42 @@ func TestComposerHistory(t *testing.T) {
 	c2.pushHistory("x", 0)
 	if len(c2.history) != 0 {
 		t.Fatalf("disabled: %#v", c2.history)
+	}
+}
+
+func TestWrapComposer(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	for _, c := range []struct {
+		name, text string
+		w, cursor  int
+		rows       string
+		row, col   int
+	}{
+		{"empty", "", 8, 0, "", 0, 0},
+		{"breaks after space", "hello world", 8, 6, "hello |world", 1, 0},
+		{"splits long word", "abcdefghij", 4, 4, "abcd|efgh|ij", 1, 0},
+		{"cursor before newline", "a\nb", 8, 1, "a|b", 0, 1},
+		{"wide runes by cell", "你好世界", 5, 4, "你好|世界", 1, 2},
+	} {
+		app.composer.text, app.composer.cursor = c.text, c.cursor
+		row, col, rows := app.wrapComposer(c.w)
+		var got []string
+		for _, r := range rows {
+			got = append(got, string(r))
+		}
+		if strings.Join(got, "|") != c.rows || row != c.row || col != c.col {
+			t.Errorf("%s: rows %q cursor %d,%d", c.name, got, row, col)
+		}
+	}
+}
+
+func TestComposerHiddenRows(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composer.text = strings.Repeat("line\n", 9) + "end"
+	app.composer.cursor = len(app.composer.text)
+	rows := app.composerRows(40)
+	if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != "  +2 lines" {
+		t.Fatalf("rows %d, last %q", len(rows), plainSegs(rows[len(rows)-1]))
 	}
 }
 

@@ -17,9 +17,18 @@ import (
 // are no modes: the composer is always focused.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
-	a.frameGen++
 	a.mouse = mouseSel{}
 	top := a.topChrome()
+
+	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
+	// printable keys stay with the composer, and an open popup keeps its
+	// keys (tab accepts even though tab is bound). The composer is Go-drawn,
+	// so typing must not bump the frame generation: that would re-render
+	// every Lua widget on every keystroke.
+	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.open || !a.keySequence(key)) {
+		return a.composerKey(key, msg)
+	}
+	a.frameGen++
 
 	// Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
@@ -80,12 +89,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "right", "tab", "l":
 			pa.sel = (pa.sel + 1) % len(choices)
 		case "enter":
-			c := choices[pa.sel]
-			a.answerPerm(c.ok, c.by)
+			a.choosePerm(choices[pa.sel])
 		case "y", "o":
 			pick("user:once")
 		case "a":
 			pick("user:always")
+		case "t":
+			a.choosePerm(choices[len(choices)-1])
 		case "n", "esc":
 			a.answerPerm(false, "user")
 		case "j", "down", "shift+down":
@@ -140,13 +150,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.questionKey(key, keyText(msg))
 	case "overlay":
 		a.overlayKey(key, keyText(msg))
-	default:
-		// Keymaps (zemi.keymap.set) take single keys and bound sequences;
-		// printable keys stay with the composer, and an open popup keeps its
-		// keys (tab accepts even though tab is bound).
-		if a.palette.open || a.completion.open || !a.keySequence(key) {
-			return a.composerKey(key, msg)
-		}
 	}
 	return nil
 }
@@ -156,6 +159,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 // file scan should launch.
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	c := &a.composer
+	if key == "ctrl+z" {
+		c.undoLast()
+		a.updatePalette()
+		return a.updateCompletion()
+	}
+	t := keyText(msg)
+	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
 
 	// Popups take only the ctrl moves: plain k/j are typed text.
 	popupMove := 0
@@ -198,7 +208,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		a.submitComposer()
 		return nil
-	case "shift+enter", "alt+enter":
+	case "shift+enter", "alt+enter", "ctrl+j":
 		if !a.multiline() {
 			return nil
 		}
@@ -211,6 +221,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if strings.Contains(c.text, "\n") {
 			c.up()
 		} else {
+			a.seedHistory()
 			c.histPrev()
 		}
 	case "down":
@@ -220,6 +231,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			c.histNext()
 		}
 	case "ctrl+p":
+		a.seedHistory()
 		c.histPrev()
 		return nil
 	case "ctrl+n":
@@ -228,6 +240,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+v":
 		// terminals paste text themselves; this also reaches images
 		return a.pasteClipboard()
+	case "ctrl+g":
+		return a.openEditor()
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
 		// transcript, or else interrupts.
@@ -239,7 +253,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	default:
 		if !c.editKey(key) {
-			t := keyText(msg)
 			if t == "" {
 				return nil
 			}

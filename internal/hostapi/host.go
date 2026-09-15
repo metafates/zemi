@@ -79,7 +79,21 @@ type ChatMessage struct {
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
 	Diff   string // file tool rows: the applied change as "- "/"+ " lines
+	Output string // tool rows: the last lines of the result (outputTail)
 	Stat   *TurnStat
+}
+
+// outputTail keeps the last 10 lines of a tool result, each capped at 300
+// runes and sanitized, for the transcript row.
+func outputTail(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > 10 {
+		lines = lines[len(lines)-10:]
+	}
+	for i, l := range lines {
+		lines[i] = sanitize.String(truncRunes(l, 300))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // TurnStat summarizes one completed agent turn: token counts and wall
@@ -126,6 +140,10 @@ type Host struct {
 	tMu     sync.Mutex
 	session *Session
 	view    string // the agent run the chat shows instead of the session, "" for none
+
+	// trEpoch changes whenever the transcript is replaced (new, resume,
+	// rewind), so the chat widget can cache the rows of settled messages.
+	trEpoch atomic.Int64
 
 	watches  *watchReg
 	agents   *agentHost
@@ -253,6 +271,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.refreshPending()
 	h.recentStale.Store(true)
+	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	return h
 }
 
@@ -342,20 +361,30 @@ func (h *Host) OpenHelp() {
 	if ui == nil {
 		return
 	}
+	keys, cmds := h.Keymaps.List(), h.Commands.List()
+	pad := 0
+	for _, b := range keys {
+		pad = max(pad, len(b.Key))
+	}
+	for _, c := range cmds {
+		if !c.Hidden {
+			pad = max(pad, len(c.Name)+1)
+		}
+	}
 	var items []any
-	for _, b := range h.Keymaps.List() {
+	for _, b := range keys {
 		desc := b.Desc
 		if desc == "" {
 			desc = describeRHS(b.RHS)
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Key, desc)})
+		items = append(items, map[string]any{"text": fmt.Sprintf("%-*s  %s", pad, b.Key, desc)})
 	}
-	for _, c := range h.Commands.List() {
+	for _, c := range cmds {
 		if c.Hidden {
 			continue
 		}
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-12s %s", "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
+			"text": fmt.Sprintf("%-*s  %s", pad, "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
 		})
 	}
 	ui.OpenOverlay(Overlay{
@@ -729,6 +758,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 			row.RawSetString("elapsed", glua.LNumber(time.Since(t.Started).Seconds()))
 		}
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
+		row.RawSetString("output", glua.LString(t.Output))
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
@@ -744,6 +774,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("detail", glua.LString(m.Detail))
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
+		row.RawSetString("output", glua.LString(m.Output))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))
@@ -753,6 +784,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		tr.Append(row)
 	}
 	tb.RawSetString("transcript", tr)
+	// 0 while an agent run is shown: its rows mutate in place as the run
+	// goes, so the chat widget must not cache them.
+	epoch := h.trEpoch.Load()
+	if run != nil {
+		epoch = 0
+	}
+	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
 	if len(sess.Transcript) == 0 {
 		recent := L.NewTable()
 		for _, r := range h.recentSessions() {

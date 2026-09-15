@@ -33,6 +33,39 @@ func TestMarkdown(t *testing.T) {
 	`)
 }
 
+// TestMarkdownSplitRender: a long reply renders its settled prefix from the
+// cache and only the tail anew, with the same text as one whole render.
+func TestMarkdownSplitRender(t *testing.T) {
+	h, _ := newTestHost(t)
+	var b strings.Builder
+	for range 40 {
+		b.WriteString("some **bold** paragraph text that wraps a little\n\n")
+	}
+	b.WriteString("```go\nfunc f() {\n\treturn\n}\n```\n\nthe tail\n")
+	text := b.String()
+	if cut := settledPrefix(text); cut == 0 || cut >= len(text) {
+		t.Fatalf("settledPrefix = %d of %d", cut, len(text))
+	}
+	join := func(lines [][]Segment) string {
+		var out []string
+		for _, line := range lines {
+			var row strings.Builder
+			for _, s := range line {
+				row.WriteString(s.Text)
+			}
+			if strings.TrimSpace(row.String()) != "" {
+				out = append(out, row.String())
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	cfg, key := h.markdownStyle()
+	whole := join(h.md.render(cfg, key, text, 40))
+	if got := join(h.Markdown(text, 40)); got != whole {
+		t.Fatalf("split render differs:\n%s\n---\n%s", got, whole)
+	}
+}
+
 // TestMarkdownKeepsTabIndent: code indented with tabs keeps its indentation.
 func TestMarkdownKeepsTabIndent(t *testing.T) {
 	h, _ := newTestHost(t)

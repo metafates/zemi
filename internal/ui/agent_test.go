@@ -20,7 +20,7 @@ import (
 
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
-func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {
+func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
 	ctx := context.Background()
 	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
@@ -53,6 +53,38 @@ func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {
 	app.timeStr = "12:34"
 	app.now = func() time.Time { return time.UnixMilli(500) }
 	return app, host
+}
+
+// seedLongChat fills the session with a long conversation.
+func seedLongChat(host *hostapi.Host, turns int) {
+	for i := range turns {
+		host.AppendMessage("user", fmt.Sprintf("question %d about the build", i))
+		host.AppendTurnResult(strings.Repeat("a paragraph of the reply that wraps across the chat width. ", 6),
+			hostapi.TurnStat{Out: 200})
+	}
+}
+
+// BenchmarkStreamingFrame is one frame while a reply streams: the widget
+// re-renders and the transcript is re-wrapped.
+func BenchmarkStreamingFrame(b *testing.B) {
+	app, host := bootAgentApp(b, 100, 40)
+	seedLongChat(host, 100)
+	for i := 0; b.Loop(); i++ {
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: fmt.Sprintf("streaming token %d", i)})
+		app.frameGen++
+		app.renderSync(b)
+		_ = app.Frame()
+	}
+}
+
+// BenchmarkIdleFrame is a frame with nothing changed since the last one.
+func BenchmarkIdleFrame(b *testing.B) {
+	app, host := bootAgentApp(b, 100, 40)
+	seedLongChat(host, 100)
+	app.renderSync(b)
+	for b.Loop() {
+		_ = app.Frame()
+	}
 }
 
 // waitPrompt pumps queued hook messages onto the owning goroutine until
@@ -156,6 +188,31 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 	}
 	if app.permAsk != nil {
 		t.Fatal("queue should be empty")
+	}
+}
+
+// TestPermissionTellNarrow: at 30 columns the box keeps its right border
+// and stacks its buttons, and "t" denies the open ask and the queued one.
+func TestPermissionTellNarrow(t *testing.T) {
+	app, _ := bootAgentApp(t, 30, 30)
+	res := make(chan bool, 2)
+	for _, arg := range []string{"make test", "make lint"} {
+		go func() {
+			ok, _ := app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: arg})
+			res <- ok
+		}()
+	}
+	waitPrompt(t, app, func() bool { return app.permAsk != nil && len(app.permQueue) == 1 })
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "╮") || !strings.Contains(frame, "│  Yes ") || !strings.Contains(frame, "│  No, and tell") {
+		t.Fatalf("narrow box:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
+	for range 2 {
+		if <-res {
+			t.Fatal("tell must deny every ask")
+		}
 	}
 }
 
@@ -589,6 +646,13 @@ func TestDiffRows(t *testing.T) {
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("rows = %q", got)
 	}
+	got = nil
+	for _, row := range diffRows("@@ -1 +1 @@\n+alpha beta gamma delta", 20) {
+		got = append(got, strings.TrimRight(plainSegs(row), " "))
+	}
+	if want := []string{"   1 + alpha beta", "       gamma delta"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("wrapped rows = %q", got)
+	}
 }
 
 // TestToolRows: finished calls that only look around collapse into one
@@ -600,21 +664,34 @@ func TestToolRows(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
 		{Name: "read", Input: "b.go", Status: "ok"},
-		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok"},
+		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok", Output: "vet clean"},
 		{Name: "edit", Input: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7 +7 @@\n-old\n+new"},
-		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err"},
+		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err", Output: "--- FAIL: TestX"},
+		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./..."} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
+	if strings.Contains(frame, "vet clean") {
+		t.Fatalf("command output shows only with ctrl+o:\n%s", frame)
+	}
 	host.ToggleReasoning()
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") {
+	frame = ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
+	}
+	// an expanded long input wraps instead of ending in an ellipsis
+	var words int
+	for _, row := range strings.Split(frame, "\r\n") {
+		words += strings.Count(row, "pattern")
+	}
+	if words != 30 {
+		t.Fatalf("expanded input shows %d of 30 words:\n%s", words, frame)
 	}
 }
 

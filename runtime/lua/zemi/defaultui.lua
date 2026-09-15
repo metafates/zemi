@@ -103,6 +103,22 @@ local function clip(text, room)
   return table.concat(chars) .. "…"
 end
 
+-- chunks splits text into pieces of at most room cells (code wraps, never
+-- clips).
+local function chunks(text, room)
+  local out, cur, n = {}, {}, 0
+  for ch in text:gmatch(UTF8_CHAR) do
+    cur[#cur + 1] = ch
+    n = n + 1
+    if n == room then
+      out[#out + 1] = table.concat(cur)
+      cur, n = {}, 0
+    end
+  end
+  if #cur > 0 or #out == 0 then out[#out + 1] = table.concat(cur) end
+  return out
+end
+
 -- dot separates statusline groups.
 local function dot(segs)
   if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
@@ -333,6 +349,11 @@ zemi.ui.widget.register({
   end,
 })
 
+-- Rows of the settled transcript, kept across frames: while a reply
+-- streams the widget renders many times a second and only the live turn
+-- changes. One entry, replaced whenever its key changes.
+local chat_cache = {}
+
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
@@ -463,13 +484,15 @@ zemi.ui.widget.register({
       end
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""
+      -- expanded rows wrap (the widget wraps), collapsed ones stay one line
+      local function fit(text, room) return ctx.show_reasoning and text or clip(text, room) end
       local head = { { text = mark, hl = hl } }
       if label ~= "" then
-        head[#head + 1] = { text = clip(label, width - 12), hl = "Normal" }
+        head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
       else
         local verb = VERB[name] or name
         head[#head + 1] = { text = verb, hl = "AgentToolName" }
-        if input ~= "" then head[#head + 1] = { text = " " .. clip(input, width - cells(verb) - 12), hl = "Comment" } end
+        if input ~= "" then head[#head + 1] = { text = " " .. fit(input, width - cells(verb) - 12), hl = "Comment" } end
       end
       if t.status == "run" and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
@@ -478,7 +501,7 @@ zemi.ui.widget.register({
       -- under the row: the command a description stands for, then progress
       for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
         if sub ~= "" then
-          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = clip(sub, width - 6), hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = fit(sub, width - 6), hl = "Comment" } }
         end
       end
       -- File tools show what they changed as numbered, tinted rows.
@@ -504,14 +527,24 @@ zemi.ui.widget.register({
           if style then
             -- without a hunk header this is the input-only preview ("- old", "+ new"): no numbers
             local head = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
-            local body = clip((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), width - cells(head))
-            lines[#lines + 1] = {
-              { text = head, hl = style .. "Num" },
-              { text = body .. string.rep(" ", math.max(0, width - cells(head) - cells(body))), hl = style },
-            }
+            local room = math.max(width - cells(head), 1)
+            local blank_head = string.rep(" ", cells(head))
+            for j, part in ipairs(chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)) do
+              lines[#lines + 1] = {
+                { text = j == 1 and head or blank_head, hl = style .. "Num" },
+                { text = part .. string.rep(" ", math.max(0, room - cells(part))), hl = style },
+              }
+            end
           else
             lines[#lines + 1] = { { text = "        " .. dl, hl = "Comment" } }
           end
+        end
+      end
+      -- the result's last lines: always for a failure, for commands with ctrl+o
+      if (t.output or "") ~= "" and (t.status == "err" or (ctx.show_reasoning and name == "bash")) then
+        local ohl = t.status == "err" and "AgentToolErr" or "Comment"
+        for ol in (t.output .. "\n"):gmatch("(.-)\n") do
+          lines[#lines + 1] = { { text = "    " }, { text = ol, hl = ohl } }
         end
       end
     end
@@ -539,7 +572,16 @@ zemi.ui.widget.register({
     for i, m in ipairs(tr) do
       if m.kind == "reasoning" then last_reason = i end
     end
-    local i = 1
+    -- An agent run's transcript mutates in place and reports epoch 0, so
+    -- only the session's settled rows are cached.
+    local key = (ctx.transcript_epoch or 0) ~= 0 and table.concat({
+      ctx.transcript_epoch, #tr, width, tostring(ctx.show_reasoning), ctx.cwd or "" }, "|") or nil
+    local cached = key and chat_cache[key]
+    if cached then
+      for _, l in ipairs(cached.lines) do lines[#lines + 1] = l end
+      prev = cached.prev
+    end
+    local i = cached and (#tr + 1) or 1
     while i <= #tr do
       local m = tr[i]
       local next_i = i + 1
@@ -622,6 +664,11 @@ zemi.ui.widget.register({
         end
       end
       i = next_i
+    end
+    if key and not cached then
+      local snap = {}
+      for n, l in ipairs(lines) do snap[n] = l end
+      chat_cache = { [key] = { lines = snap, prev = prev } }
     end
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go

@@ -150,6 +150,36 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	})
 }
 
+// SessionPreview is what the session picker shows besides the title: how
+// many messages a session holds and the parts of its first user message.
+type SessionPreview struct {
+	Count     int
+	FirstJSON string
+}
+
+// SessionPreviews returns one preview per session; tool telemetry and
+// compaction tails have their own roles and stay out of the count.
+func (s *DB) SessionPreviews() (map[string]SessionPreview, error) {
+	rows, err := s.db.Query(`SELECT session_id, COUNT(*), COALESCE((
+			SELECT parts_json FROM messages f
+			WHERE f.session_id = m.session_id AND f.role = 'user' ORDER BY rowid LIMIT 1), '')
+		FROM messages m WHERE role IN ('user', 'assistant') GROUP BY session_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]SessionPreview{}
+	for rows.Next() {
+		var id string
+		var p SessionPreview
+		if err := rows.Scan(&id, &p.Count, &p.FirstJSON); err != nil {
+			return nil, err
+		}
+		out[id] = p
+	}
+	return out, rows.Err()
+}
+
 // Todo is one item of a session's todo list.
 type Todo struct {
 	Content    string

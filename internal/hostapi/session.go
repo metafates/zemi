@@ -89,6 +89,7 @@ func (h *Host) OpenSessions() error {
 		return errors.New("no sessions yet")
 	}
 	current := h.AgentSessionID()
+	previews, _ := h.DB.SessionPreviews() // best effort: a bare list still resumes
 	items := make([]any, 0, len(list))
 	for _, s := range list {
 		mark, title := "  ", s.Title
@@ -98,13 +99,68 @@ func (h *Host) OpenSessions() error {
 		if title == "" {
 			title = "(untitled)"
 		}
+		title = clipRunes(title, 32)
+		title += strings.Repeat(" ", max(0, 32-len([]rune(title))))
+		p := previews[s.ID]
+		var tail []string
+		if p.Count > 0 {
+			tail = append(tail, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
+		}
+		if line := firstUserLine(p.FirstJSON); line != "" {
+			tail = append(tail, line)
+		}
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%s%-7s  %s", mark, ago(s.UpdatedAt), title),
+			"text": strings.TrimRight(fmt.Sprintf("%s%-7s  %s  %s", mark, ago(s.UpdatedAt), title, strings.Join(tail, " · ")), " "),
 			"run":  "resume " + s.ID,
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items})
 	return nil
+}
+
+// InputHistory returns the messages typed in a session, oldest first, for
+// the composer history; "" reads the latest stored session.
+func (h *Host) InputHistory(sid string) []string {
+	if h.DB == nil {
+		return nil
+	}
+	if sid == "" {
+		list, err := h.DB.ListSessions(1)
+		if err != nil || len(list) == 0 {
+			return nil
+		}
+		sid = list[0].ID
+	}
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	_, tr := historyFrom(rows)
+	for _, m := range tr {
+		if m.Role == "user" && m.Kind == "" && strings.TrimSpace(m.Text) != "" {
+			out = append(out, m.Text)
+		}
+	}
+	return out
+}
+
+// firstUserLine is the first typed line of a stored user message, for the
+// session picker; attachments and later lines stay out.
+func firstUserLine(partsJSON string) string {
+	var m fantasy.Message
+	if partsJSON == "" || json.Unmarshal([]byte(partsJSON), &m) != nil {
+		return ""
+	}
+	var text strings.Builder
+	for _, part := range m.Content {
+		if p, ok := part.(fantasy.TextPart); ok {
+			text.WriteString(p.Text)
+		}
+	}
+	s, _, _ := strings.Cut(text.String(), attachMarker)
+	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
+	return truncRunes(sanitize.String(s), 60)
 }
 
 // closeSession detaches the live session (refused mid-turn) and fires its
@@ -134,6 +190,7 @@ func (h *Host) closeSession() (string, error) {
 func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Title, h.session.Transcript, h.view = title, tr, ""
+	h.trEpoch.Add(1)
 	h.tMu.Unlock()
 	h.refresh()
 }
@@ -183,8 +240,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				toolRow[p.ToolCallID] = len(tr)
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok"})
 			case fantasy.ToolResultPart:
-				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeError {
-					tr[i].Status = "err"
+				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
+					tr[i].Output = outputTail(agent.ToolOutput(p.Output))
+					if p.Output.GetType() == fantasy.ToolResultContentTypeError {
+						tr[i].Status = "err"
+					}
 				}
 			}
 		}

@@ -74,6 +74,14 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if err := db.AddToolCall(&ToolCall{MessageID: m.ID, Tool: "bash", InputJSON: `{}`, OK: false, ErrorKind: "denied", Denied: true, DecidedBy: "user"}); err != nil {
 		t.Fatal(err)
 	}
+	// Tool telemetry rows stay out of the picker preview.
+	if err := db.AddMessage(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`}); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := db.SessionPreviews()
+	if err != nil || prev["s1"].Count != 2 || prev["s1"].FirstJSON != m.PartsJSON {
+		t.Fatalf("preview: %+v %v", prev, err)
+	}
 }
 
 func TestTodosReplace(t *testing.T) {

@@ -1,10 +1,17 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -18,6 +25,33 @@ type composerState struct {
 	history []string
 	histIdx int // len(history) = live draft
 	draft   string
+
+	undo   []composerSnap // states before edits, for ctrl+z
+	typing bool           // the last key typed a word character
+}
+
+type composerSnap struct {
+	text   string
+	cursor int
+}
+
+// snapshot records the state before a key for ctrl+z when the key changed
+// the text; a run of typed word characters is one step.
+func (c *composerState) snapshot(prev composerSnap, word bool) {
+	if c.text != prev.text && !(word && c.typing) {
+		c.undo = append(c.undo, prev)
+		if len(c.undo) > 100 {
+			c.undo = c.undo[1:]
+		}
+	}
+	c.typing = word
+}
+
+func (c *composerState) undoLast() {
+	if n := len(c.undo); n > 0 {
+		c.text, c.cursor = c.undo[n-1].text, c.undo[n-1].cursor
+		c.undo, c.typing = c.undo[:n-1], false
+	}
 }
 
 func (c *composerState) runes() []rune { return []rune(c.text) }
@@ -154,6 +188,10 @@ func (c *composerState) editKey(key string) bool {
 		c.left()
 	case "right":
 		c.right()
+	case "alt+left", "alt+b", "ctrl+left":
+		c.wordLeft()
+	case "alt+right", "alt+f", "ctrl+right":
+		c.wordRight()
 	case "home", "ctrl+a":
 		c.lineStart()
 	case "end", "ctrl+e":
@@ -175,6 +213,28 @@ func (c *composerState) replace(start int, s string) {
 	r := c.runes()
 	c.text = string(r[:start]) + s + string(r[c.cursor:])
 	c.cursor = start + len([]rune(s))
+}
+
+func (c *composerState) wordLeft() {
+	r, i := c.runes(), c.cursor
+	for i > 0 && unicode.IsSpace(r[i-1]) {
+		i--
+	}
+	for i > 0 && !unicode.IsSpace(r[i-1]) {
+		i--
+	}
+	c.cursor = i
+}
+
+func (c *composerState) wordRight() {
+	r, i := c.runes(), c.cursor
+	for i < len(r) && unicode.IsSpace(r[i]) {
+		i++
+	}
+	for i < len(r) && !unicode.IsSpace(r[i]) {
+		i++
+	}
+	c.cursor = i
 }
 
 func (c *composerState) lineStart() { c.cursor, _ = c.lineSpan() }
@@ -234,6 +294,29 @@ func (c *composerState) pushHistory(text string, cap int) {
 	c.history = append(c.history, text)
 	if len(c.history) > cap {
 		c.history = c.history[len(c.history)-cap:]
+	}
+	c.histIdx = len(c.history)
+}
+
+// seedHistory adds the messages stored for the open session (or, before the
+// first send, the latest one) to the history, so a restart or a resume does
+// not lose them. It runs when a recall starts, once per session.
+// NOTE: reads the messages on the key loop; one session is small enough
+// (upgrade: load it in the background when the session opens).
+func (a *App) seedHistory() {
+	sid := a.host.AgentSessionID()
+	if a.histLoaded && sid == a.histSID {
+		return
+	}
+	a.histLoaded, a.histSID = true, sid
+	stored := a.host.InputHistory(sid)
+	if len(stored) == 0 {
+		return
+	}
+	c := &a.composer
+	c.history = append(slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) }), stored...)
+	if n := a.historySize(); n > 0 && len(c.history) > n {
+		c.history = c.history[len(c.history)-n:]
 	}
 	c.histIdx = len(c.history)
 }
@@ -300,6 +383,9 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		}
 		out = append(out, segs)
 	}
+	if hidden := len(rows) - len(out); hidden > 0 {
+		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment"}})
+	}
 	return out
 }
 
@@ -313,33 +399,81 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 	return []hostapi.Segment{{Text: string(r[:cursor]), HL: hl}, {Text: under, HL: "Host:Cursor"}, {Text: rest, HL: hl}}
 }
 
-// wrapComposer splits the text into visual rows of at most width runes,
-// splitting on newlines, and reports the cursor's row and column.
+// wrapComposer splits the text into visual rows of at most w cells, on
+// newlines and after the last space that fits (a word longer than a row is
+// split), and reports the cursor's row and rune column.
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 	w = max(w, 1)
 	r := []rune(a.composer.text)
-	cur := []rune{}
-	row := 0
+	type span struct{ s, e int }
+	var spans []span
+	start, width, brk := 0, 0, 0 // brk: the rune after the row's last space
 	for i, x := range r {
-		if i == a.composer.cursor {
-			cursorRow, cursorCol = row, len(cur)
-		}
 		if x == '\n' {
-			rows = append(rows, cur)
-			cur = nil
-			row++
+			spans = append(spans, span{start, i})
+			start, width, brk = i+1, 0, 0
 			continue
 		}
-		cur = append(cur, x)
-		if len(cur) == w {
-			rows = append(rows, cur)
-			cur = nil
-			row++
+		cw := ansi.StringWidth(string(x))
+		if width+cw > w && i > start {
+			end := i
+			if brk > start {
+				end = brk
+			}
+			spans = append(spans, span{start, end})
+			start, width, brk = end, ansi.StringWidth(string(r[end:i])), 0
+		}
+		width += cw
+		if x == ' ' {
+			brk = i + 1
 		}
 	}
-	rows = append(rows, cur)
-	if a.composer.cursor >= len(r) {
-		cursorRow, cursorCol = row, len(cur)
+	spans = append(spans, span{start, len(r)})
+	cur := a.composer.cursor
+	for n, sp := range spans {
+		// at a soft wrap the cursor belongs to the next row, at a newline to this one
+		if cur >= sp.s && (cur < sp.e || cur == sp.e && (n == len(spans)-1 || spans[n+1].s > sp.e)) {
+			cursorRow, cursorCol = n, cur-sp.s
+		}
+		rows = append(rows, r[sp.s:sp.e])
 	}
 	return cursorRow, cursorCol, rows
+}
+
+// editorMsg carries the draft an external editor saved.
+type editorMsg struct {
+	text string
+	err  error
+}
+
+// openEditor edits the draft in $VISUAL or $EDITOR (ctrl+g). It runs through
+// tea.ExecProcess instead of internal/proc because the editor needs the
+// terminal, which bubbletea hands over and takes back.
+func (a *App) openEditor() tea.Cmd {
+	f, err := os.CreateTemp("", "zemi-*.md")
+	if err != nil {
+		a.pushToast("error", "editor", err.Error())
+		return nil
+	}
+	path := f.Name()
+	_, err = f.WriteString(a.composer.expand(a.composer.text))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		a.pushToast("error", "editor", err.Error())
+		return nil
+	}
+	// sh splits an editor with flags ("code --wait") like a shell would
+	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"), "vi")
+	cmd := exec.Command("sh", "-c", editor+` "$1"`, "sh", path)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		defer os.Remove(path)
+		if err != nil {
+			return editorMsg{err: err}
+		}
+		b, err := os.ReadFile(path)
+		return editorMsg{text: strings.TrimRight(string(b), "\n"), err: err}
+	})
 }
