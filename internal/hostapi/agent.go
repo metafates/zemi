@@ -110,8 +110,9 @@ type agentHost struct {
 
 	// retryAt is when the next provider retry fires; retries counts them
 	// this turn (the working row counts down instead of looking stuck).
-	retryAt time.Time
-	retries int
+	retryAt    time.Time
+	retries    int
+	compacting bool // summarizing history before the next turn
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -245,17 +246,21 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	return append(out, h.luaFantasyTools()...)
 }
 
+// resolveModel picks the agent model for a profile (tests stub modelFn).
+func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
+	if h.modelFn != nil {
+		return h.modelFn()
+	}
+	id := h.currentModelID(p)
+	if id == "" {
+		return nil, fmt.Errorf("agent: no models registered")
+	}
+	return h.Providers.Resolve(id)
+}
+
 // ensureRunner builds the runner for the current profile and session.
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
-	var model fantasy.LanguageModel
-	var err error
-	if h.modelFn != nil {
-		model, err = h.modelFn()
-	} else if modelID := h.currentModelID(p); modelID == "" {
-		return nil, fmt.Errorf("agent: no models registered")
-	} else {
-		model, err = h.Providers.Resolve(modelID)
-	}
+	model, err := h.resolveModel(p)
 	if err != nil {
 		return nil, err
 	}
@@ -306,15 +311,22 @@ func (h *Host) AgentSend(text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	go func() {
-		for text != "" {
-			if err := runner.Send(context.Background(), h.expandAttachments(text)); err != nil && !errors.Is(err, agent.ErrTurnActive) {
-				h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
-			}
-			text = h.nextTurn()
-		}
-	}()
+	go h.runTurns(runner, text)
 	return nil
+}
+
+// runTurns sends text and every follow-up the queue produces on one
+// runner, compacting first whenever the last prompt filled the context.
+func (h *Host) runTurns(runner *agent.Runner, text string) {
+	for text != "" {
+		if h.compactDue() {
+			h.compactReporting(runner)
+		}
+		if err := runner.Send(context.Background(), h.expandAttachments(text)); err != nil && !errors.Is(err, agent.ErrTurnActive) {
+			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
+		}
+		text = h.nextTurn()
+	}
 }
 
 func (h *Host) startTurn(text string) {
@@ -669,6 +681,7 @@ type StreamSnapshot struct {
 	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
 	RetryIn   time.Duration // time until the next provider retry (0 when none waits)
 	Retries   int           // provider retries this turn
+	Compacting bool         // history is being summarized before the turn
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
@@ -711,7 +724,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	out.Tools = append(out.Tools, ag.tools...)
-	out.Retries = ag.retries
+	out.Retries, out.Compacting = ag.retries, ag.compacting
 	if d := time.Until(ag.retryAt); d > 0 {
 		out.RetryIn = d
 	}

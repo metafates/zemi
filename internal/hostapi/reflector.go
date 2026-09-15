@@ -335,7 +335,13 @@ func (h *Host) reflectModel() (fantasy.LanguageModel, error) {
 
 // reflectTurn runs the single-step tool-less headless turn.
 func (h *Host) reflectTurn(ctx context.Context, model fantasy.LanguageModel, prompt string) (string, error) {
-	ag := fantasy.NewAgent(model, fantasy.WithSystemPrompt(reflectorSystem))
+	return generateText(ctx, model, reflectorSystem, prompt)
+}
+
+// generateText runs one tool-less, single-step model call (reflector,
+// compaction) and returns its text.
+func generateText(ctx context.Context, model fantasy.LanguageModel, system, prompt string) (string, error) {
+	ag := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system))
 	res, err := ag.Generate(ctx, fantasy.AgentCall{
 		Messages: []fantasy.Message{{
 			Role:    fantasy.MessageRoleUser,

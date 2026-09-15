@@ -292,6 +292,23 @@ func TestPermissionPreview(t *testing.T) {
 	<-done
 }
 
+// TestReasoningExpanded: ctrl+o shows a finished thought as one header with
+// the text indented under it, no per-line gutter marks.
+func TestReasoningExpanded(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.AppendMessage("user", "why?")
+	host.AppendReasoning("first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
+	host.ToggleReasoning()
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "  ✻ thought 4.2s\n") && !strings.Contains(frame, "  ✻ thought 4.2s ") {
+		t.Fatalf("thought header missing:\n%s", frame)
+	}
+	if !strings.Contains(frame, "    first idea") || !strings.Contains(frame, "    second idea") || strings.Contains(frame, "⋮") {
+		t.Fatalf("expanded reasoning layout:\n%s", frame)
+	}
+}
+
 // TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
 // with a countdown so the turn does not look stuck.
 func TestWorkingRowRetry(t *testing.T) {

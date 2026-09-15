@@ -59,7 +59,7 @@ type Overlay struct {
 // block the chat widget collapses to a one-line summary).
 type ChatMessage struct {
 	Role   string
-	Kind   string // "", "reasoning" or "tool"
+	Kind   string // "", "reasoning", "tool" or "compact"
 	Text   string // tool rows: the input summary
 	Tool   string
 	Status string // tool rows: "ok" or "err"

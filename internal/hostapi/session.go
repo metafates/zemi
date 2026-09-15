@@ -57,6 +57,13 @@ func (h *Host) ResumeSession(id string) error {
 		return err
 	}
 	history, tr := historyFrom(rows)
+	// A compacted session resumes from its summary.
+	for i, r := range rows {
+		if r.ID == sess.SummaryMessageID {
+			history, _ = historyFrom(rows[i:])
+			break
+		}
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.sessionID = id
@@ -163,6 +170,10 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
 			s, _, _ = strings.Cut(s, attachMarker) // show what was typed
+			if strings.HasPrefix(s, compactPrefix) {
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "compacted earlier messages"})
+				continue
+			}
 		}
 		if s = strings.TrimSpace(s); s != "" {
 			role := "assistant"

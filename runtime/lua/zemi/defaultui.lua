@@ -170,9 +170,20 @@ zemi.ui.widget.register({
         lines[#lines + 1] = row
       end
     end
-    local function add_reasoning(text)
+    -- Reasoning: one "✻ thought 4.2s" header; ctrl+o (ctx.show_reasoning)
+    -- expands the text under it, indented and dim.
+    local function add_reasoning(label, text)
+      lines[#lines + 1] = { { text = "  ✻ " .. label, hl = "AgentReason" } }
+      if not ctx.show_reasoning then return end
+      local body = {}
       for rl in (text .. "\n"):gmatch("(.-)\n") do
-        lines[#lines + 1] = { { text = "  ⋮ ", hl = "Comment" }, { text = rl, hl = "AgentReason" } }
+        body[#body + 1] = rl
+      end
+      while #body > 0 and body[#body] == "" do
+        body[#body] = nil
+      end
+      for _, rl in ipairs(body) do
+        lines[#lines + 1] = { { text = "    " .. rl, hl = "AgentReason" } }
       end
     end
     -- One tool row: status mark (running marks pulse with the working
@@ -214,16 +225,14 @@ zemi.ui.widget.register({
       -- Blank lines separate turns: around each user message only.
       if i > 1 and (m.role == "user" or tr[i - 1].role == "user") then blank() end
       if m.kind == "reasoning" then
-        if ctx.show_reasoning then
-          add_reasoning(m.text)
-        else
-          local secs = fmt_secs(m.thought)
-          local label = "✻ thought" .. (secs and " " .. secs or "")
-          if i == last_reason then label = label .. " (ctrl+o to expand)" end
-          lines[#lines + 1] = { { text = "  " }, { text = label, hl = "AgentReason" } }
-        end
+        local secs = fmt_secs(m.thought)
+        local label = "thought" .. (secs and " " .. secs or "")
+        if i == last_reason and not ctx.show_reasoning then label = label .. " (ctrl+o to expand)" end
+        add_reasoning(label, m.text)
       elseif m.kind == "tool" then
         add_tool(m.tool, m.text, m.status)
+      elseif m.kind == "compact" then
+        lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
       elseif m.role == "user" then
         local first = true
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
@@ -251,7 +260,7 @@ zemi.ui.widget.register({
     if ag.active or #tools > 0 or text ~= "" then
       if #tr > 0 and tr[#tr].role == "user" then blank() end
       for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status) end
-      if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning(ag.reasoning) end
+      if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning("thinking", ag.reasoning) end
       if text ~= "" then add_markdown(text) end
       for _, q in ipairs(queued) do
         lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }

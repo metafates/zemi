@@ -106,6 +106,13 @@ func (s *DB) RenameSession(id, title string) error {
 	return err
 }
 
+// SetSummary points a session at the message its history resumes from.
+func (s *DB) SetSummary(id, messageID string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
+		messageID, now(), id)
+	return err
+}
+
 // AddUsage accumulates token counts and cost onto a session.
 func (s *DB) AddUsage(id string, prompt, completion int64, cost float64) error {
 	_, err := s.db.Exec(`UPDATE sessions SET
