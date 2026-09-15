@@ -8,6 +8,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/runtime"
 )
@@ -52,6 +53,25 @@ func TestSkillsCoverSurface(t *testing.T) {
 	for _, name := range names {
 		if _, skip := undocumented[name]; !skip && !strings.Contains(text, name) {
 			t.Errorf("no builtin skill mentions %q", name)
+		}
+	}
+}
+
+// TestBuiltinSkillDescriptionsFitIndex: the skills index cuts descriptions
+// at skillIndexDescMax, so a longer builtin one reaches the model clipped.
+func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.DataHome = t.TempDir()
+	if err := h.materializeBuiltinSkills(); err != nil {
+		t.Fatal(err)
+	}
+	found, warns := skills.Discover("", h.builtinSkillsDir(), "")
+	if len(found) == 0 || len(warns) > 0 {
+		t.Fatalf("builtin skills: %d found, warnings %v", len(found), warns)
+	}
+	for _, s := range found {
+		if n := len([]rune(s.Description)); n > skillIndexDescMax {
+			t.Errorf("%s description is %d runes, index shows %d", s.Name, n, skillIndexDescMax)
 		}
 	}
 }
