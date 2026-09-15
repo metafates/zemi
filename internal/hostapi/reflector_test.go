@@ -252,6 +252,35 @@ func TestReflectPromptWindow(t *testing.T) {
 	}
 }
 
+// TestReflectPromptMemoryIndex: the index is capped to the newest memories
+// with short ids and says how many exist.
+func TestReflectPromptMemoryIndex(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	var ids []string
+	for i := range reflectIndexMax + 2 {
+		m := &store.Memory{Scope: "project", Kind: "fact", Text: fmt.Sprintf("fact number %d.", i), ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
+		if err := h.DB.AddMemory(m); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, m.ID)
+	}
+	prompt, err := h.reflectPrompt(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, fmt.Sprintf("(newest %d of %d)", reflectIndexMax, reflectIndexMax+2)) ||
+		strings.Count(prompt, "[project/fact] fact number") != reflectIndexMax {
+		t.Fatalf("index not capped:\n%s", prompt)
+	}
+	for _, id := range ids {
+		if strings.Contains(prompt, id) {
+			t.Fatalf("full id %s in index", id)
+		}
+	}
+}
+
 // TestReflectSupersedeThroughReview: a queued supersede links on accept, and
 // replacing a user memory queues even under auto.
 func TestReflectSupersedeThroughReview(t *testing.T) {
