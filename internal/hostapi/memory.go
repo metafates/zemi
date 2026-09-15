@@ -101,7 +101,6 @@ func (h *Host) queueProposal(res *learn.Result) {
 		return
 	}
 	h.refreshPending()
-	h.memNotify("info", "memory", "queued for /memory: "+res.Memory.Text)
 }
 
 // applyProposal stores a proposal under auto autonomy and spends one unit
@@ -224,8 +223,17 @@ func (h *Host) openMemoryReview() {
 			}
 		}
 	}
-	if accepted+rejected+deleted > 0 {
-		h.memNotify("info", "memory", fmt.Sprintf("%d accepted, %d rejected, %d deleted", accepted, rejected, deleted))
+	var parts []string
+	for _, c := range []struct {
+		n    int
+		what string
+	}{{accepted, "accepted"}, {rejected, "rejected"}, {deleted, "deleted"}} {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.what))
+		}
+	}
+	if len(parts) > 0 {
+		h.memNotify("info", "memory", strings.Join(parts, ", "))
 	}
 }
 

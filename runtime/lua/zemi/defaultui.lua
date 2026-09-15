@@ -111,14 +111,14 @@ zemi.event.on("reflector.done", function(ev)
     return
   end
   local parts = {}
-  local function add(n, label)
-    if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. label end
+  local function add(n, one, many)
+    if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. (n == 1 and one or many) end
   end
-  add(ev.stored, "memories stored")
-  add(ev.queued, "memories queued for /memory")
-  add(ev.superseded, "superseded")
-  add(ev.config_applied, "config applied")
-  add(ev.config_queued, "config queued for /config")
+  add(ev.stored, "memory stored", "memories stored")
+  add(ev.queued, "memory to review in /memory", "memories to review in /memory")
+  add(ev.superseded, "memory superseded", "memories superseded")
+  add(ev.config_applied, "config rule applied", "config rules applied")
+  add(ev.config_queued, "config change to review in /config", "config changes to review in /config")
   local body = #parts > 0 and table.concat(parts, ", ") or "nothing worth keeping"
   zemi.notify({ title = "reflect", body = body })
 end)

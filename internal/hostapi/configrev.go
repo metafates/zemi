@@ -230,7 +230,6 @@ func (h *Host) queueCfgProposal(p *cfgProposal) {
 	ag.cfgProposals = append(ag.cfgProposals, p)
 	ag.mu.Unlock()
 	h.refreshPending()
-	h.memNotify("info", "config", "queued for /config: "+p.Title)
 }
 
 // takeCfgProposal removes and returns one queued patch by id, or nil.
