@@ -550,8 +550,17 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	sa.TextDelta("answer")
 	sa.ToolCallStart("t1", "bash", "ls")
 	sa.ToolCallEnd("t1", "bash", true, "")
+	sa.TextDelta("done")
 	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
 
+	// text streamed before a tool call stays above its row
+	var order []string
+	for _, m := range h.Session().Transcript {
+		order = append(order, m.Kind+":"+m.Text)
+	}
+	if got := strings.Join(order, " | "); got != "reasoning:pondering | :answer | tool:ls | :done" {
+		t.Fatalf("transcript order = %s", got)
+	}
 	last := h.Session().Transcript[len(h.Session().Transcript)-1]
 	if last.Role != "assistant" || last.Stat == nil {
 		t.Fatalf("last = %+v, want assistant with stats", last)

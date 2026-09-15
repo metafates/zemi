@@ -45,16 +45,16 @@ var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos":
 
 var builtinAgents = []AgentDef{
 	{
-		Name:        "general",
-		Description: "General-purpose agent for research and multi-step tasks: searching code, reading files, running commands and making edits.",
-		System:      "Complete the task with the tools, then report what you found or changed.",
-		Source:      "builtin",
-	},
-	{
 		Name:        "explore",
 		Description: "Fast read-only agent for finding code: files by pattern, symbols, how something works. It cannot edit files or run commands.",
 		Tools:       []string{"read", "glob", "grep", "fetch", "sourcegraph", "memory_search", "skill"},
 		System:      "You are read-only. Search broadly, read what matters, never guess. Report findings with file paths and line numbers.",
+		Source:      "builtin",
+	},
+	{
+		Name:        "general",
+		Description: "General-purpose agent for research and multi-step tasks: searching code, reading files, running commands and making edits.",
+		System:      "Complete the task with the tools, then report what you found or changed.",
 		Source:      "builtin",
 	},
 }
@@ -401,9 +401,9 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user"},
 			"prompt":      map[string]any{"type": "string", "description": "the full task"},
-			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run (default general)"},
+			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run: explore for reading and searching, general only when it must run commands or edit"},
 		},
-		Required: []string{"description", "prompt"},
+		Required: []string{"description", "prompt", "agent"},
 		Parallel: true,
 	}
 }

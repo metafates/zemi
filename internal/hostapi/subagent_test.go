@@ -158,6 +158,9 @@ func TestAgentDefs(t *testing.T) {
 		return out
 	}
 
+	if builtinAgents[1].Name != "general" {
+		t.Fatal("builtinAgents order changed; fix the general row below")
+	}
 	defs := get()
 	if _, ok := defs["tester"]; ok {
 		t.Fatal("project agents must wait for trust")
@@ -167,7 +170,7 @@ func TestAgentDefs(t *testing.T) {
 	for _, c := range []struct{ name, source, desc, tools, system string }{
 		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh."},
 		{"explore", "user", "my explorer", "read", "mine"},
-		{"general", "builtin", builtinAgents[0].Description, "", builtinAgents[0].System},
+		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System},
 		{"tester", "project", "runs tests", "", "x"},
 	} {
 		d, ok := defs[c.name]

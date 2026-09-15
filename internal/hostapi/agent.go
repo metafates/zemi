@@ -497,8 +497,20 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
+	// Text streamed before this call belongs above it: move it and the
+	// earlier (finished) tool rows into the transcript, in order, so the
+	// next step's text starts its own block instead of running on.
+	reason, tools, text := ag.reasonBuf, ag.tools, ag.textBuf
+	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
+	flush := strings.TrimSpace(text) != ""
+	if flush {
+		ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
+	}
 	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Status: "run"})
 	ag.mu.Unlock()
+	if flush {
+		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
+	}
 	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
 }
 
