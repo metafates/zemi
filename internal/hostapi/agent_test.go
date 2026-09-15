@@ -631,6 +631,35 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 }
 
+// TestConcurrentSendsQueue: two sends racing to start a turn run one after
+// the other, so the history keeps both messages.
+func TestConcurrentSendsQueue(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	errs := make(chan error, 2)
+	for _, text := range []string{"one", "two"} {
+		go func() { errs <- h.AgentSend(text) }()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitIdle(t, h)
+	h.agents.mu.Lock()
+	history := h.agents.runner.History
+	h.agents.mu.Unlock()
+	users := 0
+	for _, m := range history {
+		if m.Role == fantasy.MessageRoleUser {
+			users++
+		}
+	}
+	if users != 2 {
+		t.Fatalf("history keeps %d of 2 user messages", users)
+	}
+}
+
 // TestRetryRestreamsStep: a provider retry streams the step again from its
 // start, so the failed attempt's text is dropped instead of shown twice.
 func TestRetryRestreamsStep(t *testing.T) {

@@ -506,19 +506,29 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
+	// Held from here on: building the prompt waits on the interpreter, and a
+	// send arriving meanwhile must queue instead of starting a second turn.
+	ag.active = true
 	profName := ag.defProf
 	ag.mu.Unlock()
+	fail := func(err error) error {
+		ag.mu.Lock()
+		ag.active = false
+		ag.mu.Unlock()
+		h.refresh()
+		return err
+	}
 
 	p, err := h.resolveProfile(profName)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	if err := h.ensureSession(p, text); err != nil {
-		return err
+		return fail(err)
 	}
 	runner, err := h.ensureRunner(p)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 
 	ag.mu.Lock()
@@ -528,7 +538,6 @@ func (h *Host) AgentSend(text string) error {
 		runner.History = prev.History
 	}
 	ag.runner = runner
-	ag.active = true
 	ag.modelSeed = ""
 	ag.beginTurn()
 	ag.mu.Unlock()
