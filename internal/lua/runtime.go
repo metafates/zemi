@@ -30,6 +30,7 @@ type Runtime struct {
 
 	originMu sync.Mutex
 	frames   []frame
+	epoch    uint64 // bumped on reload; stamped into every pop
 
 	printHook func(origin, line string)
 	reloadMu  sync.Mutex
@@ -66,18 +67,24 @@ func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
 	r.printHook = fn
 }
 
-func (r *Runtime) PushFrame(origin Origin, path string) {
+// PushFrame pushes the origin of the chunk about to run and returns its
+// pop, for `defer r.PushFrame(...)()`. The pop carries the epoch and depth
+// it pushed at: a request the watchdog abandoned can return long after a
+// reload, and popping then would take a frame of the live generation and
+// misattribute its origin (DESIGN §4).
+func (r *Runtime) PushFrame(origin Origin, path string) func() {
 	r.originMu.Lock()
 	r.frames = append(r.frames, frame{origin: origin, path: path})
+	epoch, depth := r.epoch, len(r.frames)
 	r.originMu.Unlock()
-}
-
-func (r *Runtime) PopFrame() {
-	r.originMu.Lock()
-	if len(r.frames) > 0 {
-		r.frames = r.frames[:len(r.frames)-1]
+	return func() {
+		r.originMu.Lock()
+		defer r.originMu.Unlock()
+		if r.epoch != epoch || len(r.frames) < depth {
+			return
+		}
+		r.frames = r.frames[:depth-1]
 	}
-	r.originMu.Unlock()
 }
 
 // CurrentOrigin returns the origin of the chunk currently running on the
@@ -148,9 +155,11 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	}
 	// An abandoned request never pops its frame: a stale frame left on the
 	// stack would change require resolution and registration origins for
-	// the fresh generation.
+	// the fresh generation. The epoch bump disarms its pop, should it
+	// return later.
 	r.originMu.Lock()
 	r.frames = nil
+	r.epoch++
 	r.originMu.Unlock()
 	r.hot.Store(false)
 	gen, err := r.boot(ctx, steps)
@@ -239,8 +248,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 // host -> Lua entry point for UI-class work.
 func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, args ...any) ([]any, error) {
 	return r.Do(ctx, ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		r.PushFrame(origin, "callback")
-		defer r.PopFrame()
+		defer r.PushFrame(origin, "callback")()
 		base := L.GetTop()
 		L.Push(fn)
 		for _, a := range args {
@@ -281,8 +289,7 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	if err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
 	}
-	r.PushFrame(origin, rel)
-	defer r.PopFrame()
+	defer r.PushFrame(origin, rel)()
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
@@ -311,8 +318,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 			out(strings.Join(parts, "\t"))
 			return 0
 		}))
-		r.PushFrame(origin, rel)
-		defer r.PopFrame()
+		defer r.PushFrame(origin, rel)()
 		base := L.GetTop()
 		L.Push(fn)
 		if err := L.PCall(0, glua.MultRet, nil); err != nil {
@@ -497,8 +503,7 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 		return glua.LNil, fmt.Errorf("%s: %w", rel, cerr)
 	}
 	L := gen.L
-	r.PushFrame(origin, rel)
-	defer r.PopFrame()
+	defer r.PushFrame(origin, rel)()
 	L.Push(fn)
 	if perr := L.PCall(0, 1, nil); perr != nil {
 		return glua.LNil, fmt.Errorf("%s: %w", rel, perr)

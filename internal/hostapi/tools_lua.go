@@ -274,8 +274,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 func (h *Host) runLuaTool(t *luaTool, input map[string]any) (string, error) {
 	res, err := h.RT.Do(context.Background(), lua.ClassAgent, t.Timeout, 5*time.Second,
 		func(L *glua.LState) ([]any, error) {
-			h.RT.PushFrame(t.Origin, t.Path)
-			defer h.RT.PopFrame()
+			defer h.RT.PushFrame(t.Origin, t.Path)()
 			base := L.GetTop()
 			defer L.SetTop(base)
 			L.Push(t.Fn)

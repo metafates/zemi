@@ -562,8 +562,7 @@ func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, de
 	if hd.Once {
 		h.Events.drop(hd)
 	}
-	h.RT.PushFrame(hd.Origin, hd.Path)
-	defer h.RT.PopFrame()
+	defer h.RT.PushFrame(hd.Origin, hd.Path)()
 	handlerCtx, restore := setHandlerContext(L, deadline)
 	defer restore()
 	base := L.GetTop()
@@ -610,8 +609,7 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width int, state UIS
 			h.renderSize = 0
 			h.renderMu.Unlock()
 		}()
-		h.RT.PushFrame(w.Origin, w.Path)
-		defer h.RT.PopFrame()
+		defer h.RT.PushFrame(w.Origin, w.Path)()
 		base := L.GetTop()
 		L.Push(w.Render)
 		L.Push(h.widgetCtxTable(L, width, state))
@@ -864,8 +862,7 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 		return
 	}
 	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		h.RT.PushFrame(o.Origin, o.Path)
-		defer h.RT.PopFrame()
+		defer h.RT.PushFrame(o.Origin, o.Path)()
 		base := L.GetTop()
 		var itemV glua.LValue = glua.LNil
 		if item != nil {
@@ -890,8 +887,7 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
 	if o.OnClose != nil && !h.staleOverlay(o) {
 		_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			h.RT.PushFrame(o.Origin, o.Path)
-			defer h.RT.PopFrame()
+			defer h.RT.PushFrame(o.Origin, o.Path)()
 			base := L.GetTop()
 			L.Push(o.OnClose)
 			if err := L.PCall(0, 0, nil); err != nil {

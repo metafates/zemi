@@ -20,6 +20,27 @@ func newTestRuntime(t *testing.T) *Runtime {
 	return r
 }
 
+// TestLateFramePopIgnored: a request the watchdog abandoned can return
+// after a reload. Its pop must not take a frame of the live generation,
+// which would misattribute the running chunk's origin (DESIGN §4).
+func TestLateFramePopIgnored(t *testing.T) {
+	r := newTestRuntime(t)
+	stale := r.PushFrame(OriginProject, "old.lua")
+	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	live := r.PushFrame(OriginUser, "init.lua")
+
+	stale()
+	if got, path := r.CurrentOrigin(), r.CurrentPath(); got != OriginUser || path != "init.lua" {
+		t.Fatalf("after late pop: origin=%s path=%q, want user init.lua", got, path)
+	}
+	live()
+	if got := r.CurrentOrigin(); got != OriginHost {
+		t.Fatalf("after live pop: origin=%s, want %s", got, OriginHost)
+	}
+}
+
 // TestQueuePriorityOrder pins the queue's drain contract (DESIGN §4): while
 // the interpreter is occupied, requests queue; on drain the queue pops ui
 // first, then agent, then io, FIFO within a class.
