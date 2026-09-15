@@ -215,11 +215,16 @@ func (h *Host) buildSystem(p *Profile) string {
 	return h.systemWith(sys, files)
 }
 
-// systemWith appends project context files (nil = the defaults), the
-// skills index and the session digest to a base prompt.
+// systemWith appends instruction files, the skills index and the session
+// digest to a base prompt. files names explicit project files (a profile's
+// context.files); nil means instructionFiles.
 func (h *Host) systemWith(sys string, files []string) string {
 	if len(files) == 0 {
-		files = []string{"ZEMI.md", "AGENTS.md"}
+		files = h.instructionFiles()
+	} else {
+		for i, f := range files {
+			files[i] = filepath.Join(h.Dirs.ProjectDir, f)
+		}
 	}
 	budget := contextBudget
 	var sections string
@@ -227,7 +232,7 @@ func (h *Host) systemWith(sys string, files []string) string {
 		if budget <= 0 {
 			break
 		}
-		b, err := os.ReadFile(filepath.Join(h.Dirs.ProjectDir, f))
+		b, err := os.ReadFile(f)
 		if err != nil || len(b) == 0 {
 			continue
 		}
@@ -235,9 +240,49 @@ func (h *Host) systemWith(sys string, files []string) string {
 			b = b[:budget]
 		}
 		budget -= len(b)
-		sections += "\n\n## Project context: " + f + "\n" + string(b)
+		name := f
+		if rel, err := filepath.Rel(h.Dirs.RepoRoot(), f); err == nil && !strings.HasPrefix(rel, "..") {
+			name = rel
+		}
+		sections += "\n\n## Instructions: " + name + "\n" + string(b)
 	}
 	return h.withDigest(sys + sections + h.skillsIndexPrompt())
+}
+
+// instructionFiles lists the instruction files for this project, general
+// first: the user's <config>/AGENTS.md, then for each directory from the
+// repository root down to the working directory its ZEMI.md and AGENTS.md,
+// or CLAUDE.md when it has neither (repositories set up for Claude Code).
+func (h *Host) instructionFiles() []string {
+	var out []string
+	if h.Dirs.ConfigHome != "" {
+		out = append(out, filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"))
+	}
+	var dirs []string
+	root := h.Dirs.RepoRoot()
+	for dir := h.Dirs.ProjectDir; dir != ""; dir = filepath.Dir(dir) {
+		dirs = append([]string{dir}, dirs...)
+		if dir == root || filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	for _, dir := range dirs {
+		found := false
+		for _, name := range []string{"ZEMI.md", "AGENTS.md"} {
+			if p := filepath.Join(dir, name); fileExists(p) {
+				out, found = append(out, p), true
+			}
+		}
+		if p := filepath.Join(dir, "CLAUDE.md"); !found && fileExists(p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // withDigest appends the pinned session digest behind the project context

@@ -69,16 +69,7 @@ func (d Dirs) ProjectConfigDir() string {
 	// Started in a subdirectory, zemi still finds the repository's .zemi:
 	// search up to the directory holding .git. Outside a repository only
 	// ProjectDir counts, so a stray .zemi in a parent is never picked up.
-	root := d.ProjectDir
-	for dir := d.ProjectDir; ; dir = filepath.Dir(dir) {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			root = dir
-			break
-		}
-		if filepath.Dir(dir) == dir {
-			break
-		}
-	}
+	root := d.RepoRoot()
 	for dir := d.ProjectDir; ; dir = filepath.Dir(dir) {
 		if fi, err := os.Stat(filepath.Join(dir, ".zemi")); err == nil && fi.IsDir() {
 			return filepath.Join(dir, ".zemi")
@@ -88,6 +79,20 @@ func (d Dirs) ProjectConfigDir() string {
 		}
 	}
 	return filepath.Join(d.ProjectDir, ".zemi")
+}
+
+// RepoRoot is the nearest directory at or above ProjectDir holding .git,
+// or ProjectDir itself outside a repository.
+func (d Dirs) RepoRoot() string {
+	for dir := d.ProjectDir; dir != ""; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return d.ProjectDir
 }
 
 // PluginsDir is ~/.local/share/zemi/site/pack.

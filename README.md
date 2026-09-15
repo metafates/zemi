@@ -123,6 +123,10 @@ zemi.provider.register({
 zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```
 
+Instructions reach the model from `~/.config/zemi/AGENTS.md` (yours, every project), then
+`ZEMI.md` and `AGENTS.md` in each directory from the repository root down to where you
+started zemi; a directory with neither contributes its `CLAUDE.md`.
+
 Run `zemi` in your project. `/health` checks the model key, the store, `permissions.lua`,
 git and the reflector.
 
