@@ -298,3 +298,21 @@ func TestPostHookRuns(t *testing.T) {
 		t.Fatalf("denial post: %+v", posts)
 	}
 }
+
+// TestToolSchemasAreProperties guards the fantasy contract: Parameters is
+// the properties map (fantasy adds type/properties around it) and arrays
+// declare items, or strict providers refuse every request.
+func TestToolSchemasAreProperties(t *testing.T) {
+	for _, tl := range All(&Pipeline{}) {
+		info := tl.Info()
+		for name, spec := range info.Parameters {
+			m, ok := spec.(map[string]any)
+			if !ok {
+				t.Fatalf("%s.%s: property spec is %T, want an object", info.Name, name, spec)
+			}
+			if m["type"] == "array" && m["items"] == nil {
+				t.Fatalf("%s.%s: array without items", info.Name, name)
+			}
+		}
+	}
+}

@@ -205,11 +205,9 @@ func validate(info fantasy.ToolInfo, input map[string]any) error {
 		if !ok || v == nil {
 			return fmt.Errorf("missing required field %q", r)
 		}
-		if spec, ok := info.Parameters["properties"].(map[string]any); ok {
-			if ps, ok := spec[r].(map[string]any); ok {
-				if t, ok := ps["type"].(string); ok && !typeOK(t, v) {
-					return fmt.Errorf("field %q must be %s", r, t)
-				}
+		if ps, ok := info.Parameters[r].(map[string]any); ok {
+			if t, ok := ps["type"].(string); ok && !typeOK(t, v) {
+				return fmt.Errorf("field %q must be %s", r, t)
 			}
 		}
 	}
@@ -240,6 +238,17 @@ func typeOK(want string, v any) bool {
 	return true
 }
 
+// SchemaProperties returns what fantasy expects in ToolInfo.Parameters: it
+// wraps the value as {"type": "object", "properties": value}, so a whole
+// object schema there nests "type" as a property and strict providers
+// reject the tool.
+func SchemaProperties(schema map[string]any) map[string]any {
+	if p, ok := schema["properties"].(map[string]any); ok {
+		return p
+	}
+	return map[string]any{}
+}
+
 // All returns the M1+M2 builtin set bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, schema map[string]any, required []string,
@@ -248,7 +257,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		return &tool{
 			info: fantasy.ToolInfo{
 				Name: name, Description: desc,
-				Parameters: schema, Required: required, Parallel: parallel,
+				Parameters: SchemaProperties(schema), Required: required, Parallel: parallel,
 			},
 			subjects: subjects,
 			run:      run,
@@ -322,7 +331,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 				"type": "object",
 				"properties": map[string]any{
 					"path":  map[string]any{"type": "string"},
-					"edits": map[string]any{"type": "array"},
+					"edits": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 				},
 			},
 			[]string{"path", "edits"},
@@ -379,7 +388,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"todos": map[string]any{"type": "array"},
+					"todos": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 				},
 			},
 			nil,
@@ -393,7 +402,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 				"properties": map[string]any{
 					"question":     map[string]any{"type": "string"},
 					"description":  map[string]any{"type": "string"},
-					"options":      map[string]any{"type": "array"},
+					"options":     map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 				},
 			},
 			[]string{"question", "options"},
@@ -421,7 +430,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 				"type": "object",
 				"properties": map[string]any{
 					"command": map[string]any{"type": "string"},
-					"args":    map[string]any{"type": "array"},
+					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"env":     map[string]any{"type": "object"},
 				},
 			},
@@ -473,7 +482,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 					"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
 					"text":  map[string]any{"type": "string"},
 					"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}},
-					"tags":  map[string]any{"type": "array"},
+					"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
 			},
 			[]string{"kind", "text"},

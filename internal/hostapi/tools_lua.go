@@ -272,7 +272,7 @@ func (a *luaToolAdapter) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name:        a.t.Name,
 		Description: a.t.Desc,
-		Parameters:  a.t.Schema,
+		Parameters:  tools.SchemaProperties(a.t.Schema),
 		Required:    a.t.Required,
 		Parallel:    a.t.Parallel,
 	}
