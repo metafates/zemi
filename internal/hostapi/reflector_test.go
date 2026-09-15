@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -88,14 +89,8 @@ func (m *reflectStubModel) Model() string    { return "stub-1" }
 // the reflect prompt has material.
 func seedTranscript(t *testing.T, h *Host, sid string) {
 	t.Helper()
-	msg := func(role string, text string) {
-		parts := fmt.Sprintf(`{"role":%q,"content":[{"type":"text","text":%q}]}`, role, text)
-		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: parts}); err != nil {
-			t.Fatalf("AddMessage: %v", err)
-		}
-	}
-	msg("user", "the deploy script keeps failing")
-	msg("assistant", "fixed: it needs the labels sequence bumped first")
+	addText(t, h, sid, "user", "the deploy script keeps failing")
+	addText(t, h, sid, "assistant", "fixed: it needs the labels sequence bumped first")
 	if err := h.DB.AddMessage(&store.Message{
 		SessionID: sid, Role: "tool", PartsJSON: `{"tool":"bash","output":"ok"}`,
 	}); err != nil {
@@ -107,6 +102,18 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 	}
 	if err := h.DB.AddToolCall(&store.ToolCall{MessageID: msgID, Tool: "bash", OK: false}); err != nil {
 		t.Fatalf("AddToolCall: %v", err)
+	}
+}
+
+// addText stores a text message the way persistMessage does.
+func addText(t *testing.T, h *Host, sid, role, text string) {
+	t.Helper()
+	parts, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRole(role), Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}})
+	if err == nil {
+		err = h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
+	}
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
 	}
 }
 
@@ -203,6 +210,45 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	}
 	if fresh.ProvenanceSessionID != sid {
 		t.Fatalf("provenance=%q", fresh.ProvenanceSessionID)
+	}
+}
+
+// TestReflectPromptWindow: tool rows stay out, the newest messages win the
+// budget, and a re-reflection only shows messages after the last run.
+func TestReflectPromptWindow(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	for i := range reflectMsgsMax + 5 {
+		addText(t, h, sid, "user", fmt.Sprintf("note %d.", i))
+	}
+	msgs, _ := h.DB.Messages(sid)
+	for _, tc := range []struct {
+		name, seen   string
+		want, absent []string
+	}{
+		{"last messages", "", []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted"}, []string{"tool bash", "deploy script keeps failing", "note 0."}},
+		{"after seen", fmt.Sprint(len(msgs) - 2), []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := h.DB.SetKV(reflectSeenKey(sid), tc.seen); err != nil {
+				t.Fatal(err)
+			}
+			prompt, err := h.reflectPrompt(sid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range tc.want {
+				if !strings.Contains(prompt, s) {
+					t.Errorf("missing %q", s)
+				}
+			}
+			for _, s := range tc.absent {
+				if strings.Contains(prompt, s) {
+					t.Errorf("unexpected %q", s)
+				}
+			}
+		})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,12 +20,12 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// Transcript budget for the reflect prompt: at most reflectMsgsMax
-// messages, each truncated to reflectMsgMax runes, tool outputs harder.
+// Transcript budget for the reflect prompt: the last reflectMsgsMax user
+// and assistant messages, each truncated to reflectMsgMax runes. Tool calls
+// reach it only as usage stats.
 const (
 	reflectMsgsMax = 120
 	reflectMsgMax  = 400
-	reflectToolMax = 200
 )
 
 // reflectorSystem is the reflector prompt.
@@ -195,24 +196,27 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var b strings.Builder
-	b.WriteString("# Session transcript\n")
-	shown := 0
-	for _, m := range msgs {
-		if shown == reflectMsgsMax {
-			b.WriteString(fmt.Sprintf("... (%d more messages omitted)\n", len(msgs)-shown))
-			break
-		}
-		line := reflectLine(m)
-		if line == "" {
-			continue
-		}
-		shown++
-		b.WriteString(line + "\n")
+	// a session reflected before only shows what came after that run
+	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
+	if n, err := strconv.Atoi(seen); err == nil && n <= len(msgs) {
+		msgs = msgs[n:]
 	}
-	if shown == 0 {
+	var lines []string
+	for _, m := range msgs {
+		if line := reflectLine(m); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
 		return "", fmt.Errorf("reflector: session %s has no messages", sid)
 	}
+	var b strings.Builder
+	b.WriteString("# Session transcript\n")
+	if len(lines) > reflectMsgsMax {
+		fmt.Fprintf(&b, "... (%d earlier messages omitted)\n", len(lines)-reflectMsgsMax)
+		lines = lines[len(lines)-reflectMsgsMax:]
+	}
+	b.WriteString(strings.Join(lines, "\n") + "\n")
 	if stats, err := h.DB.ToolCallStats(sid); err == nil && len(stats) > 0 {
 		b.WriteString("\n# Tool usage\n")
 		for _, s := range stats {
@@ -253,31 +257,18 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 }
 
 func reflectLine(m *store.Message) string {
-	switch m.Role {
-	case "user", "assistant":
-		var fm fantasy.Message
-		if err := json.Unmarshal([]byte(m.PartsJSON), &fm); err != nil {
-			return ""
-		}
-		text := strings.TrimSpace(concatText(fm.Content))
-		if text == "" {
-			return ""
-		}
-		return m.Role + ": " + truncRunes(text, reflectMsgMax)
-	case "tool":
-		var parts struct {
-			Tool   string `json:"tool"`
-			Output string `json:"output"`
-		}
-		if err := json.Unmarshal([]byte(m.PartsJSON), &parts); err != nil {
-			return ""
-		}
-		if parts.Tool == "" {
-			return ""
-		}
-		return "tool " + parts.Tool + ": " + truncRunes(strings.TrimSpace(parts.Output), reflectToolMax)
+	if m.Role != "user" && m.Role != "assistant" {
+		return ""
 	}
-	return ""
+	var fm fantasy.Message
+	if err := json.Unmarshal([]byte(m.PartsJSON), &fm); err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(concatText(fm.Content))
+	if text == "" {
+		return ""
+	}
+	return m.Role + ": " + truncRunes(text, reflectMsgMax)
 }
 
 // concatText joins the text parts of a fantasy content slice.
