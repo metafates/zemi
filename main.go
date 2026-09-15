@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -172,6 +174,16 @@ func run(args []string) int {
 				app.Notify("error", "zemi", err.Error())
 			}
 		}
+	}()
+
+	// Closing the terminal sends SIGHUP, which ends the process without
+	// running the cleanup below, and jobs and servers would outlive zemi.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP, syscall.SIGTERM)
+	go func() {
+		<-sig
+		proc.KillAll()
+		os.Exit(130)
 	}()
 
 	_, err := p.Run()
