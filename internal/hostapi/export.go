@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -38,7 +39,13 @@ func (h *Host) ExportSession(path string) (string, error) {
 	} else if !filepath.IsAbs(path) {
 		path = filepath.Join(h.Dirs.ProjectDir, path)
 	}
-	title := sess.Title
+	// the user names this path, so it may leave the project; a secret-shaped
+	// target is still refused, and only user or builtin code reaches here
+	// (zemi.command.run gates Go commands by origin)
+	if h.secretPath(path) {
+		return "", fmt.Errorf("refusing to write over %s", path)
+	}
+	title := sanitize.String(sess.Title)
 	if title == "" {
 		title = "zemi session"
 	}
@@ -46,7 +53,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format("2006-01-02 15:04"))
 	for _, r := range rows {
 		if text, ok := userText(r); ok {
-			fmt.Fprintf(&b, "\n## You\n\n%s\n", text)
+			fmt.Fprintf(&b, "\n## You\n\n%s\n", sanitize.String(text))
 			continue
 		}
 		var m fantasy.Message
@@ -56,10 +63,11 @@ func (h *Host) ExportSession(path string) (string, error) {
 		var calls []string
 		for _, part := range m.Content {
 			if tc, ok := part.(fantasy.ToolCallPart); ok {
-				calls = append(calls, fmt.Sprintf("- `%s` %s", tc.ToolName, truncRunes(strings.Join(strings.Fields(toolSummary(tc.Input)), " "), 120)))
+				calls = append(calls, fmt.Sprintf("- `%s` %s", sanitize.String(tc.ToolName), sanitize.String(truncRunes(strings.Join(strings.Fields(toolSummary(tc.Input)), " "), 120))))
 			}
 		}
-		text := strings.TrimSpace(concatText(m.Content))
+		// a file the user later cats: model text must not carry escapes
+		text := strings.TrimSpace(sanitize.String(concatText(m.Content)))
 		if text == "" && len(calls) == 0 {
 			continue
 		}
@@ -90,6 +98,9 @@ func (h *Host) ForkSession() (string, error) {
 	if h.AgentActive() {
 		return "", errors.New("a turn is running; esc interrupts it")
 	}
+	if n := h.tasks.running(); n > 0 {
+		return "", fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+	}
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {
 		return "", err
@@ -104,14 +115,21 @@ func (h *Host) ForkSession() (string, error) {
 		return "", err
 	}
 	summary := ""
+	ids := make(map[string]string, len(rows))
 	for _, r := range rows {
 		copied := &store.Message{SessionID: id, Role: r.Role, PartsJSON: r.PartsJSON, CreatedAt: r.CreatedAt}
 		if err := h.DB.AddMessage(copied); err != nil {
 			return "", err
 		}
+		ids[r.ID] = copied.ID
 		if r.ID == sess.SummaryMessageID {
 			summary = copied.ID
 		}
+	}
+	// without them a rewind in the fork would cut the conversation and
+	// restore no files
+	if err := h.DB.CopyCheckpoints(sid, id, ids); err != nil {
+		return "", err
 	}
 	if summary != "" {
 		if err := h.DB.SetSummary(id, summary); err != nil {

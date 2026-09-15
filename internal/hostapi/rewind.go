@@ -82,6 +82,10 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if active {
 		return 0, errors.New("a turn is running; esc interrupts it")
 	}
+	// a detached run writing files would undo the restore right after it
+	if n := h.tasks.running(); n > 0 {
+		return 0, fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+	}
 	if sid == "" || h.DB == nil {
 		return 0, errors.New("no session to rewind")
 	}

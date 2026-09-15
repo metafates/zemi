@@ -174,7 +174,9 @@ func (h *Host) closeSession() (string, error) {
 	}
 	prev := ag.sessionID
 	h.recentStale.Store(true)
-	ag.sessionID, ag.runner, ag.steering = "", nil, nil
+	// turnMsgID too: a write arriving late would checkpoint against a
+	// message of the session just closed
+	ag.sessionID, ag.runner, ag.steering, ag.turnMsgID = "", nil, nil, ""
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.compactFails, ag.compacted = 0, false
