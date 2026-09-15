@@ -26,15 +26,16 @@ patterns from them instead of reinventing or guessing at APIs:
 
 ## Commands
 
-No Makefile, no CI, no lint config. Plain Go toolchain (module `github.com/metafates/zemi`,
-Go 1.27):
+A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 1.27).
+No CI, no lint config; `make check` is what a change has to pass:
 
 ```
-go build ./...          # build
-go test ./...           # full suite (~20s, all pure Go, no network, CGO not needed)
-go vet ./...            # must stay clean
-go test ./internal/ui -update   # regenerate UI golden files (internal/ui/testdata/*.golden)
-go run .                # run the TUI against your real ~/.config/zemi
+make check              # go vet ./... + go test ./... + a gofmt check, all must be clean
+make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
+make test               # full suite (~20s, all pure Go, no network, CGO not needed)
+make race               # go test -race ./internal/...
+make golden             # regenerate UI golden files (internal/ui/testdata/*.golden), then read the diff
+make fmt                # gofmt -w over the tracked Go files
 ```
 
 For testing against a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`,
