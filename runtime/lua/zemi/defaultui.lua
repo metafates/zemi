@@ -103,6 +103,22 @@ local function clip(text, room)
   return table.concat(chars) .. "…"
 end
 
+-- chunks splits text into pieces of at most room cells (code wraps, never
+-- clips).
+local function chunks(text, room)
+  local out, cur, n = {}, {}, 0
+  for ch in text:gmatch(UTF8_CHAR) do
+    cur[#cur + 1] = ch
+    n = n + 1
+    if n == room then
+      out[#out + 1] = table.concat(cur)
+      cur, n = {}, 0
+    end
+  end
+  if #cur > 0 or #out == 0 then out[#out + 1] = table.concat(cur) end
+  return out
+end
+
 -- dot separates statusline groups.
 local function dot(segs)
   if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
@@ -463,13 +479,15 @@ zemi.ui.widget.register({
       end
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""
+      -- expanded rows wrap (the widget wraps), collapsed ones stay one line
+      local function fit(text, room) return ctx.show_reasoning and text or clip(text, room) end
       local head = { { text = mark, hl = hl } }
       if label ~= "" then
-        head[#head + 1] = { text = clip(label, width - 12), hl = "Normal" }
+        head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
       else
         local verb = VERB[name] or name
         head[#head + 1] = { text = verb, hl = "AgentToolName" }
-        if input ~= "" then head[#head + 1] = { text = " " .. clip(input, width - cells(verb) - 12), hl = "Comment" } end
+        if input ~= "" then head[#head + 1] = { text = " " .. fit(input, width - cells(verb) - 12), hl = "Comment" } end
       end
       if t.status == "run" and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
@@ -478,7 +496,7 @@ zemi.ui.widget.register({
       -- under the row: the command a description stands for, then progress
       for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
         if sub ~= "" then
-          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = clip(sub, width - 6), hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = fit(sub, width - 6), hl = "Comment" } }
         end
       end
       -- File tools show what they changed as numbered, tinted rows.
@@ -504,11 +522,14 @@ zemi.ui.widget.register({
           if style then
             -- without a hunk header this is the input-only preview ("- old", "+ new"): no numbers
             local head = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
-            local body = clip((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), width - cells(head))
-            lines[#lines + 1] = {
-              { text = head, hl = style .. "Num" },
-              { text = body .. string.rep(" ", math.max(0, width - cells(head) - cells(body))), hl = style },
-            }
+            local room = math.max(width - cells(head), 1)
+            local blank_head = string.rep(" ", cells(head))
+            for j, part in ipairs(chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)) do
+              lines[#lines + 1] = {
+                { text = j == 1 and head or blank_head, hl = style .. "Num" },
+                { text = part .. string.rep(" ", math.max(0, room - cells(part))), hl = style },
+              }
+            end
           else
             lines[#lines + 1] = { { text = "        " .. dl, hl = "Comment" } }
           end

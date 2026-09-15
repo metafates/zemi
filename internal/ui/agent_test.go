@@ -635,6 +635,7 @@ func TestToolRows(t *testing.T) {
 		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok", Output: "vet clean"},
 		{Name: "edit", Input: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7 +7 @@\n-old\n+new"},
 		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err", Output: "--- FAIL: TestX"},
+		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
@@ -648,8 +649,17 @@ func TestToolRows(t *testing.T) {
 	}
 	host.ToggleReasoning()
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
+	frame = ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
+	}
+	// an expanded long input wraps instead of ending in an ellipsis
+	var words int
+	for _, row := range strings.Split(frame, "\r\n") {
+		words += strings.Count(row, "pattern")
+	}
+	if words != 30 {
+		t.Fatalf("expanded input shows %d of 30 words:\n%s", words, frame)
 	}
 }
 
