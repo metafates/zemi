@@ -25,8 +25,8 @@ Rules when editing:
 - Never hand-edit `permissions.lua`. zemi refuses a file it did not generate and then
   starts with no permanent rules. Add rules with `zemi.permission.rule` in init.lua or by
   answering `a` in a permission prompt.
-- Writes outside the project ask first and show the diff. Tell the user to run `/reload`
-  (exactly that, capital R) after editing init.lua; it rebuilds the Lua runtime.
+- Writes outside the project ask first and show the diff. zemi reloads when config files
+  change; `/reload` forces it.
 - Never write API keys into files. Providers name an environment variable.
 
 ## Providers and models
@@ -61,8 +61,7 @@ writable; prefer it over guessing. Common keys:
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`
 - `ui.completion.files`, `ui.completion.trigger`, `ui.completion.max_items`
 - `memory.digest_lines`
-- `memory.autonomy`, `config.autonomy` (`ask` or `auto`): settable only while init.lua
-  runs at startup, never later and never by project or plugin code
+- `memory.autonomy`, `config.autonomy` (`ask` or `auto`): host-owned; not settable from Lua
 - `permissions.mode`: `manual` (the user answers asks), `plan` (file changes are refused
   and every command asks, so the agent investigates and proposes a plan), `auto` (a model
   approves routine actions and hands the rest to the user) or `yolo` (every ask is

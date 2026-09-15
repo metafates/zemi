@@ -10,7 +10,7 @@ below is a file you write with your file tools; show the user what you wrote and
 
 | Scope | Directory | Loads |
 | --- | --- | --- |
-| every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, on `/reload` for Lua and commands |
+| every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, when the files change for Lua and commands |
 | this repository | `<repo>/.zemi/` | after the user trusts the project config: a prompt at start or on `/reload` |
 
 Always use the exact directories from the system prompt: `ZEMI_CONFIG_HOME` can move the

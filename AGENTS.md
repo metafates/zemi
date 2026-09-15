@@ -46,11 +46,11 @@ tests boot with empty dirs, so code that requires them needs explicit setup in t
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:66`) — order
+`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:94`) — order
 matters and permissions sit early so no userland code runs before the permanent store loads:
 host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
 builtin commands -> memory + reflector + config + skills commands -> agents (+ tasks),
-workflow (+ `/review`) and mcp commands ->
+workflow (+ `/review`), mcp and lsp commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
 plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/` (`init.lua`,
 `agents/`, `commands/`, `workflows/`; any of them triggers the one-time trust prompt that
@@ -74,7 +74,7 @@ After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine.
    Work from other goroutines (host hooks, Lua callbacks) is funneled through a hook
    channel drained by a persistent cmd (`internal/ui/hooks.go`). hostapi never imports
-   internal/ui — it defines `UIHooks` (internal/hostapi/host.go:26) and the App implements
+   internal/ui — it defines `UIHooks` (internal/hostapi/host.go:28) and the App implements
    it; keep that dependency direction (ui -> hostapi, never the reverse).
    Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or anything it
    calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
@@ -126,8 +126,9 @@ one-shot screening model, caching approvals and falling back to the user ask wit
 reason; `plan` denies writes and runs `SafeCommand` commands. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
-project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model. Unknown values read as manual. Only user
-config sets it; binding a key to the mode cycle is refused for other origins.
+project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
+User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
+Only user config sets it; binding a key to the mode cycle is refused for other origins.
 
 ### require (internal/lua/runtime.go)
 
@@ -352,8 +353,9 @@ next reload, not in-place).
   shadow it. Keep them out of any "make everything rebindable" refactor.
 - **No editor modes.** The composer is always focused; commands are slash commands typed in
   the composer (`/quit`, `/help`, `/config`, ...) with the palette popup for completion
-  (`internal/ui/palette.go`). Keymaps are single keys (`zemi.keymap.set(key, action)`,
-  `del`, `get`, `list`); printable keys stay with the composer, and an open palette or
+  (`internal/ui/palette.go`). Keymaps are keys or key sequences
+  (`zemi.keymap.set("<leader>m", action)`, `del`, `get`, `list`; `<leader>` is the
+  `keymap.leader` setting); printable keys stay with the composer, and an open palette or
   completion popup keeps its keys before keymaps are consulted.
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeAllMotion` (unless
   `ui.mouse = false`) so the wheel scrolls the transcript (the altscreen buffer has no
