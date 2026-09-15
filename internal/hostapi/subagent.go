@@ -49,14 +49,16 @@ var builtinAgents = []AgentDef{
 		Name:        "explore",
 		Description: "Fast read-only agent for finding code: files by pattern, symbols, how something works. It cannot edit files or run commands.",
 		Tools:       []string{"read", "glob", "grep", "fetch", "sourcegraph", "memory_search", "skill"},
-		System:      "You are a read-only search agent. Search broadly, read what matters, never guess. Your report goes to another agent, not the user: lead with the answer, cite paths relative to the project root with line numbers, and quote code only when the exact text matters.",
+		System:      "You are a read-only search agent. Search broadly, read what matters, never guess. Your report goes to another agent, not the user: lead with the answer, cite paths relative to the project root with line numbers, and quote code only when the exact text matters. If you did not find it, say so and say where you looked.",
 		Source:      "builtin",
 	},
 	{
 		Name:        "general",
 		Description: "General-purpose agent for research and multi-step tasks: searching code, reading files, running commands and making edits.",
-		System:      "Complete the task with the tools. Read before changing, prefer read, grep, glob and edit over bash, and never run a server, watcher or interactive program in bash (use job_start). Then report to the agent that sent you what you found or changed, with paths and line numbers, and anything you could not verify.",
-		Source:      "builtin",
+		// this replaces basePrompt rather than extending it, so the git and
+		// verification rules have to be said again here
+		System: "Complete the task with the tools. Read before changing, prefer read, grep, glob and edit over bash, and never run a server, watcher or interactive program in bash (use job_start). Do not commit, push or change git state unless the task says to. Verify what you changed with the narrowest test or build that covers it. Then report to the agent that sent you what you found or changed, with paths and line numbers, and anything you could not verify.",
+		Source: "builtin",
 	},
 }
 
@@ -453,10 +455,9 @@ func (h *Host) agentTool() fantasy.AgentTool { return &agentTool{h: h, defs: h.a
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Launch a subagent for a self-contained task. It works with its own context and tools and returns one final report." +
-		" Use it for broad searches and research that would flood your context, and for independent tasks in parallel:" +
-		" call the tool several times in one message. Prefer explore for questions about code; it only reads, so it never" +
+		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code; it only reads, so it never" +
 		" stops to ask the user for permission. The subagent cannot see this conversation: the prompt must carry" +
-		" everything it needs and say what to report back. Its report is not shown to the user; relay what matters." +
+		" everything it needs, say what to report back and say how to verify the work. Its report is not shown to the user; relay what matters." +
 		" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
 		" as a message, so keep working (or end your turn) meanwhile.\n\nAgents:")
 	names := make([]string, 0, len(t.defs))

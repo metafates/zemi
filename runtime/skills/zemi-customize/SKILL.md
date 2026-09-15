@@ -42,6 +42,9 @@ return agent("Write a PR description (motivation, changes, how to test) from:\n"
 - `parallel({ fn, ... })` returns `results, errs`; up to 5 agents run at once, 100 per run.
 - Do not call `agent` or `parallel` inside `pcall`, `table.sort` or `string.gsub` callbacks.
 - Workflow files are read when they run: no reload needed.
+- Keep one the user wants again in `~/.config/zemi/workflows/<name>.lua` (every project) or
+  `<project>/.zemi/workflows/<name>.lua` (shared through git, once the user has trusted the
+  project config). It then runs as `/workflow <name>`, or by name from the workflow tool.
 
 ## Subagents (`agents/<name>.md`)
 

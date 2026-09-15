@@ -700,7 +700,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				return fantasy.NewTextResponse(out), nil
 			}),
 
-		mk("skill", "Load a skill's full instructions by name. Load it before acting whenever a skill's description matches the task.",
+		mk("skill", "Load a skill's full instructions by name.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},

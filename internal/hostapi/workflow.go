@@ -580,16 +580,14 @@ The script runs in a sandbox with Lua's base, string, table and math libraries a
 - phase(name) labels progress for the user; log(...) records a line returned with the result.
 - json.encode(v), json.decode(s) (decode tolerates prose around the JSON); args holds the tool's args.
 The script's return value is the tool result (tables come back as JSON). agent() and parallel() cannot run inside pcall or library callbacks (table.sort, string.gsub). No file or network access: only agents act.
-To keep a workflow the user wants again, write the script with your file tools to <user config>/workflows/<name>.lua (every project, usable at once) or <project config>/workflows/<name>.lua (this repository, usable after the user trusts the project config on /reload), starting with -- comment lines that describe it; it then runs as /workflow <name> or with name instead of script. The system prompt names both directories.
+To keep one the user wants again, save it as a file (the zemi-customize skill has the directories) with leading -- comment lines describing it; it then runs by name.
 
 Example:
   phase("review")
-  local lenses = {"correctness", "security", "simplicity"}
+  local lens = {"correctness", "security"}
   local jobs = {}
-  for _, lens in ipairs(lenses) do
-    jobs[#jobs + 1] = function()
-      return agent("Review the diff from 'git diff main' for " .. lens .. " issues. Report each with file:line.", {agent = "explore"})
-    end
+  for _, l in ipairs(lens) do
+    jobs[#jobs + 1] = function() return agent("Review 'git diff main' for " .. l .. " issues, each with file:line.", {agent = "explore"}) end
   end
   local reports = parallel(jobs)
   phase("verify")
