@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -315,21 +316,33 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	y0 := chatTop + (chatBottom-chatTop-bh)/2
 	for i := 0; i < bh; i++ {
 		bw := segsWidth(box[i])
-		x0 := (w - bw) / 2
-		if x0 < 1 {
-			x0 = 1
-		}
-		row := []hostapi.Segment{}
-		if x0 > 0 {
-			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", x0)})
-		}
+		x0 := max((w-bw)/2, 1)
+		// composite: what the box does not cover stays visible
+		under := rows[y0+i]
+		row := padSegs(truncateSegs(under, x0), x0)
 		row = append(row, box[i]...)
-		if pad := w - x0 - bw; pad > 0 {
-			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad)})
-		}
-		rows[y0+i] = row
+		row = append(row, dropCells(under, x0+bw)...)
+		rows[y0+i] = padSegs(truncateSegs(row, w), w)
 	}
 	return rows
+}
+
+// dropCells removes the first n display cells of a row.
+func dropCells(segs []hostapi.Segment, n int) []hostapi.Segment {
+	var out []hostapi.Segment
+	for _, s := range segs {
+		sw := ansi.StringWidth(s.Text)
+		if n >= sw {
+			n -= sw
+			continue
+		}
+		if n > 0 {
+			s.Text = ansi.TruncateLeft(s.Text, n, "")
+			n = 0
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 func max0(n int) int {

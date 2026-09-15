@@ -4,11 +4,11 @@
                                                                                 
                                                                                 
                                                                                 
-                                                                                
-[38;2;122;162;247m▌ [m[38;2;122;162;247mwhy does the build fail?[m                                                      
+[38;2;122;162;247m▌ [m[38;2;192;202;245mwhy does the build fail?[m                                                      
                                                                                 
 [3;38;2;86;95;137m  ✻ thought 4.2s (ctrl+o to expand)[m                                             
   [38;2;192;202;245mThe test binary exits 1 because the fixture path moved.[m                       
 [38;2;86;95;137m  38.0s · 1.2k out[m                                                              
+                                                                                
 [38;2;86;95;137m> [m[38;2;86;95;137m▏[m
 [38;2;86;95;137;48;2;36;40;59m manual [m                                                                        

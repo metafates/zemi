@@ -162,6 +162,9 @@ func (h *Host) defaultSystemPrompt() string {
 		" files; destructive or unusual actions need a clear reason." +
 		" You run inside zemi: when the user asks about zemi itself (its config," +
 		" Lua API, errors or what it learned), load the matching zemi-* skill first." +
+		" To change zemi itself (its UI, keys, commands, subagents, workflows), write Lua or markdown" +
+		" config under ~/.config/zemi or the project's .zemi after loading the zemi-customize skill;" +
+		" never edit zemi's own source code for that." +
 		delegationPrompt
 }
 

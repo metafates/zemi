@@ -375,7 +375,7 @@ zemi.ui.widget.register({
 
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
-      return splash(ctx)
+      return empty() -- the splash widget fills the empty chat
     end
     -- Only the latest collapsed reasoning line carries the expand hint.
     local last_reason = 0
@@ -418,10 +418,18 @@ zemi.ui.widget.register({
           first = false
         end
       elseif m.role == "user" then
-        local first = true
-        for text in (m.text .. "\n"):gmatch("(.-)\n") do
-          lines[#lines + 1] = { { text = first and "▌ " or "  ", hl = "UserMsg" }, { text = text, hl = "UserMsg" } }
-          first = false
+        -- markdown like replies, but typed line breaks stay (outside code
+        -- fences a trailing double space makes a hard break)
+        local src, fence = {}, false
+        for l in (m.text .. "\n"):gmatch("(.-)\n") do
+          local marker = l:match("^%s*```") ~= nil
+          if marker then fence = not fence end
+          src[#src + 1] = (fence or marker) and l or (l .. "  ")
+        end
+        for _, segs in ipairs(zemi.ui.markdown(table.concat(src, "\n"), width - 2)) do
+          local row = { { text = "▌ ", hl = "UserMsg" } }
+          for _, s in ipairs(segs) do row[#row + 1] = s end
+          lines[#lines + 1] = row
         end
       else
         add_markdown(m.text)
@@ -473,6 +481,19 @@ zemi.ui.widget.register({
       end
     end
     return #lines > 0 and lines or empty()
+  end,
+})
+
+-- Splash: fills the chat until the first message. Register a widget with
+-- id "splash" in init.lua to replace it (ctx carries version, model, cwd,
+-- recent, width and height).
+zemi.ui.widget.register({
+  id = "splash",
+  region = "chat",
+  priority = 5,
+  render = function(ctx)
+    if #(ctx.transcript or {}) > 0 or ctx.agent_active then return empty() end
+    return splash(ctx)
   end,
 })
 

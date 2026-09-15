@@ -103,7 +103,8 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 	for _, r := range body {
 		bw = max(bw, segsWidth(r)+4)
 	}
-	bw = max(min(bw, w-4), 12)
+	// wide boxes read badly; long rows end in an ellipsis instead
+	bw = max(min(bw, w-4, 100), 12)
 	badge = ansi.Truncate(badge, bw-2, "…")
 	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
@@ -115,7 +116,7 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 		{Text: "┐"},
 	}}
 	for _, r := range body {
-		line := truncateSegs(r, bw-4)
+		line := ellipsizeSegs(r, bw-4)
 		pad := bw - 4 - segsWidth(line)
 		row := []hostapi.Segment{{Text: "│ "}}
 		row = append(row, line...)
@@ -124,6 +125,23 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 	}
 	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘"}})
 	return box
+}
+
+// ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
+// when one is close.
+func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
+	if segsWidth(segs) <= w || w < 2 {
+		return truncateSegs(segs, w)
+	}
+	out := truncateSegs(segs, w-1)
+	if n := len(out); n > 0 {
+		last := out[n-1]
+		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= 12 {
+			last.Text = strings.TrimRight(last.Text[:i], " ,;:-")
+		}
+		out = append(out[:n-1:n-1], last, hostapi.Segment{Text: "…", HL: last.HL})
+	}
+	return out
 }
 
 type listItem struct{ label, desc string }

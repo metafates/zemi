@@ -526,7 +526,8 @@ The script runs in a sandbox with Lua's base, string, table and math libraries a
 - parallel({fn, fn, ...}) -> results, errs. Runs each function as a concurrent branch (up to 5 agents at once); results[i] is fn i's return value, errs[i] its error (errs is nil when none failed).
 - phase(name) labels progress for the user; log(...) records a line returned with the result.
 - json.encode(v), json.decode(s) (decode tolerates prose around the JSON); args holds the tool's args.
-The script's return value is the tool result (tables come back as JSON). agent() and parallel() cannot run inside pcall. No file or network access: only agents act.
+The script's return value is the tool result (tables come back as JSON). agent() and parallel() cannot run inside pcall or library callbacks (table.sort, string.gsub). No file or network access: only agents act.
+To keep a workflow the user wants again, write the script with your file tools to ~/.config/zemi/workflows/<name>.lua (every project) or <project>/.zemi/workflows/<name>.lua (this repository), starting with -- comment lines that describe it; it then runs as /workflow <name> or with name instead of script.
 
 Example:
   phase("review")

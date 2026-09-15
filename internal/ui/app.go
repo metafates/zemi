@@ -589,9 +589,10 @@ func (a *App) compose(w, h int) string {
 	} else if row := a.workingRow(); row != nil {
 		working = [][]hostapi.Segment{row}
 	}
-	// + statusline + composer and the working row; popups float over the
-	// chat (floatPopup), so opening one never moves the transcript
-	reserved := len(header) + 1 + len(compRows) + len(working)
+	// + statusline + composer, the working row and a blank row that keeps the
+	// input off the conversation; popups float over the chat (floatPopup), so
+	// opening one never moves the transcript
+	reserved := len(header) + 1 + len(compRows) + len(working) + 1
 	chatH := h - reserved
 	if chatH < 1 {
 		chatH = 1
@@ -641,6 +642,7 @@ func (a *App) compose(w, h int) string {
 
 	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
 
+	rows = append(rows, padSegs(nil, w))
 	// The working row renders above the composer.
 	rows = append(rows, working...)
 	rows = append(rows, compRows...)
@@ -795,14 +797,17 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})
 	}
+	pill := func(text string) {
+		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError"})
+	}
 	if a.bootErr != nil {
-		left = append(left, hostapi.Segment{Text: " boot failed ", HL: "ToastError"})
+		pill(" boot failed ")
 	}
 	if a.host.RT.IsHot() {
-		left = append(left, hostapi.Segment{Text: " HOT /Reload ", HL: "ToastError"})
+		pill(" HOT /Reload ")
 	}
 	if a.host.HasUnseenErrors() {
-		left = append(left, hostapi.Segment{Text: " ! errors /errors ", HL: "ToastError"})
+		pill(" ! errors /errors ")
 	}
 
 	leftW := segsWidth(left)
@@ -948,12 +953,23 @@ func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
 	if segsWidth(line) <= w {
 		return [][]hostapi.Segment{line}
 	}
+	// Continuation rows hang under the text, past a short gutter segment
+	// ("  ✗ ", "▌ ", "    └ ") or leading indentation.
+	indent := 0
+	if len(line) > 0 {
+		if g := line[0].Text; strings.HasSuffix(g, " ") && ansi.StringWidth(g) <= 8 && ansi.StringWidth(g) < w/2 {
+			indent = ansi.StringWidth(g)
+		}
+	}
 	var rows [][]hostapi.Segment
 	var row []hostapi.Segment
 	width := 0
 	flush := func() {
 		rows = append(rows, row)
 		row, width = nil, 0
+		if indent > 0 {
+			row, width = []hostapi.Segment{{Text: strings.Repeat(" ", indent)}}, indent
+		}
 	}
 	add := func(text, hl string) {
 		for {
@@ -968,6 +984,11 @@ func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
 			}
 			cut := ansi.Truncate(text, w-width, "")
 			if cut == "" {
+				if width <= indent { // a wide rune that fits nowhere: place it anyway
+					row = append(row, hostapi.Segment{Text: text, HL: hl})
+					width += tw
+					return
+				}
 				flush()
 				continue
 			}
@@ -981,14 +1002,14 @@ func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
 			if word == "" {
 				continue
 			}
-			if width+ansi.StringWidth(word) > w && width > 0 {
+			if width+ansi.StringWidth(word) > w && width > indent {
 				flush()
 			}
 			add(word, seg.HL)
 		}
 	}
-	if width > 0 || len(rows) == 0 {
-		flush()
+	if width > indent || len(rows) == 0 {
+		rows = append(rows, row)
 	}
 	return rows
 }

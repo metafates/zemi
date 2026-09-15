@@ -100,8 +100,8 @@ zemi.ui.theme.set("mine")
 ```
 
 Widgets replace or extend the screen. Registering a widget with an existing id from
-`init.lua` replaces the builtin one (`chat`, `statusline.cwd`, `statusline.info`,
-`statusline.learn`, `statusline.reflect`):
+`init.lua` replaces the builtin one (`chat`, `splash`, `statusline.mode`, `statusline.cwd`,
+`statusline.info`, `statusline.learn`, `statusline.agents`, `statusline.reflect`):
 
 ```lua
 zemi.ui.widget.register({

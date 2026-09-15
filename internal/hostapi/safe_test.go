@@ -78,7 +78,7 @@ func TestBuiltinSkillsShipEnabled(t *testing.T) {
 		t.Fatalf("Boot: %v", err)
 	}
 	h.syncSkills()
-	for _, name := range []string{"zemi-config", "zemi-debug", "zemi-learning", "zemi-lua"} {
+	for _, name := range []string{"zemi-config", "zemi-customize", "zemi-debug", "zemi-learning", "zemi-lua"} {
 		s, ok := h.skillsReg.get(name)
 		if !ok || s.Source != "builtin" || !h.skillsReg.isEnabled(name) {
 			t.Errorf("%s: found=%v source=%q enabled=%v", name, ok, s.Source, h.skillsReg.isEnabled(name))
