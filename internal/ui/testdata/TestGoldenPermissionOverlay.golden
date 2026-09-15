@@ -2,7 +2,7 @@
                                                                       
                                                                       
                                                                       
-                  [38;2;16;16;20;48;2;247;118;142m┌ Permission required ───────────┐[m                  
+                  ┌[38;2;16;16;20;48;2;247;118;142m Permission required [m───────────┐                  
                   │ [1mtool.bash[m                      │                  
                   │ git push origin main           │                  
                   │ [38;2;86;95;137mpublishing the release branch[m  │                  

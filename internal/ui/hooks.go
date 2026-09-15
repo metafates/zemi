@@ -114,10 +114,9 @@ func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH,
 
 	var box [][]hostapi.Segment
 	box = append(box, []hostapi.Segment{
-		{Text: "┌", HL: "Host:TrustTitle"},
+		{Text: "┌"},
 		{Text: title, HL: "Host:TrustTitle"},
-		{Text: strings.Repeat("─", max0(bw-2-ansi.StringWidth(title))), HL: "Host:TrustTitle"},
-		{Text: "┐", HL: "Host:TrustTitle"},
+		{Text: strings.Repeat("─", max0(bw-2-ansi.StringWidth(title))) + "┐"},
 	})
 	for _, l := range lines {
 		text := ansi.Truncate(l, bw-6, "…")

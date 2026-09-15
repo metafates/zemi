@@ -2,7 +2,7 @@
                                                                       
                                                                       
                                                                       
-   [38;2;16;16;20;48;2;122;162;247m┌ Select model ────────────────────────────────────────────────┐[m   
+   ┌[38;2;16;16;20;48;2;122;162;247m Select model [m────────────────────────────────────────────────┐   
    │ [1m  [manthropic/claude-sonnet-4-5  Claude Sonnet 4.5             │   
    │ [1m  [manthropic/claude-haiku-4-5  Claude Haiku 4.5  (no api key) │   
    │ [1m> [m[1mopenai/gpt-5  GPT-5[m                                        │   

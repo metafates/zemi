@@ -104,8 +104,11 @@ func hostBox(title, titleHL string, body [][]hostapi.Segment, w int) [][]hostapi
 		bw = 12
 	}
 	var box [][]hostapi.Segment
-	top := "┌" + title + strings.Repeat("─", max0(bw-2-tw)) + "┐"
-	box = append(box, []hostapi.Segment{{Text: top, HL: titleHL}})
+	box = append(box, []hostapi.Segment{
+		{Text: "┌"},
+		{Text: title, HL: titleHL},
+		{Text: strings.Repeat("─", max0(bw-2-tw)) + "┐"},
+	})
 	for _, r := range body {
 		line := truncateSegs(r, bw-4)
 		pad := bw - 4 - segsWidth(line)
