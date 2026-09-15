@@ -45,16 +45,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	widget.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, w := range h.Widgets.List() {
-			row := L.NewTable()
-			row.RawSetString("id", glua.LString(w.ID))
-			row.RawSetString("region", glua.LString(w.Region))
-			row.RawSetString("priority", glua.LNumber(w.Priority))
-			row.RawSetString("origin", glua.LString(w.Origin))
-			out.Append(row)
+			rows = append(rows, map[string]any{"id": w.ID, "region": w.Region, "priority": w.Priority, "origin": string(w.Origin)})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	tb.RawSetString("widget", widget)

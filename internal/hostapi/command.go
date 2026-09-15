@@ -103,9 +103,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		name, args := L.CheckString(1), L.OptString(2, "")
 		cmd := h.Commands.Lookup(name)
 		if cmd == nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString("not a command: " + name))
-			return 2
+			return luaResult(L, fmt.Errorf("not a command: %s", name))
 		}
 		if cmd.GoFn != nil {
 			h.GoSafe("command "+name, func() {
@@ -113,38 +111,24 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 					h.Notify("error", "/"+name, err.Error())
 				}
 			})
-			L.Push(glua.LTrue)
-			return 1
+			return luaResult(L, nil)
 		}
 		if err := nargsOK(cmd.NArgs, args); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		h.RT.PushFrame(cmd.Origin, cmd.Path)
 		defer h.RT.PopFrame()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, args))
-		if err := L.PCall(1, 0, nil); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(glua.LTrue)
-		return 1
+		return luaResult(L, L.PCall(1, 0, nil))
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, c := range h.Commands.List() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(c.Name))
-			row.RawSetString("desc", glua.LString(c.Desc))
-			row.RawSetString("nargs", glua.LString(c.NArgs))
-			row.RawSetString("origin", glua.LString(c.Origin))
-			out.Append(row)
+			rows = append(rows, map[string]any{"name": c.Name, "desc": c.Desc, "nargs": c.NArgs, "origin": string(c.Origin)})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 

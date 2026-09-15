@@ -16,6 +16,18 @@ func luaToGoChecked(L *glua.LState, idx int, api string) (any, error) {
 	return v, nil
 }
 
+// luaResult is the sync-op return shape (DESIGN §6.0): true, or nil and the
+// error message.
+func luaResult(L *glua.LState, err error) int {
+	if err != nil {
+		L.Push(glua.LNil)
+		L.Push(glua.LString(err.Error()))
+		return 2
+	}
+	L.Push(glua.LTrue)
+	return 1
+}
+
 // rawString reads a string field off a raw spec table (specs that carry
 // Lua callbacks cannot be marshaled wholesale).
 func rawString(tb *glua.LTable, key string) string {

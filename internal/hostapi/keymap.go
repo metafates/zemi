@@ -136,7 +136,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key, _ := h.keySeq(L.CheckString(1))
 		if b := h.Keymaps.Lookup(key); b != nil {
-			L.Push(keymapRow(L, b))
+			L.Push(lua.FromGo(L, keymapRow(b)))
 		} else {
 			L.Push(glua.LNil)
 		}
@@ -144,11 +144,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, b := range h.Keymaps.List() {
-			out.Append(keymapRow(L, b))
+			rows = append(rows, keymapRow(b))
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
@@ -157,11 +157,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 
 // keymapRow is a binding snapshot: key, action ("/cmd", a host action or
 // "<function>"), desc and origin.
-func keymapRow(L *glua.LState, b *KeyBinding) *glua.LTable {
-	row := L.NewTable()
-	row.RawSetString("key", glua.LString(b.Key))
-	row.RawSetString("action", glua.LString(describeRHS(b.RHS)))
-	row.RawSetString("desc", glua.LString(b.Desc))
-	row.RawSetString("origin", glua.LString(b.Origin))
-	return row
+func keymapRow(b *KeyBinding) map[string]any {
+	return map[string]any{"key": b.Key, "action": describeRHS(b.RHS), "desc": b.Desc, "origin": string(b.Origin)}
 }

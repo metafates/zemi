@@ -432,17 +432,14 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, s := range h.skillsReg.list() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(s.Name))
-			row.RawSetString("description", glua.LString(s.Description))
-			row.RawSetString("source", glua.LString(s.Source))
-			row.RawSetString("enabled", glua.LBool(h.skillsReg.isEnabled(s.Name)))
-			row.RawSetString("path", glua.LString(s.Dir))
-			out.Append(row)
+			rows = append(rows, map[string]any{
+				"name": s.Name, "description": s.Description, "source": string(s.Source),
+				"enabled": h.skillsReg.isEnabled(s.Name), "path": s.Dir,
+			})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
