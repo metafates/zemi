@@ -93,9 +93,9 @@ type agentHost struct {
 	modelSeed string
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
-	// every turn's counts, lastIn pins the most recent prompt size (the
-	// current context estimate). ctxWin: seeded override (tests); 0
-	// resolves via contextWindow.
+	// every turn's counts, lastIn is the context the latest step used
+	// (agent.ContextUsed, the current context estimate). ctxWin: seeded
+	// override (tests); 0 resolves via contextWindow.
 	sessIn   int64
 	sessOut  int64
 	lastIn   int64
@@ -119,6 +119,15 @@ type agentHost struct {
 	retries    int
 	retryWhy   string // friendlyError of the failure being retried
 	compacting bool   // summarizing history before the next turn
+
+	// compactFails counts auto compactions in a row that failed or left the
+	// context full; at compactMaxFails auto compaction stops for the session.
+	// compacted has the next step judge the last compaction. holdOverflow
+	// keeps TurnDone quiet about a context-too-long error sendCompacting
+	// will retry.
+	compactFails int
+	compacted    bool
+	holdOverflow bool
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -475,6 +484,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
 	r.Compose = h.composeUserMessage
+	r.Full = h.contextFull
 	return r, nil
 }
 
@@ -532,11 +542,9 @@ func (h *Host) runTurns(runner *agent.Runner, text string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
 		if h.compactDue() {
-			h.compactReporting(ctx, runner)
+			h.compactReporting(ctx, runner, compactAuto, "")
 		}
-		if err := runner.Send(ctx, text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
-			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
-		}
+		h.sendCompacting(ctx, runner, text)
 		h.turn.Store(nil)
 		cancel()
 		text = h.nextTurn()
@@ -748,13 +756,19 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
+	ag.mu.Lock()
+	hold := ag.holdOverflow && contextTooLarge(err)
+	ag.holdOverflow = false
+	ag.mu.Unlock()
+	if hold {
+		return // sendCompacting compacts and resends, or reports it
+	}
 	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
-	ag.lastIn = usage.InputTokens
 	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
 		In:        usage.InputTokens,
@@ -1229,15 +1243,14 @@ func (h *Host) turnCost(modelID string, in, out int64) float64 {
 	return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
 }
 
-// contextWindow: agent.context_window, then the model spec, then 200k.
+// contextWindow: agent.context_window, then the model spec, else 0
+// (unknown: no percent readout, no auto compaction).
 func (h *Host) contextWindow(modelID string) int64 {
 	if n := h.setInt("agent.context_window", 0); n > 0 {
 		return int64(n)
 	}
-	if m, ok := h.modelSpec(modelID); ok && m.ContextWindow > 0 {
-		return m.ContextWindow
-	}
-	return 200_000
+	m, _ := h.modelSpec(modelID)
+	return m.ContextWindow
 }
 
 // pickModel opens the Go-owned model picker overlay (DESIGN §8).

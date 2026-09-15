@@ -23,6 +23,9 @@ type reflectStubModel struct {
 	block      time.Duration
 	calls      atomic.Int32
 	lastPrompt atomic.Int32
+	streams    atomic.Int32
+	overflow   atomic.Int32 // Stream calls left that fail as context too large
+	toolStep   atomic.Int64 // context the next Stream call reports along with a tool call; 0 = text
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
@@ -44,7 +47,17 @@ func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fanta
 }
 
 func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	m.streams.Add(1)
 	m.lastPrompt.Store(int32(len(call.Prompt)))
+	if m.overflow.Add(-1) >= 0 {
+		return nil, &fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true}
+	}
+	if used := m.toolStep.Swap(0); used > 0 {
+		return func(yield func(fantasy.StreamPart) bool) {
+			_ = yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"}) &&
+				yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls, Usage: fantasy.Usage{InputTokens: used}})
+		}, nil
+	}
 	parts := []fantasy.StreamPart{
 		{Type: fantasy.StreamPartTypeTextStart, ID: "t"},
 		{Type: fantasy.StreamPartTypeTextDelta, ID: "t", Delta: m.resp},

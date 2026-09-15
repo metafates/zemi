@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -205,6 +206,46 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	}
 	if len(r.History) != 5 {
 		t.Fatalf("history: %d", len(r.History))
+	}
+}
+
+// TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
+// included, not a sum over steps), a full context ends the turn after the
+// tool result, and an empty Send continues without a second user message.
+func TestFullCutsAtStepBoundary(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls,
+				Usage: fantasy.Usage{InputTokens: 10, CacheReadTokens: 90, OutputTokens: 5}},
+		},
+		textParts("done"),
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	var used []int64
+	r.Full = func(n int64) bool { used = append(used, n); return n >= 100 }
+	var roles []string
+	r.Persist = func(role string, _ fantasy.Message) error {
+		roles = append(roles, role)
+		return nil
+	}
+	for _, c := range []struct{ text, roles string }{
+		{"hi", "user,assistant,tool"},
+		{"", "user,assistant,tool,assistant"},
+	} {
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), c.text); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(roles, ","); got != c.roles {
+			t.Fatalf("send %q persisted roles: %s, want %s", c.text, got, c.roles)
+		}
+	}
+	if got := fmt.Sprint(used); got != "[105 15]" {
+		t.Fatalf("Full saw %s, want [105 15]", got)
 	}
 }
 

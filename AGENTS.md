@@ -177,8 +177,12 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model,
   prompt, tools may change); `AgentSend` copies `History` from the previous idle runner.
   `ResumeSession` installs a bare `&agent.Runner{History: ...}` for that copy. `runTurns`
-  loops the queue's follow-ups on one runner and compacts first when the last prompt passed
-  80% of the window (summary message persisted, `sessions.summary_message_id` points at it).
+  loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
+  runs before a send, when `Runner.Full` cuts a turn at a step boundary (then `Send(ctx, "")`
+  continues), and once after a context-too-long refusal. The size is `agent.ContextUsed` of the
+  last step, never a sum; an unknown window means no auto compaction. The summary row is
+  followed by copies of the verbatim tail stored with row role `tail`, which resume reads and
+  every transcript-like reader skips.
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so
   steered messages are re-inserted every step. Leftovers become one follow-up turn, and

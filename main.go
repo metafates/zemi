@@ -296,8 +296,8 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()
 				}},
-				{Name: "compact", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.CompactNow()
+				{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context; /compact <what to keep>", GoFn: func(h *hostapi.Host, args string) error {
+					return h.CompactNow(args)
 				}},
 				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenModelPicker()

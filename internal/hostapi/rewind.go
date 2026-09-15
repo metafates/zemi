@@ -63,10 +63,10 @@ func userText(row *store.Message) (string, bool) {
 	if row.Role != "user" || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
 		return "", false
 	}
-	s, _, _ := strings.Cut(concatText(m.Content), attachMarker)
-	if strings.HasPrefix(s, compactPrefix) {
+	if _, ok := summaryOf(m); ok {
 		return "", false
 	}
+	s, _, _ := strings.Cut(concatText(m.Content), attachMarker)
 	s = strings.TrimSpace(s)
 	return s, s != ""
 }
@@ -122,7 +122,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	history, tr := resumeHistory(sess, rows[:cut])
+	history, tr := resumeHistory(rows[:cut])
 	ag.mu.Lock()
 	ag.runner = &agent.Runner{History: history}
 	ag.lastIn, ag.turnMsgID = 0, ""

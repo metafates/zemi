@@ -59,7 +59,7 @@ func (h *Host) ResumeSession(id string) error {
 	if _, err := h.closeSession(); err != nil {
 		return err
 	}
-	history, tr := resumeHistory(sess, rows)
+	history, tr := resumeHistory(rows)
 	ag := h.agents
 	ag.mu.Lock()
 	ag.sessionID, ag.titled = id, true
@@ -121,6 +121,7 @@ func (h *Host) closeSession() (string, error) {
 	ag.sessionID, ag.runner, ag.steering = "", nil, nil
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
+	ag.compactFails, ag.compacted = 0, false
 	ag.digest, ag.memAuto, ag.cfgAuto = "", 0, 0
 	ag.mu.Unlock()
 	if prev != "" {
@@ -138,11 +139,17 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 }
 
 // resumeHistory rebuilds model history and transcript from stored rows; a
-// compacted session's model history starts at its summary.
-func resumeHistory(sess *store.Session, rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
+// compacted session's model history starts at its last summary. Scanning
+// rows instead of trusting sessions.summary_message_id keeps a rewind that
+// cut the summary from resuming a summary it no longer has.
+func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	history, tr := historyFrom(rows)
-	for i, r := range rows {
-		if r.ID == sess.SummaryMessageID {
+	for i := len(rows) - 1; i >= 0; i-- {
+		var m fantasy.Message
+		if rows[i].Role != "user" || json.Unmarshal([]byte(rows[i].PartsJSON), &m) != nil {
+			continue
+		}
+		if _, ok := summaryOf(m); ok {
 			history, _ = historyFrom(rows[i:])
 			break
 		}
@@ -162,6 +169,9 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			continue
 		}
 		history = append(history, m)
+		if row.Role == compactTailRole {
+			continue // the transcript already has the original
+		}
 		var text strings.Builder
 		for _, part := range m.Content {
 			switch p := part.(type) {
@@ -180,11 +190,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
-			s, _, _ = strings.Cut(s, attachMarker) // show what was typed
-			if strings.HasPrefix(s, compactPrefix) {
+			if _, ok := summaryOf(m); ok {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "compacted earlier messages"})
 				continue
 			}
+			s, _, _ = strings.Cut(s, attachMarker) // show what was typed
 		}
 		if s = strings.TrimSpace(s); s != "" {
 			role := "assistant"

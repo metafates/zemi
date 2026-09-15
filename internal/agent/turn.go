@@ -49,6 +49,11 @@ type Runner struct {
 	// expands attachments and images); nil sends the text as is.
 	Compose func(text string) fantasy.Message
 
+	// Full is asked after every step with the context that step used
+	// (ContextUsed). True while the model still has tool results to read
+	// ends the turn there, so the host can compact and send "" to continue.
+	Full func(used int64) bool
+
 	active bool
 	cancel context.CancelFunc
 }
@@ -86,7 +91,8 @@ func (r *Runner) Active() bool {
 
 // Send streams one turn. The user message is appended to history,
 // persisted, and the agent streams; step messages are appended and
-// persisted as they complete.
+// persisted as they complete. An empty userText continues from history as
+// it stands (a turn Full cut short).
 func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Lock()
 	if r.active {
@@ -98,6 +104,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.cancel = cancel
 	hooks := r.Hooks
 	persist := r.Persist
+	full := r.Full
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -107,23 +114,36 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		cancel()
 	}()
 
-	userMsg := r.compose(userText)
-	if persist != nil {
-		if err := persist(string(userMsg.Role), userMsg); err != nil {
-			hooks.TurnDone(err, fantasy.Usage{})
-			return err
+	var userMsg []fantasy.Message
+	if userText != "" {
+		msg := r.compose(userText)
+		if persist != nil {
+			if err := persist(string(msg.Role), msg); err != nil {
+				hooks.TurnDone(err, fantasy.Usage{})
+				return err
+			}
 		}
+		userMsg = append(userMsg, msg)
 	}
 	r.mu.Lock()
-	r.History = append(r.History, userMsg)
+	r.History = append(r.History, userMsg...)
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
 	provOpts := r.ProviderOptions
 	r.mu.Unlock()
 
+	// Full goes first: fantasy stops at the first condition that holds, and
+	// Full has to see every step.
+	var stops []fantasy.StopCondition
+	if full != nil {
+		stops = append(stops, func(steps []fantasy.StepResult) bool {
+			last := steps[len(steps)-1]
+			return full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls
+		})
+	}
 	call := fantasy.AgentStreamCall{
 		Messages:         history,
-		StopWhen:         []fantasy.StopCondition{fantasy.FinishReasonIs(fantasy.FinishReasonStop)},
+		StopWhen:         append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop)),
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
@@ -190,6 +210,12 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	hooks.TurnDone(nil, usage)
 	return nil
+}
+
+// ContextUsed is the context one model call took: providers report cache
+// reads and writes apart from input, and the reply joins the next prompt.
+func ContextUsed(u fantasy.Usage) int64 {
+	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens + u.OutputTokens
 }
 
 // retryErr converts fantasy's retry cause to an error. fantasy passes a nil
