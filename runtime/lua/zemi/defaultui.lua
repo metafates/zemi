@@ -478,8 +478,13 @@ zemi.ui.widget.register({
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
     if ag.active or #tools > 0 or text ~= "" then
       if #tr > 0 and tr[#tr].role == "user" then blank() end
-      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status, t.detail, t.diff) end
-      if (ag.reasoning or "") ~= "" and text == "" then add_reasoning("Thinking", nil, ag.reasoning, 3) end
+      local waiting = false
+      for _, t in ipairs(tools) do
+        add_tool(t.name, t.input, t.status, t.detail, t.diff)
+        if t.status ~= "ok" and t.status ~= "err" then waiting = true end
+      end
+      -- the tail only while the model is thinking, not while a tool runs
+      if (ag.reasoning or "") ~= "" and text == "" and not waiting then add_reasoning("Thinking", nil, ag.reasoning, 3) end
       if text ~= "" then add_markdown(text) end
       for _, q in ipairs(queued) do
         lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }

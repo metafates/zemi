@@ -25,12 +25,12 @@ var PermModes = []string{"manual", "plan", "auto", "yolo"}
 const planPrompt = `
 
 # Plan mode
-The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and every command needs the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
+The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and commands that could change anything need the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
 
 // PermModeInfo says what each mode means (mode strip, /mode picker).
 var PermModeInfo = map[string]string{
 	"manual": "you approve every change and command",
-	"plan":   "read and plan only: no edits, commands ask",
+	"plan":   "read and plan only: no edits, risky commands ask",
 	"auto":   "safe actions run on their own, risky ones ask",
 	"yolo":   "everything runs without asking",
 }

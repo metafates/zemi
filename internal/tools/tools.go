@@ -87,7 +87,7 @@ type Pipeline struct {
 	Denied func(tool string, req Request, v Verdict)
 
 	// Plan reports plan mode: file writes are denied and allowed commands
-	// ask instead; nil = never.
+	// ask instead unless they only read; nil = never.
 	Plan func() bool
 
 	// Checkpoint records a file's content before a write tool changes it,
@@ -115,8 +115,9 @@ func (p *Pipeline) check(req Request) Verdict {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
+		case plan && req.Subject == "tool.bash" && perm.SafeCommand(req.Arg):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
-			return p.resolveAsk(req, "plan mode: every command asks")
+			return p.resolveAsk(req, "plan mode: commands that change things ask")
 		}
 		return v
 	}

@@ -37,6 +37,25 @@ func TestPermModes(t *testing.T) {
 	}
 }
 
+// TestPlanModeReadOnlyCommands: plan mode runs commands that only read and
+// asks for the rest.
+func TestPlanModeReadOnlyCommands(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.SetPermMode("plan"); err != nil {
+		t.Fatal(err)
+	}
+	ask := h.askHook()
+	if allowed, by := ask(tools.Request{Subject: "tool.bash", Arg: "find internal -name '*.go' | wc -l"}); !allowed || by != "mode:plan" || len(ui.asked) != 0 {
+		t.Fatalf("read-only command: allowed=%v by=%s asked=%d", allowed, by, len(ui.asked))
+	}
+	ask(tools.Request{Subject: "tool.bash", Arg: "rm -rf build"})
+	if len(ui.asked) != 1 {
+		t.Fatal("a command that changes files must ask in plan mode")
+	}
+}
+
 // TestAutoModeLocal: auto mode approves project edits and safe commands
 // without the model (which here refuses everything) and still asks for the
 // rest.

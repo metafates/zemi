@@ -1485,6 +1485,10 @@ func (h *Host) askHook() tools.Asker {
 		switch h.PermMode() {
 		case "yolo":
 			return resolved(true, "mode:yolo")
+		case "plan":
+			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg) {
+				return resolved(true, "mode:plan")
+			}
 		case "auto":
 			key := req.Subject + "\x00" + req.Arg
 			if h.autoLocal(req) {
@@ -1535,17 +1539,22 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		for _, seg := range n.Segments {
-			name := seg
-			if p := commandPrefix(seg); p != "" {
-				name = p
-				rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
-			} else {
+			p := commandPrefix(seg)
+			if p == "" {
 				rules = append(rules, rule("tool.bash", seg))
+				continue
 			}
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, "`"+truncRunes(name, 40)+"`")
+			rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
+			if !seen[p] {
+				seen[p] = true
+				names = append(names, "`"+p+"`")
 			}
+		}
+		switch {
+		case len(names) == 0:
+			return "don't ask again for this exact command", rules
+		case len(rules) > 2*len(names):
+			return "don't ask again for " + strings.Join(names, ", ") + " and the rest as written", rules
 		}
 		return "don't ask again for " + strings.Join(names, ", "), rules
 	case req.Subject == "fs.write" || req.Subject == "fs.read":

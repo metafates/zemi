@@ -13,11 +13,12 @@ import (
 )
 
 // TestPlanMode: plan mode refuses file changes even under an allow rule
-// and turns allowed commands into asks, and the prompt says so.
+// and turns allowed commands that change things into asks, and the prompt
+// says so.
 func TestPlanMode(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test*", Decision: perm.Allow})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make deploy*", Decision: perm.Allow})
 	check := func(subject, arg string) tools.Verdict {
 		pipe := h.PipelineFor()
 		pipe.Ask = nil
@@ -32,7 +33,7 @@ func TestPlanMode(t *testing.T) {
 	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "mode:plan" {
 		t.Fatalf("plan write = %v by %s", v.Decision, v.DecidedBy)
 	}
-	if v := check("tool.bash", "go test ./..."); v.Decision != perm.Ask {
+	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
 		t.Fatalf("plan bash = %v", v.Decision)
 	}
 	if !strings.Contains(h.buildSystem(nil), "plan mode") {
