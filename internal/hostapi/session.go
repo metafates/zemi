@@ -209,7 +209,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 		return
 	}
 	h.GoSafe("session title", func() {
-		model, err := h.reflectModel()
+		model, err := h.modelFor("reflector.model")
 		if err != nil {
 			return
 		}

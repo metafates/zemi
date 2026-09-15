@@ -227,10 +227,28 @@ const delegationPrompt = `
 Hand work to subagents with the agent tool when a search or investigation would take many reads and you only need the conclusion, or when a task splits into independent parts (launch those in one response; they run in parallel). Use the explore agent for questions about code; general only when the subagent must run commands or edit. Use a workflow when the work has stages with logic between them: fan out, then verify or compare. Do small, targeted work yourself: a known file, a single grep, a one-line fix. Once you delegate a search, do not repeat it yourself. Never delegate understanding: the prompt must carry what you already know (paths, lines, what to change), not "based on your findings, fix it". Subagent reports are not shown to the user; relay what matters.`
 
 // Effort is the configured reasoning effort ("" = provider default).
-func (h *Host) Effort() string {
-	v, _ := h.Settings.Get("agent.effort")
+func (h *Host) Effort() string { return h.setStr("agent.effort") }
+
+// setStr reads a string setting, "" when unset or not a string.
+func (h *Host) setStr(key string) string {
+	v, _ := h.Settings.Get(key)
 	s, _ := v.(string)
 	return s
+}
+
+// setInt reads a number setting, def when unset or not a number (config
+// files decode numbers as float64).
+func (h *Host) setInt(key string, def int) int {
+	v, _ := h.Settings.Get(key)
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	}
+	return def
 }
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
@@ -262,10 +280,8 @@ func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
 		return p.Model
 	}
-	if v, ok := h.Settings.Get("agent.model"); ok {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
+	if s := h.setStr("agent.model"); s != "" {
+		return s
 	}
 	for _, spec := range h.Providers.List() {
 		for _, m := range spec.Models {
@@ -436,6 +452,15 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 		return nil, fmt.Errorf("agent: no models registered")
 	}
 	return h.Providers.Resolve(id)
+}
+
+// modelFor resolves the model a setting names, the agent model when the
+// setting is unset.
+func (h *Host) modelFor(key string) (fantasy.LanguageModel, error) {
+	if id := h.setStr(key); id != "" && h.modelFn == nil {
+		return h.Providers.Resolve(id)
+	}
+	return h.resolveModel(nil)
 }
 
 // ensureRunner builds the runner for the current profile and session.
@@ -1157,7 +1182,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if !h.modelExists(id) {
+		if _, ok := h.modelSpec(id); !ok {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
 			return 0
 		}
@@ -1187,75 +1212,40 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// contextWindow resolves the context window for the model id: the model
-// spec's context_window, then the agent.context_window config knob, then
-// the 200k default.
-// turnCost prices one turn's tokens from the model spec; 0 when the spec
-// carries no prices.
-func (h *Host) turnCost(modelID string, in, out int64) float64 {
-	prov, model, ok := strings.Cut(modelID, "/")
+// modelSpec finds the catalog entry for a "provider/model" id.
+func (h *Host) modelSpec(id string) (agent.Model, bool) {
+	prov, model, ok := strings.Cut(id, "/")
 	if !ok {
-		return 0
+		return agent.Model{}, false
 	}
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
-		return 0
+		return agent.Model{}, false
 	}
 	for _, m := range spec.Models {
 		if m.ID == model {
-			return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+			return m, true
 		}
 	}
-	return 0
+	return agent.Model{}, false
 }
 
+// turnCost prices one turn's tokens from the model spec; 0 when the spec
+// carries no prices.
+func (h *Host) turnCost(modelID string, in, out int64) float64 {
+	m, _ := h.modelSpec(modelID)
+	return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+}
+
+// contextWindow: agent.context_window, then the model spec, then 200k.
 func (h *Host) contextWindow(modelID string) int64 {
-	if v, ok := h.Settings.Get("agent.context_window"); ok {
-		switch n := v.(type) {
-		case int:
-			if n > 0 {
-				return int64(n)
-			}
-		case int64:
-			if n > 0 {
-				return n
-			}
-		case float64:
-			if n > 0 {
-				return int64(n)
-			}
-		}
+	if n := h.setInt("agent.context_window", 0); n > 0 {
+		return int64(n)
 	}
-	if modelID != "" {
-		prov, model, ok := strings.Cut(modelID, "/")
-		if ok {
-			if spec, ok := h.Providers.Lookup(prov); ok {
-				for _, m := range spec.Models {
-					if m.ID == model && m.ContextWindow > 0 {
-						return m.ContextWindow
-					}
-				}
-			}
-		}
+	if m, ok := h.modelSpec(modelID); ok && m.ContextWindow > 0 {
+		return m.ContextWindow
 	}
 	return 200_000
-}
-
-func (h *Host) modelExists(id string) bool {
-	prov, _, ok := strings.Cut(id, "/")
-	if !ok {
-		return false
-	}
-	spec, ok := h.Providers.Lookup(prov)
-	if !ok {
-		return false
-	}
-	for _, m := range spec.Models {
-		if m.ID == strings.TrimPrefix(id, prov+"/") {
-			return true
-		}
-	}
-	return false
 }
 
 // pickModel opens the Go-owned model picker overlay (DESIGN §8).
@@ -1272,13 +1262,7 @@ func (h *Host) pickModel() (string, bool) {
 			})
 		}
 	}
-	cur := ""
-	if v, ok := h.Settings.Get("agent.model"); ok {
-		if s, ok := v.(string); ok {
-			cur = s
-		}
-	}
-	return ui.PickModel(items, cur)
+	return ui.PickModel(items, h.setStr("agent.model"))
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {

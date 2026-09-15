@@ -272,6 +272,10 @@ func TestReflectGate(t *testing.T) {
 	if h.reflectEveryN() != 1 {
 		t.Fatalf("default every_n=%d", h.reflectEveryN())
 	}
+	h.Settings.SetHost("reflector.every_n_sessions", 3.0) // config files decode numbers as float64
+	if h.reflectEveryN() != 3 {
+		t.Fatalf("float every_n=%d", h.reflectEveryN())
+	}
 	h.Settings.SetHost("reflector.every_n_sessions", 0)
 	h.reflectOnClose("prev")
 	if h.agents.reflected != 1 {

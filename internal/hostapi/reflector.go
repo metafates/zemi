@@ -71,34 +71,10 @@ type reflectProposal struct {
 // reflectEveryN reads the trigger gate: reflect every N closed sessions,
 // 0 disables.
 func (h *Host) reflectEveryN() int {
-	if v, ok := h.Settings.Get("reflector.every_n_sessions"); ok {
-		if n, ok := v.(int); ok && n >= 0 {
-			return n
-		}
+	if n := h.setInt("reflector.every_n_sessions", 1); n >= 0 {
+		return n
 	}
 	return 1
-}
-
-// reflectTimeout reads the run timeout.
-func (h *Host) reflectTimeout() time.Duration {
-	ms := 120000
-	if v, ok := h.Settings.Get("reflector.timeout_ms"); ok {
-		if n, ok := v.(int); ok && n > 0 {
-			ms = n
-		}
-	}
-	return time.Duration(ms) * time.Millisecond
-}
-
-// reflectModelID picks the reflector model: reflector.model, else the
-// shared agent model.
-func (h *Host) reflectModelID() string {
-	if v, ok := h.Settings.Get("reflector.model"); ok {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
-	}
-	return h.currentModelID(nil)
 }
 
 // reflectOnClose is the session-close trigger (/new, /resume, startup):
@@ -159,7 +135,11 @@ func (h *Host) runReflectDetached(sid string) bool {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), h.reflectTimeout())
+	ms := h.setInt("reflector.timeout_ms", 120000)
+	if ms <= 0 {
+		ms = 120000
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(ms)*time.Millisecond)
 	h.reflecting.Store(true)
 	h.refresh()
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})
@@ -187,11 +167,11 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	model, err := h.reflectModel()
+	model, err := h.modelFor("reflector.model")
 	if err != nil {
 		return err
 	}
-	out, err := h.reflectTurn(ctx, model, prompt)
+	out, err := generateText(ctx, model, reflectorSystem, prompt)
 	if err != nil {
 		return err
 	}
@@ -336,19 +316,6 @@ func truncRunes(s string, n int) string {
 	return string(r[:n]) + "..."
 }
 
-// reflectModel resolves the reflector model; tests stub modelFn.
-func (h *Host) reflectModel() (fantasy.LanguageModel, error) {
-	if h.modelFn != nil {
-		return h.modelFn()
-	}
-	return h.Providers.Resolve(h.reflectModelID())
-}
-
-// reflectTurn runs the single-step tool-less headless turn.
-func (h *Host) reflectTurn(ctx context.Context, model fantasy.LanguageModel, prompt string) (string, error) {
-	return generateText(ctx, model, reflectorSystem, prompt)
-}
-
 // generateText runs one tool-less, single-step model call (reflector,
 // compaction) and returns its text.
 func generateText(ctx context.Context, model fantasy.LanguageModel, system, prompt string) (string, error) {
@@ -408,7 +375,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
-		if h.memoryAutonomy() == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
+		if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
 			if err := h.applyProposal(res); err != nil {
 				skipped++
 				h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})

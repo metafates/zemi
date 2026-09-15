@@ -83,17 +83,6 @@ func decodeStrict(data []byte, v any) error {
 	return dec.Decode(v)
 }
 
-// configAutonomy reads the config.autonomy knob ("ask" unless Go set
-// "auto" at boot; the knob is host-owned).
-func (h *Host) configAutonomy() string {
-	if v, ok := h.Settings.Get("config.autonomy"); ok {
-		if s, ok := v.(string); ok && s == "auto" {
-			return "auto"
-		}
-	}
-	return "ask"
-}
-
 // intakeConfigPatch validates one model-proposed config patch. Every
 // string leaf is scrubbed before validation (the scrubbed text is what
 // gets validated, stored and committed); any field outside the schema
@@ -189,7 +178,7 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 // is "auto" and every rule is a session-scope deny/ask. Permanent scope
 // always requires the review commit; allow rules widen and never auto-apply.
 func (h *Host) autoApplyCfgOK(p *cfgProposal) bool {
-	if h.configAutonomy() != "auto" {
+	if h.setStr("config.autonomy") != "auto" {
 		return false
 	}
 	for _, e := range p.Entries {

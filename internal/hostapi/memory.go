@@ -35,24 +35,6 @@ type MemoryRow struct {
 	Queued bool // proposal awaiting review, not yet stored
 }
 
-func (h *Host) memoryAutonomy() string {
-	if v, ok := h.Settings.Get("memory.autonomy"); ok {
-		if s, ok := v.(string); ok && s == "auto" {
-			return "auto"
-		}
-	}
-	return "ask"
-}
-
-func (h *Host) memoryDigestLines() int {
-	if v, ok := h.Settings.Get("memory.digest_lines"); ok {
-		if n, ok := v.(int); ok && n >= 0 {
-			return n
-		}
-	}
-	return 12
-}
-
 // memoryDB returns the store owning a scope: user scope in the global DB,
 // project scope in the project DB (DESIGN §7).
 func (h *Host) memoryDB(scope string) *store.DB {
@@ -422,7 +404,11 @@ func (h *Host) digestFor() string {
 		}
 		cands = append(cands, rows...)
 	}
-	return learn.Digest(cands, time.Now(), h.memoryDigestLines())
+	lines := h.setInt("memory.digest_lines", 12)
+	if lines < 0 {
+		lines = 12
+	}
+	return learn.Digest(cands, time.Now(), lines)
 }
 
 // MemoryCommandsStep registers the Go-owned :remember and :memory
@@ -614,7 +600,7 @@ func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bo
 	if err != nil {
 		return false, "", err
 	}
-	if h.memoryAutonomy() == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
+	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
 		if err := h.applyProposal(res); err != nil {
 			return false, "", err
 		}
