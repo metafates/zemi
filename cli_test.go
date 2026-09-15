@@ -1,13 +1,33 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
+
+// TestFailPrintJSON: a failure before the turn still reaches a script on
+// stdout as the report it parses.
+func TestFailPrintJSON(t *testing.T) {
+	var out, errOut strings.Builder
+	if code := failPrint(errors.New("no model configured"), true, &out, &errOut); code != 1 || errOut.Len() != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	var rep report
+	if err := json.Unmarshal([]byte(out.String()), &rep); err != nil || !rep.IsError || rep.Error != "no model configured" {
+		t.Fatalf("stdout = %q (%v)", out.String(), err)
+	}
+	out.Reset()
+	if code := failPrint(errors.New("boom"), false, &out, &errOut); code != 1 || out.Len() != 0 || !strings.Contains(errOut.String(), "boom") {
+		t.Fatalf("text mode: code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	}
+}
 
 func TestParseArgs(t *testing.T) {
 	for _, c := range []struct {

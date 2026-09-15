@@ -117,13 +117,14 @@ func run(args []string) int {
 	}
 
 	if opts.print {
+		jsonOut := opts.output == "json"
 		if err := rt.Boot(ctx, steps); err != nil {
-			return fail(err)
+			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
 		}
 		if err := applyOptions(host, opts); err != nil {
-			return fail(err)
+			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
 		}
-		return printTurn(host, opts.prompt, opts.output == "json", os.Stdout, os.Stderr)
+		return printTurn(host, opts.prompt, jsonOut, os.Stdout, os.Stderr)
 	}
 
 	p := tea.NewProgram(app)

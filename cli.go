@@ -188,6 +188,19 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 	return code
 }
 
+// failPrint reports a print-mode failure. A script reading stdout for
+// --output json gets the same report shape it gets for a failed turn.
+func failPrint(err error, jsonOut bool, stdout, stderr io.Writer) int {
+	if !jsonOut {
+		fmt.Fprintln(stderr, "zemi:", err)
+		return 1
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report{IsError: true, Error: err.Error(), Tools: []reportTool{}})
+	return 1
+}
+
 // printTurn runs one turn without the TUI: the reply goes to stdout (or a
 // JSON report with --output json), a failure to stderr with status 1, an
 // interrupt ends with 130.
@@ -197,8 +210,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 	start := len(h.Session().Transcript)
 	began, before := time.Now(), h.AgentStream()
 	if err := h.AgentSend(prompt); err != nil {
-		fmt.Fprintln(stderr, "zemi:", err)
-		return 1
+		return failPrint(err, jsonOut, stdout, stderr)
 	}
 	interrupted := false
 	for h.AgentActive() {
