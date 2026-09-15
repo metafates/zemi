@@ -44,11 +44,17 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// pipelines and backgrounded children too, and nothing reads the TUI's tty
 	c := proc.CommandContext(cctx, "sh", "-c", cmd)
 	c.Dir = workdir()
-	c.Env = append(os.Environ(), proc.NonInteractiveEnv...)
+	// secret-shaped variables stay out of the child, as they do for jobs:
+	// the model reads whatever the command prints
+	env, err := perm.ChildEnv(nil)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	c.Env = append(env, proc.NonInteractiveEnv...)
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
-	err := proc.Run(c)
+	err = proc.Run(c)
 	out := strings.TrimRight(ansi.Strip(buf.String()), "\n")
 	var b strings.Builder
 	b.WriteString(truncMiddle(out))

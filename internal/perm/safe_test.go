@@ -20,6 +20,15 @@ func TestSafeCommand(t *testing.T) {
 		{"cd internal && go vet ./...", true},
 		{"python3 -m pytest -q", true},
 
+		{"git fetch --upload-pack=./pwn.sh ./repo", false},
+		{"git fetch", false},
+		{"go run ./cmd/x", false},
+		{"cargo run", false},
+		{"npm run deploy", false},
+		{`awk 'BEGIN{getline l < "/etc/passwd"; print l}' f`, false},
+		{"sed -n 'w/tmp/out' main.go", false},
+		{`echo "$(cat /etc/passwd)"`, false},
+
 		{"rm -rf build", false},
 		{"git push origin main", false},
 		{"git branch feature-x", false},

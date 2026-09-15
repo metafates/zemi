@@ -106,6 +106,10 @@ var projectTools = map[string]bool{
 	"tsc": true, "vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
 }
 
+// sedWrite matches sed's w command, which writes a file: at the start of
+// the script, after another command, or as a s///w flag.
+var sedWrite = regexp.MustCompile(`(^|[;}\s/])[wW][ \t]*\S`)
+
 var safeMakeTarget = regexp.MustCompile(`^(all|build|test[\w.-]*|check[\w.-]*|lint[\w.-]*|fmt|format|vet|compile|bench[\w.-]*|cover(age)?)$`)
 
 func safeSegment(a []string) bool {
@@ -125,30 +129,35 @@ func safeSegment(a []string) bool {
 	case name == "find":
 		return !hasFlag(rest, "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
 	case name == "sed":
-		return !hasFlag(rest, "-i", "--in-place") && !strings.Contains(strings.Join(rest, " "), "w ")
+		// w writes a file, with or without a space after it
+		return !hasFlag(rest, "-i", "--in-place") && !sedWrite.MatchString(strings.Join(rest, " "))
 	case name == "awk":
+		// getline reads a file the same way > and | write one
 		script := strings.Join(rest, " ")
-		return !strings.ContainsAny(script, ">|") && !strings.Contains(script, "system")
+		return !strings.ContainsAny(script, "><|") && !strings.Contains(script, "system") && !strings.Contains(script, "getline")
 	case name == "gofmt":
 		return !hasFlag(rest, "-w")
 	case name == "git":
 		return safeGit(rest)
+	// go run and cargo run execute whatever they are pointed at, so they ask
 	case name == "go":
 		switch sub {
-		case "build", "test", "vet", "list", "version", "doc", "fmt", "run", "mod", "work":
+		case "build", "test", "vet", "list", "version", "doc", "fmt", "mod", "work":
 			return true
 		case "env":
 			return !hasFlag(rest, "-w", "-u")
 		}
 	case name == "cargo":
 		switch sub {
-		case "build", "check", "test", "clippy", "fmt", "doc", "tree", "metadata", "run", "bench":
+		case "build", "check", "test", "clippy", "fmt", "doc", "tree", "metadata", "bench":
 			return true
 		}
 	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
 		switch sub {
-		case "test", "run", "lint", "build", "typecheck", "ls", "list", "outdated", "why":
+		case "test", "lint", "build", "typecheck", "ls", "list", "outdated", "why":
 			return true
+		case "run": // only the usual build and test scripts, like make
+			return len(rest) > 1 && safeMakeTarget.MatchString(rest[1])
 		}
 	case name == "make":
 		for _, t := range rest {
@@ -189,7 +198,8 @@ func safeGit(args []string) bool {
 			return false
 		}
 	}
-	if len(args) == 0 || hasFlag(args, "--output") {
+	// --upload-pack and friends name a program for git to run
+	if len(args) == 0 || hasFlag(args, "--output", "--upload-pack", "--receive-pack", "--exec", "--exec-path") {
 		return false
 	}
 	sub, rest := args[0], args[1:]
@@ -198,8 +208,9 @@ func safeGit(args []string) bool {
 		next = rest[0]
 	}
 	switch sub {
+	// fetch is not here: it talks to the network and runs transport helpers
 	case "status", "diff", "log", "show", "blame", "describe", "rev-parse", "ls-files", "ls-tree",
-		"grep", "shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref", "fetch",
+		"grep", "shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
 		"name-rev", "count-objects":
 		return true
 	case "branch":

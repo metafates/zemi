@@ -30,6 +30,19 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
+// secretPath matches the §9 secret shapes on the path as written and on the
+// resolved one, so an innocently named symlink cannot hide a secret.
+func (h *Host) secretPath(p string) bool {
+	if perm.PathIsSecret(p) {
+		return true
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return true
+	}
+	return perm.PathIsSecret(realPath(abs))
+}
+
 // inJail reports whether path is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {
 	abs, err := filepath.Abs(path)
@@ -85,17 +98,17 @@ func (h *Host) writeJails() []string {
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
 	case "fs.read", "lua.fs.read":
-		if perm.PathIsSecret(arg) {
+		if h.secretPath(arg) {
 			return perm.Ask
 		}
 		if h.inJail(arg, h.readJails()...) {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":
-		if subject == "fs.write" && h.inScratch(arg) && !perm.PathIsSecret(arg) {
+		if subject == "fs.write" && h.inScratch(arg) && !h.secretPath(arg) {
 			return perm.Allow
 		}
-		if h.inJail(arg, h.writeJails()...) && !perm.PathIsSecret(arg) {
+		if h.inJail(arg, h.writeJails()...) && !h.secretPath(arg) {
 			return perm.Ask // write stays ask inside the jail too
 		}
 	}
@@ -109,6 +122,8 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 func (h *Host) luaGate(L *glua.LState, subject, arg string) {
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
+	// rules are attributed to the calling code's origin, not to the model
+	pipe.Principal = string(h.RT.CurrentOrigin())
 	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	switch v.Decision {
 	case perm.Allow:

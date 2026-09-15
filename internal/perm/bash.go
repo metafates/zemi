@@ -56,7 +56,32 @@ func EnvAssignmentGate(name string) bool {
 func Normalize(cmd string) Normalized {
 	var n Normalized
 	n.scan(cmd)
+	if n.Fail == "" && n.ForceAsk == "" && quotedSubstitution(cmd) {
+		n.ForceAsk = "command substitution inside quotes"
+	}
 	return n
+}
+
+// quotedSubstitution reports a $(, backtick or <( inside double quotes. The
+// scanner keeps a quoted run as one literal word, but the shell still runs
+// what is in there, so no allow rule may cover it.
+func quotedSubstitution(cmd string) bool {
+	inSingle, inDouble := false, false
+	for i := 0; i < len(cmd); i++ {
+		switch c := cmd[i]; {
+		case inSingle:
+			inSingle = c != '\''
+		case c == '\\':
+			i++
+		case c == '"':
+			inDouble = !inDouble
+		case c == '\'':
+			inSingle = !inDouble
+		case inDouble && (c == '`' || ((c == '$' || c == '<') && i+1 < len(cmd) && cmd[i+1] == '(')):
+			return true
+		}
+	}
+	return false
 }
 
 type tokKind int

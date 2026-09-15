@@ -130,10 +130,14 @@ writes ask) and finally ask — there is no fail-open path. New host-API side ef
 be gated with the same `lua.` subject at the Lua boundary.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
-and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads that
-are not secret-shaped, project edits, `perm.SafeCommand` commands) and only then runs a
-one-shot screening model, caching approvals and falling back to the user ask with its
-reason; `plan` denies writes and runs `SafeCommand` commands. `SafeCommand` is an
+and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
+edits **inside the jail** that are not secret-shaped, `perm.SafeCommand` commands) and only
+then runs a one-shot screening model, caching approvals and falling back to the user ask
+with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
+never settled locally: the URL is the model's. `h.secretPath` matches the secret shapes on
+the resolved path too, so a symlink cannot hide one, and the model's `lua` tool runs as
+`learned` origin, the lowest trust, so it cannot widen permissions, add MCP servers or read
+secret-shaped env names. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
 project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
