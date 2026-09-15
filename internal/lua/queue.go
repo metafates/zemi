@@ -47,7 +47,7 @@ const (
 
 // Sentinel errors surfaced to callers.
 var (
-	// ErrHot means the runtime is wedged and needs :Reload.
+	// ErrHot means the runtime is wedged and needs /reload.
 	ErrHot = errors.New("zemi: lua runtime is hot, reload required")
 	// ErrReloaded means the request's generation was replaced.
 	ErrReloaded = errors.New("zemi: lua runtime reloaded, request dropped")
@@ -69,7 +69,6 @@ type request struct {
 	reply   chan result
 	ceiling time.Duration
 	grace   time.Duration
-	soft    time.Duration
 
 	cancelFn context.CancelFunc
 	mu       sync.Mutex
@@ -79,12 +78,11 @@ type request struct {
 }
 
 type result struct {
-	vals     []any
-	err      error
-	canceled bool
+	vals []any
+	err  error
 }
 
-func newRequest(class Class, fn Fn, ctx context.Context, ceiling, grace, soft time.Duration) *request {
+func newRequest(class Class, fn Fn, ctx context.Context, ceiling, grace time.Duration) *request {
 	return &request{
 		class:   class,
 		fn:      fn,
@@ -92,7 +90,6 @@ func newRequest(class Class, fn Fn, ctx context.Context, ceiling, grace, soft ti
 		reply:   make(chan result, 1),
 		ceiling: ceiling,
 		grace:   grace,
-		soft:    soft,
 		done:    make(chan struct{}),
 	}
 }
@@ -111,6 +108,7 @@ type Generation struct {
 	heap    []*request
 	seq     uint64
 	signal  chan struct{}
+	stop    chan struct{} // closed by ForceReload to end loop
 	retired bool
 }
 
@@ -150,9 +148,9 @@ func (g *Generation) pop() *request {
 	return r
 }
 
-func (g *Generation) drain(retire bool) {
+func (g *Generation) drain() {
 	g.mu.Lock()
-	g.retired = retire
+	g.retired = true
 	pending := g.heap
 	g.heap = nil
 	g.mu.Unlock()
@@ -176,7 +174,7 @@ func (g *Generation) loop() {
 			select {
 			case <-g.signal:
 				continue
-			case <-g.rt.retireCh(g.ID):
+			case <-g.stop:
 				return
 			}
 		}
@@ -203,17 +201,13 @@ func (g *Generation) execute(r *request) {
 	if grace <= 0 {
 		grace = AbandonGrace
 	}
-	soft := r.soft
-	if soft <= 0 {
-		soft = SoftBudget
-	}
 
 	watchdogDone := make(chan struct{})
 	go func() {
 		defer close(watchdogDone)
-		slow := time.AfterFunc(soft, func() {
+		slow := time.AfterFunc(SoftBudget, func() {
 			g.rt.log.Warn("lua", "handler exceeded soft budget", map[string]any{
-				"class": r.class.String(), "budget": soft.String(),
+				"class": r.class.String(), "budget": SoftBudget.String(),
 			})
 		})
 		defer slow.Stop()
@@ -229,7 +223,7 @@ func (g *Generation) execute(r *request) {
 				// cannot enqueue onto the wedged interpreter.
 				g.rt.goHot(fmt.Errorf("request in class %s exceeded ceiling %s + grace %s",
 					r.class.String(), ceiling, grace))
-				r.reply <- result{err: ErrAbandoned, canceled: true}
+				r.reply <- result{err: ErrAbandoned}
 			}
 		}
 	}()
@@ -243,7 +237,7 @@ func (g *Generation) execute(r *request) {
 	g.L.RemoveContext()
 
 	elapsed := time.Since(started)
-	if err == nil && elapsed > soft && reqCtx.Err() == nil {
+	if err == nil && elapsed > SoftBudget && reqCtx.Err() == nil {
 		g.rt.log.Debug("lua", "slow handler completed", map[string]any{
 			"class": r.class.String(), "elapsed": elapsed.String(),
 		})
@@ -259,7 +253,7 @@ func (g *Generation) execute(r *request) {
 		// A reply arriving after cancellation is canceled, whatever the Lua
 		// returned (DESIGN §4).
 		g.finish(r)
-		r.reply <- result{vals: vals, err: fmt.Errorf("%w: %v", ErrCanceled, reqCtx.Err()), canceled: true}
+		r.reply <- result{vals: vals, err: fmt.Errorf("%w: %v", ErrCanceled, reqCtx.Err())}
 		cancel()
 		return
 	}

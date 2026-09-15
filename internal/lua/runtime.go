@@ -32,10 +32,7 @@ type Runtime struct {
 	frames   []frame
 
 	printHook func(origin, line string)
-
-	stopMu   sync.Mutex
-	stopCh   map[int64]chan struct{}
-	reloadMu sync.Mutex
+	reloadMu  sync.Mutex
 }
 
 // frame is one entry of the origin stack: the origin and the file path of
@@ -54,10 +51,9 @@ type RuntimeOptions struct {
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	r := &Runtime{
-		log:    opts.Log,
-		paths:  opts.PathClass,
-		rfs:    opts.RuntimeFS,
-		stopCh: map[int64]chan struct{}{},
+		log:   opts.Log,
+		paths: opts.PathClass,
+		rfs:   opts.RuntimeFS,
 	}
 	if r.log == nil {
 		r.log = logging.New("")
@@ -68,21 +64,6 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 // SetPrintHook routes Lua print() to the host (origin-tagged).
 func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
 	r.printHook = fn
-}
-
-func (r *Runtime) retireCh(id int64) <-chan struct{} {
-	r.stopMu.Lock()
-	defer r.stopMu.Unlock()
-	return r.stopCh[id]
-}
-
-func (r *Runtime) closeStopCh(id int64) {
-	r.stopMu.Lock()
-	defer r.stopMu.Unlock()
-	if ch, ok := r.stopCh[id]; ok {
-		close(ch)
-		delete(r.stopCh, id)
-	}
 }
 
 func (r *Runtime) PushFrame(origin Origin, path string) {
@@ -138,7 +119,6 @@ func (r *Runtime) goHot(cause error) {
 
 func (r *Runtime) IsHot() bool { return r.hot.Load() }
 
-// Current returns the live generation, or nil before the first boot.
 func (r *Runtime) current() *Generation { return r.cur.Load() }
 
 // Boot builds the first generation and runs the boot steps through its
@@ -155,8 +135,8 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	r.reloadMu.Lock()
 	defer r.reloadMu.Unlock()
 	if old := r.current(); old != nil {
-		old.drain(true)
-		r.closeStopCh(old.ID)
+		old.drain()
+		close(old.stop)
 		r.cur.Store(nil)
 		r.log.Info("lua", "generation retired for reload", map[string]any{"gen": old.ID})
 	}
@@ -177,22 +157,21 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	if err != nil {
 		return nil, err
 	}
-	sb.SetPrint(r.PrintHook())
-	id := r.seq.Add(1)
+	sb.SetPrint(func(origin, line string) {
+		if r.printHook != nil {
+			r.printHook(origin, line)
+		}
+	})
 	gen := &Generation{
-		ID:      id,
+		ID:      r.seq.Add(1),
 		rt:      r,
 		SB:      sb,
 		L:       sb.L,
 		modules: map[string]glua.LValue{},
 		signal:  make(chan struct{}, 1),
+		stop:    make(chan struct{}),
 	}
 	r.installRequire(gen)
-
-	stop := make(chan struct{})
-	r.stopMu.Lock()
-	r.stopCh[id] = stop
-	r.stopMu.Unlock()
 
 	// r.cur is stored before the steps so early callers reach the
 	// generation and wait in do(); the dispatcher starts only after the
@@ -227,7 +206,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	r := newRequest(class, fn, ctx, ceiling, grace, 0)
+	r := newRequest(class, fn, ctx, ceiling, grace)
 	g.enqueue(r)
 	select {
 	case res := <-r.reply:
@@ -325,9 +304,6 @@ func (r *Runtime) EvalFileInline(L *glua.LState, path string, origin Origin) err
 	return r.runChunk(L, string(data), resolved, origin)
 }
 
-// ---------------------------------------------------------------------------
-// require over the runtimepath
-
 func (r *Runtime) installRequire(gen *Generation) {
 	L := gen.L
 	gen.SB.SetRequire(L.NewClosure(func(L *glua.LState) int {
@@ -343,7 +319,7 @@ func (r *Runtime) installRequire(gen *Generation) {
 }
 
 func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, error) {
-	if ns, ok := r.goNamespace(gen, name); ok {
+	if ns := gen.SB.LookupPath(name); ns != glua.LNil {
 		return ns, nil
 	}
 	if strings.HasPrefix(name, "zemi.") {
@@ -385,15 +361,6 @@ func (r *Runtime) loadModule(gen *Generation, key, name string, read func() ([]b
 	}
 	gen.modules[key] = mod
 	return mod, nil
-}
-
-// goNamespace exposes preloaded zemi.* namespaces from the frozen surface.
-func (r *Runtime) goNamespace(gen *Generation, name string) (glua.LValue, bool) {
-	v := gen.SB.LookupPath(name)
-	if v == glua.LNil {
-		return glua.LNil, false
-	}
-	return v, true
 }
 
 func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
@@ -514,9 +481,6 @@ func (r *Runtime) runtimepath() []string {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// boot steps
-
 // BootStep is one stage of the boot sequence, executed on the interpreter
 // goroutine of each new generation.
 type BootStep struct {
@@ -561,14 +525,5 @@ func RequireStep(module string) BootStep {
 			_, err := r.requireModule(g, module)
 			return err
 		},
-	}
-}
-
-// PrintHook adapts print() to the runtime's origin tracking.
-func (r *Runtime) PrintHook() func(origin, line string) {
-	return func(origin, line string) {
-		if r.printHook != nil {
-			r.printHook(origin, line)
-		}
 	}
 }
