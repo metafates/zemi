@@ -25,8 +25,9 @@ Rules when editing:
 - Never hand-edit `permissions.lua`. zemi refuses a file it did not generate and then
   starts with no permanent rules. Add rules with `zemi.permission.rule` in init.lua or by
   answering `a` in a permission prompt.
-- Writes outside the project ask first and show the diff. zemi reloads when config files
-  change; `/reload` forces it.
+- Writes outside the project ask first and show the diff, and write, edit and multiedit
+  refuse a file the model has not read or that changed since it read it. zemi reloads when
+  config files change; `/reload` forces it.
 - Never write API keys into files: read them with `zemi.env.get("NAME")`.
 
 ## Providers and models
@@ -120,9 +121,10 @@ writable; prefer it over guessing. Common keys:
 
 `zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
-`--mode manual|plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version.
+`--mode manual|plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
+`--health` prints the checks `/health` shows and exits 1 when any of them errors.
 `zemi --help` has the full list. With `-p` nobody answers asks, so they are denied unless
-the mode is auto or yolo.
+the mode is auto or yolo; a run that had calls denied says so on stderr.
 
 ## Keymaps, commands, UI
 
@@ -176,6 +178,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/config`,
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
+- `/config list` shows every setting with its value and what it does; `/config revisions`
+  and `/config revert <id>` cover the changes zemi made to its own config.
 - `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),
   `/agents stop [id]` stops a running one (without an id, the one on screen);
   `/lsp restart <name>`;
@@ -190,7 +194,8 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
 `sourcegraph`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`,
-`agent`, `workflow`, `lua` (runs Lua inside zemi, permission subject `tool.lua`), plus
+`agent`, `workflow`, `lua` (runs Lua inside zemi at the lowest trust, so it cannot widen
+permissions, add MCP servers or read secret-shaped env names; permission subject `tool.lua`), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
 Asking the user: `question` shows 1-4 questions one after another; the user picks an option
@@ -203,8 +208,9 @@ Subagents cannot ask.
 
 Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command),
 `fs.read`, `fs.write` (path patterns), `net.<host>`, `mcp.<server>` (tool name as
-pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start`. Deny beats ask beats
-allow; within one decision the most specific pattern wins.
+pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start`. A subject ending in
+`.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
+beats allow; within one decision the most specific pattern wins.
 
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure
 and fast: no zemi.* mutations inside it. For the full API see the zemi-lua skill.
