@@ -119,6 +119,7 @@ zemi.event.on("reflector.done", function(ev)
   add(ev.superseded, "memory superseded", "memories superseded")
   add(ev.config_applied, "config rule applied", "config rules applied")
   add(ev.config_queued, "config change to review in /config", "config changes to review in /config")
+  add(ev.skills_drafted, "skill drafted, enable it in /skills", "skills drafted, enable them in /skills")
   local body = #parts > 0 and table.concat(parts, ", ") or "nothing worth keeping"
   zemi.notify({ title = "reflect", body = body })
 end)

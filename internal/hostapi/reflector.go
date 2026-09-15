@@ -42,11 +42,12 @@ Rules:
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it.
 - Each memory is one self-contained single line, at most 512 characters.
 - Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
+- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
-{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"config":[{"action":"patch","title":"...","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","scope":"permanent","match":"rm -rf build","not_match":"rm -f build"}],"risk":"safe"}]}
-kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories" and "config" entirely when nothing is worth keeping.`
+{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"config":[{"action":"patch","title":"...","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","scope":"permanent","match":"rm -rf build","not_match":"rm -f build"}],"risk":"safe"}],"skills":[{"name":"run-integration-tests","description":"when asked to run the local integration tests","body":"1. docker compose up -d db\n2. go test -tags integration ./..."}]}
+kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories", "config" and "skills" entirely when nothing is worth keeping.`
 
 // reflectProposal is the schema-validated model output. Config patches
 // stay raw at decode time: intakeConfigPatch strict-decodes each one so
@@ -60,6 +61,11 @@ type reflectProposal struct {
 		Supersedes string   `json:"supersedes"`
 	} `json:"memories"`
 	Config []json.RawMessage `json:"config"`
+	Skills []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Body        string `json:"body"`
+	} `json:"skills"`
 }
 
 // reflectEveryN reads the trigger gate: reflect every N closed sessions,
@@ -195,6 +201,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
 	cfgQueued, cfgApplied, cfgSkipped := h.applyConfigProposals(sid, proposal)
+	drafted := h.applySkillDrafts(sid, proposal)
 	if msgs, err := h.DB.Messages(sid); err == nil {
 		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
 	}
@@ -208,7 +215,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
 		"config_queued": cfgQueued, "config_applied": cfgApplied,
-		"config_skipped": cfgSkipped,
+		"config_skipped": cfgSkipped, "skills_drafted": drafted,
 	})
 	return nil
 }
@@ -449,6 +456,22 @@ func (h *Host) applyConfigProposals(sid string, p *reflectProposal) (queued, app
 		}
 	}
 	return queued, applied, skipped
+}
+
+// applySkillDrafts writes each proposed skill as a disabled learned draft;
+// invalid or already-taken names are skipped with a log.
+func (h *Host) applySkillDrafts(sid string, p *reflectProposal) (drafted int) {
+	for _, s := range p.Skills {
+		if err := h.draftLearnedSkill(sid, s.Name, s.Description, s.Body); err != nil {
+			h.Log.Debug("reflector", "skill draft skipped", map[string]any{"name": s.Name, "error": err.Error()})
+			continue
+		}
+		drafted++
+	}
+	if drafted > 0 {
+		h.syncSkills()
+	}
+	return drafted
 }
 
 // linkSupersede marks an existing memory as replaced by one stored in this

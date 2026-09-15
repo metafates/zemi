@@ -42,6 +42,9 @@ type Skill struct {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
+// ValidName reports whether name is usable as a skill directory name.
+func ValidName(name string) bool { return nameRe.MatchString(name) }
+
 // Parse validates one skill directory: SKILL.md must exist (not a
 // symlink), carry `---`-fenced yaml frontmatter with a name matching the
 // directory and a non-empty description within the cap. An optional

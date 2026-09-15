@@ -1228,7 +1228,9 @@ objects only, never Lua, and Go refuses any config patch that contains
 anything else, which is what keeps `permissions.lua` (§6.1) free of
 executable code even against a hostile reflector output; `skills` and
 `evals` proposals carry Lua (the schema above) and are code on the
-mandatory-review path, never auto-apply. Every string leaf of a proposal
+mandatory-review path, never auto-apply (v1 skill drafts are body only:
+Go scrubs them, writes them under the data dir's `skills/`, and they stay
+disabled until the user enables them in `/skills`). Every string leaf of a proposal
 (the scan is structural: `title`, rule patterns and examples, eval
 `prompt`/`expect_lua`, skill trigger and body) passes the same
 intake scrubber as memory text, and the concatenation of all leaves is

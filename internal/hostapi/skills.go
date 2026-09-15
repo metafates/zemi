@@ -10,12 +10,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/goccy/go-yaml"
+
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -130,6 +135,49 @@ func (h *Host) syncSkills() {
 		enabled[r.Name] = r.Enabled
 	}
 	h.skillsReg.set(found, enabled)
+}
+
+// draftLearnedSkill writes one reflector-proposed skill under the data
+// dir's skills/ (DESIGN §10.5): body only, never a Lua hook, text through
+// the memory scrubber, and disabled like every learned skill until the
+// user enables it in /skills.
+func (h *Host) draftLearnedSkill(sid, name, desc, body string) error {
+	dir := h.learnedSkillsDir()
+	switch {
+	case dir == "":
+		return errors.New("no data dir for learned skills")
+	case !skills.ValidName(name):
+		return fmt.Errorf("invalid skill name %q", name)
+	case strings.TrimSpace(desc) == "" || strings.TrimSpace(body) == "":
+		return errors.New("description and body are required")
+	case len([]rune(desc)) > skills.MaxDescriptionRunes:
+		return errors.New("description too long")
+	}
+	path := filepath.Join(dir, name)
+	if _, taken := h.skillsReg.get(name); taken {
+		return fmt.Errorf("skill %q already exists", name)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("skill %q already exists", name)
+	}
+	desc, _ = learn.ScrubSecrets(strings.Join(strings.Fields(sanitize.String(desc)), " "))
+	body, scrubbed := learn.ScrubSecrets(sanitize.String(body))
+	if scrubbed && learn.IsOneBlob(body) {
+		return errors.New("draft is mostly secret material")
+	}
+	fm, err := yaml.Marshal(map[string]string{"name": name, "description": desc})
+	if err != nil {
+		return err
+	}
+	doc := "---\n" + string(fm) + "---\n\n" + strings.TrimSpace(body) +
+		"\n\n<!-- drafted by the reflector from session " + sid + "; review before enabling -->\n"
+	if len(doc) > skills.MaxFileBytes {
+		return errors.New("draft too large")
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(path, "SKILL.md"), []byte(doc), 0o644)
 }
 
 func (h *Host) authoredSkillsDir() string {
