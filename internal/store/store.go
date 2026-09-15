@@ -170,11 +170,44 @@ CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE OF text ON memory BEGIN
 END;
 `
 
+// migrations[i] upgrades a database at user_version i to i+1. The schema
+// const only ever creates what is missing, so a column added to an existing
+// table needs its ALTER here as well as its place in schema: fresh databases
+// get it from schema, existing ones from the migration. Append only, never
+// edit or reorder a shipped entry.
+var migrations = [][]string{}
+
 func (s *DB) migrate() error {
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	return nil
+	var version int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("store: read user_version: %w", err)
+	}
+	if version > len(migrations) {
+		return fmt.Errorf("store: database is at schema version %d, this zemi knows %d; upgrade zemi", version, len(migrations))
+	}
+	if version == len(migrations) {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i := version; i < len(migrations); i++ {
+		for _, stmt := range migrations[i] {
+			if _, err := tx.Exec(stmt); err != nil {
+				return fmt.Errorf("store: migration %d: %w", i+1, err)
+			}
+		}
+	}
+	// PRAGMA takes no placeholder
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
+		return fmt.Errorf("store: set user_version: %w", err)
+	}
+	return tx.Commit()
 }
 
 // NewID returns a random 128-bit id, hex encoded.

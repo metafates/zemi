@@ -2,6 +2,7 @@ package store
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,6 +14,31 @@ func openTest(t *testing.T) *DB {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+// TestSchemaVersion: an opened database carries the version the migration
+// list ends at, and one written by a newer zemi is refused instead of read
+// with columns this build does not know.
+func TestSchemaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != len(migrations) {
+		t.Fatalf("user_version = %d, want %d", version, len(migrations))
+	}
+	if _, err := db.db.Exec(`PRAGMA user_version = 99`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "upgrade zemi") {
+		t.Fatalf("a newer database must be refused, got %v", err)
+	}
 }
 
 func TestSessionLifecycle(t *testing.T) {
