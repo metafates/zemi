@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
+	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -100,6 +101,11 @@ type Host struct {
 	// its own goroutine (cmdline execution sits on the UI goroutine, which
 	// must never block on a hook).
 	memReview sync.Mutex
+
+	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
+	// reflectModelFn stubs the reflector model in tests.
+	reflectMu      sync.Mutex
+	reflectModelFn func() (fantasy.LanguageModel, error)
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs

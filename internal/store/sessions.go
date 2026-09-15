@@ -233,6 +233,38 @@ func (s *DB) AddToolCall(tc *ToolCall) error {
 	return err
 }
 
+// ToolStat is one per-tool aggregate over a session's tool calls.
+type ToolStat struct {
+	Tool   string
+	Calls  int
+	Failed int
+	Denied int
+}
+
+// ToolCallStats aggregates a session's tool_calls rows per tool, busiest
+// first (reflector input, DESIGN §10.3).
+func (s *DB) ToolCallStats(sessionID string) ([]ToolStat, error) {
+	rows, err := s.db.Query(`SELECT t.tool, COUNT(*),
+			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN t.denied != 0 THEN 1 ELSE 0 END)
+		FROM tool_calls t JOIN messages m ON m.id = t.message_id
+		WHERE m.session_id = ?
+		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ToolStat
+	for rows.Next() {
+		var st ToolStat
+		if err := rows.Scan(&st.Tool, &st.Calls, &st.Failed, &st.Denied); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
 // GetKV loads a json value by key; ErrNotFound when absent.
 func (s *DB) GetKV(key string) (string, error) {
 	var v string

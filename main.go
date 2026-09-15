@@ -62,9 +62,10 @@ func run() error {
 	host.SetUIHooks(app)
 
 	steps := []lua.BootStep{
-			host.NamespacesStep(),
-			builtinCommandsStep(host, app),
-			host.MemoryCommandsStep(),
+		host.NamespacesStep(),
+		builtinCommandsStep(host, app),
+		host.MemoryCommandsStep(),
+		host.ReflectorCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		pluginsStep(dirs),
 		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
@@ -88,6 +89,7 @@ func run() error {
 	}()
 
 	_, err := p.Run()
+	host.ShutdownReflect()
 	return err
 }
 

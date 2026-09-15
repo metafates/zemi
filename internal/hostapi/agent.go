@@ -89,10 +89,12 @@ type agentHost struct {
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memProposals parks model-proposed memories behind the
-	// autonomy gate, memAuto counts auto-applies against the session cap.
+	// autonomy gate, memAuto counts auto-applies against the session cap,
+	// reflected counts closed sessions for the reflector every-N gate.
 	digest       string
 	memProposals []*learn.Result
 	memAuto      int
+	reflected    int
 }
 
 func newAgentHost() *agentHost {
@@ -461,15 +463,18 @@ func (h *Host) recordToolCall(name string, ok bool, output string) {
 	}
 }
 
-// ensureSession creates the store session on the first send.
+// ensureSession creates the store session on the first send. Rolling over
+// a previous session is the reflector's session-close trigger (DESIGN
+// §10.3).
 func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag := h.agents
 	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	if ag.sessionID != "" {
+		ag.mu.Unlock()
 		return nil
 	}
 	if h.DB == nil {
+		ag.mu.Unlock()
 		return fmt.Errorf("agent: session store unavailable")
 	}
 	sid := store.NewID()
@@ -482,11 +487,15 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		title = title[:60]
 	}
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
+		ag.mu.Unlock()
 		return err
 	}
+	prev := ag.sessionID
 	ag.sessionID = sid
 	ag.digest = h.digestFor()
 	ag.memAuto = 0
+	ag.mu.Unlock()
+	h.reflectOnClose(prev)
 	return nil
 }
 

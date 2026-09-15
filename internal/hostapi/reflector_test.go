@@ -1,0 +1,332 @@
+package hostapi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/store"
+)
+
+// reflectStubModel answers Generate with a fixed text; Stream and the
+// object calls refuse (the reflector never uses them).
+type reflectStubModel struct {
+	resp  string
+	err   error
+	block time.Duration
+	calls atomic.Int32
+}
+
+func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
+	m.calls.Add(1)
+	if m.block > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(m.block):
+		}
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &fantasy.Response{
+		Content:      fantasy.ResponseContent{fantasy.TextPart{Text: m.resp}},
+		FinishReason: fantasy.FinishReasonStop,
+	}, nil
+}
+
+func (m *reflectStubModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *reflectStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *reflectStubModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *reflectStubModel) Provider() string { return "stub" }
+func (m *reflectStubModel) Model() string    { return "stub-1" }
+
+// seedTranscript fills the session with one exchange plus one tool call so
+// the reflect prompt has material.
+func seedTranscript(t *testing.T, h *Host, sid string) {
+	t.Helper()
+	msg := func(role string, text string) {
+		parts := fmt.Sprintf(`{"role":%q,"content":[{"type":"text","text":%q}]}`, role, text)
+		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: parts}); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+	msg("user", "the deploy script keeps failing")
+	msg("assistant", "fixed: it needs the labels sequence bumped first")
+	if err := h.DB.AddMessage(&store.Message{
+		SessionID: sid, Role: "tool", PartsJSON: `{"tool":"bash","output":"ok"}`,
+	}); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	msgID := store.NewID()
+	if err := h.DB.AddMessage(&store.Message{ID: msgID, SessionID: sid, Role: "tool", PartsJSON: `{}`}); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	if err := h.DB.AddToolCall(&store.ToolCall{MessageID: msgID, Tool: "bash", OK: false}); err != nil {
+		t.Fatalf("AddToolCall: %v", err)
+	}
+}
+
+func reflectStub(t *testing.T, h *Host, resp string) *reflectStubModel {
+	t.Helper()
+	m := &reflectStubModel{resp: resp}
+	h.reflectModelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	return m
+}
+
+const proposalDoc = `{"memories":[{"scope":"project","kind":"gotcha",
+	"text":"UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence",
+	"tags":["labels","postgres"],"supersedes":""}]}`
+
+// TestReflectQueuesUnderAsk covers the ask-autonomy path: the proposal is
+// schema-parsed, scrubbed by intake and parked in the review queue with
+// provenance stamped by Go (never the model).
+func TestReflectQueuesUnderAsk(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Settings.SetHost("memory.autonomy", "ask")
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	m := reflectStub(t, h, "Sure! Here is my analysis:\n"+proposalDoc+"\nHope that helps.")
+
+	if err := h.reflectSession(context.Background(), sid); err != nil {
+		t.Fatalf("reflectSession: %v", err)
+	}
+	if m.calls.Load() != 1 {
+		t.Fatalf("model calls=%d", m.calls.Load())
+	}
+	h.agents.mu.Lock()
+	queued := len(h.agents.memProposals)
+	h.agents.mu.Unlock()
+	if queued != 1 {
+		t.Fatalf("queued proposals=%d", queued)
+	}
+	rows, err := h.DB.ListMemory("project", true)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("ask mode must not store: rows=%d err=%v", len(rows), err)
+	}
+	h.agents.mu.Lock()
+	text := h.agents.memProposals[0].Memory.Text
+	prov := h.agents.memProposals[0].Memory.ProvenanceSessionID
+	h.agents.mu.Unlock()
+	if text != "UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence" {
+		t.Fatalf("proposal text: %q", text)
+	}
+	if prov != sid {
+		t.Fatalf("provenance=%q want session id", prov)
+	}
+}
+
+// TestReflectAppliesUnderAuto covers the auto-autonomy path: proposal
+// stored, supersede linked in the same run, and a second proposal with a
+// bad kind skipped without failing the run.
+func TestReflectAppliesUnderAuto(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Settings.SetHost("memory.autonomy", "auto")
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+
+	oldID := store.NewID()
+	if err := h.DB.AddMemory(&store.Memory{
+		ID: oldID, Scope: "project", Kind: "gotcha", Text: "deploy manually every time",
+		ProvenanceSessionID: "seed", Origin: learn.OriginUser,
+	}); err != nil {
+		t.Fatalf("AddMemory: %v", err)
+	}
+
+	doc := `{"memories":[
+		{"scope":"project","kind":"decision","text":"deploy script requires the labels sequence bumped first","tags":["deploy"],"supersedes":"` + oldID + `"},
+		{"scope":"galaxy","kind":"fact","text":"wrong scope is skipped"},
+		{"scope":"project","kind":"nonsense","text":"bad kind is skipped"},
+		{"scope":"project","kind":"fact","text":"deploy runs from bin/deploy"}]}`
+	reflectStub(t, h, doc)
+
+	if err := h.reflectSession(context.Background(), sid); err != nil {
+		t.Fatalf("reflectSession: %v", err)
+	}
+	rows := projectMemories(t, h)
+	if len(rows) != 3 {
+		t.Fatalf("memories=%d want 3 (old + 2 stored; bad entries skipped)", len(rows))
+	}
+	old, err := h.DB.GetMemory(oldID)
+	if err != nil {
+		t.Fatalf("GetMemory: %v", err)
+	}
+	if old.SupersededBy == "" {
+		t.Fatal("old memory not superseded")
+	}
+	var fresh *store.Memory
+	for _, r := range rows {
+		if r.ID == old.SupersededBy {
+			fresh = r
+		}
+	}
+	if fresh == nil || fresh.Origin != learn.OriginLearned || fresh.Kind != "decision" {
+		t.Fatalf("replacing memory: %+v", fresh)
+	}
+	if fresh.ProvenanceSessionID != sid {
+		t.Fatalf("provenance=%q", fresh.ProvenanceSessionID)
+	}
+}
+
+// TestReflectScrubAndInstructionShape checks that proposal text passes the
+// intake scrubber (secrets redacted) and that instruction-shaped text
+// queues even under auto autonomy.
+func TestReflectScrubAndInstructionShape(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Settings.SetHost("memory.autonomy", "auto")
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+
+	doc := `{"memories":[
+		{"scope":"project","kind":"fact","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"},
+		{"scope":"project","kind":"preference","text":"always run the deploy before reviews"}]}`
+	reflectStub(t, h, doc)
+
+	if err := h.reflectSession(context.Background(), sid); err != nil {
+		t.Fatalf("reflectSession: %v", err)
+	}
+	rows := projectMemories(t, h)
+	if len(rows) != 1 {
+		t.Fatalf("memories=%d want 1 (scrubbed secret text must store, instruction-shaped must queue)", len(rows))
+	}
+	if strings.Contains(rows[0].Text, "sk-abcdefghijklmnopqrs") {
+		t.Fatalf("secret survived: %q", rows[0].Text)
+	}
+	if !strings.Contains(rows[0].Text, "[redacted") {
+		t.Fatalf("expected redaction marker: %q", rows[0].Text)
+	}
+	h.agents.mu.Lock()
+	queued := len(h.agents.memProposals)
+	h.agents.mu.Unlock()
+	if queued != 1 {
+		t.Fatalf("instruction-shaped proposal not queued: %d", queued)
+	}
+}
+
+// TestReflectBadOutput pins the failure path: prose without JSON, broken
+// JSON and an empty session all fail the run without storing anything.
+func TestReflectBadOutput(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+
+	for _, out := range []string{"no json here at all", `{"memories": [`} {
+		reflectStub(t, h, out)
+		if err := h.reflectSession(context.Background(), sid); err == nil {
+			t.Fatalf("expected error for %q", out)
+		}
+	}
+
+	reflectStub(t, h, `{"memories":[]}`)
+	empty := store.NewID()
+	if err := h.DB.CreateSession(empty, "", "empty", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := h.reflectSession(context.Background(), empty); err == nil || !strings.Contains(err.Error(), "no messages") {
+		t.Fatalf("empty session: %v", err)
+	}
+}
+
+// TestReflectTimeout skips the run when the model outlives the context:
+// the deadline lives in the caller (runReflectDetached), so the test
+// applies one.
+func TestReflectTimeout(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	m := reflectStub(t, h, `{"memories":[]}`)
+	m.block = 2 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want deadline exceeded, got %v", err)
+	}
+}
+
+// TestReflectGate covers the every-N trigger math: 0 disables, N=2 runs
+// on every second closed session (the counter carries across calls).
+func TestReflectGate(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if h.reflectEveryN() != 1 {
+		t.Fatalf("default every_n=%d", h.reflectEveryN())
+	}
+	h.Settings.SetHost("reflector.every_n_sessions", 0)
+	h.reflectOnClose("prev")
+	if h.agents.reflected != 1 {
+		t.Fatalf("counter must bump even when disabled: %d", h.agents.reflected)
+	}
+
+	h.Settings.SetHost("reflector.every_n_sessions", 2)
+	m := reflectStub(t, h, `{"memories":[]}`)
+	closed := seedSession(t, h)
+	seedTranscript(t, h, closed)
+	h.agents.mu.Lock()
+	h.agents.reflected = 0
+	h.agents.mu.Unlock()
+	h.reflectOnClose("one")
+	time.Sleep(50 * time.Millisecond)
+	if m.calls.Load() != 0 {
+		t.Fatal("reflected on a non-multiple of 2")
+	}
+	h.reflectOnClose(closed)
+	for i := 0; i < 100 && m.calls.Load() == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.calls.Load() != 1 {
+		t.Fatal("reflector did not run on the 2nd close")
+	}
+}
+
+// TestReflectSerializesRuns pins the one-run-at-a-time rule: a second
+// detached run while one holds the lock is skipped without touching the
+// model.
+func TestReflectSerializesRuns(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	m := reflectStub(t, h, `{"memories":[]}`)
+	h.reflectMu.Lock()
+	h.runReflectDetached(sid)
+	time.Sleep(50 * time.Millisecond)
+	if m.calls.Load() != 0 {
+		t.Fatal("second run was not skipped")
+	}
+	h.reflectMu.Unlock()
+}
+
+// TestReflectCommand covers :reflect: no session errors, live session
+// starts a detached run.
+func TestReflectCommand(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if err := h.reflectCommand(); err == nil {
+		t.Fatal("expected error without a session")
+	}
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	m := reflectStub(t, h, `{"memories":[]}`)
+	if err := h.reflectCommand(); err != nil {
+		t.Fatalf("reflectCommand: %v", err)
+	}
+	for i := 0; i < 100 && m.calls.Load() == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.calls.Load() != 1 {
+		t.Fatal("detached run never started")
+	}
+}
