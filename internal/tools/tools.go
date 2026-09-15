@@ -335,7 +335,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. stdout and stderr are merged; output over 10000 characters keeps its start and end, and the whole output is saved to a file named in the result.
 
-The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it is stopped with everything it started. Never use it for:
+The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it keeps running as a background job instead of being stopped, and the result gives you its id for job_read. Never use it for:
 - servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
 - interactive programs (vim, less, REPLs, git rebase -i, git add -p, npm init, password or y/n prompts): use the non-interactive form, such as git --no-pager log, git commit -m "msg", npm init -y, --yes, CI=1.
 

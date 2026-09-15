@@ -38,11 +38,11 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			timeout = 10 * time.Minute
 		}
 	}
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	// its own session and process group: cancelling or the timeout stops
-	// pipelines and backgrounded children too, and nothing reads the TUI's tty
-	c := proc.CommandContext(cctx, "sh", "-c", cmd)
+	// pipelines and backgrounded children too, and nothing reads the TUI's tty.
+	// Not bound to the turn's context: a command that outlives the timeout
+	// becomes a job, which outlives the turn.
+	c := proc.Command("sh", "-c", cmd)
 	c.Dir = workdir()
 	// secret-shaped variables stay out of the child, as they do for jobs:
 	// the model reads whatever the command prints
@@ -54,23 +54,49 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
-	err = proc.Run(c)
+	if err = proc.Start(c); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	wait := make(chan error, 1)
+	go func() { wait <- proc.Wait(c) }()
+	timedOut := false
+	select {
+	case err = <-wait:
+	case <-ctx.Done():
+		proc.Kill(c)
+		<-wait
+		err = ctx.Err()
+	case <-time.After(timeout):
+		timedOut = true
+	}
 	out := strings.TrimRight(ansi.Strip(buf.String()), "\n")
 	var b strings.Builder
 	b.WriteString(truncMiddle(out))
 	if b.Len() < len(out) {
 		b.WriteString(p.spill("bash", out))
 	}
+	if timedOut {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		// the work so far is not thrown away: it keeps running as a job
+		if p != nil && p.Jobs != nil {
+			id := p.Jobs.Adopt(cmd, c, buf, wait)
+			b.WriteString(fmt.Sprintf("still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id))
+			return fantasy.NewTextResponse(b.String()), nil
+		}
+		proc.Kill(c)
+		<-wait
+		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
+		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
+	}
 	if err != nil {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		switch {
-		case ctx.Err() != nil:
+		if ctx.Err() != nil {
 			b.WriteString("stopped: the user interrupted the command")
-		case cctx.Err() == context.DeadlineExceeded:
-			b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
-		default:
+		} else {
 			b.WriteString("exit: " + err.Error())
 		}
 		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil

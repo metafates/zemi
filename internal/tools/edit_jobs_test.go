@@ -32,6 +32,30 @@ func TestEditRefusesAmbiguousMatch(t *testing.T) {
 	}
 }
 
+// TestBashTimeoutBecomesJob: a command still running at its timeout keeps
+// going as a job, so a slow build is not thrown away half done.
+func TestBashTimeoutBecomesJob(t *testing.T) {
+	p := &Pipeline{Jobs: NewJobs()}
+	res, _ := runBash(context.Background(), p, map[string]any{
+		"command": "echo started; sleep 30", "timeout_ms": float64(400)})
+	if res.IsError || !strings.Contains(res.Content, "moved to the background as job-1") {
+		t.Fatalf("timeout must hand off to a job: %+v", res)
+	}
+	if !strings.Contains(res.Content, "started") {
+		t.Fatalf("output from before the timeout must survive: %q", res.Content)
+	}
+	if out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"}); !strings.Contains(out.Content, "running") {
+		t.Fatalf("the job must still be running: %q", out.Content)
+	}
+	runJobKill(context.Background(), p, map[string]any{"id": "job-1"})
+	j, _ := p.Jobs.Get("job-1")
+	select {
+	case <-j.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("job_kill did not stop the adopted command")
+	}
+}
+
 // TestJobStreamsOutput: job_read shows a long-running process's output
 // while it runs, and a shell line works without args.
 func TestJobStreamsOutput(t *testing.T) {
