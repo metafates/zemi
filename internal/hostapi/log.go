@@ -45,12 +45,10 @@ func logFields(L *glua.LState, idx int) logging.Fields {
 	v, err := lua.ToGo(L.Get(idx))
 	if err != nil {
 		L.RaiseError("zemi.log: %v", err)
-		return nil
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
 		L.RaiseError("zemi.log: context must be a table of key/values")
-		return nil
 	}
 	return logging.Fields(m)
 }

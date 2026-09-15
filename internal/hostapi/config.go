@@ -101,20 +101,16 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		v, err := lua.ToGo(L.Get(2))
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
-			return 0
 		}
 		if h.RT.CurrentOrigin() != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
-			return 0
 		}
 		if h.Settings.BootWindowClosed() && isAutonomyKnob(h.Settings, path) {
 			L.RaiseError("zemi.config.set: autonomy knob %q is host-owned and cannot be set after boot", path)
-			return 0
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
-			return 0
 		}
 		h.deliverFired(L, fired)
 		return 0

@@ -40,7 +40,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		fn := L.CheckFunction(2)
 		if !knownEvent(name) {
 			L.RaiseError("zemi.event.on: unknown event %q (v1 catalogue or user.*)", name)
-			return 0
 		}
 		hd := &EventHandler{
 			Event:  name,
@@ -53,7 +52,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			opts, ok := L.Get(3).(*glua.LTable)
 			if !ok {
 				L.RaiseError("zemi.event.on: opts must be a table")
-				return 0
 			}
 			if id, ok := opts.RawGetString("id").(glua.LString); ok {
 				hd.ID = string(id)
@@ -66,7 +64,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		added, err := h.Events.Add(hd)
 		if err != nil {
 			L.RaiseError("zemi.event.on: %v", err)
-			return 0
 		}
 		L.Push(glua.LString(added.ID))
 		return 1
@@ -81,7 +78,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin())
 		if err != nil {
 			L.RaiseError("zemi.event.off: %v", err)
-			return 0
 		}
 		L.Push(glua.LBool(ok))
 		return 1
@@ -94,14 +90,12 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		if !strings.HasPrefix(name, "user.") {
 			L.RaiseError("zemi.event.emit: only user.* events can be emitted from Lua")
-			return 0
 		}
 		payload := map[string]any{}
 		if L.GetTop() >= 2 && L.Get(2) != glua.LNil {
 			v, err := lua.ToGo(L.Get(2))
 			if err != nil {
 				L.RaiseError("zemi.event.emit: %v", err)
-				return 0
 			}
 			if m, ok := v.(map[string]any); ok {
 				payload = m

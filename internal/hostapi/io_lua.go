@@ -157,7 +157,6 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		if envIsSecret(name) {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
-			return 0
 		}
 		L.Push(lua.FromGo(L, os.Getenv(name)))
 		return 1
@@ -174,7 +173,6 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		key := L.CheckString(1)
 		if h.GlobalDB == nil {
 			L.RaiseError("zemi.state.get: store unavailable")
-			return 0
 		}
 		v, err := h.GlobalDB.GetKV(key)
 		if err != nil {
@@ -197,12 +195,10 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.GlobalDB == nil {
 			L.RaiseError("zemi.state.put: store unavailable")
-			return 0
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
 			L.RaiseError("zemi.state.put: %v", err)
-			return 0
 		}
 		if err := h.GlobalDB.SetKV(key, string(b)); err != nil {
 			L.Push(glua.LNil)
@@ -263,7 +259,6 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			// repeating timer needs a real interval.
 			if ms < 0 || (repeat && ms == 0) {
 				L.RaiseError("zemi.timer: interval must be positive")
-				return 0
 			}
 			d := time.Duration(ms) * time.Millisecond
 			gen := h.currentGen()
@@ -321,7 +316,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		resolved, err := h.resolveJailed(path, h.readJails())
 		if err != nil {
 			L.RaiseError("zemi.fs.read: %v", err)
-			return 0
 		}
 		if err := h.luaGate(L, "lua.fs.read", resolved); err != nil {
 			return 0
@@ -342,7 +336,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		resolved, err := h.resolveJailed(path, h.writeJails())
 		if err != nil {
 			L.RaiseError("zemi.fs.write: %v", err)
-			return 0
 		}
 		if err := h.luaGate(L, "lua.fs.write", resolved); err != nil {
 			return 0
@@ -368,7 +361,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		matches, err := h.jailedGlob(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
-			return 0
 		}
 		out := L.NewTable()
 		for _, m := range matches {
@@ -388,7 +380,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
-			return 0
 		}
 		out := L.NewTable()
 		for _, hit := range h.jailedGrep(re) {
@@ -534,7 +525,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 		}
 		if req.url == "" {
 			L.RaiseError("zemi.http.request: url is required")
-			return 0
 		}
 		if hs, ok := spec.RawGetString("headers").(*glua.LTable); ok {
 			hs.ForEach(func(k, v glua.LValue) {
@@ -546,7 +536,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 				switch strings.ToLower(k) {
 				case "authorization", "proxy-authorization", "cookie":
 					L.RaiseError("zemi.http.request: only user config may set the %s header", k)
-					return 0
 				}
 			}
 		}
@@ -610,7 +599,6 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		case <-hnd.done:
 		case <-time.After(120 * time.Second):
 			L.RaiseError("zemi.http: wait timed out")
-			return 0
 		}
 		if hnd.err != "" {
 			L.Push(glua.LNil)
@@ -835,12 +823,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
-			return nil
 		}
 		cmdName := rawString(spec, "cmd")
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
-			return nil
 		}
 		if err := h.luaGate(L, "lua.job.start", cmdName); err != nil {
 			return nil
@@ -855,7 +841,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		if perm.Normalize(cmdName).ForceAsk != "" {
 			L.RaiseError("zemi.job.start: command is refused by the environment gate")
-			return nil
 		}
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
@@ -868,7 +853,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		env, err := jobEnvFilters(extras)
 		if err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil
 		}
 		// own session and group (proc): kill stops its children too, and a
 		// background grandchild holding stdout does not keep the job alive
@@ -892,13 +876,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			stdin, err := cmd.StdinPipe()
 			if err != nil {
 				L.RaiseError("zemi.job.start: %v", err)
-				return nil
 			}
 			jh.stdin = stdin
 		}
 		if err := proc.Start(cmd); err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil
 		}
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
@@ -964,7 +946,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		handle.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
 			if jh.stdin == nil {
 				L.RaiseError("zemi.job: write needs the job started with stdin = true")
-				return 0
 			}
 			if _, err := io.WriteString(jh.stdin, L.CheckString(1)); err != nil {
 				L.Push(glua.LNil)

@@ -124,26 +124,21 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.RT.CurrentOrigin() == lua.OriginLearned {
 			L.RaiseError("zemi.tool.register: learned code may not register tools (DESIGN §10.4, §10.5)")
-			return 0
 		}
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.register: spec must be a table")
-			return 0
 		}
 		fn, ok := spec.RawGetString("execute").(*glua.LFunction)
 		if !ok {
 			L.RaiseError("zemi.tool.register: execute callback is required")
-			return 0
 		}
 		name := rawString(spec, "name")
 		if name == "" || !isToolName(name) {
 			L.RaiseError("zemi.tool.register: name must be an identifier")
-			return 0
 		}
 		if builtinToolNames[name] {
 			L.RaiseError("zemi.tool.register: %q is a builtin tool name", name)
-			return 0
 		}
 		schema := map[string]any{}
 		var required []string
@@ -151,7 +146,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			v, err := lua.ToGo(in)
 			if err != nil {
 				L.RaiseError("zemi.tool.register: input: %v", err)
-				return 0
 			}
 			if m, ok := v.(map[string]any); ok {
 				schema = m
@@ -181,7 +175,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if err := h.luaTools.add(lt); err != nil {
 			L.RaiseError("zemi.tool.register: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -192,18 +185,15 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if o := h.RT.CurrentOrigin(); o == lua.OriginLearned || o == lua.OriginProject {
 			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
-			return 0
 		}
 		name := L.CheckString(1)
 		spec, ok := L.Get(2).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.override: spec must be a table")
-			return 0
 		}
 		fn, ok := spec.RawGetString("pre").(*glua.LFunction)
 		if !ok {
 			L.RaiseError("zemi.tool.override: pre callback is required")
-			return 0
 		}
 		h.luaTools.addOverride(&overrideRec{
 			Tool: name, Fn: fn,

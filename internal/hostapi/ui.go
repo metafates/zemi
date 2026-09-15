@@ -20,7 +20,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.widget.register: expected a spec table")
-			return 0
 		}
 		w := &Widget{
 			ID:     rawString(tb, "id"),
@@ -41,7 +40,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if _, err := h.Widgets.Add(w); err != nil {
 			L.RaiseError("zemi.ui.widget.register: %v", err)
-			return 0
 		}
 		h.refresh()
 		return 0
@@ -105,7 +103,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if _, err := h.Themes.Add(t); err != nil {
 			L.RaiseError("zemi.ui.theme.register: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -116,12 +113,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		name := L.CheckString(1)
 		if h.Themes.Get(name) == nil {
 			L.RaiseError("zemi.ui.theme.set: unknown theme %q", name)
-			return 0
 		}
 		fired, err := h.Settings.SetQuiet("ui.theme", name)
 		if err != nil {
 			L.RaiseError("zemi.ui.theme.set: %v", err)
-			return 0
 		}
 		h.deliverFired(L, fired)
 		h.refresh()
@@ -148,7 +143,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
-			return 0
 		}
 		o := Overlay{
 			ID:     rawString(tb, "id"),
@@ -161,7 +155,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			items, err := lua.ToGo(v)
 			if err != nil {
 				L.RaiseError("zemi.ui.overlay.open: %v", err)
-				return 0
 			}
 			if list, ok := items.([]any); ok {
 				o.Items = list
@@ -178,7 +171,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if o.ID == "" {
 			L.RaiseError("zemi.ui.overlay.open: id is required")
-			return 0
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -212,7 +204,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		items, err := lua.ToGo(itemsV)
 		if err != nil {
 			L.RaiseError("zemi.ui.select: %v", err)
-			return 0
 		}
 		list, _ := items.([]any)
 		o := Overlay{

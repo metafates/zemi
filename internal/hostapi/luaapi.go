@@ -22,12 +22,10 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 		v, err := lua.ToGo(L.CheckAny(1))
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
-			return 0
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
-			return 0
 		}
 		L.Push(glua.LString(b))
 		return 1

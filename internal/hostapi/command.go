@@ -59,7 +59,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			opts, ok := L.Get(3).(*glua.LTable)
 			if !ok {
 				L.RaiseError("zemi.command.add: opts must be a table")
-				return 0
 			}
 			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
 				cmd.Desc = string(d)
@@ -67,7 +66,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			if n, ok := opts.RawGetString("nargs").(glua.LString); ok {
 				if !validNargs(string(n)) {
 					L.RaiseError("zemi.command.add: invalid nargs %q (want one of \"\", \"?\", \"+\", \"*\")", string(n))
-					return 0
 				}
 				cmd.NArgs = string(n)
 			}
@@ -77,7 +75,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		}
 		if _, err := h.Commands.Add(cmd); err != nil {
 			L.RaiseError("zemi.command.add: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -91,7 +88,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin())
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
-			return 0
 		}
 		L.Push(glua.LBool(ok))
 		return 1
