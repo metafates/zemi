@@ -269,6 +269,9 @@ func (a *App) workingRow() []hostapi.Segment {
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
 	hint := " (" + timing + " · esc to interrupt)"
+	if a.cancelling {
+		hint = " (" + timing + " · ctrl+c quits)"
+	}
 	if n := len(st.Steering); n > 0 {
 		hint += fmt.Sprintf(" · %d queued, up to edit", n)
 	}

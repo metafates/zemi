@@ -17,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/metafates/zemi/internal/proc"
 )
 
 // ProtocolVersion is the version zemi asks for; a server answers with the
@@ -333,7 +335,7 @@ type stdioTransport struct {
 }
 
 func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
-	cmd := exec.Command(cfg.Command, cfg.Args...)
+	cmd := proc.Command(cfg.Command, cfg.Args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Dir, cfg.Stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -343,7 +345,7 @@ func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(cmd); err != nil {
 		return nil, fmt.Errorf("mcp: start %s: %w", cfg.Command, err)
 	}
 	go func() {
@@ -357,7 +359,7 @@ func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
 		for sc.Scan() {
 			c.handle(sc.Bytes())
 		}
-		err := cmd.Wait()
+		err := proc.Wait(cmd)
 		if err == nil {
 			err = errors.New("exited")
 		}
@@ -373,13 +375,13 @@ func (t *stdioTransport) send(_ context.Context, msg []byte) error {
 	return err
 }
 
-// close closes stdin, which ends a well-behaved server, and kills it if it
-// is still running a moment later.
-// close closes stdin without the send lock: a write blocked on a server
-// that stopped reading returns once the pipe closes.
+// close closes stdin, which ends a well-behaved server, and kills its
+// process group if it is still running a moment later. It skips the send
+// lock: a write blocked on a server that stopped reading returns once the
+// pipe closes.
 func (t *stdioTransport) close() error {
 	err := t.stdin.Close()
-	time.AfterFunc(2*time.Second, func() { _ = t.cmd.Process.Kill() })
+	time.AfterFunc(2*time.Second, func() { proc.Kill(t.cmd) })
 	return err
 }
 

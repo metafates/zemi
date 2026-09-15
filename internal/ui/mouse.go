@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/proc"
 )
 
 type mouseSel struct {
@@ -210,7 +211,7 @@ func copyCmd(text string) tea.Cmd {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			cmd := exec.CommandContext(ctx, c[0], c[1:]...)
+			cmd := proc.CommandContext(ctx, c[0], c[1:]...)
 			cmd.Stdin = strings.NewReader(text)
 			err := cmd.Run()
 			cancel()

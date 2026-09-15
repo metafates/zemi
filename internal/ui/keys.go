@@ -33,6 +33,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerCfgReview()
 		case a.question != nil:
 			a.answerQuestion("", false)
+		case a.host.AgentActive() && a.cancelling:
+			// the turn did not stop: leave anyway, children die on exit
+			a.forceQuit()
 		case a.host.AgentActive():
 			a.interrupt()
 		case a.now().Before(a.quitArmed):
@@ -308,6 +311,13 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// forceQuit leaves without the app.quit veto.
+func (a *App) forceQuit() {
+	if a.program != nil {
+		go a.program.Quit()
+	}
 }
 
 // interrupt cancels the running turn and hands queued messages back to the

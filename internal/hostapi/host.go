@@ -188,6 +188,9 @@ type Host struct {
 	// same command does not cost a second check.
 	autoApproved sync.Map
 
+	// turnCancel stops the turn runTurns is on, compaction included.
+	turnCancel atomic.Pointer[context.CancelFunc]
+
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }

@@ -425,12 +425,18 @@ func (h *Host) AgentSend(text string) error {
 func (h *Host) runTurns(runner *agent.Runner, text string) {
 	defer h.endTurnAfterPanic()
 	for text != "" {
+		// one context per turn covers compaction too, which runs before the
+		// runner holds a cancel of its own
+		ctx, cancel := context.WithCancel(context.Background())
+		h.turnCancel.Store(&cancel)
 		if h.compactDue() {
-			h.compactReporting(runner)
+			h.compactReporting(ctx, runner)
 		}
-		if err := runner.Send(context.Background(), text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
+		if err := runner.Send(ctx, text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
 			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
 		}
+		h.turnCancel.Store(nil)
+		cancel()
 		text = h.nextTurn()
 	}
 }
@@ -524,6 +530,9 @@ func (h *Host) AgentCancel() {
 	ag.mu.Unlock()
 	if r != nil {
 		r.Cancel()
+	}
+	if c := h.turnCancel.Load(); c != nil {
+		(*c)()
 	}
 }
 

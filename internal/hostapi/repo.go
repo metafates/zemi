@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -55,7 +56,7 @@ func (h *Host) ensureConfigRepo() {
 func (h *Host) git(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := proc.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	// zemi commits must work on machines without a configured identity.
 	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1")

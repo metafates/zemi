@@ -25,6 +25,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
@@ -869,11 +870,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: %v", err)
 			return nil
 		}
-		cmd := exec.Command(cmdName, args...)
+		// own session and group (proc): kill stops its children too, and a
+		// background grandchild holding stdout does not keep the job alive
+		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
-		// a background grandchild holding stdout must not keep the job alive
-		cmd.WaitDelay = time.Second
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		gen := h.currentGen()
 		sinkOf := func(key string) *lineSink {
@@ -895,13 +896,13 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			jh.stdin = stdin
 		}
-		if err := cmd.Start(); err != nil {
+		if err := proc.Start(cmd); err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
 			return nil
 		}
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
-			err := cmd.Wait()
+			err := proc.Wait(cmd)
 			outW.flush()
 			errW.flush()
 			jh.mu.Lock()
@@ -957,7 +958,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			return wait(L, jh, timeout)
 		}))
 		handle.RawSetString("kill", L.NewFunction(func(L *glua.LState) int {
-			_ = jh.cmd.Process.Kill()
+			proc.Kill(jh.cmd)
 			return 0
 		}))
 		handle.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
@@ -997,7 +998,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 		}
 		if n := wait(L, jh, timeout); n == 2 {
-			_ = jh.cmd.Process.Kill()
+			proc.Kill(jh.cmd)
 			return 2
 		}
 		return 1

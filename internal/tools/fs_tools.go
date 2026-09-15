@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/metafates/zemi/internal/proc"
 )
 
 // runBash executes the command in the session directory with a timeout
@@ -31,12 +31,14 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	c := exec.CommandContext(cctx, "sh", "-c", cmd)
+	// its own session and process group: cancelling or the timeout stops
+	// pipelines and backgrounded children too, and nothing reads the TUI's tty
+	c := proc.CommandContext(cctx, "sh", "-c", cmd)
 	c.Dir = workdir()
-	var out, errb bytes.Buffer
-	c.Stdout = &out
-	c.Stderr = &errb
-	err := c.Run()
+	c.Env = append(os.Environ(), proc.NonInteractiveEnv...)
+	out, errb := &proc.Buffer{Max: 1 << 20}, &proc.Buffer{Max: 1 << 20}
+	c.Stdout, c.Stderr = out, errb
+	err := proc.Run(c)
 	var b strings.Builder
 	if s := strings.TrimRight(out.String(), "\n"); s != "" {
 		b.WriteString(truncOut(s))
@@ -51,9 +53,12 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		if ctxErr := cctx.Err(); ctxErr == context.DeadlineExceeded {
-			b.WriteString("timed out after " + timeout.String())
-		} else {
+		switch {
+		case ctx.Err() != nil:
+			b.WriteString("stopped: the user interrupted the command")
+		case cctx.Err() == context.DeadlineExceeded:
+			b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
+		default:
 			b.WriteString("exit: " + err.Error())
 		}
 		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
@@ -266,6 +271,9 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	root := argOr(input["path"], ".")
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return nil
 		}
@@ -323,6 +331,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	var b strings.Builder
 	count := 0
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return nil
 		}

@@ -17,6 +17,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 )
 
 // Job is one managed background process.
@@ -77,7 +78,7 @@ func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, err
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return "", fmt.Errorf("command is required")
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := proc.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
 	if env != nil {
 		cmd.Env = env
@@ -90,7 +91,7 @@ func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, err
 	if err != nil {
 		return "", err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(cmd); err != nil {
 		return "", err
 	}
 	m.mu.Lock()
@@ -119,7 +120,7 @@ func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, err
 	}()
 	go func() {
 		wg.Wait()
-		err := cmd.Wait()
+		err := proc.Wait(cmd)
 		j.mu.Lock()
 		if err != nil {
 			if ee, ok := err.(*exec.ExitError); ok {
@@ -167,7 +168,8 @@ func (m *Jobs) Kill(id string) error {
 	if !j.Running() {
 		return fmt.Errorf("job %s already exited", id)
 	}
-	return j.cmd.Process.Kill()
+	proc.Kill(j.cmd)
+	return nil
 }
 
 // childEnv builds the job environment: parent minus secret-shaped names

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/proc"
 )
 
 const usage = `zemi - a terminal coding agent that learns how you work
@@ -183,11 +184,18 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 			if !interrupted {
 				interrupted = true
 				h.AgentCancel()
+				// the turn gets a moment to stop, then print mode leaves anyway
+				ctx, stop = context.WithTimeout(context.Background(), 5*time.Second)
+				defer stop()
+			} else {
+				proc.KillAll()
+				return 130
 			}
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
 	if interrupted {
+		proc.KillAll()
 		return 130
 	}
 	if jsonOut {

@@ -23,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/ui"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
@@ -168,7 +169,13 @@ func run(args []string) int {
 		}
 	}()
 
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+	// Children run in their own sessions (internal/proc), so the terminal
+	// closing does not reach them: stop them here. Exit even if some cleanup
+	// hangs.
+	proc.KillAll()
+	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
+	if err != nil {
 		return fail(err)
 	}
 	return 0

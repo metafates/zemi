@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/metafates/zemi/internal/proc"
 )
 
 // Config starts one server.
@@ -84,7 +86,7 @@ type Client struct {
 // Start launches the server and runs the initialize handshake; ctx bounds
 // the handshake only, not the server's life.
 func Start(ctx context.Context, cfg Config) (*Client, error) {
-	cmd := exec.Command(cfg.Command, cfg.Args...)
+	cmd := proc.Command(cfg.Command, cfg.Args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Root, cfg.Stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -94,7 +96,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(cmd); err != nil {
 		return nil, fmt.Errorf("lsp: start %s: %w", cfg.Command, err)
 	}
 	c := &Client{
@@ -203,7 +205,7 @@ func (c *Client) Close() error {
 	c.wmu.Lock()
 	err := c.stdin.Close()
 	c.wmu.Unlock()
-	time.AfterFunc(2*time.Second, func() { _ = c.cmd.Process.Kill() })
+	time.AfterFunc(2*time.Second, func() { proc.Kill(c.cmd) })
 	return err
 }
 
@@ -275,7 +277,7 @@ func (c *Client) read(r *bufio.Reader) {
 	for {
 		body, err := ReadMessage(r)
 		if err != nil {
-			werr := c.cmd.Wait()
+			werr := proc.Wait(c.cmd)
 			if werr == nil {
 				werr = err
 			}

@@ -51,7 +51,7 @@ func (h *Host) CompactNow() error {
 	h.refresh()
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
-		h.compactReporting(runner)
+		h.compactReporting(context.Background(), runner)
 		ag.mu.Lock()
 		queued := strings.Join(ag.steering, "\n\n")
 		ag.steering, ag.active = nil, false
@@ -68,10 +68,10 @@ func (h *Host) CompactNow() error {
 
 // compactReporting compacts with the working row reading "Compacting";
 // a failure is reported and the turn goes on with the full history.
-func (h *Host) compactReporting(runner *agent.Runner) {
+func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner) {
 	h.setCompacting(true)
 	defer h.setCompacting(false)
-	if err := h.compact(context.Background(), runner); err != nil {
+	if err := h.compact(ctx, runner); err != nil {
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error()})
 		h.memNotify("error", "compact", err.Error())
 	}
