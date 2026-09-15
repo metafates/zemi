@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -36,25 +37,18 @@ var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_
 
 func envIsSecret(name string) bool {
 	up := strings.ToUpper(name)
-	for _, s := range secretEnvShape {
-		if strings.Contains(up, s) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
 // secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
 var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
 
 func pathIsSecret(p string) bool {
-	base := filepath.Base(p)
-	for _, pat := range secretPathShape {
-		if ok, _ := filepath.Match(strings.ToLower(pat), strings.ToLower(base)); ok {
-			return true
-		}
-	}
-	return false
+	base := strings.ToLower(filepath.Base(p))
+	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
+		ok, _ := filepath.Match(strings.ToLower(pat), base)
+		return ok
+	})
 }
 
 // inJail reports whether path is inside one of the jail roots.
@@ -157,7 +151,6 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		if envIsSecret(name) {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
-			return 0
 		}
 		L.Push(lua.FromGo(L, os.Getenv(name)))
 		return 1
@@ -174,7 +167,6 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		key := L.CheckString(1)
 		if h.GlobalDB == nil {
 			L.RaiseError("zemi.state.get: store unavailable")
-			return 0
 		}
 		v, err := h.GlobalDB.GetKV(key)
 		if err != nil {
@@ -197,20 +189,12 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.GlobalDB == nil {
 			L.RaiseError("zemi.state.put: store unavailable")
-			return 0
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
 			L.RaiseError("zemi.state.put: %v", err)
-			return 0
 		}
-		if err := h.GlobalDB.SetKV(key, string(b)); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(glua.LTrue)
-		return 1
+		return luaResult(L, h.GlobalDB.SetKV(key, string(b)))
 	}))
 	return tb
 }
@@ -263,7 +247,6 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			// repeating timer needs a real interval.
 			if ms < 0 || (repeat && ms == 0) {
 				L.RaiseError("zemi.timer: interval must be positive")
-				return 0
 			}
 			d := time.Duration(ms) * time.Millisecond
 			gen := h.currentGen()
@@ -313,51 +296,117 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // zemi.fs
 
+// fsNamespace is zemi.fs. Paths resolve inside the jails, reads pass the
+// lua.fs.read gate and changes lua.fs.write; runtime failures return nil, err.
 func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
+	resolve := func(L *glua.LState, api string, write bool) (string, bool) {
+		roots, subject := h.readJails(), "lua.fs.read"
+		if write {
+			roots, subject = h.writeJails(), "lua.fs.write"
+		}
+		resolved, err := h.resolveJailed(L.CheckString(1), roots)
+		if err != nil {
+			L.RaiseError("zemi.fs.%s: %v", api, err)
+		}
+		if err := h.luaGate(L, subject, resolved); err != nil {
+			return "", false
+		}
+		return resolved, true
+	}
+	kind := func(fi os.FileInfo) string {
+		switch {
+		case fi.Mode()&os.ModeSymlink != 0:
+			return "link"
+		case fi.IsDir():
+			return "dir"
+		}
+		return "file"
+	}
 
 	tb.RawSetString("read", L.NewFunction(func(L *glua.LState) int {
-		path := L.CheckString(1)
-		resolved, err := h.resolveJailed(path, h.readJails())
-		if err != nil {
-			L.RaiseError("zemi.fs.read: %v", err)
+		path, ok := resolve(L, "read", false)
+		if !ok {
 			return 0
 		}
-		if err := h.luaGate(L, "lua.fs.read", resolved); err != nil {
-			return 0
-		}
-		b, err := os.ReadFile(resolved)
+		b, err := os.ReadFile(path)
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		L.Push(glua.LString(b))
 		return 1
 	}))
 
 	tb.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
-		path := L.CheckString(1)
+		path, ok := resolve(L, "write", true)
+		if !ok {
+			return 0
+		}
 		content := L.CheckString(2)
-		resolved, err := h.resolveJailed(path, h.writeJails())
-		if err != nil {
-			L.RaiseError("zemi.fs.write: %v", err)
-			return 0
-		}
-		if err := h.luaGate(L, "lua.fs.write", resolved); err != nil {
-			return 0
-		}
-		err = os.MkdirAll(filepath.Dir(resolved), 0o755)
+		err := os.MkdirAll(filepath.Dir(path), 0o755)
 		if err == nil {
-			err = os.WriteFile(resolved, []byte(content), 0o644)
+			err = os.WriteFile(path, []byte(content), 0o644)
 		}
+		return luaResult(L, err)
+	}))
+
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		dir, ok := resolve(L, "list", false)
+		if !ok {
+			return 0
+		}
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
-		L.Push(glua.LTrue)
+		rows := []any{}
+		for _, e := range entries {
+			if fi, err := e.Info(); err == nil {
+				rows = append(rows, map[string]any{"name": e.Name(), "type": kind(fi), "size": fi.Size()})
+			}
+		}
+		L.Push(lua.FromGo(L, rows))
 		return 1
+	}))
+
+	tb.RawSetString("stat", L.NewFunction(func(L *glua.LState) int {
+		path, ok := resolve(L, "stat", false)
+		if !ok {
+			return 0
+		}
+		fi, err := os.Lstat(path)
+		if err != nil {
+			return luaResult(L, err)
+		}
+		L.Push(lua.FromGo(L, map[string]any{"type": kind(fi), "size": fi.Size(), "mtime": fi.ModTime().UnixMilli()}))
+		return 1
+	}))
+
+	tb.RawSetString("exists", L.NewFunction(func(L *glua.LState) int {
+		path, ok := resolve(L, "exists", false)
+		if !ok {
+			return 0
+		}
+		_, err := os.Lstat(path)
+		L.Push(glua.LBool(err == nil))
+		return 1
+	}))
+
+	tb.RawSetString("mkdir", L.NewFunction(func(L *glua.LState) int {
+		path, ok := resolve(L, "mkdir", true)
+		if !ok {
+			return 0
+		}
+		return luaResult(L, os.MkdirAll(path, 0o755))
+	}))
+
+	// remove deletes one file or empty directory (never a tree).
+	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
+		path, ok := resolve(L, "remove", true)
+		if !ok {
+			return 0
+		}
+		return luaResult(L, os.Remove(path))
 	}))
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
@@ -368,17 +417,10 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		matches, err := h.jailedGlob(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
-			return 0
 		}
-		out := L.NewTable()
-		for _, m := range matches {
-			out.Append(glua.LString(m))
-		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, matches))
 		return 1
 	}))
-
-	h.fsExtraFns(L, tb)
 
 	tb.RawSetString("grep", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
@@ -388,17 +430,12 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
-			return 0
 		}
-		out := L.NewTable()
+		rows := []any{}
 		for _, hit := range h.jailedGrep(re) {
-			row := L.NewTable()
-			row.RawSetString("path", glua.LString(hit.path))
-			row.RawSetString("line", glua.LNumber(hit.line))
-			row.RawSetString("text", glua.LString(hit.text))
-			out.Append(row)
+			rows = append(rows, map[string]any{"path": hit.path, "line": hit.line, "text": hit.text})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
@@ -432,14 +469,8 @@ func (h *Host) jailedGlob(pattern string) ([]string, error) {
 	var out []string
 	root := h.Dirs.ProjectDir
 	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") && p != root {
-				return filepath.SkipDir
-			}
-			return nil
+		if err != nil || d.IsDir() {
+			return skipHidden(root, p, d, err)
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
@@ -452,6 +483,15 @@ func (h *Host) jailedGlob(pattern string) ([]string, error) {
 	})
 	sort.Strings(out)
 	return out, err
+}
+
+// skipHidden is the walk result for a directory or unreadable entry: dot
+// directories below root are skipped, unreadable entries ignored.
+func skipHidden(root, p string, d os.DirEntry, err error) error {
+	if err == nil && strings.HasPrefix(d.Name(), ".") && p != root {
+		return filepath.SkipDir
+	}
+	return nil
 }
 
 func globPathRegexp(pattern string) (*regexp.Regexp, error) {
@@ -488,10 +528,7 @@ func (h *Host) jailedGrep(re *regexp.Regexp) []grepHit {
 	root := h.Dirs.ProjectDir
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			if d != nil && d.IsDir() && strings.HasPrefix(d.Name(), ".") && p != root {
-				return filepath.SkipDir
-			}
-			return nil
+			return skipHidden(root, p, d, err)
 		}
 		f, err := os.Open(p)
 		if err != nil {
@@ -534,7 +571,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 		}
 		if req.url == "" {
 			L.RaiseError("zemi.http.request: url is required")
-			return 0
 		}
 		if hs, ok := spec.RawGetString("headers").(*glua.LTable); ok {
 			hs.ForEach(func(k, v glua.LValue) {
@@ -546,7 +582,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 				switch strings.ToLower(k) {
 				case "authorization", "proxy-authorization", "cookie":
 					L.RaiseError("zemi.http.request: only user config may set the %s header", k)
-					return 0
 				}
 			}
 		}
@@ -575,7 +610,7 @@ type httpReq struct {
 type httpHandle struct {
 	done chan struct{}
 	res  map[string]any
-	err  string
+	err  error
 }
 
 // httpStart gates the request, runs it off the interpreter and pushes the
@@ -589,10 +624,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	gen := h.currentGen()
 	h.GoSafe(subject, func() {
 		res, err := h.httpFetch(subject, req)
-		hnd.res = res
-		if err != nil {
-			hnd.err = err.Error()
-		}
+		hnd.res, hnd.err = res, err
 		close(hnd.done)
 		if onDone != nil {
 			payload := map[string]any{"url": req.url}
@@ -610,12 +642,9 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		case <-hnd.done:
 		case <-time.After(120 * time.Second):
 			L.RaiseError("zemi.http: wait timed out")
-			return 0
 		}
-		if hnd.err != "" {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(hnd.err))
-			return 2
+		if hnd.err != nil {
+			return luaResult(L, hnd.err)
 		}
 		L.Push(lua.FromGo(L, hnd.res))
 		return 1
@@ -835,12 +864,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
-			return nil
 		}
 		cmdName := rawString(spec, "cmd")
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
-			return nil
 		}
 		if err := h.luaGate(L, "lua.job.start", cmdName); err != nil {
 			return nil
@@ -855,7 +882,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		if perm.Normalize(cmdName).ForceAsk != "" {
 			L.RaiseError("zemi.job.start: command is refused by the environment gate")
-			return nil
 		}
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
@@ -868,7 +894,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		env, err := jobEnvFilters(extras)
 		if err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil
 		}
 		// own session and group (proc): kill stops its children too, and a
 		// background grandchild holding stdout does not keep the job alive
@@ -892,13 +917,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			stdin, err := cmd.StdinPipe()
 			if err != nil {
 				L.RaiseError("zemi.job.start: %v", err)
-				return nil
 			}
 			jh.stdin = stdin
 		}
 		if err := proc.Start(cmd); err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil
 		}
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
@@ -964,15 +987,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		handle.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
 			if jh.stdin == nil {
 				L.RaiseError("zemi.job: write needs the job started with stdin = true")
-				return 0
 			}
-			if _, err := io.WriteString(jh.stdin, L.CheckString(1)); err != nil {
-				L.Push(glua.LNil)
-				L.Push(glua.LString(err.Error()))
-				return 2
-			}
-			L.Push(glua.LTrue)
-			return 1
+			_, err := io.WriteString(jh.stdin, L.CheckString(1))
+			return luaResult(L, err)
 		}))
 		handle.RawSetString("close_stdin", L.NewFunction(func(L *glua.LState) int {
 			if jh.stdin != nil {

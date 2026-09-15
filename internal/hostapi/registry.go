@@ -4,7 +4,10 @@
 package hostapi
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -99,12 +102,7 @@ func (r *KeymapRegistry) IsPrefix(seq string) bool {
 func (r *KeymapRegistry) List() []*KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*KeyBinding, 0, len(r.bindings))
-	for _, b := range r.bindings {
-		out = append(out, b)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
-	return out
+	return slices.SortedFunc(maps.Values(r.bindings), func(a, b *KeyBinding) int { return cmp.Compare(a.Key, b.Key) })
 }
 
 // Purge drops every binding (replay re-registers on reload).
@@ -114,7 +112,7 @@ func (r *KeymapRegistry) Purge() {
 	r.mu.Unlock()
 }
 
-// Command is a :cmdline command.
+// Command is a slash command.
 type Command struct {
 	Name     string
 	Desc     string
@@ -132,9 +130,8 @@ type Command struct {
 	Gen    Gen
 }
 
-// CommandRegistry stores commands. Names collide case-insensitively across
-// the registry (§11): a case-variant of an existing name is refused so
-// :reload/:RELOAD cannot shadow the reserved :Reload.
+// CommandRegistry stores commands. Names collide case-insensitively: a
+// case-variant of an existing name is refused.
 type CommandRegistry struct {
 	mu       sync.RWMutex
 	commands map[string]*Command // canonical name
@@ -155,10 +152,10 @@ func (r *CommandRegistry) Add(c *Command) (*Command, error) {
 	key := canonical(c.Name)
 	if old, exists := r.commands[key]; exists {
 		if old.Origin.Rank() > c.Origin.Rank() {
-			return old, fmt.Errorf("command :%s is already registered by a %s registration", c.Name, old.Origin)
+			return old, fmt.Errorf("command /%s is already registered by a %s registration", c.Name, old.Origin)
 		}
 		if old.Name != c.Name {
-			return old, fmt.Errorf("command :%s collides with :%s (case-insensitive)", c.Name, old.Name)
+			return old, fmt.Errorf("command /%s collides with /%s (case-insensitive)", c.Name, old.Name)
 		}
 	}
 	r.commands[key] = c
@@ -176,12 +173,7 @@ func (r *CommandRegistry) Lookup(name string) *Command {
 func (r *CommandRegistry) List() []*Command {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*Command, 0, len(r.commands))
-	for _, c := range r.commands {
-		out = append(out, c)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return slices.SortedFunc(maps.Values(r.commands), func(a, b *Command) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 // Remove drops a command, refusing one registered by a higher-trust origin
@@ -212,7 +204,7 @@ type Widget struct {
 	Region   string
 	Priority int
 	Render   *glua.LFunction
-	Keys     *glua.LFunction
+	Keys     *glua.LFunction // stored but never invoked
 	Wrap     bool
 	Origin   lua.Origin
 	Path     string
@@ -275,12 +267,7 @@ func (r *WidgetRegistry) InRegion(region string) []*Widget {
 func (r *WidgetRegistry) List() []*Widget {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*Widget, 0, len(r.widgets))
-	for _, w := range r.widgets {
-		out = append(out, w)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	return slices.SortedFunc(maps.Values(r.widgets), func(a, b *Widget) int { return cmp.Compare(a.ID, b.ID) })
 }
 
 func (r *WidgetRegistry) Purge() {
@@ -297,7 +284,7 @@ type EventHandler struct {
 	Origin   lua.Origin
 	Path     string
 	Gen      Gen
-	Coalesce bool
+	Coalesce bool // parsed from zemi.event.on opts; delivery does not coalesce
 	Once     bool // removed before its first call
 }
 
@@ -471,12 +458,7 @@ func (r *ThemeRegistry) Get(name string) *Theme {
 func (r *ThemeRegistry) List() []*Theme {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*Theme, 0, len(r.themes))
-	for _, t := range r.themes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return slices.SortedFunc(maps.Values(r.themes), func(a, b *Theme) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 func (r *ThemeRegistry) Purge() {

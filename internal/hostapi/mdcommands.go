@@ -1,7 +1,7 @@
 // mdcommands.go registers prompt commands from markdown: commands/<name>.md
 // under the config dir (user origin) or the trusted .zemi dir (project
 // origin). Running /<name> args sends the body to the agent with $ARGUMENTS
-// and $1..$9 filled in. Files are read at boot; /Reload picks up changes.
+// and $1..$9 filled in. Files are read at boot; /reload picks up changes.
 package hostapi
 
 import (

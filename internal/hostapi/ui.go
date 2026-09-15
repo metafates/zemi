@@ -20,7 +20,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.widget.register: expected a spec table")
-			return 0
 		}
 		w := &Widget{
 			ID:     rawString(tb, "id"),
@@ -41,22 +40,16 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if _, err := h.Widgets.Add(w); err != nil {
 			L.RaiseError("zemi.ui.widget.register: %v", err)
-			return 0
 		}
 		h.refresh()
 		return 0
 	}))
 	widget.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, w := range h.Widgets.List() {
-			row := L.NewTable()
-			row.RawSetString("id", glua.LString(w.ID))
-			row.RawSetString("region", glua.LString(w.Region))
-			row.RawSetString("priority", glua.LNumber(w.Priority))
-			row.RawSetString("origin", glua.LString(w.Origin))
-			out.Append(row)
+			rows = append(rows, map[string]any{"id": w.ID, "region": w.Region, "priority": w.Priority, "origin": string(w.Origin)})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	tb.RawSetString("widget", widget)
@@ -89,23 +82,13 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if hl, ok := m["hl"].(map[string]any); ok {
 			for k, v := range hl {
-				spec, ok := v.(map[string]any)
-				if !ok {
-					continue
-				}
-				t.HL[k] = HLSpec{
-					Fg:        strField(spec, "fg"),
-					Bg:        strField(spec, "bg"),
-					Bold:      boolField(spec, "bold"),
-					Italic:    boolField(spec, "italic"),
-					Underline: boolField(spec, "underline"),
-					Reverse:   boolField(spec, "reverse"),
+				if spec, ok := v.(map[string]any); ok {
+					t.HL[k] = hlSpec(spec)
 				}
 			}
 		}
 		if _, err := h.Themes.Add(t); err != nil {
 			L.RaiseError("zemi.ui.theme.register: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -116,12 +99,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		name := L.CheckString(1)
 		if h.Themes.Get(name) == nil {
 			L.RaiseError("zemi.ui.theme.set: unknown theme %q", name)
-			return 0
 		}
 		fired, err := h.Settings.SetQuiet("ui.theme", name)
 		if err != nil {
 			L.RaiseError("zemi.ui.theme.set: %v", err)
-			return 0
 		}
 		h.deliverFired(L, fired)
 		h.refresh()
@@ -129,13 +110,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	theme.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		name := "default"
-		if v, ok := h.Settings.Get("ui.theme"); ok {
-			if s, ok := v.(string); ok {
-				name = s
-			}
-		}
-		L.Push(glua.LString(name))
+		L.Push(glua.LString(h.ActiveThemeName()))
 		return 1
 	}))
 	tb.RawSetString("theme", theme)
@@ -148,7 +123,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
-			return 0
 		}
 		o := Overlay{
 			ID:     rawString(tb, "id"),
@@ -161,7 +135,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			items, err := lua.ToGo(v)
 			if err != nil {
 				L.RaiseError("zemi.ui.overlay.open: %v", err)
-				return 0
 			}
 			if list, ok := items.([]any); ok {
 				o.Items = list
@@ -178,7 +151,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if o.ID == "" {
 			L.RaiseError("zemi.ui.overlay.open: id is required")
-			return 0
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -212,7 +184,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		items, err := lua.ToGo(itemsV)
 		if err != nil {
 			L.RaiseError("zemi.ui.select: %v", err)
-			return 0
 		}
 		list, _ := items.([]any)
 		o := Overlay{
@@ -223,12 +194,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Gen:      h.currentGen(),
 			Items:    list,
 			OnSelect: cb,
-			OnClose: L.NewFunction(func(L *glua.LState) int {
-				L.Push(cb)
-				L.Push(glua.LNil)
-				L.Call(1, 0)
-				return 0
-			}),
+			OnClose:  cancelWith(L, cb),
 		}
 		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
 			o.RenderItem = fn
@@ -257,12 +223,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Input:    true,
 			Default:  rawString(opts, "default"),
 			OnSelect: cb,
-			OnClose: L.NewFunction(func(L *glua.LState) int {
-				L.Push(cb)
-				L.Push(glua.LNil)
-				L.Call(1, 0)
-				return 0
-			}),
+			OnClose:  cancelWith(L, cb),
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -312,11 +273,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			return 0
 		}
 		m, _ := v.(map[string]any)
-		h.Themes.SetHL(group, HLSpec{
-			Fg: strField(m, "fg"), Bg: strField(m, "bg"),
-			Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
-			Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
-		})
+		h.Themes.SetHL(group, hlSpec(m))
 		h.refresh()
 		return 0
 	}))
@@ -336,12 +293,22 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	return tb
 }
 
-func boolField(m map[string]any, key string) bool {
-	if m == nil {
-		return false
+func hlSpec(m map[string]any) HLSpec {
+	return HLSpec{
+		Fg: strField(m, "fg"), Bg: strField(m, "bg"),
+		Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
+		Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
 	}
-	b, _ := m[key].(bool)
-	return b
+}
+
+// cancelWith is an overlay on_close that calls cb(nil), the vim.ui cancel shape.
+func cancelWith(L *glua.LState, cb *glua.LFunction) *glua.LFunction {
+	return L.NewFunction(func(L *glua.LState) int {
+		L.Push(cb)
+		L.Push(glua.LNil)
+		L.Call(1, 0)
+		return 0
+	})
 }
 
 // EmitAsync delivers a host event without blocking the caller: it is safe
@@ -363,7 +330,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	})
 }
 
-// ActiveThemeName returns the configured theme (ui.go helper used by ui).
+// ActiveThemeName returns the configured theme.
 func (h *Host) ActiveThemeName() string {
 	if v, ok := h.Settings.Get("ui.theme"); ok {
 		if s, ok := v.(string); ok && !strings.HasPrefix(s, "!") {

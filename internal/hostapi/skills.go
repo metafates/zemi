@@ -1,4 +1,4 @@
-// skills.go is the M3 skills host API (DESIGN §6.7, §10.5): discovery
+// skills.go is the skills host API (DESIGN §6.7, §10.5): discovery
 // synced against the skills table, the zemi.skills namespace, the enable
 // hooks (authored skills run in the boot window after user init; learned
 // skills run post-ready, only when enabled), and the /skills command.
@@ -7,13 +7,15 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -51,12 +53,7 @@ func (r *skillReg) set(all []skills.Skill, enabled map[string]bool) {
 func (r *skillReg) list() []skills.Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]skills.Skill, 0, len(r.byName))
-	for _, s := range r.byName {
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return slices.SortedFunc(maps.Values(r.byName), func(a, b skills.Skill) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 func (r *skillReg) isEnabled(name string) bool {
@@ -162,21 +159,19 @@ func (h *Host) draftLearnedSkill(sid, name, desc, body string) error {
 	return os.WriteFile(filepath.Join(path, "SKILL.md"), []byte(doc), 0o644)
 }
 
-func (h *Host) authoredSkillsDir() string {
-	if h.Dirs.ConfigHome == "" {
+// joinIf joins elem under dir, or is "" when dir is unset.
+func joinIf(dir, elem string) string {
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(h.Dirs.ConfigHome, "skills")
+	return filepath.Join(dir, elem)
 }
+
+func (h *Host) authoredSkillsDir() string { return joinIf(h.Dirs.ConfigHome, "skills") }
 
 // builtinSkillsDir is where the embedded builtin skills are copied so the
 // skill tool reads them from disk like any other skill.
-func (h *Host) builtinSkillsDir() string {
-	if h.Dirs.DataHome == "" {
-		return ""
-	}
-	return filepath.Join(h.Dirs.DataHome, "builtin-skills")
-}
+func (h *Host) builtinSkillsDir() string { return joinIf(h.Dirs.DataHome, "builtin-skills") }
 
 // materializeBuiltinSkills rewrites the builtin skills on every sync, so an
 // upgraded zemi replaces them.
@@ -201,40 +196,33 @@ func (h *Host) materializeBuiltinSkills() error {
 	})
 }
 
-func (h *Host) learnedSkillsDir() string {
-	if h.Dirs.DataHome == "" {
-		return ""
-	}
-	return filepath.Join(h.Dirs.DataHome, "skills")
-}
+func (h *Host) learnedSkillsDir() string { return joinIf(h.Dirs.DataHome, "skills") }
 
 // skillIndex resolves enabled skills for the skill tool (DESIGN §10.5:
 // discovery lists only enabled skills to the model).
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
-	for _, s := range h.skillsReg.list() {
-		if !h.skillsReg.isEnabled(s.Name) {
-			continue
-		}
+	for _, s := range h.enabledSkills() {
 		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir})
 	}
 	return out
+}
+
+func (h *Host) enabledSkills() []skills.Skill {
+	return slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
 }
 
 // skillsIndexPrompt renders the §10.7 skills index section: one line per
 // enabled skill, description capped — the prompt carries the index only,
 // bodies load on demand through the skill tool.
 func (h *Host) skillsIndexPrompt() string {
+	enabled := h.enabledSkills()
+	if len(enabled) == 0 {
+		return ""
+	}
 	var b strings.Builder
-	n := 0
-	for _, s := range h.skillsReg.list() {
-		if !h.skillsReg.isEnabled(s.Name) {
-			continue
-		}
-		if n == 0 {
-			b.WriteString("\n\n# Skills\nA description only says when a skill applies. When one matches the task, load it with the skill tool before acting, and follow it.\n")
-		}
-		n++
+	b.WriteString("\n\n# Skills\nA description only says when a skill applies. When one matches the task, load it with the skill tool before acting, and follow it.\n")
+	for _, s := range enabled {
 		desc := s.Description
 		if runes := []rune(desc); len(runes) > skillIndexDescMax {
 			desc = string(runes[:skillIndexDescMax]) + "..."
@@ -250,10 +238,8 @@ const skillIndexDescMax = 160
 // setSkillEnabled flips the stored enabled state and runs the enable
 // hook of a learned skill being enabled (post-ready loading, §10.5);
 // authored hooks already ran in the boot window, so they are not re-run
-// here. The origin gate is NOT here: Go-side callers (the :skills
-// command) run off the interpreter goroutine where the frame origin is
-// meaningless — Lua callers gate in the namespace, Go callers are the
-// user by construction.
+// here. The origin gate lives in the Lua namespace: Go callers run off the
+// interpreter, where the frame origin is meaningless.
 func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error {
 	if h.GlobalDB == nil {
 		return errors.New("skills store unavailable")
@@ -278,23 +264,22 @@ func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error 
 
 // enableHook runs a learned skill's enable hook. L non-nil means we are
 // on the interpreter goroutine (zemi.skills.enable) and the hook runs
-// inline; L nil means a Go-side caller (:skills enable) and the hook must
+// inline; L nil means a Go-side caller (/skills enable) and the hook must
 // be enqueued through Do — the single-writer invariant forbids touching
 // the LState from here.
 func (h *Host) enableHook(L *glua.LState, s skills.Skill) error {
+	var err error
 	if L != nil {
-		if err := h.runSkillHook(L, s); err != nil {
-			return fmt.Errorf("enable hook failed: %w", err)
-		}
-		return nil
+		err = h.runSkillHook(L, s)
+	} else {
+		_, err = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			return nil, h.runSkillHook(L, s)
+		})
 	}
-	_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		if err := h.runSkillHook(L, s); err != nil {
-			return nil, fmt.Errorf("enable hook failed: %w", err)
-		}
-		return nil, nil
-	})
-	return err
+	if err != nil {
+		return fmt.Errorf("enable hook failed: %w", err)
+	}
+	return nil
 }
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
@@ -318,42 +303,28 @@ func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 	return nil
 }
 
-// SkillsAuthoredHooksStep returns the boot step that runs the enable
-// hooks of enabled authored skills, after user init.lua and before the
-// project config (DESIGN §5 load order). Hook failures are logged, never
-// fatal.
+// SkillsAuthoredHooksStep runs the hooks of enabled authored skills, after
+// user init.lua and before the project config (DESIGN §5 load order).
 func (h *Host) SkillsAuthoredHooksStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "authored skill hooks",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			h.syncSkills()
-			for _, s := range h.skillsReg.list() {
-				if s.Source != skills.Authored || !h.skillsReg.isEnabled(s.Name) {
-					continue
-				}
-				if err := h.runSkillHook(g.L, s); err != nil {
-					continue
-				}
-			}
-			return nil
-		},
-	}
+	return h.skillHooksStep("authored skill hooks", skills.Authored)
 }
 
-// SkillsLearnedHooksStep returns the post-ready step that runs the enable
-// hooks of enabled learned skills (they load only when enabled,
-// post-ready, §5).
+// SkillsLearnedHooksStep runs the hooks of enabled learned skills post-ready
+// (§5).
 func (h *Host) SkillsLearnedHooksStep() lua.BootStep {
+	return h.skillHooksStep("learned skill hooks", skills.Learned)
+}
+
+// skillHooksStep runs the enable hooks of enabled skills from src; a failing
+// hook is logged, never fatal.
+func (h *Host) skillHooksStep(name string, src skills.Source) lua.BootStep {
 	return lua.BootStep{
-		Name: "learned skill hooks",
+		Name: name,
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			h.syncSkills()
-			for _, s := range h.skillsReg.list() {
-				if s.Source != skills.Learned || !h.skillsReg.isEnabled(s.Name) {
-					continue
-				}
-				if err := h.runSkillHook(g.L, s); err != nil {
-					continue
+			for _, s := range h.enabledSkills() {
+				if s.Source == src {
+					_ = h.runSkillHook(g.L, s)
 				}
 			}
 			return nil
@@ -437,17 +408,14 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, s := range h.skillsReg.list() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(s.Name))
-			row.RawSetString("description", glua.LString(s.Description))
-			row.RawSetString("source", glua.LString(s.Source))
-			row.RawSetString("enabled", glua.LBool(h.skillsReg.isEnabled(s.Name)))
-			row.RawSetString("path", glua.LString(s.Dir))
-			out.Append(row)
+			rows = append(rows, map[string]any{
+				"name": s.Name, "description": s.Description, "source": string(s.Source),
+				"enabled": h.skillsReg.isEnabled(s.Name), "path": s.Dir,
+			})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
@@ -459,11 +427,9 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 		}
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.skills.%s: only user or builtin origin may enable or disable skills", verb)
-			return 0
 		}
 		if err := h.setSkillEnabled(L, name, on); err != nil {
 			L.RaiseError("zemi.skills.%s: %v", verb, err)
-			return 0
 		}
 		return 0
 	}

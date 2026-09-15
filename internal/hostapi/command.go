@@ -19,21 +19,21 @@ func validNargs(n string) bool {
 	return false
 }
 
-// nargsOK validates a raw argument string against the command's nargs spec.
-func nargsOK(nargs, args string) error {
+// nargsOK validates a raw argument string against command name's nargs spec.
+func nargsOK(name, nargs, args string) error {
 	fields := strings.Fields(args)
 	switch nargs {
 	case "":
 		if len(fields) != 0 {
-			return fmt.Errorf(":%s takes no arguments", args)
+			return fmt.Errorf("/%s takes no arguments", name)
 		}
 	case "?":
 		if len(fields) > 1 {
-			return fmt.Errorf(":%s takes at most one argument", args)
+			return fmt.Errorf("/%s takes at most one argument", name)
 		}
 	case "+":
 		if len(fields) == 0 {
-			return fmt.Errorf(":%s requires an argument", args)
+			return fmt.Errorf("/%s requires an argument", name)
 		}
 	}
 	return nil
@@ -55,29 +55,15 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			Path:   h.RT.CurrentPath(),
 			Gen:    h.currentGen(),
 		}
-		if L.GetTop() >= 3 && L.Get(3) != glua.LNil {
-			opts, ok := L.Get(3).(*glua.LTable)
-			if !ok {
-				L.RaiseError("zemi.command.add: opts must be a table")
-				return 0
+		if opts := L.OptTable(3, nil); opts != nil {
+			cmd.Desc, cmd.NArgs = rawString(opts, "desc"), rawString(opts, "nargs")
+			if !validNargs(cmd.NArgs) {
+				L.RaiseError("zemi.command.add: invalid nargs %q (want one of \"\", \"?\", \"+\", \"*\")", cmd.NArgs)
 			}
-			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
-				cmd.Desc = string(d)
-			}
-			if n, ok := opts.RawGetString("nargs").(glua.LString); ok {
-				if !validNargs(string(n)) {
-					L.RaiseError("zemi.command.add: invalid nargs %q (want one of \"\", \"?\", \"+\", \"*\")", string(n))
-					return 0
-				}
-				cmd.NArgs = string(n)
-			}
-			if c, ok := opts.RawGetString("complete").(*glua.LFunction); ok {
-				cmd.Complete = c
-			}
+			cmd.Complete, _ = opts.RawGetString("complete").(*glua.LFunction)
 		}
 		if _, err := h.Commands.Add(cmd); err != nil {
 			L.RaiseError("zemi.command.add: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -91,7 +77,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin())
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
-			return 0
 		}
 		L.Push(glua.LBool(ok))
 		return 1
@@ -107,9 +92,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		name, args := L.CheckString(1), L.OptString(2, "")
 		cmd := h.Commands.Lookup(name)
 		if cmd == nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString("not a command: " + name))
-			return 2
+			return luaResult(L, fmt.Errorf("not a command: %s", name))
 		}
 		if cmd.GoFn != nil {
 			h.GoSafe("command "+name, func() {
@@ -117,46 +100,30 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 					h.Notify("error", "/"+name, err.Error())
 				}
 			})
-			L.Push(glua.LTrue)
-			return 1
+			return luaResult(L, nil)
 		}
-		if err := nargsOK(cmd.NArgs, args); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+		if err := nargsOK(name, cmd.NArgs, args); err != nil {
+			return luaResult(L, err)
 		}
 		h.RT.PushFrame(cmd.Origin, cmd.Path)
 		defer h.RT.PopFrame()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, args))
-		if err := L.PCall(1, 0, nil); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(glua.LTrue)
-		return 1
+		return luaResult(L, L.PCall(1, 0, nil))
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, c := range h.Commands.List() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(c.Name))
-			row.RawSetString("desc", glua.LString(c.Desc))
-			row.RawSetString("nargs", glua.LString(c.NArgs))
-			row.RawSetString("origin", glua.LString(c.Origin))
-			out.Append(row)
+			rows = append(rows, map[string]any{"name": c.Name, "desc": c.Desc, "nargs": c.NArgs, "origin": string(c.Origin)})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
 	return tb
 }
 
-// RunCommand executes a cmdline command by name. The reserved :Reload is
-// never routed here (the UI dispatches it before Lua-visible commands).
 // CompleteCommand returns argument candidates for a command line from the
 // command's Go completer or its Lua complete(arg_lead, cmdline). Results are
 // sanitized and capped; a failing completer offers nothing.
@@ -209,10 +176,11 @@ func subcommandCompleter(subs []string, next func(h *Host, sub string) []string)
 	}
 }
 
+// RunCommand runs a command by name as if typed.
 func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	cmd := h.Commands.Lookup(name)
 	if cmd == nil {
-		return fmt.Errorf("not an editor command: %s", name)
+		return fmt.Errorf("not a command: %s", name)
 	}
 	if cmd.GoFn != nil {
 		return cmd.GoFn(h, argString)
@@ -221,7 +189,7 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 }
 
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	if err := nargsOK(cmd.NArgs, argString); err != nil {
+	if err := nargsOK(cmd.Name, cmd.NArgs, argString); err != nil {
 		return err
 	}
 	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {

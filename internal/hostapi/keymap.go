@@ -82,7 +82,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		key, err := h.keySeq(L.CheckString(1))
 		if err != nil {
 			L.RaiseError("zemi.keymap.set: %v", err)
-			return 0
 		}
 		if h.refuseDuringRender(L, "zemi.keymap.set") {
 			return 0
@@ -95,23 +94,19 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			rhs, err := h.resolveRHS(string(v))
 			if err != nil {
 				L.RaiseError("zemi.keymap.set: %v", err)
-				return 0
 			}
 			if rhs.Command == "" && rhs.API == "" {
 				L.RaiseError("zemi.keymap.set: %q is neither a command nor a host action", string(v))
-				return 0
 			}
 			// Loosening permissions is the user's call: a plugin or project
 			// key must not flip the mode on an innocent-looking press.
 			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode") &&
 				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
 				L.RaiseError("zemi.keymap.set: only user config may bind permission mode changes")
-				return 0
 			}
 			b.RHS = rhs
 		default:
 			L.RaiseError("zemi.keymap.set: action must be a function or a string, got %s", v.Type().String())
-			return 0
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
 			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
@@ -128,7 +123,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		key, err := h.keySeq(L.CheckString(1))
 		if err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
-			return 0
 		}
 		if h.refuseDuringRender(L, "zemi.keymap.del") {
 			return 0
@@ -142,7 +136,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key, _ := h.keySeq(L.CheckString(1))
 		if b := h.Keymaps.Lookup(key); b != nil {
-			L.Push(keymapRow(L, b))
+			L.Push(lua.FromGo(L, keymapRow(b)))
 		} else {
 			L.Push(glua.LNil)
 		}
@@ -150,11 +144,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		for _, b := range h.Keymaps.List() {
-			out.Append(keymapRow(L, b))
+			rows = append(rows, keymapRow(b))
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
@@ -163,11 +157,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 
 // keymapRow is a binding snapshot: key, action ("/cmd", a host action or
 // "<function>"), desc and origin.
-func keymapRow(L *glua.LState, b *KeyBinding) *glua.LTable {
-	row := L.NewTable()
-	row.RawSetString("key", glua.LString(b.Key))
-	row.RawSetString("action", glua.LString(describeRHS(b.RHS)))
-	row.RawSetString("desc", glua.LString(b.Desc))
-	row.RawSetString("origin", glua.LString(b.Origin))
-	return row
+func keymapRow(b *KeyBinding) map[string]any {
+	return map[string]any{"key": b.Key, "action": describeRHS(b.RHS), "desc": b.Desc, "origin": string(b.Origin)}
 }

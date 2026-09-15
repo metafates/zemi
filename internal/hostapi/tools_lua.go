@@ -1,12 +1,14 @@
 // tools_lua.go bridges Lua-registered tools and overrides into the tool
-// pipeline (DESIGN §6.4): the zemi.tool namespace, the tool.pre/pre-event
-// hook with the full decision contract, and the model-facing tool set.
+// pipeline (DESIGN §6.4): the zemi.tool namespace, the tool.pre hook
+// with the full decision contract, and the model-facing tool set.
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -66,18 +68,13 @@ func (r *toolReg) add(t *luaTool) error {
 func (r *toolReg) list() []*luaTool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]*luaTool, 0, len(r.byName))
-	for _, t := range r.byName {
-		out = append(out, t)
-	}
-	return out
+	return slices.SortedFunc(maps.Values(r.byName), func(a, b *luaTool) int { return cmp.Compare(a.Name, b.Name) })
 }
 
-func (r *toolReg) addOverride(o *overrideRec) bool {
+func (r *toolReg) addOverride(o *overrideRec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.overrides[o.Tool] = append(r.overrides[o.Tool], o)
-	return true
 }
 
 func (r *toolReg) overridesFor(tool string) []*overrideRec {
@@ -109,11 +106,8 @@ func (r *toolReg) purge(gen Gen) {
 	}
 }
 
-// builtinToolNames returns the builtin tool names for collision checks.
-var builtinToolNames = map[string]bool{
-	"bash": true, "read": true, "write": true, "edit": true,
-	"multiedit": true, "glob": true, "grep": true,
-}
+// builtinToolNames are the names Lua tools may not take.
+var builtinToolNames = []string{"bash", "read", "write", "edit", "multiedit", "glob", "grep"}
 
 func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -124,26 +118,21 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.RT.CurrentOrigin() == lua.OriginLearned {
 			L.RaiseError("zemi.tool.register: learned code may not register tools (DESIGN §10.4, §10.5)")
-			return 0
 		}
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.register: spec must be a table")
-			return 0
 		}
 		fn, ok := spec.RawGetString("execute").(*glua.LFunction)
 		if !ok {
 			L.RaiseError("zemi.tool.register: execute callback is required")
-			return 0
 		}
 		name := rawString(spec, "name")
 		if name == "" || !isToolName(name) {
 			L.RaiseError("zemi.tool.register: name must be an identifier")
-			return 0
 		}
-		if builtinToolNames[name] {
+		if slices.Contains(builtinToolNames, name) {
 			L.RaiseError("zemi.tool.register: %q is a builtin tool name", name)
-			return 0
 		}
 		schema := map[string]any{}
 		var required []string
@@ -151,7 +140,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			v, err := lua.ToGo(in)
 			if err != nil {
 				L.RaiseError("zemi.tool.register: input: %v", err)
-				return 0
 			}
 			if m, ok := v.(map[string]any); ok {
 				schema = m
@@ -181,7 +169,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if err := h.luaTools.add(lt); err != nil {
 			L.RaiseError("zemi.tool.register: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -192,18 +179,15 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		if o := h.RT.CurrentOrigin(); o == lua.OriginLearned || o == lua.OriginProject {
 			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
-			return 0
 		}
 		name := L.CheckString(1)
 		spec, ok := L.Get(2).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.override: spec must be a table")
-			return 0
 		}
 		fn, ok := spec.RawGetString("pre").(*glua.LFunction)
 		if !ok {
 			L.RaiseError("zemi.tool.override: pre callback is required")
-			return 0
 		}
 		h.luaTools.addOverride(&overrideRec{
 			Tool: name, Fn: fn,
@@ -214,21 +198,14 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
-		for _, name := range []string{"bash", "read", "write", "edit", "multiedit", "glob", "grep"} {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(name))
-			row.RawSetString("builtin", glua.LTrue)
-			out.Append(row)
+		rows := []any{}
+		for _, name := range builtinToolNames {
+			rows = append(rows, map[string]any{"name": name, "builtin": true})
 		}
 		for _, t := range h.luaTools.list() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(t.Name))
-			row.RawSetString("builtin", glua.LFalse)
-			row.RawSetString("origin", glua.LString(t.Origin))
-			out.Append(row)
+			rows = append(rows, map[string]any{"name": t.Name, "builtin": false, "origin": string(t.Origin)})
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 
@@ -283,11 +260,9 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 	}
-	for _, req := range []tools.Request{{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name}} {
-		v := a.pipe.Check(req)
-		if v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
-		}
+	req := tools.Request{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name}
+	if v := a.pipe.Check(req); v.Decision != perm.Allow {
+		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
 	out, err := a.h.runLuaTool(a.t, input)
 	if err != nil {
@@ -297,29 +272,24 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 }
 
 // runLuaTool executes the Lua callback on the interpreter (the fantasy
-// tool goroutine blocks here; one interpreter serializes Lua tools).
+// tool goroutine blocks here; one interpreter serializes Lua tools). A
+// string result or a table's output field is the output; anything else is
+// sent as JSON.
 func (h *Host) runLuaTool(t *luaTool, input map[string]any) (string, error) {
 	res, err := h.RT.Do(context.Background(), lua.ClassAgent, t.Timeout, 5*time.Second,
 		func(L *glua.LState) ([]any, error) {
 			h.RT.PushFrame(t.Origin, t.Path)
 			defer h.RT.PopFrame()
 			base := L.GetTop()
+			defer L.SetTop(base)
 			L.Push(t.Fn)
 			L.Push(lua.FromGo(L, input))
-			call := L.NewTable()
-			call.RawSetString("name", glua.LString(t.Name))
-			call.RawSetString("origin", glua.LString(t.Origin))
-			L.Push(call)
+			L.Push(lua.FromGo(L, map[string]any{"name": t.Name, "origin": string(t.Origin)}))
 			if err := L.PCall(2, 1, nil); err != nil {
-				L.SetTop(base)
 				return nil, err
 			}
 			v, err := lua.ToGo(L.Get(-1))
-			L.SetTop(base)
-			if err != nil {
-				return nil, err
-			}
-			return []any{v}, nil
+			return []any{v}, err
 		})
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", t.Name, err)
@@ -327,75 +297,51 @@ func (h *Host) runLuaTool(t *luaTool, input map[string]any) (string, error) {
 	if len(res) == 0 || res[0] == nil {
 		return "", nil
 	}
-	switch v := res[0].(type) {
-	case string:
-		return v, nil
-	case map[string]any:
-		if out, ok := v["output"].(string); ok {
+	if s, ok := res[0].(string); ok {
+		return s, nil
+	}
+	if m, ok := res[0].(map[string]any); ok {
+		if out, ok := m["output"].(string); ok {
 			return out, nil
 		}
-		b, _ := json.Marshal(v)
-		return string(b), nil
-	default:
-		b, _ := json.Marshal(v)
-		return string(b), nil
 	}
+	b, _ := json.Marshal(res[0])
+	return string(b), nil
 }
 
 // toolPreHook adapts the tool.pre events plus zemi.tool.override pre
 // handlers into the pipeline PreHook, with the full decision contract and
-// shallow rewrite merging (DESIGN §6.2, §6.4).
+// shallow rewrite merging (DESIGN §6.2, §6.4). A rewrite by any non-user
+// handler marks the result loosened.
 func (h *Host) toolPreHook() tools.PreHook {
 	return func(name string, input map[string]any) (string, string, map[string]any, bool) {
 		handlers := h.Events.Handlers("tool.pre")
-		overrides := h.luaTools.overridesFor(name)
-		if len(handlers) == 0 && len(overrides) == 0 {
+		for _, o := range h.luaTools.overridesFor(name) {
+			handlers = append(handlers, &EventHandler{Event: "tool.pre", Fn: o.Fn, Origin: o.Origin, Path: o.Path})
+		}
+		if len(handlers) == 0 {
 			return "", "", nil, false
 		}
-		type verdict struct {
-			decision, reason string
-			rewritten        map[string]any
-			loosened         bool
-		}
-		var out verdict
-		deadline := lua.VetoDeadline
-		ceiling := time.Duration(len(handlers)+len(overrides))*deadline + 2*time.Second
+		var decision, reason string
+		var rewritten map[string]any
+		loosened := false
+		ceiling := time.Duration(len(handlers))*lua.VetoDeadline + 2*time.Second
 		_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, func(L *glua.LState) ([]any, error) {
-			merged := mapsClone(input)
+			merged := maps.Clone(input)
+			if merged == nil {
+				merged = map[string]any{}
+			}
 			for _, hd := range handlers {
-				d, r, rw, loose := h.callToolPre(L, hd.Fn, hd.Origin, hd.Path, name, merged, deadline)
-				switch d {
-				case "deny":
-					out = verdict{decision: "deny", reason: r}
+				d, r, rw := h.callToolPre(L, hd, name, merged)
+				switch {
+				case d == "deny" || d == "halt":
+					decision, reason, rewritten, loosened = d, r, nil, false
 					return nil, nil
-				case "halt":
-					out = verdict{decision: "halt", reason: r}
-					return nil, nil
-				case "rewrite":
-					if rw != nil {
-						mapsMerge(merged, rw)
-						out = verdict{decision: "rewrite", rewritten: merged, loosened: loose || out.loosened}
-					}
+				case d == "rewrite" && rw != nil:
+					maps.Copy(merged, rw)
+					decision, rewritten = "rewrite", merged
+					loosened = loosened || hd.Origin != lua.OriginUser
 				}
-			}
-			for _, o := range overrides {
-				d, r, rw, loose := h.callToolPre(L, o.Fn, o.Origin, o.Path, name, merged, deadline)
-				switch d {
-				case "deny":
-					out = verdict{decision: "deny", reason: r}
-					return []any{"deny"}, nil
-				case "halt":
-					out = verdict{decision: "halt", reason: r}
-					return []any{"halt"}, nil
-				case "rewrite":
-					if rw != nil {
-						mapsMerge(merged, rw)
-						out = verdict{decision: "rewrite", rewritten: merged, loosened: loose || out.loosened}
-					}
-				}
-			}
-			if out.decision == "" {
-				out = verdict{rewritten: nil}
 			}
 			return nil, nil
 		})
@@ -403,61 +349,32 @@ func (h *Host) toolPreHook() tools.PreHook {
 			h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
 			return "", "", nil, false
 		}
-		return out.decision, out.reason, out.rewritten, out.loosened
+		return decision, reason, rewritten, loosened
 	}
 }
 
 // callToolPre runs one pre handler and parses the decision table.
-func (h *Host) callToolPre(L *glua.LState, fn *glua.LFunction, origin lua.Origin, path, tool string, input map[string]any, deadline time.Duration) (decision, reason string, rewritten map[string]any, loosened bool) {
-	h.RT.PushFrame(origin, path)
-	defer h.RT.PopFrame()
+func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input map[string]any) (decision, reason string, rewritten map[string]any) {
 	ev := map[string]any{"name": "tool.pre", "from": "host", "tool": tool, "input": input}
-	_, restore := setHandlerContext(L, deadline)
-	defer restore()
-	base := L.GetTop()
-	L.Push(fn)
-	L.Push(lua.FromGo(L, ev))
-	if err := L.PCall(1, 1, nil); err != nil {
-		L.SetTop(base)
+	ret, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
+	if err != nil {
 		h.Log.Error("tools", "tool.pre handler failed", map[string]any{"tool": tool, "error": err.Error()})
-		return "", "", nil, false
+		return "", "", nil
 	}
-	defer L.SetTop(base)
-	dec := L.Get(-1)
-	if dec == glua.LNil {
-		return "", "", nil, false
-	}
-	tb, ok := dec.(*glua.LTable)
+	tb, ok := ret.(*glua.LTable)
 	if !ok {
-		return "", "", nil, false
+		return "", "", nil
 	}
-	d, _ := tb.RawGetString("decision").(glua.LString)
-	r, _ := tb.RawGetString("reason").(glua.LString)
-	switch string(d) {
+	switch d := rawString(tb, "decision"); d {
 	case "deny", "halt":
-		return string(d), string(r), nil, false
+		return d, rawString(tb, "reason"), nil
 	case "rewrite":
 		rw, err := lua.ToGo(tb.RawGetString("input"))
 		if err != nil {
-			return "", "", nil, false
+			return "", "", nil
 		}
 		m, _ := rw.(map[string]any)
-		return "rewrite", string(r), m, string(origin) != string(lua.OriginUser)
+		return "rewrite", "", m
 	}
-	return "", "", nil, false
-}
-
-func mapsClone(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
-// mapsMerge shallow-merges src over dst (rewrite semantics, §6.2).
-func mapsMerge(dst, src map[string]any) {
-	for k, v := range src {
-		dst[k] = v
-	}
+	return "", "", nil
 }

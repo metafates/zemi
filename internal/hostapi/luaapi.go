@@ -22,12 +22,10 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 		v, err := lua.ToGo(L.CheckAny(1))
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
-			return 0
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
-			return 0
 		}
 		L.Push(glua.LString(b))
 		return 1
@@ -35,9 +33,7 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
 		var v any
 		if err := json.Unmarshal([]byte(L.CheckString(1)), &v); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		L.Push(lua.FromGo(L, v))
 		return 1
@@ -81,10 +77,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 		h.composerMu.Lock()
 		text, cursor := h.composerText, h.composerCursor
 		h.composerMu.Unlock()
-		out := L.NewTable()
-		out.RawSetString("text", glua.LString(text))
-		out.RawSetString("cursor", glua.LNumber(cursor))
-		L.Push(out)
+		L.Push(lua.FromGo(L, map[string]any{"text": text, "cursor": cursor}))
 		return 1
 	}))
 	tb.RawSetString("set", edit("set", func(L *glua.LState) (string, int) {
@@ -106,15 +99,6 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 // sessions is a runtime operation: it returns nil, err (a turn is running,
 // no such session) instead of raising.
 func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
-	result := func(L *glua.LState, err error) int {
-		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(glua.LTrue)
-		return 1
-	}
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		limit := 20
 		if opts, ok := L.Get(1).(*glua.LTable); ok {
@@ -122,36 +106,31 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 				limit = min(int(n), 200)
 			}
 		}
-		out := L.NewTable()
+		rows := []any{}
 		if h.DB != nil {
 			current := h.AgentSessionID()
 			list, _ := h.DB.ListSessions(limit)
 			for _, s := range list {
-				row := L.NewTable()
-				row.RawSetString("id", glua.LString(s.ID))
-				row.RawSetString("title", glua.LString(s.Title))
-				row.RawSetString("updated_at", glua.LNumber(s.UpdatedAt))
-				row.RawSetString("ago", glua.LString(ago(s.UpdatedAt)))
-				row.RawSetString("tokens", glua.LNumber(s.PromptTokens+s.CompletionTokens))
-				row.RawSetString("cost", glua.LNumber(s.Cost))
-				row.RawSetString("current", glua.LBool(s.ID == current))
-				out.Append(row)
+				rows = append(rows, map[string]any{
+					"id": s.ID, "title": s.Title, "updated_at": s.UpdatedAt, "ago": ago(s.UpdatedAt),
+					"tokens": s.PromptTokens + s.CompletionTokens, "cost": s.Cost, "current": s.ID == current,
+				})
 			}
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 	tb.RawSetString("new", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.session.new") {
 			return 0
 		}
-		return result(L, h.NewSession())
+		return luaResult(L, h.NewSession())
 	}))
 	tb.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.session.open") {
 			return 0
 		}
-		return result(L, h.ResumeSession(L.CheckString(1)))
+		return luaResult(L, h.ResumeSession(L.CheckString(1)))
 	}))
 	// rewind(message_id) -> restored file count, or nil, err
 	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
@@ -160,26 +139,20 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		}
 		n, err := h.RewindTo(L.CheckString(1))
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		L.Push(glua.LNumber(n))
 		return 1
 	}))
 	tb.RawSetString("todos", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		rows := []any{}
 		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
 			todos, _ := h.DB.Todos(sid)
 			for _, td := range todos {
-				row := L.NewTable()
-				row.RawSetString("content", glua.LString(td.Content))
-				row.RawSetString("status", glua.LString(td.Status))
-				row.RawSetString("active_form", glua.LString(td.ActiveForm))
-				out.Append(row)
+				rows = append(rows, map[string]any{"content": td.Content, "status": td.Status, "active_form": td.ActiveForm})
 			}
 		}
-		L.Push(out)
+		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
 }
@@ -234,27 +207,15 @@ func (h *Host) assembleSections() string {
 }
 
 func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, text string) {
-	if hd.Once {
-		h.Events.drop(hd)
-	}
-	h.RT.PushFrame(hd.Origin, hd.Path)
-	defer h.RT.PopFrame()
-	handlerCtx, restore := setHandlerContext(L, lua.VetoDeadline)
-	defer restore()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(hd.Fn)
-	L.Push(lua.FromGo(L, map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}))
-	err := L.PCall(1, 1, nil)
-	if handlerCtx.Err() != nil {
+	ev := map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}
+	ret, timedOut, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
+	switch {
+	case timedOut:
 		h.Log.Warn("events", "agent.assemble handler timed out", map[string]any{"id": hd.ID, "origin": string(hd.Origin)})
-		return "", ""
-	}
-	if err != nil {
+	case err != nil:
 		h.logHandlerError(hd, err)
-		return "", ""
 	}
-	switch v := L.Get(-1).(type) {
+	switch v := ret.(type) {
 	case glua.LString:
 		return "", string(v)
 	case *glua.LTable:
