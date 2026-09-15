@@ -79,7 +79,8 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 		prefix = prefix[:i]
 	}
 	for _, c := range cmds {
-		if strings.HasPrefix(strings.ToLower(c.Name), prefix) && (!c.Hidden || strings.ToLower(c.Name) == prefix) {
+		// hidden commands stay out of the bare "/" list but complete once typed
+		if strings.HasPrefix(strings.ToLower(c.Name), prefix) && (!c.Hidden || prefix != "") {
 			p.matches = append(p.matches, c)
 		}
 	}
@@ -121,7 +122,7 @@ func (a *App) paletteRows(w int) [][]hostapi.Segment {
 
 // clearComposer empties the draft and closes both popups.
 func (a *App) clearComposer() {
-	a.composer.text, a.composer.cursor = "", 0
+	a.composer.text, a.composer.cursor, a.composer.pastes = "", 0, nil
 	a.palette.close()
 	a.completion.close()
 }
@@ -130,7 +131,7 @@ func (a *App) clearComposer() {
 // everything else goes through the vetoable composer.submit event and the
 // agent (DESIGN §6.2, §6.3).
 func (a *App) submitComposer() {
-	text := strings.TrimSpace(a.composer.text)
+	text := strings.TrimSpace(a.composer.expand(a.composer.text))
 	if text == "" {
 		return
 	}

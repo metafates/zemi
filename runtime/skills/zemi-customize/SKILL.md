@@ -129,7 +129,7 @@ Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must 
 `zemi.timer` callbacks and read the result from `zemi.state`. Theme groups used by the
 default UI: `Normal`, `Comment`, `Title`, `UserMsg`, `AgentToolOk`, `AgentToolErr`,
 `AgentToolRun`, `AgentToolName`, `AgentReason`, `Thinking`, `ThinkingBar`, `ThinkingMark`,
-`DiffAdd`, `DiffDel`, `Logo1`..`Logo6`, `SplashKey`, `StatusUsage`, `StatusUsageWarn`,
+`DiffAdd`, `DiffDel`, `DiffCtx` (each with a `*Num` group for its line numbers), `Logo1`..`Logo6`, `SplashKey`, `StatusUsage`, `StatusUsageWarn`,
 `StatusUsageErr`, `Errors`, `Mode*`, `Prompt*`, `ToastInfo`, `ToastWarn`, `ToastErr`,
 `ToastTitle`, `Markdown*`.
 Full API: the zemi-lua skill.

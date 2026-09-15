@@ -99,7 +99,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "modelPick":
 		mp := a.modelPick
-		if key != "j" && key != "k" && moveSel(&mp.selected, len(mp.visible), key) || mp.edit(key, keyText(msg), mp.texts) {
+		if mp.edit(key, keyText(msg), mp.texts) || moveSel(&mp.selected, len(mp.visible), key) {
 			return nil
 		}
 		switch key {

@@ -38,16 +38,21 @@ zemi.ui.theme.register("default", {
     AgentToolRun = { fg = "muted" },
     AgentToolOk = { fg = "ok" },
     AgentToolErr = { fg = "err" },
-    DiffAdd = { fg = "ok" },
-    DiffDel = { fg = "err" },
+    -- tool diffs match the permission prompt: tinted rows, dim line numbers
+    DiffAdd = { fg = "#d4e8c8", bg = "#243427" },
+    DiffAddNum = { fg = "#7fa36c", bg = "#243427" },
+    DiffDel = { fg = "#eccad0", bg = "#3a2629" },
+    DiffDelNum = { fg = "#b06d76", bg = "#3a2629" },
+    DiffCtx = { fg = "#9aa0c0" },
+    DiffCtxNum = { fg = "#4c5372" },
     TodoActive = { fg = "fg", bold = true },
     StatusUsage = { fg = "muted" },
     StatusUsageWarn = { fg = "warn" },
     StatusUsageErr = { fg = "err", bold = true },
-    ModeManual = { fg = "muted", bg = "panel" },
-    ModePlan = { fg = "bg", bg = "ok", bold = true },
-    ModeAuto = { fg = "bg", bg = "accent", bold = true },
-    ModeYolo = { fg = "bg", bg = "err", bold = true },
+    ModeManual = { fg = "muted" },
+    ModePlan = { fg = "ok", bold = true },
+    ModeAuto = { fg = "accent", bold = true },
+    ModeYolo = { fg = "err", bold = true },
     PromptPlan = { fg = "ok", bold = true },
     PromptAuto = { fg = "accent", bold = true },
     PromptYolo = { fg = "err", bold = true },
@@ -197,7 +202,7 @@ zemi.ui.widget.register({
     local mode = ctx.permission_mode or "manual"
     local base = ctx.permission_mode_base or mode
     local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeManual"
-    return { { { text = " " .. mode .. " ", hl = hl } } }
+    return { { { text = mode, hl = hl } } }
   end,
 })
 
@@ -459,11 +464,37 @@ zemi.ui.widget.register({
           lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = clip(sub, width - 6), hl = "Comment" } }
         end
       end
-      -- File tools show what they changed.
+      -- File tools show what they changed as numbered, tinted rows.
+      local old, new, hunks = 0, 0, 0
       for dl in ((t.diff or "") .. "\n"):gmatch("(.-)\n") do
-        if dl ~= "" then
-          local dhl = dl:sub(1, 2) == "- " and "DiffDel" or dl:sub(1, 2) == "+ " and "DiffAdd" or "Comment"
-          lines[#lines + 1] = { { text = "    " .. dl:gsub("\t", "    "), hl = dhl } }
+        local a, b = dl:match("^@@ %-(%d+),?%d* %+(%d+),?%d* @@")
+        local kind = dl:sub(1, 1)
+        if a then
+          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment" } } end
+          hunks = hunks + 1
+          old = tonumber(a)
+          new = tonumber(b)
+        elseif dl ~= "" and dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++" then
+          local num, style = nil, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
+          if kind == "-" then
+            num = old
+            old = old + 1
+          elseif style then
+            num = new
+            new = new + 1
+            if kind == " " then old = old + 1 end
+          end
+          if style then
+            -- without a hunk header this is the input-only preview ("- old", "+ new"): no numbers
+            local head = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
+            local body = clip((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), width - cells(head))
+            lines[#lines + 1] = {
+              { text = head, hl = style .. "Num" },
+              { text = body .. string.rep(" ", math.max(0, width - cells(head) - cells(body))), hl = style },
+            }
+          else
+            lines[#lines + 1] = { { text = "        " .. dl, hl = "Comment" } }
+          end
         end
       end
     end

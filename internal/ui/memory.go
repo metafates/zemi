@@ -112,5 +112,5 @@ func memReviewBox(mr *memReviewPrompt, w int) [][]hostapi.Segment {
 		hints = append(hints, "u", "undo")
 	}
 	body = append(body, nil, hintLine(append(hints, "esc", "done")...))
-	return hostBox(" Memory ", "Host:MemTitle", "", body, w)
+	return hostBox(" Memory ", "Host:Title", "", body, w)
 }

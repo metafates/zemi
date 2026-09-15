@@ -11,7 +11,8 @@ description: Diagnose problems with zemi itself - crashes, errors, a model that 
    `permissions.lua`, git, the reflector, pending reviews, skills, recent errors, language
    servers and the Lua runtime.
 2. `/errors` lists recent widget, keymap and event-handler errors and recovered panics;
-   the red `! errors` statusline badge means there are unseen ones.
+   the red `! errors` statusline badge means there are unseen ones. Enter opens an error
+   in full, with "Ask zemi to explain and fix this". In every list `/` filters.
 3. Read the log of the run. One file per start, newest last:
 
    ```sh

@@ -250,13 +250,14 @@ func (a *App) workingRow() []hostapi.Segment {
 	if label == "Working" && st.Reasoning != "" && st.Text == "" {
 		label = "Thinking"
 	}
-	timing := fmtElapsed(st.Elapsed)
+	parts := []string{fmtElapsed(st.Elapsed)}
 	if st.RetryIn > 0 {
-		label = fmt.Sprintf("Retrying (attempt %d)", st.Retries+1)
-		timing = "next try in " + fmtElapsed(st.RetryIn.Round(time.Second))
+		label = "Retrying"
+		parts = []string{fmt.Sprintf("attempt %d", st.Retries+1)}
 		if st.RetryWhy != "" {
-			timing = sanitize.String(st.RetryWhy) + ", " + timing
+			parts = append(parts, sanitize.String(st.RetryWhy))
 		}
+		parts = append(parts, "next try in "+fmtElapsed(st.RetryIn.Round(time.Second)))
 	}
 	if st.Compacting {
 		label = "Compacting"
@@ -271,14 +272,11 @@ func (a *App) workingRow() []hostapi.Segment {
 		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
-	hint := " (" + timing + " · esc to interrupt)"
-	if a.cancelling {
-		hint = " (" + timing + " · ctrl+c quits)"
-	}
+	parts = append(parts, map[bool]string{false: "esc to interrupt", true: "ctrl+c quits"}[a.cancelling])
 	if n := len(st.Steering); n > 0 {
-		hint += fmt.Sprintf(" · %d queued, up to edit", n)
+		parts = append(parts, fmt.Sprintf("%d queued, up to edit", n))
 	}
-	return append(row, hostapi.Segment{Text: hint, HL: "Comment"})
+	return append(row, hostapi.Segment{Text: "  " + strings.Join(parts, " · "), HL: "Comment"})
 }
 
 // shimmer sweeps a bright band across text every 2s: each rune blends the
@@ -374,7 +372,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if n := len(a.permQueue); n > 0 {
 		badge = fmt.Sprintf(" 1 of %d ", n+1)
 	}
-	return hostBoxW(" Permission required ", "Host:PermTitle", badge, body, w, maxW)
+	return hostBoxW(" Permission required ", "Host:Title", badge, body, w, maxW)
 }
 
 // padPanel cuts or extends a panel row to width, keeping its last style.
@@ -572,6 +570,6 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 		}
 		body = mp.filterRows(listRows(items, mp.selected, 12, "Host:Bold"))
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("enter", "pick", "type", "filter", "esc", "cancel"))
-	return hostBox(" Select model ", "Host:PickTitle", "", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("enter", "pick", "/", "filter", "esc", "cancel"))
+	return hostBox(" Select model ", "Host:Title", "", body, w)
 }

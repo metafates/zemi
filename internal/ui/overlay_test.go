@@ -36,9 +36,9 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	}
 }
 
-// TestOverlayFilter: typing narrows the rows (all words, any case), enter
-// runs the highlighted match, backspace widens again, and esc first clears
-// the filter, then closes.
+// TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
+// any case), backspace widens again, esc ends the filter before closing,
+// j moves outside a filter, and enter runs the highlighted match.
 func TestOverlayFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	var items []any
@@ -53,7 +53,7 @@ func TestOverlayFilter(t *testing.T) {
 	}
 	visible := func() int { return len(a.overlays[0].visible) }
 
-	typeText("t")
+	typeText("/t")
 	if visible() != 2 {
 		t.Fatalf("t: %d rows", visible())
 	}
@@ -70,7 +70,11 @@ func TestOverlayFilter(t *testing.T) {
 	if len(a.overlays) != 1 || visible() != 3 {
 		t.Fatalf("esc clears the filter first: overlays=%d rows=%d", len(a.overlays), visible())
 	}
-	typeText("gam")
+	a.overlayKey("j", "j")
+	if a.overlays[0].selected != 1 || a.overlays[0].query != "" {
+		t.Fatalf("j outside a filter: selected=%d query=%q", a.overlays[0].selected, a.overlays[0].query)
+	}
+	typeText("/gam")
 	a.overlayKey("enter", "")
 	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
 		t.Fatalf("enter: overlays=%d composer=%q", len(a.overlays), a.composer.text)
@@ -113,7 +117,7 @@ func TestModelPickerFilter(t *testing.T) {
 		{ID: "openai/gpt-5", Display: "GPT-5"},
 		{ID: "deepseek/deepseek-chat", Display: "DeepSeek V3"},
 	}, "", answer)
-	for _, r := range "v3" {
+	for _, r := range "/v3" {
 		a.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	if n := len(a.modelPick.visible); n != 1 {

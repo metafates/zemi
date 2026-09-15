@@ -25,6 +25,7 @@ func (st *overlayState) refilter() { st.apply(st.itemText) }
 // rows containing every word of query (case-insensitive), and selected
 // indexes visible.
 type listFilter struct {
+	active   bool // "/" was pressed: keys type into query
 	query    string
 	visible  []int
 	selected int
@@ -45,19 +46,26 @@ func (f *listFilter) apply(texts []string) {
 	f.selected = max(0, min(f.selected, len(f.visible)-1))
 }
 
-// edit applies a filtering key: typed text, the composer's deletion keys,
-// and esc while a query is set (clearing it). It reports whether the key
-// was used.
+// edit applies a filtering key. Every list filters the same way: "/"
+// starts a query, then typed text, the composer's deletion keys, and esc
+// (or backspace on an empty query) ends it. Outside a query letters like
+// j and k stay free for moving. It reports whether the key was used.
 func (f *listFilter) edit(key, text string, texts []string) bool {
+	if !f.active {
+		f.active = text == "/"
+		return f.active
+	}
 	q := composerState{text: f.query, cursor: len([]rune(f.query))}
 	switch {
+	case key == "esc" || (key == "backspace" && f.query == ""):
+		f.query, f.active = "", false
 	case key == "backspace":
 		q.backspace()
 		f.query = q.text
 	case key == "ctrl+w" || key == "alt+backspace":
 		q.delWord()
 		f.query = q.text
-	case key == "ctrl+u" || (key == "esc" && f.query != ""):
+	case key == "ctrl+u":
 		f.query = ""
 	case text != "":
 		f.query += text
@@ -72,8 +80,8 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 // note.
 func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
-	if f.query != "" {
-		out = append(out, []hostapi.Segment{{Text: "/ ", HL: "Comment"}, {Text: f.query, HL: "Host:Bold"}})
+	if f.active {
+		out = append(out, append([]hostapi.Segment{{Text: "/ ", HL: "Comment"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...))
 	}
 	out = append(out, rows...)
 	if len(f.visible) == 0 {
@@ -168,8 +176,7 @@ func (a *App) overlayKey(key, text string) {
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
-	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
-	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) || st.edit(key, text, st.itemText) {
+	if st.edit(key, text, st.itemText) || moveSel(&st.selected, len(st.visible), key) {
 		return
 	}
 	switch key {
@@ -262,22 +269,21 @@ func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 		badge += " "
 	}
 	if st.o.Input {
-		r := []rune(st.input.text)
-		line := []hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:st.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[st.input.cursor:])}}
+		line := append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, cursorSegs([]rune(st.input.text), st.input.cursor, "")...)
 		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
-		return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
+		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
 	items := make([]listItem, 0, len(st.visible))
 	for _, i := range st.visible {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
 	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
-	hints := hintLine("enter", "select", "type", "filter", "esc", "close")
+	hints := hintLine("enter", "select", "/", "filter", "esc", "close")
 	if st.o.Reload != nil {
-		hints = hintLine("space", "toggle", "type", "filter", "esc", "close")
+		hints = hintLine("space", "toggle", "/", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
-	return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
+	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 }
 
 // spliceBox writes box rows centered over the chat area, replacing the

@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -318,5 +319,27 @@ func TestPaletteComplete(t *testing.T) {
 	app.updatePalette()
 	if len(app.palette.matches) != 0 {
 		t.Fatalf("/reload listed: %d", len(app.palette.matches))
+	}
+}
+
+// TestPasteToken: a large paste stands in the composer as one token that
+// backspace removes whole and submit expands; small pastes stay inline.
+func TestPasteToken(t *testing.T) {
+	big := strings.Repeat("line\n", 11) + "end"
+	var c composerState
+	c.insert("see ")
+	c.paste(big)
+	c.paste("small")
+	if c.text != "see [Pasted text #1 +12 lines]small" {
+		t.Fatalf("composer text %q", c.text)
+	}
+	if got := c.expand(c.text); got != "see "+big+"small" {
+		t.Fatalf("expanded %q", got)
+	}
+	for range len("small") + 1 {
+		c.backspace()
+	}
+	if c.text != "see " {
+		t.Fatalf("after backspace %q", c.text)
 	}
 }

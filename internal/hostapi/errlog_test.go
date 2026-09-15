@@ -19,7 +19,7 @@ func TestErrorLog(t *testing.T) {
 	if h.errs.entries[0].msg != "render failed" {
 		t.Fatalf("message not sanitized: %q", h.errs.entries[0].msg)
 	}
-	if err := h.OpenErrors(); err != nil || h.HasUnseenErrors() {
+	if err := h.OpenErrors(""); err != nil || h.HasUnseenErrors() {
 		t.Fatalf("open: err=%v unseen=%v", err, h.HasUnseenErrors())
 	}
 }

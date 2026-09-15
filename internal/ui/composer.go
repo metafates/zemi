@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -10,7 +12,8 @@ import (
 // rune cursor, visual wrapping, and submitted-message history.
 type composerState struct {
 	text   string
-	cursor int // rune index, 0 <= cursor <= len(runes)
+	cursor int               // rune index, 0 <= cursor <= len(runes)
+	pastes map[string]string // paste token -> the text it stands for
 
 	history []string
 	histIdx int // len(history) = live draft
@@ -29,13 +32,51 @@ func (c *composerState) insert(s string) {
 	c.cursor = at + len([]rune(s))
 }
 
+// pasteToken matches a paste token ending at the cursor.
+var pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
+
+// paste inserts s, folding a large paste (over 10 lines or 1000 chars)
+// into a "[Pasted text #N +L lines]" token that expand restores on submit.
+func (c *composerState) paste(s string) {
+	lines := strings.Count(s, "\n") + 1
+	if lines <= 10 && len(s) <= 1000 {
+		c.insert(s)
+		return
+	}
+	if c.pastes == nil {
+		c.pastes = map[string]string{}
+	}
+	size := fmt.Sprintf("+%d lines", lines)
+	if lines == 1 {
+		size = fmt.Sprintf("%d chars", len([]rune(s)))
+	}
+	token := fmt.Sprintf("[Pasted text #%d %s]", len(c.pastes)+1, size)
+	c.pastes[token] = s
+	c.insert(token)
+}
+
+// expand swaps paste tokens in text for what was pasted, in one pass, so a
+// token-like string inside a paste stays as it is.
+func (c *composerState) expand(text string) string {
+	pairs := make([]string, 0, 2*len(c.pastes))
+	for token, s := range c.pastes {
+		pairs = append(pairs, token, s)
+	}
+	return strings.NewReplacer(pairs...).Replace(text)
+}
+
+// backspace deletes the rune before the cursor, or a whole paste token.
 func (c *composerState) backspace() {
 	if c.cursor == 0 {
 		return
 	}
 	r := c.runes()
-	c.text = string(r[:c.cursor-1]) + string(r[c.cursor:])
-	c.cursor--
+	n := 1
+	if tok := pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
+		n = len([]rune(tok))
+	}
+	c.text = string(r[:c.cursor-n]) + string(r[c.cursor:])
+	c.cursor -= n
 }
 
 func (c *composerState) delete() {
@@ -253,18 +294,23 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		}
 		segs := []hostapi.Segment{{Text: p, HL: promptHL}}
 		if i == cursorRow {
-			col := min(cursorCol, len(rows[i]))
-			segs = append(segs,
-				hostapi.Segment{Text: string(rows[i][:col]), HL: "Normal"},
-				hostapi.Segment{Text: "▏", HL: "Comment"},
-				hostapi.Segment{Text: string(rows[i][col:]), HL: "Normal"},
-			)
+			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
 		} else {
 			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})
 		}
 		out = append(out, segs)
 	}
 	return out
+}
+
+// cursorSegs draws r with a block cursor on the rune at cursor, or on a
+// blank cell past the end.
+func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
+	under, rest := " ", ""
+	if cursor < len(r) {
+		under, rest = string(r[cursor]), string(r[cursor+1:])
+	}
+	return []hostapi.Segment{{Text: string(r[:cursor]), HL: hl}, {Text: under, HL: "Host:Cursor"}, {Text: rest, HL: hl}}
 }
 
 // wrapComposer splits the text into visual rows of at most width runes,

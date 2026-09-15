@@ -89,5 +89,5 @@ func cfgReviewBox(cr *cfgReviewPrompt, w int) [][]hostapi.Segment {
 		}
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("y", "accept", "n", "reject", "esc", "leave queued"))
-	return hostBox(" Config review ", "Host:MemTitle", "", body, w)
+	return hostBox(" Config review ", "Host:Title", "", body, w)
 }

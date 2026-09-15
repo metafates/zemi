@@ -155,9 +155,8 @@ func TestDropPaste(t *testing.T) {
 func TestComposerCursorColumn(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 12)
 	app.composer.text, app.composer.cursor = "hello world", 2
-	app.renderSync(t)
-	if !strings.Contains(ansi.Strip(app.Frame()), "> he▏llo world") {
-		t.Fatalf("cursor not at its column:\n%s", ansi.Strip(app.Frame()))
+	if segs := app.composerRows(60)[0]; segs[1].Text != "he" || segs[2].Text != "l" || segs[2].HL != "Host:Cursor" {
+		t.Fatalf("block cursor not on its column: %+v", segs)
 	}
 }
 
@@ -168,7 +167,7 @@ func TestFilterKeys(t *testing.T) {
 		{"foo bar", "ctrl+u", ""},
 		{"foo", "backspace", "fo"},
 	} {
-		f := listFilter{query: c.query}
+		f := listFilter{active: true, query: c.query}
 		if !f.edit(c.key, "", []string{"a"}) || f.query != c.want {
 			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
 		}

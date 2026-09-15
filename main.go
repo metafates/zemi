@@ -290,8 +290,8 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "reload", Hidden: true, Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
 					return nil // the composer runs /reload before the registry
 				}},
-				{Name: "errors", Hidden: true, Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.OpenErrors()
+				{Name: "errors", Hidden: true, NArgs: "*", Desc: "recent runtime errors; enter opens one", GoFn: func(h *hostapi.Host, args string) error {
+					return h.OpenErrors(args)
 				}},
 				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()

@@ -151,8 +151,7 @@ func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	hints := hintLine("up/down", "move", "enter", "answer", "esc", "dismiss")
 	switch {
 	case qp.typing:
-		r := []rune(qp.input.text)
-		body = append(body, padSegs([]hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:qp.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[qp.input.cursor:])}}, 40))
+		body = append(body, padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, cursorSegs([]rune(qp.input.text), qp.input.cursor, "")...), 40))
 		hints = hintLine("enter", "send", "esc", "back to options")
 	case q.Multi:
 		hints = hintLine("up/down", "move", "space", "mark", "enter", "answer", "esc", "dismiss")
@@ -162,5 +161,5 @@ func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	if len(qp.qs) > 1 {
 		title = fmt.Sprintf(" Question %d/%d ", qp.at+1, len(qp.qs))
 	}
-	return hostBox(title, "Host:QTitle", "", body, w)
+	return hostBox(title, "Host:Title", "", body, w)
 }

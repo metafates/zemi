@@ -143,10 +143,6 @@ func (h *Host) SetPermMode(mode string) error {
 		h.modes.prePlan = prev.Name
 		h.modes.mu.Unlock()
 	}
-	// The statusline pill shows the mode; only the risky one also warns.
-	if list[i].Base == "yolo" {
-		h.Notify("warn", mode, "every permission ask is allowed; deny rules still apply")
-	}
 	h.refresh()
 	return nil
 }

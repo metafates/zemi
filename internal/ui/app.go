@@ -293,7 +293,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
-		a.composer.insert(s)
+		a.composer.paste(s)
 		a.publishComposer()
 		return a, a.updateCompletion()
 	case filesScannedMsg:
@@ -522,12 +522,13 @@ func (a *App) compose(w, h int) string {
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	} else if row := a.workingRow(); row != nil {
-		working = [][]hostapi.Segment{row}
+		working = [][]hostapi.Segment{row, padSegs(nil, w)}
 	}
-	// + statusline + composer, the working row and a blank row that keeps the
-	// input off the conversation; popups float over the chat (floatPopup), so
-	// opening one never moves the transcript
-	chatH := max(h-len(header)-1-len(compRows)-len(working)-1, 1)
+	// + statusline + composer, the working row with a blank row under it, a
+	// blank row that keeps the input off the conversation and one above the
+	// statusline; popups float over the chat (floatPopup), so opening one
+	// never moves the transcript
+	chatH := max(h-len(header)-1-len(compRows)-len(working)-2, 1)
 
 	chat := a.regionLines("chat", w)
 
@@ -582,8 +583,7 @@ func (a *App) compose(w, h int) string {
 	// The working row renders above the composer.
 	rows = append(rows, working...)
 	rows = append(rows, compRows...)
-	// Statusline.
-	rows = append(rows, a.statusRow(w))
+	rows = append(rows, padSegs(nil, w), a.statusRow(w))
 
 	// Lua overlays, then the Go-owned chrome, bottom to top; topChrome must
 	// match this order so input reaches the box drawn on top.

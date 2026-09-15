@@ -25,11 +25,8 @@ func rgb(v uint32) ansi.RGBColor {
 // chrome: no theme can restyle them, so nothing can dress up a prompt.
 var hostStyles = map[string]uv.Style{
 	"Host:Bold":        {Attrs: uv.AttrBold},
-	"Host:TrustTitle":  {Fg: rgb(0x101014), Bg: rgb(0xf7768e)},
-	"Host:PermTitle":   {Fg: rgb(0x101014), Bg: rgb(0xe0af68)},
-	"Host:PickTitle":   {Fg: rgb(0x101014), Bg: rgb(0x7aa2f7)},
-	"Host:MemTitle":    {Fg: rgb(0x101014), Bg: rgb(0x5af78e)},
-	"Host:QTitle":      {Fg: rgb(0x101014), Bg: rgb(0xf7a25a)},
+	"Host:Title":       {Fg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
+	"Host:Cursor":      {Fg: rgb(0x1a1b26), Bg: rgb(0xc0caf5)},
 	"Host:Value":       {Fg: rgb(0xc0caf5)},
 	"Host:Hint":        {Fg: rgb(0x6b7394)},
 	"Host:HintKey":     {Fg: rgb(0xa9b1d6), Attrs: uv.AttrBold},
@@ -91,7 +88,7 @@ func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
 		{{Text: ""}},
 		hintLine("y", "trust this config", "n", "not now", "d", "never for this version"),
 	}
-	return hostBox(" Trust project config? ", "Host:TrustTitle", "", body, w)
+	return hostBox(" Trust project config? ", "Host:Title", "", body, w)
 }
 
 // ---------------------------------------------------------------------------

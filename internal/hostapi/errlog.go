@@ -6,6 +6,7 @@ package hostapi
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,8 +49,10 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
-// OpenErrors lists the recent errors newest first and clears the badge.
-func (h *Host) OpenErrors() error {
+// OpenErrors runs /errors: with no args it lists the recent errors newest
+// first and clears the badge; "<n>" opens one in full, "ask <n>" hands it
+// to the agent to explain and fix.
+func (h *Host) OpenErrors(args string) error {
 	l := &h.errs
 	l.mu.Lock()
 	entries := append([]errEntry(nil), l.entries...)
@@ -64,13 +67,46 @@ func (h *Host) OpenErrors() error {
 		h.Notify("info", "errors", "no errors recorded")
 		return nil
 	}
-	items := make([]any, 0, len(entries))
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
-		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%s  %-16s %s", e.at.Format("15:04:05"), e.source, strings.Join(strings.Fields(e.msg), " ")),
-		})
+	f := strings.Fields(args)
+	if len(f) == 0 {
+		items := make([]any, 0, len(entries))
+		for i := len(entries) - 1; i >= 0; i-- {
+			e := entries[i]
+			items = append(items, map[string]any{
+				"text": fmt.Sprintf("%s  %-16s %s", e.at.Format("15:04:05"), e.source, strings.Join(strings.Fields(e.msg), " ")),
+				"run":  fmt.Sprintf("errors %d", i),
+			})
+		}
+		ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items})
+		return nil
 	}
-	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items})
+	i, err := strconv.Atoi(f[len(f)-1])
+	if err != nil || i < 0 || i >= len(entries) {
+		return fmt.Errorf("no error %q; /errors lists them", args)
+	}
+	e := entries[i]
+	if f[0] == "ask" {
+		prompt := fmt.Sprintf("zemi recorded this error at %s from %s. Load the zemi-debug skill, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s",
+			e.at.Format("15:04:05"), e.source, e.msg)
+		h.GoSafe("errors ask", func() {
+			if err := h.AgentSend(prompt); err != nil {
+				h.Notify("error", "agent", err.Error())
+			}
+		})
+		return nil
+	}
+	items := []any{
+		map[string]any{"text": "Ask zemi to explain and fix this", "run": fmt.Sprintf("errors ask %d", i)},
+		map[string]any{"text": "Back to all errors", "run": "errors"},
+		map[string]any{"text": ""},
+	}
+	for _, line := range strings.Split(e.msg, "\n") {
+		for r := []rune(line); len(r) > 0; {
+			n := min(len(r), 96)
+			items = append(items, map[string]any{"text": string(r[:n])})
+			r = r[n:]
+		}
+	}
+	ui.OpenOverlay(Overlay{ID: "errors", Title: "Error · " + e.source + " · " + e.at.Format("15:04:05"), Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }

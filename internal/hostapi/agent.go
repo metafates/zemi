@@ -717,7 +717,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if name == "write" || name == "edit" || name == "multiedit" {
 		var in map[string]any
 		if json.Unmarshal([]byte(input), &in) == nil {
-			diff = capLines(tools.ChangePreview(in), 8)
+			diff = capLines(tools.ChangeDiff(name, in), 24)
 		}
 	}
 	// Text streamed before this call belongs above it: move it and the
