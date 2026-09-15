@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/tools"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 const (
@@ -42,11 +44,12 @@ type Workflow struct {
 	Name        string
 	Description string // the file's leading "--" comment lines
 	Path        string
-	Source      string // user or project
+	Source      string // user, builtin or project
 }
 
-// workflows lists saved workflows; user files win over project ones and
-// project files load only once the project tree is trusted.
+// workflows lists saved workflows: user files win over builtin ones, which
+// win over project files; project files load only once the project tree is
+// trusted.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
 	seen := map[string]bool{}
@@ -72,6 +75,16 @@ func (h *Host) workflows() []Workflow {
 	}
 	if h.Dirs.ConfigHome != "" {
 		scan(filepath.Join(h.Dirs.ConfigHome, "workflows"), "user")
+	}
+	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
+	for _, e := range builtin {
+		name, ok := strings.CutSuffix(e.Name(), ".lua")
+		if !ok || seen[name] {
+			continue
+		}
+		src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
+		seen[name] = true
+		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: "builtin"})
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.projectTrusted.Load() {
 		scan(filepath.Join(pdir, "workflows"), "project")
@@ -99,6 +112,10 @@ func leadingComment(src string) string {
 func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
 	for _, w := range h.workflows() {
+		if w.Name == name && w.Source == "builtin" {
+			b, err := fs.ReadFile(zemiruntime.Workflows, "workflows/"+name+".lua")
+			return string(b), err
+		}
 		if w.Name == name {
 			return readWorkflowFile(w.Path)
 		}
@@ -643,6 +660,16 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 						names = append(names, w.Name)
 					}
 					return names
+				},
+				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
+			})
+			if err != nil {
+				return err
+			}
+			_, err = h.Commands.Add(&Command{
+				Name: "review", NArgs: "?", Desc: "review changes with parallel agents, then verify the findings: /review [git ref]",
+				GoFn: func(h *Host, args string) error {
+					return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
 				},
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})

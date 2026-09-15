@@ -19,6 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -71,6 +72,7 @@ type App struct {
 	activeBump time.Time
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
+	focused    bool             // terminal focus (true until the terminal reports a blur)
 	quitArmed  time.Time        // a second idle ctrl+c before this quits
 
 	bootErr error
@@ -100,6 +102,7 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 		timeStr:    "--:--",
 		now:        time.Now,
 		chatFollow: true,
+		focused:    true,
 		hooks:      make(chan tea.Msg, hookQueueSize),
 	}
 }
@@ -119,6 +122,10 @@ func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
 // (unbuffered) msgs channel and is currently inside our Update, so a
 // direct Quit() deadlocks.
 func (a *App) Quit() {
+	if res := a.host.EmitVetoable(a.ctx(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+		a.pushToast("warn", "quit", "blocked: "+res.Reason)
+		return
+	}
 	if a.program != nil {
 		go a.program.Quit()
 	}
@@ -261,6 +268,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentEventMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.frameGen++
+		if msg.ev.Kind == "turn_done" {
+			text := "zemi finished"
+			if msg.ev.Err != "" {
+				text = "zemi stopped: " + ansi.Truncate(msg.ev.Err, 80, "...")
+			}
+			return a, a.notifyIfAway(text)
+		}
 	case permAskMsg:
 		if a.permAsk != nil {
 			a.permQueue = append(a.permQueue, msg)
@@ -268,6 +282,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer}
 		}
 		a.frameGen++
+		return a, a.notifyIfAway("zemi needs your approval: " + msg.req.Subject)
 	case modelPickMsg:
 		a.modelPick = &modelPickPrompt{items: msg.items, sel: msg.sel, answer: msg.answer}
 		a.frameGen++
@@ -296,6 +311,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
+	case tea.FocusMsg:
+		a.focused = true
+	case tea.BlurMsg:
+		a.focused = false
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
@@ -334,7 +353,18 @@ func (a *App) View() tea.View {
 	// Cell motion: the wheel scrolls the transcript. The altscreen buffer
 	// has no native scrollback, so without capture the wheel does nothing.
 	v.MouseMode = tea.MouseModeCellMotion
+	v.ReportFocus = true // notifyIfAway needs to know
 	return v
+}
+
+// notifyIfAway alerts through the terminal when zemi needs attention while
+// its window is not focused: OSC 9 (a desktop notification in iTerm2,
+// Ghostty, WezTerm, Windows Terminal) and a bell for other terminals.
+func (a *App) notifyIfAway(text string) tea.Cmd {
+	if a.focused || !a.cfgBool("ui.notify", true) {
+		return nil
+	}
+	return tea.Raw("\x1b]9;" + sanitize.String(text) + "\x07\a")
 }
 
 // Frame renders the full screen as styled text; exported for the golden

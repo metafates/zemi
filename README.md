@@ -14,6 +14,9 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   of the statusline: `manual`, `plan` (the agent investigates and proposes; file changes
   are refused and every command asks), `auto` (a model approves routine actions, you get
   the rest) or `yolo`.
+- Taps you on the shoulder: when the terminal is not focused, a finished turn or a
+  waiting permission prompt sends a desktop notification (OSC 9) and a bell
+  (`ui.notify = false` turns it off).
 - Lets you steer mid-turn: messages typed while the agent works join the running turn at
   the next step. `up` on an empty composer pulls the queue back for editing, `esc`
   interrupts.
@@ -92,6 +95,10 @@ end
 phase("verify")
 return agent("Keep only the findings that hold up against the code:\n" .. table.concat(parallel(jobs), "\n\n"))
 ```
+
+zemi ships one: `/review [git ref]` has an agent collect the changes, three read-only
+reviewers look for correctness, security and simplicity problems in parallel, and a
+final agent keeps only the findings that hold up in the code.
 
 Workflow scripts run in their own sandbox: `agent`, `parallel`, `phase`, `log`, `json`
 and `args` plus Lua's string, table and math libraries, with no file or network access.
@@ -184,7 +191,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

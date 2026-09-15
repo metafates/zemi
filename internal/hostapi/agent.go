@@ -172,6 +172,11 @@ You can hand work to subagents with the agent tool. Each starts with an empty co
 - Do small, targeted work yourself: a known file, a single grep, a one-line fix. Delegating it only adds latency.
 Subagent reports are not shown to the user; summarize what matters.`
 
+// InitProject asks the agent to write or refresh AGENTS.md (/init).
+func (h *Host) InitProject() error { return h.AgentSend(initPrompt) }
+
+const initPrompt = `Study this repository and write AGENTS.md at its root for future coding agents; if it exists, update it and keep what is still true. Cover, briefly and concretely: what the project is, in two sentences; the exact commands to build, test, lint and run, taken from the build files; the main packages and how control flows between them; conventions and non-obvious gotchas you confirmed in the code. No generic advice. In a large codebase, first explore different areas with parallel explore agents.`
+
 // resolveProfile returns the profile to run: explicit name, the default,
 // or the implicit shipped profile.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
@@ -524,6 +529,11 @@ func (s *streamAdapter) TextDelta(text string) {
 	ag.textBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "text", Text: text})
+	// NOTE: one queue round trip per delta; fine for the few configs that
+	// listen, coalesce here if one ever streams into something slow.
+	if len(s.h.Events.Handlers("agent.text_delta")) > 0 {
+		s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
+	}
 }
 
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
@@ -549,6 +559,9 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag.reasonBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "reasoning", Text: text})
+	if len(s.h.Events.Handlers("agent.reasoning_delta")) > 0 {
+		s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
+	}
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
@@ -1497,6 +1510,11 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Ask:        h.askHook(),
 		Checkpoint: h.checkpointFile,
 		Plan:       func() bool { return h.PermMode() == "plan" },
+		Denied: func(tool string, req tools.Request, v tools.Verdict) {
+			if len(h.Events.Handlers("tool.denied")) > 0 {
+				h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
+			}
+		},
 		Post:      h.toolPostHook(),
 		Principal: "model",
 		Jobs:      h.jobs,

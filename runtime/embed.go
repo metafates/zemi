@@ -16,3 +16,8 @@ var FS embed.FS
 //
 //go:embed skills
 var Skills embed.FS
+
+// Workflows holds the builtin workflow scripts (workflows/<name>.lua).
+//
+//go:embed workflows
+var Workflows embed.FS

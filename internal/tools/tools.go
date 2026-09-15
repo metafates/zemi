@@ -71,6 +71,10 @@ type Pipeline struct {
 	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
 	Recall   func(query string, limit int) ([]*store.Memory, error)
 
+	// Denied reports a call the gate refused (the tool.denied event); nil
+	// = silent.
+	Denied func(tool string, req Request, v Verdict)
+
 	// Plan reports plan mode: file writes are denied and allowed commands
 	// ask instead; nil = never.
 	Plan func() bool
@@ -188,6 +192,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	}
 	for _, req := range t.subjects(input) {
 		v := pipe.check(req)
+		if v.Decision != perm.Allow && pipe.Denied != nil {
+			pipe.Denied(t.info.Name, req, v)
+		}
 		if v.Decision == perm.Deny {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + req.Subject + " " + req.Arg + ": " + v.Reason)), nil
 		}

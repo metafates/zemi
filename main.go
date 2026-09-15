@@ -238,6 +238,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.InitProject()
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "export", NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
 					path, err := h.ExportSession(strings.TrimSpace(args))
 					if err == nil {
