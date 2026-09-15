@@ -17,42 +17,29 @@ func String(s string) string {
 	}
 	var b strings.Builder
 	b.Grow(len(s))
-	i := 0
-	for i < len(s) {
-		c := s[i]
-		switch {
-		case c == 0x1b:
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
 			i = skipEscape(s, i)
-		case c < 0x20 && c != '\n' && c != '\t':
-			b.WriteByte(' ')
-			i++
-		case c == 0x7f:
-			b.WriteByte(' ')
-			i++
-		case c >= 0x80 && c < 0xa0: // C1 controls
-			b.WriteByte(' ')
-			i++
-		default:
-			r, size := utf8.DecodeRuneInString(s[i:])
-			if r == utf8.RuneError && size <= 1 {
-				b.WriteByte(' ')
-				i++
-				continue
-			}
-			if isBidiControl(r) || isFormattingControl(r) {
-				i += size
-				continue
-			}
-			b.WriteString(s[i : i+size])
-			i += size
+			continue
 		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size <= 1, r < 0x20 && r != '\n' && r != '\t', r >= 0x7f && r < 0xa0:
+			b.WriteByte(' ')
+		case unicode.Is(unicode.Cf, r) && r != 0x200b:
+			// format runes (bidi overrides, invisible marks) can reorder or hide text
+		default:
+			b.WriteString(s[i : i+size])
+		}
+		i += size
 	}
 	return b.String()
 }
 
+// needsWork is a fast path for plain printable ASCII.
 func needsWork(s string) bool {
-	for _, r := range s {
-		if r == 0x1b || (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x20 && c != '\n' && c != '\t' || c >= 0x7f {
 			return true
 		}
 	}
@@ -108,41 +95,13 @@ func skipEscape(s string, i int) int {
 	}
 }
 
-// isBidiControl covers characters that can reorder rendered text invisibly.
-func isBidiControl(r rune) bool {
-	switch r {
-	case 0x200e, 0x200f, 0x061c, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
-		0x2066, 0x2067, 0x2068, 0x2069:
-		return true
-	}
-	return false
-}
-
-func isFormattingControl(r rune) bool {
-	return unicode.Is(unicode.Cf, r) && r != 0x200b
-}
-
-// LogLine collapses every control byte (including newlines) so one log
-// record is one line, and strips escapes entirely.
+// LogLine is String with newlines and tabs also turned into spaces, so one
+// log record is one line.
 func LogLine(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	i := 0
-	for i < len(s) {
-		c := s[i]
-		switch {
-		case c == 0x1b:
-			i = skipEscape(s, i)
-		case c < 0x20 || c == 0x7f:
-			b.WriteByte(' ')
-			i++
-		case c >= 0x80 && c < 0xa0:
-			b.WriteByte(' ')
-			i++
-		default:
-			b.WriteByte(c)
-			i++
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return ' '
 		}
-	}
-	return b.String()
+		return r
+	}, String(s))
 }
