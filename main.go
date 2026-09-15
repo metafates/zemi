@@ -116,7 +116,7 @@ func run(args []string) int {
 		if err := applyOptions(host, opts); err != nil {
 			return fail(err)
 		}
-		return printTurn(host, opts.prompt, os.Stdout, os.Stderr)
+		return printTurn(host, opts.prompt, opts.output == "json", os.Stdout, os.Stderr)
 	}
 
 	p := tea.NewProgram(app)

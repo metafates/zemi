@@ -147,7 +147,8 @@ zemi -p --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failure
 
 With `-p` nobody can answer a permission ask, so asks are denied unless `--mode` is
 `auto` or `yolo`. Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
-`zemi --help` lists every flag.
+`--output json` prints the reply, the tool calls, token usage and cost as one JSON object
+for scripts. `zemi --help` lists every flag.
 
 ## Keys and commands
 

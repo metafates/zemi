@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -33,6 +34,7 @@ Flags:
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: manual, plan, auto or yolo
+      --output fmt    with -p: text (the reply) or json (reply, tools, usage)
   -v, --version       print the version and exit
   -h, --help          show this help
 
@@ -55,6 +57,7 @@ type options struct {
 	print, cont   bool
 	resume, model string
 	mode, prompt  string
+	output        string
 }
 
 // parseArgs parses the command line. code is -1 when zemi should run, or
@@ -66,7 +69,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "h": &help, "help": &help, "v": &ver, "version": &ver} {
 		fs.BoolVar(p, name, false, "")
 	}
-	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode} {
+	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "output": &o.output} {
 		fs.StringVar(p, name, "", "")
 	}
 	bad := func(format string, a ...any) (options, int) {
@@ -87,6 +90,10 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 		return bad("unknown --mode %q (want manual, plan, auto or yolo)", o.mode)
 	case o.cont && o.resume != "":
 		return bad("--continue and --resume cannot be combined")
+	case o.output != "" && o.output != "text" && o.output != "json":
+		return bad("unknown --output %q (want text or json)", o.output)
+	case o.output == "json" && !o.print:
+		return bad("--output json needs -p")
 	}
 	o.prompt = strings.TrimSpace(strings.Join(fs.Args(), " "))
 	return o, -1
@@ -157,12 +164,14 @@ func applyOptions(h *hostapi.Host, o options) error {
 	return nil
 }
 
-// printTurn runs one turn without the TUI: the reply goes to stdout, a
-// failure to stderr with status 1, an interrupt ends with 130.
-func printTurn(h *hostapi.Host, prompt string, stdout, stderr io.Writer) int {
+// printTurn runs one turn without the TUI: the reply goes to stdout (or a
+// JSON report with --output json), a failure to stderr with status 1, an
+// interrupt ends with 130.
+func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	start := len(h.Session().Transcript)
+	began, before := time.Now(), h.AgentStream()
 	if err := h.AgentSend(prompt); err != nil {
 		fmt.Fprintln(stderr, "zemi:", err)
 		return 1
@@ -180,6 +189,20 @@ func printTurn(h *hostapi.Host, prompt string, stdout, stderr io.Writer) int {
 	}
 	if interrupted {
 		return 130
+	}
+	if jsonOut {
+		after := h.AgentStream()
+		rep := turnReport(h.Session().Transcript[start:])
+		rep.SessionID, rep.DurationMS = h.AgentSessionID(), time.Since(began).Milliseconds()
+		rep.Usage.Input, rep.Usage.Output = after.SessionIn-before.SessionIn, after.SessionOut-before.SessionOut
+		rep.Usage.CostUSD = after.SessionCost - before.SessionCost
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(rep)
+		if rep.IsError {
+			return 1
+		}
+		return 0
 	}
 	code := 0
 	var replies []string
@@ -201,4 +224,45 @@ func printTurn(h *hostapi.Host, prompt string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, strings.Join(replies, "\n\n"))
 	}
 	return code
+}
+
+// report is the --output json document for one print-mode turn.
+type report struct {
+	Result     string       `json:"result"`
+	IsError    bool         `json:"is_error"`
+	Error      string       `json:"error,omitempty"`
+	SessionID  string       `json:"session_id"`
+	DurationMS int64        `json:"duration_ms"`
+	Tools      []reportTool `json:"tools"`
+	Usage      struct {
+		Input   int64   `json:"input_tokens"`
+		Output  int64   `json:"output_tokens"`
+		CostUSD float64 `json:"cost_usd"`
+	} `json:"usage"`
+}
+
+type reportTool struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// turnReport summarizes the transcript rows one turn added.
+func turnReport(rows []hostapi.ChatMessage) report {
+	rep := report{Tools: []reportTool{}}
+	var replies []string
+	for _, m := range rows {
+		switch {
+		case m.Role != "assistant":
+		case m.Kind == "":
+			replies = append(replies, strings.TrimSpace(m.Text))
+		case m.Kind == "tool":
+			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
+		case m.Kind == "error":
+			rep.IsError, rep.Error = true, m.Text
+		}
+	}
+	rep.Result = strings.Join(replies, "\n\n")
+	return rep
 }
