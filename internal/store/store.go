@@ -39,6 +39,10 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
+	if err := s.resyncFTS(); err != nil {
+		d.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -208,6 +212,25 @@ func (s *DB) migrate() error {
 		return fmt.Errorf("store: set user_version: %w", err)
 	}
 	return tx.Commit()
+}
+
+// resyncFTS rebuilds memory_fts when it indexes fewer rows than memory
+// holds. An index created after its rows (or one the triggers missed) stays
+// empty and search silently misses every memory the empty-query listing
+// still shows. memory_fts itself reads through to the content table, so the
+// count has to come from the fts5 docsize shadow table.
+func (s *DB) resyncFTS() error {
+	var rows, indexed int
+	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM memory), (SELECT COUNT(*) FROM memory_fts_docsize)`).Scan(&rows, &indexed); err != nil {
+		return fmt.Errorf("store: count memory index: %w", err)
+	}
+	if rows == indexed {
+		return nil
+	}
+	if _, err := s.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('rebuild')`); err != nil {
+		return fmt.Errorf("store: rebuild memory index: %w", err)
+	}
+	return nil
 }
 
 // NewID returns a random 128-bit id, hex encoded.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -136,6 +137,34 @@ func TestMemoryTriggersKeepFTSInSync(t *testing.T) {
 	hits, _ = db.SearchMemory("project", "mise", 10, false)
 	if len(hits) != 0 {
 		t.Fatalf("stale fts row after delete: %+v", hits)
+	}
+}
+
+// TestMemoryFTSRebuiltWhenOutOfSync: an index that lost its rows is rebuilt
+// at open, so search does not miss memories the listing still shows.
+func TestMemoryFTSRebuiltWhenOutOfSync(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addMem(t, db, "project", "fact", "the deploy gate lives in ci/pipeline", nil)
+	if _, err := db.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('delete-all')`); err != nil {
+		t.Fatal(err)
+	}
+	if hits, _ := db.SearchMemory("project", "deploy", 10, false); len(hits) != 0 {
+		t.Fatalf("index was not emptied: %+v", hits)
+	}
+	db.Close()
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	hits, err := db.SearchMemory("project", "deploy", 10, false)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("open did not rebuild the index: %+v %v", hits, err)
 	}
 }
 
