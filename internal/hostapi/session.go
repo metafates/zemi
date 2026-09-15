@@ -56,14 +56,7 @@ func (h *Host) ResumeSession(id string) error {
 	if _, err := h.closeSession(); err != nil {
 		return err
 	}
-	history, tr := historyFrom(rows)
-	// A compacted session resumes from its summary.
-	for i, r := range rows {
-		if r.ID == sess.SummaryMessageID {
-			history, _ = historyFrom(rows[i:])
-			break
-		}
-	}
+	history, tr := resumeHistory(sess, rows)
 	ag := h.agents
 	ag.mu.Lock()
 	ag.sessionID = id
@@ -138,6 +131,19 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.session.Title, h.session.Transcript = title, tr
 	h.tMu.Unlock()
 	h.refresh()
+}
+
+// resumeHistory rebuilds model history and transcript from stored rows; a
+// compacted session's model history starts at its summary.
+func resumeHistory(sess *store.Session, rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
+	history, tr := historyFrom(rows)
+	for i, r := range rows {
+		if r.ID == sess.SummaryMessageID {
+			history, _ = historyFrom(rows[i:])
+			break
+		}
+	}
+	return history, tr
 }
 
 // historyFrom decodes stored messages into model history and transcript

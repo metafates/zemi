@@ -226,6 +226,16 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "resume", Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "rewind", NArgs: "?", Desc: "undo turns: restore files and the conversation to before a prompt", GoFn: func(h *hostapi.Host, args string) error {
+					if args = strings.TrimSpace(args); args == "" {
+						return h.OpenRewind()
+					}
+					n, err := h.RewindTo(args)
+					if err == nil {
+						h.Notify("info", "rewind", fmt.Sprintf("restored %d files; the prompt is back in the composer", n))
+					}
+					return err
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "errors", Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

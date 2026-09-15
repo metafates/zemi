@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 );
 CREATE INDEX IF NOT EXISTS tool_calls_message ON tool_calls(message_id, created_at);
 
+CREATE TABLE IF NOT EXISTS checkpoints (
+	message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL,
+	path TEXT NOT NULL,
+	existed INTEGER NOT NULL,
+	content BLOB,
+	created_at INTEGER NOT NULL,
+	PRIMARY KEY (message_id, path)
+);
+CREATE INDEX IF NOT EXISTS checkpoints_session ON checkpoints(session_id);
+
 CREATE TABLE IF NOT EXISTS skills (
 	name TEXT PRIMARY KEY,
 	path TEXT NOT NULL,

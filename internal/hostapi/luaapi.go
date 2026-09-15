@@ -153,6 +153,20 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		}
 		return result(L, h.ResumeSession(L.CheckString(1)))
 	}))
+	// rewind(message_id) -> restored file count, or nil, err
+	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.session.rewind") {
+			return 0
+		}
+		n, err := h.RewindTo(L.CheckString(1))
+		if err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		L.Push(glua.LNumber(n))
+		return 1
+	}))
 	tb.RawSetString("todos", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {

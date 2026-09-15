@@ -131,6 +131,10 @@ type agentHost struct {
 	cfgAuto      int
 	reflected    int
 	reflectErr   string // last reflector run's error, "" after a success (/health)
+
+	// turnMsgID is the stored user message of the running turn; write tools
+	// checkpoint files against it (rewind).
+	turnMsgID string
 }
 
 func newAgentHost() *agentHost {
@@ -679,7 +683,16 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	if err != nil {
 		return err
 	}
-	return h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
+	row := &store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)}
+	if err := h.DB.AddMessage(row); err != nil {
+		return err
+	}
+	if role == "user" {
+		ag.mu.Lock()
+		ag.turnMsgID = row.ID
+		ag.mu.Unlock()
+	}
+	return nil
 }
 
 // recordToolCall stores one tool telemetry row (each tool call gets its
@@ -1162,9 +1175,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		h.GoSafe("zemi.agent.send", func() {
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
-				if ui := h.hooks(); ui != nil {
-					ui.Notify("error", "agent", err.Error())
-				}
+				h.Notify("error", "agent", err.Error())
 			}
 		})
 		return 0
@@ -1345,6 +1356,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 			msgs, _ := h.DB.Messages(sid)
 			for _, m := range msgs {
 				row := L.NewTable()
+				row.RawSetString("id", glua.LString(m.ID))
 				row.RawSetString("role", glua.LString(m.Role))
 				row.RawSetString("json", glua.LString(m.PartsJSON))
 				out.Append(row)
@@ -1441,8 +1453,9 @@ func truncateString(s string, n int) string {
 func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
 		Store:     h.Perm,
-		Pre:       h.toolPreHook(),
-		Ask:       h.askHook(),
+		Pre:        h.toolPreHook(),
+		Ask:        h.askHook(),
+		Checkpoint: h.checkpointFile,
 		Post:      h.toolPostHook(),
 		Principal: "model",
 		Jobs:      h.jobs,

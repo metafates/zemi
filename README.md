@@ -18,6 +18,9 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   interrupts.
 - Keeps sessions: `/new`, `/sessions`, `/resume`. Long sessions compact into a summary
   before the context window fills (`/compact` does it on demand).
+- Undoes turns: `/rewind` lists your prompts; picking one restores the files the agent
+  changed since (through `write`, `edit` and `multiedit`, not bash), drops that part of
+  the conversation and puts the prompt back in the composer to edit.
 
 ## Prompt commands
 
@@ -160,7 +163,7 @@ With `-p` nobody can answer a permission ask, so asks are denied unless `--mode`
 | `@` | attach a project file |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/agents`, `/workflow`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/rewind`, `/agents`, `/workflow`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

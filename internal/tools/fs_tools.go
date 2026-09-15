@@ -96,6 +96,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
 	content := str(input["content"])
+	p.checkpoint(path)
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -105,6 +106,12 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content))), nil
+}
+
+func (p *Pipeline) checkpoint(path string) {
+	if p.Checkpoint != nil {
+		p.Checkpoint(path)
+	}
 }
 
 // applyEdit replaces old with new in s; count 0 means not found.
@@ -142,6 +149,7 @@ func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if n == 0 {
 		return fantasy.NewTextErrorResponse("old_string not found in " + path), nil
 	}
+	p.checkpoint(path)
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -237,6 +245,7 @@ func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 		src = out
 		applied += n
 	}
+	p.checkpoint(path)
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

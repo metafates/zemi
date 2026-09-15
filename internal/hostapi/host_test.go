@@ -81,7 +81,7 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.composer[fn]) == "function", "zemi.composer." .. fn .. " missing")
 		end
 		assert(type(zemi.event.off) == "function", "zemi.event.off missing")
-		for _, fn in ipairs({ "list", "new", "open", "todos" }) do
+		for _, fn in ipairs({ "list", "new", "open", "todos", "rewind" }) do
 			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
 		end
 		for _, fn in ipairs({ "run", "list" }) do

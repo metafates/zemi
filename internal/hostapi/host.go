@@ -255,6 +255,13 @@ func (h *Host) refresh() {
 	}
 }
 
+// Notify shows a toast when a UI is attached.
+func (h *Host) Notify(level, title, body string) {
+	if ui := h.hooks(); ui != nil {
+		ui.Notify(level, title, body)
+	}
+}
+
 // scrollChat routes a transcript scroll request to the UI (no-op before
 // the UI attaches, e.g. headless runs).
 func (h *Host) scrollChat(kind string) {

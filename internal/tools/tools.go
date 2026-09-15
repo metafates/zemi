@@ -71,6 +71,10 @@ type Pipeline struct {
 	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
 	Recall   func(query string, limit int) ([]*store.Memory, error)
 
+	// Checkpoint records a file's content before a write tool changes it,
+	// so the turn can be rewound; nil = no checkpoints.
+	Checkpoint func(path string)
+
 	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
 	// decisions ask instead (never skips the gate, §6.4).
 	RewriteLoosened bool
