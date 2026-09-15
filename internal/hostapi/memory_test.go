@@ -212,7 +212,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		}
 	}
 
-	runUser(t, r, `zemi.memory.supersede("`+oldID+`", "`+newID+`")`)
+	runUser(t, r, `zemi.memory.supersede("`+oldID[:8]+`", "`+newID[:8]+`")`)
 	m, err := h.DB.GetMemory(oldID)
 	if err != nil {
 		t.Fatalf("get old: %v", err)
@@ -227,7 +227,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		}
 	}
 
-	runUser(t, r, `zemi.memory.forget("`+oldID+`")`)
+	runUser(t, r, `zemi.memory.forget("`+oldID[:8]+`")`)
 	if _, err := h.DB.GetMemory(oldID); err != store.ErrNotFound {
 		t.Fatalf("forget: %v", err)
 	}

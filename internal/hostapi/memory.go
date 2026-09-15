@@ -149,17 +149,13 @@ func (h *Host) memoryCommand(args string) error {
 		}
 		return errors.New("memory review already open")
 	case fields[0] == "forget" && len(fields) == 2:
-		db, _, err := h.locateMemory(fields[1])
+		db, m, err := h.locateMemory(fields[1])
 		if err != nil {
 			return err
 		}
-		return db.DeleteMemory(fields[1])
+		return db.DeleteMemory(m.ID)
 	case fields[0] == "supersede" && len(fields) == 3:
-		db, _, err := h.locateMemory(fields[1])
-		if err != nil {
-			return err
-		}
-		return db.SupersedeMemory(fields[1], fields[2])
+		return h.supersedeMemory(fields[1], fields[2])
 	case fields[0] == "forget" || fields[0] == "supersede":
 		return errors.New("usage: /memory forget <id> | /memory supersede <old> <new>")
 	default:
@@ -330,6 +326,23 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 		}
 	}
 	return nil, nil, fmt.Errorf("no such memory %q", id)
+}
+
+// supersedeMemory resolves both ids (prefixes allowed) and links them; the
+// replacement must live in the same scope.
+func (h *Host) supersedeMemory(oldID, byID string) error {
+	db, old, err := h.locateMemory(oldID)
+	if err != nil {
+		return err
+	}
+	byDB, by, err := h.locateMemory(byID)
+	if err != nil {
+		return err
+	}
+	if byDB != db || by.Scope != old.Scope {
+		return fmt.Errorf("memory %s and %s are in different scopes", old.ID[:8], by.ID[:8])
+	}
+	return db.SupersedeMemory(old.ID, by.ID)
 }
 
 // memorySearch queries one or both scopes best-first; every hit bumps
@@ -525,20 +538,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.memory.supersede: only user or builtin origin may modify memories")
 			return 0
 		}
-		db, _, err := h.locateMemory(old)
-		if err != nil {
-			L.RaiseError("zemi.memory.supersede: %v", err)
-			return 0
-		}
-		if _, err := db.GetMemory(by); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				L.RaiseError("zemi.memory.supersede: no such memory %q", by)
-			} else {
-				L.RaiseError("zemi.memory.supersede: %v", err)
-			}
-			return 0
-		}
-		if err := db.SupersedeMemory(old, by); err != nil {
+		if err := h.supersedeMemory(old, by); err != nil {
 			L.RaiseError("zemi.memory.supersede: %v", err)
 			return 0
 		}
@@ -551,12 +551,12 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.memory.forget: only user or builtin origin may modify memories")
 			return 0
 		}
-		db, _, err := h.locateMemory(id)
+		db, m, err := h.locateMemory(id)
 		if err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
 			return 0
 		}
-		if err := db.DeleteMemory(id); err != nil {
+		if err := db.DeleteMemory(m.ID); err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
 			return 0
 		}
