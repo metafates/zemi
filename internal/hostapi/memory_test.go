@@ -2,6 +2,8 @@ package hostapi
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -47,6 +49,9 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	}
 	if err := h.Remember("deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); err != nil {
 		t.Fatalf("remember: %v", err)
+	}
+	if err := h.Remember("Deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); !errors.Is(err, errDuplicateMemory) {
+		t.Fatalf("duplicate remember: %v", err)
 	}
 	rows := projectMemories(t, h)
 	if len(rows) != 1 {
@@ -94,6 +99,11 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	}
 	if queued := len(h.memoryProposals()); queued != 1 {
 		t.Fatalf("queued=%d", queued)
+	}
+	// The same text again, in another case and spacing, is dropped.
+	runUser(t, r, `zemi.memory.add({ kind = "fact", text = "The FTS join  needs m-qualified columns" })`)
+	if queued := len(h.memoryProposals()); queued != 1 {
+		t.Fatalf("duplicate queued: %d", queued)
 	}
 
 	// No provenance before a session: refused.
@@ -178,6 +188,28 @@ func TestMemorySearchFromLua(t *testing.T) {
 	if m.HitCount != 1 || m.LastHitAt == 0 {
 		t.Fatalf("hit bump: count=%d last=%d", m.HitCount, m.LastHitAt)
 	}
+
+	// Scores from the two DBs do not compare: results alternate by rank.
+	for i := range 3 {
+		for _, db := range map[string]*store.DB{"project": h.DB, "user": h.GlobalDB} {
+			scope := "project"
+			if db == h.GlobalDB {
+				scope = "user"
+			}
+			if err := db.AddMemory(&store.Memory{Scope: scope, Kind: "fact", Text: fmt.Sprintf("widget note %d", i), ProvenanceSessionID: "p", Origin: learn.OriginUser}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rows, err := h.memorySearch("all", "widget", 4)
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("interleave: %d %v", len(rows), err)
+	}
+	for i, want := range []string{"project", "user", "project", "user"} {
+		if rows[i].Scope != want {
+			t.Fatalf("row %d scope=%s want %s", i, rows[i].Scope, want)
+		}
+	}
 }
 
 // TestMemorySupersedeForgetOriginGate pins the review guard: model and
@@ -212,7 +244,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		}
 	}
 
-	runUser(t, r, `zemi.memory.supersede("`+oldID+`", "`+newID+`")`)
+	runUser(t, r, `zemi.memory.supersede("`+oldID[:8]+`", "`+newID[:8]+`")`)
 	m, err := h.DB.GetMemory(oldID)
 	if err != nil {
 		t.Fatalf("get old: %v", err)
@@ -227,7 +259,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		}
 	}
 
-	runUser(t, r, `zemi.memory.forget("`+oldID+`")`)
+	runUser(t, r, `zemi.memory.forget("`+oldID[:8]+`")`)
 	if _, err := h.DB.GetMemory(oldID); err != store.ErrNotFound {
 		t.Fatalf("forget: %v", err)
 	}

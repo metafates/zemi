@@ -1270,7 +1270,7 @@ still has unseen messages.
   `/memory`, `a` accepts a proposal, `d` rejects one or deletes a stored
   memory, enter applies, esc changes nothing.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
-  (2000 chars), kind from a fixed enum, provenance required, tags scrubbed
+  (500 chars), kind from a fixed enum, provenance required, tags scrubbed
   like text, and
   intake-time secret scrubbing (spans matching key shapes or above an
   entropy threshold are redacted with a `[redacted n chars]` marker, or

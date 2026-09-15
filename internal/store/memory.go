@@ -16,7 +16,7 @@ type Memory struct {
 	ID                  string
 	Scope               string   // "user" or "project"
 	Kind                string   // fact | gotcha | preference | convention | decision
-	Text                string   // <= 512 chars, scrubbed at intake
+	Text                string   // capped and scrubbed at intake (learn.MaxTextLen)
 	Tags                []string // comma-joined in the DB
 	ProvenanceSessionID string
 	Confidence          float64
@@ -159,11 +159,11 @@ func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error)
 	return collect(rows, err, scanMemory)
 }
 
-// UpdateMemoryText rewrites a memory's text; the update trigger re-syncs
-// the FTS index. Unknown ids are ErrNotFound.
-func (s *DB) UpdateMemoryText(id, text string) error {
-	return s.execOne("update memory text", `UPDATE memory SET text = ?, updated_at = ?
-		WHERE id = ?`, text, now(), id)
+// UpdateMemoryText rewrites a memory's text and origin; the update trigger
+// re-syncs the FTS index. Unknown ids are ErrNotFound.
+func (s *DB) UpdateMemoryText(id, text, origin string) error {
+	return s.execOne("update memory text", `UPDATE memory SET text = ?, origin = ?, updated_at = ?
+		WHERE id = ?`, text, origin, now(), id)
 }
 
 // SupersedeMemory marks one memory as replaced by another; the row stays

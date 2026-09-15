@@ -24,7 +24,8 @@ const (
 type Result struct {
 	Memory            store.Memory
 	Scrubbed          bool // a secret span was redacted
-	InstructionShaped bool // routes to the review queue even under auto
+	InstructionShaped bool   // routes to the review queue even under auto
+	Supersedes        string // id of the memory this one replaces, linked when stored
 }
 
 // Intake validates and cleans one memory (DESIGN §10.4). Errors are

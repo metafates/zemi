@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -62,11 +61,15 @@ func (h *Host) storeMemory(scope, origin, kind, text string, tags []string) (*le
 // queueProposal persists a policy-clean memory for review in its scope's
 // store. The id is assigned here so review decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) {
+	if h.duplicateMemory(res.Memory) {
+		h.Log.Debug("memory", "duplicate proposal dropped", nil)
+		return
+	}
 	if res.Memory.ID == "" {
 		res.Memory.ID = store.NewID()
 	}
 	db := h.memoryDB(res.Memory.Scope)
-	payload, err := json.Marshal(res.Memory)
+	payload, err := json.Marshal(memoryProposal{res.Memory, res.Supersedes})
 	if err == nil && db == nil {
 		err = errors.New("memory store unavailable")
 	}
@@ -88,7 +91,11 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	ag.memAuto++
+	// a detached reflector stores a closed session's memories; the live
+	// session's budget is not theirs to spend
+	if res.Memory.ProvenanceSessionID == ag.sessionID {
+		ag.memAuto++
+	}
 	ag.mu.Unlock()
 	h.Notify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
@@ -101,6 +108,31 @@ func redactNote(scrubbed bool) string {
 	return ""
 }
 
+var errDuplicateMemory = errors.New("already remembered")
+
+// duplicateMemory reports whether a live memory or pending proposal in the
+// same scope has the same text. Intake collapses whitespace, so a
+// case-insensitive compare is the whole normalization.
+// NOTE: scans the scope; fine for the hundreds of rows memories reach.
+func (h *Host) duplicateMemory(m store.Memory) bool {
+	db := h.memoryDB(m.Scope)
+	if db == nil {
+		return false
+	}
+	live, _ := db.ListMemory(m.Scope, false)
+	for _, o := range live {
+		if strings.EqualFold(o.Text, m.Text) {
+			return true
+		}
+	}
+	for _, o := range h.memoryProposals() {
+		if o.Scope == m.Scope && strings.EqualFold(o.Text, m.Text) {
+			return true
+		}
+	}
+	return false
+}
+
 // storeProposal writes a policy-clean memory to its scope's DB.
 func (h *Host) storeProposal(res *learn.Result) error {
 	db := h.memoryDB(res.Memory.Scope)
@@ -108,8 +140,14 @@ func (h *Host) storeProposal(res *learn.Result) error {
 		return errors.New("memory store unavailable")
 	}
 	m := &res.Memory
+	if h.duplicateMemory(*m) {
+		return errDuplicateMemory
+	}
 	if err := db.AddMemory(m); err != nil {
 		return err
+	}
+	if res.Supersedes != "" {
+		h.linkSupersede(res.Supersedes, *m)
 	}
 	h.EmitAsync("memory.written", map[string]any{
 		"id": m.ID, "scope": m.Scope, "kind": m.Kind, "origin": m.Origin, "text": m.Text,
@@ -149,17 +187,13 @@ func (h *Host) memoryCommand(args string) error {
 		}
 		return errors.New("memory review already open")
 	case fields[0] == "forget" && len(fields) == 2:
-		db, _, err := h.locateMemory(fields[1])
+		db, m, err := h.locateMemory(fields[1])
 		if err != nil {
 			return err
 		}
-		return db.DeleteMemory(fields[1])
+		return db.DeleteMemory(m.ID)
 	case fields[0] == "supersede" && len(fields) == 3:
-		db, _, err := h.locateMemory(fields[1])
-		if err != nil {
-			return err
-		}
-		return db.SupersedeMemory(fields[1], fields[2])
+		return h.supersedeMemory(fields[1], fields[2])
 	case fields[0] == "forget" || fields[0] == "supersede":
 		return errors.New("usage: /memory forget <id> | /memory supersede <old> <new>")
 	default:
@@ -230,18 +264,24 @@ func (h *Host) takeProposal(id string) *learn.Result {
 			continue
 		}
 		h.refreshPending()
-		var m store.Memory
+		var m memoryProposal
 		if json.Unmarshal([]byte(p.Payload), &m) != nil {
 			return nil
 		}
-		return &learn.Result{Memory: m}
+		return &learn.Result{Memory: m.Memory, Supersedes: m.Supersedes}
 	}
 	return nil
 }
 
+// memoryProposal is a queued proposal's payload.
+type memoryProposal struct {
+	store.Memory
+	Supersedes string `json:",omitempty"`
+}
+
 // memoryProposals lists pending memory proposals from both scopes.
-func (h *Host) memoryProposals() []store.Memory {
-	var out []store.Memory
+func (h *Host) memoryProposals() []memoryProposal {
+	var out []memoryProposal
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
@@ -252,7 +292,7 @@ func (h *Host) memoryProposals() []store.Memory {
 			continue
 		}
 		for _, p := range rows {
-			var m store.Memory
+			var m memoryProposal
 			if json.Unmarshal([]byte(p.Payload), &m) == nil {
 				out = append(out, m)
 			}
@@ -277,9 +317,13 @@ func (h *Host) refreshPending() {
 func (h *Host) memoryRows() []MemoryRow {
 	var rows []MemoryRow
 	for _, m := range h.memoryProposals() {
+		text := m.Text
+		if m.Supersedes != "" {
+			text += " (replaces " + clipRunes(m.Supersedes, 8) + ")"
+		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: m.Text, Tags: m.Tags, Queued: true,
+			Text: text, Tags: m.Tags, Queued: true,
 		})
 	}
 	list, _ := h.memoryList(false)
@@ -332,6 +376,23 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 	return nil, nil, fmt.Errorf("no such memory %q", id)
 }
 
+// supersedeMemory resolves both ids (prefixes allowed) and links them; the
+// replacement must live in the same scope.
+func (h *Host) supersedeMemory(oldID, byID string) error {
+	db, old, err := h.locateMemory(oldID)
+	if err != nil {
+		return err
+	}
+	byDB, by, err := h.locateMemory(byID)
+	if err != nil {
+		return err
+	}
+	if byDB != db || by.Scope != old.Scope {
+		return fmt.Errorf("memory %s and %s are in different scopes", old.ID[:8], by.ID[:8])
+	}
+	return db.SupersedeMemory(old.ID, by.ID)
+}
+
 // memorySearch queries one or both scopes best-first; every hit bumps
 // hit_count and last_hit_at (DESIGN §7).
 func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, error) {
@@ -342,7 +403,7 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 	if scope == "all" || scope == "" {
 		scopes = []string{"project", "user"}
 	}
-	var out []*store.Memory
+	var per [][]*store.Memory
 	for _, s := range scopes {
 		db := h.memoryDB(s)
 		if db == nil {
@@ -352,11 +413,20 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, rows...)
+		per = append(per, rows)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
-	if len(out) > limit {
-		out = out[:limit]
+	// bm25 scores from two FTS indexes do not compare, so interleave by rank
+	var out []*store.Memory
+	for i := 0; len(out) < limit; i++ {
+		n := len(out)
+		for _, rows := range per {
+			if i < len(rows) && len(out) < limit {
+				out = append(out, rows[i])
+			}
+		}
+		if len(out) == n {
+			break
+		}
 	}
 	return out, nil
 }
@@ -525,20 +595,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.memory.supersede: only user or builtin origin may modify memories")
 			return 0
 		}
-		db, _, err := h.locateMemory(old)
-		if err != nil {
-			L.RaiseError("zemi.memory.supersede: %v", err)
-			return 0
-		}
-		if _, err := db.GetMemory(by); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				L.RaiseError("zemi.memory.supersede: no such memory %q", by)
-			} else {
-				L.RaiseError("zemi.memory.supersede: %v", err)
-			}
-			return 0
-		}
-		if err := db.SupersedeMemory(old, by); err != nil {
+		if err := h.supersedeMemory(old, by); err != nil {
 			L.RaiseError("zemi.memory.supersede: %v", err)
 			return 0
 		}
@@ -551,12 +608,12 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.memory.forget: only user or builtin origin may modify memories")
 			return 0
 		}
-		db, _, err := h.locateMemory(id)
+		db, m, err := h.locateMemory(id)
 		if err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
 			return 0
 		}
-		if err := db.DeleteMemory(id); err != nil {
+		if err := db.DeleteMemory(m.ID); err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
 			return 0
 		}
@@ -595,7 +652,8 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 		if prov == "" {
 			prov = m.ProvenanceSessionID
 		}
-		res, err := learn.Intake(m.Scope, m.Origin, m.Kind, text, m.Tags, prov)
+		// the new text is the model's, whoever wrote the old one
+		res, err := learn.Intake(m.Scope, learn.OriginLearned, m.Kind, text, m.Tags, prov)
 		if err != nil {
 			return "", err
 		}
@@ -611,7 +669,7 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 	if text == "" {
 		err = db.DeleteMemory(m.ID)
 	} else {
-		err = db.UpdateMemoryText(m.ID, text)
+		err = db.UpdateMemoryText(m.ID, text, learn.OriginLearned)
 	}
 	if err != nil {
 		return "", err
@@ -622,11 +680,21 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 // gateMemory is the autonomy gate (DESIGN §10.4): an intake result is
 // stored under auto when policy-clean and within budget, queued otherwise.
 func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
-	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
+	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && !h.replacesUserMemory(res.Supersedes) && h.autoApplyBudgetLeft() {
 		return true, h.applyProposal(res)
 	}
 	h.queueProposal(res)
 	return false, nil
+}
+
+// replacesUserMemory reports whether id names a user-attested memory, which
+// a learned one may replace only through review (DESIGN §10.4).
+func (h *Host) replacesUserMemory(id string) bool {
+	if id == "" {
+		return false
+	}
+	_, old, err := h.locateMemory(id)
+	return err == nil && old.Origin == learn.OriginUser
 }
 
 func (h *Host) autoApplyBudgetLeft() bool {

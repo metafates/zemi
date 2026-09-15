@@ -7,7 +7,7 @@ package learn
 import "errors"
 
 // MaxTextLen caps memory text at intake (DESIGN §10.4).
-const MaxTextLen = 2000
+const MaxTextLen = 500
 
 // Kinds is the fixed intake enum (DESIGN §10.4).
 var Kinds = []string{"fact", "gotcha", "preference", "convention", "decision"}

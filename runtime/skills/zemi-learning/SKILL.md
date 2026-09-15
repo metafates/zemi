@@ -1,6 +1,6 @@
 ---
 name: zemi-learning
-description: How zemi learns from the user - memories, the reflector, skill drafts, permission rule patches - and how to review, fix or write them. Load when the user asks what zemi remembers, wants it to remember or forget something, or wants to write a skill.
+description: How zemi learns - memories, reflector, skill drafts, rule patches. Load when asked what zemi remembers, to remember or forget, or to write a skill.
 ---
 
 # How zemi learns
@@ -9,7 +9,7 @@ description: How zemi learns from the user - memories, the reflector, skill draf
 
 1. **Capture.** `/memory <note>` (or `/remember <note>`) stores a project fact immediately. You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
-   `decision`) and one specific fact (up to 2000 characters); under the default autonomy it
+   `decision`) and one specific fact (up to 500 characters); under the default autonomy it
    is queued for the user's review. `memory_search` finds earlier memories. `memory_update`
    rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
    show; the change asks the user unless autonomy is `auto` and the memory is `learned`.
@@ -53,7 +53,8 @@ description: when asked to run the local integration tests
 
 - Put user skills in `~/.config/zemi/skills/<name>/SKILL.md` (enabled by default).
 - `name` must match the directory: lowercase letters, digits and `-`.
-- `description` says when to use it (at most 512 characters; the index shows 160).
+- `description` says when to use it (at most 512 characters, but the index cuts at 160 and
+  drafts from the reflector must fit in 160).
 - An optional `zemi-skill.lua` next to it runs when the skill is enabled.
 - Skills zemi drafts itself live in `~/.local/share/zemi/skills/` and start disabled.
 

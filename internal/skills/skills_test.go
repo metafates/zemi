@@ -40,6 +40,12 @@ Body instructions here.
 	if sk.Hook == "" {
 		t.Fatal("hook missing")
 	}
+
+	crlf := filepath.Join(t.TempDir(), "crlf")
+	writeFile(t, filepath.Join(crlf, "SKILL.md"), "---\r\nname: crlf\r\ndescription: saved on windows\r\n---\r\n\r\nBody.\r\n")
+	if sk, err := Parse(crlf, Authored); err != nil || sk.Description != "saved on windows" {
+		t.Fatalf("crlf: %+v %v", sk, err)
+	}
 }
 
 func TestParseErrors(t *testing.T) {

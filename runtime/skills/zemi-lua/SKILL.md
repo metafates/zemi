@@ -1,6 +1,6 @@
 ---
 name: zemi-lua
-description: Reference for zemi's Lua API (zemi.* namespaces, events, widgets, overlays, tools) and the rules plugin and config code must follow. Load before writing or fixing Lua for zemi - init.lua, plugins, skill hooks.
+description: Reference for zemi's Lua API (zemi.* namespaces, events, widgets, overlays, tools) and its rules. Load before writing or fixing init.lua, plugins, skill hooks.
 ---
 
 # zemi Lua API

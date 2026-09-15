@@ -5,10 +5,13 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,12 +22,16 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// Transcript budget for the reflect prompt: at most reflectMsgsMax
-// messages, each truncated to reflectMsgMax runes, tool outputs harder.
+// Transcript budget for the reflect prompt: the last reflectMsgsMax user
+// and assistant messages, each truncated to reflectMsgMax runes. Tool calls
+// reach it only as usage stats.
+// The memory index shows the newest reflectIndexMax memories, text cut
+// to reflectIndexText runes.
 const (
-	reflectMsgsMax = 120
-	reflectMsgMax  = 400
-	reflectToolMax = 200
+	reflectMsgsMax   = 120
+	reflectMsgMax    = 400
+	reflectIndexMax  = 40
+	reflectIndexText = 160
 )
 
 // reflectorSystem is the reflector prompt.
@@ -33,10 +40,11 @@ const reflectorSystem = `You are zemi's reflector. You read a finished coding se
 Rules:
 - Propose only durable, generalizable knowledge: facts, gotchas, preferences, conventions, decisions. Never propose transient details (file contents, session chatter, this conversation).
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
-- Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it.
-- Each memory is one self-contained single line, at most 512 characters.
+- Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
+- Each memory is one self-contained single line, at most 500 characters.
 - Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
-- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets.
+- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
+- Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything instruction files and tool descriptions already say.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
@@ -195,24 +203,27 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var b strings.Builder
-	b.WriteString("# Session transcript\n")
-	shown := 0
-	for _, m := range msgs {
-		if shown == reflectMsgsMax {
-			b.WriteString(fmt.Sprintf("... (%d more messages omitted)\n", len(msgs)-shown))
-			break
-		}
-		line := reflectLine(m)
-		if line == "" {
-			continue
-		}
-		shown++
-		b.WriteString(line + "\n")
+	// a session reflected before only shows what came after that run
+	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
+	if n, err := strconv.Atoi(seen); err == nil && n <= len(msgs) {
+		msgs = msgs[n:]
 	}
-	if shown == 0 {
+	var lines []string
+	for _, m := range msgs {
+		if line := reflectLine(m); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
 		return "", fmt.Errorf("reflector: session %s has no messages", sid)
 	}
+	var b strings.Builder
+	b.WriteString("# Session transcript\n")
+	if len(lines) > reflectMsgsMax {
+		fmt.Fprintf(&b, "... (%d earlier messages omitted)\n", len(lines)-reflectMsgsMax)
+		lines = lines[len(lines)-reflectMsgsMax:]
+	}
+	b.WriteString(strings.Join(lines, "\n") + "\n")
 	if stats, err := h.DB.ToolCallStats(sid); err == nil && len(stats) > 0 {
 		b.WriteString("\n# Tool usage\n")
 		for _, s := range stats {
@@ -226,20 +237,35 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 			b.WriteString(line + "\n")
 		}
 	}
+	if props := h.memoryProposals(); len(props) > 0 {
+		b.WriteString("\n# Memories awaiting review\n")
+		for _, m := range props {
+			b.WriteString(fmt.Sprintf("- [%s/%s] %s\n", m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText)))
+		}
+	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
-		b.WriteString("\n# Current memory index\n")
-		for _, m := range mems {
-			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID, m.Scope, m.Kind, truncRunes(m.Text, 80))
+		// NOTE: newest first only; an older near-duplicate can slip past (exact
+		// ones are dropped at intake). FTS against the transcript would fix it.
+		slices.SortStableFunc(mems, func(a, b *store.Memory) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
+		n := min(len(mems), reflectIndexMax)
+		fmt.Fprintf(&b, "\n# Current memory index (newest %d of %d)\n", n, len(mems))
+		for _, m := range mems[:n] {
+			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID[:8], m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText))
 			if len(m.Tags) > 0 {
 				line += " #" + strings.Join(m.Tags, " #")
 			}
 			b.WriteString(line + "\n")
 		}
 	}
-	if skills := h.skillIndex(); len(skills) > 0 {
+	// disabled drafts count too, or the reflector drafts them again
+	if all := h.skillsReg.list(); len(all) > 0 {
 		b.WriteString("\n# Skills\n")
-		for _, s := range skills {
-			b.WriteString("- " + s.Name + "\n")
+		for _, s := range all {
+			state := "disabled"
+			if h.skillsReg.isEnabled(s.Name) {
+				state = "enabled"
+			}
+			fmt.Fprintf(&b, "- %s (%s): %s\n", s.Name, state, truncRunes(s.Description, reflectIndexText))
 		}
 	}
 	b.WriteString("\nProduce the proposal JSON now.")
@@ -247,31 +273,18 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 }
 
 func reflectLine(m *store.Message) string {
-	switch m.Role {
-	case "user", "assistant":
-		var fm fantasy.Message
-		if err := json.Unmarshal([]byte(m.PartsJSON), &fm); err != nil {
-			return ""
-		}
-		text := strings.TrimSpace(concatText(fm.Content))
-		if text == "" {
-			return ""
-		}
-		return m.Role + ": " + truncRunes(text, reflectMsgMax)
-	case "tool":
-		var parts struct {
-			Tool   string `json:"tool"`
-			Output string `json:"output"`
-		}
-		if err := json.Unmarshal([]byte(m.PartsJSON), &parts); err != nil {
-			return ""
-		}
-		if parts.Tool == "" {
-			return ""
-		}
-		return "tool " + parts.Tool + ": " + truncRunes(strings.TrimSpace(parts.Output), reflectToolMax)
+	if m.Role != "user" && m.Role != "assistant" {
+		return ""
 	}
-	return ""
+	var fm fantasy.Message
+	if err := json.Unmarshal([]byte(m.PartsJSON), &fm); err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(concatText(fm.Content))
+	if text == "" {
+		return ""
+	}
+	return m.Role + ": " + truncRunes(text, reflectMsgMax)
 }
 
 // concatText joins the text parts of a fantasy content slice.
@@ -336,16 +349,11 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 }
 
 // applyReflectProposal routes every proposal memory through the §10.4
-// intake and the autonomy gate, links supersedes for memories stored in
-// this run, and returns counters. The model's scope/kind/text are intake
+// intake and the autonomy gate and returns counters; supersedes link when
+// the memory is stored, now or on accept. The model's scope/kind/text are intake
 // inputs, re-validated and scrubbed there; a bad entry is skipped, never
 // fatal.
 func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
-	type link struct {
-		fresh store.Memory
-		old   string
-	}
-	var links []link
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
@@ -362,6 +370,13 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
+		res.Supersedes = pm.Supersedes
+		if stored >= memoryAutoApplyCap {
+			// the run carries its own budget: it stores for a closed session
+			h.queueProposal(res)
+			queued++
+			continue
+		}
 		switch ok, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++
@@ -370,14 +385,9 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			queued++
 		default:
 			stored++
-			if pm.Supersedes != "" {
-				links = append(links, link{fresh: res.Memory, old: pm.Supersedes})
+			if _, old, err := h.locateMemory(pm.Supersedes); pm.Supersedes != "" && err == nil && old.SupersededBy == res.Memory.ID {
+				superseded++
 			}
-		}
-	}
-	for _, l := range links {
-		if h.linkSupersede(l.old, l.fresh) {
-			superseded++
 		}
 	}
 	return stored, queued, superseded, skipped
@@ -423,25 +433,23 @@ func (h *Host) applySkillDrafts(sid string, p *reflectProposal) (drafted int) {
 	return drafted
 }
 
-// linkSupersede marks an existing memory as replaced by one stored in this
-// run; unknown ids and cross-scope links are dropped with a log.
-func (h *Host) linkSupersede(oldID string, fresh store.Memory) bool {
+// linkSupersede marks an existing memory as replaced by a freshly stored
+// one; unknown ids and cross-scope links are dropped with a log.
+func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
 	db, old, err := h.locateMemory(oldID)
 	if err != nil {
 		h.Log.Debug("reflector", "supersede skipped: old memory missing", map[string]any{"id": oldID})
-		return false
+		return
 	}
 	if db != h.memoryDB(fresh.Scope) || old.Scope != fresh.Scope {
 		h.Log.Debug("reflector", "supersede skipped: scope mismatch", map[string]any{
 			"id": oldID, "old_scope": old.Scope, "new_scope": fresh.Scope,
 		})
-		return false
+		return
 	}
-	if err := db.SupersedeMemory(oldID, fresh.ID); err != nil {
+	if err := db.SupersedeMemory(old.ID, fresh.ID); err != nil {
 		h.Log.Warn("reflector", "supersede failed", map[string]any{"id": oldID, "error": err.Error()})
-		return false
 	}
-	return true
 }
 
 // ReflectorCommandsStep registers the Go-owned /reflect command (builtin

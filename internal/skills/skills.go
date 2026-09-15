@@ -90,7 +90,7 @@ func Parse(dir string, source Source) (Skill, error) {
 // frontmatter splits the leading `---` block and decodes name and
 // description. The body is the remainder and is not validated here.
 func frontmatter(data []byte) (name, description string, err error) {
-	s := string(data)
+	s := strings.ReplaceAll(string(data), "\r\n", "\n")
 	rest, ok := strings.CutPrefix(s, "---\n")
 	if !ok {
 		return "", "", fmt.Errorf("SKILL.md must start with a --- frontmatter block")

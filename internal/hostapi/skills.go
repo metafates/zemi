@@ -129,8 +129,8 @@ func (h *Host) draftLearnedSkill(sid, name, desc, body string) error {
 		return fmt.Errorf("invalid skill name %q", name)
 	case strings.TrimSpace(desc) == "" || strings.TrimSpace(body) == "":
 		return errors.New("description and body are required")
-	case len([]rune(desc)) > skills.MaxDescriptionRunes:
-		return errors.New("description too long")
+	case len([]rune(desc)) > skillIndexDescMax:
+		return fmt.Errorf("description over %d characters", skillIndexDescMax)
 	}
 	path := filepath.Join(dir, name)
 	if _, taken := h.skillsReg.get(name); taken {

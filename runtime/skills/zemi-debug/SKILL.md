@@ -1,6 +1,6 @@
 ---
 name: zemi-debug
-description: Diagnose problems with zemi itself - crashes, errors, a model that does not answer, missing providers, broken config, project config not loading, learning that does not happen. Load when zemi misbehaves or the user asks why something in zemi failed.
+description: Diagnose zemi itself - crashes, errors, a silent model, missing providers, broken or unloaded config, no learning. Load when zemi misbehaves or fails.
 ---
 
 # Debugging zemi

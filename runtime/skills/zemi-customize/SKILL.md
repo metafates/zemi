@@ -1,6 +1,6 @@
 ---
 name: zemi-customize
-description: Extend or restyle zemi without touching its source - save workflows, subagents and prompt commands for every project or one repository, and change the UI (splash, statusline, chat, theme, keys) with Lua config. Load before creating any of these.
+description: Extend or restyle zemi without editing its source - workflows, subagents, prompt commands, splash, statusline, chat, theme, keys. Load before creating any.
 ---
 
 # Customizing zemi

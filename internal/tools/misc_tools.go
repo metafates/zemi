@@ -196,7 +196,14 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-			return fantasy.NewTextResponse(truncOut(string(data))), nil
+			// the index already showed the frontmatter; the directory resolves relative paths in the body
+			body := strings.ReplaceAll(string(data), "\r\n", "\n")
+			if rest, ok := strings.CutPrefix(body, "---\n"); ok {
+				if _, after, ok := strings.Cut(rest, "\n---"); ok {
+					body = after
+				}
+			}
+			return fantasy.NewTextResponse(truncOut("Skill directory: " + s.Path + "\n\n" + strings.TrimSpace(body))), nil
 		}
 	}
 	sort.Strings(known)

@@ -136,7 +136,7 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 		}
 		return dir
 	}
-	alpha := mk(data, "alpha", "alpha body")
+	alpha := mk(data, "alpha", "---\r\nname: alpha\r\ndescription: the alpha skill\r\n---\r\n\r\nalpha body")
 	beta := mk(data, "beta", "beta body")
 	dupCfg := mk(cfg, "dup", "config body")
 	mk(data, "dup", "data body")
@@ -154,8 +154,8 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 	skill := toolNamed(t, "skill", p)
 
 	resp := call(t, skill, `{"name":"alpha"}`)
-	if resp.IsError || !strings.Contains(resp.Content, "alpha body") {
-		t.Fatalf("load alpha: %+v", resp)
+	if resp.IsError || resp.Content != "Skill directory: "+alpha+"\n\nalpha body" {
+		t.Fatalf("load alpha must strip frontmatter and name the directory: %+v", resp)
 	}
 	resp = call(t, skill, `{"name":"dup"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "config body") {

@@ -1,6 +1,6 @@
 ---
 name: zemi-config
-description: Configure zemi itself - init.lua, providers and models, settings, keymaps, commands, themes, project .zemi config and permission rules. Load when the user wants to change how zemi behaves or looks.
+description: Configure zemi - init.lua, providers, models, settings, keymaps, commands, themes, project .zemi config, permission rules. Load to change how zemi behaves.
 ---
 
 # Configuring zemi
