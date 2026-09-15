@@ -155,6 +155,13 @@ type Host struct {
 
 	// projectTrusted is set once the project config tree passed the trust
 	// prompt; project agents, commands and workflows load only then.
+	// Version is the zemi build version for the splash screen.
+	Version string
+
+	recentMu    sync.Mutex
+	recent      []*store.Session
+	recentStale atomic.Bool
+
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
@@ -218,6 +225,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
 	h.refreshPending()
+	h.recentStale.Store(true)
 	return h
 }
 
@@ -636,8 +644,9 @@ func convertSegments(v any) ([][]Segment, error) {
 
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
-	Time  string
-	Pulse bool // shared blink phase for running markers
+	Time   string
+	Pulse  bool // shared blink phase for running markers
+	Height int  // chat viewport rows at the last frame (0 before the first)
 }
 
 func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LTable {
@@ -646,6 +655,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("pulse", glua.LBool(state.Pulse))
+	tb.RawSetString("height", glua.LNumber(state.Height))
+	tb.RawSetString("version", glua.LString(h.Version))
 	cwd := sess.CWD
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(cwd, home+"/") {
 		cwd = "~" + cwd[len(home):]
@@ -707,6 +718,17 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		tr.Append(row)
 	}
 	tb.RawSetString("transcript", tr)
+	if len(sess.Transcript) == 0 {
+		recent := L.NewTable()
+		for _, r := range h.recentSessions() {
+			row := L.NewTable()
+			row.RawSetString("id", glua.LString(r.ID))
+			row.RawSetString("title", glua.LString(sanitize.String(r.Title)))
+			row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
+			recent.Append(row)
+		}
+		tb.RawSetString("recent", recent)
+	}
 	return tb
 }
 

@@ -693,6 +693,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
+	h.recentStale.Store(true)
 	ag.digest = h.digestFor()
 	ag.memAuto = 0
 	ag.cfgAuto = 0

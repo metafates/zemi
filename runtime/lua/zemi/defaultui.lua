@@ -44,6 +44,14 @@ zemi.ui.theme.register("default", {
     ModeYolo = { fg = "bg", bg = "err", bold = true },
     PromptAuto = { fg = "accent", bold = true },
     PromptYolo = { fg = "err", bold = true },
+    -- splash wordmark, a top-down blend from accent to violet
+    Logo1 = { fg = "#7aa2f7", bold = true },
+    Logo2 = { fg = "#80a0f5", bold = true },
+    Logo3 = { fg = "#8f9cf3", bold = true },
+    Logo4 = { fg = "#9d99f1", bold = true },
+    Logo5 = { fg = "#ac9ef3", bold = true },
+    Logo6 = { fg = "#bb9af7", bold = true },
+    SplashKey = { fg = "fg", bold = true },
   },
 })
 zemi.ui.theme.set("default")
@@ -62,6 +70,103 @@ local function fmt_secs(s)
 end
 
 local function empty() return { { { text = "" } } } end
+
+-- Display width of a string: one cell per UTF-8 character (the splash only
+-- uses narrow glyphs).
+local function cells(s)
+  return select(2, s:gsub("[^\128-\191]", ""))
+end
+
+local LOGO = {
+  "███████╗███████╗███╗   ███╗██╗",
+  "╚══███╔╝██╔════╝████╗ ████║██║",
+  "  ███╔╝ █████╗  ██╔████╔██║██║",
+  " ███╔╝  ██╔══╝  ██║╚██╔╝██║██║",
+  "███████╗███████╗██║ ╚═╝ ██║██║",
+  "╚══════╝╚══════╝╚═╝     ╚═╝╚═╝",
+}
+
+-- Splash: the wordmark, what zemi will run with, recent sessions to pick up
+-- and the keys worth knowing, centered in the empty chat.
+local function splash(ctx)
+  -- the block is at most 72 cells wide, so long paths clip instead of
+  -- pushing the logo against the left edge
+  local width, rows = ctx.width or 80, {}
+  local maxw = math.min(width, 72)
+  local function row(segs) rows[#rows + 1] = segs end
+  if width >= 36 then
+    for i, l in ipairs(LOGO) do row({ { text = l, hl = "Logo" .. i } }) end
+  else
+    row({ { text = "zemi", hl = "Title" } })
+  end
+  local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
+  row({ { text = ver .. "a coding agent that learns how you work", hl = "Comment" } })
+  row({ { text = "" } })
+  row({ { text = "model    ", hl = "Comment" }, { text = (ctx.model ~= "" and ctx.model) or "none: /health explains", hl = "Normal" } })
+  local cwd, room = ctx.cwd or "", maxw - 10
+  if cells(cwd) > room and room > 1 then
+    -- keep the tail: the project name is at the end
+    local chars = {}
+    for ch in cwd:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+    cwd = "…" .. table.concat(chars, "", #chars - room + 2)
+  end
+  row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
+  local recent = ctx.recent or {}
+  if #recent > 0 then
+    row({ { text = "" } })
+    row({ { text = "recent", hl = "Title" } })
+    for _, r in ipairs(recent) do
+      local title = (r.title ~= "" and r.title) or "(untitled)"
+      row({ { text = string.format("  %-8s ", r.ago), hl = "Comment" }, { text = title, hl = "Normal" } })
+    end
+    row({ { text = "  /resume", hl = "SplashKey" }, { text = " continues the latest, ", hl = "Comment" },
+      { text = "/sessions", hl = "SplashKey" }, { text = " lists them", hl = "Comment" } })
+  end
+  row({ { text = "" } })
+  local tips = { { "/", "commands" }, { "@", "attach a file" }, { "tab", "permission mode" }, { "/agents", "subagents" } }
+  local tip = {}
+  for i, t in ipairs(tips) do
+    if i > 1 then tip[#tip + 1] = { text = "   " } end
+    tip[#tip + 1] = { text = t[1], hl = "SplashKey" }
+    tip[#tip + 1] = { text = " " .. t[2], hl = "Comment" }
+  end
+  row(tip)
+
+  -- Center the block as a whole (rows stay left-aligned to each other),
+  -- clipping to the width so a narrow window never wraps the logo.
+  local widest = 0
+  for i, r in ipairs(rows) do
+    local n, clipped = 0, {}
+    for _, seg in ipairs(r) do
+      local left = maxw - n
+      if left <= 0 then break end
+      local text = seg.text
+      if cells(text) > left then
+        local chars = {}
+        for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+          if #chars >= left - 1 then break end
+          chars[#chars + 1] = ch
+        end
+        text = table.concat(chars) .. "…"
+      end
+      clipped[#clipped + 1] = { text = text, hl = seg.hl }
+      n = n + cells(text)
+    end
+    rows[i] = clipped
+    widest = math.max(widest, n)
+  end
+  local pad = string.rep(" ", math.max(0, math.floor((width - widest) / 2)))
+  local out = {}
+  local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
+  for _ = 1, top do out[#out + 1] = { { text = "" } } end
+  for _, r in ipairs(rows) do
+    table.insert(r, 1, { text = pad })
+    out[#out + 1] = r
+  end
+  -- the chat is bottom-anchored: trailing rows keep the block centered
+  for _ = 1, math.max(0, (ctx.height or 0) - top - #rows - 1) do out[#out + 1] = { { text = "" } } end
+  return out
+end
 
 -- Statusline left starts with the permission mode as a pill (tab cycles
 -- it): quiet in manual, filled in auto and yolo, matching the composer
@@ -256,7 +361,7 @@ zemi.ui.widget.register({
 
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
-      return { { { text = "no messages yet - type below, or / for commands", hl = "Comment" } } }
+      return splash(ctx)
     end
     -- Only the latest collapsed reasoning line carries the expand hint.
     local last_reason = 0

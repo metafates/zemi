@@ -374,7 +374,7 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 func (a *App) uiState() hostapi.UIState {
-	return hostapi.UIState{Time: a.timeStr, Pulse: a.pulse()}
+	return hostapi.UIState{Time: a.timeStr, Pulse: a.pulse(), Height: a.chatViewH}
 }
 
 // pulse is the 600ms blink phase shared by the working row and running
@@ -561,6 +561,9 @@ func (a *App) compose(w, h int) string {
 	// row, clamped so content growth or a narrower rewrap never shows
 	// blank rows.
 	a.chatRows = len(chat)
+	if a.chatViewH != chatH {
+		a.frameGen++ // widgets read the height (the splash centers on it)
+	}
 	a.chatViewH = chatH
 	if a.chatFollow {
 		a.chatTop = a.chatRows - chatH

@@ -73,6 +73,10 @@ func run(args []string) int {
 	})
 
 	host := hostapi.NewHost(rt, log, settings, dirs)
+	// a pseudo-version (untagged build) says nothing to a person
+	if host.Version = versionString(); strings.HasPrefix(host.Version, "v0.0.0-") || host.Version == "(devel)" {
+		host.Version = "dev"
+	}
 	// Print mode has no UI: nothing to quit, and an untrusted project
 	// config is skipped instead of asked about.
 	quit, askTrust := func() {}, func(string, string) string { return "once" }

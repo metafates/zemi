@@ -120,6 +120,7 @@ func (h *Host) closeSession() (string, error) {
 		return "", errors.New("a turn is running; esc interrupts it")
 	}
 	prev := ag.sessionID
+	h.recentStale.Store(true)
 	ag.sessionID, ag.runner, ag.steering = "", nil, nil
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
@@ -184,6 +185,18 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 	}
 	return history, tr
+}
+
+// recentSessions feeds the splash screen. Widget renders must not wait on
+// the store, so the list is cached and reloaded only after a session
+// starts, closes or resumes.
+func (h *Host) recentSessions() []*store.Session {
+	h.recentMu.Lock()
+	defer h.recentMu.Unlock()
+	if h.recentStale.Swap(false) && h.DB != nil {
+		h.recent, _ = h.DB.ListSessions(3)
+	}
+	return h.recent
 }
 
 func ago(ms int64) string {
