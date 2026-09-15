@@ -15,7 +15,7 @@ func TestChangePreview(t *testing.T) {
 			map[string]any{"old_string": "3", "new_string": ""},
 		}}, "- 1\n+ 2\n- 3"},
 	} {
-		if got := changePreview(c.in); got != c.want {
+		if got := ChangePreview(c.in); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}

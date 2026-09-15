@@ -36,6 +36,9 @@ zemi.ui.theme.register("default", {
     AgentToolRun = { fg = "muted" },
     AgentToolOk = { fg = "ok" },
     AgentToolErr = { fg = "err" },
+    DiffAdd = { fg = "ok" },
+    DiffDel = { fg = "err" },
+    TodoActive = { fg = "fg", bold = true },
     StatusUsage = { fg = "muted" },
     StatusUsageWarn = { fg = "warn" },
     StatusUsageErr = { fg = "err", bold = true },
@@ -329,7 +332,7 @@ zemi.ui.widget.register({
     end
     -- One tool row: status mark (running marks pulse with the working
     -- row), name, input cut by UTF-8 character to fit.
-    local function add_tool(name, input, status, detail)
+    local function add_tool(name, input, status, detail, diff)
       local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
       if status == "ok" then
         mark, hl = "✓", "AgentToolOk"
@@ -359,6 +362,13 @@ zemi.ui.widget.register({
       if (detail or "") ~= "" then
         lines[#lines + 1] = { { text = "    └ " .. detail:gsub("%s+", " "), hl = "Comment" } }
       end
+      -- File tools show what they changed.
+      for dl in ((diff or "") .. "\n"):gmatch("(.-)\n") do
+        if dl ~= "" then
+          local hl = dl:sub(1, 2) == "- " and "DiffDel" or dl:sub(1, 2) == "+ " and "DiffAdd" or "Comment"
+          lines[#lines + 1] = { { text = "    " .. dl:gsub("\t", "    "), hl = hl } }
+        end
+      end
     end
 
     local tr = ctx.transcript or {}
@@ -379,7 +389,7 @@ zemi.ui.widget.register({
         if i == last_reason and not ctx.show_reasoning then label = label .. " (ctrl+o to expand)" end
         add_reasoning(label, m.text)
       elseif m.kind == "tool" then
-        add_tool(m.tool, m.text, m.status, m.detail)
+        add_tool(m.tool, m.text, m.status, m.detail, m.diff)
       elseif m.kind == "shell" then
         -- a !command: the command, then its output (long output folds)
         local hl = m.status == "err" and "AgentToolErr" or "Title"
@@ -431,11 +441,33 @@ zemi.ui.widget.register({
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
     if ag.active or #tools > 0 or text ~= "" then
       if #tr > 0 and tr[#tr].role == "user" then blank() end
-      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status, t.detail) end
+      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status, t.detail, t.diff) end
       if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning("thinking", ag.reasoning) end
       if text ~= "" then add_markdown(text) end
       for _, q in ipairs(queued) do
         lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
+      end
+    end
+    -- The todo list stays under the conversation until every item is done.
+    local todos, open = ctx.todos or {}, false
+    for _, td in ipairs(todos) do
+      if td.status ~= "done" then open = true end
+    end
+    if open then
+      blank()
+      for i, td in ipairs(todos) do
+        if i > 12 then
+          lines[#lines + 1] = { { text = "  … " .. (#todos - 12) .. " more", hl = "Comment" } }
+          break
+        end
+        local mark, hl, text = "☐ ", "Normal", td.content
+        if td.status == "done" then
+          mark, hl = "☑ ", "Comment"
+        elseif td.status == "in_progress" then
+          mark, hl = "◼ ", "TodoActive"
+          if (td.active_form or "") ~= "" then text = td.active_form end
+        end
+        lines[#lines + 1] = { { text = "  " .. mark, hl = hl }, { text = text, hl = hl } }
       end
     end
     return #lines > 0 and lines or empty()

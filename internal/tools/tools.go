@@ -325,7 +325,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: changePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: ChangePreview(in)}}
 			},
 			runWrite),
 
@@ -341,7 +341,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: changePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: ChangePreview(in)}}
 			},
 			runEdit),
 
@@ -355,7 +355,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "edits"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: changePreview(in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: ChangePreview(in)}}
 			},
 			runMultiedit),
 
@@ -583,10 +583,10 @@ func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-// changePreview renders a file tool's change for the permission overlay
+// ChangePreview renders a file tool's change for the permission overlay
 // from the input alone (the file is not read before the gate): "- " lines
 // for replaced text, "+ " lines for new text.
-func changePreview(in map[string]any) string {
+func ChangePreview(in map[string]any) string {
 	var lines []string
 	add := func(prefix, text string) {
 		if text == "" {

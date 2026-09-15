@@ -238,6 +238,17 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "export", NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
+					path, err := h.ExportSession(strings.TrimSpace(args))
+					if err == nil {
+						h.Notify("info", "export", "wrote "+path)
+					}
+					return err
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "fork", Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
+					_, err := h.ForkSession()
+					return err
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "errors", Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

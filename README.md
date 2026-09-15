@@ -17,7 +17,8 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 - Lets you steer mid-turn: messages typed while the agent works join the running turn at
   the next step. `up` on an empty composer pulls the queue back for editing, `esc`
   interrupts.
-- Keeps sessions: `/new`, `/sessions`, `/resume`. Long sessions compact into a summary
+- Keeps sessions: `/new`, `/sessions`, `/resume`, `/fork` (try another direction without
+  losing this one), `/export` (markdown). Long sessions compact into a summary
   before the context window fills (`/compact` does it on demand).
 - Undoes turns: `/rewind` lists your prompts; picking one restores the files the agent
   changed since (through `write`, `edit` and `multiedit`, not bash), drops that part of
@@ -183,7 +184,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/rewind`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

@@ -68,6 +68,7 @@ type ModelOption struct {
 type StreamTool struct {
 	ID     string
 	Detail string // live progress line (subagents, workflows)
+	Diff   string // file tools: the change as "- "/"+ " lines
 	Name   string
 	Input  string
 	Status string // "run", "ok", "err"
@@ -554,6 +555,13 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
+	diff := ""
+	if name == "write" || name == "edit" || name == "multiedit" {
+		var in map[string]any
+		if json.Unmarshal([]byte(input), &in) == nil {
+			diff = capLines(tools.ChangePreview(in), 8)
+		}
+	}
 	// Text streamed before this call belongs above it: move it and the
 	// earlier (finished) tool rows into the transcript, in order, so the
 	// next step's text starts its own block instead of running on.
@@ -563,7 +571,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
 	}
-	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Status: "run"})
+	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Status: "run", Diff: diff})
 	ag.mu.Unlock()
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
@@ -577,6 +585,9 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
 			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+			if !ok {
+				ag.tools[i].Diff = "" // the change did not happen
+			}
 			break
 		}
 	}
@@ -646,11 +657,23 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		if status == "run" {
 			status = "err"
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status, Detail: t.Detail})
+		if status != "ok" {
+			t.Diff = ""
+		}
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status, Detail: t.Detail, Diff: t.Diff})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)
 	}
+}
+
+// capLines keeps the first n lines and notes how many were cut.
+func capLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... %d more lines", len(lines)-n)
 }
 
 // toolSummary picks the argument a person reads first (a command, path or
@@ -1491,6 +1514,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			if sid == "" {
 				return fmt.Errorf("no active session")
 			}
+			defer h.todosStale.Store(true)
 			return h.DB.SetTodos(sid, todos)
 		}
 	}

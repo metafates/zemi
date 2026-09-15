@@ -71,6 +71,7 @@ type ChatMessage struct {
 	Tool   string
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
+	Diff   string // file tool rows: the applied change as "- "/"+ " lines
 	Stat   *TurnStat
 }
 
@@ -170,6 +171,11 @@ type Host struct {
 	recentStale atomic.Bool
 
 	mcp *mcpReg // MCP servers and their tools
+
+	todoMu     sync.Mutex
+	todoSID    string
+	todos      []store.Todo
+	todosStale atomic.Bool
 
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
@@ -698,6 +704,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("pending_config", glua.LNumber(h.pendingConfig.Load()))
 	tb.RawSetString("agents_running", glua.LNumber(h.bgAgents.Load()))
+	todos := L.NewTable()
+	for _, td := range h.todoSnapshot() {
+		row := L.NewTable()
+		row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
+		row.RawSetString("status", glua.LString(td.Status))
+		row.RawSetString("active_form", glua.LString(sanitize.String(td.ActiveForm)))
+		todos.Append(row)
+	}
+	tb.RawSetString("todos", todos)
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
 	at := L.NewTable()
@@ -719,6 +734,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("input", glua.LString(t.Input))
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
+		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
@@ -732,6 +748,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("tool", glua.LString(m.Tool))
 		row.RawSetString("status", glua.LString(m.Status))
 		row.RawSetString("detail", glua.LString(m.Detail))
+		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))
