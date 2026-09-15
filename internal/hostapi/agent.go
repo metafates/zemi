@@ -1516,6 +1516,14 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
 		h.AgentCancel()
+		// the UI hands a cancelled turn's queue back to the composer; from
+		// Lua nobody does, and leaving it would replay those messages into
+		// a later turn as if they had just been typed
+		if q := h.AgentTakeQueue(); len(q) > 0 {
+			if ui := h.hooks(); ui != nil {
+				ui.ComposerEdit("set", strings.Join(q, "\n"), -1)
+			}
+		}
 		return 0
 	}))
 
