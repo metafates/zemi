@@ -117,6 +117,16 @@ func TestSessionLifecycle(t *testing.T) {
 	if s.Title != "renamed" || s.PromptTokens != 10 || s.CompletionTokens != 20 || s.Cost != 0.5 {
 		t.Fatalf("usage/rename not applied: %+v", s)
 	}
+	// a vanished session must report the miss, not swallow the update
+	for _, err := range []error{
+		db.RenameSession("ghost", "x"),
+		db.SetSummary("ghost", "m"),
+		db.AddUsage("ghost", 1, 1, 1),
+	} {
+		if err != ErrNotFound {
+			t.Fatalf("want ErrNotFound, got %v", err)
+		}
+	}
 	if err := db.CreateSession("top", "", "top", ""); err != nil {
 		t.Fatal(err)
 	}

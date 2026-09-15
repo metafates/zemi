@@ -88,29 +88,29 @@ func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	return collect(rows, err, scanSession)
 }
 
-// RenameSession sets the session title.
+// RenameSession sets the session title. Unknown ids are ErrNotFound.
 func (s *DB) RenameSession(id, title string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne("rename session", `UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
 		title, now(), id)
-	return err
 }
 
 // SetSummary points a session at the message its history resumes from.
+// Unknown ids are ErrNotFound.
 func (s *DB) SetSummary(id, messageID string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne("set summary", `UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
 		messageID, now(), id)
-	return err
 }
 
-// AddUsage accumulates token counts and cost onto a session.
+// AddUsage accumulates token counts and cost onto a session. Unknown ids are
+// ErrNotFound: silently dropping a turn's tokens and cost is worse than a
+// caller seeing the miss.
 func (s *DB) AddUsage(id string, prompt, completion int64, cost float64) error {
-	_, err := s.db.Exec(`UPDATE sessions SET
+	return s.execOne("add usage", `UPDATE sessions SET
 		prompt_tokens = prompt_tokens + ?,
 		completion_tokens = completion_tokens + ?,
 		cost = cost + ?,
 		updated_at = ?
 		WHERE id = ?`, prompt, completion, cost, now(), id)
-	return err
 }
 
 // Message is one persisted message: role plus fantasy content parts as JSON.
