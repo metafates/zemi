@@ -142,7 +142,7 @@ func expandPath(p string) string {
 	return p
 }
 
-// builtinCommandsStep registers the Go-owned shell commands (/q, /help,
+// builtinCommandsStep registers the Go-owned shell commands (/quit, /help,
 // /sidebar, /model). They carry the builtin origin, so user config can
 // rebind them.
 func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
@@ -154,7 +154,7 @@ func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 				return nil
 			}
 			for _, c := range []*hostapi.Command{
-				{Name: "q", Desc: "quit zemi", GoFn: quit, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "quit", Desc: "quit zemi", GoFn: quit, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "help", Desc: "show keys and commands", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenHelp()
 					return nil

@@ -72,7 +72,7 @@ After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
    it; keep that dependency direction (ui -> hostapi, never the reverse).
    Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or anything it
    calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
-   loop receives, so the loop would wait on itself (the `/q` hang). Wrap such calls in a
+   loop receives, so the loop would wait on itself (the `/quit` hang). Wrap such calls in a
    goroutine, like `App.Quit` and `OpenModelPicker` do. Blocking hooks (`PickModel`,
    `AskPermission`, `AskTrust`) must only ever run on non-UI goroutines.
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast**
@@ -225,7 +225,7 @@ next reload, not in-place).
   case-sensitive, before the command registry is consulted), so no registered command can
   shadow it. Keep them out of any "make everything rebindable" refactor.
 - **No editor modes.** The composer is always focused; commands are slash commands typed in
-  the composer (`/q`, `/help`, `/config`, ...) with the palette popup for completion
+  the composer (`/quit`, `/help`, `/config`, ...) with the palette popup for completion
   (`internal/ui/palette.go`). `zemi.keymap.bind` still takes a mode label, but the UI routes
   `insert` bindings only (exact single keys; printable keys stay with the composer).
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` so the wheel
