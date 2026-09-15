@@ -42,8 +42,8 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
-// TestRetentionSweep: opening drops sessions untouched past sessionTTL and
-// checkpoints past checkpointTTL, and leaves everything inside the windows.
+// TestRetentionSweep: opening drops checkpoints past checkpointTTL, keeps
+// the ones inside it, and never deletes a session (sessionTTL is off).
 func TestRetentionSweep(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
@@ -63,7 +63,7 @@ func TestRetentionSweep(t *testing.T) {
 		}
 	}
 	if _, err := db.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = 'old'`,
-		time.Now().Add(-sessionTTL-time.Hour).UnixMilli()); err != nil {
+		time.Now().AddDate(-2, 0, 0).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	// the live session's own checkpoint is old enough to go on its own
@@ -78,17 +78,18 @@ func TestRetentionSweep(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.GetSession("old"); err != ErrNotFound {
-		t.Fatalf("aged session survived: %v", err)
+	// a conversation is never deleted on zemi's own initiative
+	if _, err := db.GetSession("old"); err != nil {
+		t.Fatalf("a two year old session was deleted: %v", err)
 	}
-	if _, err := db.GetSession("new"); err != nil {
-		t.Fatalf("session inside the window dropped: %v", err)
+	if msgs, _ := db.Messages("old"); len(msgs) != 1 {
+		t.Fatalf("messages of a kept session = %+v", msgs)
 	}
 	if counts, err := db.CheckpointCounts("new"); err != nil || len(counts) != 0 {
 		t.Fatalf("aged checkpoints survived: %+v %v", counts, err)
 	}
-	if msgs, _ := db.Messages("new"); len(msgs) != 1 {
-		t.Fatalf("messages of a kept session = %+v", msgs)
+	if counts, err := db.CheckpointCounts("old"); err != nil || len(counts) != 1 {
+		t.Fatalf("a checkpoint inside the window was dropped: %+v %v", counts, err)
 	}
 }
 
