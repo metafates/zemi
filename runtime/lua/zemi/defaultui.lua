@@ -58,13 +58,18 @@ end
 
 local function empty() return { { { text = "" } } } end
 
--- Statusline left: working directory, then the reflector badge.
+-- Statusline left: working directory (tail kept when long, so the right
+-- cluster always fits), then the reflector badge.
 zemi.ui.widget.register({
   id = "statusline.cwd",
   region = "statusline.left",
   priority = 10,
   render = function(ctx)
-    return { { { text = ctx.cwd or "", hl = "Comment" } } }
+    local cwd, room = ctx.cwd or "", math.floor((ctx.width or 80) / 3)
+    if #cwd > room and room > 1 then
+      cwd = "…" .. cwd:sub(-(room - 1)):gsub("^[\128-\191]+", "")
+    end
+    return { { { text = cwd, hl = "Comment" } } }
   end,
 })
 
@@ -125,10 +130,10 @@ zemi.ui.widget.register({
   end,
 })
 
--- Chat transcript. User rows carry an accent bar; assistant text renders
--- as markdown with a plain gutter, identical while streaming and after,
--- so nothing jumps when a reply lands. Reasoning collapses to one line
--- unless ctx.show_reasoning (ctrl+o), live or finished. The widget wraps.
+-- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
+-- rows and markdown reply stay together, identical while streaming and
+-- after, so nothing jumps when a reply lands. Reasoning collapses to one
+-- line unless ctx.show_reasoning (ctrl+o). The widget wraps.
 zemi.ui.widget.register({
   id = "chat",
   region = "chat",
@@ -137,6 +142,7 @@ zemi.ui.widget.register({
   render = function(ctx)
     local width = ctx.width or 80
     local lines = {}
+    local function blank() lines[#lines + 1] = { { text = "" } } end
     local function add_markdown(text)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
         local row = { { text = "  " } }
@@ -149,6 +155,31 @@ zemi.ui.widget.register({
         lines[#lines + 1] = { { text = "  ⋮ ", hl = "Comment" }, { text = rl, hl = "AgentReason" } }
       end
     end
+    -- One tool row: status mark (running marks pulse with the working
+    -- row), name, input cut by UTF-8 character to fit.
+    local function add_tool(name, input, status)
+      local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
+      if status == "ok" then
+        mark, hl = "✓", "AgentToolOk"
+      elseif status == "err" then
+        mark, hl = "✗", "AgentToolErr"
+      end
+      name = name or "?"
+      local room, chars = width - #name - 7, {}
+      for ch in (input or ""):gsub("%s+", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        if #chars >= room then
+          chars[#chars] = "…"
+          break
+        end
+        chars[#chars + 1] = ch
+      end
+      local inp = table.concat(chars)
+      lines[#lines + 1] = {
+        { text = "  " .. mark, hl = hl },
+        { text = " " .. name, hl = "AgentToolName" },
+        { text = inp ~= "" and "  " .. inp or "", hl = "Comment" },
+      }
+    end
 
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
@@ -160,12 +191,9 @@ zemi.ui.widget.register({
       if m.kind == "reasoning" then last_reason = i end
     end
     for i, m in ipairs(tr) do
-      local is_reason = m.kind == "reasoning"
-      -- Reasoning stays attached to the reply it belongs to.
-      if i > 1 and not is_reason and (tr[i - 1].kind or "") ~= "reasoning" then
-        lines[#lines + 1] = { { text = "" } }
-      end
-      if is_reason then
+      -- Blank lines separate turns: around each user message only.
+      if i > 1 and (m.role == "user" or tr[i - 1].role == "user") then blank() end
+      if m.kind == "reasoning" then
         if ctx.show_reasoning then
           add_reasoning(m.text)
         else
@@ -173,6 +201,8 @@ zemi.ui.widget.register({
           if i == last_reason then label = label .. " (ctrl+o to expand)" end
           lines[#lines + 1] = { { text = "  " }, { text = label, hl = "AgentReason" } }
         end
+      elseif m.kind == "tool" then
+        add_tool(m.tool, m.text, m.status)
       elseif m.role == "user" then
         local first = true
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
@@ -193,41 +223,20 @@ zemi.ui.widget.register({
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go
     -- working row above the composer carries status and elapsed time.
+    -- An empty Lua table would marshal as a map, so an empty render
+    -- returns one blank line instead.
     local ag = ctx.agent or {}
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
-    if not (ag.active or #tools > 0 or text ~= "") then return lines end
-    lines[#lines + 1] = { { text = "" } }
-    for _, t in ipairs(tools) do
-      -- Running tools pulse in step with the working row (ctx.pulse).
-      local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
-      if t.status == "ok" then
-        mark, hl = "✓", "AgentToolOk"
-      elseif t.status == "err" then
-        mark, hl = "✗", "AgentToolErr"
+    if ag.active or #tools > 0 or text ~= "" then
+      if #tr > 0 and tr[#tr].role == "user" then blank() end
+      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status) end
+      if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning(ag.reasoning) end
+      if text ~= "" then add_markdown(text) end
+      for _, q in ipairs(queued) do
+        lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
       end
-      local name = t.name or "?"
-      -- One row: cut the input by UTF-8 character, never mid-sequence.
-      local room, chars = width - #name - 7, {}
-      for ch in (t.input or ""):gsub("%s+", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-        if #chars >= room then
-          chars[#chars] = "…"
-          break
-        end
-        chars[#chars + 1] = ch
-      end
-      local inp = table.concat(chars)
-      lines[#lines + 1] = {
-        { text = "  " .. mark, hl = hl },
-        { text = " " .. name, hl = "AgentToolName" },
-        { text = inp ~= "" and "  " .. inp or "", hl = "Comment" },
-      }
     end
-    if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning(ag.reasoning) end
-    if text ~= "" then add_markdown(text) end
-    for _, q in ipairs(queued) do
-      lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
-    end
-    return lines
+    return #lines > 0 and lines or empty()
   end,
 })
 

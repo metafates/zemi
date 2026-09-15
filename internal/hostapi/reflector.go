@@ -344,10 +344,10 @@ func truncRunes(s string, n int) string {
 	return string(r[:n]) + "..."
 }
 
-// reflectModel resolves the reflector model; tests stub reflectModelFn.
+// reflectModel resolves the reflector model; tests stub modelFn.
 func (h *Host) reflectModel() (fantasy.LanguageModel, error) {
-	if h.reflectModelFn != nil {
-		return h.reflectModelFn()
+	if h.modelFn != nil {
+		return h.modelFn()
 	}
 	return h.Providers.Resolve(h.reflectModelID())
 }

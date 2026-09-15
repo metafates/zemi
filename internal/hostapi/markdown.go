@@ -94,8 +94,11 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	zero := uint(0)
 	cfg.Document.Margin = &zero
 	cfg.Document.BlockPrefix, cfg.Document.BlockSuffix = "", ""
-	cfg.H1 = gansi.StyleBlock{StylePrimitive: gansi.StylePrimitive{Prefix: "# "}}
-	cfg.H6.Color, cfg.H6.Bold = nil, nil
+	// Headings read as bold accent text from the Heading style; the "#"
+	// markers and the H1 badge are noise.
+	for _, hb := range []*gansi.StyleBlock{&cfg.H1, &cfg.H2, &cfg.H3, &cfg.H4, &cfg.H5, &cfg.H6} {
+		*hb = gansi.StyleBlock{}
+	}
 
 	theme := h.Themes.Get(h.ActiveThemeName())
 	if theme == nil {

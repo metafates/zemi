@@ -15,13 +15,14 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// reflectStubModel answers Generate with a fixed text; Stream and the
-// object calls refuse (the reflector never uses them).
+// reflectStubModel answers Generate and Stream with a fixed text (Stream
+// backs agent turns and records the prompt size); object calls refuse.
 type reflectStubModel struct {
-	resp  string
-	err   error
-	block time.Duration
-	calls atomic.Int32
+	resp       string
+	err        error
+	block      time.Duration
+	calls      atomic.Int32
+	lastPrompt atomic.Int32
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
@@ -42,8 +43,21 @@ func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fanta
 	}, nil
 }
 
-func (m *reflectStubModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
-	return nil, errors.New("not implemented")
+func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	m.lastPrompt.Store(int32(len(call.Prompt)))
+	parts := []fantasy.StreamPart{
+		{Type: fantasy.StreamPartTypeTextStart, ID: "t"},
+		{Type: fantasy.StreamPartTypeTextDelta, ID: "t", Delta: m.resp},
+		{Type: fantasy.StreamPartTypeTextEnd, ID: "t"},
+		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonStop},
+	}
+	return func(yield func(fantasy.StreamPart) bool) {
+		for _, p := range parts {
+			if !yield(p) {
+				return
+			}
+		}
+	}, nil
 }
 
 func (m *reflectStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
@@ -86,7 +100,7 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 func reflectStub(t *testing.T, h *Host, resp string) *reflectStubModel {
 	t.Helper()
 	m := &reflectStubModel{resp: resp}
-	h.reflectModelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	return m
 }
 

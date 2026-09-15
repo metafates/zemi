@@ -243,11 +243,15 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 
 // ensureRunner builds the runner for the current profile and session.
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
-	modelID := h.currentModelID(p)
-	if modelID == "" {
+	var model fantasy.LanguageModel
+	var err error
+	if h.modelFn != nil {
+		model, err = h.modelFn()
+	} else if modelID := h.currentModelID(p); modelID == "" {
 		return nil, fmt.Errorf("agent: no models registered")
+	} else {
+		model, err = h.Providers.Resolve(modelID)
 	}
-	model, err := h.Providers.Resolve(modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -286,6 +290,11 @@ func (h *Host) AgentSend(text string) error {
 	}
 
 	ag.mu.Lock()
+	// The runner is rebuilt per send (model, prompt and tools may have
+	// changed); the conversation carries over from the idle previous one.
+	if prev := ag.runner; prev != nil {
+		runner.History = prev.History
+	}
 	ag.runner = runner
 	ag.active = true
 	ag.modelSeed = ""
@@ -339,22 +348,17 @@ func (h *Host) nextTurn() string {
 func (h *Host) deliverSteering() []string {
 	ag := h.agents
 	ag.mu.Lock()
-	msgs, text, reason := ag.steering, ag.textBuf, ag.reasonBuf
+	msgs, text, reason, tools := ag.steering, ag.textBuf, ag.reasonBuf, ag.tools
 	ag.endThinking()
 	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
 	if len(msgs) > 0 {
-		ag.steering, ag.textBuf, ag.reasonBuf, ag.thought = nil, "", "", 0
+		ag.steering, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", nil, 0
 	}
 	ag.mu.Unlock()
 	if len(msgs) == 0 {
 		return nil
 	}
-	if strings.TrimSpace(reason) != "" {
-		h.AppendReasoning(reason, stat)
-	}
-	if strings.TrimSpace(text) != "" {
-		h.AppendTurnResult(text, TurnStat{})
-	}
+	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	for _, m := range msgs {
 		h.AppendMessage("user", m)
 	}
@@ -438,7 +442,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.tools = append(ag.tools, StreamTool{Name: name, Input: input, Status: "run"})
+	ag.tools = append(ag.tools, StreamTool{Name: name, Input: toolSummary(input), Status: "run"})
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
 }
@@ -466,8 +470,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
 	ag.lastIn = usage.InputTokens
-	text := ag.textBuf
-	reason := ag.reasonBuf
+	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
 		In:        usage.InputTokens,
 		Out:       usage.OutputTokens,
@@ -487,15 +490,10 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		Kind: "turn_done", Err: errString(err),
 		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
 	})
-	// The thinking block survives the turn as a collapsible transcript
-	// entry (§8): collapsed to a one-line summary by default, expandable
-	// with the reasoning toggle.
-	if strings.TrimSpace(reason) != "" {
-		h.AppendReasoning(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS})
+	if err != nil {
+		text = ""
 	}
-	if err == nil && strings.TrimSpace(text) != "" {
-		h.AppendTurnResult(text, stat)
-	}
+	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		if ui := h.hooks(); ui != nil {
@@ -507,6 +505,40 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if sid != "" && h.GlobalDB != nil {
 		_ = h.DB.AddUsage(sid, usage.InputTokens, usage.OutputTokens, 0)
 	}
+}
+
+// appendTurnOutput moves one stretch of turn output into the transcript in
+// display order: the collapsible reasoning block (§8), the tool rows, then
+// the reply. A tool still running here was cut off by a cancel.
+func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []StreamTool, text string, textStat TurnStat) {
+	if strings.TrimSpace(reason) != "" {
+		h.AppendReasoning(reason, reasonStat)
+	}
+	for _, t := range tools {
+		status := t.Status
+		if status == "run" {
+			status = "err"
+		}
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status})
+	}
+	if strings.TrimSpace(text) != "" {
+		h.AppendTurnResult(text, textStat)
+	}
+}
+
+// toolSummary picks the argument a person reads first (a command, path or
+// query) out of a tool's JSON input; anything else stays raw.
+func toolSummary(input string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(input), &m) != nil {
+		return input
+	}
+	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name"} {
+		if s, ok := m[k].(string); ok && s != "" {
+			return s
+		}
+	}
+	return input
 }
 
 func errString(err error) string {

@@ -58,10 +58,12 @@ type Overlay struct {
 // entry shape: "" (plain message) or "reasoning" (a finished thinking
 // block the chat widget collapses to a one-line summary).
 type ChatMessage struct {
-	Role string
-	Kind string
-	Text string
-	Stat *TurnStat
+	Role   string
+	Kind   string // "", "reasoning" or "tool"
+	Text   string // tool rows: the input summary
+	Tool   string
+	Status string // tool rows: "ok" or "err"
+	Stat   *TurnStat
 }
 
 // TurnStat summarizes one completed agent turn: token counts and wall
@@ -122,10 +124,10 @@ type Host struct {
 	cfgReview sync.Mutex
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
-	// reflectModelFn stubs the reflector model in tests.
-	reflectMu      sync.Mutex
-	reflecting     atomic.Bool
-	reflectModelFn func() (fantasy.LanguageModel, error)
+	// modelFn stubs the agent and reflector model in tests.
+	reflectMu  sync.Mutex
+	reflecting atomic.Bool
+	modelFn    func() (fantasy.LanguageModel, error)
 
 	md markdownCache
 
@@ -660,6 +662,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("role", glua.LString(m.Role))
 		row.RawSetString("kind", glua.LString(m.Kind))
 		row.RawSetString("text", glua.LString(m.Text))
+		if m.Kind == "tool" {
+			row.RawSetString("tool", glua.LString(m.Tool))
+			row.RawSetString("status", glua.LString(m.Status))
+		}
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))

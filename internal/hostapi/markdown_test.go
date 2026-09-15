@@ -13,7 +13,7 @@ func TestMarkdown(t *testing.T) {
 		local lines = zemi.ui.markdown("# Title\n\nsome **bold** text that wraps\n", 16)
 		local got = {}
 		for i, l in ipairs(lines) do got[i] = join(l) end
-		local want = { "# Title", "", "some bold text", "that wraps" }
+		local want = { "Title", "", "some bold text", "that wraps" }
 		assert(#got == #want, "lines: " .. table.concat(got, "|"))
 		for i = 1, #want do
 			assert(got[i] == want[i], "line " .. i .. ": " .. got[i])

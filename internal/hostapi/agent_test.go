@@ -260,6 +260,29 @@ func TestSteeringQueue(t *testing.T) {
 	h.AgentCancel() // no runner: must not panic
 }
 
+// TestHistoryCarriesAcrossTurns is the regression for the runner rebuilt
+// on every send: the second turn's prompt must carry the first exchange
+// (system, user, assistant, user), and both turns land in the transcript.
+func TestHistoryCarriesAcrossTurns(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "ok")
+	for _, text := range []string{"one", "two"} {
+		if err := h.AgentSend(text); err != nil {
+			t.Fatalf("send %q: %v", text, err)
+		}
+		deadline := time.Now().Add(3 * time.Second)
+		for h.AgentActive() && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if n := m.lastPrompt.Load(); n != 4 {
+		t.Fatalf("second turn prompt has %d messages, want 4", n)
+	}
+	if tr := h.Session().Transcript; len(tr) != 4 {
+		t.Fatalf("transcript = %+v", tr)
+	}
+}
+
 // TestPipelineForCheck verifies the model-principal pipeline the host
 // builds for agent tool calls: rules decide, unresolved asks fail closed
 // when no UI is attached, and an asker resolves them (DESIGN §6.2).
