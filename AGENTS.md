@@ -365,7 +365,7 @@ next reload, not in-place).
   before reaching widgets, overlays, or the log; logging is one-record-per-line and
   sanitized. Secrets (key-shaped strings) are scrubbed by the learn intake scrubber at the
   memory/store boundary — don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 2000, fixed kind enum
+- **Memory intake policy** (`internal/learn`): text cap 500, fixed kind enum
   (fact/gotcha/preference/convention/decision), provenance required, `origin` is `user` or
   `learned` and gates autonomy/supersede/digest-labeling. The autonomy knob is host-owned:
   only Go may flip it (`Settings.SetHost`), never user config.
