@@ -158,12 +158,18 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if msgs[0].ID != m.ID {
 		t.Fatalf("messages not in order: %+v", msgs)
 	}
-	if err := db.AddToolCall(&ToolCall{MessageID: m.ID, Tool: "bash", InputJSON: `{}`, OK: false, ErrorKind: "denied", Denied: true, DecidedBy: "user"}); err != nil {
+	// Tool telemetry rows stay out of the picker preview; the call and the
+	// message it points at land together.
+	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
+		&ToolCall{Tool: "bash", InputJSON: `{}`, OK: false, ErrorKind: "denied", Denied: true, DecidedBy: "user"}); err != nil {
 		t.Fatal(err)
 	}
-	// Tool telemetry rows stay out of the picker preview.
-	if err := db.AddMessage(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`}); err != nil {
-		t.Fatal(err)
+	if stats, err := db.ToolCallStats("s1"); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
+		t.Fatalf("tool stats = %+v, %v", stats, err)
+	}
+	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
+		&ToolCall{Tool: "bash", InputJSON: `{}`, OK: true}); err == nil {
+		t.Fatal("an unknown session must fail")
 	}
 	prev, err := db.SessionPreviews([]string{"s1"})
 	if err != nil || prev["s1"].Count != 2 || prev["s1"].FirstJSON != m.PartsJSON {

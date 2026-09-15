@@ -102,11 +102,8 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 	}); err != nil {
 		t.Fatalf("AddMessage: %v", err)
 	}
-	msgID := store.NewID()
-	if err := h.DB.AddMessage(&store.Message{ID: msgID, SessionID: sid, Role: "tool", PartsJSON: `{}`}); err != nil {
-		t.Fatalf("AddMessage: %v", err)
-	}
-	if err := h.DB.AddToolCall(&store.ToolCall{MessageID: msgID, Tool: "bash", OK: false}); err != nil {
+	if err := h.DB.AddToolCall(&store.Message{SessionID: sid, Role: "tool", PartsJSON: `{}`},
+		&store.ToolCall{Tool: "bash", OK: false}); err != nil {
 		t.Fatalf("AddToolCall: %v", err)
 	}
 }

@@ -268,14 +268,27 @@ type ToolCall struct {
 	DecidedBy string
 }
 
-// AddToolCall records a tool invocation.
-func (s *DB) AddToolCall(tc *ToolCall) error {
-	_, err := s.db.Exec(`INSERT INTO tool_calls
+// AddToolCall records a tool invocation together with the message row it
+// points at, in one transaction: a telemetry row that fails to land after
+// its message leaves an orphan and the reflector's counts short.
+func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := insertMessage(tx, m); err != nil {
+		return err
+	}
+	tc.MessageID = m.ID
+	if _, err := tx.Exec(`INSERT INTO tool_calls
 		(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tc.MessageID, tc.Tool, tc.InputJSON, tc.OK, tc.ErrorKind, tc.LatencyMS,
-		tc.Denied, tc.DecidedBy, now())
-	return err
+		tc.Denied, tc.DecidedBy, now()); err != nil {
+		return fmt.Errorf("store: add tool call: %w", err)
+	}
+	return tx.Commit()
 }
 
 // ToolStat is one per-tool aggregate over a session's tool calls.
