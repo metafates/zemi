@@ -54,9 +54,13 @@ model: inherit
 You review Go code for data races, deadlocks and leaked goroutines. Cite file:line.
 ```
 
-`tools` limits what it may use (omit for everything but agent, workflow, todos, question).
-The model sees the description when choosing an agent, so say when to use it. Read at use,
-no reload needed. `/agents` lists them.
+`description` is required; `name` defaults to the file name (lowercase letters, digits,
+`-`); `model: inherit` or no model uses the agent model. `tools` limits what it may use
+(omit for everything but agent, workflow, todos, question). The model sees the description
+when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
+lists them. Builtin `explore` has `read, glob, grep, fetch, sourcegraph, memory_search,
+skill`; builtin `general` has everything a subagent may have. The model's `agent` tool also
+takes `background: true`: the report arrives as a later message and `/tasks` lists it.
 
 ## Prompt commands (`commands/<name>.md`)
 
@@ -124,7 +128,10 @@ Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must 
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
 `zemi.timer` callbacks and read the result from `zemi.state`. Theme groups used by the
 default UI: `Normal`, `Comment`, `Title`, `UserMsg`, `AgentToolOk`, `AgentToolErr`,
-`DiffAdd`, `DiffDel`, `Logo1`..`Logo6`, `Mode*`, `Prompt*`, `Toast*`, `Markdown*`.
+`AgentToolRun`, `AgentToolName`, `AgentReason`, `Thinking`, `ThinkingBar`, `ThinkingMark`,
+`DiffAdd`, `DiffDel`, `Logo1`..`Logo6`, `SplashKey`, `StatusUsage`, `StatusUsageWarn`,
+`StatusUsageErr`, `Errors`, `Mode*`, `Prompt*`, `ToastInfo`, `ToastWarn`, `ToastErr`,
+`ToastTitle`, `Markdown*`.
 Full API: the zemi-lua skill.
 
 ## After writing

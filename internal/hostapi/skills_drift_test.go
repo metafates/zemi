@@ -1,0 +1,75 @@
+package hostapi
+
+import (
+	"context"
+	"io/fs"
+	"strings"
+	"testing"
+
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
+	"github.com/metafates/zemi/runtime"
+)
+
+// undocumented lists names the builtin skills leave out on purpose.
+var undocumented = map[string]string{
+	"config.reloaded": "catalogued but never emitted",
+	"timer.fire":      "catalogued but never emitted",
+	"fs.changed":      "catalogued but never emitted",
+}
+
+// TestSkillsCoverSurface fails when a setting, model tool, event, host
+// action or slash command is missing from every builtin skill, so zemi's
+// knowledge of itself cannot drift silently.
+func TestSkillsCoverSurface(t *testing.T) {
+	text := skillsText(t)
+	h, r := newTestHost(t)
+	if err := r.Boot(context.Background(), []lua.BootStep{
+		h.NamespacesStep(), h.MemoryCommandsStep(), h.ReflectorCommandsStep(), h.ConfigCommandsStep(),
+		h.SkillsCommandsStep(), h.AgentsCommandsStep(), h.WorkflowCommandsStep(), h.MCPCommandsStep(), h.LSPCommandsStep(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, s := range config.NewStore().Schema() {
+		names = append(names, s.Path)
+	}
+	for _, tool := range tools.All(&tools.Pipeline{}) {
+		names = append(names, tool.Info().Name)
+	}
+	for ev := range eventCatalogue {
+		names = append(names, ev)
+	}
+	for action := range h.hostActions {
+		if action != "zemi.reload" {
+			names = append(names, action)
+		}
+	}
+	for _, c := range h.Commands.List() {
+		names = append(names, "/"+c.Name)
+	}
+	for _, name := range names {
+		if _, skip := undocumented[name]; !skip && !strings.Contains(text, name) {
+			t.Errorf("no builtin skill mentions %q", name)
+		}
+	}
+}
+
+// skillsText is every builtin SKILL.md joined.
+func skillsText(t *testing.T) string {
+	t.Helper()
+	var b strings.Builder
+	err := fs.WalkDir(runtime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(runtime.Skills, path)
+		b.Write(data)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}

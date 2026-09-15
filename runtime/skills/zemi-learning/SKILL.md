@@ -7,7 +7,7 @@ description: How zemi learns from the user - memories, the reflector, skill draf
 
 ## The loop
 
-1. **Capture.** `/memory <note>` stores a project fact immediately. You (the agent)
+1. **Capture.** `/memory <note>` (or `/remember <note>`) stores a project fact immediately. You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
    `decision`) and one short sentence; under the default autonomy it is queued for the
    user's review. `memory_search` finds earlier memories.
@@ -15,10 +15,14 @@ description: How zemi learns from the user - memories, the reflector, skill draf
    reflector reads it and proposes memories, permission rule patches and skill drafts.
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
-   - `/memory`: `a` accepts a proposal, `d` rejects it or deletes a stored memory,
-     enter applies, esc changes nothing. `/memory forget <id>`, `/memory supersede <old> <new>`.
-   - `/config`: `y` accepts a rule patch, `n` rejects. `/config revisions`, `/config revert <id>`.
-   - `/skills`: drafted skills start disabled; enter toggles.
+   - `/memory`: `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
+     forgets a stored memory, `u` undoes the last mark; enter, esc or `q` closes the screen
+     and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
+   - `/config`: `y` or `a` accepts a rule patch, `n` or `x` rejects, esc leaves the rest
+     queued. `/config revisions`, `/config revert <id>`.
+   - `/skills`: drafted skills start disabled; enter toggles, or `/skills enable|disable <name>`.
+   - Autonomy (`memory.autonomy`, `config.autonomy`) is host-owned. Under `auto`, memories
+     and session-scope deny or ask rule patches apply without review.
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
    session start (new memories apply from the next session or compaction). Enabled skills
    appear as a name + description index; the full body loads with the `skill` tool.
@@ -54,8 +58,10 @@ description: when asked to run the local integration tests
 ## From Lua
 
 ```lua
-zemi.memory.search("deploy", { scope = "all", limit = 5 })
+zemi.memory.search("deploy", { scope = "all", limit = 5 })  -- scope: all, user, project
 zemi.memory.add({ kind = "gotcha", text = "...", scope = "project" })  -- queued under ask
+zemi.memory.list(true)                   -- true includes superseded memories
+zemi.memory.supersede(old_id, new_id); zemi.memory.forget(id)  -- user config only
 for _, p in ipairs(zemi.learn.proposals()) do print(p.id, p.text) end
 zemi.learn.decide(id, "accept")          -- or "reject"; user config only
 zemi.skills.list(); zemi.skills.enable("name"); zemi.skills.disable("name")

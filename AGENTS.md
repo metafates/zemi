@@ -144,7 +144,7 @@ Every chunk carries an origin from its resolved path class: `user` (~/.config/ze
 `builtin` (embedded runtime/) > `plugin` (site/pack) > `project` (<project>/.zemi);
 `learned` code is denylisted from dangerous APIs. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
-last-writer-wins. Project origin additionally cannot register providers, profiles,
+last-writer-wins. Project origin additionally cannot register providers,
 `tool.pre` rewrites, builtin tool names, or emit host-owned events (only `user.*` and
 catalogued events are emittable, internal/hostapi/event.go). When adding a registry,
 follow `internal/hostapi/registry.go`.

@@ -45,9 +45,13 @@ zemi.provider.register({
 zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```
 
-`context_window` (or `agent.context_window`) drives the statusline percent and auto
-compaction; without one zemi compacts only when the provider rejects a prompt as too long,
-or on `/compact <what to keep>`.
+`context_window` (or the `agent.context_window` setting, which overrides it) drives the
+statusline percent and auto compaction. Compaction starts at `max(window - 33k, window/2)`
+tokens, before a turn or between steps of one: old tool output is cleared first, then older
+messages are summarized while recent ones stay verbatim. It also runs once when the provider
+rejects a prompt as too long, and stops for the session after 3 failed tries (`/compact` or
+`/new` then). Without a window zemi compacts only on that rejection or on
+`/compact <what to keep>` (refused while a turn runs).
 
 Only `init.lua` may register providers, and only user config may read secret-looking
 variables with `zemi.env.get`. MCP `headers` and `env` values are plain strings: build them
@@ -66,12 +70,23 @@ writable; prefer it over guessing. Common keys:
   `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
+- `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
+- `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
+- `lsp.auto` (true): start installed gopls, pyright, rust-analyzer,
+  typescript-language-server or clangd when their marker file is at the repo root
+- `keymap.leader` (ctrl+g): what `<leader>` means in keymaps; set it before binding
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`
+- `ui.mouse` (true): drag copies, clicks act on rows; false leaves selection to the terminal
+- `ui.notify` (true): terminal notification when zemi is unfocused and a turn ends or a
+  prompt waits
+- `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.trigger`, `ui.completion.max_items`
 - `memory.digest_lines`
-- `memory.autonomy`, `config.autonomy` (`ask` or `auto`): host-owned; not settable from Lua
-- `permissions.mode`: `manual` (the user answers asks), `plan` (file changes are refused
-  and every command asks, so the agent investigates and proposes a plan), `auto` (a model
+- `memory.autonomy`, `config.autonomy` (`ask` or `auto`), `reflector.every_n_sessions`
+  (1, 0 disables), `reflector.timeout_ms`: host-owned; not settable from Lua
+- `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
+  read-only commands run, other commands and MCP calls ask, so the agent investigates and
+  proposes a plan), `auto` (a model
   approves routine actions and hands the rest to the user) or `yolo` (every ask is
   allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
@@ -96,8 +111,9 @@ writable; prefer it over guessing. Common keys:
 
 `zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
-`--mode manual|plan|auto|yolo`. `zemi --help` has the full list. With `-p` nobody answers asks,
-so they are denied unless the mode is auto or yolo.
+`--mode manual|plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version.
+`zemi --help` has the full list. With `-p` nobody answers asks, so they are denied unless
+the mode is auto or yolo.
 
 ## Keymaps, commands, UI
 
@@ -108,6 +124,9 @@ zemi.keymap.set("ctrl+t", "new")       -- setting a bound key again rebinds it
 zemi.keymap.del("tab")                 -- unbind, also a shipped default
 for _, k in ipairs(zemi.keymap.list()) do print(k.key, k.action, k.origin) end
 local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
+-- host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.ui.scroll.up, zemi.ui.scroll.down,
+-- zemi.ui.scroll.top, zemi.ui.scroll.bottom, zemi.model.pick, zemi.permission.mode.cycle,
+-- zemi.permission.mode.prev (mode actions: user config only)
 
 zemi.command.add("standup", function(args)
   zemi.agent.send("summarize yesterday's commits " .. args.args)
@@ -133,16 +152,39 @@ zemi.ui.widget.register({
 
 Attaching: `@path` attaches a project file; dragging files onto the terminal attaches them
 (images from anywhere are copied as `@drop:<name>`), and ctrl+v pastes an image from the
-clipboard. Images reach the model only if it accepts images.
+clipboard. Images must be png, jpg, gif or webp up to 5 MB, other dropped files UTF-8 text;
+secret-looking paths are refused. Images reach the model only if it accepts images.
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/tasks`, `/lsp`, `/errors`, `/config`,
-`/reflect`, `/remember`, `/reload`. HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the
-browser, and zemi keeps and refreshes the grant (`/mcp sign-out <name>` forgets it).
-MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
-or `{ url = ... }` in `init.lua`.
+`/reflect`, `/remember`, `/reload`. Arguments:
+
+- `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
+  return to their state before it, the conversation is cut there and the prompt comes back
+  in the composer. Bash changes are not undone. Lua: `zemi.session.rewind(id)`.
+- `/fork` continues in a new session and keeps the original; `/export [path]` writes
+  markdown (default `zemi-<id>.md`); `/init` writes or updates AGENTS.md.
+- `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
+- `/tasks cancel <id>` stops a background agent; `/lsp restart <name>`;
+  `/mcp restart|sign-in|sign-out <name>`.
+
+HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the
+browser, and zemi keeps and refreshes the grant. MCP servers:
+`zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
+
+## Tools and permission rules
+
+Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
+`sourcegraph`, `todos`, `question`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`memory_add`, `memory_search`, `skill`, `diagnostics`, `agent`, `workflow`, plus
+`mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
+
+Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command),
+`fs.read`, `fs.write` (path patterns), `net.<host>`, `mcp.<server>` (tool name as
+pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start`. Deny beats ask beats
+allow; within one decision the most specific pattern wins.
 
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure
 and fast: no zemi.* mutations inside it. For the full API see the zemi-lua skill.
@@ -155,7 +197,7 @@ subdirectory up to the `.git` root), like `.claude/` or `.crush/`:
 ```
 .zemi/init.lua          entry point: widgets, keymaps, commands, deny/ask rules
 .zemi/lua/<mod>.lua     modules for project code: require("mod")
-.zemi/agents/<n>.md     subagents (frontmatter description, tools, model; body = prompt)
+.zemi/agents/<n>.md     subagents (frontmatter description required, name, tools, model; body = prompt)
 .zemi/commands/<n>.md   prompt commands: /<n> sends the body ($ARGUMENTS, $1..$9)
 .zemi/workflows/<n>.lua workflows: /workflow <n>
 ```
@@ -165,7 +207,9 @@ The same `agents/`, `commands/` and `workflows/` directories work under
 
 It loads after the user answers the trust prompt (`y` trust, `n` not now, `d` never for
 this version of the files); any change to files under `.zemi/` asks again. Project code
-cannot register providers, allow rules, `tool.pre` rewrites or override user
+cannot register providers, MCP or LSP servers, allow or permanent rules, permission modes,
+`tool.pre` rewrites, builtin tool names or `agent.assemble` sections, cannot call
+`zemi.agent.run` or `zemi.workflow.run`, read secret-looking env vars, or override user
 registrations; put personal settings in `~/.config/zemi/init.lua` instead.
 
 ## Splitting config into files

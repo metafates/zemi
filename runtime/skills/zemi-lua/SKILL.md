@@ -39,24 +39,25 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 
 | Namespace | Members |
 | --- | --- |
+| `zemi.api` | `version` (API version string, currently "0.12.0") |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
-| `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |
+| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help`, `invalidate()` (redraw) |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
-| `zemi.log` | `debug`, `info`, `warn`, `error` |
-| `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
-| `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` |
+| `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
+| `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
+| `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` (user config only) |
 | `zemi.provider`, `zemi.model` | `register`, `list`, `kind.ANTHROPIC` / `kind.OPENAI` / `kind.OPENAI_COMPAT`; `list`, `set`, `pick` |
-| `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()` |
+| `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()`, `rewind(id)` -> files restored or nil, err |
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
-| `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` |
+| `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` (status: starting, running, failed, exited) |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
-| `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules`, `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (user config only; see zemi-config) |
-| `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |
+| `zemi.permission` | `rule({ subject, pattern, decision, match, not_match, not_match_example, scope })` (any origin may add deny and ask rules; allow and permanent rules need user config), `rules()`, `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (modes: user config only; see zemi-config) |
+| `zemi.tool` | `register({ name, description, input, execute, timeout_ms, parallel })`, `override(name, { pre = fn })` (not from project or learned code), `list` |
 | `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
 | `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })` |
 | `zemi.job` | `start({ cmd, args, env, stdin, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }` (`write` needs `stdin = true`); `out(spec)` runs to completion |
@@ -112,14 +113,19 @@ Subagent definitions are markdown files in `agents/` (frontmatter `description`,
 `name`, `tools` list or comma string, `model`; the body is the system prompt). Workflow
 scripts (`workflows/<name>.lua`) run in a separate sandbox, not this interpreter: they see
 only `agent(prompt, { agent, description })` -> text or nil, err, `parallel({ fn, ... })` ->
-results, errs, `phase(name)`, `log(...)`, `json.encode/decode`, `args`, and Lua's string,
-table and math libraries. `agent` and `parallel` cannot run inside `pcall`.
+results, errs, `phase(name)`, `log(...)` (alias `print`), `json.encode/decode`, `args`, and
+Lua's string, table and math libraries. `agent` and `parallel` cannot run inside `pcall`.
 
-Widget `ctx` carries `width`, `cwd`, `model`, `transcript`, `agent` (live turn: `text`,
-`tools`, `steering`), `usage`, `context`, `show_reasoning`, `pulse`, `reflecting`,
-`pending_memory`, `pending_config`, `agents_running`; tool rows carry `detail` (subagent
-and workflow progress). Regions: `header`, `chat`, `statusline.left`,
-`statusline.right`. Segments are `{ text = "...", hl = "Group" }`.
+Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `model`, `profile`,
+`effort`, `permission_mode`, `permission_mode_base`, `agent_active`, `transcript`,
+`agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
+`thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `recent` (sessions,
+only while the transcript is empty), `usage`, `context`, `show_reasoning`, `pulse`,
+`reflecting`, `pending_memory`, `pending_config`, `agents_running`. Transcript rows carry
+`role`, `kind` ("", reasoning, tool, compact, error), `text`, `tool`, `status`, `label`,
+`detail` (subagent and workflow progress), `diff`, `in`, `out`, `thought`, `elapsed`.
+Regions: `header`, `chat`, `statusline.left`, `statusline.right`. Segments are
+`{ text = "...", hl = "Group" }`.
 
 ## Events
 
