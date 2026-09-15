@@ -297,8 +297,9 @@ The call blocks until the command exits; at the timeout (default 60000 ms, up to
 Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Chain dependent steps with &&; send independent commands as separate calls in one response.`,
 			false,
 			map[string]any{
-				"command":    map[string]any{"type": "string"},
-				"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
+				"command":     map[string]any{"type": "string"},
+				"description": map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests"},
+				"timeout_ms":  map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -445,9 +446,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
 			true,
 			map[string]any{
-				"command": map[string]any{"type": "string"},
-				"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"env":     map[string]any{"type": "object", "description": "extra environment variables"},
+				"command":     map[string]any{"type": "string"},
+				"args":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"env":         map[string]any{"type": "object", "description": "extra environment variables"},
+				"description": map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {

@@ -401,10 +401,10 @@ func TestReasoningExpanded(t *testing.T) {
 	host.ToggleReasoning()
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "  ✻ Thought for 4.2s") {
+	if !strings.Contains(frame, "✻ Thought for 4.2s") {
 		t.Fatalf("thought header missing:\n%s", frame)
 	}
-	if !strings.Contains(frame, "    │ first idea") || !strings.Contains(frame, "    │ second idea") {
+	if !strings.Contains(frame, "  │ first idea") || !strings.Contains(frame, "  │ second idea") {
 		t.Fatalf("expanded reasoning layout:\n%s", frame)
 	}
 }
@@ -588,5 +588,32 @@ func TestDiffRows(t *testing.T) {
 	want := []string{"  9  9   one", " 10    - two", "    10 + TWO", " 11 11   three"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("rows = %q", got)
+	}
+}
+
+// TestToolRows: finished calls that only look around collapse into one
+// line, edits and failures keep their rows, a command shows the model's
+// description with the command under it, and ctrl+o shows every call.
+func TestToolRows(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "fix it")
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{Name: "read", Input: "a.go", Status: "ok"},
+		{Name: "read", Input: "b.go", Status: "ok"},
+		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok"},
+		{Name: "edit", Input: "a.go", Status: "ok", Diff: "- old\n+ new"},
+		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err"},
+	}})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "+ new", "● Run the unit tests", "⎿ go test ./..."} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q:\n%s", want, frame)
+		}
+	}
+	host.ToggleReasoning()
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") {
+		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
 }

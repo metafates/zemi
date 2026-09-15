@@ -171,7 +171,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text})
 			case fantasy.ToolCallPart:
 				toolRow[p.ToolCallID] = len(tr)
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Status: "ok"})
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok"})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeError {
 					tr[i].Status = "err"
@@ -209,7 +209,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 		return
 	}
 	h.GoSafe("session title", func() {
-		model, err := h.modelFor("reflector.model")
+		model, err := h.modelFor("agent.small_model")
 		if err != nil {
 			return
 		}

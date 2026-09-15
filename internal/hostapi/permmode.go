@@ -295,7 +295,7 @@ When unsure, reply UNSAFE.`
 // returns ok=false with the reason to show the user when the model flags
 // it or cannot be reached (failing toward a manual ask).
 func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
-	model, err := h.modelFor("permissions.auto_model")
+	model, err := h.modelFor("permissions.auto_model", "agent.small_model")
 	if err != nil {
 		return false, "auto mode unavailable: " + err.Error()
 	}

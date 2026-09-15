@@ -242,6 +242,9 @@ func (a *App) workingRow() []hostapi.Segment {
 	for _, t := range st.Tools {
 		if t.Status == "run" {
 			label = "Running " + t.Name
+			if t.Label != "" {
+				label = t.Label
+			}
 		}
 	}
 	if label == "Working" && st.Reasoning != "" && st.Text == "" {

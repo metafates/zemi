@@ -80,6 +80,18 @@ func TestTurnExtras(t *testing.T) {
 	}
 }
 
+func TestToolLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"command":"go test ./...","description":"Run the  unit tests"}`: "Run the unit tests",
+		`{"command":"ls"}`: "",
+		`{"description":"Find the config loader","prompt":"..."}`: "",
+	} {
+		if got := toolLabel(in); got != want {
+			t.Errorf("toolLabel(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestToolSummary(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`: "2 todos, 1 done",

@@ -66,12 +66,14 @@ type ModelOption struct {
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {
-	ID     string
-	Detail string // live progress line (subagents, workflows)
-	Diff   string // file tools: the change as "- "/"+ " lines
-	Name   string
-	Input  string
-	Status string // "run", "ok", "err"
+	ID      string
+	Label   string // the model's short description of a command
+	Started time.Time
+	Detail  string // live progress line (subagents, workflows)
+	Diff    string // file tools: the change as "- "/"+ " lines
+	Name    string
+	Input   string
+	Status  string // "run", "ok", "err"
 }
 
 // agentHost owns the live agent session: profiles, the runner, the
@@ -448,11 +450,13 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	return h.Providers.Resolve(id)
 }
 
-// modelFor resolves the model a setting names, the agent model when the
-// setting is unset.
-func (h *Host) modelFor(key string) (fantasy.LanguageModel, error) {
-	if id := h.setStr(key); id != "" && h.modelFn == nil {
-		return h.Providers.Resolve(id)
+// modelFor resolves the model the first set key names, the agent model
+// when none is set.
+func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
+	for _, key := range keys {
+		if id := h.setStr(key); id != "" && h.modelFn == nil {
+			return h.Providers.Resolve(id)
+		}
 	}
 	return h.resolveModel(nil)
 }
@@ -716,7 +720,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
 	}
-	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Status: "run", Diff: diff})
+	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Started: time.Now(), Status: "run", Diff: diff})
 	ag.mu.Unlock()
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
@@ -811,7 +815,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		if status != "ok" {
 			t.Diff = ""
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status, Detail: t.Detail, Diff: t.Diff})
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Diff: t.Diff})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)
@@ -825,6 +829,19 @@ func capLines(s string, n int) string {
 		return s
 	}
 	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... %d more lines", len(lines)-n)
+}
+
+// toolLabel is the description a model gives a command (bash, job_start),
+// shown in place of the command; "" for other tools.
+func toolLabel(input string) string {
+	var in struct {
+		Command     string `json:"command"`
+		Description string `json:"description"`
+	}
+	if json.Unmarshal([]byte(input), &in) != nil || in.Command == "" {
+		return ""
+	}
+	return clipRunes(strings.Join(strings.Fields(in.Description), " "), 80)
 }
 
 // toolSummary picks the argument a person reads first (a command, path or

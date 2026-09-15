@@ -324,10 +324,26 @@ zemi.ui.widget.register({
     local width = ctx.width or 80
     local lines = {}
     local function blank() lines[#lines + 1] = { { text = "" } } end
-    local function add_markdown(text)
+    -- Blocks are separated by one blank line: the user's message, a run of
+    -- activity (thinking and tools), the reply, its stats.
+    local prev
+    local function gap(block)
+      if prev and (prev ~= block or block ~= "activity") then blank() end
+      prev = block
+    end
+    local function has_text(segs)
+      for _, sg in ipairs(segs) do
+        if (sg.text or ""):match("%S") then return true end
+      end
+      return false
+    end
+    -- A reply: its first line carries the bullet, the rest indent under it.
+    local function add_markdown(text, mark)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
-        local row = { { text = "  " } }
-        for _, s in ipairs(segs) do row[#row + 1] = s end
+        local lead = "  "
+        if mark and has_text(segs) then lead, mark = "● ", false end
+        local row = { { text = lead, hl = "Normal" } }
+        for _, sg in ipairs(segs) do row[#row + 1] = sg end
         lines[#lines + 1] = row
       end
     end
@@ -351,57 +367,116 @@ zemi.ui.widget.register({
       return out
     end
     local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "  ✻ ", hl = "ThinkingMark" }, { text = label, hl = "AgentReason" } }
+      local head = { { text = "✻ ", hl = "ThinkingMark" }, { text = label, hl = "AgentReason" } }
       if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment" } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
-      local body = wrap_words(text, math.max(width - 8, 20))
+      local body = wrap_words(text, math.max(width - 6, 20))
       local first = (ctx.show_reasoning or not tail) and 1 or math.max(1, #body - tail + 1)
       for n = first, #body do
-        lines[#lines + 1] = { { text = "    │ ", hl = "ThinkingBar" }, { text = body[n], hl = "AgentReason" } }
+        lines[#lines + 1] = { { text = "  │ ", hl = "ThinkingBar" }, { text = body[n], hl = "AgentReason" } }
       end
     end
-    -- One tool row: status mark (running marks pulse with the working
-    -- row), name, input cut by UTF-8 character to fit.
-    local function add_tool(name, input, status, detail, diff)
-      local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
-      if status == "ok" then
-        mark, hl = "✓", "AgentToolOk"
-      elseif status == "err" then
-        mark, hl = "✗", "AgentToolErr"
-      end
-      name = name or "?"
-      -- paths read from the project root
+
+    -- Tool calls read as what they did: "Read internal/ui/app.go". Finished
+    -- calls that only look around collapse into one line ("Read 3 files,
+    -- ran 2 commands"); edits, agents, questions and failures keep their
+    -- own rows, and ctrl+o shows every call.
+    local VERB = {
+      read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
+      fetch = "Fetch", sourcegraph = "Search code", bash = "Run", job_start = "Start", job_read = "Check job",
+      job_list = "List jobs", job_kill = "Stop job", memory_add = "Remember", memory_search = "Recall",
+      diagnostics = "Check", todos = "Update todos", question = "Ask", skill = "Load skill",
+      agent = "Agent", workflow = "Workflow",
+    }
+    local COUNT = {
+      read = { "read", "file", "files" }, glob = { "searched for", "pattern", "patterns" },
+      grep = { "searched for", "pattern", "patterns" }, sourcegraph = { "searched for", "pattern", "patterns" },
+      bash = { "ran", "command", "commands" }, fetch = { "fetched", "page", "pages" },
+      skill = { "loaded", "skill", "skills" }, memory_add = { "saved", "memory", "memories" },
+      memory_search = { "searched memory" }, diagnostics = { "checked", "file", "files" },
+      job_start = { "started", "job", "jobs" }, job_read = { "checked", "job", "jobs" },
+      job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
+    }
+    local function tool_name(t) return t.tool or t.name or "?" end
+    local function collapsible(t)
+      return t.kind ~= nil and t.kind ~= "tool" and false or
+        (not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil)
+    end
+    local function relpath(s)
       local cwd = ctx.cwd or ""
-      if cwd ~= "" and input then
-        local at = 1
-        while true do
-          local s, e = input:find(cwd .. "/", at, true)
-          if not s then break end
-          input, at = input:sub(1, s - 1) .. input:sub(e + 1), s
+      if cwd == "" then return s end
+      return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
+    end
+    local function add_group(group)
+      local order, seen = {}, {}
+      for _, t in ipairs(group) do
+        local c = COUNT[tool_name(t)]
+        local key = c[1] .. "|" .. (c[2] or "")
+        if not seen[key] then
+          seen[key] = { c = c, n = 0 }
+          order[#order + 1] = key
         end
+        seen[key].n = seen[key].n + 1
       end
-      if name == "skill" then
-        name = ({ ok = "loaded skill", err = "skill failed" })[status] or "loading skill"
-        if status == "ok" then mark, hl = "✦", "Title" end
+      local parts = {}
+      for _, key in ipairs(order) do
+        local c, n = seen[key].c, seen[key].n
+        parts[#parts + 1] = c[2] and string.format("%s %d %s", c[1], n, n == 1 and c[2] or c[3]) or c[1]
       end
-      local inp = clip((input or ""):gsub("%s+", " "), width - #name - 7)
-      lines[#lines + 1] = {
-        { text = "  " .. mark, hl = hl },
-        { text = " " .. name, hl = "AgentToolName" },
-        { text = inp ~= "" and "  " .. inp or "", hl = "Comment" },
-      }
-      -- Subagents and workflows report progress under their row.
-      if (detail or "") ~= "" then
-        lines[#lines + 1] = { { text = "    └ " .. detail:gsub("%s+", " "), hl = "Comment" } }
+      local summary = table.concat(parts, ", ")
+      summary = summary:sub(1, 1):upper() .. summary:sub(2)
+      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk" }, { text = clip(summary, width - 4), hl = "Normal" } }
+    end
+    local function add_tool(t)
+      local name = tool_name(t)
+      local mark, hl = ctx.pulse and "◦ " or "● ", "AgentToolRun"
+      if t.status == "ok" then
+        mark, hl = "● ", "AgentToolOk"
+      elseif t.status == "err" then
+        mark, hl = "● ", "AgentToolErr"
+      end
+      local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
+      local label = t.label or ""
+      local head = { { text = mark, hl = hl } }
+      if label ~= "" then
+        head[#head + 1] = { text = clip(label, width - 12), hl = "Normal" }
+      else
+        local verb = VERB[name] or name
+        head[#head + 1] = { text = verb, hl = "AgentToolName" }
+        if input ~= "" then head[#head + 1] = { text = " " .. clip(input, width - cells(verb) - 12), hl = "Comment" } end
+      end
+      if t.status == "run" and (t.elapsed or 0) >= 1 then
+        head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
+      end
+      lines[#lines + 1] = head
+      -- under the row: the command a description stands for, then progress
+      for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
+        if sub ~= "" then
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = clip(sub, width - 6), hl = "Comment" } }
+        end
       end
       -- File tools show what they changed.
-      for dl in ((diff or "") .. "\n"):gmatch("(.-)\n") do
+      for dl in ((t.diff or "") .. "\n"):gmatch("(.-)\n") do
         if dl ~= "" then
-          local hl = dl:sub(1, 2) == "- " and "DiffDel" or dl:sub(1, 2) == "+ " and "DiffAdd" or "Comment"
-          lines[#lines + 1] = { { text = "    " .. dl:gsub("\t", "    "), hl = hl } }
+          local dhl = dl:sub(1, 2) == "- " and "DiffDel" or dl:sub(1, 2) == "+ " and "DiffAdd" or "Comment"
+          lines[#lines + 1] = { { text = "    " .. dl:gsub("\t", "    "), hl = dhl } }
         end
       end
+    end
+    -- rows from i on: a collapsed group or one call; returns the next index
+    local function add_tools(list, i)
+      if collapsible(list[i]) then
+        local group = {}
+        while i <= #list and (list[i].kind == nil or list[i].kind == "tool") and collapsible(list[i]) do
+          group[#group + 1] = list[i]
+          i = i + 1
+        end
+        add_group(group)
+        return i
+      end
+      add_tool(list[i])
+      return i + 1
     end
 
     local tr = ctx.transcript or {}
@@ -413,38 +488,44 @@ zemi.ui.widget.register({
     for i, m in ipairs(tr) do
       if m.kind == "reasoning" then last_reason = i end
     end
-    for i, m in ipairs(tr) do
-      -- Blank lines separate turns: around each user message only.
-      if i > 1 and (m.role == "user" or tr[i - 1].role == "user") then blank() end
+    local i = 1
+    while i <= #tr do
+      local m = tr[i]
+      local next_i = i + 1
       if m.kind == "reasoning" then
+        gap("activity")
         local secs = fmt_secs(m.thought)
         local label = secs and ("Thought for " .. secs) or "Thought"
         local hint = (i == last_reason and not ctx.show_reasoning) and "click or ctrl+o to read" or nil
         add_reasoning(label, hint, m.text)
       elseif m.kind == "tool" then
-        add_tool(m.tool, m.text, m.status, m.detail, m.diff)
+        gap("activity")
+        next_i = add_tools(tr, i)
       elseif m.kind == "shell" then
         -- a !command: the command, then its output (long output folds)
+        gap("user")
         local hl = m.status == "err" and "AgentToolErr" or "Title"
-        lines[#lines + 1] = { { text = "  $ ", hl = hl }, { text = m.text, hl = "Normal" } }
+        lines[#lines + 1] = { { text = "$ ", hl = hl }, { text = m.text, hl = "Normal" } }
         local n = 0
         for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
           n = n + 1
           if n > 12 then
-            lines[#lines + 1] = { { text = "    …", hl = "Comment" } }
+            lines[#lines + 1] = { { text = "  …", hl = "Comment" } }
             break
           end
-          lines[#lines + 1] = { { text = "    " .. ol, hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  " .. ol, hl = "Comment" } }
         end
       elseif m.kind == "compact" then
-        lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
+        gap("activity")
+        lines[#lines + 1] = { { text = "✻ " .. m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then
         -- Headline, then the raw error dimmed underneath.
+        gap("activity")
         local cancelled = m.status == "cancelled"
         local first = true
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
           local hl = (cancelled or not first) and "Comment" or "AgentToolErr"
-          local mark = first and (cancelled and "  ■ " or "  ✗ ") or "    "
+          local mark = first and (cancelled and "■ " or "✗ ") or "  "
           lines[#lines + 1] = { { text = mark, hl = hl }, { text = text, hl = hl } }
           first = false
         end
@@ -452,6 +533,7 @@ zemi.ui.widget.register({
         -- Markdown like replies, one typed line at a time so line breaks
         -- stay (glamour joins lines into paragraphs); a code fence renders
         -- as one block.
+        gap("user")
         local chunks, fence = {}, nil
         for l in (m.text .. "\n"):gmatch("(.-)\n") do
           local marker = l:match("^%s*```") ~= nil
@@ -474,15 +556,18 @@ zemi.ui.widget.register({
           end
         end
       else
-        add_markdown(m.text)
+        gap("text")
+        add_markdown(m.text, true)
         local parts = {}
         local telapsed, tout = fmt_secs(m.elapsed), fmt_tokens(m.out)
         if telapsed then parts[#parts + 1] = telapsed end
         if tout then parts[#parts + 1] = tout .. " out" end
         if #parts > 0 then
+          gap("stats")
           lines[#lines + 1] = { { text = "  " .. table.concat(parts, " · "), hl = "Comment" } }
         end
       end
+      i = next_i
     end
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go
@@ -492,17 +577,24 @@ zemi.ui.widget.register({
     local ag = ctx.agent or {}
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
     if ag.active or #tools > 0 or text ~= "" then
-      if #tr > 0 and tr[#tr].role == "user" then blank() end
       local waiting = false
-      for _, t in ipairs(tools) do
-        add_tool(t.name, t.input, t.status, t.detail, t.diff)
-        if t.status ~= "ok" and t.status ~= "err" then waiting = true end
+      local ti = 1
+      while ti <= #tools do
+        if tools[ti].status ~= "ok" and tools[ti].status ~= "err" then waiting = true end
+        gap("activity")
+        ti = add_tools(tools, ti)
       end
       -- the tail only while the model is thinking, not while a tool runs
-      if (ag.reasoning or "") ~= "" and text == "" and not waiting then add_reasoning("Thinking", nil, ag.reasoning, 3) end
-      if text ~= "" then add_markdown(text) end
+      if (ag.reasoning or "") ~= "" and text == "" and not waiting then
+        gap("activity")
+        add_reasoning("Thinking", nil, ag.reasoning, 3)
+      end
+      if text ~= "" then
+        gap("text")
+        add_markdown(text, true)
+      end
       for _, q in ipairs(queued) do
-        lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
+        lines[#lines + 1] = { { text = "⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
       end
     end
     -- The todo list stays under the conversation until every item is done.
@@ -514,7 +606,7 @@ zemi.ui.widget.register({
       blank()
       for i, td in ipairs(todos) do
         if i > 12 then
-          lines[#lines + 1] = { { text = "  … " .. (#todos - 12) .. " more", hl = "Comment" } }
+          lines[#lines + 1] = { { text = "… " .. (#todos - 12) .. " more", hl = "Comment" } }
           break
         end
         local mark, hl, text = "☐ ", "Normal", td.content
@@ -524,7 +616,7 @@ zemi.ui.widget.register({
           mark, hl = "◼ ", "TodoActive"
           if (td.active_form or "") ~= "" then text = td.active_form end
         end
-        lines[#lines + 1] = { { text = "  " .. mark, hl = hl }, { text = text, hl = hl } }
+        lines[#lines + 1] = { { text = mark, hl = hl }, { text = text, hl = hl } }
       end
     end
     return #lines > 0 and lines or empty()
@@ -547,7 +639,7 @@ zemi.ui.widget.register({
 -- Default keymap: user config can rebind or zemi.keymap.del these.
 -- Printable keys stay with the composer. The transcript is bottom-anchored, so these keys and the wheel
 -- move the viewport; sending snaps back to the tail.
-zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
+zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "show thinking and every tool call" })
 zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
 zemi.keymap.set("shift+tab", "zemi.permission.mode.prev", { desc = "previous permission mode" })
 zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })

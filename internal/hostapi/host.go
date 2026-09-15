@@ -73,6 +73,7 @@ type ChatMessage struct {
 	Role   string
 	Kind   string // "", "reasoning", "tool", "compact" or "error"
 	Text   string // tool rows: the input summary
+	Label  string // tool rows: the model's description of a command
 	Tool   string
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
@@ -704,6 +705,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("input", glua.LString(t.Input))
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
+		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
+		if !t.Started.IsZero() {
+			row.RawSetString("elapsed", glua.LNumber(time.Since(t.Started).Seconds()))
+		}
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
 		toolsTb.Append(row)
 	}
@@ -718,6 +723,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("tool", glua.LString(m.Tool))
 		row.RawSetString("status", glua.LString(m.Status))
 		row.RawSetString("detail", glua.LString(m.Detail))
+		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))

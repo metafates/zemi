@@ -56,6 +56,9 @@ picks a model interactively.
 writable; prefer it over guessing. Common keys:
 
 - `agent.model`, `reflector.model` (empty: use the agent model)
+- `agent.small_model`: a fast, cheap model for small jobs (session titles, and auto-mode
+  screening unless `permissions.auto_model` is set); empty uses the agent model. With the acme
+  provider, `zemi.config.set("agent.small_model", "acme/OpenAI-GPT-OSS-120B[CM]")`.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`
