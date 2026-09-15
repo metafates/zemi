@@ -165,11 +165,7 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 			h.Log.Warn("config-rev", "dump regenerate failed", map[string]any{"error": err.Error()})
 		}
 	}
-	note := ""
-	if p.Scrubbed {
-		note = " (secrets redacted)"
-	}
-	h.memNotify("info", "config", "applied: "+p.Title+note)
+	h.memNotify("info", "config", "applied: "+p.Title+redactNote(p.Scrubbed))
 	h.EmitAsync("config.applied", map[string]any{"id": p.ID, "title": p.Title})
 }
 

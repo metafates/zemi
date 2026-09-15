@@ -95,12 +95,15 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	ag.mu.Lock()
 	ag.memAuto++
 	ag.mu.Unlock()
-	note := ""
-	if res.Scrubbed {
-		note = " (secrets redacted)"
-	}
-	h.memNotify("info", "memory", "stored: "+res.Memory.Text+note)
+	h.memNotify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
+}
+
+func redactNote(scrubbed bool) string {
+	if scrubbed {
+		return " (secrets redacted)"
+	}
+	return ""
 }
 
 // storeProposal writes a policy-clean memory to its scope's DB.
@@ -109,17 +112,14 @@ func (h *Host) storeProposal(res *learn.Result) error {
 	if db == nil {
 		return errors.New("memory store unavailable")
 	}
-	if err := db.AddMemory(&res.Memory); err != nil {
+	m := &res.Memory
+	if err := db.AddMemory(m); err != nil {
 		return err
 	}
-	h.emitMemoryWritten(res.Memory)
-	return nil
-}
-
-func (h *Host) emitMemoryWritten(m store.Memory) {
 	h.EmitAsync("memory.written", map[string]any{
 		"id": m.ID, "scope": m.Scope, "kind": m.Kind, "origin": m.Origin, "text": m.Text,
 	})
+	return nil
 }
 
 // Remember stores a user-typed /remember text (origin user, project
@@ -132,19 +132,10 @@ func (h *Host) Remember(text string) error {
 	if err != nil {
 		return err
 	}
-	db := h.memoryDB(res.Memory.Scope)
-	if db == nil {
-		return errors.New("memory store unavailable")
-	}
-	if err := db.AddMemory(&res.Memory); err != nil {
+	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	note := ""
-	if res.Scrubbed {
-		note = " (secrets redacted)"
-	}
-	h.emitMemoryWritten(res.Memory)
-	h.memNotify("info", "memory", "remembered"+note)
+	h.memNotify("info", "memory", "remembered"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -296,24 +287,12 @@ func (h *Host) memoryRows() []MemoryRow {
 			Text: m.Text, Tags: m.Tags, Queued: true,
 		})
 	}
-	appendScope := func(db *store.DB, scope string) {
-		list, err := db.ListMemory(scope, false)
-		if err != nil {
-			h.Log.Warn("memory", "list failed", map[string]any{"scope": scope, "error": err.Error()})
-			return
-		}
-		for _, m := range list {
-			rows = append(rows, MemoryRow{
-				ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-				Text: m.Text, Tags: m.Tags,
-			})
-		}
-	}
-	if h.DB != nil {
-		appendScope(h.DB, "project")
-	}
-	if h.GlobalDB != nil {
-		appendScope(h.GlobalDB, "user")
+	list, _ := h.memoryList(false)
+	for _, m := range list {
+		rows = append(rows, MemoryRow{
+			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
+			Text: m.Text, Tags: m.Tags,
+		})
 	}
 	return rows
 }
@@ -365,45 +344,30 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 	return out, nil
 }
 
-// memoryList merges both scopes newest-first.
+// memoryList merges both scopes, project first, each newest-first. A
+// failing scope is logged and skipped; its error comes back with the rows.
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
-	if h.DB != nil {
-		rows, err := h.DB.ListMemory("project", includeSuperseded)
+	var errs []error
+	for _, scope := range []string{"project", "user"} {
+		db := h.memoryDB(scope)
+		if db == nil {
+			continue
+		}
+		rows, err := db.ListMemory(scope, includeSuperseded)
 		if err != nil {
-			return nil, err
+			h.Log.Warn("memory", "list failed", map[string]any{"scope": scope, "error": err.Error()})
+			errs = append(errs, err)
+			continue
 		}
 		out = append(out, rows...)
 	}
-	if h.GlobalDB != nil {
-		rows, err := h.GlobalDB.ListMemory("user", includeSuperseded)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, rows...)
-	}
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 // digestFor assembles the §10.7 memory digest across both scopes.
 func (h *Host) digestFor() string {
-	var cands []*store.Memory
-	for _, pair := range []struct {
-		db    *store.DB
-		scope string
-	}{{h.DB, "project"}, {h.GlobalDB, "user"}} {
-		if pair.db == nil {
-			continue
-		}
-		rows, err := pair.db.ListMemory(pair.scope, false)
-		if err != nil {
-			h.Log.Warn("memory", "digest list failed", map[string]any{
-				"scope": pair.scope, "error": err.Error(),
-			})
-			continue
-		}
-		cands = append(cands, rows...)
-	}
+	cands, _ := h.memoryList(false)
 	lines := h.setInt("memory.digest_lines", 12)
 	if lines < 0 {
 		lines = 12
@@ -504,10 +468,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if scope == "" {
 			scope = "project"
 		}
-		if scope != "project" && scope != "user" {
-			L.RaiseError("zemi.memory.add: scope must be project or user")
-			return 0
-		}
 		var tags []string
 		if lt, ok := spec.RawGetString("tags").(*glua.LTable); ok {
 			lt.ForEach(func(_, v glua.LValue) {
@@ -590,8 +550,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 }
 
 // proposeMemory runs a learned memory (zemi.memory.add, the memory_add
-// tool) through intake and the autonomy gate (DESIGN §10.4): stored under
-// auto when policy-clean and within budget, queued for review otherwise.
+// tool) through intake and the autonomy gate.
 func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bool, id string, err error) {
 	if scope != "project" && scope != "user" {
 		return false, "", errors.New("scope must be project or user")
@@ -600,14 +559,18 @@ func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bo
 	if err != nil {
 		return false, "", err
 	}
+	stored, err = h.gateMemory(res)
+	return stored, res.Memory.ID, err
+}
+
+// gateMemory is the autonomy gate (DESIGN §10.4): an intake result is
+// stored under auto when policy-clean and within budget, queued otherwise.
+func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
 	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
-		if err := h.applyProposal(res); err != nil {
-			return false, "", err
-		}
-		return true, res.Memory.ID, nil
+		return true, h.applyProposal(res)
 	}
 	h.queueProposal(res)
-	return false, res.Memory.ID, nil
+	return false, nil
 }
 
 func (h *Host) autoApplyBudgetLeft() bool {

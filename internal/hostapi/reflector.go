@@ -185,18 +185,14 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if msgs, err := h.DB.Messages(sid); err == nil {
 		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
 	}
-	h.Log.Info("reflector", "run complete", map[string]any{
-		"session": sid, "stored": stored, "queued": queued,
-		"superseded": superseded, "skipped": skipped,
-		"config_queued": cfgQueued, "config_applied": cfgApplied,
-		"config_skipped": cfgSkipped,
-	})
-	h.EmitAsync("reflector.done", map[string]any{
+	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
 		"config_queued": cfgQueued, "config_applied": cfgApplied,
 		"config_skipped": cfgSkipped, "skills_drafted": drafted,
-	})
+	}
+	h.Log.Info("reflector", "run complete", result)
+	h.EmitAsync("reflector.done", result)
 	return nil
 }
 
@@ -240,14 +236,10 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 			b.WriteString(line + "\n")
 		}
 	}
-	if mems, err := h.memoryList(false); err == nil && len(mems) > 0 {
+	if mems, _ := h.memoryList(false); len(mems) > 0 {
 		b.WriteString("\n# Current memory index\n")
 		for _, m := range mems {
-			gist := m.Text
-			if runes := []rune(gist); len(runes) > 80 {
-				gist = string(runes[:80]) + "..."
-			}
-			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID, m.Scope, m.Kind, gist)
+			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID, m.Scope, m.Kind, truncRunes(m.Text, 80))
 			if len(m.Tags) > 0 {
 				line += " #" + strings.Join(m.Tags, " #")
 			}
@@ -375,19 +367,17 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
-		if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
-			if err := h.applyProposal(res); err != nil {
-				skipped++
-				h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
-				continue
-			}
+		switch ok, err := h.gateMemory(res); {
+		case err != nil:
+			skipped++
+			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
+		case !ok:
+			queued++
+		default:
 			stored++
 			if pm.Supersedes != "" {
 				links = append(links, link{fresh: res.Memory, old: pm.Supersedes})
 			}
-		} else {
-			h.queueProposal(res)
-			queued++
 		}
 	}
 	for _, l := range links {
