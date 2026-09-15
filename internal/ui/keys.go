@@ -156,6 +156,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 // file scan should launch.
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	c := &a.composer
+	if key == "ctrl+z" {
+		c.undoLast()
+		a.updatePalette()
+		return a.updateCompletion()
+	}
+	t := keyText(msg)
+	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
 
 	// Popups take only the ctrl moves: plain k/j are typed text.
 	popupMove := 0
@@ -239,7 +246,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	default:
 		if !c.editKey(key) {
-			t := keyText(msg)
 			if t == "" {
 				return nil
 			}

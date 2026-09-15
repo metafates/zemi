@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -19,6 +20,33 @@ type composerState struct {
 	history []string
 	histIdx int // len(history) = live draft
 	draft   string
+
+	undo   []composerSnap // states before edits, for ctrl+z
+	typing bool           // the last key typed a word character
+}
+
+type composerSnap struct {
+	text   string
+	cursor int
+}
+
+// snapshot records the state before a key for ctrl+z when the key changed
+// the text; a run of typed word characters is one step.
+func (c *composerState) snapshot(prev composerSnap, word bool) {
+	if c.text != prev.text && !(word && c.typing) {
+		c.undo = append(c.undo, prev)
+		if len(c.undo) > 100 {
+			c.undo = c.undo[1:]
+		}
+	}
+	c.typing = word
+}
+
+func (c *composerState) undoLast() {
+	if n := len(c.undo); n > 0 {
+		c.text, c.cursor = c.undo[n-1].text, c.undo[n-1].cursor
+		c.undo, c.typing = c.undo[:n-1], false
+	}
 }
 
 func (c *composerState) runes() []rune { return []rune(c.text) }
@@ -155,6 +183,10 @@ func (c *composerState) editKey(key string) bool {
 		c.left()
 	case "right":
 		c.right()
+	case "alt+left", "alt+b", "ctrl+left":
+		c.wordLeft()
+	case "alt+right", "alt+f", "ctrl+right":
+		c.wordRight()
 	case "home", "ctrl+a":
 		c.lineStart()
 	case "end", "ctrl+e":
@@ -176,6 +208,28 @@ func (c *composerState) replace(start int, s string) {
 	r := c.runes()
 	c.text = string(r[:start]) + s + string(r[c.cursor:])
 	c.cursor = start + len([]rune(s))
+}
+
+func (c *composerState) wordLeft() {
+	r, i := c.runes(), c.cursor
+	for i > 0 && unicode.IsSpace(r[i-1]) {
+		i--
+	}
+	for i > 0 && !unicode.IsSpace(r[i-1]) {
+		i--
+	}
+	c.cursor = i
+}
+
+func (c *composerState) wordRight() {
+	r, i := c.runes(), c.cursor
+	for i < len(r) && unicode.IsSpace(r[i]) {
+		i++
+	}
+	for i < len(r) && !unicode.IsSpace(r[i]) {
+		i++
+	}
+	c.cursor = i
 }
 
 func (c *composerState) lineStart() { c.cursor, _ = c.lineSpan() }

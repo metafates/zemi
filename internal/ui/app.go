@@ -291,7 +291,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
+		prev := composerSnap{a.composer.text, a.composer.cursor}
 		a.composer.paste(s)
+		a.composer.snapshot(prev, false)
 		a.publishComposer()
 		return a, a.updateCompletion()
 	case filesScannedMsg:

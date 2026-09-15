@@ -49,6 +49,24 @@ func TestComposerEdit(t *testing.T) {
 	run("word-to-newline", func(c *composerState) { c.insert("a\nb"); c.delWord() }, "a\n", 2)
 	run("del-start", func(c *composerState) { c.insert("one\ntwo"); c.cursor = 6; c.delToLineStart() }, "one\no", 4)
 	run("del-end", func(c *composerState) { c.insert("one\ntwo"); c.cursor = 1; c.delToLineEnd() }, "o\ntwo", 1)
+	run("word-left", func(c *composerState) { c.insert("one two  "); c.wordLeft() }, "one two  ", 4)
+	run("word-right", func(c *composerState) { c.insert("one two"); c.cursor = 0; c.wordRight(); c.wordRight() }, "one two", 7)
+}
+
+func TestComposerUndo(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	for _, r := range "hi there" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.composerKey("ctrl+w", tea.KeyPressMsg{})
+	var got []string
+	for range 4 {
+		app.composerKey("ctrl+z", tea.KeyPressMsg{})
+		got = append(got, app.composer.text)
+	}
+	if want := "hi there|hi |hi|"; strings.Join(got, "|") != want {
+		t.Fatalf("undo steps %q, want %q", got, want)
+	}
 }
 
 func TestComposerLineMoves(t *testing.T) {
