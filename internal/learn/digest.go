@@ -24,14 +24,19 @@ const digestTextMax = 300
 // DigestScore ranks one candidate: fts score x recency x (1 +
 // log(1+hits)). The log term damps an inflatable hit count without
 // zeroing never-hit memories, which a pure log(1+hits) multiplier would
-// hide from the digest forever (DESIGN §7/§10.7).
+// hide from the digest forever (DESIGN §7/§10.7). Listings without a query
+// carry score 0 and rank by recency and hits alone.
 func DigestScore(m *store.Memory, at time.Time) float64 {
+	score := m.Score
+	if score <= 0 {
+		score = 1
+	}
 	age := at.Sub(time.UnixMilli(m.UpdatedAt))
 	if age < 0 {
 		age = 0
 	}
 	recency := 1 / (1 + age.Hours()/24)
-	return m.Score * recency * (1 + math.Log1p(float64(m.HitCount)))
+	return score * recency * (1 + math.Log1p(float64(m.HitCount)))
 }
 
 // Digest renders the candidates into the framed digest block, best first,

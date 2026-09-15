@@ -236,4 +236,11 @@ func TestDigestScoreFormula(t *testing.T) {
 	if DigestScore(&store.Memory{Score: 4, UpdatedAt: at.UnixMilli()}, at) <= 0 {
 		t.Fatal("never-hit memory scores zero")
 	}
+	// Listings carry score 0: rank by recency and hits instead of all tying at 0.
+	fresh := DigestScore(&store.Memory{UpdatedAt: at.UnixMilli()}, at)
+	stale := DigestScore(&store.Memory{UpdatedAt: at.Add(-72 * time.Hour).UnixMilli()}, at)
+	hit := DigestScore(&store.Memory{UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), HitCount: 5}, at)
+	if !(fresh > hit && hit > stale && stale > 0) {
+		t.Fatalf("zero-score ranking: fresh=%v hit=%v stale=%v", fresh, hit, stale)
+	}
 }
