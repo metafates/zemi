@@ -5,8 +5,11 @@ package logging
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,10 +55,9 @@ type Entry struct {
 
 // Logger is safe for concurrent use.
 type Logger struct {
-	mu      sync.Mutex
-	file    io.WriteCloser
-	ring    []Entry
-	Console io.Writer
+	mu   sync.Mutex
+	file io.WriteCloser
+	ring []Entry
 }
 
 // New opens (or creates) the log file under dir.
@@ -85,22 +87,11 @@ func (l *Logger) Close() {
 // Log writes one record.
 func (l *Logger) Log(level Level, origin, msg string, fields Fields) {
 	msg = sanitize.LogLine(msg)
-	var fs string
-	if len(fields) > 0 {
-		first := true
-		keys := make([]string, 0, len(fields))
-		for k := range fields {
-			keys = append(keys, k)
-		}
-		sortStrings(keys)
-		for _, k := range keys {
-			if !first {
-				fs += " "
-			}
-			fs += fmt.Sprintf("%s=%s", k, sanitize.LogLine(fmt.Sprint(fields[k])))
-			first = false
-		}
+	pairs := make([]string, 0, len(fields))
+	for _, k := range slices.Sorted(maps.Keys(fields)) {
+		pairs = append(pairs, k+"="+sanitize.LogLine(fmt.Sprint(fields[k])))
 	}
+	fs := strings.Join(pairs, " ")
 	e := Entry{Time: time.Now(), Level: level, Origin: origin, Message: msg, Fields: fs}
 
 	l.mu.Lock()
@@ -115,9 +106,6 @@ func (l *Logger) Log(level Level, origin, msg string, fields Fields) {
 			line += " " + fs
 		}
 		fmt.Fprintln(l.file, line)
-	}
-	if l.Console != nil && level >= Warn {
-		fmt.Fprintf(l.Console, "%s: %s\n", level, msg)
 	}
 }
 
@@ -139,12 +127,4 @@ func (l *Logger) Recent(n int) []Entry {
 	out := make([]Entry, n)
 	copy(out, l.ring[len(l.ring)-n:])
 	return out
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }
