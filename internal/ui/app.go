@@ -585,7 +585,8 @@ func (a *App) compose(w, h int) string {
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
 
-	// Lua overlays, then the Go-owned chrome, bottom to top.
+	// Lua overlays, then the Go-owned chrome, bottom to top; topChrome must
+	// match this order so input reaches the box drawn on top.
 	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
 	for _, ov := range a.overlays {
 		splice(overlayBox(ov, w))

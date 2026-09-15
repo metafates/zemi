@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -158,29 +157,25 @@ func (a *App) closeOverlayByID(id string) bool {
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
-// (printable keys filter the list). It returns a cmd when Lua ran
-// (select/close paths).
-func (a *App) overlayKey(key, text string) tea.Cmd {
+// (printable keys filter the list).
+func (a *App) overlayKey(key, text string) {
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
 	if o.Input {
 		a.inputKey(st, key, text)
-		return nil
-	}
-	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
-	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) {
-		return nil
+		return
 	}
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
-	if st.edit(key, text, st.itemText) {
-		return nil
+	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
+	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) || st.edit(key, text, st.itemText) {
+		return
 	}
 	switch key {
 	case "enter", "space":
 		if len(st.visible) == 0 {
-			return nil
+			return
 		}
 		idx := st.visible[st.selected]
 		switch {
@@ -204,7 +199,6 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	case "esc":
 		a.cancelOverlay(o)
 	}
-	return nil
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.

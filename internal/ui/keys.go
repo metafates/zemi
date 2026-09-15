@@ -12,30 +12,30 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// handleKey is the key router (DESIGN §6.6 order): Go-reserved triggers,
-// trust prompt, Go-owned chrome overlays, active Lua overlay, then the
-// composer. There are no modes: the composer is always focused and slash
-// commands replace the cmdline.
+// handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
+// the chrome drawn on top (topChrome), keymaps, then the composer. There
+// are no modes: the composer is always focused.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.frameGen++
 	a.mouse = mouseSel{}
+	top := a.topChrome()
 
-	// 1. Go-reserved cancel trigger: never routed to Lua, never rebindable
+	// Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
 	// turn, and when idle quits on a second press within 2s.
 	if key == "ctrl+c" {
 		switch {
-		case a.permAsk != nil:
+		case top == "perm":
 			a.answerPerm(false, "user")
-		case a.modelPick != nil:
-			a.answerPick("", false)
-		case a.memReview != nil:
-			a.answerMemReview()
-		case a.cfgReview != nil:
+		case top == "cfgReview":
 			a.answerCfgReview()
-		case a.question != nil:
+		case top == "memReview":
+			a.answerMemReview()
+		case top == "question":
 			a.answerQuestion("", false)
+		case top == "modelPick":
+			a.answerPick("", false)
 		case a.host.AgentActive() && a.cancelling:
 			// the turn did not stop: leave anyway, children die on exit
 			a.forceQuit()
@@ -49,8 +49,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	// 2. The trust prompt is Go-owned chrome and captures all keys (§8).
-	if a.trust != nil {
+	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
+	switch top {
+	case "trust":
 		switch key {
 		case "y", "enter":
 			a.answerTrust("trust")
@@ -59,12 +60,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "d":
 			a.answerTrust("deny")
 		}
-		return nil
-	}
-
-	// 2b. Permission ask and model picker: Go-owned chrome capturing all
-	// keys (§8).
-	if pa := a.permAsk; pa != nil {
+	case "perm":
+		pa := a.permAsk
 		if a.program != nil && a.now().Sub(pa.opened) < permGrace {
 			return nil
 		}
@@ -100,13 +97,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "pgup":
 			pa.scroll = max(0, pa.scroll-10)
 		}
-		return nil
-	}
-	if mp := a.modelPick; mp != nil {
-		if key != "j" && key != "k" && moveSel(&mp.selected, len(mp.visible), key) {
-			return nil
-		}
-		if mp.edit(key, keyText(msg), mp.texts) {
+	case "modelPick":
+		mp := a.modelPick
+		if key != "j" && key != "k" && moveSel(&mp.selected, len(mp.visible), key) || mp.edit(key, keyText(msg), mp.texts) {
 			return nil
 		}
 		switch key {
@@ -117,11 +110,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc":
 			a.answerPick("", false)
 		}
-		return nil
-	}
-
-	// 2c. Memory review: Go-owned chrome capturing all keys (§8, §10.4).
-	if a.memReview != nil {
+	case "memReview":
 		if moveSel(&a.memReview.sel, len(a.memReview.items), key) {
 			return nil
 		}
@@ -135,12 +124,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc", "q", "enter":
 			a.answerMemReview()
 		}
-		return nil
-	}
-
-	// 2c-bis. Config review: Go-owned chrome capturing all keys (§8,
-	// §10.4).
-	if a.cfgReview != nil {
+	case "cfgReview":
 		if moveSel(&a.cfgReview.sel, len(a.cfgReview.items), key) {
 			return nil
 		}
@@ -152,43 +136,32 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc", "q":
 			a.answerCfgReview()
 		}
-		return nil
-	}
-
-	// 2d. Question overlay: Go-owned chrome capturing all keys (§8).
-	if a.question != nil {
-		if moveSel(&a.question.sel, len(a.question.q.Options), key) {
+	case "question":
+		qp := a.question
+		if moveSel(&qp.sel, len(qp.q.Options), key) {
 			return nil
 		}
 		switch key {
 		case "enter":
-			if a.question.sel < len(a.question.q.Options) {
-				a.answerQuestion(a.question.q.Options[a.question.sel].Label, true)
+			if qp.sel < len(qp.q.Options) {
+				a.answerQuestion(qp.q.Options[qp.sel].Label, true)
 			} else {
 				a.answerQuestion("", false)
 			}
 		case "esc", "q":
 			a.answerQuestion("", false)
 		}
-		return nil
-	}
-
-	// 3. Active overlay.
-	if len(a.overlays) > 0 {
-		return a.overlayKey(key, keyText(msg))
-	}
-
-	// 4. Keymaps (zemi.keymap.set): single keys, so users attach ctrl/alt
-	// combos; printable keys stay with the composer. An open popup keeps
-	// its keys (tab accepts even though tab is bound).
-	if !a.palette.open && !a.completion.open {
-		if cmd, used := a.keySequence(key); used {
-			return cmd
+	case "overlay":
+		a.overlayKey(key, keyText(msg))
+	default:
+		// Keymaps (zemi.keymap.set) take single keys and bound sequences;
+		// printable keys stay with the composer, and an open popup keeps its
+		// keys (tab accepts even though tab is bound).
+		if a.palette.open || a.completion.open || !a.keySequence(key) {
+			return a.composerKey(key, msg)
 		}
 	}
-
-	// 5. Composer (Go-owned multiline editor + popups).
-	return a.composerKey(key, msg)
+	return nil
 }
 
 // composerKey routes keys to the multiline editor; the completion popup and
@@ -322,28 +295,26 @@ const keySeqTimeout = 1500 * time.Millisecond
 // that starts or continues a bound sequence is held until the sequence
 // completes, esc cancels it, and a key that breaks or outlives it is
 // handled on its own.
-func (a *App) keySequence(key string) (tea.Cmd, bool) {
+func (a *App) keySequence(key string) bool {
 	seq := key
 	if pending := a.keySeq; len(pending) > 0 {
 		a.keySeq = nil
 		if key == "esc" {
-			return nil, true
+			return true
 		}
 		if a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 			seq = strings.Join(append(pending, key), " ")
 		}
 	}
 	if b := a.host.Keymaps.Lookup(seq); b != nil {
-		return a.runRHS(b), true
+		a.runRHS(b)
+		return true
 	}
 	if a.host.Keymaps.IsPrefix(seq) {
 		a.keySeq, a.keySeqAt = strings.Fields(seq), a.now()
-		return nil, true
+		return true
 	}
-	if seq != key {
-		return a.keySequence(key)
-	}
-	return nil, false
+	return seq != key && a.keySequence(key)
 }
 
 // listMove maps list navigation keys (arrows, k/j, and the nvim-style
@@ -361,7 +332,7 @@ func listMove(key string) int {
 // runRHS executes a keymap right-hand side on the ui class under the
 // binding's registration origin (DESIGN §9 attribution), on the background
 // worker.
-func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
+func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
 		err := a.host.RunRHS(context.Background(), b.Origin, b.RHS, "")
 		switch {
@@ -374,7 +345,6 @@ func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
 			a.Notify("error", "keymap "+b.Key, err.Error())
 		}
 	})
-	return nil
 }
 
 // background runs fn in order on one worker goroutine: Lua keymaps and
@@ -456,24 +426,50 @@ func (a *App) modeBase() string {
 	return "manual"
 }
 
+// topChrome names the prompt drawn on top, which takes keys, the wheel,
+// pastes and clicks. It mirrors the splice order in compose: perm over
+// cfgReview, memReview, question, modelPick, trust, then Lua overlays.
+func (a *App) topChrome() string {
+	switch {
+	case a.permAsk != nil:
+		return "perm"
+	case a.cfgReview != nil:
+		return "cfgReview"
+	case a.memReview != nil:
+		return "memReview"
+	case a.question != nil:
+		return "question"
+	case a.modelPick != nil:
+		return "modelPick"
+	case a.trust != nil:
+		return "trust"
+	case len(a.overlays) > 0:
+		return "overlay"
+	}
+	return ""
+}
+
 // wheelChrome scrolls the topmost prompt or list instead of the chat;
 // it reports whether one took the wheel.
 func (a *App) wheelChrome(step int) bool {
 	move := func(sel *int, n int) { *sel = max(0, min(*sel+step, n-1)) }
-	switch {
-	case a.permAsk != nil:
+	switch a.topChrome() {
+	case "perm":
 		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
-	case a.trust != nil:
-	case a.modelPick != nil:
+	case "trust":
+	case "modelPick":
 		move(&a.modelPick.selected, len(a.modelPick.visible))
-	case a.memReview != nil:
+	case "memReview":
 		move(&a.memReview.sel, len(a.memReview.items))
-	case a.cfgReview != nil:
+	case "cfgReview":
 		move(&a.cfgReview.sel, len(a.cfgReview.items))
-	case a.question != nil:
+	case "question":
 		move(&a.question.sel, len(a.question.q.Options))
-	case len(a.overlays) > 0 && !a.overlays[len(a.overlays)-1].o.Input:
+	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
+		if st.o.Input {
+			return false
+		}
 		move(&st.selected, len(st.visible))
 	default:
 		return false
@@ -486,19 +482,18 @@ func (a *App) wheelChrome(step int) bool {
 // composer hidden under it; prompts without text input swallow it.
 func (a *App) pasteChrome(text string) bool {
 	line := strings.Join(strings.Fields(text), " ")
-	switch {
-	case a.permAsk != nil, a.trust != nil, a.memReview != nil, a.cfgReview != nil, a.question != nil:
-	case a.modelPick != nil:
+	switch a.topChrome() {
+	case "":
+		return false
+	case "modelPick":
 		a.modelPick.edit("", line, a.modelPick.texts)
-	case len(a.overlays) > 0:
+	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {
 			st.input.insert(line)
 		} else {
 			st.edit("", line, st.itemText)
 		}
-	default:
-		return false
 	}
 	a.frameGen++
 	return true
