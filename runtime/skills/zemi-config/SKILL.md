@@ -110,6 +110,12 @@ zemi.ui.widget.register({
 })
 ```
 
+Slash commands: `/help`, `/model`, `/mode`, `/effort`, `/new`, `/sessions`, `/resume`,
+`/fork`, `/rewind`, `/export`, `/compact`, `/init`, `/review`, `/agents`, `/tasks`,
+`/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`, `/health`,
+`/errors`, `/quit`. MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
+or `{ url = ... }` in `init.lua`.
+
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure
 and fast: no zemi.* mutations inside it. For the full API see the zemi-lua skill.
 
@@ -121,7 +127,13 @@ subdirectory up to the `.git` root), like `.claude/` or `.crush/`:
 ```
 .zemi/init.lua          entry point: widgets, keymaps, commands, deny/ask rules
 .zemi/lua/<mod>.lua     modules for project code: require("mod")
+.zemi/agents/<n>.md     subagents (frontmatter description, tools, model; body = prompt)
+.zemi/commands/<n>.md   prompt commands: /<n> sends the body ($ARGUMENTS, $1..$9)
+.zemi/workflows/<n>.lua workflows: /workflow <n>
 ```
+
+The same `agents/`, `commands/` and `workflows/` directories work under
+`~/.config/zemi/` for every project.
 
 It loads after the user answers the trust prompt (`y` trust, `n` not now, `d` never for
 this version of the files); any change to files under `.zemi/` asks again. Project code

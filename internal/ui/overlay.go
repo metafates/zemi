@@ -15,27 +15,66 @@ import (
 type overlayState struct {
 	o        hostapi.Overlay
 	itemText []string // rendered item lines (render_item applied at open)
-	selected int      // index into visible
-
-	// query filters the rows as the user types: visible holds the indices
-	// of rows containing every word of it (case-insensitive).
-	query   string
-	visible []int
+	listFilter
 }
 
-func (st *overlayState) refilter() {
-	words := strings.Fields(strings.ToLower(st.query))
-	st.visible = st.visible[:0]
-	for i, text := range st.itemText {
+func (st *overlayState) refilter() { st.apply(st.itemText) }
+
+// listFilter narrows a list as the user types: visible holds the indices of
+// rows containing every word of query (case-insensitive), and selected
+// indexes visible.
+type listFilter struct {
+	query    string
+	visible  []int
+	selected int
+}
+
+func (f *listFilter) apply(texts []string) {
+	words := strings.Fields(strings.ToLower(f.query))
+	f.visible = f.visible[:0]
+	for i, text := range texts {
 		lower, ok := strings.ToLower(text), true
 		for _, w := range words {
 			ok = ok && strings.Contains(lower, w)
 		}
 		if ok {
-			st.visible = append(st.visible, i)
+			f.visible = append(f.visible, i)
 		}
 	}
-	st.selected = max(0, min(st.selected, len(st.visible)-1))
+	f.selected = max(0, min(f.selected, len(f.visible)-1))
+}
+
+// edit applies a filtering key: typed text, backspace, and esc while a
+// query is set (clearing it). It reports whether the key was used.
+func (f *listFilter) edit(key, text string, texts []string) bool {
+	switch {
+	case key == "backspace":
+		if r := []rune(f.query); len(r) > 0 {
+			f.query = string(r[:len(r)-1])
+		}
+	case key == "esc" && f.query != "":
+		f.query = ""
+	case text != "":
+		f.query += text
+	default:
+		return false
+	}
+	f.apply(texts)
+	return true
+}
+
+// filterRows renders the query line (when set) above rows, or a no-match
+// note.
+func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
+	var out [][]hostapi.Segment
+	if f.query != "" {
+		out = append(out, []hostapi.Segment{{Text: "/ ", HL: "Comment"}, {Text: f.query, HL: "Host:Bold"}})
+	}
+	out = append(out, rows...)
+	if len(f.visible) == 0 {
+		out = append(out, []hostapi.Segment{{Text: "  no matches", HL: "Comment"}})
+	}
+	return out
 }
 
 // openOverlay pushes an overlay, rendering its items up front (render_item
@@ -118,20 +157,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) {
 		return nil
 	}
-	switch {
-	case key == "backspace":
-		if r := []rune(st.query); len(r) > 0 {
-			st.query = string(r[:len(r)-1])
-			st.refilter()
-		}
-		return nil
-	case key == "esc" && st.query != "":
-		st.query = ""
-		st.refilter()
-		return nil
-	case text != "" && !(key == "space" && o.Reload != nil):
-		st.query += text
-		st.refilter()
+	if key == "space" && o.Reload != nil {
+		text = "" // space toggles rows in a toggle list
+	}
+	if st.edit(key, text, st.itemText) {
 		return nil
 	}
 	switch key {
@@ -202,14 +231,7 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	for _, i := range st.visible {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
-	var body [][]hostapi.Segment
-	if st.query != "" {
-		body = append(body, []hostapi.Segment{{Text: "/ ", HL: "Comment"}, {Text: st.query, HL: "Host:Bold"}})
-	}
-	body = append(body, listRows(items, st.selected, 10, "Title")...)
-	if len(items) == 0 {
-		body = append(body, []hostapi.Segment{{Text: "  no matches", HL: "Comment"}})
-	}
+	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
 	hints := keyHints("enter", "select", "type", "filter", "esc", "close")
 	if st.o.Reload != nil {
 		hints = keyHints("space", "toggle", "type", "filter", "esc", "close")

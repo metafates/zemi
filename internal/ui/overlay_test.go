@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -72,5 +74,27 @@ func TestOverlayFilter(t *testing.T) {
 	a.overlayKey("enter", "")
 	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
 		t.Fatalf("enter: overlays=%d composer=%q", len(a.overlays), a.composer.text)
+	}
+}
+
+// TestModelPickerFilter: typing narrows the picker by id or display name
+// and enter picks the highlighted match.
+func TestModelPickerFilter(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	answer := make(chan modelPick, 1)
+	a.Update(modelPickMsg{items: []hostapi.ModelOption{
+		{ID: "anthropic/claude-sonnet", Display: "Sonnet"},
+		{ID: "openai/gpt-5", Display: "GPT-5"},
+		{ID: "deepseek/deepseek-chat", Display: "DeepSeek V3"},
+	}, answer: answer})
+	for _, r := range "v3" {
+		a.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if n := len(a.modelPick.visible); n != 1 {
+		t.Fatalf("v3 matches %d models", n)
+	}
+	a.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := <-answer; !got.ok || got.id != "deepseek/deepseek-chat" {
+		t.Fatalf("picked %+v", got)
 	}
 }

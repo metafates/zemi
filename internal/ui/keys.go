@@ -68,18 +68,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if a.modelPick != nil {
-		if moveSel(&a.modelPick.sel, len(a.modelPick.items), key) {
+	if mp := a.modelPick; mp != nil {
+		if key != "j" && key != "k" && moveSel(&mp.selected, len(mp.visible), key) {
+			return nil
+		}
+		if mp.edit(key, keyText(msg), mp.texts) {
 			return nil
 		}
 		switch key {
 		case "enter":
-			if a.modelPick.sel < len(a.modelPick.items) {
-				a.answerPick(a.modelPick.items[a.modelPick.sel].ID, true)
-			} else {
-				a.answerPick("", false)
+			if len(mp.visible) > 0 {
+				a.answerPick(mp.items[mp.visible[mp.selected]].ID, true)
 			}
-		case "esc", "q":
+		case "esc":
 			a.answerPick("", false)
 		}
 		return nil

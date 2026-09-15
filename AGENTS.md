@@ -49,11 +49,14 @@ tests boot with empty dirs, so code that requires them needs explicit setup in t
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:66`) — order
 matters and permissions sit early so no userland code runs before the permanent store loads:
 host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
-builtin commands -> memory + reflector commands -> skills commands ->
+builtin commands -> memory + reflector + config + skills commands -> agents (+ tasks),
+workflow (+ `/review`) and mcp commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
-plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/init.lua` (behind a
-one-time trust prompt that hashes the config tree, refuses symlinks) -> crush.json provider
-import -> `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
+plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/` (`init.lua`,
+`agents/`, `commands/`, `workflows/`; any of them triggers the one-time trust prompt that
+hashes the config tree and refuses symlinks, and trust sets `Host.SetProjectTrusted`) ->
+markdown commands (`commands/*.md`, user then trusted project) -> crush.json provider and
+MCP import -> `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
 its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
 After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
 "Permanent rules" below).
@@ -189,6 +192,56 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 - **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
   `resolveJailed` and `@file` attachments (`expandAttachments`) all rely on it.
 
+### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
+
+- **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
+  are prefixed with the agent name). Definitions: builtin `explore` (read-only tools) and
+  `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
+  `agent`, `workflow`, `todos` or `question` (nesting depth 1). A run is a child session
+  (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
+  context estimate. The delegation guidance lives in `delegationPrompt` (agent.go):
+  without it models rarely delegate.
+- **Workflows** are Lua scripts (model-written via the `workflow` tool, saved under
+  `workflows/`, builtin in `runtime/workflows/`). They run in their **own** gopher-lua
+  state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
+  `agent()`/`parallel()` yield and the scheduler resumes them as subagents finish.
+  Invariants: the script sees only base/string/table/math + the workflow API (no fs,
+  net, `zemi.*`); `agent`/`parallel` are exposed through Lua wrappers because gopher-lua
+  loses resume values on a tail call (`return agent(...)`) of a yielding Go function;
+  yielding inside `pcall` silently kills the coroutine, so both refuse under pcall;
+  concurrency 5, 100 agents per run. The tool asks `tool.workflow` with the script as
+  preview.
+- **Background agents** (`agent` with `background: true`) run detached; the report comes
+  back through `AgentSend` with the body behind `attachMarker`, which both the live
+  transcript (`startTurn`, `deliverSteering`) and resume cut off.
+- **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
+  with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only) or
+  crush.json; they start in the background and stop on `PurgeGeneration`. Tools are
+  `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
+  argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
+  server).
+- **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
+  handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send`
+  and `zemi.command.run` of host commands go through `GoSafe`.
+
+### Rewind, plan mode, composer bridge
+
+- **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a
+  file's pre-turn content (keyed by the turn's user message, first write wins) before
+  `write`/`edit`/`multiedit` touch it. `RewindTo` restores files first and only then
+  truncates messages (checkpoints cascade), so a failed restore leaves the conversation
+  intact. Bash changes are not tracked.
+- **Plan mode** is a permission mode enforced in `tools.Pipeline.check` (`Plan` hook):
+  `fs.write` denied even under allow rules, bash and `mcp.*` allows flip to ask. The
+  prompt section only saves wasted attempts.
+- **Composer bridge**: Lua reads a snapshot the UI publishes (`SetComposerSnapshot` after
+  key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
+  goroutine. Completion popups float over the chat (`floatPopup`), they never reserve
+  rows.
+- **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools
+  pass `tools.SchemaProperties(schema)` and a non-nil `Required`
+  (`TestToolSchemasAreProperties`); strict providers reject anything else.
+
 ### Permanent rules + permissions.lua (internal/hostapi/permissions.go, repo.go)
 
 DESIGN §6.1: `permissions.lua` at `ConfigHome` is **data, not code** — Go generates it via
@@ -255,8 +308,9 @@ next reload, not in-place).
 - **DESIGN.md §12 does not match reality** (it predates the code): the actual layout is
   `internal/tools` (not `internal/agent/tools`) and `internal/perm` (not
   `internal/permission`); `internal/skills` exists, `internal/agent/templates` does not.
-  Trust the tree, not §12; §13 milestones explain what exists (M0-M3 are in; M4 evals and
-  M5 subagents are not).
+  Trust the tree, not §12; §13 milestones explain what exists (M0-M3 are in; from M5,
+  subagents, workflows and the MCP client are in; M4 evals, LSP and the plugin manager are
+  not).
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request
   class. Anything that adds a runtime-mutable member to a namespace must go through the

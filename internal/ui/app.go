@@ -284,7 +284,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frameGen++
 		return a, a.notifyIfAway("zemi needs your approval: " + msg.req.Subject)
 	case modelPickMsg:
-		a.modelPick = &modelPickPrompt{items: msg.items, sel: msg.sel, answer: msg.answer}
+		mp := &modelPickPrompt{items: msg.items, answer: msg.answer}
+		for _, it := range msg.items {
+			mp.texts = append(mp.texts, it.ID+" "+it.Display)
+		}
+		mp.selected = msg.sel
+		mp.apply(mp.texts)
+		a.modelPick = mp
 		a.frameGen++
 	case memReviewMsg:
 		a.memReview = &memReviewPrompt{items: msg.items, actions: map[string]string{}, answer: msg.answer}

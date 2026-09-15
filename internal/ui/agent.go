@@ -30,8 +30,9 @@ type permAskPrompt struct {
 
 type modelPickPrompt struct {
 	items  []hostapi.ModelOption
-	sel    int
+	texts  []string // filter text per item: id and display name
 	answer chan modelPick
+	listFilter
 }
 
 // AgentEvent implements hostapi.UIHooks (called from the turn goroutine).
@@ -309,8 +310,9 @@ func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, heade
 	if len(mp.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "no models registered", HL: "Comment"}})
 	}
-	items := make([]listItem, 0, len(mp.items))
-	for _, it := range mp.items {
+	items := make([]listItem, 0, len(mp.visible))
+	for _, i := range mp.visible {
+		it := mp.items[i]
 		desc := ""
 		if it.Display != "" && it.Display != it.ID {
 			desc = it.Display
@@ -320,8 +322,10 @@ func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, heade
 		}
 		items = append(items, listItem{it.ID, desc})
 	}
-	body = append(body, listRows(items, mp.sel, len(items), "Host:Bold")...)
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("up/down", "move", "enter", "pick", "esc", "cancel"))
+	if len(mp.items) > 0 {
+		body = append(body, mp.filterRows(listRows(items, mp.selected, 12, "Host:Bold"))...)
+	}
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("enter", "pick", "type", "filter", "esc", "cancel"))
 	box := hostBox(" Select model ", "Host:PickTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }
