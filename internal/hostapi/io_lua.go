@@ -5,10 +5,13 @@
 package hostapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -373,6 +377,8 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	h.fsExtraFns(L, tb)
+
 	tb.RawSetString("grep", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
 		if err := h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir); err != nil {
@@ -415,10 +421,16 @@ func (h *Host) resolveJailed(path string, roots []string) (string, error) {
 	return resolved, nil
 }
 
+// jailedGlob matches project-relative paths: * and ? stay within one path
+// segment, ** spans directories ("**/*.go" matches at any depth).
 func (h *Host) jailedGlob(pattern string) ([]string, error) {
+	re, err := globPathRegexp(pattern)
+	if err != nil {
+		return nil, err
+	}
 	var out []string
 	root := h.Dirs.ProjectDir
-	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip unreadable entries
 		}
@@ -432,13 +444,36 @@ func (h *Host) jailedGlob(pattern string) ([]string, error) {
 		if err != nil {
 			return nil
 		}
-		if ok, _ := filepath.Match(pattern, rel); ok {
+		if re.MatchString(filepath.ToSlash(rel)) {
 			out = append(out, rel)
 		}
 		return nil
 	})
 	sort.Strings(out)
 	return out, err
+}
+
+func globPathRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(pattern); i++ {
+		switch c := pattern[i]; {
+		case strings.HasPrefix(pattern[i:], "**/"):
+			b.WriteString("(?:.*/)?")
+			i += 2
+		case strings.HasPrefix(pattern[i:], "**"):
+			b.WriteString(".*")
+			i++
+		case c == '*':
+			b.WriteString("[^/]*")
+		case c == '?':
+			b.WriteString("[^/]")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	b.WriteString("$")
+	return regexp.Compile(b.String())
 }
 
 type grepHit struct {
@@ -480,126 +515,210 @@ func (h *Host) jailedGrep(re *regexp.Regexp) []grepHit {
 // ---------------------------------------------------------------------------
 // zemi.http
 
+func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	// request({ method, url, headers, body, timeout_ms, on_done }) -> handle
+	// with wait(); the result is { status, body, headers } or, from wait(),
+	// nil, err. Each method is its own gate subject (lua.http.<method>).
+	tb.RawSetString("request", L.NewFunction(func(L *glua.LState) int {
+		spec := L.CheckTable(1)
+		req := httpReq{
+			method:  strings.ToUpper(rawString(spec, "method")),
+			url:     rawString(spec, "url"),
+			body:    rawString(spec, "body"),
+			headers: map[string]string{},
+		}
+		if req.method == "" {
+			req.method = "GET"
+		}
+		if req.url == "" {
+			L.RaiseError("zemi.http.request: url is required")
+			return 0
+		}
+		if hs, ok := spec.RawGetString("headers").(*glua.LTable); ok {
+			hs.ForEach(func(k, v glua.LValue) {
+				req.headers[k.String()] = v.String()
+			})
+		}
+		if h.RT.CurrentOrigin() != lua.OriginUser {
+			for k := range req.headers {
+				switch strings.ToLower(k) {
+				case "authorization", "proxy-authorization", "cookie":
+					L.RaiseError("zemi.http.request: only user config may set the %s header", k)
+					return 0
+				}
+			}
+		}
+		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
+			req.timeout = time.Duration(ms) * time.Millisecond
+		}
+		onDone, _ := spec.RawGetString("on_done").(*glua.LFunction)
+		return h.httpStart(L, req, onDone)
+	}))
+	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
+		var onDone *glua.LFunction
+		if opts, ok := L.Get(2).(*glua.LTable); ok {
+			onDone, _ = opts.RawGetString("on_done").(*glua.LFunction)
+		}
+		return h.httpStart(L, httpReq{method: "GET", url: L.CheckString(1), headers: map[string]string{}}, onDone)
+	}))
+	return tb
+}
+
+type httpReq struct {
+	method, url, body string
+	headers           map[string]string
+	timeout           time.Duration
+}
+
 type httpHandle struct {
 	done chan struct{}
 	res  map[string]any
 	err  string
 }
 
-func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		url := L.CheckString(1)
-		if err := h.luaGate(L, "lua.http.get", url); err != nil {
+// httpStart gates the request, runs it off the interpreter and pushes the
+// handle.
+func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
+	subject := "lua.http." + strings.ToLower(req.method)
+	if err := h.luaGate(L, subject, req.url); err != nil {
+		return 0
+	}
+	hnd := &httpHandle{done: make(chan struct{})}
+	gen := h.currentGen()
+	h.GoSafe(subject, func() {
+		res, err := h.httpFetch(subject, req)
+		hnd.res = res
+		if err != nil {
+			hnd.err = err.Error()
+		}
+		close(hnd.done)
+		if onDone != nil {
+			payload := map[string]any{"url": req.url}
+			if err != nil {
+				payload["error"] = err.Error()
+			} else {
+				maps.Copy(payload, res)
+			}
+			h.callLuaAsync(gen, onDone, payload)
+		}
+	})
+	handle := L.NewTable()
+	handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
+		select {
+		case <-hnd.done:
+		case <-time.After(120 * time.Second):
+			L.RaiseError("zemi.http: wait timed out")
 			return 0
 		}
-		hnd := &httpHandle{done: make(chan struct{})}
-		onDone := glua.LNil
-		if opts, ok := L.Get(2).(*glua.LTable); ok {
-			onDone = opts.RawGetString("on_done")
+		if hnd.err != "" {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(hnd.err))
+			return 2
 		}
-		gen := h.currentGen()
-		go func() {
-			res, err := h.httpFetch(url)
-			hnd.res = res
-			if err != nil {
-				hnd.err = err.Error()
-			}
-			close(hnd.done)
-			if fn, ok := onDone.(*glua.LFunction); ok {
-				payload := map[string]any{"url": url}
-				if err != nil {
-					payload["error"] = err.Error()
-				} else {
-					for k, v := range res {
-						payload[k] = v
-					}
-				}
-				_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-					if h.currentGen() != gen {
-						return nil, nil
-					}
-					base := L.GetTop()
-					L.Push(fn)
-					L.Push(lua.FromGo(L, payload))
-					if perr := L.PCall(1, 0, nil); perr != nil {
-						L.SetTop(base)
-						return nil, perr
-					}
-					return nil, nil
-				})
-			}
-		}()
-		handle := L.NewTable()
-		handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
-			select {
-			case <-hnd.done:
-			case <-time.After(120 * time.Second):
-				L.RaiseError("zemi.http: wait timed out")
-				return 0
-			}
-			if hnd.err != "" {
-				L.Push(glua.LNil)
-				L.Push(glua.LString(hnd.err))
-				return 2
-			}
-			L.Push(lua.FromGo(L, hnd.res))
-			return 1
-		}))
-		L.Push(handle)
+		L.Push(lua.FromGo(L, hnd.res))
 		return 1
 	}))
-	return tb
+	L.Push(handle)
+	return 1
 }
 
-// httpFetch performs the GET with size and time caps; redirects re-gate
-// through the permission store (deny/ask refuses the hop, §6.5).
-func (h *Host) httpFetch(url string) (map[string]any, error) {
+// httpFetch performs the request with size and time caps; redirects re-gate
+// through the permission store under the same subject (deny/ask refuses the
+// hop, §6.5).
+func (h *Host) httpFetch(subject string, r httpReq) (map[string]any, error) {
+	timeout := r.timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("too many redirects")
 			}
-			o := h.Perm.Evaluate("lua.http.get", req.URL.String(), "user")
+			o := h.Perm.Evaluate(subject, req.URL.String(), "user")
 			if o.Decision != perm.Allow {
 				return fmt.Errorf("redirect to %s refused by the permission gate", req.URL)
 			}
 			return nil
 		},
 	}
-	resp, err := client.Get(url)
+	var body io.Reader
+	if r.body != "" {
+		body = strings.NewReader(r.body)
+	}
+	req, err := http.NewRequest(r.method, r.url, body)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range r.headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
+	headers := map[string]any{}
+	for k := range resp.Header {
+		headers[k] = resp.Header.Get(k)
+	}
 	return map[string]any{
-		"status": resp.StatusCode,
-		"body":   string(body),
+		"status":  resp.StatusCode,
+		"body":    string(data),
+		"headers": headers,
 	}, nil
+}
+
+// callLuaAsync runs fn(args...) on the interpreter from a host goroutine,
+// dropping the call when the generation changed; a failing callback is
+// logged and shown in /errors.
+func (h *Host) callLuaAsync(gen Gen, fn *glua.LFunction, args ...any) {
+	_, err := h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		if h.currentGen() != gen {
+			return nil, nil
+		}
+		L.Push(fn)
+		for _, a := range args {
+			L.Push(lua.FromGo(L, a))
+		}
+		return nil, L.PCall(len(args), 0, nil)
+	})
+	if err != nil && !isQuietLuaErr(err) {
+		h.Log.Warn("lua", "callback failed", map[string]any{"error": err.Error()})
+		h.RecordError("lua callback", err.Error())
+	}
+}
+
+func isQuietLuaErr(err error) bool {
+	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
 // ---------------------------------------------------------------------------
 // zemi.job
 
 type jobHandle struct {
+	id     int64
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
 	done   chan struct{}
+	mu     sync.Mutex
 	stdout strings.Builder
 	stderr strings.Builder
 	code   int
 	err    string
-	mu     sync.Mutex
 }
 
 func (j *jobHandle) snapshot() map[string]any {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return map[string]any{
-		"stdout": j.stdout.String(), "stderr": j.stderr.String(),
+		"id": j.id, "stdout": j.stdout.String(), "stderr": j.stderr.String(),
 		"code": j.code, "error": j.err,
 	}
 }
@@ -623,22 +742,60 @@ func jobEnvFilters(extras map[string]any) ([]string, error) {
 	return out, nil
 }
 
+// lineSink batches output lines for a Lua callback: a line waits at most
+// 30ms, and one delivery runs at a time, so a chatty process cannot flood
+// the queue.
+type lineSink struct {
+	h         *Host
+	gen       Gen
+	fn        *glua.LFunction
+	mu        sync.Mutex
+	pending   []string
+	scheduled bool
+	wg        sync.WaitGroup
+}
+
+func (s *lineSink) add(line string) {
+	s.mu.Lock()
+	s.pending = append(s.pending, line)
+	schedule := !s.scheduled
+	s.scheduled = true
+	s.mu.Unlock()
+	if !schedule {
+		return
+	}
+	s.wg.Add(1)
+	s.h.GoSafe("job output", func() {
+		defer s.wg.Done()
+		time.Sleep(30 * time.Millisecond)
+		s.mu.Lock()
+		lines := s.pending
+		s.pending, s.scheduled = nil, false
+		s.mu.Unlock()
+		s.h.callLuaAsync(s.gen, s.fn, lines)
+	})
+}
+
+var jobSeq atomic.Int64
+
 func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	start := func(L *glua.LState) (*exec.Cmd, *jobHandle, string) {
+	// start runs spec = { cmd, args, env, on_stdout(lines), on_stderr(lines),
+	// on_exit(result) }; output is also buffered (1 MiB) for wait().
+	start := func(L *glua.LState) *jobHandle {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
-			return nil, nil, ""
+			return nil
 		}
 		cmdName := rawString(spec, "cmd")
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
-			return nil, nil, ""
+			return nil
 		}
 		if err := h.luaGate(L, "lua.job.start", cmdName); err != nil {
-			return nil, nil, ""
+			return nil
 		}
 		var args []string
 		if list, ok := spec.RawGetString("args").(*glua.LTable); ok {
@@ -650,12 +807,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		if perm.Normalize(cmdName).ForceAsk != "" {
 			L.RaiseError("zemi.job.start: command is refused by the environment gate")
-			return nil, nil, ""
+			return nil
 		}
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
-			v, err := lua.ToGo(envT)
-			if err == nil {
+			if v, err := lua.ToGo(envT); err == nil {
 				if m, ok := v.(map[string]any); ok {
 					extras = m
 				}
@@ -664,35 +820,57 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		env, err := jobEnvFilters(extras)
 		if err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil, nil, ""
+			return nil
 		}
 		cmd := exec.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
-		jh := &jobHandle{done: make(chan struct{})}
+		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		stdout, errS := cmd.StdoutPipe()
 		stderr, errE := cmd.StderrPipe()
-		if errS != nil || errE != nil {
+		stdin, errI := cmd.StdinPipe()
+		if errS != nil || errE != nil || errI != nil {
 			L.RaiseError("zemi.job.start: pipes unavailable")
-			return nil, nil, ""
+			return nil
 		}
+		jh.stdin = stdin
 		if err := cmd.Start(); err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
-			return nil, nil, ""
+			return nil
 		}
-		go func() {
-			b, _ := io.ReadAll(io.LimitReader(stdout, 1<<20))
-			jh.mu.Lock()
-			jh.stdout.Write(b)
-			jh.mu.Unlock()
-		}()
-		go func() {
-			b, _ := io.ReadAll(io.LimitReader(stderr, 1<<20))
-			jh.mu.Lock()
-			jh.stderr.Write(b)
-			jh.mu.Unlock()
-		}()
-		go func() {
+		gen := h.currentGen()
+		fnOf := func(key string) *lineSink {
+			if fn, ok := spec.RawGetString(key).(*glua.LFunction); ok {
+				return &lineSink{h: h, gen: gen, fn: fn}
+			}
+			return nil
+		}
+		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
+		var readers sync.WaitGroup
+		read := func(r io.Reader, buf *strings.Builder, sink *lineSink) {
+			readers.Add(1)
+			h.GoSafe("job reader", func() {
+				defer readers.Done()
+				sc := bufio.NewScanner(r)
+				sc.Buffer(make([]byte, 64<<10), 1<<20)
+				for sc.Scan() {
+					line := sc.Text()
+					jh.mu.Lock()
+					if buf.Len() < 1<<20 {
+						buf.WriteString(line + "\n")
+					}
+					jh.mu.Unlock()
+					if sink != nil {
+						sink.add(line)
+					}
+				}
+			})
+		}
+		outSink, errSink := fnOf("on_stdout"), fnOf("on_stderr")
+		read(stdout, &jh.stdout, outSink)
+		read(stderr, &jh.stderr, errSink)
+		h.GoSafe("job wait", func() {
+			readers.Wait()
 			err := cmd.Wait()
 			jh.mu.Lock()
 			if err != nil {
@@ -704,33 +882,87 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			jh.mu.Unlock()
 			close(jh.done)
-			h.EmitAsync("job.exit", map[string]any{"cmd": cmdName, "code": jh.code})
-		}()
-		return cmd, jh, ""
+			// on_exit follows every output callback
+			for _, s := range []*lineSink{outSink, errSink} {
+				if s != nil {
+					s.wg.Wait()
+				}
+			}
+			if onExit != nil {
+				h.callLuaAsync(gen, onExit, jh.snapshot())
+			}
+			h.EmitAsync("job.exit", map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
+		})
+		return jh
+	}
+
+	wait := func(L *glua.LState, jh *jobHandle, timeout time.Duration) int {
+		select {
+		case <-jh.done:
+			L.Push(lua.FromGo(L, jh.snapshot()))
+			return 1
+		case <-time.After(timeout):
+			L.Push(glua.LNil)
+			L.Push(glua.LString("timeout"))
+			return 2
+		}
 	}
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
-		_, jh, _ := start(L)
+		jh := start(L)
 		if jh == nil {
 			return 0
 		}
 		handle := L.NewTable()
+		handle.RawSetString("id", glua.LNumber(jh.id))
+		// wait([timeout_ms]) blocks the interpreter: keep it for tools and
+		// short commands, and prefer on_exit elsewhere
 		handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
-			<-jh.done
-			L.Push(lua.FromGo(L, jh.snapshot()))
+			timeout := 30 * time.Second
+			if ms := L.OptInt(1, 0); ms > 0 {
+				timeout = time.Duration(ms) * time.Millisecond
+			}
+			return wait(L, jh, timeout)
+		}))
+		handle.RawSetString("kill", L.NewFunction(func(L *glua.LState) int {
+			_ = jh.cmd.Process.Kill()
+			return 0
+		}))
+		handle.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
+			if _, err := io.WriteString(jh.stdin, L.CheckString(1)); err != nil {
+				L.Push(glua.LNil)
+				L.Push(glua.LString(err.Error()))
+				return 2
+			}
+			L.Push(glua.LTrue)
 			return 1
+		}))
+		handle.RawSetString("close_stdin", L.NewFunction(func(L *glua.LState) int {
+			_ = jh.stdin.Close()
+			return 0
 		}))
 		L.Push(handle)
 		return 1
 	}))
 
+	// out runs a command to completion (spec.timeout_ms, default 60s, kills
+	// it); it blocks the interpreter, so it belongs in tools.
 	tb.RawSetString("out", L.NewFunction(func(L *glua.LState) int {
-		_, jh, _ := start(L)
+		jh := start(L)
 		if jh == nil {
 			return 0
 		}
-		<-jh.done
-		L.Push(lua.FromGo(L, jh.snapshot()))
+		_ = jh.stdin.Close()
+		timeout := 60 * time.Second
+		if spec, ok := L.Get(1).(*glua.LTable); ok {
+			if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
+				timeout = time.Duration(ms) * time.Millisecond
+			}
+		}
+		if n := wait(L, jh, timeout); n == 2 {
+			_ = jh.cmd.Process.Kill()
+			return 2
+		}
 		return 1
 	}))
 

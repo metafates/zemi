@@ -52,7 +52,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.6.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.7.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		for _, fn in ipairs({ "set", "del", "get", "list" }) do
@@ -81,6 +81,13 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.composer[fn]) == "function", "zemi.composer." .. fn .. " missing")
 		end
 		assert(type(zemi.event.off) == "function", "zemi.event.off missing")
+		assert(type(zemi.http.request) == "function", "zemi.http.request missing")
+		for _, fn in ipairs({ "del", "run" }) do
+			assert(type(zemi.command[fn]) == "function", "zemi.command." .. fn .. " missing")
+		end
+		for _, fn in ipairs({ "list", "stat", "exists", "mkdir", "remove" }) do
+			assert(type(zemi.fs[fn]) == "function", "zemi.fs." .. fn .. " missing")
+		end
 		assert(type(zemi.mcp.add) == "function" and type(zemi.mcp.list) == "function", "zemi.mcp missing")
 		for _, fn in ipairs({ "list", "new", "open", "todos", "rewind" }) do
 			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
@@ -260,7 +267,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.6.0", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.7.0", "interpreter wedged after veto timeout")
 	`)
 }
 

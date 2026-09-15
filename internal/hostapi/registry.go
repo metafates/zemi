@@ -170,6 +170,22 @@ func (r *CommandRegistry) List() []*Command {
 	return out
 }
 
+// Remove drops a command, refusing one registered by a higher-trust origin
+// than the caller; it reports whether one was removed.
+func (r *CommandRegistry) Remove(name string, caller lua.Origin) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.commands[canonical(name)]
+	if !ok {
+		return false, nil
+	}
+	if c.Origin.Rank() > caller.Rank() {
+		return false, fmt.Errorf("command /%s belongs to %s config", c.Name, c.Origin)
+	}
+	delete(r.commands, canonical(name))
+	return true, nil
+}
+
 func (r *CommandRegistry) Purge() {
 	r.mu.Lock()
 	r.commands = map[string]*Command{}

@@ -82,6 +82,62 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
+	// del(name) removes a command registered by this origin or a
+	// lower-trust one; it returns whether one was removed.
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.command.del") {
+			return 0
+		}
+		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin())
+		if err != nil {
+			L.RaiseError("zemi.command.del: %v", err)
+			return 0
+		}
+		L.Push(glua.LBool(ok))
+		return 1
+	}))
+
+	// run(name [, args]) runs a command as if typed. A Lua command runs
+	// right here under its own origin; a host command runs off the
+	// interpreter (it may start a turn), so run returns before it finishes.
+	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.command.run") {
+			return 0
+		}
+		name, args := L.CheckString(1), L.OptString(2, "")
+		cmd := h.Commands.Lookup(name)
+		if cmd == nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString("not a command: " + name))
+			return 2
+		}
+		if cmd.GoFn != nil {
+			h.GoSafe("command "+name, func() {
+				if err := cmd.GoFn(h, args); err != nil {
+					h.Notify("error", "/"+name, err.Error())
+				}
+			})
+			L.Push(glua.LTrue)
+			return 1
+		}
+		if err := nargsOK(cmd.NArgs, args); err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		h.RT.PushFrame(cmd.Origin, cmd.Path)
+		defer h.RT.PopFrame()
+		L.Push(cmd.Fn)
+		L.Push(commandArgs(L, args))
+		if err := L.PCall(1, 0, nil); err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		L.Push(glua.LTrue)
+		return 1
+	}))
+
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, c := range h.Commands.List() {
@@ -173,14 +229,7 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 		defer h.RT.PopFrame()
 		base := L.GetTop()
 		L.Push(cmd.Fn)
-		args := L.NewTable()
-		args.RawSetString("args", glua.LString(argString))
-		list := L.NewTable()
-		for i, f := range strings.Fields(argString) {
-			list.RawSetInt(i+1, glua.LString(f))
-		}
-		args.RawSetString("list", list)
-		L.Push(args)
+		L.Push(commandArgs(L, argString))
 		if err := L.PCall(1, 0, nil); err != nil {
 			L.SetTop(base)
 			return nil, err
@@ -188,6 +237,18 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 		return nil, nil
 	})
 	return err
+}
+
+// commandArgs is a command handler's argument: { args = raw, list = words }.
+func commandArgs(L *glua.LState, argString string) *glua.LTable {
+	args := L.NewTable()
+	args.RawSetString("args", glua.LString(argString))
+	list := L.NewTable()
+	for i, f := range strings.Fields(argString) {
+		list.RawSetInt(i+1, glua.LString(f))
+	}
+	args.RawSetString("list", list)
+	return args
 }
 
 // RunRHS executes a keymap right-hand side on the ui class, attributed to

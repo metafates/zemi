@@ -41,7 +41,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | --- | --- |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()` |
-| `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `list` |
+| `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
@@ -56,7 +56,10 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules` |
 | `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |
-| `zemi.fs`, `zemi.http`, `zemi.job`, `zemi.timer` | `read`, `write`, `glob`, `grep`; `get`; `start`, `out`; `set` (0 ms = next tick), `every` |
+| `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
+| `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })` |
+| `zemi.job` | `start({ cmd, args, env, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }`; `out(spec)` runs to completion |
+| `zemi.timer` | `set(ms, fn)` (0 ms = next tick), `every(ms, fn)` -> `{ stop }` |
 | `zemi.state`, `zemi.env` | `put`, `get` (persisted kv); `get` (filtered environment) |
 
 `require("zemi.util")` adds `split`, `trim`, `startswith`, `endswith`, `keys`, `map`,
@@ -82,10 +85,10 @@ zemi.ui.widget.register({
 })
 
 -- Background work
-zemi.event.on("job.exit", function(ev)        -- ev.cmd, ev.code
-  zemi.notify({ title = ev.cmd, body = ev.code == 0 and "pass" or "fail" })
-end)
-zemi.job.start({ cmd = "go", args = { "test", "./..." } })
+zemi.job.start({ cmd = "go", args = { "test", "./..." },
+  on_stdout = function(lines) zemi.log.info(table.concat(lines, "\n")) end,
+  on_exit = function(res) zemi.notify({ title = "go test", body = res.code == 0 and "pass" or "fail" }) end,
+})
 local t = zemi.timer.every(60000, function() zemi.log.info("tick") end)   -- t:stop()
 
 -- A tool the model can call
