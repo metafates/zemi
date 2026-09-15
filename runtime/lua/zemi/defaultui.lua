@@ -359,6 +359,16 @@ zemi.ui.widget.register({
         mark, hl = "✗", "AgentToolErr"
       end
       name = name or "?"
+      -- paths read from the project root
+      local cwd = ctx.cwd or ""
+      if cwd ~= "" and input then
+        local at = 1
+        while true do
+          local s, e = input:find(cwd .. "/", at, true)
+          if not s then break end
+          input, at = input:sub(1, s - 1) .. input:sub(e + 1), s
+        end
+      end
       if name == "skill" then
         name = ({ ok = "loaded skill", err = "skill failed" })[status] or "loading skill"
         if status == "ok" then mark, hl = "✦", "Title" end

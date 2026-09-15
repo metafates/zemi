@@ -37,9 +37,25 @@ func TestSafeCommand(t *testing.T) {
 		{"go env -w GOFLAGS=-mod=mod", false},
 		{"npm install left-pad", false},
 		{"ls\nrm -rf /", false},
+		{"awk '{print $1}' go.mod", true},
+		{"git log --oneline HEAD~3..HEAD", true},
+		{"cat ~/.ssh/id_rsa", false},
+		{"cat $HOME/.ssh/id_rsa", false},
+		{`grep -r "$(whoami)" .`, false},
+		{"cat /etc/passwd", false},
+		{"ls ../other-project", false},
+		{"git -C /tmp status", false},
+		{"rg --file=/etc/shadow x", false},
 	} {
-		if got := SafeCommand(c.cmd); got != c.safe {
+		if got := SafeCommand(c.cmd, nil); got != c.safe {
 			t.Errorf("SafeCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
+	}
+}
+
+func TestSafeCommandPathCheck(t *testing.T) {
+	notSecret := func(arg string) bool { return arg != ".env" }
+	if SafeCommand("cat .env", notSecret) || !SafeCommand("cat main.go", notSecret) {
+		t.Fatal("pathOK must decide file arguments")
 	}
 }

@@ -1486,7 +1486,7 @@ func (h *Host) askHook() tools.Asker {
 		case "yolo":
 			return resolved(true, "mode:yolo")
 		case "plan":
-			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg) {
+			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, h.safeCommandPath) {
 				return resolved(true, "mode:plan")
 			}
 		case "auto":

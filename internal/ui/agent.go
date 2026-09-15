@@ -7,6 +7,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -326,7 +327,7 @@ func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH
 	inner := max(min(w-4, maxW)-4, 20)
 	blank := []hostapi.Segment{{Text: ""}}
 
-	verb, target := permTitle(req)
+	verb, target := permTitle(req, a.host.Dirs.ProjectDir)
 	head := []hostapi.Segment{{Text: verb, HL: "Host:Bold"}}
 	if target != "" {
 		head = append(head, hostapi.Segment{Text: "  " + target, HL: "Host:Value"})
@@ -395,7 +396,15 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 }
 
 // permTitle names what the request does, and on what.
-func permTitle(req hostapi.PermRequest) (verb, target string) {
+func permTitle(req hostapi.PermRequest, root string) (verb, target string) {
+	verb, target = permTitleAbs(req)
+	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
+		target = rel
+	}
+	return verb, target
+}
+
+func permTitleAbs(req hostapi.PermRequest) (verb, target string) {
 	switch {
 	case req.Subject == "tool.bash":
 		return "Run a command", ""

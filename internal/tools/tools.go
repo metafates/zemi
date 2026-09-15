@@ -115,7 +115,7 @@ func (p *Pipeline) check(req Request) Verdict {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
-		case plan && req.Subject == "tool.bash" && perm.SafeCommand(req.Arg):
+		case plan && req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "plan mode: commands that change things ask")
 		}

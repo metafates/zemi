@@ -75,6 +75,9 @@ func TestAutoModeLocal(t *testing.T) {
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, "main.go")}, true},
 		{tools.Request{Subject: "tool.bash", Arg: "git status && go test ./..."}, true},
 		{tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}, false},
+		{tools.Request{Subject: "tool.bash", Arg: "head -5 " + filepath.Join(h.Dirs.ProjectDir, "README.md")}, true},
+		{tools.Request{Subject: "tool.bash", Arg: "cat ~/.ssh/id_rsa"}, false},
+		{tools.Request{Subject: "tool.bash", Arg: "cat .env"}, false},
 	} {
 		asked := len(ui.asked)
 		allowed, _ := ask(c.req)

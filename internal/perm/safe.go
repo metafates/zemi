@@ -8,20 +8,68 @@ import (
 
 // SafeCommand reports whether a bash command only reads, builds or tests:
 // every segment runs an allowlisted program with harmless arguments, nothing
-// is written through a redirect, and no command substitution runs. Auto mode
-// approves these without asking.
-func SafeCommand(cmd string) bool {
-	for _, bad := range []string{"`", "$(", "<(", ">("} {
-		if strings.Contains(cmd, bad) {
-			return false
-		}
+// is written through a redirect, the shell expands nothing, and every
+// argument passes pathOK, so a read-only program cannot reach secrets or
+// files outside the project. A nil pathOK refuses absolute, home and parent
+// paths. Auto and plan mode run these without asking.
+func SafeCommand(cmd string, pathOK func(arg string) bool) bool {
+	if expands(cmd) {
+		return false
 	}
 	n := Normalize(cmd)
 	if n.Fail != "" || n.ForceAsk != "" || len(n.WritePaths) > 0 || len(n.Segments) == 0 {
 		return false
 	}
 	for _, seg := range n.Segments {
-		if !safeSegment(strings.Fields(seg)) {
+		f := strings.Fields(seg)
+		if !safeSegment(f) || (len(f) > 1 && !safeArgs(f[1:], pathOK)) {
+			return false
+		}
+	}
+	return true
+}
+
+// expands reports whether the shell would substitute anything: a backtick,
+// $ or process substitution outside single quotes.
+func expands(cmd string) bool {
+	inSingle, inDouble := false, false
+	for i := 0; i < len(cmd); i++ {
+		switch c := cmd[i]; {
+		case inSingle:
+			inSingle = c != '\''
+		case c == '\\':
+			i++
+		case c == '`' || c == '$':
+			return true
+		case c == '"':
+			inDouble = !inDouble
+		case c == '\'' && !inDouble:
+			inSingle = true
+		case !inDouble && (c == '<' || c == '>') && i+1 < len(cmd) && cmd[i+1] == '(':
+			return true
+		}
+	}
+	return false
+}
+
+// safeArgs checks every argument (and every --flag=value) that could name a
+// file.
+func safeArgs(args []string, pathOK func(string) bool) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			_, v, ok := strings.Cut(a, "=")
+			if !ok {
+				continue
+			}
+			a = v
+		}
+		switch {
+		case a == "":
+		case pathOK != nil:
+			if !pathOK(a) {
+				return false
+			}
+		case strings.HasPrefix(a, "/"), strings.HasPrefix(a, "~"), a == "..", strings.HasPrefix(a, "../"), strings.Contains(a, "/../"):
 			return false
 		}
 	}
