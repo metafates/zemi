@@ -183,8 +183,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				toolRow[p.ToolCallID] = len(tr)
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok"})
 			case fantasy.ToolResultPart:
-				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeError {
-					tr[i].Status = "err"
+				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
+					tr[i].Output = outputTail(agent.ToolOutput(p.Output))
+					if p.Output.GetType() == fantasy.ToolResultContentTypeError {
+						tr[i].Status = "err"
+					}
 				}
 			}
 		}

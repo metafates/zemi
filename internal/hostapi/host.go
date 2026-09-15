@@ -79,7 +79,21 @@ type ChatMessage struct {
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
 	Diff   string // file tool rows: the applied change as "- "/"+ " lines
+	Output string // tool rows: the last lines of the result (outputTail)
 	Stat   *TurnStat
+}
+
+// outputTail keeps the last 10 lines of a tool result, each capped at 300
+// runes and sanitized, for the transcript row.
+func outputTail(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > 10 {
+		lines = lines[len(lines)-10:]
+	}
+	for i, l := range lines {
+		lines[i] = sanitize.String(truncRunes(l, 300))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // TurnStat summarizes one completed agent turn: token counts and wall
@@ -729,6 +743,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 			row.RawSetString("elapsed", glua.LNumber(time.Since(t.Started).Seconds()))
 		}
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
+		row.RawSetString("output", glua.LString(t.Output))
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
@@ -744,6 +759,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("detail", glua.LString(m.Detail))
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
+		row.RawSetString("output", glua.LString(m.Output))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))

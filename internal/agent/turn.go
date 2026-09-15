@@ -165,11 +165,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnToolResult: func(res fantasy.ToolResultContent) error {
-			outText := ""
-			if txt, isText := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result); isText {
-				outText = txt.Text
-			}
-			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), outText)
+			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result))
 			return nil
 		},
 		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
@@ -305,6 +301,18 @@ func interleave(head, resp []fantasy.Message, steered []steeredMsg) []fantasy.Me
 		out = append(out, steered[i].msg)
 	}
 	return out
+}
+
+// ToolOutput is the text of a tool result: the output, or the error message
+// of a failed call.
+func ToolOutput(c fantasy.ToolResultOutputContent) string {
+	if txt, ok := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](c); ok {
+		return txt.Text
+	}
+	if e, ok := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentError](c); ok && e.Error != nil {
+		return e.Error.Error()
+	}
+	return ""
 }
 
 func isErrResult(c fantasy.ToolResultContent) bool {

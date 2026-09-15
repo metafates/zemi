@@ -71,6 +71,7 @@ type StreamTool struct {
 	Started time.Time
 	Detail  string // live progress line (subagents, workflows)
 	Diff    string // file tools: the change as "- "/"+ " lines
+	Output  string // the last lines of the result (outputTail)
 	Name    string
 	Input   string
 	Status  string // "run", "ok", "err"
@@ -743,6 +744,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
 			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+			ag.tools[i].Output = outputTail(output)
 			if !ok {
 				ag.tools[i].Diff = "" // the change did not happen
 			}
@@ -830,7 +832,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		if status != "ok" {
 			t.Diff = ""
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Diff: t.Diff})
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)

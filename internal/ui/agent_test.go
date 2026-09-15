@@ -600,20 +600,23 @@ func TestToolRows(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
 		{Name: "read", Input: "b.go", Status: "ok"},
-		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok"},
+		{Name: "bash", Input: "go vet ./...", Label: "Vet the code", Status: "ok", Output: "vet clean"},
 		{Name: "edit", Input: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7 +7 @@\n-old\n+new"},
-		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err"},
+		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err", Output: "--- FAIL: TestX"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./..."} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
+	if strings.Contains(frame, "vet clean") {
+		t.Fatalf("command output shows only with ctrl+o:\n%s", frame)
+	}
 	host.ToggleReasoning()
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
 }
