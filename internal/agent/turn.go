@@ -1,0 +1,179 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+
+	"charm.land/fantasy"
+)
+
+// StreamHooks receives streaming updates; implementations must be safe
+// to call from the streaming goroutine.
+type StreamHooks interface {
+	TextDelta(text string)
+	ReasoningDelta(text string)
+	ToolCallStart(id, name, input string)
+	ToolCallEnd(id, name string, ok bool, output string)
+	TurnDone(err error, usage fantasy.Usage)
+}
+
+// PersistFunc receives every message of the turn (user first, then the
+// step messages) as serializable fantasy messages; role is the message
+// role.
+type PersistFunc func(role string, msg fantasy.Message) error
+
+// Runner runs one conversation: history in, streaming turns out. Send is
+// safe for one concurrent turn; a second Send while one runs returns
+// ErrTurnActive (the UI steers via TurnInput instead, DESIGN §8).
+type Runner struct {
+	mu          sync.Mutex
+	agent       fantasy.Agent
+	History     []fantasy.Message
+	Hooks       StreamHooks
+	Persist     PersistFunc
+	Temperature *float64
+
+	active bool
+	cancel context.CancelFunc
+}
+
+// ErrTurnActive is returned when a turn is already running.
+var ErrTurnActive = fmt.Errorf("agent: a turn is already active")
+
+// NewRunner builds a runner over a resolved model.
+func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
+	opts := []fantasy.AgentOption{}
+	if system != "" {
+		opts = append(opts, fantasy.WithSystemPrompt(system))
+	}
+	if len(tools) > 0 {
+		opts = append(opts, fantasy.WithTools(tools...))
+	}
+	return &Runner{agent: fantasy.NewAgent(model, opts...)}
+}
+
+// Cancel aborts the active turn, if any.
+func (r *Runner) Cancel() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancel != nil {
+		r.cancel()
+	}
+}
+
+// Active reports whether a turn is running.
+func (r *Runner) Active() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.active
+}
+
+// Send streams one turn. The user message is appended to history,
+// persisted, and the agent streams; step messages are appended and
+// persisted as they complete.
+func (r *Runner) Send(ctx context.Context, userText string) error {
+	r.mu.Lock()
+	if r.active {
+		r.mu.Unlock()
+		return ErrTurnActive
+	}
+	r.active = true
+	tctx, cancel := context.WithCancel(ctx)
+	r.cancel = cancel
+	hooks := r.Hooks
+	persist := r.Persist
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		r.active = false
+		r.cancel = nil
+		r.mu.Unlock()
+		cancel()
+	}()
+
+	userMsg := fantasy.Message{
+		Role: fantasy.MessageRoleUser,
+		Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: userText},
+		},
+	}
+	if persist != nil {
+		if err := persist(string(userMsg.Role), userMsg); err != nil {
+			hooks.TurnDone(err, fantasy.Usage{})
+			return err
+		}
+	}
+	r.mu.Lock()
+	r.History = append(r.History, userMsg)
+	history := append([]fantasy.Message(nil), r.History...)
+	temp := r.Temperature
+	r.mu.Unlock()
+
+	call := fantasy.AgentStreamCall{
+		Messages:     history,
+		StopWhen:     []fantasy.StopCondition{fantasy.FinishReasonIs(fantasy.FinishReasonStop)},
+		OnTextDelta:  func(id, text string) error { hooks.TextDelta(text); return nil },
+		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
+		OnToolCall: func(tc fantasy.ToolCallContent) error {
+			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
+			return nil
+		},
+		OnToolResult: func(res fantasy.ToolResultContent) error {
+			outText := ""
+			if txt, isText := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result); isText {
+				outText = txt.Text
+			}
+			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), outText)
+			return nil
+		},
+	}
+	if temp != nil {
+		t := *temp
+		call.Temperature = &t
+	}
+
+	result, err := r.agent.Stream(tctx, call)
+	if err != nil {
+		hooks.TurnDone(err, fantasy.Usage{})
+		return err
+	}
+	// append step messages (assistant content + tool results) to history
+	var usage fantasy.Usage
+	r.mu.Lock()
+	for _, step := range result.Steps {
+		r.History = append(r.History, step.Messages...)
+		usage.InputTokens += step.Usage.InputTokens
+		usage.OutputTokens += step.Usage.OutputTokens
+		usage.TotalTokens += step.Usage.TotalTokens
+	}
+	r.mu.Unlock()
+	if persist != nil {
+		for _, step := range result.Steps {
+			for _, m := range step.Messages {
+				if err := persist(string(m.Role), m); err != nil {
+					hooks.TurnDone(err, usage)
+					return err
+				}
+			}
+		}
+	}
+	hooks.TurnDone(nil, usage)
+	return nil
+}
+
+func isErrResult(c fantasy.ToolResultContent) bool {
+	if c.Result == nil {
+		return false
+	}
+	return c.Result.GetType() == fantasy.ToolResultContentTypeError
+}
+
+// HistoryJSON returns the raw history as JSON lines (debug copy path).
+func (r *Runner) HistoryJSON() (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	b, err := json.Marshal(r.History)
+	return string(b), err
+}
