@@ -1,10 +1,5 @@
-// repo.go is the config-repo git plumbing (DESIGN §5, §6.1, §10.4):
-// ~/.config/zemi is a git repo, and every committed change to it is a
-// plain git commit (the permanent-rule keypress is the review; learned
-// patches commit as `learn: <title> (from <session id>)`). The helpers
-// shell out to the git binary and degrade to a log entry when git is
-// unavailable: the files and the revisions table stay the source of
-// truth, the repo history is the audit trail.
+// repo.go is the config-repo git plumbing (DESIGN §5, §6.1): git is the
+// audit trail, files and the revisions table stay the source of truth.
 package hostapi
 
 import (
@@ -89,10 +84,9 @@ func (h *Host) commitConfigPaths(msg string, paths []string) error {
 	return err
 }
 
-// recordRevision inserts the revision row, commits the config repo, and
-// marks the row applied or failed (DB mark lands before the commit,
-// §10.4). Errors are returned for the caller to surface; a failed commit
-// never rolls back the file write.
+// commitConfigRevision inserts a pending revision row, commits the config
+// repo, and marks the row applied or failed (the row lands before the
+// commit, §10.4). A failed commit never rolls back the file write.
 func (h *Host) commitConfigRevision(title, changesJSON string, paths []string, appliedBy string) error {
 	if h.GlobalDB == nil {
 		return nil
@@ -117,7 +111,7 @@ func (h *Host) commitConfigRevision(title, changesJSON string, paths []string, a
 		}
 		return err
 	}
-	// Record what :revision revert will revert (best effort: a missed SHA
+	// Record what /config revert will revert (best effort: a missed SHA
 	// only costs the revert path, the audit trail is the git history).
 	if out, err := h.git(h.Dirs.ConfigHome, "rev-parse", "HEAD"); err == nil {
 		if sha := strings.TrimSpace(out); sha != "" {

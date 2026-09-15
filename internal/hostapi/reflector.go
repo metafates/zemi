@@ -1,12 +1,7 @@
-// reflector.go drives the §10.3 reflector: after a session closes, a
-// headless tool-less model turn reads the transcript, tool stats, the
-// memory index (ids, kinds, tags, a short gist) and the skills index, and
-// answers with a JSON proposal document (v1: memories and supersedes
-// only). Every proposed memory rides the §10.4 intake and the autonomy
-// gate; Go stamps provenance with the reflected session id and the
-// auto-apply decision never reads the proposal's own fields. Runs are
-// serialized and detached with a timeout; the shutdown run detaches the UI
-// hooks first so a review prompt can never block a dead program.
+// reflector.go: after a session closes, a tool-less model call reads the
+// transcript, tool stats and memory and skill indexes, and proposes
+// memories, config patches and skills (DESIGN §10.3). Every proposal goes
+// through intake and the autonomy gate.
 package hostapi
 
 import (
@@ -32,8 +27,7 @@ const (
 	reflectToolMax = 200
 )
 
-// reflectorSystem is the shipped reflector prompt (task profile in DESIGN
-// §6.3; the profile itself ships with M5 subagents).
+// reflectorSystem is the reflector prompt.
 const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions in the same project.
 
 Rules:
@@ -193,7 +187,6 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	return nil
 }
 
-// reflectPrompt assembles the reflector user message.
 func (h *Host) reflectPrompt(sid string) (string, error) {
 	if h.DB == nil {
 		return "", errors.New("reflector: session store unavailable")
@@ -253,7 +246,6 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 	return b.String(), nil
 }
 
-// reflectLine renders one stored message as one prompt line.
 func reflectLine(m *store.Message) string {
 	switch m.Role {
 	case "user", "assistant":

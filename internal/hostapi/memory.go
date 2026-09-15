@@ -1,4 +1,4 @@
-// memory.go is the M2 memory host API (DESIGN §6.7, §7, §10.4): the
+// memory.go is the memory host API (DESIGN §6.7, §7, §10.4): the
 // zemi.memory namespace, the Go-owned /remember and /memory commands, the
 // proposal queue behind the autonomy gate, and the §10.7 digest. Proposals
 // persist in their scope's store until the user accepts or rejects them.
@@ -375,7 +375,7 @@ func (h *Host) digestFor() string {
 	return learn.Digest(cands, time.Now(), lines)
 }
 
-// MemoryCommandsStep registers the Go-owned :remember and :memory
+// MemoryCommandsStep registers the Go-owned /remember and /memory
 // commands with the builtin origin (user config may rebind them).
 func (h *Host) MemoryCommandsStep() lua.BootStep {
 	return lua.BootStep{

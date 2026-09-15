@@ -1,11 +1,5 @@
-// permissions.go is the permanent-rule persistence (DESIGN §6.1):
-// permissions.lua is Go-generated data, not code. Go generates it from the
-// rule store on every permanent-rule change (a stable, versioned
-// serialization of the permanent rules only) and loads it at boot as data
-// with a strict parser that never executes Lua; content that is not rule
-// data fails the boot with an empty permanent store (fail-closed; the user
-// fixes or deletes the file), so nothing can smuggle executable Lua under
-// the guise of a permission patch.
+// permissions.go persists permanent rules (DESIGN §6.1): permissions.lua is
+// Go-generated data, read back by a strict parser that never executes Lua.
 package hostapi
 
 import (

@@ -1,4 +1,4 @@
-// agent.go is the M1 agent core in the host (DESIGN §6.3, §13): the
+// agent.go is the agent core in the host (DESIGN §6.3): the
 // provider/model/agent/permission/session namespaces, profile resolution,
 // turn streaming into the UI, message persistence and the steering queue.
 package hostapi
@@ -92,8 +92,8 @@ type agentHost struct {
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn pins the most recent prompt size (the
-	// current context estimate), ctxWin overrides the context window when
-	// the model spec or config provides one.
+	// current context estimate). ctxWin: seeded override (tests); 0
+	// resolves via contextWindow.
 	sessIn   int64
 	sessOut  int64
 	lastIn   int64
@@ -381,9 +381,6 @@ func fileExists(p string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// withDigest appends the pinned session digest behind the project context
-// (DESIGN §10.7): the digest is computed once at session creation and
-// refreshed only at compaction, keeping provider prompt caches warm.
 // environmentPrompt describes the machine and repository. It is computed
 // once per session and pinned like the digest, so a changing git status
 // does not bust the prompt cache every turn.
@@ -413,6 +410,8 @@ func (h *Host) environmentPrompt() string {
 	return env
 }
 
+// withDigest appends the session digest, pinned so provider prompt caches
+// stay warm (§10.7).
 func (h *Host) withDigest(sys string) string {
 	ag := h.agents
 	ag.mu.Lock()
@@ -458,7 +457,6 @@ func (h *Host) modelFor(key string) (fantasy.LanguageModel, error) {
 	return h.resolveModel(nil)
 }
 
-// ensureRunner builds the runner for the current profile and session.
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	model, err := h.resolveModel(p)
 	if err != nil {
@@ -636,7 +634,6 @@ func (h *Host) AgentCancel() {
 	}
 }
 
-// AgentActive reports whether a turn is running.
 func (h *Host) AgentActive() bool {
 	ag := h.agents
 	ag.mu.Lock()
@@ -644,7 +641,6 @@ func (h *Host) AgentActive() bool {
 	return ag.active
 }
 
-// agentEvent delivers one streaming update to the UI.
 func (h *Host) agentEvent(ev AgentEvent) {
 	if ui := h.hooks(); ui != nil {
 		ui.AgentEvent(ev)
@@ -870,7 +866,6 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// persistMessage writes one fantasy message into the project store.
 func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	sid := h.AgentSessionID()
 	if h.DB == nil || sid == "" {
@@ -984,7 +979,6 @@ type StreamSnapshot struct {
 	SessionCost float64
 }
 
-// AgentStream returns the current stream snapshot.
 func (h *Host) AgentStream() StreamSnapshot {
 	ag := h.agents
 	ag.mu.Lock()

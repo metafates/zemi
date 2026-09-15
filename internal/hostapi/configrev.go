@@ -1,9 +1,5 @@
-// configrev.go is the §10.3-§10.4 config-patch pipeline: the reflector
-// may propose permission rules as structured rule objects only (never
-// Lua), intake validates and scrubs every leaf, proposals park in the
-// session-scoped review queue, and accepting one applies the rules
-// through the same paths as zemi.permission.rule (session rules to the
-// perm store, permanent ones through the §6.1 review commit).
+// configrev.go is the config-patch pipeline (DESIGN §10.3-§10.4): reflector
+// rule objects pass strict intake, wait in /config review, then apply.
 package hostapi
 
 import (
@@ -76,8 +72,6 @@ type rawCfgRule struct {
 	NotMatchExample string `json:"not_match_example"`
 }
 
-// decodeStrict decodes exactly one JSON value with unknown fields
-// refused.
 func decodeStrict(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -190,7 +184,6 @@ func (h *Host) autoApplyCfgOK(p *cfgProposal) bool {
 	return true
 }
 
-// queueCfgProposal parks a validated patch for review.
 func (h *Host) queueCfgProposal(p *cfgProposal) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -274,8 +267,8 @@ func (h *Host) configCommand(args string) error {
 
 // openConfigReview shows pending patches and applies the verdict:
 // accepted patches apply immediately, rejected ones are dropped,
-// undecided ones stay queued (they die with the process, like memory
-// proposals).
+// undecided ones stay queued (config proposals live in memory and die
+// with the process).
 func (h *Host) openConfigReview() {
 	ui := h.hooks()
 	if ui == nil {
