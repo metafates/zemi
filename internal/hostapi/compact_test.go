@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,21 @@ import (
 
 	"charm.land/fantasy"
 )
+
+// TestSummaryKeptWhenCutOff: a summary the model cut at the output limit is
+// used with a note, instead of dropping the history unsummarized.
+func TestSummaryKeptWhenCutOff(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "## Goal\nship it")
+	m.cutReply = true
+	out, err := h.summarize(context.Background(), []fantasy.Message{textMessage("hi")}, "", "", 0)
+	if err != nil {
+		t.Fatalf("summarize: %v", err)
+	}
+	if !strings.HasPrefix(out, "## Goal") || !strings.Contains(out, "cut off") {
+		t.Fatalf("summary = %q", out)
+	}
+}
 
 // TestCompactNowCancels: esc during /compact stops the summary call instead
 // of leaving the agent busy until the model answers.

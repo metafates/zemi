@@ -25,7 +25,7 @@ const (
 	compactReserve  = 20_000 // reply room; claude-code measured p99.99 summaries at ~17k
 	compactBuffer   = 13_000
 	compactMaxFails = 3
-	summaryMaxOut   = 8_000
+	summaryMaxOut   = compactReserve // the reply room compaction plans for
 	toolKeepTokens  = 40_000 // newest tool output pruning leaves alone
 	pruneMinTokens  = 20_000 // a smaller saving is not worth a prompt cache miss
 
@@ -381,8 +381,13 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 			return "", err
 		}
 		out := strings.TrimSpace(concatText(res.Response.Content))
-		if out == "" || res.Response.FinishReason == fantasy.FinishReasonLength {
+		if out == "" {
 			return "", errNoSummary
+		}
+		// A summary cut at the output limit still beats the fallback, which
+		// drops the earlier history unsummarized.
+		if res.Response.FinishReason == fantasy.FinishReasonLength {
+			out += "\n\n(the summary was cut off at the output limit)"
 		}
 		return out, nil
 	}

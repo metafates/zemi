@@ -26,6 +26,7 @@ type reflectStubModel struct {
 	streams    atomic.Int32
 	overflow   atomic.Int32 // Stream calls left that fail as context too large
 	toolStep   atomic.Int64 // context the next Stream call reports along with a tool call; 0 = text
+	cutReply   bool         // Generate stops at the output limit
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
@@ -40,9 +41,13 @@ func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fanta
 	if m.err != nil {
 		return nil, m.err
 	}
+	finish := fantasy.FinishReasonStop
+	if m.cutReply {
+		finish = fantasy.FinishReasonLength
+	}
 	return &fantasy.Response{
 		Content:      fantasy.ResponseContent{fantasy.TextContent{Text: m.resp}},
-		FinishReason: fantasy.FinishReasonStop,
+		FinishReason: finish,
 	}, nil
 }
 
