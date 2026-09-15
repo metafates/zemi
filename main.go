@@ -93,10 +93,10 @@ func run(args []string) int {
 		host.ConfigCommandsStep(),
 		host.SkillsCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
-		pluginsStep(dirs),
-		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
-		host.SkillsAuthoredHooksStep(),
-		projectConfigStep(host, askTrust, dirs),
+		softStep(host, pluginsStep(dirs)),
+		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+		softStep(host, host.SkillsAuthoredHooksStep()),
+		softStep(host, projectConfigStep(host, askTrust, dirs)),
 		crushImportStep(host, settings),
 		readyStep(host, settings, !opts.print),
 		host.SkillsLearnedHooksStep(),
@@ -249,6 +249,22 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 	}
 }
 
+// softStep keeps a failing config step (a typo in init.lua, a broken plugin
+// or project config) from stopping boot: the error goes to the log and
+// /errors, and the remaining steps and the runtime still start, like
+// neovim reporting an init.lua error and opening anyway.
+func softStep(h *hostapi.Host, s lua.BootStep) lua.BootStep {
+	run := s.Run
+	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+		if err := run(ctx, r, g); err != nil {
+			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
+			h.RecordError("boot "+s.Name, err.Error())
+		}
+		return nil
+	}
+	return s
+}
+
 // pluginsStep loads site/pack/*/start/*/plugin/*.lua sorted, per the boot
 // order (DESIGN §5).
 func pluginsStep(dirs config.Dirs) lua.BootStep {
@@ -333,7 +349,7 @@ func hashTree(root string) (string, error) {
 		if t := d.Type(); t&fs.ModeDir == 0 && t != 0 {
 			return fmt.Errorf("project config contains a symlink or non-regular file: %s", p)
 		}
-		if p == root {
+		if d.IsDir() {
 			return nil
 		}
 		rel, err := filepath.Rel(root, p)
