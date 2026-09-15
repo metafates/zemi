@@ -257,6 +257,21 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 	}
 }
 
+// TestTranscriptTextNotesAttachments: a compacted transcript names attached
+// files, which the summarizer cannot see, instead of dropping them silently.
+func TestTranscriptTextNotesAttachments(t *testing.T) {
+	got := transcriptText([]fantasy.Message{{
+		Role: fantasy.MessageRoleUser,
+		Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: "what is wrong here"},
+			fantasy.FilePart{MediaType: "image/png", Data: []byte("x")},
+		},
+	}})
+	if !strings.Contains(got, "what is wrong here") || !strings.Contains(got, "[attached image/png]") {
+		t.Fatalf("transcript = %q", got)
+	}
+}
+
 func toolResult(id string, tokens int) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{
 		fantasy.ToolResultPart{ToolCallID: id, Output: fantasy.ToolResultOutputContentText{Text: strings.Repeat("r", tokens*4)}},

@@ -523,6 +523,9 @@ func transcriptText(history []fantasy.Message) string {
 			switch p := part.(type) {
 			case fantasy.TextPart:
 				fmt.Fprintf(&b, "%s: %s\n", m.Role, p.Text)
+			case fantasy.FilePart:
+				// the summarizer only reads this text: name what it cannot see
+				fmt.Fprintf(&b, "%s: [attached %s]\n", m.Role, p.MediaType)
 			case fantasy.ToolCallPart:
 				fmt.Fprintf(&b, "tool call %s: %s\n", p.ToolName, truncRunes(p.Input, 500))
 			case fantasy.ToolResultPart:
