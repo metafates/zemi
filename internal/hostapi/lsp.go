@@ -295,7 +295,7 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 		Name: "lsp commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "lsp", NArgs: "*", Desc: "language servers zemi started; restart <name>",
+				Name: "lsp", NArgs: "*", Desc: "language servers zemi started; restart <name>", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
 						h.lsp.mu.Lock()

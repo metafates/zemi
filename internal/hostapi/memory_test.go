@@ -329,7 +329,7 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if h.Commands.Lookup("remember") == nil || h.Commands.Lookup("memory") == nil {
 		t.Fatal("memory commands not registered")
 	}
-	if err := h.memoryCommand("bogus"); err == nil {
-		t.Fatal("bogus subcommand must fail")
+	if err := h.memoryCommand("forget"); err == nil {
+		t.Fatal("forget without an id must fail")
 	}
 }

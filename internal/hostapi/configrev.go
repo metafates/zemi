@@ -444,11 +444,11 @@ func (h *Host) ConfigCommandsStep() lua.BootStep {
 		Name: "config commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			for _, c := range []*Command{
-				{Name: "config", NArgs: "*",
-					Desc:   "review pending config changes; revisions, revert <id>",
+				{Name: "config", NArgs: "*", Hidden: true,
+					Desc:       "review pending config changes; revisions, revert <id>",
 					GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
 					GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
-					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
+					Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {
 					return err

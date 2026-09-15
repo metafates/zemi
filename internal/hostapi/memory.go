@@ -144,7 +144,7 @@ func (h *Host) emitMemoryWritten(m store.Memory) {
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4).
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
-		return errors.New("usage: /remember <text>")
+		return errors.New("usage: /memory <note>")
 	}
 	res, err := h.storeMemory("project", learn.OriginUser, "fact", text, nil)
 	if err != nil {
@@ -162,7 +162,7 @@ func (h *Host) Remember(text string) error {
 		note = " (secrets redacted)"
 	}
 	h.emitMemoryWritten(res.Memory)
-	h.memNotify("info", "remember", "stored"+note)
+	h.memNotify("info", "memory", "remembered"+note)
 	return nil
 }
 
@@ -192,8 +192,10 @@ func (h *Host) memoryCommand(args string) error {
 			return err
 		}
 		return db.SupersedeMemory(fields[1], fields[2])
+	case fields[0] == "forget" || fields[0] == "supersede":
+		return errors.New("usage: /memory forget <id> | /memory supersede <old> <new>")
 	default:
-		return errors.New("usage: /memory | /memory forget <id> | /memory supersede <old> <new>")
+		return h.Remember(args)
 	}
 }
 
@@ -209,7 +211,7 @@ func (h *Host) openMemoryReview() {
 	}
 	rows := h.memoryRows()
 	if len(rows) == 0 {
-		h.memNotify("info", "memory", "no memories")
+		h.memNotify("info", "memory", "nothing remembered yet; /memory <note> saves one")
 		return
 	}
 	decisions := ui.ReviewMemories(rows)
@@ -430,12 +432,11 @@ func (h *Host) MemoryCommandsStep() lua.BootStep {
 		Name: "memory commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			for _, c := range []*Command{
-				{Name: "remember", NArgs: "+", Desc: "save a memory for this project",
+				{Name: "remember", NArgs: "+", Desc: "save a memory for this project", Hidden: true,
 					GoFn:   func(h *Host, args string) error { return h.Remember(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
-				{Name: "memory", NArgs: "*", Desc: "review, forget, or supersede memories",
-					GoFn:       func(h *Host, args string) error { return h.memoryCommand(args) },
-					GoComplete: subcommandCompleter([]string{"forget", "supersede"}, nil),
+				{Name: "memory", NArgs: "*", Desc: "what zemi remembers; /memory <note> saves one",
+					GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {

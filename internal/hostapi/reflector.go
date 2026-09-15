@@ -503,7 +503,7 @@ func (h *Host) ReflectorCommandsStep() lua.BootStep {
 		Name: "reflector commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name:   "reflect",
+				Name: "reflect", Hidden: true,
 				Desc:   "distill this session into memories and config",
 				GoFn:   func(h *Host, args string) error { return h.reflectCommand() },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),

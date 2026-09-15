@@ -98,7 +98,7 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 		prefix = prefix[:i]
 	}
 	for _, c := range cmds {
-		if strings.HasPrefix(strings.ToLower(c.Name), prefix) {
+		if strings.HasPrefix(strings.ToLower(c.Name), prefix) && (!c.Hidden || strings.ToLower(c.Name) == prefix) {
 			p.matches = append(p.matches, c)
 		}
 	}

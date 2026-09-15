@@ -502,7 +502,7 @@ func (h *Host) AgentsCommandsStep() lua.BootStep {
 		Name: "agents commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "agents", Desc: "list subagents the model can launch",
+				Name: "agents", Desc: "agents at work and the ones zemi can launch",
 				GoFn:   func(h *Host, _ string) error { return h.openAgents() },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
@@ -522,6 +522,23 @@ func (h *Host) openAgents() error {
 	defs := h.agentDefs()
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].Source < defs[j].Source })
 	items := make([]any, 0, len(defs))
+	for _, t := range h.tasks.list() {
+		t.mu.Lock()
+		took := time.Since(t.started)
+		if !t.finished.IsZero() {
+			took = t.finished.Sub(t.started)
+		}
+		item := map[string]any{"text": fmt.Sprintf("%-9s %-8s %5s  %s", t.status, t.agent, fmtDuration(took), truncRunes(t.description, 60))}
+		if t.status == "running" {
+			item["text"] = item["text"].(string) + "  (enter stops it)"
+			item["run"] = "tasks cancel " + t.id
+		}
+		t.mu.Unlock()
+		items = append(items, item)
+	}
+	if len(items) > 0 {
+		items = append(items, map[string]any{"text": ""})
+	}
 	for _, d := range defs {
 		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %-8s %s", d.Name, d.Source, truncRunes(d.Description, 80))})
 	}

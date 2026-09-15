@@ -233,7 +233,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		h.DB, h.GlobalDB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help":           func(h *Host, _ string) error { h.OpenHelp(); return nil },
+		"zemi.ui.help": func(h *Host, _ string) error { h.OpenHelp(); return nil },
 		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
 			h.ToggleReasoning()
 			return nil
@@ -367,6 +367,9 @@ func (h *Host) OpenHelp() {
 		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Key, desc)})
 	}
 	for _, c := range h.Commands.List() {
+		if c.Hidden {
+			continue
+		}
 		items = append(items, map[string]any{
 			"text": fmt.Sprintf("%-12s %s", "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
 		})

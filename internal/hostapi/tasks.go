@@ -116,7 +116,7 @@ func (h *Host) TasksCommandsStep() lua.BootStep {
 		Name: "tasks commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "tasks", NArgs: "*", Desc: "background agents; cancel <id>",
+				Name: "tasks", NArgs: "*", Desc: "background agents; cancel <id>", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
 					switch sub {

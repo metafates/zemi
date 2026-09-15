@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -17,11 +18,14 @@ type healthCheck struct {
 	level  string // ok | warn | error
 	name   string
 	detail string
+	run    string // command enter runs on the row
 }
 
 func (h *Host) healthChecks() []healthCheck {
 	var out []healthCheck
-	add := func(level, name, detail string) { out = append(out, healthCheck{level, name, detail}) }
+	add := func(level, name, detail string) {
+		out = append(out, healthCheck{level: level, name: name, detail: detail})
+	}
 
 	if h.DB == nil || h.GlobalDB == nil {
 		add("error", "store", fmt.Sprintf("sessions and memory unavailable: %v", h.initErr))
@@ -74,6 +78,7 @@ func (h *Host) healthChecks() []healthCheck {
 
 	if mem, cfg := h.pendingMemory.Load(), h.pendingConfig.Load(); mem+cfg > 0 {
 		add("warn", "learning", fmt.Sprintf("%d memories wait in /memory, %d config changes in /config", mem, cfg))
+		out[len(out)-1].run = "memory"
 	} else {
 		add("ok", "learning", "nothing waiting for review")
 	}
@@ -91,6 +96,29 @@ func (h *Host) healthChecks() []healthCheck {
 	} else {
 		add("ok", "lua", "runtime healthy")
 	}
+
+	h.errs.mu.Lock()
+	nerr := len(h.errs.entries)
+	h.errs.mu.Unlock()
+	if nerr > 0 {
+		add("warn", "errors", fmt.Sprintf("%d recent; enter lists them", nerr))
+		out[len(out)-1].run = "errors"
+	} else {
+		add("ok", "errors", "none since start")
+	}
+
+	h.lsp.mu.Lock()
+	var servers []string
+	for name := range h.lsp.running {
+		servers = append(servers, name)
+	}
+	h.lsp.mu.Unlock()
+	if len(servers) > 0 {
+		sort.Strings(servers)
+		add("ok", "lsp", strings.Join(servers, ", "))
+	} else {
+		add("ok", "lsp", "starts when the agent edits a supported file")
+	}
 	return out
 }
 
@@ -103,7 +131,11 @@ func (h *Host) OpenHealth() error {
 	marks := map[string]string{"ok": "✓", "warn": "!", "error": "✗"}
 	var items []any
 	for _, c := range h.healthChecks() {
-		items = append(items, map[string]any{"text": fmt.Sprintf("%s %-12s %s", marks[c.level], c.name, c.detail)})
+		item := map[string]any{"text": fmt.Sprintf("%s %-12s %s", marks[c.level], c.name, c.detail)}
+		if c.run != "" {
+			item["run"] = c.run
+		}
+		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: items})
 	return nil

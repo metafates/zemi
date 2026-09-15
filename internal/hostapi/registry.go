@@ -19,9 +19,9 @@ type Gen int64
 
 // RHS is what a keymap binding executes.
 type RHS struct {
-	Fn       *glua.LFunction // Lua callback (interpreter goroutine only)
-	Command  string          // registered command name
-	API      string          // dotted host-API call (zemi.*)
+	Fn      *glua.LFunction // Lua callback (interpreter goroutine only)
+	Command string          // registered command name
+	API     string          // dotted host-API call (zemi.*)
 }
 
 // KeyBinding maps one key to a right-hand side.
@@ -116,18 +116,20 @@ func (r *KeymapRegistry) Purge() {
 
 // Command is a :cmdline command.
 type Command struct {
-	Name      string
-	Desc      string
-	NArgs     string // "", "?", "+", "*"
-	Complete  *glua.LFunction
-	Fn        *glua.LFunction
-	GoFn      func(h *Host, args string) error
+	Name     string
+	Desc     string
+	NArgs    string // "", "?", "+", "*"
+	Complete *glua.LFunction
+	Fn       *glua.LFunction
+	GoFn     func(h *Host, args string) error
 	// GoComplete offers argument candidates for Go-owned commands (lead is
 	// the argument under the cursor, line the text up to it).
 	GoComplete func(h *Host, lead, line string) []string
-	Origin    lua.Origin
-	Path      string
-	Gen       Gen
+	// Hidden commands run when typed but stay out of the palette and help.
+	Hidden bool
+	Origin lua.Origin
+	Path   string
+	Gen    Gen
 }
 
 // CommandRegistry stores commands. Names collide case-insensitively across

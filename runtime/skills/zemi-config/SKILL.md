@@ -110,10 +110,11 @@ zemi.ui.widget.register({
 })
 ```
 
-Slash commands: `/help`, `/model`, `/mode`, `/effort`, `/new`, `/sessions`, `/resume`,
-`/fork`, `/rewind`, `/export`, `/compact`, `/init`, `/review`, `/agents`, `/tasks`,
-`/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`, `/health`,
-`/errors`, `/quit`. MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
+Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
+`/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
+`/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
+palette: `/resume`, `/fork`, `/export`, `/effort`, `/tasks`, `/lsp`, `/errors`, `/config`,
+`/reflect`, `/remember`, `/reload`. MCP servers: `zemi.mcp.add("name", { command = ..., args = ... })`
 or `{ url = ... }` in `init.lua`.
 
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure

@@ -22,9 +22,9 @@ func reviewAnswer(t *testing.T, done chan map[string]string) map[string]string {
 	}
 }
 
-// TestGoldenMemoryReviewOverlay pins the Go-owned memory review overlay
-// (DESIGN §8, §10.4): a accepts the proposal, d deletes the stored memory,
-// enter hands the decisions back by row id.
+// TestGoldenMemoryReviewOverlay pins the Go-owned memory screen (DESIGN §8,
+// §10.4): a keeps the suggestion, d forgets the stored memory, u undoes,
+// and closing hands the decisions back by row id.
 func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 
@@ -41,16 +41,17 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
-	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}) // accept the proposal
-	app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}) // keep the suggestion
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}) // no-op on a stored memory
-	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"}) // delete it
+	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"}) // forget it
+	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
 	app.renderSync(t)
-	if frame := app.Frame(); !strings.Contains(frame, "[+]") || !strings.Contains(frame, "[-]") {
-		t.Fatalf("marks missing from frame:\n%s", frame)
+	if frame := app.Frame(); !strings.Contains(frame, "short replies") || strings.Contains(frame, "fts join") {
+		t.Fatalf("undo should bring back only the forgotten memory:\n%s", frame)
 	}
+	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 2 || got["m1"] != "accept" || got["m2"] != "delete" {
 		t.Fatalf("decisions = %v", got)
 	}
@@ -59,9 +60,8 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewCancel: esc discards marks and closes; the empty review
-// pins its placeholder row.
-func TestMemoryReviewCancel(t *testing.T) {
+// TestMemoryReviewUndoAll: undoing every action closes with no decisions.
+func TestMemoryReviewUndoAll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	done := make(chan map[string]string, 1)
 	go func() {
@@ -69,6 +69,7 @@ func TestMemoryReviewCancel(t *testing.T) {
 	}()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 0 || app.memReview != nil {
 		t.Fatalf("cancel returned %v", got)

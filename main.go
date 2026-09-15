@@ -15,8 +15,8 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
-	"time"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/config"
@@ -274,7 +274,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "sessions", Desc: "list and resume sessions", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenSessions()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "resume", Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "resume", Hidden: true, Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "rewind", NArgs: "?", Desc: "undo turns: restore files and the conversation to before a prompt", GoFn: func(h *hostapi.Host, args string) error {
@@ -291,7 +291,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "effort", NArgs: "?", Desc: "reasoning effort: low, medium, high or default", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "effort", Hidden: true, NArgs: "?", Desc: "reasoning effort: low, medium, high or default", GoFn: func(h *hostapi.Host, args string) error {
 					switch args = strings.TrimSpace(args); args {
 					case "":
 						cur := h.Effort()
@@ -315,21 +315,21 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.InitProject()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "export", NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "export", Hidden: true, NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
 					path, err := h.ExportSession(strings.TrimSpace(args))
 					if err == nil {
 						h.Notify("info", "export", "wrote "+path)
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "fork", Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
 					_, err := h.ForkSession()
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "reload", Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
+				{Name: "reload", Hidden: true, Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
 					return nil // the composer runs /reload before the registry
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "errors", Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "errors", Hidden: true, Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "health", Desc: "check model, store, permissions, reflector and runtime", GoFn: func(h *hostapi.Host, _ string) error {

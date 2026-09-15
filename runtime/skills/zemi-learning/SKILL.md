@@ -7,7 +7,7 @@ description: How zemi learns from the user - memories, the reflector, skill draf
 
 ## The loop
 
-1. **Capture.** `/remember <text>` stores a project fact immediately. You (the agent)
+1. **Capture.** `/memory <note>` stores a project fact immediately. You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
    `decision`) and one short sentence; under the default autonomy it is queued for the
    user's review. `memory_search` finds earlier memories.
