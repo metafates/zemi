@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -328,6 +329,32 @@ func TestSandboxLoadRefusesBytecode(t *testing.T) {
 		local f, err2 = loadstring("\x1bLua not real bytecode")
 		assert(f == nil, "binary chunk loaded")
 	`)
+}
+
+// BenchmarkCheckIntegrity sizes the namespace verification against a
+// surface the size of the real one: it decides whether the check can run
+// on every request or only when the request class changes (DESIGN §4).
+func BenchmarkCheckIntegrity(b *testing.B) {
+	sb, err := NewSandbox(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer sb.L.Close()
+	for i := range 28 {
+		tbl := sb.L.NewTable()
+		for j := range 8 {
+			tbl.RawSetString(fmt.Sprintf("fn%d", j), sb.L.NewFunction(func(*glua.LState) int { return 0 }))
+		}
+		if err := sb.RegisterNamespace(fmt.Sprintf("zemi.ns%d", i), tbl); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		if err := sb.CheckIntegrity(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestSandboxTracebackCollapsesFrames(t *testing.T) {

@@ -70,11 +70,30 @@ type request struct {
 	ceiling time.Duration
 	grace   time.Duration
 
-	cancelFn context.CancelFunc
+	// cancelFn is installed by the executor goroutine and read by the
+	// waiting caller's, so mu guards it like finished.
 	mu       sync.Mutex
+	cancelFn context.CancelFunc
 	finished bool // done or abandoned
 	done     chan struct{}
 	seq      uint64
+}
+
+func (r *request) setCancel(fn context.CancelFunc) {
+	r.mu.Lock()
+	r.cancelFn = fn
+	r.mu.Unlock()
+}
+
+// cancel preempts the request if it is already running; a request still
+// waiting in the heap has no cancel func yet and settles on drain.
+func (r *request) cancel() {
+	r.mu.Lock()
+	fn := r.cancelFn
+	r.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 type result struct {
@@ -148,7 +167,13 @@ func (g *Generation) pop() *request {
 	return r
 }
 
-func (g *Generation) drain() {
+func (g *Generation) drain() { g.drainWith(ErrReloaded) }
+
+// drainWith retires the generation and answers everything still queued
+// with err. Hot mode only fails fast the Do calls that arrive after the
+// wedge, so without this the requests already in the heap would wait on
+// their reply channel forever.
+func (g *Generation) drainWith(err error) {
 	g.mu.Lock()
 	g.retired = true
 	pending := g.heap
@@ -159,7 +184,7 @@ func (g *Generation) drain() {
 		if !r.finished {
 			r.finished = true
 			close(r.done)
-			r.reply <- result{err: ErrReloaded}
+			r.reply <- result{err: err}
 		}
 		r.mu.Unlock()
 	}
@@ -192,7 +217,7 @@ func (g *Generation) execute(r *request) {
 	}
 
 	reqCtx, cancel := context.WithCancel(r.caller)
-	r.cancelFn = cancel
+	r.setCancel(cancel)
 	ceiling := r.ceiling
 	if ceiling <= 0 {
 		ceiling = HardCeiling
@@ -235,6 +260,18 @@ func (g *Generation) execute(r *request) {
 	vals, err := g.safeRun(r)
 	g.rt.PopFrame()
 	g.L.RemoveContext()
+
+	// A frozen namespace that changed under the request means the surface
+	// is no longer trustworthy: fail this request and wedge the runtime
+	// rather than let later calls run against it (DESIGN §4, §5).
+	if ierr := g.SB.CheckIntegrity(); ierr != nil {
+		g.rt.goHot(ierr)
+		if g.finish(r) {
+			r.reply <- result{err: ierr}
+		}
+		cancel()
+		return
+	}
 
 	elapsed := time.Since(started)
 	if err == nil && elapsed > SoftBudget && reqCtx.Err() == nil {

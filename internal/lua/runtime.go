@@ -115,6 +115,9 @@ func (r *Runtime) goHot(cause error) {
 		return
 	}
 	r.log.Error("lua", "runtime marked hot: "+cause.Error(), nil)
+	if g := r.current(); g != nil {
+		g.drainWith(ErrHot)
+	}
 }
 
 func (r *Runtime) IsHot() bool { return r.hot.Load() }
@@ -143,6 +146,12 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	if purge != nil {
 		purge()
 	}
+	// An abandoned request never pops its frame: a stale frame left on the
+	// stack would change require resolution and registration origins for
+	// the fresh generation.
+	r.originMu.Lock()
+	r.frames = nil
+	r.originMu.Unlock()
 	r.hot.Store(false)
 	gen, err := r.boot(ctx, steps)
 	if err != nil {
@@ -215,9 +224,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 		}
 		return res.vals, nil
 	case <-ctx.Done():
-		if r.cancelFn != nil {
-			r.cancelFn()
-		}
+		r.cancel()
 		// Wait for the watchdog/executor to settle the request so the
 		// reply channel is never leaked; the outcome is canceled.
 		res := <-r.reply
@@ -285,18 +292,18 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 
 // Eval runs src as a chunk of origin on the interpreter and returns its
 // results. print in the chunk (and functions it defines) goes to out
-// instead of the print hook: the chunk runs in a wrapper environment over
-// the sandbox one, so its globals stay in the wrapper too.
+// instead of the print hook; the chunk's globals stay in its own env.
 func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceiling time.Duration, out func(string)) ([]any, error) {
 	return r.Do(ctx, ClassIO, ceiling, time.Second, func(L *glua.LState) ([]any, error) {
 		fn, err := r.current().SB.CompileChunk(src, origin.ChunkName(rel))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", rel, err)
 		}
-		env, meta := L.NewTable(), L.NewTable()
-		meta.RawSetString("__index", fn.Env)
-		L.SetMetatable(env, meta)
-		env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
+		// CompileChunk already gave the chunk a fresh env carrying the
+		// protected-global guard. A raw print here shadows the frozen one
+		// for this chunk alone; wrapping the env in a plain __index
+		// metatable instead would drop that guard.
+		fn.Env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
 			parts := make([]string, L.GetTop())
 			for i := range parts {
 				parts[i] = L.ToStringMeta(L.Get(i + 1)).String()
@@ -304,7 +311,6 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 			out(strings.Join(parts, "\t"))
 			return 0
 		}))
-		fn.Env = env
 		r.PushFrame(origin, rel)
 		defer r.PopFrame()
 		base := L.GetTop()
