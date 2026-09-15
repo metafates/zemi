@@ -433,6 +433,16 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 			}
 		}
 	}
+	// Output after the last user message belongs to the turn in flight (a
+	// step Full cut continues from it): it counts against the kept budget
+	// but is never cleared.
+	live := len(history)
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == fantasy.MessageRoleUser {
+			live = i
+			break
+		}
+	}
 	type loc struct{ msg, part int }
 	var old []loc
 	var seen, freed int64
@@ -444,7 +454,7 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 				continue
 			}
 			n := int64(len(text) / 4)
-			if seen += n; seen > toolKeepTokens {
+			if seen += n; seen > toolKeepTokens && i < live {
 				old, freed = append(old, loc{i, j}), freed+n
 			}
 		}

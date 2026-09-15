@@ -207,6 +207,26 @@ func TestPruneToolOutput(t *testing.T) {
 	}
 }
 
+// TestPruneKeepsRunningTurn: pruning between the steps of one turn must
+// leave the output after the last user message, which the turn continues
+// from, even when it is past the kept budget.
+func TestPruneKeepsRunningTurn(t *testing.T) {
+	history := []fantasy.Message{
+		textMessage("old ask"), toolResult("old", 30_000),
+		textMessage("live ask"), toolResult("live", 50_000),
+	}
+	out, freed := pruneToolOutput(history)
+	if freed != 30_000 {
+		t.Fatalf("freed %d tokens, want the old 30000", freed)
+	}
+	if toolText(out[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
+		t.Fatal("old tool output must be cleared")
+	}
+	if estTokens(out[3]) != 50_000 {
+		t.Fatalf("the running turn's output was pruned to %d tokens", estTokens(out[3]))
+	}
+}
+
 func toolResult(id string, tokens int) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{
 		fantasy.ToolResultPart{ToolCallID: id, Output: fantasy.ToolResultOutputContentText{Text: strings.Repeat("r", tokens*4)}},
