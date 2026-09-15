@@ -308,7 +308,7 @@ func (h *Host) AgentSend(text string) error {
 
 	go func() {
 		for text != "" {
-			if err := runner.Send(context.Background(), text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
+			if err := runner.Send(context.Background(), h.expandAttachments(text)); err != nil && !errors.Is(err, agent.ErrTurnActive) {
 				h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
 			}
 			text = h.nextTurn()
@@ -363,10 +363,12 @@ func (h *Host) deliverSteering() []string {
 		return nil
 	}
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
-	for _, m := range msgs {
+	out := make([]string, len(msgs))
+	for i, m := range msgs {
 		h.AppendMessage("user", m)
+		out[i] = h.expandAttachments(m)
 	}
-	return msgs
+	return out
 }
 
 // AgentTakeQueue removes and returns the messages still waiting for a step

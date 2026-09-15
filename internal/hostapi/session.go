@@ -160,7 +160,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				}
 			}
 		}
-		if s := strings.TrimSpace(text.String()); s != "" {
+		s := text.String()
+		if m.Role == fantasy.MessageRoleUser {
+			s, _, _ = strings.Cut(s, attachMarker) // show what was typed
+		}
+		if s = strings.TrimSpace(s); s != "" {
 			role := "assistant"
 			if m.Role == fantasy.MessageRoleUser {
 				role = "user"

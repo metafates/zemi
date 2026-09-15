@@ -58,18 +58,36 @@ func (h *Host) inJail(path string, roots ...string) bool {
 	if err != nil {
 		return false
 	}
+	// Compare resolved paths, so a symlink inside a root cannot lead out
+	// (and a root reached through a symlink, like macOS /var, still matches).
+	real := realPath(abs)
 	for _, r := range roots {
 		if r == "" {
 			continue
 		}
-		if abs == r {
-			return true
-		}
-		if strings.HasPrefix(abs, r+string(filepath.Separator)) {
+		rr := realPath(r)
+		if real == rr || strings.HasPrefix(real, rr+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
+}
+
+// realPath resolves symlinks in the longest existing prefix of p, so a file
+// about to be created is judged by its real parent directory.
+func realPath(p string) string {
+	suffix := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, suffix)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, suffix)
+		}
+		suffix = filepath.Join(filepath.Base(p), suffix)
+		p = parent
+	}
 }
 
 func (h *Host) readJails() []string {
