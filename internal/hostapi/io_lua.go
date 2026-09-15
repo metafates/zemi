@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -36,25 +37,18 @@ var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_
 
 func envIsSecret(name string) bool {
 	up := strings.ToUpper(name)
-	for _, s := range secretEnvShape {
-		if strings.Contains(up, s) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
 // secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
 var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
 
 func pathIsSecret(p string) bool {
-	base := filepath.Base(p)
-	for _, pat := range secretPathShape {
-		if ok, _ := filepath.Match(strings.ToLower(pat), strings.ToLower(base)); ok {
-			return true
-		}
-	}
-	return false
+	base := strings.ToLower(filepath.Base(p))
+	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
+		ok, _ := filepath.Match(strings.ToLower(pat), base)
+		return ok
+	})
 }
 
 // inJail reports whether path is inside one of the jail roots.

@@ -1,12 +1,14 @@
 // tools_lua.go bridges Lua-registered tools and overrides into the tool
-// pipeline (DESIGN §6.4): the zemi.tool namespace, the tool.pre/pre-event
-// hook with the full decision contract, and the model-facing tool set.
+// pipeline (DESIGN §6.4): the zemi.tool namespace, the tool.pre hook
+// with the full decision contract, and the model-facing tool set.
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -66,11 +68,7 @@ func (r *toolReg) add(t *luaTool) error {
 func (r *toolReg) list() []*luaTool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]*luaTool, 0, len(r.byName))
-	for _, t := range r.byName {
-		out = append(out, t)
-	}
-	return out
+	return slices.SortedFunc(maps.Values(r.byName), func(a, b *luaTool) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 func (r *toolReg) addOverride(o *overrideRec) bool {

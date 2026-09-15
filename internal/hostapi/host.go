@@ -65,7 +65,7 @@ type Overlay struct {
 	Reload func() []any
 }
 
-// ChatMessage is an M0 transcript entry (composer submissions); assistant
+// ChatMessage is a transcript entry (composer submissions); assistant
 // replies carry the turn stats the chat widget renders. Kind marks the
 // entry shape: "" (plain message) or "reasoning" (a finished thinking
 // block the chat widget collapses to a one-line summary).
@@ -96,7 +96,7 @@ type Host struct {
 	Settings *config.Store
 	Dirs     config.Dirs
 
-	// M1 agent core (DESIGN §6.3, §13). DB is the project store, GlobalDB
+	// Agent core (DESIGN §6.3). DB is the project store, GlobalDB
 	// the state-dir store; Perm holds config + session rules with the §9
 	// built-in defaults.
 	Providers *agent.Registry
@@ -129,12 +129,9 @@ type Host struct {
 	luaTools *toolReg
 	timers   *timerReg
 
-	// memReviewMu serializes the :memory review overlay: the hook runs on
-	// its own goroutine (cmdline execution sits on the UI goroutine, which
-	// must never block on a hook).
+	// memReview/cfgReview serialize the /memory and /config review overlays;
+	// the hook runs off the UI goroutine.
 	memReview sync.Mutex
-
-	// cfgReview serializes the :review overlay the same way.
 	cfgReview sync.Mutex
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
@@ -156,14 +153,12 @@ type Host struct {
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
 
-	// skillsReg caches discovery + enabled state (M3, DESIGN §10.5); DB
+	// skillsReg caches discovery + enabled state (DESIGN §10.5); DB
 	// rows in the global store are the durable state.
 	skillsReg *skillReg
 
 	hostActions map[string]func(h *Host, args string) error
 
-	// projectTrusted is set once the project config tree passed the trust
-	// prompt; project agents, commands and workflows load only then.
 	// Version is the zemi build version for the splash screen.
 	Version string
 
@@ -194,21 +189,22 @@ type Host struct {
 
 	modes modeReg // permission modes in tab order
 
+	// projectTrusted is set once the project config tree passed the trust
+	// prompt; project agents, commands and workflows load only then.
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
 
-// SetProjectTrusted records the project config trust decision.
 func (h *Host) SetProjectTrusted(ok bool) { h.projectTrusted.Store(ok) }
 
-// Session is the M0 session state (title, cwd, transcript).
+// Session is the session state (title, cwd, transcript).
 type Session struct {
 	Title      string
 	CWD        string
 	Transcript []ChatMessage
 }
 
-// NewHost wires the registries and opens the M1 stores (best effort:
+// NewHost wires the registries and opens the stores (best effort:
 // failures surface at the namespaces boot step).
 func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs config.Dirs) *Host {
 	h := &Host{
@@ -244,17 +240,11 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			h.ToggleReasoning()
 			return nil
 		},
-		"zemi.ui.scroll.up":     func(h *Host, _ string) error { h.scrollChat("up"); return nil },
-		"zemi.ui.scroll.down":   func(h *Host, _ string) error { h.scrollChat("down"); return nil },
-		"zemi.ui.scroll.top":    func(h *Host, _ string) error { h.scrollChat("top"); return nil },
-		"zemi.ui.scroll.bottom": func(h *Host, _ string) error { h.scrollChat("bottom"); return nil },
-		"zemi.model.pick": func(h *Host, _ string) error {
-			if id, ok := h.pickModel(); ok {
-				_, _ = h.Settings.SetQuiet("agent.model", id)
-				h.refresh()
-			}
-			return nil
-		},
+		"zemi.ui.scroll.up":          func(h *Host, _ string) error { h.scrollChat("up"); return nil },
+		"zemi.ui.scroll.down":        func(h *Host, _ string) error { h.scrollChat("down"); return nil },
+		"zemi.ui.scroll.top":         func(h *Host, _ string) error { h.scrollChat("top"); return nil },
+		"zemi.ui.scroll.bottom":      func(h *Host, _ string) error { h.scrollChat("bottom"); return nil },
+		"zemi.model.pick":            func(h *Host, _ string) error { h.pickAndStoreModel(); return nil },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
@@ -270,7 +260,6 @@ func (h *Host) hooks() UIHooks {
 	return h.ui
 }
 
-// SetUIHooks attaches the UI layer.
 func (h *Host) SetUIHooks(ui UIHooks) {
 	h.uiMu.Lock()
 	h.ui = ui
@@ -283,7 +272,6 @@ func (h *Host) refresh() {
 	}
 }
 
-// Notify shows a toast when a UI is attached.
 func (h *Host) Notify(level, title, body string) {
 	if ui := h.hooks(); ui != nil {
 		ui.Notify(level, title, body)
@@ -299,16 +287,16 @@ func (h *Host) scrollChat(kind string) {
 }
 
 // OpenModelPicker opens the Go-owned model picker overlay without blocking
-// the caller; the chosen model is stored when the user answers. Unlike the
-// zemi.model.pick host action (which returns the id to Lua) this is safe to
-// call from the UI goroutine, e.g. the /model slash command.
-func (h *Host) OpenModelPicker() {
-	h.GoSafe("model picker", func() {
-		if id, ok := h.pickModel(); ok {
-			_, _ = h.Settings.SetQuiet("agent.model", id)
-			h.refresh()
-		}
-	})
+// the caller, so the UI goroutine may call it (the /model slash command);
+// the chosen model is stored when the user answers.
+func (h *Host) OpenModelPicker() { h.GoSafe("model picker", h.pickAndStoreModel) }
+
+// pickAndStoreModel blocks on the picker, so it must run off the UI goroutine.
+func (h *Host) pickAndStoreModel() {
+	if id, ok := h.pickModel(); ok {
+		_, _ = h.Settings.SetQuiet("agent.model", id)
+		h.refresh()
+	}
 }
 
 // Session returns a snapshot of the session state.
@@ -322,13 +310,10 @@ func (h *Host) Session() Session {
 	}
 }
 
-// AppendMessage adds a transcript entry and refreshes the UI.
 func (h *Host) AppendMessage(role, text string) {
 	h.appendChatMessage(ChatMessage{Role: role, Text: text})
 }
 
-// appendChatMessage appends a transcript entry with an explicit kind and
-// refreshes the UI.
 func (h *Host) appendChatMessage(m ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, m)
@@ -339,24 +324,15 @@ func (h *Host) appendChatMessage(m ChatMessage) {
 // AppendTurnResult adds the assistant reply with its turn stats (tokens,
 // thought time, elapsed time) for the chat widget to render.
 func (h *Host) AppendTurnResult(text string, stat TurnStat) {
-	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: "assistant", Text: text, Stat: &stat})
-	h.tMu.Unlock()
-	h.refresh()
+	h.appendChatMessage(ChatMessage{Role: "assistant", Text: text, Stat: &stat})
 }
 
 // AppendReasoning adds the persisted thinking block of a finished turn:
 // the chat widget collapses it to a one-line summary unless the reasoning
 // toggle is on (§8). Called by the agent loop's TurnDone.
 func (h *Host) AppendReasoning(text string, stat TurnStat) {
-	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
-	h.tMu.Unlock()
-	h.refresh()
+	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
-
-// AppendChatLine appends a transcript line from Lua (via zemi.notify).
-func (h *Host) AppendChatLine(text string) { h.AppendMessage("user", text) }
 
 // OpenHelp opens the help overlay listing slash commands and keymaps.
 func (h *Host) OpenHelp() {
@@ -439,18 +415,6 @@ func (h *Host) reasoningShown() bool {
 
 // ---------------------------------------------------------------------------
 // host -> Lua event plumbing
-
-// Emit delivers a host event to registered Lua handlers asynchronously.
-func (h *Host) Emit(ctx context.Context, name string, payload map[string]any) {
-	handlers := h.Events.Handlers(name)
-	if len(handlers) == 0 {
-		return
-	}
-	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		h.emitSync(L, handlers, name, payload, "host")
-		return nil, nil
-	})
-}
 
 // emitSync runs the handlers synchronously on the given interpreter state;
 // callers are boot steps and the Lua-side emit, already on the interpreter.
@@ -778,8 +742,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))
-			row.RawSetString("thought", glua.LNumber((time.Duration(m.Stat.ThoughtMS) * time.Millisecond).Seconds()))
-			row.RawSetString("elapsed", glua.LNumber((time.Duration(m.Stat.ElapsedMS) * time.Millisecond).Seconds()))
+			row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
+			row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
 		}
 		tr.Append(row)
 	}
@@ -908,7 +872,6 @@ func (h *Host) refuseDuringRender(L *glua.LState, what string) bool {
 // ---------------------------------------------------------------------------
 // boot step: register all zemi.* namespaces on a fresh generation
 
-// NamespacesStep returns the boot step that installs the host API.
 func (h *Host) NamespacesStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "namespaces",

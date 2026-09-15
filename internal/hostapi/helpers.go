@@ -25,7 +25,6 @@ func rawString(tb *glua.LTable, key string) string {
 	return ""
 }
 
-// rawBool reads a boolean field off a raw spec table.
 func rawBool(tb *glua.LTable, key string) bool {
 	if b, ok := tb.RawGetString(key).(glua.LBool); ok {
 		return bool(b)

@@ -1,4 +1,4 @@
-// skills.go is the M3 skills host API (DESIGN §6.7, §10.5): discovery
+// skills.go is the skills host API (DESIGN §6.7, §10.5): discovery
 // synced against the skills table, the zemi.skills namespace, the enable
 // hooks (authored skills run in the boot window after user init; learned
 // skills run post-ready, only when enabled), and the /skills command.
@@ -7,13 +7,15 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -51,12 +53,7 @@ func (r *skillReg) set(all []skills.Skill, enabled map[string]bool) {
 func (r *skillReg) list() []skills.Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]skills.Skill, 0, len(r.byName))
-	for _, s := range r.byName {
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return slices.SortedFunc(maps.Values(r.byName), func(a, b skills.Skill) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 func (r *skillReg) isEnabled(name string) bool {
@@ -250,10 +247,8 @@ const skillIndexDescMax = 160
 // setSkillEnabled flips the stored enabled state and runs the enable
 // hook of a learned skill being enabled (post-ready loading, §10.5);
 // authored hooks already ran in the boot window, so they are not re-run
-// here. The origin gate is NOT here: Go-side callers (the :skills
-// command) run off the interpreter goroutine where the frame origin is
-// meaningless — Lua callers gate in the namespace, Go callers are the
-// user by construction.
+// here. The origin gate lives in the Lua namespace: Go callers run off the
+// interpreter, where the frame origin is meaningless.
 func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error {
 	if h.GlobalDB == nil {
 		return errors.New("skills store unavailable")
@@ -278,7 +273,7 @@ func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error 
 
 // enableHook runs a learned skill's enable hook. L non-nil means we are
 // on the interpreter goroutine (zemi.skills.enable) and the hook runs
-// inline; L nil means a Go-side caller (:skills enable) and the hook must
+// inline; L nil means a Go-side caller (/skills enable) and the hook must
 // be enqueued through Do — the single-writer invariant forbids touching
 // the LState from here.
 func (h *Host) enableHook(L *glua.LState, s skills.Skill) error {

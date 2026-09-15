@@ -87,17 +87,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if hl, ok := m["hl"].(map[string]any); ok {
 			for k, v := range hl {
-				spec, ok := v.(map[string]any)
-				if !ok {
-					continue
-				}
-				t.HL[k] = HLSpec{
-					Fg:        strField(spec, "fg"),
-					Bg:        strField(spec, "bg"),
-					Bold:      boolField(spec, "bold"),
-					Italic:    boolField(spec, "italic"),
-					Underline: boolField(spec, "underline"),
-					Reverse:   boolField(spec, "reverse"),
+				if spec, ok := v.(map[string]any); ok {
+					t.HL[k] = hlSpec(spec)
 				}
 			}
 		}
@@ -124,13 +115,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	theme.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		name := "default"
-		if v, ok := h.Settings.Get("ui.theme"); ok {
-			if s, ok := v.(string); ok {
-				name = s
-			}
-		}
-		L.Push(glua.LString(name))
+		L.Push(glua.LString(h.ActiveThemeName()))
 		return 1
 	}))
 	tb.RawSetString("theme", theme)
@@ -214,12 +199,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Gen:      h.currentGen(),
 			Items:    list,
 			OnSelect: cb,
-			OnClose: L.NewFunction(func(L *glua.LState) int {
-				L.Push(cb)
-				L.Push(glua.LNil)
-				L.Call(1, 0)
-				return 0
-			}),
+			OnClose:  cancelWith(L, cb),
 		}
 		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
 			o.RenderItem = fn
@@ -248,12 +228,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Input:    true,
 			Default:  rawString(opts, "default"),
 			OnSelect: cb,
-			OnClose: L.NewFunction(func(L *glua.LState) int {
-				L.Push(cb)
-				L.Push(glua.LNil)
-				L.Call(1, 0)
-				return 0
-			}),
+			OnClose:  cancelWith(L, cb),
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -303,11 +278,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			return 0
 		}
 		m, _ := v.(map[string]any)
-		h.Themes.SetHL(group, HLSpec{
-			Fg: strField(m, "fg"), Bg: strField(m, "bg"),
-			Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
-			Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
-		})
+		h.Themes.SetHL(group, hlSpec(m))
 		h.refresh()
 		return 0
 	}))
@@ -327,12 +298,22 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	return tb
 }
 
-func boolField(m map[string]any, key string) bool {
-	if m == nil {
-		return false
+func hlSpec(m map[string]any) HLSpec {
+	return HLSpec{
+		Fg: strField(m, "fg"), Bg: strField(m, "bg"),
+		Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
+		Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
 	}
-	b, _ := m[key].(bool)
-	return b
+}
+
+// cancelWith is an overlay on_close that calls cb(nil), the vim.ui cancel shape.
+func cancelWith(L *glua.LState, cb *glua.LFunction) *glua.LFunction {
+	return L.NewFunction(func(L *glua.LState) int {
+		L.Push(cb)
+		L.Push(glua.LNil)
+		L.Call(1, 0)
+		return 0
+	})
 }
 
 // EmitAsync delivers a host event without blocking the caller: it is safe
@@ -354,7 +335,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	})
 }
 
-// ActiveThemeName returns the configured theme (ui.go helper used by ui).
+// ActiveThemeName returns the configured theme.
 func (h *Host) ActiveThemeName() string {
 	if v, ok := h.Settings.Get("ui.theme"); ok {
 		if s, ok := v.(string); ok && !strings.HasPrefix(s, "!") {

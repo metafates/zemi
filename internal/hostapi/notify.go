@@ -58,11 +58,11 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 }
 
 func strField(m map[string]any, key string) string {
-	if m == nil {
-		return ""
-	}
-	if s, ok := m[key].(string); ok {
-		return s
-	}
-	return ""
+	s, _ := m[key].(string)
+	return s
+}
+
+func boolField(m map[string]any, key string) bool {
+	b, _ := m[key].(bool)
+	return b
 }
