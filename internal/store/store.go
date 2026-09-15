@@ -1,7 +1,7 @@
 // Package store holds the SQLite persistence layer (DESIGN §7): one global
 // database for user-scope data and one per project for sessions and
-// messages. v1 keeps the surface narrow: sessions, messages, todos,
-// tool_calls and kv; the learning tables arrive with M2.
+// messages. The surface: sessions, messages, todos, tool_calls, kv and the
+// M2 memory store.
 package store
 
 import (
@@ -101,6 +101,37 @@ CREATE TABLE IF NOT EXISTS kv (
 	value_json TEXT NOT NULL,
 	updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memory (
+	id TEXT PRIMARY KEY,
+	scope TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	text TEXT NOT NULL,
+	tags TEXT NOT NULL DEFAULT '',
+	provenance_session_id TEXT,
+	confidence REAL NOT NULL DEFAULT 1,
+	hit_count INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	last_hit_at INTEGER NOT NULL DEFAULT 0,
+	superseded_by TEXT,
+	origin TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memory_scope_hit ON memory(scope, last_hit_at);
+
+-- External-content FTS5 over memory.text; triggers keep it in sync
+-- (DESIGN §7). The TEXT primary key leaves the implicit rowid intact.
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(text, content='memory', content_rowid='rowid');
+CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN
+	INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_ad AFTER DELETE ON memory BEGIN
+	INSERT INTO memory_fts(memory_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE OF text ON memory BEGIN
+	INSERT INTO memory_fts(memory_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+	INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
 `
 
 func (s *DB) migrate() error {
