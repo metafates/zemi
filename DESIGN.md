@@ -230,9 +230,12 @@ Contracts that make this safe:
   host-held transcript blocks instead of accumulating deltas); other
   events coalesce when subscribed with
   `{coalesce = true}`.
-- **Steering.** Messages typed while a turn runs are queued and drain
-  between tool-call rounds (before the next model call) as user-role
-  messages, in arrival order. `zemi.agent.cancel` bypasses the queue.
+- **Steering.** Messages sent while a turn runs queue in arrival order
+  and join the running turn as user-role messages at the next step
+  boundary (before the next model call). Whatever is still queued when
+  the turn ends starts one follow-up turn. `up` on an empty composer
+  takes the queue back for editing; `ctrl+c` cancels the turn and
+  returns the queue to the composer.
 
 Cancellation: `ctrl+c` (the cancel trigger, §8; the action is
 Go-reserved, §6.2, and in v1 its trigger is fixed: no origin, the user
@@ -942,16 +945,15 @@ configured provider later (`zemi.memory.search` signature does not change).
   the model actually received.
 - **Composer**: Go-owned bubbles textarea; `enter` sends, `alt+enter`
   newline (configurable); paste handling. The composer stays editable
-  during a turn: a submit while the turn runs enqueues a steering
-  message (§4) instead of spawning a second turn; normal sending resumes
-  at `agent.finish`.
+  during a turn: a submit while the turn runs queues as steering (§4)
+  instead of spawning a second turn.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
   send/newline, `ctrl+c` cancel turn, `ctrl+o` toggle reasoning,
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
-  Slash commands replace the old cmdline: `/q`, `/help`, `/sidebar`,
+  Slash commands replace the old cmdline: `/quit`, `/help`, `/sidebar`,
   `/model`, plus the Lua-registered ones (`/remember`, `/memory`,
   `/config`, `/skills`, `/reflect`); the old `tab` sidebar and `?` help
   live as `/sidebar` and `/help`.

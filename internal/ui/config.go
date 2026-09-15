@@ -79,7 +79,7 @@ func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, 
 	for i, it := range cr.items {
 		cur, hl := "  ", ""
 		if i == cr.sel {
-			cur, hl = "> ", "Host:PickSel"
+			cur, hl = "> ", "Host:Bold"
 		}
 		meta := it.Title
 		if it.From != "" {
@@ -89,22 +89,17 @@ func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, 
 			meta += " (secrets redacted)"
 		}
 		body = append(body, []hostapi.Segment{
-			{Text: cur, HL: "Host:PickSel"},
+			{Text: cur, HL: "Host:Bold"},
 			{Text: meta, HL: hl},
 		})
 		for _, ln := range it.Lines {
 			body = append(body, []hostapi.Segment{
 				{Text: "    "},
-				{Text: ln, HL: "Host:PermKey"},
+				{Text: ln, HL: "Host:Bold"},
 			})
 		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}})
-	body = append(body, []hostapi.Segment{
-		{Text: "[y]", HL: "Host:PermKey"}, {Text: " accept   "},
-		{Text: "[n]", HL: "Host:PermKey"}, {Text: " reject   "},
-		{Text: "[esc]", HL: "Host:PermKey"}, {Text: " leave queued"},
-	})
-	box := hostBox(" Config review ", "Host:MemTitle", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("y", "accept", "n", "reject", "esc", "leave queued"))
+	box := hostBox(" Config review ", "Host:MemTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

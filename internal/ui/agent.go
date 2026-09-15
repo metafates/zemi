@@ -87,28 +87,25 @@ func (a *App) answerPick(id string, ok bool) {
 // ---------------------------------------------------------------------------
 // chrome
 
-// hostBox draws a Go-owned chrome box: fixed-style titled top border,
-// body rows already laid out as segments, padded to one width.
-func hostBox(title, titleHL string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
-	tw := ansi.StringWidth(title)
-	bw := tw + 4
+// hostBox draws a chrome box: a titled top border with an optional
+// right-aligned badge, body rows padded to one width. The badge (a Lua
+// overlay's origin) wins over the title when space runs out.
+func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
+	bw := ansi.StringWidth(title) + ansi.StringWidth(badge) + 4
 	for _, r := range body {
-		if n := segsWidth(r) + 4; n > bw {
-			bw = n
-		}
+		bw = max(bw, segsWidth(r)+4)
 	}
-	if bw > w-4 {
-		bw = w - 4
-	}
-	if bw < 12 {
-		bw = 12
-	}
-	var box [][]hostapi.Segment
-	box = append(box, []hostapi.Segment{
+	bw = max(min(bw, w-4), 12)
+	badge = ansi.Truncate(badge, bw-2, "…")
+	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
+	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
+	box := [][]hostapi.Segment{{
 		{Text: "┌"},
 		{Text: title, HL: titleHL},
-		{Text: strings.Repeat("─", max0(bw-2-tw)) + "┐"},
-	})
+		{Text: strings.Repeat("─", fill)},
+		{Text: badge, HL: "Comment"},
+		{Text: "┐"},
+	}}
 	for _, r := range body {
 		line := truncateSegs(r, bw-4)
 		pad := bw - 4 - segsWidth(line)
@@ -121,10 +118,23 @@ func hostBox(title, titleHL string, body [][]hostapi.Segment, w int) [][]hostapi
 	return box
 }
 
+// keyHints lays out a footer of "[key] label" pairs, keys in the fixed
+// host style.
+func keyHints(pairs ...string) []hostapi.Segment {
+	var out []hostapi.Segment
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if i > 0 {
+			out = append(out, hostapi.Segment{Text: "   "})
+		}
+		out = append(out, hostapi.Segment{Text: "[" + pairs[i] + "]", HL: "Host:Bold"}, hostapi.Segment{Text: " " + pairs[i+1]})
+	}
+	return out
+}
+
 // splicePerm composes the permission overlay over the chat area.
 func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH, chatH int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
-	body = append(body, []hostapi.Segment{{Text: pa.req.Subject, HL: "Host:PermKey"}})
+	body = append(body, []hostapi.Segment{{Text: pa.req.Subject, HL: "Host:Bold"}})
 	if arg := pa.req.Arg; arg != "" {
 		lines := strings.Split(arg, "\n")
 		if len(lines) > 8 {
@@ -137,13 +147,8 @@ func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH
 	if pa.req.Reason != "" {
 		body = append(body, []hostapi.Segment{{Text: pa.req.Reason, HL: "Comment"}})
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}})
-	body = append(body, []hostapi.Segment{
-		{Text: "[o]", HL: "Host:PermKey"}, {Text: " once   "},
-		{Text: "[a]", HL: "Host:PermKey"}, {Text: " always   "},
-		{Text: "[n]", HL: "Host:PermKey"}, {Text: " no"},
-	})
-	box := hostBox(" Permission required ", "Host:PermTitle", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("o", "once", "a", "always", "n", "no"))
+	box := hostBox(" Permission required ", "Host:PermTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }
 
@@ -156,7 +161,7 @@ func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, heade
 	for i, it := range mp.items {
 		mark, hl := "  ", ""
 		if i == mp.sel {
-			mark, hl = "> ", "Host:PickSel"
+			mark, hl = "> ", "Host:Bold"
 		}
 		name := it.ID
 		if it.Display != "" && it.Display != it.ID {
@@ -166,16 +171,11 @@ func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, heade
 			name += "  (no api key)"
 		}
 		body = append(body, []hostapi.Segment{
-			{Text: mark, HL: "Host:PickSel"},
+			{Text: mark, HL: "Host:Bold"},
 			{Text: name, HL: hl},
 		})
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}})
-	body = append(body, []hostapi.Segment{
-		{Text: "[up/down]", HL: "Host:PermKey"}, {Text: " move   "},
-		{Text: "[enter]", HL: "Host:PermKey"}, {Text: " pick   "},
-		{Text: "[esc]", HL: "Host:PermKey"}, {Text: " cancel"},
-	})
-	box := hostBox(" Select model ", "Host:PickTitle", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("up/down", "move", "enter", "pick", "esc", "cancel"))
+	box := hostBox(" Select model ", "Host:PickTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

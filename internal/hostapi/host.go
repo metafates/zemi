@@ -329,7 +329,7 @@ func (h *Host) OpenHelp() {
 			desc = describeRHS(b.RHS)
 		}
 		items = append(items, map[string]any{
-			"kind": "key", "keys": b.Keys, "mode": b.Mode, "desc": desc,
+			"kind": "key", "keys": b.Keys, "desc": desc,
 		})
 	}
 	for _, c := range h.Commands.List() {
@@ -667,7 +667,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	at.RawSetString("model", glua.LString(stream.Model))
 	at.RawSetString("text", glua.LString(stream.Text))
 	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
-	at.RawSetString("steering", glua.LNumber(stream.Steering))
+	steering := L.NewTable()
+	for _, s := range stream.Steering {
+		steering.Append(glua.LString(s))
+	}
+	at.RawSetString("steering", steering)
 	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
 	toolsTb := L.NewTable()

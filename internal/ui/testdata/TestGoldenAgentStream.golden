@@ -4,7 +4,6 @@
                                                                                 
                                                                                 
                                                                                 
-                                                                                
 [38;2;122;162;247m▌ [m[38;2;122;162;247mwhy does the build fail?[m                                                      
                                                                                 
   [38;2;192;202;245mRead the build log and checked the fixture dir.[m                               
@@ -15,6 +14,7 @@
   [38;2;224;175;104m→[m[1;38;2;192;202;245m bash[m[38;2;86;95;137m  go test ./... 2>&1 | tail -5[m                                          
 [38;2;86;95;137m  ⋮ [m[3;38;2;86;95;137mchecked go.mod, then the fixture dir[m                                        
 [1;38;2;122;162;247m  ┃ [m[38;2;192;202;245mThe test binary exits 1 because the fixture path moved.[m                     
-[38;2;224;175;104m  ⧗ 1 queued[m                                                                    
-[38;2;86;95;137m> [m[38;2;192;202;245m[m[38;2;86;95;137m▏[m
+[38;2;224;175;104m  ⧗ [m[38;2;86;95;137malso check go.mod[m                                                           
+[38;2;86;95;137m    sends at the next step · up to edit · ctrl+c cancels the turn[m               
+[38;2;86;95;137m> [m[38;2;86;95;137m▏[m
 [1;38;2;122;162;247m ● agent[m                       [38;2;86;95;137manthropic/claude-sonnet-4-5[m [38;2;86;95;137m45.0k tok[m[38;2;86;95;137m · 12%[m [38;2;86;95;137m12:34[m

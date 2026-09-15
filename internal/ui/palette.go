@@ -75,27 +75,10 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 			p.matches = append(p.matches, c)
 		}
 	}
-	if p.selected >= len(p.matches) {
-		p.selected = len(p.matches) - 1
-	}
-	if p.selected < 0 {
-		p.selected = 0
-	}
+	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
-// moveSelection nudges the selection with clamping.
-func (p *cmdPalette) move(d int) {
-	p.selected += d
-	if p.selected < 0 {
-		p.selected = 0
-	}
-	if n := len(p.matches); p.selected >= n {
-		p.selected = n - 1
-	}
-	if p.selected < 0 {
-		p.selected = 0
-	}
-}
+func (p *cmdPalette) move(d int) { p.selected = max(0, min(p.selected+d, len(p.matches)-1)) }
 
 // accept fills the composer with the selected "/name " and closes.
 func (a *App) acceptPalette() {
@@ -207,10 +190,24 @@ func (a *App) sendMessage(text string) {
 	a.composer.cursor = 0
 	a.completion.close()
 	a.palette.close()
-	a.host.AppendMessage("user", text)
 	if err := a.host.AgentSend(text); err != nil {
 		a.pushToast("error", "agent", err.Error())
 	}
+}
+
+// restoreQueue moves queued steering messages back into the composer,
+// ahead of any draft, so they can be edited and sent again.
+func (a *App) restoreQueue() bool {
+	q := a.host.AgentTakeQueue()
+	if len(q) == 0 {
+		return false
+	}
+	if !a.composer.empty() {
+		q = append(q, a.composer.text)
+	}
+	a.composer.text = strings.Join(q, "\n\n")
+	a.composer.moveEnd()
+	return true
 }
 
 // splitCommand splits "name arg string" into the command name and the raw

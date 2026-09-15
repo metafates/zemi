@@ -6,6 +6,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -54,7 +56,7 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 	for i, it := range mr.items {
 		cur, hl := "  ", ""
 		if i == mr.sel {
-			cur, hl = "> ", "Host:PickSel"
+			cur, hl = "> ", "Host:Bold"
 		}
 		mark := "[ ] "
 		if mr.marked[i] {
@@ -65,11 +67,11 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 			meta += " · queued"
 		}
 		if len(it.Tags) > 0 {
-			meta += " (" + joinTags(it.Tags) + ")"
+			meta += " (" + strings.Join(it.Tags, ", ") + ")"
 		}
 		body = append(body, []hostapi.Segment{
-			{Text: cur, HL: "Host:PickSel"},
-			{Text: mark, HL: "Host:MemMark"},
+			{Text: cur, HL: "Host:Bold"},
+			{Text: mark, HL: "Host:Bold"},
 			{Text: meta, HL: hl},
 		})
 		body = append(body, []hostapi.Segment{
@@ -77,23 +79,7 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 			{Text: it.Text, HL: hl},
 		})
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}})
-	body = append(body, []hostapi.Segment{
-		{Text: "[d]", HL: "Host:PermKey"}, {Text: " mark   "},
-		{Text: "[enter]", HL: "Host:PermKey"}, {Text: " apply   "},
-		{Text: "[esc]", HL: "Host:PermKey"}, {Text: " cancel"},
-	})
-	box := hostBox(" Memory review ", "Host:MemTitle", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("d", "mark", "enter", "apply", "esc", "cancel"))
+	box := hostBox(" Memory review ", "Host:MemTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
-}
-
-func joinTags(tags []string) string {
-	out := ""
-	for i, t := range tags {
-		if i > 0 {
-			out += ", "
-		}
-		out += t
-	}
-	return out
 }

@@ -13,42 +13,21 @@ import (
 // security chrome rendered in fixed colors that no theme group can restyle
 // (DESIGN §8). Returning false leaves the segment to theme resolution.
 func fixedStyle(hl string) (uv.Style, bool) {
-	switch hl {
-	case "Host:TrustTitle":
-		return uv.Style{
-			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
-			Bg: ansi.RGBColor{R: 0xf7, G: 0x76, B: 0x8e},
-		}, true
-	case "Host:TrustKey":
+	if hl == "Host:Bold" {
 		return uv.Style{Attrs: uv.AttrBold}, true
-	case "Host:PermTitle":
-		return uv.Style{
-			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
-			Bg: ansi.RGBColor{R: 0xf7, G: 0x76, B: 0x8e},
-		}, true
-	case "Host:PermKey":
-		return uv.Style{Attrs: uv.AttrBold}, true
-	case "Host:PickTitle":
-		return uv.Style{
-			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
-			Bg: ansi.RGBColor{R: 0x7a, G: 0xa2, B: 0xf7},
-		}, true
-	case "Host:PickSel":
-		return uv.Style{Attrs: uv.AttrBold}, true
-	case "Host:MemTitle":
-		return uv.Style{
-			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
-			Bg: ansi.RGBColor{R: 0x5a, G: 0xf7, B: 0x8e},
-		}, true
-	case "Host:MemMark":
-		return uv.Style{Attrs: uv.AttrBold}, true
-	case "Host:QTitle":
-		return uv.Style{
-			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
-			Bg: ansi.RGBColor{R: 0xf7, G: 0xa2, B: 0x5a},
-		}, true
+	}
+	if bg, ok := hostTitleBg[hl]; ok {
+		return uv.Style{Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14}, Bg: bg}, true
 	}
 	return uv.Style{}, false
+}
+
+var hostTitleBg = map[string]ansi.RGBColor{
+	"Host:TrustTitle": {R: 0xf7, G: 0x76, B: 0x8e},
+	"Host:PermTitle":  {R: 0xf7, G: 0x76, B: 0x8e},
+	"Host:PickTitle":  {R: 0x7a, G: 0xa2, B: 0xf7},
+	"Host:MemTitle":   {R: 0x5a, G: 0xf7, B: 0x8e},
+	"Host:QTitle":     {R: 0xf7, G: 0xa2, B: 0x5a},
 }
 
 // trustPrompt is the Go-owned project-config trust overlay (DESIGN §5, §8):
@@ -83,59 +62,17 @@ func (a *App) answerTrust(ok bool) {
 // "Host:*" highlight names, so no theme group can forge or restyle them,
 // and no Lua text is rendered inside this chrome.
 func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH, chatH int) [][]hostapi.Segment {
-	title := " Trust project config? "
 	short := tp.hash
 	if len(short) > 12 {
 		short = short[:12]
 	}
-	lines := []string{
-		tp.path,
-		"hash: " + short,
-		"",
-		"[y] trust this config · [n] refuse once",
+	body := [][]hostapi.Segment{
+		{{Text: tp.path}},
+		{{Text: "hash: " + short}},
+		{{Text: ""}},
+		keyHints("y", "trust this config", "n", "refuse once"),
 	}
-
-	inner := 0
-	for _, l := range lines {
-		if n := ansi.StringWidth(l); n > inner {
-			inner = n
-		}
-	}
-	bw := ansi.StringWidth(title) + 4
-	if inner+6 > bw {
-		bw = inner + 6
-	}
-	if bw > w-4 {
-		bw = w - 4
-	}
-	if bw < 12 {
-		bw = 12
-	}
-
-	var box [][]hostapi.Segment
-	box = append(box, []hostapi.Segment{
-		{Text: "┌"},
-		{Text: title, HL: "Host:TrustTitle"},
-		{Text: strings.Repeat("─", max0(bw-2-ansi.StringWidth(title))) + "┐"},
-	})
-	for _, l := range lines {
-		text := ansi.Truncate(l, bw-6, "…")
-		hl := ""
-		if strings.HasPrefix(l, "[y]") {
-			hl = "Host:TrustKey"
-		}
-		pad := bw - 6 - ansi.StringWidth(text)
-		box = append(box, []hostapi.Segment{
-			{Text: "│ ", HL: ""},
-			{Text: text + strings.Repeat(" ", max0(pad)), HL: hl},
-			{Text: " │", HL: ""},
-		})
-	}
-	box = append(box, []hostapi.Segment{
-		{Text: "└", HL: ""},
-		{Text: strings.Repeat("─", bw-4), HL: ""},
-		{Text: "┘", HL: ""},
-	})
+	box := hostBox(" Trust project config? ", "Host:TrustTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }
 

@@ -226,7 +226,7 @@ func TestGoldenAgentStream(t *testing.T) {
 			{Name: "read", Input: "internal/fixtures/paths.go", Status: "ok"},
 			{Name: "bash", Input: "go test ./... 2>&1 | tail -5", Status: "run"},
 		},
-		Steering:   1,
+		Steering:   []string{"also check go.mod"},
 		Model:      "anthropic/claude-sonnet-4-5",
 		Thought:    4 * time.Second,
 		Elapsed:    12 * time.Second,

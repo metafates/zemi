@@ -35,6 +35,10 @@ type Runner struct {
 	Persist     PersistFunc
 	Temperature *float64
 
+	// Steer is polled at every step boundary; the messages it returns join
+	// the running turn as user messages (DESIGN §4 steering).
+	Steer func() []string
+
 	active bool
 	cancel context.CancelFunc
 }
@@ -93,12 +97,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		cancel()
 	}()
 
-	userMsg := fantasy.Message{
-		Role: fantasy.MessageRoleUser,
-		Content: []fantasy.MessagePart{
-			fantasy.TextPart{Text: userText},
-		},
-	}
+	userMsg := userMessage(userText)
 	if persist != nil {
 		if err := persist(string(userMsg.Role), userMsg); err != nil {
 			hooks.TurnDone(err, fantasy.Usage{})
@@ -133,34 +132,88 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		t := *temp
 		call.Temperature = &t
 	}
+	// fantasy rebuilds each step's input as initial prompt + step responses,
+	// so steered messages are re-inserted every step at their response offset.
+	var steered []steeredMsg
+	steer := r.Steer
+	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
+		resp := stepMessages(o.Steps)
+		if steer != nil {
+			for _, text := range steer() {
+				steered = append(steered, steeredMsg{at: len(resp), msg: userMessage(text)})
+			}
+		}
+		if len(steered) == 0 {
+			return ctx, fantasy.PrepareStepResult{}, nil
+		}
+		head := o.Messages[:len(o.Messages)-len(resp)]
+		return ctx, fantasy.PrepareStepResult{Messages: interleave(head, resp, steered)}, nil
+	}
 
 	result, err := r.agent.Stream(tctx, call)
 	if err != nil {
 		hooks.TurnDone(err, fantasy.Usage{})
 		return err
 	}
-	// append step messages (assistant content + tool results) to history
+	// step messages (assistant content, tool results, steered user
+	// messages) join history in the order the model saw them
+	turnMsgs := interleave(nil, stepMessages(result.Steps), steered)
 	var usage fantasy.Usage
 	r.mu.Lock()
+	r.History = append(r.History, turnMsgs...)
 	for _, step := range result.Steps {
-		r.History = append(r.History, step.Messages...)
 		usage.InputTokens += step.Usage.InputTokens
 		usage.OutputTokens += step.Usage.OutputTokens
 		usage.TotalTokens += step.Usage.TotalTokens
 	}
 	r.mu.Unlock()
 	if persist != nil {
-		for _, step := range result.Steps {
-			for _, m := range step.Messages {
-				if err := persist(string(m.Role), m); err != nil {
-					hooks.TurnDone(err, usage)
-					return err
-				}
+		for _, m := range turnMsgs {
+			if err := persist(string(m.Role), m); err != nil {
+				hooks.TurnDone(err, usage)
+				return err
 			}
 		}
 	}
 	hooks.TurnDone(nil, usage)
 	return nil
+}
+
+type steeredMsg struct {
+	at  int // number of step response messages that preceded it
+	msg fantasy.Message
+}
+
+func userMessage(text string) fantasy.Message {
+	return fantasy.Message{
+		Role:    fantasy.MessageRoleUser,
+		Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}},
+	}
+}
+
+func stepMessages(steps []fantasy.StepResult) []fantasy.Message {
+	var out []fantasy.Message
+	for _, s := range steps {
+		out = append(out, s.Messages...)
+	}
+	return out
+}
+
+// interleave returns head + resp with each steered message placed before
+// the response message at its offset.
+func interleave(head, resp []fantasy.Message, steered []steeredMsg) []fantasy.Message {
+	out := append([]fantasy.Message(nil), head...)
+	i := 0
+	for n, m := range resp {
+		for ; i < len(steered) && steered[i].at <= n; i++ {
+			out = append(out, steered[i].msg)
+		}
+		out = append(out, m)
+	}
+	for ; i < len(steered); i++ {
+		out = append(out, steered[i].msg)
+	}
+	return out
 }
 
 func isErrResult(c fantasy.ToolResultContent) bool {

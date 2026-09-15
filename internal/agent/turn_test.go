@@ -10,10 +10,12 @@ import (
 	"charm.land/fantasy"
 )
 
-// mockModel replays scripted stream parts.
+// mockModel replays scripted stream parts; steps, when set, scripts one
+// parts list per model call.
 type mockModel struct {
 	mu       sync.Mutex
 	parts    []fantasy.StreamPart
+	steps    [][]fantasy.StreamPart
 	lastCall fantasy.Call
 	block    func(ctx context.Context) // optional gate inside Stream
 }
@@ -26,6 +28,9 @@ func (m *mockModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 	m.mu.Lock()
 	m.lastCall = call
 	parts := m.parts
+	if len(m.steps) > 0 {
+		parts, m.steps = m.steps[0], m.steps[1:]
+	}
 	block := m.block
 	m.mu.Unlock()
 	if block != nil {
@@ -154,6 +159,49 @@ func TestTurnStreamsAndPersists(t *testing.T) {
 	last := m.lastCall.Prompt[len(m.lastCall.Prompt)-1]
 	if last.Role != fantasy.MessageRoleUser {
 		t.Fatalf("user message must be last, got %s", last.Role)
+	}
+}
+
+// TestSteerJoinsAtStepBoundary: a message steered in after a tool step
+// reaches the next model call and lands in history and the store between
+// the tool result and the final reply.
+func TestSteerJoinsAtStepBoundary(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+		},
+		textParts("done"),
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r.Hooks = newRecHooks()
+	var roles []string
+	r.Persist = func(role string, _ fantasy.Message) error {
+		roles = append(roles, role)
+		return nil
+	}
+	polls := 0
+	r.Steer = func() []string {
+		if polls++; polls == 2 {
+			return []string{"steer me"}
+		}
+		return nil
+	}
+	if err := r.Send(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(roles, ","); got != "user,assistant,tool,user,assistant" {
+		t.Fatalf("persisted roles: %s", got)
+	}
+	last := m.lastCall.Prompt[len(m.lastCall.Prompt)-1]
+	if txt, ok := last.Content[0].(fantasy.TextPart); last.Role != fantasy.MessageRoleUser || !ok || txt.Text != "steer me" {
+		t.Fatalf("final call must end with the steered message, got %+v", last)
+	}
+	if len(r.History) != 5 {
+		t.Fatalf("history: %d", len(r.History))
 	}
 }
 

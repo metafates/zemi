@@ -223,9 +223,10 @@ func TestSessionNamespace(t *testing.T) {
 	runUser(t, r, `assert(zemi.session.id() ~= "", "session id missing")`)
 }
 
-// TestSteeringQueue covers the DESIGN §6.3 steering contract: a send
-// during an active turn enqueues instead of starting a second runner, and
-// cancel is safe without a runner.
+// TestSteeringQueue covers the DESIGN §4 queue: sends during a turn queue
+// in order, taking the queue empties it, leftovers become one follow-up
+// turn with active held across the handoff, and cancel is safe without a
+// runner.
 func TestSteeringQueue(t *testing.T) {
 	h, _ := newTestHost(t)
 
@@ -233,14 +234,27 @@ func TestSteeringQueue(t *testing.T) {
 	h.agents.active = true
 	h.agents.mu.Unlock()
 
-	if err := h.AgentSend("follow-up"); err != nil {
-		t.Fatalf("steered send: %v", err)
+	send := func(msgs ...string) {
+		for _, m := range msgs {
+			if err := h.AgentSend(m); err != nil {
+				t.Fatalf("queued send: %v", err)
+			}
+		}
 	}
-	if n := h.AgentSteering(); n != 1 {
-		t.Fatalf("steering depth = %d", n)
+	send("one", "two")
+	if q := h.AgentTakeQueue(); len(q) != 2 || q[0] != "one" || q[1] != "two" {
+		t.Fatalf("queue = %q", q)
 	}
-	if !h.AgentActive() {
-		t.Fatal("agent should still be active")
+	if q := h.AgentTakeQueue(); len(q) != 0 {
+		t.Fatalf("queue after take = %q", q)
+	}
+
+	send("a", "b")
+	if text := h.nextTurn(); text != "a\n\nb" || !h.AgentActive() {
+		t.Fatalf("follow-up = %q, active = %v", text, h.AgentActive())
+	}
+	if text := h.nextTurn(); text != "" || h.AgentActive() {
+		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
 	}
 
 	h.AgentCancel() // no runner: must not panic

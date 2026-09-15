@@ -54,10 +54,10 @@ func (a *App) spliceQuestion(rows [][]hostapi.Segment, qp *questionPrompt, w, he
 	for i, opt := range qp.q.Options {
 		cur, hl := "  ", ""
 		if i == qp.sel {
-			cur, hl = "> ", "Host:PickSel"
+			cur, hl = "> ", "Host:Bold"
 		}
 		body = append(body, []hostapi.Segment{
-			{Text: cur, HL: "Host:PickSel"},
+			{Text: cur, HL: "Host:Bold"},
 			{Text: opt.Label, HL: hl},
 		})
 		if opt.Description != "" {
@@ -67,12 +67,7 @@ func (a *App) spliceQuestion(rows [][]hostapi.Segment, qp *questionPrompt, w, he
 			})
 		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}})
-	body = append(body, []hostapi.Segment{
-		{Text: "[up/down]", HL: "Host:PermKey"}, {Text: " move   "},
-		{Text: "[enter]", HL: "Host:PermKey"}, {Text: " answer   "},
-		{Text: "[esc]", HL: "Host:PermKey"}, {Text: " decline"},
-	})
-	box := hostBox(" Question ", "Host:QTitle", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("up/down", "move", "enter", "answer", "esc", "decline"))
+	box := hostBox(" Question ", "Host:QTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

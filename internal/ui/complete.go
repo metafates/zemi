@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -140,12 +141,7 @@ func (f *fileCompleter) rematch(maxItems int) {
 	if len(f.matches) > maxItems {
 		f.matches = f.matches[:maxItems]
 	}
-	if f.selected >= len(f.matches) {
-		f.selected = len(f.matches) - 1
-	}
-	if f.selected < 0 {
-		f.selected = 0
-	}
+	f.selected = max(0, min(f.selected, len(f.matches)-1))
 }
 
 // matchScore ranks a path against the query: basename prefix beats
@@ -216,7 +212,7 @@ func (a *App) completionRows(w int) [][]hostapi.Segment {
 		}
 		out = append(out, []hostapi.Segment{
 			{Text: " " + marker, HL: hl},
-			{Text: ansiTrunc(m, w-6), HL: hl},
+			{Text: ansi.Truncate(m, max0(w-6), "~"), HL: hl},
 		})
 	}
 	return out
@@ -249,18 +245,6 @@ func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 		sort.Strings(files)
 		return filesScannedMsg{gen: gen, files: files}
 	}
-}
-
-// ansiTrunc clips a plain string to w cells (no ANSI in file paths).
-func ansiTrunc(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= w {
-		return s
-	}
-	return string(r[:max0(w-1)]) + "~"
 }
 
 type filesScannedMsg struct {

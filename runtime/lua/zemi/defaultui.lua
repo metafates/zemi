@@ -304,8 +304,12 @@ zemi.ui.widget.register({
       if ag.text and ag.text ~= "" then
         add_markdown(lines, "  ┃ ", "AgentTag", ag.text, width - 4)
       end
-      if (ag.steering or 0) > 0 then
-        lines[#lines + 1] = { { text = "  ⧗ " .. ag.steering .. " queued", hl = "AgentToolRun" } }
+      local queued = ag.steering or {}
+      for _, q in ipairs(queued) do
+        lines[#lines + 1] = { { text = "  ⧗ ", hl = "AgentToolRun" }, { text = (q:gsub("%s+", " ")), hl = "Comment" } }
+      end
+      if #queued > 0 then
+        lines[#lines + 1] = { { text = "    sends at the next step · up to edit · ctrl+c cancels the turn", hl = "Comment" } }
       end
     end
     return lines

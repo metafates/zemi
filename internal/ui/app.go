@@ -111,10 +111,10 @@ func (a *App) SetReload(fn func()) { a.reload = fn }
 // through the hook channel; safe from any goroutine).
 func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
 
-// Quit asks the program to exit (Go-reserved /q command). The send must
-// not happen on the UI goroutine: the bubbletea event loop owns the only
-// receive of the (unbuffered) msgs channel and is currently inside our
-// Update, so a direct Quit() deadlocks the /q command.
+// Quit asks the program to exit (/quit). The send must not happen on the
+// UI goroutine: the bubbletea event loop owns the only receive of the
+// (unbuffered) msgs channel and is currently inside our Update, so a
+// direct Quit() deadlocks.
 func (a *App) Quit() {
 	if a.program != nil {
 		go a.program.Quit()
@@ -415,22 +415,27 @@ func (a *App) widgetWidth(w *hostapi.Widget) int {
 	case strings.HasPrefix(w.Region, "statusline"):
 		return a.width
 	case w.Region == "sidebar":
-		sw := a.sidebarWidth()
-		if sw > a.width/2 {
-			sw = a.width / 2
-		}
-		return sw
+		return a.sidebarCols(a.width)
 	case w.Region == "chat":
-		chatW := a.width
-		if a.host.SidebarOpen() {
-			chatW = a.width - a.sidebarWidth() - 1
-		}
-		if chatW < 1 {
-			chatW = 1
-		}
-		return chatW
+		return a.chatCols(a.width)
 	}
 	return a.width
+}
+
+// sidebarCols is the sidebar width for a w-cell terminal (0 when closed);
+// widget renders and compose share it so they never disagree.
+func (a *App) sidebarCols(w int) int {
+	if !a.host.SidebarOpen() {
+		return 0
+	}
+	return max(min(a.cfgInt("ui.sidebar.width", 30, 1, 1<<16), w/2), 5)
+}
+
+func (a *App) chatCols(w int) int {
+	if sw := a.sidebarCols(w); sw > 0 {
+		return max(w-sw-1, 1)
+	}
+	return w
 }
 
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
@@ -567,22 +572,10 @@ func (a *App) compose(w, h int) string {
 	}
 
 	// Chat area + optional sidebar column.
-	chatW := w
+	sw, chatW := a.sidebarCols(w), a.chatCols(w)
 	var sidebar [][]hostapi.Segment
-	sw := 0
-	if a.host.SidebarOpen() {
-		sw = a.sidebarWidth()
-		if sw > w/2 {
-			sw = w / 2
-		}
-		if sw < 5 {
-			sw = 5
-		}
+	if sw > 0 {
 		sidebar = a.regionLines("sidebar", sw)
-		chatW = w - sw - 1
-		if chatW < 1 {
-			chatW = 1
-		}
 	}
 	chat := a.regionLines("chat", chatW)
 
@@ -741,18 +734,6 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 	return out
 }
 
-func (a *App) sidebarWidth() int {
-	if v, ok := a.host.Settings.Get("ui.sidebar.width"); ok {
-		if n, ok := v.(int); ok && n > 0 {
-			return n
-		}
-		if f, ok := v.(float64); ok && f > 0 {
-			return int(f)
-		}
-	}
-	return 30
-}
-
 // statusRow builds the one-row statusline: left widgets, Go chrome flags,
 // then right widgets aligned to the right edge (DESIGN §8).
 func (a *App) statusRow(w int) []hostapi.Segment {
@@ -846,6 +827,9 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
 	for _, s := range segs {
+		if s.Text == "" {
+			continue
+		}
 		if fs, ok := fixedStyle(s.HL); ok {
 			b.WriteString(fs.Styled(s.Text))
 			continue

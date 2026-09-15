@@ -254,19 +254,20 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
+	r.Steer = h.deliverSteering
 	return r, nil
 }
 
-// AgentSend sends one user message to the agent: it starts a turn, or
-// enqueues as steering during an active turn (DESIGN §6.3). Safe from any
-// goroutine; the turn streams to the UI and persists into the session.
+// AgentSend sends one user message to the agent (DESIGN §4, §6.3). Idle,
+// it starts a turn; during a turn it queues, and the queue joins the
+// running turn at its next step boundary. Safe from any goroutine.
 func (h *Host) AgentSend(text string) error {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
 		ag.steering = append(ag.steering, text)
 		ag.mu.Unlock()
-		h.agentEvent(AgentEvent{Kind: "text", Text: ""})
+		h.refresh()
 		return nil
 	}
 	profName := ag.defProf
@@ -287,44 +288,99 @@ func (h *Host) AgentSend(text string) error {
 	ag.mu.Lock()
 	ag.runner = runner
 	ag.active = true
-	ag.textBuf, ag.reasonBuf = "", ""
-	ag.tools = nil
 	ag.modelSeed = ""
-	ag.turnStart = time.Now()
-	ag.thinkStart = time.Time{}
-	ag.thinking = false
-	ag.thought = 0
+	ag.beginTurn()
 	ag.mu.Unlock()
-	h.agentEvent(AgentEvent{Kind: "turn_start"})
-	h.EmitAsync("agent.start", map[string]any{"text": text})
+	h.startTurn(text)
 
 	go func() {
-		if err := runner.Send(context.Background(), text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
-			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
+		for text != "" {
+			if err := runner.Send(context.Background(), text); err != nil && !errors.Is(err, agent.ErrTurnActive) {
+				h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
+			}
+			text = h.nextTurn()
 		}
-		h.drainSteering(p)
 	}()
 	return nil
 }
 
-// drainSteering starts the next queued message, if any (loop via
-// recursion on completion).
-func (h *Host) drainSteering(p *Profile) {
+func (h *Host) startTurn(text string) {
+	h.AppendMessage("user", text)
+	h.agentEvent(AgentEvent{Kind: "turn_start"})
+	h.EmitAsync("agent.start", map[string]any{"text": text})
+}
+
+// nextTurn runs after each turn: messages queued after the last step
+// boundary become one follow-up turn, otherwise the agent goes idle.
+// active stays held across the handoff, so a submit in between queues
+// instead of starting a turn out of order.
+func (h *Host) nextTurn() string {
 	ag := h.agents
 	ag.mu.Lock()
-	next := ""
-	if len(ag.steering) > 0 {
-		next = ag.steering[0]
-		ag.steering = ag.steering[1:]
+	text := strings.Join(ag.steering, "\n\n")
+	ag.steering = nil
+	if text == "" {
+		ag.active = false
+	} else {
+		ag.beginTurn()
 	}
 	ag.mu.Unlock()
-	if next == "" {
-		return
+	if text == "" {
+		h.refresh()
+	} else {
+		h.startTurn(text)
 	}
-	h.EmitAsync("agent.text_delta", map[string]any{"text": next})
-	if err := h.AgentSend(next); err != nil {
-		h.Log.Error("agent", "steered send failed", map[string]any{"error": err.Error()})
+	return text
+}
+
+// deliverSteering hands the queue to the running turn at a step boundary.
+// The reply streamed so far moves into the transcript first, so each
+// steered message shows after the text it interrupted.
+func (h *Host) deliverSteering() []string {
+	ag := h.agents
+	ag.mu.Lock()
+	msgs, text, reason := ag.steering, ag.textBuf, ag.reasonBuf
+	ag.endThinking()
+	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
+	if len(msgs) > 0 {
+		ag.steering, ag.textBuf, ag.reasonBuf, ag.thought = nil, "", "", 0
 	}
+	ag.mu.Unlock()
+	if len(msgs) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(reason) != "" {
+		h.AppendReasoning(reason, stat)
+	}
+	if strings.TrimSpace(text) != "" {
+		h.AppendTurnResult(text, TurnStat{})
+	}
+	for _, m := range msgs {
+		h.AppendMessage("user", m)
+	}
+	return msgs
+}
+
+// AgentTakeQueue removes and returns the messages still waiting for a step
+// boundary, so the UI can hand them back to the composer.
+func (h *Host) AgentTakeQueue() []string {
+	ag := h.agents
+	ag.mu.Lock()
+	q := ag.steering
+	ag.steering = nil
+	ag.mu.Unlock()
+	if len(q) > 0 {
+		h.refresh()
+	}
+	return q
+}
+
+// beginTurn resets the per-turn stream state (ag.mu held).
+func (ag *agentHost) beginTurn() {
+	ag.textBuf, ag.reasonBuf = "", ""
+	ag.tools = nil
+	ag.turnStart = time.Now()
+	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
 }
 
 // AgentCancel aborts the active turn (DESIGN §6.3).
@@ -344,14 +400,6 @@ func (h *Host) AgentActive() bool {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	return ag.active
-}
-
-// AgentSteering reports the queued steering depth (statusline).
-func (h *Host) AgentSteering() int {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return len(ag.steering)
 }
 
 // agentEvent delivers one streaming update to the UI.
@@ -414,7 +462,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag := h.agents
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.active = false
 	ag.usage = usage
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
@@ -569,7 +616,7 @@ type StreamSnapshot struct {
 	Tools     []StreamTool
 	Model     string
 	Profile   string
-	Steering  int
+	Steering  []string      // queued messages, oldest first
 	Thought   time.Duration // wall time spent in reasoning blocks
 	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
 
@@ -601,7 +648,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf,
-		Profile: ag.defProf, Steering: len(ag.steering),
+		Profile: ag.defProf, Steering: append([]string(nil), ag.steering...),
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CtxWindow: ag.ctxWin,
@@ -640,10 +687,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	} else {
 		ag.turnStart = time.Time{}
 	}
-	ag.steering = nil
-	for i := 0; i < s.Steering; i++ {
-		ag.steering = append(ag.steering, "")
-	}
+	ag.steering = append([]string(nil), s.Steering...)
 }
 
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes

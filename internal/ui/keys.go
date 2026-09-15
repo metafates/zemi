@@ -32,6 +32,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerQuestion("", false)
 		case a.host.AgentActive():
 			a.host.AgentCancel()
+			a.restoreQueue()
 			a.pushToast("warn", "cancel", "cancelling turn")
 		default:
 			a.pushToast("warn", "cancel", "no active turn")
@@ -64,15 +65,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if a.modelPick != nil {
+		if moveSel(&a.modelPick.sel, len(a.modelPick.items), key) {
+			return nil
+		}
 		switch key {
-		case "up", "k":
-			if a.modelPick.sel > 0 {
-				a.modelPick.sel--
-			}
-		case "down", "j":
-			if a.modelPick.sel < len(a.modelPick.items)-1 {
-				a.modelPick.sel++
-			}
 		case "enter":
 			if a.modelPick.sel < len(a.modelPick.items) {
 				a.answerPick(a.modelPick.items[a.modelPick.sel].ID, true)
@@ -87,15 +83,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// 2c. Memory review: Go-owned chrome capturing all keys (§8, §10.4).
 	if a.memReview != nil {
+		if moveSel(&a.memReview.sel, len(a.memReview.items), key) {
+			return nil
+		}
 		switch key {
-		case "up", "k":
-			if a.memReview.sel > 0 {
-				a.memReview.sel--
-			}
-		case "down", "j":
-			if a.memReview.sel < len(a.memReview.items)-1 {
-				a.memReview.sel++
-			}
 		case "d", " ":
 			if a.memReview.sel < len(a.memReview.items) {
 				a.memReview.marked[a.memReview.sel] = !a.memReview.marked[a.memReview.sel]
@@ -109,15 +100,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// 2c-bis. Config review: Go-owned chrome capturing all keys (§8,
 	// §10.4).
 	if a.cfgReview != nil {
+		if moveSel(&a.cfgReview.sel, len(a.cfgReview.items), key) {
+			return nil
+		}
 		switch key {
-		case "up", "k":
-			if a.cfgReview.sel > 0 {
-				a.cfgReview.sel--
-			}
-		case "down", "j":
-			if a.cfgReview.sel < len(a.cfgReview.items)-1 {
-				a.cfgReview.sel++
-			}
 		case "y", "a":
 			a.cfgDecide(true)
 		case "n", "x":
@@ -130,15 +116,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// 2d. Question overlay: Go-owned chrome capturing all keys (§8).
 	if a.question != nil {
+		if moveSel(&a.question.sel, len(a.question.q.Options), key) {
+			return nil
+		}
 		switch key {
-		case "up", "k":
-			if a.question.sel > 0 {
-				a.question.sel--
-			}
-		case "down", "j":
-			if a.question.sel < len(a.question.q.Options)-1 {
-				a.question.sel++
-			}
 		case "enter":
 			if a.question.sel < len(a.question.q.Options) {
 				a.answerQuestion(a.question.q.Options[a.question.sel].Label, true)
@@ -245,6 +226,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		a.updatePalette()
 		return a.updateCompletion()
 	case "up":
+		if c.empty() && a.restoreQueue() {
+			return nil
+		}
 		if strings.Contains(c.text, "\n") {
 			c.up()
 		} else {
@@ -287,6 +271,20 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// moveSel applies up/down (k/j) to a list selection over n items; it
+// reports whether the key was a move.
+func moveSel(sel *int, n int, key string) bool {
+	switch key {
+	case "up", "k":
+		*sel = max(*sel-1, 0)
+	case "down", "j":
+		*sel = max(min(*sel+1, n-1), 0)
+	default:
+		return false
+	}
+	return true
 }
 
 // runRHS executes a keymap right-hand side on the ui class under the
