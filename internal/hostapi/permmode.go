@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -24,6 +26,33 @@ const planPrompt = `
 
 # Plan mode
 The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and every command needs the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
+
+// PermModeInfo says what each mode means (mode strip, /mode picker).
+var PermModeInfo = map[string]string{
+	"manual": "you approve every change and command",
+	"plan":   "read and plan only: no edits, commands ask",
+	"auto":   "safe actions run on their own, risky ones ask",
+	"yolo":   "everything runs without asking",
+}
+
+// OpenModePicker lists the modes with what they mean; enter switches.
+func (h *Host) OpenModePicker() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI")
+	}
+	cur := h.PermMode()
+	var items []any
+	for _, m := range PermModes {
+		mark := "  "
+		if m == cur {
+			mark = "● "
+		}
+		items = append(items, map[string]any{"text": fmt.Sprintf("%s%-7s %s", mark, m, PermModeInfo[m]), "run": "mode " + m})
+	}
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items})
+	return nil
+}
 
 // PermMode reports the active permission mode (unknown values read as
 // manual, the fail-closed choice).

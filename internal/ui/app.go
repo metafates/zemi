@@ -66,16 +66,18 @@ type App struct {
 	cfgReview *cfgReviewPrompt
 	question  *questionPrompt
 
-	caches     map[string]*widgetCache
-	frameGen   int64
-	timeStr    string
-	activeBump time.Time
-	now        func() time.Time // animation clock; tests pin it
-	cancelling bool             // interrupt sent, turn not finished yet
-	focused    bool             // terminal focus (true until the terminal reports a blur)
-	keySeq     []string         // keys of a bound sequence typed so far
-	keySeqAt   time.Time
-	quitArmed  time.Time        // a second idle ctrl+c before this quits
+	caches      map[string]*widgetCache
+	frameGen    int64
+	timeStr     string
+	activeBump  time.Time
+	now         func() time.Time // animation clock; tests pin it
+	cancelling  bool             // interrupt sent, turn not finished yet
+	focused     bool             // terminal focus (true until the terminal reports a blur)
+	lastMode    string           // permission mode at the last frame
+	modeShownAt time.Time        // when the mode strip appeared
+	keySeq      []string         // keys of a bound sequence typed so far
+	keySeqAt    time.Time
+	quitArmed   time.Time // a second idle ctrl+c before this quits
 
 	bootErr error
 
@@ -651,7 +653,12 @@ func (a *App) compose(w, h int) string {
 
 	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
 
-	rows = append(rows, padSegs(nil, w))
+	// the blank row above the composer carries the mode strip after a switch
+	spacer := padSegs(nil, w)
+	if strip := a.modeStrip(); strip != nil {
+		spacer = padSegs(truncateSegs(strip, w), w)
+	}
+	rows = append(rows, spacer)
 	// The working row renders above the composer.
 	rows = append(rows, working...)
 	rows = append(rows, compRows...)
@@ -690,6 +697,35 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	return b.String()
+}
+
+const modeStripTTL = 3 * time.Second
+
+// modeStrip shows every permission mode with the active one lit and what it
+// means, for a few seconds after the mode changes.
+func (a *App) modeStrip() []hostapi.Segment {
+	mode := a.host.PermMode()
+	switch {
+	case a.lastMode == "":
+		a.lastMode = mode
+		return nil
+	case mode != a.lastMode:
+		a.lastMode, a.modeShownAt = mode, a.now()
+	}
+	if a.modeShownAt.IsZero() || a.now().Sub(a.modeShownAt) > modeStripTTL {
+		return nil
+	}
+	row := []hostapi.Segment{{Text: " "}}
+	for _, m := range hostapi.PermModes {
+		hl := "Comment"
+		if m == mode {
+			hl = "Mode" + strings.ToUpper(m[:1]) + m[1:]
+		}
+		row = append(row, hostapi.Segment{Text: " " + m + " ", HL: hl}, hostapi.Segment{Text: " "})
+	}
+	return append(row,
+		hostapi.Segment{Text: " " + hostapi.PermModeInfo[mode], HL: "Normal"},
+		hostapi.Segment{Text: "   tab switches", HL: "Comment"})
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of

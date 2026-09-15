@@ -393,7 +393,7 @@ func TestLuaUtil(t *testing.T) {
 }
 
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
-// the text indented under it, no per-line gutter marks.
+// the text under a thin bar.
 func TestReasoningExpanded(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "why?")
@@ -401,11 +401,22 @@ func TestReasoningExpanded(t *testing.T) {
 	host.ToggleReasoning()
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "  ✻ thought 4.2s\n") && !strings.Contains(frame, "  ✻ thought 4.2s ") {
+	if !strings.Contains(frame, "  ✻ Thought for 4.2s") {
 		t.Fatalf("thought header missing:\n%s", frame)
 	}
-	if !strings.Contains(frame, "    first idea") || !strings.Contains(frame, "    second idea") || strings.Contains(frame, "⋮") {
+	if !strings.Contains(frame, "    │ first idea") || !strings.Contains(frame, "    │ second idea") {
 		t.Fatalf("expanded reasoning layout:\n%s", frame)
+	}
+}
+
+// TestReasoningLiveTail: while the model thinks, only its last lines show.
+func TestReasoningLiveTail(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\n"})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "✻ Thinking") || strings.Contains(frame, "│ one") || !strings.Contains(frame, "│ four") {
+		t.Fatalf("live thinking tail:\n%s", frame)
 	}
 }
 

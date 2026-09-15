@@ -31,7 +31,9 @@ zemi.ui.theme.register("default", {
     MarkdownCode = { fg = "warn", bg = "panel" },
     MarkdownLink = { fg = "accent", underline = true },
     MarkdownQuote = { fg = "muted", italic = true },
-    AgentReason = { fg = "muted", italic = true },
+    AgentReason = { fg = "muted" },
+    ThinkingMark = { fg = "accent" },
+    ThinkingBar = { fg = "#3b4261" },
     AgentToolName = { fg = "fg", bold = true },
     AgentToolRun = { fg = "muted" },
     AgentToolOk = { fg = "ok" },
@@ -316,20 +318,34 @@ zemi.ui.widget.register({
         lines[#lines + 1] = row
       end
     end
-    -- Reasoning: one "✻ thought 4.2s" header; ctrl+o (ctx.show_reasoning)
-    -- expands the text under it, indented and dim.
-    local function add_reasoning(label, text)
-      lines[#lines + 1] = { { text = "  ✻ " .. label, hl = "AgentReason" } }
-      if not ctx.show_reasoning then return end
-      local body = {}
-      for rl in (text .. "\n"):gmatch("(.-)\n") do
-        body[#body + 1] = rl
+    -- Reasoning is a quiet aside: "✻ Thought for 4.2s" once done, the text
+    -- under a thin bar with ctrl+o. While the model thinks, its last lines
+    -- show (tail), so the wait is not a blank screen.
+    local function wrap_words(text, room)
+      local out = {}
+      for para in (text .. "\n"):gmatch("(.-)\n") do
+        local cur = ""
+        for word in para:gmatch("%S+") do
+          if cur ~= "" and cells(cur) + 1 + cells(word) > room then
+            out[#out + 1], cur = cur, word
+          else
+            cur = cur == "" and word or (cur .. " " .. word)
+          end
+        end
+        if cur ~= "" or (#out > 0 and out[#out] ~= "") then out[#out + 1] = cur end
       end
-      while #body > 0 and body[#body] == "" do
-        body[#body] = nil
-      end
-      for _, rl in ipairs(body) do
-        lines[#lines + 1] = { { text = "    " .. rl, hl = "AgentReason" } }
+      while #out > 0 and out[#out] == "" do out[#out] = nil end
+      return out
+    end
+    local function add_reasoning(label, hint, text, tail)
+      local head = { { text = "  ✻ ", hl = "ThinkingMark" }, { text = label, hl = "AgentReason" } }
+      if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment" } end
+      lines[#lines + 1] = head
+      if not ctx.show_reasoning and not tail then return end
+      local body = wrap_words(text, math.max(width - 8, 20))
+      local first = (ctx.show_reasoning or not tail) and 1 or math.max(1, #body - tail + 1)
+      for n = first, #body do
+        lines[#lines + 1] = { { text = "    │ ", hl = "ThinkingBar" }, { text = body[n], hl = "AgentReason" } }
       end
     end
     -- One tool row: status mark (running marks pulse with the working
@@ -387,9 +403,9 @@ zemi.ui.widget.register({
       if i > 1 and (m.role == "user" or tr[i - 1].role == "user") then blank() end
       if m.kind == "reasoning" then
         local secs = fmt_secs(m.thought)
-        local label = "thought" .. (secs and " " .. secs or "")
-        if i == last_reason and not ctx.show_reasoning then label = label .. " (ctrl+o to expand)" end
-        add_reasoning(label, m.text)
+        local label = secs and ("Thought for " .. secs) or "Thought"
+        local hint = (i == last_reason and not ctx.show_reasoning) and "ctrl+o to read" or nil
+        add_reasoning(label, hint, m.text)
       elseif m.kind == "tool" then
         add_tool(m.tool, m.text, m.status, m.detail, m.diff)
       elseif m.kind == "shell" then
@@ -463,7 +479,7 @@ zemi.ui.widget.register({
     if ag.active or #tools > 0 or text ~= "" then
       if #tr > 0 and tr[#tr].role == "user" then blank() end
       for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status, t.detail, t.diff) end
-      if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning("thinking", ag.reasoning) end
+      if (ag.reasoning or "") ~= "" and text == "" then add_reasoning("Thinking", nil, ag.reasoning, 3) end
       if text ~= "" then add_markdown(text) end
       for _, q in ipairs(queued) do
         lines[#lines + 1] = { { text = "  ⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }

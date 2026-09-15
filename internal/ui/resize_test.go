@@ -112,3 +112,23 @@ func TestResizeSweep(t *testing.T) {
 		}
 	}
 }
+
+// TestModeStrip: switching modes shows all of them with what the new one
+// means, and the strip goes away after a few seconds.
+func TestModeStrip(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	now := time.Now()
+	a.now = func() time.Time { return now }
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	_ = a.Frame()
+	if err := a.host.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	if f := a.Frame(); !strings.Contains(f, "manual") || !strings.Contains(f, hostapi.PermModeInfo["auto"]) {
+		t.Fatalf("no mode strip:\n%s", f)
+	}
+	now = now.Add(4 * time.Second)
+	if f := a.Frame(); strings.Contains(f, hostapi.PermModeInfo["auto"]) {
+		t.Fatalf("strip outlived its time:\n%s", f)
+	}
+}
