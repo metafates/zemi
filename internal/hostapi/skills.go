@@ -304,14 +304,7 @@ func (h *Host) skillsCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
-		all := h.skillsReg.list()
-		n := 0
-		for _, s := range all {
-			if h.skillsReg.isEnabled(s.Name) {
-				n++
-			}
-		}
-		h.memNotify("info", "skills", fmt.Sprintf("%d skills, %d enabled", len(all), n))
+		h.openSkills()
 		return nil
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
 		if err := h.setSkillEnabled(nil, fields[1], fields[0] == "enable"); err != nil {
@@ -324,6 +317,29 @@ func (h *Host) skillsCommand(args string) error {
 	}
 }
 
+// openSkills lists discovered skills with their state; enter toggles the
+// selected one through the same enable/disable path as the command.
+func (h *Host) openSkills() {
+	ui := h.hooks()
+	all := h.skillsReg.list()
+	if ui == nil || len(all) == 0 {
+		h.memNotify("info", "skills", "no skills found (add them under skills/ in your config)")
+		return
+	}
+	items := make([]any, 0, len(all))
+	for _, s := range all {
+		mark, verb := "○ ", "enable"
+		if h.skillsReg.isEnabled(s.Name) {
+			mark, verb = "● ", "disable"
+		}
+		items = append(items, map[string]any{
+			"text": fmt.Sprintf("%s%-20s %s (%s)", mark, s.Name, s.Description, s.Source),
+			"run":  "skills " + verb + " " + s.Name,
+		})
+	}
+	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills - enter toggles", Origin: lua.OriginBuiltin, Items: items})
+}
+
 // SkillsCommandsStep registers the Go-owned /skills command with the
 // builtin origin (user config may rebind it).
 func (h *Host) SkillsCommandsStep() lua.BootStep {
@@ -331,7 +347,7 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 		Name: "skills commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "skills", NArgs: "*", Desc: "show skills; enable|disable <name>",
+				Name: "skills", NArgs: "*", Desc: "browse skills (enter toggles); enable|disable <name>",
 				GoFn:   func(h *Host, args string) error { return h.skillsCommand(args) },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
