@@ -70,6 +70,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, UserWritable: true, Desc: "completion popup rows"},
 		{Path: "reflector.every_n_sessions", Kind: "int", Default: 1, Desc: "run the reflector every N sessions"},
 		{Path: "reflector.model", Kind: "string", Default: "", UserWritable: true, Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
+		{Path: "compact.model", Kind: "string", Default: "", UserWritable: true, Desc: "model that writes compaction summaries (provider/model; empty uses agent.model)"},
 		{Path: "reflector.timeout_ms", Kind: "int", Default: 120000, Desc: "reflector run timeout in milliseconds"},
 		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "memory autonomy mode"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},

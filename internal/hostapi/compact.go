@@ -26,8 +26,8 @@ const (
 	compactBuffer   = 13_000
 	compactMaxFails = 3
 	summaryMaxOut   = compactReserve // the reply room compaction plans for
-	toolKeepTokens  = 40_000 // newest tool output pruning leaves alone
-	pruneMinTokens  = 20_000 // a smaller saving is not worth a prompt cache miss
+	toolKeepTokens  = 40_000         // newest tool output pruning leaves alone
+	pruneMinTokens  = 20_000         // a smaller saving is not worth a prompt cache miss
 
 	compactAuto     = "auto"
 	compactOverflow = "overflow"
@@ -340,7 +340,7 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // context-too-long refusal, up to three times. An empty or cut-off reply is
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
-	model, err := h.resolveModel(nil)
+	model, err := h.modelFor("compact.model")
 	if err != nil {
 		return "", err
 	}

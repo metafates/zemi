@@ -79,6 +79,7 @@ writable; prefer it over guessing. Common keys:
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
+- `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
 - `lsp.auto` (true): start installed gopls, pyright, rust-analyzer,
   typescript-language-server or clangd when their marker file is at the repo root
