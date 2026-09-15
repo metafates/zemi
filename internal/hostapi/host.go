@@ -29,6 +29,8 @@ type UIHooks interface {
 	Notify(level, title, body string)
 	OpenOverlay(o Overlay)
 	CloseOverlay(id string) bool
+	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
+	CloseLuaOverlays()
 	Refresh()
 	ScrollChat(kind string)
 	AgentEvent(ev AgentEvent)
@@ -1004,6 +1006,11 @@ func (h *Host) PurgeGeneration() {
 	h.timers.purge()
 	h.mcp.stopAll()
 	h.lsp.stopAll()
+	// An overlay left open would keep drawing with callbacks that are now
+	// dropped (submitOverlay), which reads as a frozen picker.
+	if ui := h.hooks(); ui != nil {
+		ui.CloseLuaOverlays()
+	}
 }
 
 type turnScope struct {

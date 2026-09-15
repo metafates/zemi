@@ -36,6 +36,20 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	}
 }
 
+// TestReloadClosesLuaOverlays: an overlay the interpreter owns must not
+// survive a reload. Its callbacks are dropped as stale, so leaving it on
+// screen reads as a frozen picker; Go-built ones keep working and stay.
+func TestReloadClosesLuaOverlays(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	a.openOverlay(hostapi.Overlay{ID: "lua", Origin: lua.OriginUser, Gen: 1, Items: []any{"a"}})
+	a.openOverlay(hostapi.Overlay{ID: "go", Origin: lua.OriginBuiltin, Items: []any{"b"}})
+
+	a.host.PurgeGeneration()
+	if len(a.overlays) != 1 || a.overlays[0].o.ID != "go" {
+		t.Fatalf("overlays after purge: %+v", a.overlays)
+	}
+}
+
 // TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
 // any case), backspace widens again, esc ends the filter before closing,
 // j moves outside a filter, and enter runs the highlighted match.
