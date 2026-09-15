@@ -46,7 +46,7 @@ tests boot with empty dirs, so code that requires them needs explicit setup in t
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:94`) — order
+`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:93`) — order
 matters and permissions sit early so no userland code runs before the permanent store loads:
 host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
 builtin commands -> memory + reflector + config + skills commands -> agents (+ tasks),
