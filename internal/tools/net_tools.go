@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -167,6 +168,9 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	}
 	b.WriteString("\n")
 	b.WriteString(truncOut(text))
+	if len(text) > len(truncOut(text)) {
+		b.WriteString(p.spill("fetch", text))
+	}
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
@@ -177,6 +181,7 @@ var (
 	commentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 	tagRe     = regexp.MustCompile(`(?s)<[^>]*>`)
 	spaceRe   = regexp.MustCompile(`\n\s*\n\s*`)
+	breakRe   = regexp.MustCompile(`(?i)<(br|/p|/div|/li|/tr|/h[1-6])[^>]*>`)
 )
 
 // htmlToText strips markup to a readable plain-text skeleton: enough for
@@ -184,22 +189,14 @@ var (
 func htmlToText(s string) string {
 	s = scriptRe.ReplaceAllString(s, " ")
 	s = commentRe.ReplaceAllString(s, " ")
-	s = regexp.MustCompile(`(?i)<(br|/p|/div|/li|/tr|/h[1-6])[^>]*>`).ReplaceAllString(s, "\n")
+	s = breakRe.ReplaceAllString(s, "\n")
 	s = tagRe.ReplaceAllString(s, "")
-	s = htmlUnescape(s)
+	s = html.UnescapeString(s)
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
 		lines[i] = strings.TrimSpace(l)
 	}
 	return spaceRe.ReplaceAllString(strings.Join(lines, "\n"), "\n\n")
-}
-
-func htmlUnescape(s string) string {
-	repl := strings.NewReplacer(
-		"&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", `"`,
-		"&#39;", "'", "&apos;", "'", "&nbsp;", " ",
-	)
-	return repl.Replace(s)
 }
 
 // runSourcegraph searches public repositories via the Sourcegraph stream

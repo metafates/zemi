@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"charm.land/fantasy"
@@ -28,12 +29,15 @@ func TestRewind(t *testing.T) {
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
-			case toolResult:
-				return textParts("done")
+			// writing over a file means reading it first
 			case last == "first":
+				return toolCallParts("c-read", "read", fmt.Sprintf(`{"path":%q}`, edited))
+			case strings.Contains(last, "v1"):
 				return write(edited, "v2")
 			case last == "second":
 				return write(created, "x")
+			case toolResult:
+				return textParts("done")
 			}
 			return textParts("?")
 		}}, nil

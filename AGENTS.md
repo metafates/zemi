@@ -109,6 +109,16 @@ Bash is special: `perm.Store.CheckCommand` normalizes the command first (compoun
 splitting, redirect gates, env-assignment gate — see internal/perm/bash.go, heavily
 table-tested; extend those tables when touching it).
 
+File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file
+the model has not read, or one whose mtime moved since (`Pipeline.Seen`, a per-session
+map wired in `PipelineFor`; subagents get their own), and hold a per-path lock, so a
+concurrent agent or the user's editor cannot lose changes. Matching runs on LF text and
+a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
+`new_string` to the file's own indentation and says so. `glob` and `grep` shell out to
+`rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same
+glob rules; grep never reads secret-shaped files. Long bash and fetch output is saved
+whole to the session scratchpad and the result names the file.
+
 ### Permission engine (internal/perm)
 
 Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `tool.bash`,

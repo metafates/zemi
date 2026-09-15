@@ -101,7 +101,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
 		{"too many questions", "question", `{"questions":[{"question":"1"},{"question":"2"},{"question":"3"},{"question":"4"},{"question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
-		{"option without label", "question", `{"questions":[{"question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "label is required", true, false},
+		{"option without label", "question", `{"questions":[{"question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
 		{"approved in plan mode", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Mode: "auto", Path: "/p.md"}, true),
 			"plan mode is off; the permission mode is now auto. Implement it now", false, false},
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},

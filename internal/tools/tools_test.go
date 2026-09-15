@@ -2,11 +2,14 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -208,35 +211,128 @@ func TestMultieditSequential(t *testing.T) {
 	}
 }
 
+// TestGlobAndGrep runs every case through ripgrep and the Go fallback.
 func TestGlobAndGrep(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "sub", "node_modules"), 0o755)
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "sub", "x.go"), []byte("package sub\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "sub", "node_modules", "y.go"), []byte("package y\n"), 0o644)
-
+	for name, body := range map[string]string{
+		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n",
+		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
+	} {
+		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
+	}
 	glob, grep := All(p)[5], All(p)[6]
+	saved := rgBin
+	t.Cleanup(func() { rgBin = saved })
+	for _, bin := range []string{saved, ""} {
+		rgBin = bin
+		for _, c := range []struct {
+			tool      fantasy.AgentTool
+			input     string
+			want, not string
+		}{
+			{glob, `{"pattern":"*.go"}`, "sub/x.go", "node_modules"},
+			{glob, `{"pattern":"*.go"}`, "main.go", "notes"},
+			{glob, `{"pattern":"sub/**/*.go"}`, "sub/x.go", "main.go"},
+			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
+			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
+			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
+			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
+		} {
+			input := strings.Replace(c.input, "{", `{"path":"`+dir+`",`, 1)
+			resp := call(t, c.tool, input)
+			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, c.not) {
+				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
+			}
+		}
+	}
+}
 
-	resp := call(t, glob, `{"pattern":"*.go","path":"`+dir+`"}`)
-	if strings.Contains(resp.Content, "node_modules") {
-		t.Fatalf("glob must skip node_modules: %+v", resp)
-	}
-	if !strings.Contains(resp.Content, "main.go") || !strings.Contains(resp.Content, "x.go") {
-		t.Fatalf("glob misses files: %+v", resp)
+// TestEditSafety: write tools refuse files the model has not seen as they
+// are, keep CRLF endings, move a whitespace-tolerant replacement to the
+// file's indentation, and point a failed match at where it diverges.
+func TestEditSafety(t *testing.T) {
+	p, _ := testPipeline(t, false,
+		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
+		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p.Seen = &sync.Map{}
+	all := All(p)
+	read, edit, multiedit := all[1], all[3], all[4]
+	dir := t.TempDir()
+	js := func(m map[string]any) string { b, _ := json.Marshal(m); return string(b) }
+	for _, c := range []struct {
+		name, file   string
+		unread       bool
+		input        map[string]any
+		want, result string
+	}{
+		{"unread", "a\n", true, map[string]any{"old_string": "a", "new_string": "b"}, "read ", "a\n"},
+		{"crlf", "one\r\ntwo\r\n", false, map[string]any{"old_string": "one\ntwo", "new_string": "1\n2"}, "edited", "1\r\n2\r\n"},
+		{"reindent", "\tif x {\n\t\treturn\n\t}\n", false,
+			map[string]any{"old_string": "if x {\n    return\n}", "new_string": "if x {\n    return 1\n}"},
+			"check the indentation", "\tif x {\n\t\treturn 1\n\t}\n"},
+		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "matches line 2", "a\nb\nc\n"},
+		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
+	} {
+		path := filepath.Join(dir, c.name)
+		os.WriteFile(path, []byte(c.file), 0o644)
+		if !c.unread {
+			call(t, read, js(map[string]any{"path": path}))
+		}
+		c.input["path"] = path
+		tl := edit
+		if c.input["edits"] != nil {
+			tl = multiedit
+		}
+		resp := call(t, tl, js(c.input))
+		if got, _ := os.ReadFile(path); !strings.Contains(resp.Content, c.want) || string(got) != c.result {
+			t.Errorf("%s: want %q, got %q, file %q", c.name, c.want, resp.Content, got)
+		}
 	}
 
-	resp = call(t, grep, `{"pattern":"package sub","path":"`+dir+`"}`)
-	if !strings.Contains(resp.Content, "x.go:1") {
-		t.Fatalf("grep: %+v", resp)
+	path := filepath.Join(dir, "stale")
+	os.WriteFile(path, []byte("x\n"), 0o644)
+	call(t, read, js(map[string]any{"path": path}))
+	os.WriteFile(path, []byte("y\n"), 0o644)
+	later := time.Now().Add(time.Hour)
+	os.Chtimes(path, later, later)
+	if resp := call(t, edit, js(map[string]any{"path": path, "old_string": "y", "new_string": "z"})); !strings.Contains(resp.Content, "changed since") {
+		t.Fatalf("changed file must be read again: %q", resp.Content)
 	}
-	resp = call(t, grep, `{"pattern":"package","path":"`+dir+`","include":"[m]*.go"}`)
-	if !strings.Contains(resp.Content, "main.go:1") || strings.Contains(resp.Content, "x.go") {
-		t.Fatalf("grep include: %+v", resp)
+}
+
+// TestReadAndBashShapes: read returns images as images and refuses binaries
+// and offsets past the end; bash keeps stdout and stderr in order, strips
+// colors, and saves cut output to the scratchpad.
+func TestReadAndBashShapes(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "i.png"), append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.bin"), []byte("a\x00b"), 0o644)
+	os.WriteFile(filepath.Join(dir, "t.txt"), []byte("one\n"), 0o644)
+	ctx := context.Background()
+	p := &Pipeline{ScratchDir: func() string { return filepath.Join(dir, "pad") }}
+	for _, c := range []struct {
+		name      string
+		offset    float64
+		typ, want string
+	}{
+		{"i.png", 0, "image", ""},
+		{"b.bin", 0, "text", "binary file"},
+		{"t.txt", 5, "text", "past the end"},
+	} {
+		res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, c.name), "offset": c.offset})
+		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {
+			t.Errorf("%s: %+v", c.name, res)
+		}
 	}
-	resp = call(t, grep, `{"pattern":"package y","path":"`+dir+`"}`)
-	if !strings.Contains(resp.Content, "no matches") {
-		t.Fatalf("grep must skip node_modules: %+v", resp)
+	if res, _ := runBash(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
+		t.Fatalf("merged output: %q", res.Content)
+	}
+	res, _ := runBash(ctx, p, map[string]any{"command": `head -c 30000 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
+	_, name, _ := strings.Cut(res.Content, "END\n(full output: ")
+	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 30000 {
+		t.Fatalf("cut output not saved (%v): %q", err, res.Content[len(res.Content)-100:])
 	}
 }
 

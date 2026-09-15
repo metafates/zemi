@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/aymanbagabas/go-udiff"
 
@@ -83,6 +84,14 @@ type Pipeline struct {
 	// Scratch reports a path inside the session scratchpad: writes there
 	// pass plan mode. nil = no scratchpad.
 	Scratch func(path string) bool
+	// ScratchDir is the session scratchpad, where output cut from a result
+	// is saved in full; nil or "" = nowhere.
+	ScratchDir func() string
+
+	// Seen maps absolute paths to the modification time the model read
+	// them at: write tools refuse a file it has not seen as it is. nil = no
+	// check.
+	Seen *sync.Map
 
 	// AfterWrite returns text to append to a successful write, edit or
 	// multiedit result (language server diagnostics); nil = nothing.
@@ -230,14 +239,35 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 }
 
 func validate(info fantasy.ToolInfo, input map[string]any) error {
-	for _, r := range info.Required {
+	return validateFields(info.Parameters, info.Required, input, "")
+}
+
+// validateFields checks required fields, then the required fields of every
+// object in an array: a lax provider can drop a nested field, and a
+// multiedit without new_string would delete the matched text.
+func validateFields(props map[string]any, required []string, input map[string]any, at string) error {
+	for _, r := range required {
 		v, ok := input[r]
 		if !ok || v == nil {
-			return fmt.Errorf("missing required field %q", r)
+			return fmt.Errorf("missing required field %q", at+r)
 		}
-		if ps, ok := info.Parameters[r].(map[string]any); ok {
+		if ps, ok := props[r].(map[string]any); ok {
 			if t, ok := ps["type"].(string); ok && !typeOK(t, v) {
-				return fmt.Errorf("field %q must be %s", r, t)
+				return fmt.Errorf("field %q must be %s", at+r, t)
+			}
+		}
+	}
+	for k, v := range input {
+		ps, _ := props[k].(map[string]any)
+		items, _ := ps["items"].(map[string]any)
+		req, _ := items["required"].([]string)
+		list, _ := v.([]any)
+		for i, e := range list {
+			if m, ok := e.(map[string]any); ok && len(req) > 0 {
+				iprops, _ := items["properties"].(map[string]any)
+				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i)); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -299,7 +329,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. Output over 10000 characters keeps its start and end, so filter large output with grep, head or tail.
+		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. stdout and stderr are merged; output over 10000 characters keeps its start and end, and the whole output is saved to a file named in the result.
 
 The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it is stopped with everything it started. Never use it for:
 - servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
@@ -373,7 +403,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runMultiedit),
 
-		mk("glob", "List files whose path matches a glob pattern, searched under path (default: the project root). Use it instead of find or ls.", true,
+		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string"},
 				"path":    map[string]any{"type": "string"},
@@ -384,7 +414,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root) with a Go regular expression (RE2: no lookaround or backreferences); include limits the files by glob, such as *.go. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
+		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string"},
 				"path":    map[string]any{"type": "string"},
@@ -558,7 +588,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				return runMemoryEdit(p, str(in["id"]), "")
 			}),
 
-		mk("diagnostics","Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
+		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
@@ -654,31 +684,18 @@ func runMemoryEdit(p *Pipeline, id, text string) (fantasy.ToolResponse, error) {
 func ChangeDiff(tool string, in map[string]any) string {
 	path := str(in["path"])
 	data, _ := os.ReadFile(path)
-	old, updated := string(data), ""
+	old, updated := lf(string(data)), ""
 	switch tool {
 	case "write":
-		updated = str(in["content"])
-	case "edit":
-		all, _ := in["replace_all"].(bool)
-		var n int
-		if updated, n = applyEdit(old, str(in["old_string"]), str(in["new_string"]), all); n == 0 {
-			if updated, n = applyTolerant(old, str(in["old_string"]), str(in["new_string"]), all); n == 0 {
-				return ChangePreview(in)
-			}
+		updated = lf(str(in["content"]))
+	case "edit", "multiedit":
+		edits := []any{in}
+		if tool == "multiedit" {
+			edits, _ = in["edits"].([]any)
 		}
-	case "multiedit":
-		updated = old
-		edits, _ := in["edits"].([]any)
-		for _, e := range edits {
-			m, _ := e.(map[string]any)
-			all, _ := m["replace_all"].(bool)
-			out, n := applyEdit(updated, str(m["old_string"]), str(m["new_string"]), all)
-			if n == 0 {
-				if out, n = applyTolerant(updated, str(m["old_string"]), str(m["new_string"]), all); n == 0 {
-					return ChangePreview(in)
-				}
-			}
-			updated = out
+		var msg string
+		if updated, _, _, msg = applyEdits(old, edits, path); msg != "" {
+			return ChangePreview(in)
 		}
 	default:
 		return ChangePreview(in)
@@ -750,5 +767,5 @@ func truncOut(s string) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max] + "\n... (truncated)"
+	return strings.ToValidUTF8(s[:max], "") + "\n... (truncated)"
 }

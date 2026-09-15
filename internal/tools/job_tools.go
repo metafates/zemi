@@ -192,10 +192,10 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		fmt.Fprintf(&b, "error: %s\n", errText)
 	}
 	if out != "" {
-		b.WriteString("[stdout]\n" + truncOut(out) + "\n")
+		b.WriteString("[stdout]\n" + truncMiddle(out) + "\n")
 	}
 	if errOut != "" {
-		b.WriteString("[stderr]\n" + truncOut(errOut) + "\n")
+		b.WriteString("[stderr]\n" + truncMiddle(errOut) + "\n")
 	}
 	if running && out == "" && errOut == "" {
 		b.WriteString("(no output yet)")

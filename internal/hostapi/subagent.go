@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -238,6 +239,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	pipe := h.PipelineFor()
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string) {
 			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)

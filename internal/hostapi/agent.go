@@ -1690,6 +1690,16 @@ func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
 	}
 }
 
+var readLogs sync.Map // session id -> *sync.Map, see readLog
+
+// readLog is the live session's record of the files the model read. It
+// outlives the pipeline, which is rebuilt every send, so a file read in one
+// turn can be edited in the next.
+func (h *Host) readLog() *sync.Map {
+	m, _ := readLogs.LoadOrStore(h.AgentSessionID(), &sync.Map{})
+	return m.(*sync.Map)
+}
+
 // PipelineFor builds the tools pipeline for the model's tool calls.
 func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
@@ -1718,6 +1728,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		},
 		EditMemory: h.modelEditMemory,
 		Scratch:    h.inScratch,
+		ScratchDir: h.ScratchDir,
+		Seen:       h.readLog(),
 	}
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion
