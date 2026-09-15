@@ -3,10 +3,12 @@ package agent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
 	"charm.land/fantasy"
+	anthropic "charm.land/fantasy/providers/anthropic"
 )
 
 // StreamHooks receives streaming updates; implementations must be safe
@@ -188,11 +190,11 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 				steered = append(steered, steeredMsg{at: len(resp), msg: r.compose(text)})
 			}
 		}
-		if len(steered) == 0 {
-			return ctx, fantasy.PrepareStepResult{}, nil
+		msgs := o.Messages
+		if len(steered) > 0 {
+			msgs = interleave(o.Messages[:len(o.Messages)-len(resp)], resp, steered)
 		}
-		head := o.Messages[:len(o.Messages)-len(resp)]
-		return ctx, fantasy.PrepareStepResult{Messages: interleave(head, resp, steered)}, nil
+		return ctx, fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}, nil
 	}
 
 	result, err := r.agent.Stream(tctx, call)
@@ -239,6 +241,26 @@ func retryErr(err *fantasy.ProviderError) error {
 		return nil
 	}
 	return err
+}
+
+// cacheControl marks an Anthropic prompt cache breakpoint; other providers
+// ignore options keyed by another provider's name.
+var cacheControl = fantasy.ProviderOptions{
+	anthropic.Name: &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}},
+}
+
+// withCacheBreakpoints returns a copy of msgs with breakpoints on the system
+// prompt (it follows the tools, so both are cached) and on the last two
+// messages, so each step reads the previous step's prefix from the cache.
+// That is 3 of the 4 breakpoints Anthropic allows.
+func withCacheBreakpoints(msgs []fantasy.Message) []fantasy.Message {
+	out := slices.Clone(msgs)
+	for i := range out {
+		if (i == 0 && out[i].Role == fantasy.MessageRoleSystem) || i >= len(out)-2 {
+			out[i].ProviderOptions = cacheControl
+		}
+	}
+	return out
 }
 
 type steeredMsg struct {

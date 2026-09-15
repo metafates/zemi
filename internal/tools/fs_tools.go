@@ -41,13 +41,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	err := proc.Run(c)
 	var b strings.Builder
 	if s := strings.TrimRight(out.String(), "\n"); s != "" {
-		b.WriteString(truncOut(s))
+		b.WriteString(truncMiddle(s))
 	}
 	if s := strings.TrimRight(errb.String(), "\n"); s != "" {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString("[stderr] " + truncOut(s))
+		b.WriteString("[stderr] " + truncMiddle(s))
 	}
 	if err != nil {
 		if b.Len() > 0 {
@@ -69,14 +69,32 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-// runRead reads a file with optional 1-based line offset and limit.
+// truncMiddle keeps the start and the end of long command output: commands
+// print their errors and summaries last.
+func truncMiddle(s string) string {
+	const head, tail = 3000, 7000
+	if len(s) <= head+tail {
+		return s
+	}
+	return strings.ToValidUTF8(s[:head], "") + fmt.Sprintf("\n... (%d characters cut) ...\n", len(s)-head-tail) + strings.ToValidUTF8(s[len(s)-tail:], "")
+}
+
+const (
+	readMaxLines   = 2000
+	readMaxBytes   = 50_000
+	readMaxLineLen = 2000
+)
+
+// runRead reads a file with optional 1-based line offset and limit. A page
+// stops at readMaxLines or readMaxBytes and names the offset to continue
+// from, so a large file costs pages the model asks for, not one huge result.
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	lines := strings.Split(string(data), "\n")
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	start := 0
 	if v, ok := input["offset"].(float64); ok && v > 1 {
 		start = int(v) - 1
@@ -89,10 +107,22 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 	}
 	var b strings.Builder
-	for i := start; i < end; i++ {
-		fmt.Fprintf(&b, "%6d\t%s\n", i+1, strings.TrimSuffix(lines[i], "\r"))
+	i := start
+	for ; i < end && i-start < readMaxLines; i++ {
+		line := strings.TrimSuffix(lines[i], "\r")
+		if len(line) > readMaxLineLen {
+			line = strings.ToValidUTF8(line[:readMaxLineLen], "") + "... (line cut)"
+		}
+		row := fmt.Sprintf("%6d\t%s\n", i+1, line)
+		if i > start && b.Len()+len(row) > readMaxBytes {
+			break
+		}
+		b.WriteString(row)
 	}
-	return fantasy.NewTextResponse(truncOut(b.String())), nil
+	if i < end {
+		fmt.Fprintf(&b, "... (%d more lines; continue with offset %d)\n", end-i, i+1)
+	}
+	return fantasy.NewTextResponse(b.String()), nil
 }
 
 // runWrite creates or overwrites a file (parents created).
@@ -348,11 +378,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			for i, line := range strings.Split(string(data), "\n") {
 				if re.MatchString(line) {
 					fmt.Fprintf(&b, "%s:%d: %s\n", filepath.ToSlash(path), i+1, truncLine(line))
-					count++
-					if count >= 200 {
+					if count++; count >= grepMaxMatches {
 						return filepath.SkipAll
 					}
-					break
 				}
 			}
 		}
@@ -362,11 +390,13 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if count == 0 {
 		return fantasy.NewTextResponse("(no matches)"), nil
 	}
-	if count >= 200 {
-		b.WriteString("... (stopped at 200 files)")
+	if count >= grepMaxMatches {
+		fmt.Fprintf(&b, "... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
 	}
-	return fantasy.NewTextResponse(truncOut(b.String())), nil
+	return fantasy.NewTextResponse(b.String()), nil
 }
+
+const grepMaxMatches = 100
 
 func truncLine(s string) string {
 	if len(s) > 200 {

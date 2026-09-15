@@ -303,6 +303,36 @@ func TestPostHookRuns(t *testing.T) {
 	}
 }
 
+// TestOutputLimits: read pages a long file with a continuation offset, grep
+// returns every matching line up to its cap, and command output keeps its end.
+func TestOutputLimits(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "big.txt")
+	lines := make([]string, readMaxLines+5)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d match", i+1)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	res, _ := runRead(ctx, nil, map[string]any{"path": path})
+	if !strings.HasSuffix(res.Content, "... (5 more lines; continue with offset 2001)\n") {
+		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
+	}
+	res, _ = runRead(ctx, nil, map[string]any{"path": path, "offset": float64(2001)})
+	if strings.Contains(res.Content, "more lines") || !strings.HasSuffix(res.Content, "line 2005 match\n") {
+		t.Fatalf("last page: %q", res.Content)
+	}
+	res, _ = runGrep(ctx, nil, map[string]any{"pattern": "match", "path": dir})
+	if n := strings.Count(res.Content, "\n"); n != grepMaxMatches || !strings.Contains(res.Content, "stopped at 100 matches") {
+		t.Fatalf("grep lines = %d: %q", n, res.Content[len(res.Content)-120:])
+	}
+	if out := truncMiddle(strings.Repeat("a", 20000) + "the error"); len(out) > 10100 || !strings.HasSuffix(out, "the error") {
+		t.Fatalf("truncMiddle kept %d bytes, tail %q", len(out), out[len(out)-20:])
+	}
+}
+
 // TestToolSchemasAreProperties guards the fantasy contract: Parameters is
 // the properties map (fantasy adds type/properties around it) and arrays
 // declare items, or strict providers refuse every request.

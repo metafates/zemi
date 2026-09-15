@@ -14,7 +14,7 @@ func TestSystemPromptSections(t *testing.T) {
 	h, _ := newTestHost(t)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make test"), 0o644)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Commands that do not exit", "# Environment", "# Project instructions", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}

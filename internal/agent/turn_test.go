@@ -164,6 +164,9 @@ func TestTurnStreamsAndPersists(t *testing.T) {
 	if last.Role != fantasy.MessageRoleUser {
 		t.Fatalf("user message must be last, got %s", last.Role)
 	}
+	if sys := m.lastCall.Prompt[0]; sys.Role != fantasy.MessageRoleSystem || sys.ProviderOptions == nil || last.ProviderOptions == nil {
+		t.Fatalf("system prompt and last message must be cache breakpoints: %+v", m.lastCall.Prompt)
+	}
 }
 
 // TestSteerJoinsAtStepBoundary: a message steered in after a tool step

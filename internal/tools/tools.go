@@ -292,7 +292,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. Output is cut at 10000 characters, so filter large output with grep or head.
+		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. Output over 10000 characters keeps its start and end, so filter large output with grep, head or tail.
 
 The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it is stopped with everything it started. Never use it for:
 - servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
@@ -311,7 +311,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runBash),
 
-		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. Output is cut at 10000 characters: page large files with offset and limit.", true,
+		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. When you know the part you need, read only that part.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string"},
 				"offset": map[string]any{"type": "number"},
@@ -377,7 +377,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root) with a Go regular expression (RE2: no lookaround or backreferences); include limits the files by glob, such as *.go. Use it instead of grep or rg in bash.", true,
+		mk("grep", "Search file contents under path (default: the project root) with a Go regular expression (RE2: no lookaround or backreferences); include limits the files by glob, such as *.go. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string"},
 				"path":    map[string]any{"type": "string"},
