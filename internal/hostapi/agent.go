@@ -683,6 +683,15 @@ func toolSummary(input string) string {
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
 	}
+	if list, ok := m["todos"].([]any); ok {
+		done := 0
+		for _, td := range list {
+			if t, ok := td.(map[string]any); ok && t["status"] == "done" {
+				done++
+			}
+		}
+		return fmt.Sprintf("%d todos, %d done", len(list), done)
+	}
 	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name", "text", "description"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s

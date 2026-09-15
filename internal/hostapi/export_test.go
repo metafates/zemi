@@ -79,3 +79,10 @@ func TestTurnExtras(t *testing.T) {
 		t.Fatalf("todos = %+v", todos)
 	}
 }
+
+func TestToolSummaryTodos(t *testing.T) {
+	in := `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`
+	if got := toolSummary(in); got != "2 todos, 1 done" {
+		t.Fatalf("toolSummary = %q", got)
+	}
+}
