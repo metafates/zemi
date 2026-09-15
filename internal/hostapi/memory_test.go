@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -47,6 +48,9 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	}
 	if err := h.Remember("deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); err != nil {
 		t.Fatalf("remember: %v", err)
+	}
+	if err := h.Remember("Deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); !errors.Is(err, errDuplicateMemory) {
+		t.Fatalf("duplicate remember: %v", err)
 	}
 	rows := projectMemories(t, h)
 	if len(rows) != 1 {
@@ -94,6 +98,11 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	}
 	if queued := len(h.memoryProposals()); queued != 1 {
 		t.Fatalf("queued=%d", queued)
+	}
+	// The same text again, in another case and spacing, is dropped.
+	runUser(t, r, `zemi.memory.add({ kind = "fact", text = "The FTS join  needs m-qualified columns" })`)
+	if queued := len(h.memoryProposals()); queued != 1 {
+		t.Fatalf("duplicate queued: %d", queued)
 	}
 
 	// No provenance before a session: refused.

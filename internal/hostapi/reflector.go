@@ -226,6 +226,12 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 			b.WriteString(line + "\n")
 		}
 	}
+	if props := h.memoryProposals(); len(props) > 0 {
+		b.WriteString("\n# Memories awaiting review\n")
+		for _, m := range props {
+			b.WriteString(fmt.Sprintf("- [%s/%s] %s\n", m.Scope, m.Kind, truncRunes(m.Text, 80)))
+		}
+	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
 		b.WriteString("\n# Current memory index\n")
 		for _, m := range mems {

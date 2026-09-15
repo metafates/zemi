@@ -62,6 +62,10 @@ func (h *Host) storeMemory(scope, origin, kind, text string, tags []string) (*le
 // queueProposal persists a policy-clean memory for review in its scope's
 // store. The id is assigned here so review decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) {
+	if h.duplicateMemory(res.Memory) {
+		h.Log.Debug("memory", "duplicate proposal dropped", nil)
+		return
+	}
 	if res.Memory.ID == "" {
 		res.Memory.ID = store.NewID()
 	}
@@ -101,6 +105,31 @@ func redactNote(scrubbed bool) string {
 	return ""
 }
 
+var errDuplicateMemory = errors.New("already remembered")
+
+// duplicateMemory reports whether a live memory or pending proposal in the
+// same scope has the same text. Intake collapses whitespace, so a
+// case-insensitive compare is the whole normalization.
+// NOTE: scans the scope; fine for the hundreds of rows memories reach.
+func (h *Host) duplicateMemory(m store.Memory) bool {
+	db := h.memoryDB(m.Scope)
+	if db == nil {
+		return false
+	}
+	live, _ := db.ListMemory(m.Scope, false)
+	for _, o := range live {
+		if strings.EqualFold(o.Text, m.Text) {
+			return true
+		}
+	}
+	for _, o := range h.memoryProposals() {
+		if o.Scope == m.Scope && strings.EqualFold(o.Text, m.Text) {
+			return true
+		}
+	}
+	return false
+}
+
 // storeProposal writes a policy-clean memory to its scope's DB.
 func (h *Host) storeProposal(res *learn.Result) error {
 	db := h.memoryDB(res.Memory.Scope)
@@ -108,6 +137,9 @@ func (h *Host) storeProposal(res *learn.Result) error {
 		return errors.New("memory store unavailable")
 	}
 	m := &res.Memory
+	if h.duplicateMemory(*m) {
+		return errDuplicateMemory
+	}
 	if err := db.AddMemory(m); err != nil {
 		return err
 	}
