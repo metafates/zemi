@@ -41,23 +41,24 @@ var hostTitleBg = map[string]ansi.RGBColor{
 type trustPrompt struct {
 	path   string
 	hash   string
-	answer chan bool
+	answer chan string
 }
 
-// AskTrust blocks the caller (a boot step) until the user answers. It is
-// safe from any goroutine: the prompt travels through the hook channel and
-// the answer comes back on a buffered channel.
-func (a *App) AskTrust(path, hash string) bool {
-	ch := make(chan bool, 1)
+// AskTrust blocks the caller (a boot step) until the user answers "trust",
+// "once" (not now) or "deny" (never for this tree hash). It is safe from
+// any goroutine: the prompt travels through the hook channel and the
+// answer comes back on a buffered channel.
+func (a *App) AskTrust(path, hash string) string {
+	ch := make(chan string, 1)
 	a.dispatch(trustAskMsg{path: path, hash: hash, answer: ch})
 	return <-ch
 }
 
-func (a *App) answerTrust(ok bool) {
+func (a *App) answerTrust(answer string) {
 	tp := a.trust
 	a.trust = nil
 	if tp != nil && tp.answer != nil {
-		tp.answer <- ok
+		tp.answer <- answer
 	}
 	a.frameGen++
 }
@@ -75,7 +76,7 @@ func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH,
 		{{Text: tp.path}},
 		{{Text: "hash: " + short}},
 		{{Text: ""}},
-		keyHints("y", "trust this config", "n", "refuse once"),
+		keyHints("y", "trust this config", "n", "not now", "d", "never for this version"),
 	}
 	box := hostBox(" Trust project config? ", "Host:TrustTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)

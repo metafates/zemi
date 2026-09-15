@@ -292,7 +292,9 @@ origin; cross-origin profile id collisions are refused, §11). The same
 denylist binds learned-origin code: §10.4 applies it to everything a
 revision adds. A one-time trust prompt gates the first project-config load and
 stores a hash of the project config tree; a changed hash (a pull swapped
-the Lua) re-prompts before load.
+the Lua) re-prompts before load. The prompt answers `y` (trust this
+hash), `n` (not now: ask again next start) or `d` (never for this hash:
+stored as a deny, so only a changed tree asks again).
 
 Runtimepath, in order: `~/.config/zemi`, then
 `~/.local/share/zemi/site/pack/*/start/*` (sorted), then the embedded

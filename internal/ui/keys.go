@@ -46,9 +46,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if a.trust != nil {
 		switch key {
 		case "y", "enter":
-			a.answerTrust(true)
+			a.answerTrust("trust")
 		case "n", "esc":
-			a.answerTrust(false)
+			a.answerTrust("once")
+		case "d":
+			a.answerTrust("deny")
 		}
 		return nil
 	}

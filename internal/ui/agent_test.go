@@ -352,6 +352,21 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	}
 }
 
+// TestTrustAnswers: the project trust prompt maps y, n and d to trust,
+// not now and never for this tree hash.
+func TestTrustAnswers(t *testing.T) {
+	for key, want := range map[rune]string{'y': "trust", 'n': "once", 'd': "deny"} {
+		app, _ := bootAgentApp(t, 80, 20)
+		done := make(chan string, 1)
+		go func() { done <- app.AskTrust("/proj/.zemi", "abc123") }()
+		waitPrompt(t, app, func() bool { return app.trust != nil })
+		app.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+		if got := <-done; got != want {
+			t.Errorf("%c answered %q, want %q", key, got, want)
+		}
+	}
+}
+
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
 // the text indented under it, no per-line gutter marks.
 func TestReasoningExpanded(t *testing.T) {

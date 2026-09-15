@@ -225,15 +225,30 @@ func projectConfigStep(h *hostapi.Host, app *ui.App, dirs config.Dirs) lua.BootS
 			if err != nil {
 				return err
 			}
+			// The trust file maps the dir to the approved hash, or to "!"+hash
+			// for a tree the user denied for good; a changed tree asks again.
 			trusted := readTrust(dirs.TrustFile())
-			if trusted[pdir] != hash {
-				if !app.AskTrust(pdir, hash) {
+			switch trusted[pdir] {
+			case hash:
+			case "!" + hash:
+				h.Log.Info("trust", "project config denied earlier; not loading", map[string]any{"dir": pdir})
+				return nil
+			default:
+				answer := app.AskTrust(pdir, hash)
+				if answer == "once" {
 					h.Log.Warn("trust", "project config refused; not loading", map[string]any{"dir": pdir})
 					return nil
 				}
 				trusted[pdir] = hash
+				if answer == "deny" {
+					trusted[pdir] = "!" + hash
+				}
 				if err := writeTrust(dirs.TrustFile(), trusted); err != nil {
 					return err
+				}
+				if answer == "deny" {
+					h.Log.Warn("trust", "project config denied; not loading", map[string]any{"dir": pdir})
+					return nil
 				}
 			}
 			return lua.LoadFileStep("project init", initPath, lua.OriginProject).Run(ctx, r, g)

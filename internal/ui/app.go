@@ -147,7 +147,7 @@ type bootDoneMsg struct{ err error }
 type trustAskMsg struct {
 	path   string
 	hash   string
-	answer chan bool
+	answer chan string
 }
 
 type agentEventMsg struct{ ev hostapi.AgentEvent }
