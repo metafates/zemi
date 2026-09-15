@@ -130,9 +130,12 @@ Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `model`, `prof
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
 `thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `pulse`,
-`reflecting`, `pending_memory`, `pending_config`, `agents_running`. Transcript rows carry
+`reflecting`, `pending_memory`, `pending_config`, `agents_running`, `transcript_epoch`
+(changes when the transcript is replaced, 0 while an agent run is shown: rows are worth
+caching only when it is stable). Transcript rows carry
 `role`, `kind` ("", reasoning, tool, compact, error), `text`, `tool`, `status`, `label`,
-`detail` (subagent and workflow progress), `diff`, `in`, `out`, `thought`, `elapsed`.
+`detail` (subagent and workflow progress), `diff`, `output` (the last lines of a tool
+result), `in`, `out`, `thought`, `elapsed`.
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. Segments are
 `{ text = "...", hl = "Group" }`.
 
