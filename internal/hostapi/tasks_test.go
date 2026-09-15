@@ -31,7 +31,7 @@ func TestBackgroundAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-	if n := h.bgAgents.Load(); n != 1 {
+	if n := h.tasks.running(); n != 1 {
 		t.Fatalf("background agents running = %d, want 1", n)
 	}
 	deadline := time.Now().Add(3 * time.Second)

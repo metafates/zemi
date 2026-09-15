@@ -124,6 +124,7 @@ type Host struct {
 
 	tMu     sync.Mutex
 	session *Session
+	view    string // the agent run the chat shows instead of the session, "" for none
 
 	watches  *watchReg
 	agents   *agentHost
@@ -172,7 +173,7 @@ type Host struct {
 	recentStale atomic.Bool
 
 	mcp   *mcpReg  // MCP servers and their tools
-	tasks *taskReg // background agents
+	tasks *taskReg // subagent runs
 	lsp   *lspReg  // language servers
 
 	todoMu     sync.Mutex
@@ -193,7 +194,6 @@ type Host struct {
 	// projectTrusted is set once the project config tree passed the trust
 	// prompt; project agents, commands and workflows load only then.
 	projectTrusted atomic.Bool
-	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
 
 func (h *Host) SetProjectTrusted(ok bool) { h.projectTrusted.Store(ok) }
@@ -674,9 +674,27 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("pending_config", glua.LNumber(h.pendingConfig.Load()))
-	tb.RawSetString("agents_running", glua.LNumber(h.bgAgents.Load()))
+	tb.RawSetString("agents_running", glua.LNumber(h.tasks.running()))
+	// Showing an agent run, the chat renders its transcript alone: the
+	// session's live turn and todos stay out of it.
+	run := h.viewedRun()
+	transcript := sess.Transcript
+	var todoRows []store.Todo
+	if run != nil {
+		status, _, _, _ := run.state()
+		v := L.NewTable()
+		v.RawSetString("id", glua.LString(run.id))
+		v.RawSetString("agent", glua.LString(run.agent))
+		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
+		v.RawSetString("status", glua.LString(status))
+		tb.RawSetString("view", v)
+		transcript = run.transcript()
+		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, nil
+	} else {
+		todoRows = h.todoSnapshot()
+	}
 	todos := L.NewTable()
-	for _, td := range h.todoSnapshot() {
+	for _, td := range todoRows {
 		row := L.NewTable()
 		row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
 		row.RawSetString("status", glua.LString(td.Status))
@@ -715,7 +733,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	at.RawSetString("tools", toolsTb)
 	tb.RawSetString("agent", at)
 	tr := L.NewTable()
-	for _, m := range sess.Transcript {
+	for _, m := range transcript {
 		row := L.NewTable()
 		row.RawSetString("role", glua.LString(m.Role))
 		row.RawSetString("kind", glua.LString(m.Kind))

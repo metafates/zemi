@@ -82,6 +82,12 @@ func (s *DB) ListSessions(limit int) ([]*Session, error) {
 	return collect(rows, err, scanSession)
 }
 
+// ChildSessions returns the subagent runs a session started, newest first.
+func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
+	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
+	return collect(rows, err, scanSession)
+}
+
 // RenameSession sets the session title.
 func (s *DB) RenameSession(id, title string) error {
 	_, err := s.db.Exec(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,

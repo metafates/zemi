@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,6 +126,25 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	list, err := h.DB.ListSessions(10)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("sessions = %v %v", list, err)
+	}
+
+	// /agents: the run keeps its transcript, the chat can show it, and a run
+	// this process no longer holds reads the same rows from the store.
+	runs := h.tasks.list(h.AgentSessionID())
+	if len(runs) != 1 || h.AgentRunNamed("find thi") != runs[0].id {
+		t.Fatalf("runs = %v", runs)
+	}
+	status, _, _, sid := runs[0].state()
+	want := []ChatMessage{{Role: "user", Text: "look around"}, {Role: "assistant", Text: "sub report for: look around"}}
+	if got := runs[0].transcript(); status != "done" || fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("status %s, transcript %+v", status, got)
+	}
+	if err := h.ViewAgent(runs[0].id); err != nil || h.viewedRun() != runs[0] {
+		t.Fatalf("view: %v", err)
+	}
+	stored, err := h.loadRun(sid)
+	if err != nil || fmt.Sprint(stored.transcript()) != fmt.Sprint(want) {
+		t.Fatalf("stored run: %v %+v", err, stored)
 	}
 }
 

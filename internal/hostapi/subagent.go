@@ -213,10 +213,24 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 	return block, body, nil
 }
 
-// runSubagent runs def on prompt to completion and returns its final
-// message; progress receives live lines for the caller's UI row. The run is
-// recorded as a child session of the live one.
+// runSubagent runs def on prompt to completion as a tracked run (/agents)
+// and returns its final message; progress receives live lines for the
+// caller's UI row.
 func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress func(string)) (string, error) {
+	run, ctx := h.newRun(ctx, def, description, prompt, false)
+	_ = h.tasks.add(run) // only background runs are capped
+	return h.runAgent(ctx, run, def, prompt, progress)
+}
+
+// runAgent runs a registered run, recorded as a child session of the
+// session that started it.
+func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt string, progress func(string)) (text string, err error) {
+	defer func() {
+		run.finish(err)
+		run.cancel()
+		h.refresh()
+	}()
+	h.refresh()
 	prof := &Profile{Model: def.Model}
 	model, err := h.resolveModel(prof)
 	if err != nil {
@@ -238,17 +252,20 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 	if h.DB != nil {
 		// A run outside any session (Lua at idle) still gets a parent, so
 		// /sessions never lists it as a top-level session.
-		parent := h.AgentSessionID()
+		parent := run.parent
 		if parent == "" {
 			parent = "lua"
 		}
 		sid = store.NewID()
-		if err := h.DB.CreateSession(sid, parent, truncRunes(description, 60), def.Name); err != nil {
+		if err := h.DB.CreateSession(sid, parent, truncRunes(run.description, 60), def.Name); err != nil {
 			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})
 			sid = ""
 		}
+		run.mu.Lock()
+		run.sessionID = sid
+		run.mu.Unlock()
 	}
-	hooks := &subagentHooks{h: h, def: def, modelID: h.currentModelID(prof), progress: progress, sid: sid, parent: h.AgentSessionID()}
+	hooks := &subagentHooks{h: h, def: def, run: run, modelID: h.currentModelID(prof), progress: progress, sid: sid}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(role string, msg fantasy.Message) error {
@@ -259,13 +276,13 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
 		}
 	}
-	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": description, "session": sid})
+	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	err = runner.Send(ctx, prompt)
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	if err != nil {
 		return "", err
 	}
-	text := lastAssistantText(runner.History)
+	text = lastAssistantText(runner.History)
 	if text == "" {
 		text = "(the agent finished without a reply)"
 	}
@@ -289,16 +306,16 @@ func lastAssistantText(history []fantasy.Message) string {
 	return ""
 }
 
-// subagentHooks turns a subagent's stream into progress lines and adds its
-// token usage to the session tally (not to the context estimate).
+// subagentHooks turns a subagent's stream into its run transcript and
+// progress lines, and adds its token usage to the session tally (not to the
+// context estimate).
 type subagentHooks struct {
 	h        *Host
 	def      AgentDef
+	run      *agentRun
 	modelID  string
 	progress func(string)
 	sid      string
-	parent   string // the session that started the run
-	calls    atomic.Int32
 }
 
 func (s *subagentHooks) report(line string) {
@@ -307,17 +324,39 @@ func (s *subagentHooks) report(line string) {
 	}
 }
 
-func (s *subagentHooks) TextDelta(string)      {}
-func (s *subagentHooks) ReasoningDelta(string) {}
-
-func (s *subagentHooks) ToolCallStart(_, name, input string) {
-	n := s.calls.Add(1)
-	// one line: the widget wraps, and a long command would push the chat around
-	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(int(n), "call", "calls"), name,
-		truncRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
+func (s *subagentHooks) TextDelta(text string) {
+	s.run.mu.Lock()
+	s.run.text += text
+	s.run.mu.Unlock()
+	s.h.refreshViewed(s.run)
 }
 
-func (s *subagentHooks) ToolCallEnd(string, string, bool, string) {}
+func (s *subagentHooks) ReasoningDelta(string) {}
+
+func (s *subagentHooks) ToolCallStart(id, name, input string) {
+	run := s.run
+	run.mu.Lock()
+	run.flush()
+	run.calls++
+	n := run.calls
+	run.rows[id] = len(run.tr)
+	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "run"})
+	run.mu.Unlock()
+	// one line: the widget wraps, and a long command would push the chat around
+	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
+		truncRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
+	s.h.refreshViewed(run)
+}
+
+func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, _ string) {
+	run := s.run
+	run.mu.Lock()
+	if i, found := run.rows[id]; found {
+		run.tr[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+	}
+	run.mu.Unlock()
+	s.h.refreshViewed(run)
+}
 
 func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, delay.Round(time.Second)))
@@ -328,20 +367,20 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	cost := h.turnCost(s.modelID, usage.InputTokens, usage.OutputTokens)
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.sessionID == s.parent { // a background run may outlive its session
+	if ag.sessionID == s.run.parent { // a background run may outlive its session
 		ag.sessIn += usage.InputTokens
 		ag.sessOut += usage.OutputTokens
 		ag.sessCost += cost
 	}
 	ag.mu.Unlock()
 	if h.DB != nil {
-		for _, id := range []string{s.sid, s.parent} {
+		for _, id := range []string{s.sid, s.run.parent} {
 			if id != "" {
 				_ = h.DB.AddUsage(id, usage.InputTokens, usage.OutputTokens, cost)
 			}
 		}
 	}
-	n := int(s.calls.Load())
+	_, n, _, _ := s.run.state()
 	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, plural(n, "call", "calls")))
 	h.refresh()
 }
@@ -451,7 +490,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		t.h.setToolDetail(call.ID, def.Name+" · background "+id+" (/tasks)")
+		t.h.setToolDetail(call.ID, def.Name+" · background "+id+" (/agents)")
 		return fantasy.NewTextResponse("Started background agent " + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
 	}
 	start := time.Now()
@@ -506,14 +545,22 @@ func (h *Host) AgentsCommandsStep() lua.BootStep {
 		Name: "agents commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "agents", Desc: "agents at work and the ones zemi can launch",
-				GoFn:   func(h *Host, _ string) error { return h.openAgents() },
+				Name: "agents", NArgs: "*", Desc: "agents at work and the ones zemi can launch",
+				GoFn: func(h *Host, args string) error {
+					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
+					switch id = strings.TrimSpace(id); sub {
+					case "":
+						return h.openAgents()
+					case "view":
+						return h.ViewAgent(id)
+					case "stop":
+						return h.stopRun(id)
+					}
+					return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id])", sub)
+				},
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
-			if err != nil {
-				return err
-			}
-			return h.TasksCommandsStep().Run(ctx, r, g)
+			return err
 		},
 	}
 }
@@ -525,21 +572,7 @@ func (h *Host) openAgents() error {
 	}
 	defs := h.agentDefs()
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].Source < defs[j].Source })
-	items := make([]any, 0, len(defs))
-	for _, t := range h.tasks.list() {
-		t.mu.Lock()
-		took := time.Since(t.started)
-		if !t.finished.IsZero() {
-			took = t.finished.Sub(t.started)
-		}
-		item := map[string]any{"text": fmt.Sprintf("%-9s %-8s %5s  %s", t.status, t.agent, fmtDuration(took), truncRunes(t.description, 60))}
-		if t.status == "running" {
-			item["text"] = item["text"].(string) + "  (enter stops it)"
-			item["run"] = "tasks cancel " + t.id
-		}
-		t.mu.Unlock()
-		items = append(items, item)
-	}
+	items := h.agentRunItems()
 	if len(items) > 0 {
 		items = append(items, map[string]any{"text": ""})
 	}
@@ -587,11 +620,8 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		gen := h.currentGen()
-		h.bgAgents.Add(1)
-		h.refresh()
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
-			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			text, err := h.runSubagent(ctx, def, desc, prompt, nil)
 			switch {
 			case onDone == nil:

@@ -224,6 +224,11 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 - **Background agents** (`agent` with `background: true`) run detached; the report comes
   back through `AgentSend` with the body behind `attachMarker`, which both the live
   transcript (`startTurn`, `deliverSteering`) and resume cut off.
+- **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers
+  an `agentRun` whose hooks build a live transcript. `/agents view <id>` (or a click on an
+  `Agent` row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
+  session's (live stream and todos hidden); esc or a submit clears it, and so does
+  `setTranscript`. Runs the process no longer holds load from their child session.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`. Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as

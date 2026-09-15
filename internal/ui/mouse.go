@@ -271,6 +271,17 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		if i := strings.Index(text, "✻ Th"); i >= 0 && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
 			return ansi.StringWidth(text[:i]), ansi.StringWidth(strings.TrimRight(text, " ")), a.host.ToggleReasoning, true
 		}
+		// an agent tool row ("● Agent <description> · 4s") opens that run's transcript
+		for _, mark := range []string{"● Agent ", "◦ Agent "} {
+			i := strings.Index(text, mark)
+			if i < 0 || strings.TrimSpace(text[:i]) != "" {
+				continue
+			}
+			desc, _, _ := strings.Cut(strings.TrimRight(text[i+len(mark):], " "), " · ")
+			if id := a.host.AgentRunNamed(strings.TrimSuffix(desc, "…")); id != "" {
+				return ansi.StringWidth(text[:i]), ansi.StringWidth(strings.TrimRight(text, " ")), func() { _ = a.host.ViewAgent(id) }, true
+			}
+		}
 	}
 	return 0, 0, nil, false
 }

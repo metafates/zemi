@@ -229,8 +229,11 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// terminals paste text themselves; this also reaches images
 		return a.pasteClipboard()
 	case "esc":
-		// Open popups consumed esc above, so a bare esc interrupts.
-		if a.host.AgentActive() {
+		// Open popups consumed esc above, so a bare esc leaves an agent's
+		// transcript, or else interrupts.
+		if a.host.ViewedAgent() != "" {
+			_ = a.host.ViewAgent("")
+		} else if a.host.AgentActive() {
 			a.interrupt()
 		}
 		return nil

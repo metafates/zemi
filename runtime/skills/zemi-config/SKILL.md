@@ -158,7 +158,7 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
-palette: `/resume`, `/fork`, `/export`, `/effort`, `/tasks`, `/lsp`, `/errors`, `/config`,
+palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/config`,
 `/reflect`, `/remember`, `/reload`. Arguments:
 
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
@@ -167,7 +167,9 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/tasks`, `/lsp`, `/errors`, 
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
-- `/tasks cancel <id>` stops a background agent; `/lsp restart <name>`;
+- `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),
+  `/agents stop [id]` stops a running one (without an id, the one on screen);
+  `/lsp restart <name>`;
   `/mcp restart|sign-in|sign-out <name>`.
 
 HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the

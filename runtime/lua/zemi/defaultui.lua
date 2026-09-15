@@ -233,7 +233,7 @@ zemi.ui.widget.register({
   end,
 })
 
--- Agents launched from Lua or workflows, running outside the turn.
+-- Subagents at work: the turn's own, background ones, workflows and Lua.
 zemi.ui.widget.register({
   id = "statusline.agents",
   region = "statusline.left",
@@ -241,7 +241,24 @@ zemi.ui.widget.register({
   render = function(ctx)
     local n = ctx.agents_running or 0
     if n == 0 then return empty() end
-    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title" } } }
+    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title" }, { text = " /agents", hl = "Comment" } } }
+  end,
+})
+
+-- While the chat shows an agent run's transcript (/agents, or a click on
+-- its row), say whose it is and how to get back.
+zemi.ui.widget.register({
+  id = "statusline.view",
+  region = "statusline.left",
+  priority = 1,
+  render = function(ctx)
+    local v = ctx.view
+    if not v then return empty() end
+    local tail = " · " .. v.status .. " · esc back"
+    return { {
+      { text = "◂ " .. v.agent, hl = "Title" },
+      { text = " " .. clip(v.description, math.max(10, math.floor((ctx.width or 80) / 3))) .. tail, hl = "Comment" },
+    } }
   end,
 })
 

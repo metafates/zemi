@@ -60,7 +60,9 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
 lists them. Builtin `explore` has `read, glob, grep, fetch, sourcegraph, memory_search,
 skill`; builtin `general` has everything a subagent may have. The model's `agent` tool also
-takes `background: true`: the report arrives as a later message and `/tasks` lists it.
+takes `background: true`: the report arrives as a later message. `/agents` also lists the
+session's runs (running, background, workflow ones): enter, or a click on an agent's row in
+the chat, shows that run's transcript in the chat, and esc goes back.
 
 ## Prompt commands (`commands/<name>.md`)
 

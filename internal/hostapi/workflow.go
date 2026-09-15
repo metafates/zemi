@@ -773,11 +773,8 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		gen := h.currentGen()
-		h.bgAgents.Add(1)
-		h.refresh()
 		h.GoSafe("zemi.workflow.run", func() {
 			defer cancel()
-			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			res, err := h.runWorkflow(ctx, src, args, nil)
 			switch {
 			case onDone == nil:

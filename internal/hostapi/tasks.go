@@ -1,8 +1,8 @@
-// tasks.go runs background subagents: the agent tool with background set
-// returns at once, the subagent keeps working after the turn ends, and its
-// report joins the conversation as a message when it finishes (steering a
-// running turn, or starting one). /agents lists them; /tasks cancel <id>
-// stops one.
+// tasks.go tracks subagent runs (the agent tool, background agents,
+// workflows, zemi.agent.run). Each run keeps a live transcript: /agents lists
+// the live session's runs and the chat can show one in place of the session.
+// A background run's report joins the conversation as a message when it
+// finishes (steering a running turn, or starting one).
 package hostapi
 
 import (
@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -22,126 +22,325 @@ import (
 // a config knob if people run bigger batches.
 const maxBackgroundAgents = 4
 
-type bgTask struct {
-	id, agent, description, sessionID string
-	started                           time.Time
-	cancel                            context.CancelFunc
+// NOTE: finished runs past maxKeptRuns are forgotten oldest first; /agents
+// still reads their transcripts from the store.
+const maxKeptRuns = 50
 
-	mu       sync.Mutex
-	status   string // running, done, failed, cancelled
-	finished time.Time
+// agentRun is one subagent run. The fields above mu never change once the
+// run is registered.
+type agentRun struct {
+	id, agent, description string
+	parent                 string // the session that started the run
+	background             bool
+	started                time.Time
+	cancel                 context.CancelFunc
+
+	mu        sync.Mutex
+	sessionID string // the run's child session, "" when not recorded
+	status    string // running, done, failed, cancelled
+	finished  time.Time
+	calls     int
+	tr        []ChatMessage  // the prompt, tool rows and replies so far
+	text      string         // reply text streamed since the last row
+	rows      map[string]int // tool call id -> tr index
 }
 
 type taskReg struct {
-	mu    sync.Mutex
-	tasks map[string]*bgTask
+	mu   sync.Mutex
+	runs map[string]*agentRun
 }
 
-func newTaskReg() *taskReg { return &taskReg{tasks: map[string]*bgTask{}} }
+func newTaskReg() *taskReg { return &taskReg{runs: map[string]*agentRun{}} }
 
-func (r *taskReg) list() []*bgTask {
+// add registers a run; a background run past maxBackgroundAgents is
+// refused. Counting and inserting share one lock: parallel tool calls race here.
+func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]*bgTask, 0, len(r.tasks))
-	for _, t := range r.tasks {
-		out = append(out, t)
+	if run.background {
+		n := 0
+		for _, x := range r.runs {
+			if x.background && x.isRunning() {
+				n++
+			}
+		}
+		if n >= maxBackgroundAgents {
+			return fmt.Errorf("%d background agents are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
+		}
+	}
+	r.runs[run.id] = run
+	if len(r.runs) > maxKeptRuns {
+		var oldest *agentRun
+		for _, x := range r.runs {
+			if !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
+				oldest = x
+			}
+		}
+		if oldest != nil {
+			delete(r.runs, oldest.id)
+		}
+	}
+	return nil
+}
+
+// list returns the runs parent started, newest first.
+func (r *taskReg) list(parent string) []*agentRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*agentRun
+	for _, x := range r.runs {
+		if x.parent == parent {
+			out = append(out, x)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].started.After(out[j].started) })
 	return out
 }
 
+func (r *taskReg) running() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, x := range r.runs {
+		if x.isRunning() {
+			n++
+		}
+	}
+	return n
+}
+
+// find looks a run up by its id or its child session id.
+func (r *taskReg) find(id string) *agentRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if x := r.runs[id]; x != nil || id == "" {
+		return x
+	}
+	for _, x := range r.runs {
+		if _, _, _, sid := x.state(); sid == id {
+			return x
+		}
+	}
+	return nil
+}
+
+// newRun starts tracking a run of def; the returned context is cancelled
+// by ctx and by /agents stop.
+func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	return &agentRun{
+		id: store.NewID()[:8], agent: def.Name, description: description, parent: h.AgentSessionID(),
+		background: background, started: time.Now(), cancel: cancel, status: "running",
+		tr: []ChatMessage{{Role: "user", Text: prompt}}, rows: map[string]int{},
+	}, ctx
+}
+
+func (run *agentRun) isRunning() bool {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.status == "running"
+}
+
+// state is the run's list row data.
+func (run *agentRun) state() (status string, calls int, took time.Duration, sessionID string) {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	took = time.Since(run.started)
+	if !run.finished.IsZero() {
+		took = run.finished.Sub(run.started)
+	}
+	return run.status, run.calls, took, run.sessionID
+}
+
+// transcript copies the rows, with the reply still streaming last.
+func (run *agentRun) transcript() []ChatMessage {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	tr := append([]ChatMessage(nil), run.tr...)
+	if strings.TrimSpace(run.text) != "" {
+		tr = append(tr, ChatMessage{Role: "assistant", Text: run.text})
+	}
+	return tr
+}
+
+// flush moves the streamed reply into a row (run.mu held).
+func (run *agentRun) flush() {
+	if strings.TrimSpace(run.text) != "" {
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Text: run.text})
+	}
+	run.text = ""
+}
+
+func (run *agentRun) finish(err error) {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	run.flush()
+	for _, i := range run.rows {
+		if run.tr[i].Status == "run" {
+			run.tr[i].Status = "err"
+		}
+	}
+	run.finished = time.Now()
+	switch {
+	case errors.Is(err, context.Canceled):
+		run.status = "cancelled"
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Status: "cancelled", Text: "stopped"})
+	case err != nil:
+		run.status = "failed"
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(friendlyError(err)), 400)})
+	default:
+		run.status = "done"
+	}
+}
+
 // startBackgroundAgent launches def on prompt detached from the turn and
-// returns the task id.
+// returns the run id.
 func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (string, error) {
-	// count and insert under one lock: parallel tool calls race here
-	h.tasks.mu.Lock()
-	running := 0
-	for _, x := range h.tasks.tasks {
-		x.mu.Lock()
-		if x.status == "running" {
-			running++
-		}
-		x.mu.Unlock()
+	run, ctx := h.newRun(context.Background(), def, description, prompt, true)
+	if err := h.tasks.add(run); err != nil {
+		run.cancel()
+		return "", err
 	}
-	if running >= maxBackgroundAgents {
-		h.tasks.mu.Unlock()
-		return "", fmt.Errorf("%d background agents are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t := &bgTask{id: store.NewID()[:8], agent: def.Name, description: description, sessionID: h.AgentSessionID(),
-		started: time.Now(), cancel: cancel, status: "running"}
-	h.tasks.tasks[t.id] = t
-	h.tasks.mu.Unlock()
-	h.bgAgents.Add(1)
-	h.refresh()
 	h.GoSafe("background agent", func() {
-		defer cancel()
-		defer h.bgAgents.Add(-1)
-		text, err := h.runSubagent(ctx, def, description, prompt, nil)
-		t.mu.Lock()
-		t.finished = time.Now()
-		switch {
-		case errors.Is(err, context.Canceled):
-			t.status = "cancelled"
-		case err != nil:
-			t.status = "failed"
-		default:
-			t.status = "done"
-		}
-		status := t.status
-		t.mu.Unlock()
-		h.refresh()
-		if status == "cancelled" {
+		text, err := h.runAgent(ctx, run, def, prompt, nil)
+		if errors.Is(err, context.Canceled) {
 			return
 		}
 		report := text
 		if err != nil {
 			report = "the agent failed: " + friendlyError(err)
 		}
-		head := fmt.Sprintf("Background agent %s (%s, %q) %s.", t.id, def.Name, description, map[bool]string{true: "finished", false: "failed"}[err == nil])
-		if h.AgentSessionID() != t.sessionID {
+		head := fmt.Sprintf("Background agent %s (%s, %q) %s.", run.id, def.Name, description, map[bool]string{true: "finished", false: "failed"}[err == nil])
+		if h.AgentSessionID() != run.parent {
 			// the user moved on; do not drop the report into another conversation
-			h.Notify("info", "background agent "+t.id, head+"\n"+truncRunes(report, 300))
+			h.Notify("info", "background agent "+run.id, head+"\n"+truncRunes(report, 300))
 			return
 		}
 		if err := h.AgentSend(head + attachMarker + "\n<agent-report>\n" + report + "\n</agent-report>\n</attached-files>"); err != nil {
-			h.Notify("error", "background agent "+t.id, err.Error())
+			h.Notify("error", "background agent "+run.id, err.Error())
 		}
 	})
-	return t.id, nil
+	return run.id, nil
 }
 
-// TasksCommandsStep registers /tasks.
-func (h *Host) TasksCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "tasks commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "tasks", NArgs: "*", Desc: "background agents; cancel <id>", Hidden: true,
-				GoFn: func(h *Host, args string) error {
-					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
-					switch sub {
-					case "":
-						return h.openAgents()
-					case "cancel":
-						return h.cancelTask(strings.TrimSpace(id))
-					}
-					return fmt.Errorf("unknown /tasks subcommand %q", sub)
-				},
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
-		},
+// stopRun cancels a running agent; "" means the one the chat shows.
+func (h *Host) stopRun(id string) error {
+	if id == "" {
+		id = h.ViewedAgent()
 	}
-}
-
-func (h *Host) cancelTask(id string) error {
-	h.tasks.mu.Lock()
-	t := h.tasks.tasks[id]
-	h.tasks.mu.Unlock()
-	if t == nil {
-		return fmt.Errorf("no background agent %q", id)
+	run := h.tasks.find(id)
+	if run == nil || !run.isRunning() {
+		return fmt.Errorf("no running agent %q", id)
 	}
-	t.cancel()
+	run.cancel()
 	return nil
+}
+
+// ViewedAgent is the id of the run the chat shows, "" for the session.
+func (h *Host) ViewedAgent() string {
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	return h.view
+}
+
+// ViewAgent shows a run's transcript in the chat in place of the session's;
+// "" shows the session again. A run this process no longer holds (an
+// earlier zemi, or evicted) is read from its child session.
+func (h *Host) ViewAgent(id string) error {
+	if id != "" {
+		run := h.tasks.find(id)
+		if run == nil {
+			var err error
+			if run, err = h.loadRun(id); err != nil {
+				return err
+			}
+		}
+		id = run.id
+	}
+	h.tMu.Lock()
+	h.view = id
+	h.tMu.Unlock()
+	h.scrollChat("bottom")
+	h.refresh()
+	return nil
+}
+
+// viewedRun is the run the chat shows, nil for the session.
+func (h *Host) viewedRun() *agentRun {
+	if id := h.ViewedAgent(); id != "" {
+		return h.tasks.find(id)
+	}
+	return nil
+}
+
+// refreshViewed redraws only when the run is on screen: runs stream while
+// nobody looks.
+func (h *Host) refreshViewed(run *agentRun) {
+	if h.ViewedAgent() == run.id {
+		h.refresh()
+	}
+}
+
+func (h *Host) loadRun(sid string) (*agentRun, error) {
+	if h.DB == nil {
+		return nil, errors.New("session store unavailable")
+	}
+	sess, err := h.DB.GetSession(sid)
+	if err != nil || sess.ParentID == "" {
+		return nil, fmt.Errorf("no agent run %q", sid)
+	}
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		return nil, err
+	}
+	_, tr := historyFrom(rows)
+	run := &agentRun{
+		id: sid, agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
+		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
+		sessionID: sid, status: "done", tr: tr,
+	}
+	_ = h.tasks.add(run)
+	return run, nil
+}
+
+// AgentRunNamed finds the newest run of the live session whose description
+// starts with prefix (a chat row clips it); "" when none does.
+func (h *Host) AgentRunNamed(prefix string) string {
+	if prefix = strings.TrimSpace(prefix); prefix == "" {
+		return ""
+	}
+	for _, run := range h.tasks.list(h.AgentSessionID()) {
+		if strings.HasPrefix(strings.Join(strings.Fields(run.description), " "), prefix) {
+			return run.id
+		}
+	}
+	return ""
+}
+
+// agentRunItems are the /agents rows for the live session's runs, the
+// stored ones this process does not hold included; enter shows a transcript.
+func (h *Host) agentRunItems() []any {
+	sid := h.AgentSessionID()
+	var items []any
+	row := func(id, status, agent string, took time.Duration, desc, calls string) {
+		items = append(items, map[string]any{
+			"text": fmt.Sprintf("%-9s %-10s %6s  %s%s", status, agent, fmtDuration(took), truncRunes(desc, 60), calls),
+			"run":  "agents view " + id,
+		})
+	}
+	held := map[string]bool{}
+	for _, run := range h.tasks.list(sid) {
+		status, calls, took, runSID := run.state()
+		held[runSID] = true
+		row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d %s", calls, plural(calls, "call", "calls")))
+	}
+	if h.DB != nil && sid != "" {
+		children, _ := h.DB.ChildSessions(sid)
+		for _, c := range children {
+			if !held[c.ID] {
+				row(c.ID, "earlier", c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
+			}
+		}
+	}
+	return items
 }
