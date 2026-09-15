@@ -291,3 +291,19 @@ func (s *DB) SetKV(key, valueJSON string) error {
 		key, valueJSON, now())
 	return err
 }
+
+// Usage is summed token counts and cost.
+type Usage struct {
+	Sessions           int
+	Prompt, Completion int64
+	Cost               float64
+}
+
+// UsageSince sums top-level sessions active at or after the unix-ms time
+// (subagent runs already count toward their parent).
+func (s *DB) UsageSince(ms int64) (Usage, error) {
+	var u Usage
+	err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
+		FROM sessions WHERE COALESCE(parent_id, '') = '' AND updated_at >= ?`, ms).Scan(&u.Sessions, &u.Prompt, &u.Completion, &u.Cost)
+	return u, err
+}

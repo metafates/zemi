@@ -261,6 +261,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					return err
 				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} },
 					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "usage", Desc: "tokens and cost: this session, today, 7 days, all time", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.OpenUsage()
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.InitProject()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

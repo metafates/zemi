@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -133,4 +134,52 @@ func (h *Host) todoSnapshot() []store.Todo {
 		}
 	}
 	return h.todos
+}
+
+// OpenUsage shows token use and cost: the live session, then today, the
+// last 7 days and all time across this project's sessions.
+func (h *Host) OpenUsage() error {
+	ui := h.hooks()
+	if ui == nil || h.DB == nil {
+		return errors.New("usage needs the session store")
+	}
+	s := h.AgentStream()
+	fmtTok := func(n int64) string {
+		switch {
+		case n >= 1_000_000:
+			return fmt.Sprintf("%.1fM", float64(n)/1e6)
+		case n >= 1000:
+			return fmt.Sprintf("%.1fk", float64(n)/1e3)
+		}
+		return fmt.Sprint(n)
+	}
+	row := func(label string, sessions int, in, out int64, cost float64) any {
+		text := fmt.Sprintf("%-12s %6s in  %6s out  $%.2f", label, fmtTok(in), fmtTok(out), cost)
+		if sessions > 0 {
+			text += fmt.Sprintf("  (%d %s)", sessions, plural(sessions, "session", "sessions"))
+		}
+		return map[string]any{"text": text}
+	}
+	items := []any{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
+	if s.CtxWindow > 0 {
+		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %6s of %s tokens (%d%%)", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow), s.LastIn*100/s.CtxWindow)})
+	}
+	y, m, d := time.Now().Date()
+	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	for _, w := range []struct {
+		label string
+		since time.Time
+	}{{"today", midnight}, {"7 days", midnight.AddDate(0, 0, -6)}, {"all time", time.Time{}}} {
+		ms := int64(0)
+		if !w.since.IsZero() {
+			ms = w.since.UnixMilli()
+		}
+		u, err := h.DB.UsageSince(ms)
+		if err != nil {
+			return err
+		}
+		items = append(items, row(w.label, u.Sessions, u.Prompt, u.Completion, u.Cost))
+	}
+	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage (cost needs model prices)", Origin: lua.OriginBuiltin, Items: items})
+	return nil
 }

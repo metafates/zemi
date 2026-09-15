@@ -142,3 +142,22 @@ func TestOpenForDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUsageSince(t *testing.T) {
+	db := openTest(t)
+	for _, s := range []struct{ id, parent string }{{"a", ""}, {"b", ""}, {"child", "a"}} {
+		if err := db.CreateSession(s.id, s.parent, s.id, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddUsage(s.id, 100, 10, 0.5); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u, err := db.UsageSince(0)
+	if err != nil || u.Sessions != 2 || u.Prompt != 200 || u.Completion != 20 || u.Cost != 1 {
+		t.Fatalf("usage = %+v, %v", u, err)
+	}
+	if u, _ := db.UsageSince(now() + 60_000); u.Sessions != 0 {
+		t.Fatalf("future window = %+v", u)
+	}
+}
