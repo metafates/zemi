@@ -212,6 +212,50 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	}
 }
 
+// TestFailedTurnKeepsCompletedSteps: a step that fails after a tool step and
+// a steered message keeps both in history and the store, drops only the
+// failed step, and reports the finished steps' usage.
+func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls, Usage: fantasy.Usage{InputTokens: 7, OutputTokens: 3}},
+		},
+		{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}},
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	hooks := newRecHooks()
+	r.Hooks = hooks
+	var roles []string
+	r.Persist = func(role string, _ fantasy.Message) error {
+		roles = append(roles, role)
+		return nil
+	}
+	polls := 0
+	r.Steer = func() []string {
+		if polls++; polls == 2 {
+			return []string{"steer me"}
+		}
+		return nil
+	}
+	if err := r.Send(context.Background(), "hi"); err == nil {
+		t.Fatal("want the step error")
+	}
+	var hist []string
+	for _, msg := range r.History {
+		hist = append(hist, string(msg.Role))
+	}
+	if got, want := strings.Join(roles, ","), "user,assistant,tool,user"; got != want || strings.Join(hist, ",") != want {
+		t.Fatalf("persisted %s, history %v; want %s", got, hist, want)
+	}
+	if hooks.usage.InputTokens != 7 || hooks.usage.OutputTokens != 3 {
+		t.Fatalf("usage: %+v", hooks.usage)
+	}
+}
+
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
 // tool result, and an empty Send continues without a second user message.

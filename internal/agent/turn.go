@@ -179,15 +179,36 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		t := *temp
 		call.Temperature = &t
 	}
+	// Each finished step and each steered message is stored as it happens, so
+	// a turn that fails or is cancelled later keeps the work done before.
+	var steps []fantasy.StepResult
+	var steered []steeredMsg
+	var persistErr error
+	save := func(msgs ...fantasy.Message) {
+		for _, m := range msgs {
+			if persist != nil && persistErr == nil {
+				persistErr = persist(string(m.Role), m)
+			}
+		}
+	}
+	call.OnStepFinish = func(s fantasy.StepResult) error {
+		steps = append(steps, s)
+		save(s.Messages...)
+		return nil
+	}
 	// fantasy rebuilds each step's input as initial prompt + step responses,
 	// so steered messages are re-inserted every step at their response offset.
-	var steered []steeredMsg
 	steer := r.Steer
 	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
+		if persistErr != nil {
+			return ctx, fantasy.PrepareStepResult{}, persistErr
+		}
 		resp := stepMessages(o.Steps)
 		if steer != nil {
 			for _, text := range steer() {
-				steered = append(steered, steeredMsg{at: len(resp), msg: r.compose(text)})
+				m := r.compose(text)
+				steered = append(steered, steeredMsg{at: len(resp), msg: m})
+				save(m)
 			}
 		}
 		msgs := o.Messages
@@ -197,34 +218,25 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		return ctx, fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}, nil
 	}
 
-	result, err := r.agent.Stream(tctx, call)
-	if err != nil {
-		hooks.TurnDone(err, fantasy.Usage{})
-		return err
+	_, err := r.agent.Stream(tctx, call)
+	if err == nil {
+		err = persistErr
 	}
-	// step messages (assistant content, tool results, steered user
-	// messages) join history in the order the model saw them
-	turnMsgs := interleave(nil, stepMessages(result.Steps), steered)
+	// Completed steps (assistant content, tool results, steered user
+	// messages) join history in the order the model saw them, also after an
+	// error; the step that failed is dropped whole, so no call lacks its result.
 	var usage fantasy.Usage
+	for _, s := range steps {
+		usage.InputTokens += s.Usage.InputTokens
+		usage.OutputTokens += s.Usage.OutputTokens
+		usage.TotalTokens += s.Usage.TotalTokens
+	}
 	r.mu.Lock()
-	r.cut = cut
-	r.History = append(r.History, turnMsgs...)
-	for _, step := range result.Steps {
-		usage.InputTokens += step.Usage.InputTokens
-		usage.OutputTokens += step.Usage.OutputTokens
-		usage.TotalTokens += step.Usage.TotalTokens
-	}
+	r.cut = cut && err == nil
+	r.History = append(r.History, interleave(nil, stepMessages(steps), steered)...)
 	r.mu.Unlock()
-	if persist != nil {
-		for _, m := range turnMsgs {
-			if err := persist(string(m.Role), m); err != nil {
-				hooks.TurnDone(err, usage)
-				return err
-			}
-		}
-	}
-	hooks.TurnDone(nil, usage)
-	return nil
+	hooks.TurnDone(err, usage)
+	return err
 }
 
 // ContextUsed is the context one model call took: providers report cache
