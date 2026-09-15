@@ -254,6 +254,9 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, schema map[string]any, required []string,
 		subjects func(map[string]any) []Request,
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error)) fantasy.AgentTool {
+		if required == nil {
+			required = []string{} // nil marshals as "required": null, which strict providers refuse
+		}
 		return &tool{
 			info: fantasy.ToolInfo{
 				Name: name, Description: desc,

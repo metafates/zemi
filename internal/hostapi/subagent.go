@@ -301,7 +301,9 @@ func (s *subagentHooks) ReasoningDelta(string) {}
 
 func (s *subagentHooks) ToolCallStart(_, name, input string) {
 	n := s.calls.Add(1)
-	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(int(n), "call", "calls"), name, toolSummary(input)))
+	// one line: the widget wraps, and a long command would push the chat around
+	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(int(n), "call", "calls"), name,
+		truncRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
 }
 
 func (s *subagentHooks) ToolCallEnd(string, string, bool, string) {}
@@ -385,6 +387,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Launch a subagent for a self-contained task. It works with its own context and tools and returns one final report." +
 		" Use it for broad searches and research that would flood your context, and for independent tasks in parallel" +
+		" (prefer explore for questions about code: it only reads, so it never stops to ask the user for permission)" +
 		" (call the tool several times in one message). The subagent cannot see this conversation: the prompt must carry" +
 		" everything it needs and say what to report back. Its report is not shown to the user; relay what matters.\n\nAgents:")
 	names := make([]string, 0, len(t.defs))

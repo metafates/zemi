@@ -158,7 +158,7 @@ const delegationPrompt = `
 
 # Delegating
 You can hand work to subagents with the agent tool. Each starts with an empty context, so write a complete prompt: the goal, what you already know, and what to report.
-- Use the explore agent for open-ended searches ("where is X handled", "how does Y work") that would take many reads, so your context keeps only the answer.
+- Use the explore agent for open-ended searches and questions about code ("where is X handled", "how does Y work") that would take many reads, so your context keeps only the answer. Use general only when the subagent must run commands or edit files.
 - When a task splits into independent parts (several modules, several questions), launch one agent per part in the same message; they run in parallel.
 - When the work has stages with logic between them (fan out reviews then verify findings, migrate files then check each, try alternatives then compare), write a workflow script and run it with the workflow tool.
 - Do small, targeted work yourself: a known file, a single grep, a one-line fix. Delegating it only adds latency.

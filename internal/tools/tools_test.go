@@ -305,6 +305,9 @@ func TestPostHookRuns(t *testing.T) {
 func TestToolSchemasAreProperties(t *testing.T) {
 	for _, tl := range All(&Pipeline{}) {
 		info := tl.Info()
+		if info.Required == nil {
+			t.Fatalf("%s: nil Required marshals as null", info.Name)
+		}
 		for name, spec := range info.Parameters {
 			m, ok := spec.(map[string]any)
 			if !ok {
