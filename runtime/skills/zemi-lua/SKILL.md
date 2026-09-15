@@ -43,7 +43,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()` |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
-| `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `markdown`, `help` |
+| `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` |

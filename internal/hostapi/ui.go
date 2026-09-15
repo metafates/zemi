@@ -239,6 +239,37 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 
+	// input(opts, on_confirm): a one-line prompt in the shape of
+	// vim.ui.input. on_confirm(text) runs on enter, on_confirm(nil) on esc;
+	// opts.prompt titles it, opts.default prefills it.
+	tb.RawSetString("input", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.ui.input") {
+			return 0
+		}
+		opts := L.OptTable(1, L.NewTable())
+		cb := L.CheckFunction(2)
+		o := Overlay{
+			ID:       fmt.Sprintf("input:%d", h.selectSeq.Add(1)),
+			Title:    rawString(opts, "prompt"),
+			Origin:   h.RT.CurrentOrigin(),
+			Path:     h.RT.CurrentPath(),
+			Gen:      h.currentGen(),
+			Input:    true,
+			Default:  rawString(opts, "default"),
+			OnSelect: cb,
+			OnClose: L.NewFunction(func(L *glua.LState) int {
+				L.Push(cb)
+				L.Push(glua.LNil)
+				L.Call(1, 0)
+				return 0
+			}),
+		}
+		if ui := h.hooks(); ui != nil {
+			ui.OpenOverlay(o)
+		}
+		return 0
+	}))
+
 	tb.RawSetString("invalidate", L.NewFunction(func(L *glua.LState) int {
 		id := "all"
 		if L.GetTop() >= 1 && L.Get(1) != glua.LNil {

@@ -52,7 +52,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.8.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.9.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		for _, fn in ipairs({ "set", "del", "get", "list" }) do
@@ -65,6 +65,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.ui.theme.set) == "function", "zemi.ui.theme.set missing")
 		assert(type(zemi.ui.markdown) == "function", "zemi.ui.markdown missing")
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
+		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")
 		local writable = {}
 		for _, s in ipairs(zemi.config.schema()) do writable[s.path] = s.writable end
 		assert(writable["ui.theme"] == true, "ui.theme must be writable")
@@ -268,7 +269,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.8.0", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.9.0", "interpreter wedged after veto timeout")
 	`)
 }
 

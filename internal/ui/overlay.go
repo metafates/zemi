@@ -16,6 +16,7 @@ type overlayState struct {
 	o        hostapi.Overlay
 	itemText []string // rendered item lines (render_item applied at open)
 	listFilter
+	input composerState // text of an input overlay
 }
 
 func (st *overlayState) refilter() { st.apply(st.itemText) }
@@ -87,6 +88,10 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Title and rendered items are Lua strings: sanitize like widget text.
 	o.Title = sanitize.String(o.Title)
 	st := overlayState{o: o}
+	if o.Input {
+		st.input.insert(sanitize.String(o.Default))
+		return st
+	}
 	for i, item := range o.Items {
 		text, err := a.renderOverlayItem(o, i, item)
 		if err != nil {
@@ -153,6 +158,10 @@ func (a *App) closeOverlayByID(id string) bool {
 func (a *App) overlayKey(key, text string) tea.Cmd {
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
+	if o.Input {
+		a.inputKey(st, key, text)
+		return nil
+	}
 	// plain j/k type into the filter here; arrows and ctrl+j/k/n/p move
 	if key != "j" && key != "k" && moveSel(&st.selected, len(st.visible), key) {
 		return nil
@@ -197,6 +206,44 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	return nil
 }
 
+// inputKey edits an input overlay's line; enter submits, esc cancels.
+func (a *App) inputKey(st *overlayState, key, text string) {
+	in := &st.input
+	switch key {
+	case "enter":
+		o, value := st.o, in.text
+		a.closeOverlayByID(o.ID)
+		a.host.SubmitOverlayInput(a.ctx(), o, value)
+	case "esc":
+		o := st.o
+		a.closeOverlayByID(o.ID)
+		if o.OnClose != nil {
+			a.host.CancelOverlay(a.ctx(), o)
+		}
+	case "backspace":
+		in.backspace()
+	case "delete":
+		in.delete()
+	case "left":
+		in.left()
+	case "right":
+		in.right()
+	case "home", "ctrl+a":
+		in.lineStart()
+	case "end", "ctrl+e":
+		in.lineEnd()
+	case "ctrl+u":
+		in.delToLineStart()
+	case "ctrl+w":
+		in.delWord()
+	default:
+		if text != "" {
+			in.insert(strings.ReplaceAll(text, "\n", " "))
+		}
+	}
+	a.frameGen++
+}
+
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
 // palette) and "run" (a command, honored only for builtin and user
 // overlays so a plugin row label cannot disguise a command).
@@ -226,6 +273,12 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	badge := " " + string(st.o.Origin)
 	if st.o.Path != "" {
 		badge += ":" + st.o.Path
+	}
+	if st.o.Input {
+		r := []rune(st.input.text)
+		line := []hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:st.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[st.input.cursor:])}}
+		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, keyHints("enter", "confirm", "esc", "cancel")}
+		return spliceBox(rows, hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w), w, headerH, chatH)
 	}
 	items := make([]listItem, 0, len(st.visible))
 	for _, i := range st.visible {

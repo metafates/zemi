@@ -55,6 +55,11 @@ type Overlay struct {
 	OnClose    *glua.LFunction
 	Gen        Gen
 
+	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
+	// starts with Default; OnSelect receives the text.
+	Input   bool
+	Default string
+
 	// Reload makes a Go-built list a toggle list: enter and space run the
 	// row's "run" command and rebuild the items, keeping the overlay open.
 	Reload func() []any
@@ -808,6 +813,20 @@ func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 // SelectOverlay runs the overlay's on_select with the chosen item, then
 // closes it.
 func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
+	var item any
+	if index >= 0 && index < len(o.Items) {
+		item = o.Items[index]
+	}
+	h.submitOverlay(ctx, o, item)
+}
+
+// SubmitOverlayInput hands an input overlay's text to on_select, then
+// closes it.
+func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
+	h.submitOverlay(ctx, o, text)
+}
+
+func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 	if o.OnSelect == nil {
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(o.ID)
@@ -819,8 +838,8 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 		defer h.RT.PopFrame()
 		base := L.GetTop()
 		var itemV glua.LValue = glua.LNil
-		if index >= 0 && index < len(o.Items) {
-			itemV = lua.FromGo(L, o.Items[index])
+		if item != nil {
+			itemV = lua.FromGo(L, item)
 		}
 		L.Push(o.OnSelect)
 		L.Push(itemV)
@@ -936,7 +955,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.8.0"))
+	api.RawSetString("version", glua.LString("0.9.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

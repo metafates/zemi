@@ -463,3 +463,43 @@ func segsText(segs []hostapi.Segment) string {
 	}
 	return b.String()
 }
+
+// TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
+// hands the text to on_confirm, esc hands it nil.
+func TestLuaInput(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	run := func(src string) {
+		t.Helper()
+		if err := host.RT.ExecuteChunk(context.Background(), src, "input.lua", lua.OriginUser); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+	}
+	lastToast := func() string {
+		for app.Pump() {
+		}
+		if len(app.toasts) == 0 {
+			return ""
+		}
+		return app.toasts[len(app.toasts)-1].body
+	}
+	open := `zemi.ui.input({ prompt = "Branch", default = "fix-" }, function(t) zemi.notify({ title = "input", body = t or "none" }) end)`
+
+	run(open)
+	if len(app.overlays) != 1 || app.overlays[0].o.Title != "Branch" {
+		t.Fatalf("input overlay: %+v", app.overlays)
+	}
+	for _, r := range "lsp" {
+		app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := lastToast(); got != "fix-lsp" {
+		t.Fatalf("enter gave %q", got)
+	}
+	run(open)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := lastToast(); got != "none" || len(app.overlays) != 0 {
+		t.Fatalf("esc gave %q, overlays %d", got, len(app.overlays))
+	}
+}
