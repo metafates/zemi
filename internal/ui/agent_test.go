@@ -367,6 +367,28 @@ func TestTrustAnswers(t *testing.T) {
 	}
 }
 
+// TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
+func TestLuaUtil(t *testing.T) {
+	_, host := bootAgentApp(t, 80, 20)
+	src := `
+		local u = require("zemi.util")
+		assert(u.trim("  hi \n") == "hi", "trim")
+		assert(table.concat(u.split("a,,b", ","), "|") == "a||b", "split")
+		assert(u.startswith("zemi", "ze") and u.endswith("zemi", "mi"), "affixes")
+		assert(table.concat(u.keys({ b = 1, a = 2 }), ",") == "a,b", "keys")
+		assert(u.get({ a = { b = { c = 3 } } }, "a", "b", "c") == 3 and u.get({}, "x", "y") == nil, "get")
+		assert(u.extend({ a = 1, b = 1 }, { b = 2 }).b == 2, "extend")
+		local cyc = { 1, name = "x" }
+		cyc.self = cyc
+		local s = u.inspect(cyc)
+		assert(s == '{ 1, name = "x", self = <cycle> }', s)
+		assert(not pcall(u.validate, "opt", 1, "string"), "validate")
+	`
+	if err := host.RT.ExecuteChunk(context.Background(), src, "util.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
 // the text indented under it, no per-line gutter marks.
 func TestReasoningExpanded(t *testing.T) {
