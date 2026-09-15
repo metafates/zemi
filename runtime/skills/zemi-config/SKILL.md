@@ -53,6 +53,14 @@ rejects a prompt as too long, and stops for the session after 3 failed tries (`/
 `/new` then). Without a window zemi compacts only on that rejection or on
 `/compact <what to keep>` (refused while a turn runs).
 
+`cost_per_1m_in_cached` and `cost_per_1m_out_cached` price prompt cache writes and reads,
+which providers bill apart from prompt tokens; without them cached turns read as cheaper
+than they were.
+
+`max_output` caps each reply in tokens. Unset, Anthropic models get 32000 and other kinds
+the provider's default; set it lower for a model that rejects that. A reply that hits the
+cap ends the turn with an error row.
+
 Only `init.lua` may register providers, and only user config may read secret-looking
 variables with `zemi.env.get`. MCP `headers` and `env` values are plain strings: build them
 in Lua (`Authorization = "Bearer " .. zemi.env.get("GITHUB_TOKEN")`). `/model` picks a model
@@ -71,6 +79,7 @@ writable; prefer it over guessing. Common keys:
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
+- `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
 - `lsp.auto` (true): start installed gopls, pyright, rust-analyzer,
   typescript-language-server or clangd when their marker file is at the repo root

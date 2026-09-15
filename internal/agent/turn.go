@@ -18,6 +18,9 @@ type StreamHooks interface {
 	ReasoningDelta(text string)
 	ToolCallStart(id, name, input string)
 	ToolCallEnd(id, name string, ok bool, output string)
+	// StepStart marks the start of a model call; after Retrying the call
+	// streams again from its first delta.
+	StepStart()
 	// Retrying reports a provider retry (rate limit, overload) before the
 	// backoff delay.
 	Retrying(err error, delay time.Duration)
@@ -39,6 +42,9 @@ type Runner struct {
 	Hooks       StreamHooks
 	Persist     PersistFunc
 	Temperature *float64
+
+	// MaxOutputTokens caps each reply; 0 leaves the provider default.
+	MaxOutputTokens int64
 
 	// ProviderOptions ride on every call (reasoning effort).
 	ProviderOptions fantasy.ProviderOptions
@@ -71,6 +77,9 @@ func (r *Runner) CutShort() bool {
 
 // ErrTurnActive is returned when a turn is already running.
 var ErrTurnActive = fmt.Errorf("agent: a turn is already active")
+
+// ErrReplyCut ends a turn whose last reply hit the output token limit.
+var ErrReplyCut = fmt.Errorf("the reply hit the output token limit (the model's max_output) and was cut off")
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
@@ -137,7 +146,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		userMsg = append(userMsg, msg)
 	}
 	r.mu.Lock()
-	r.History = append(r.History, userMsg...)
+	r.History = append(closeToolCalls(r.History), userMsg...)
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
 	provOpts := r.ProviderOptions
@@ -155,9 +164,22 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return stop
 		})
 	}
+	// A turn stuck repeating one tool interaction, or out of steps, ends with
+	// stopErr instead of running on unattended.
+	var stopErr error
+	stops = append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop), func(steps []fantasy.StepResult) bool {
+		switch {
+		case len(steps) >= maxSteps:
+			stopErr = ErrStepLimit
+		case repeatsToolCalls(steps):
+			stopErr = ErrToolLoop
+		}
+		return stopErr != nil
+	})
 	call := fantasy.AgentStreamCall{
 		Messages:         history,
-		StopWhen:         append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop)),
+		StopWhen:         stops,
+		OnStepStart:      func(int) error { hooks.StepStart(); return nil },
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
@@ -169,21 +191,46 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
+		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
 	}
 	if temp != nil {
 		t := *temp
 		call.Temperature = &t
 	}
+	if n := r.MaxOutputTokens; n > 0 {
+		call.MaxOutputTokens = &n
+	}
+	// Each finished step and each steered message is stored as it happens, so
+	// a turn that fails or is cancelled later keeps the work done before.
+	var steps []fantasy.StepResult
+	var steered []steeredMsg
+	var persistErr error
+	save := func(msgs ...fantasy.Message) {
+		for _, m := range msgs {
+			if persist != nil && persistErr == nil {
+				persistErr = persist(string(m.Role), m)
+			}
+		}
+	}
+	call.OnStepFinish = func(s fantasy.StepResult) error {
+		steps = append(steps, s)
+		save(s.Messages...)
+		return nil
+	}
 	// fantasy rebuilds each step's input as initial prompt + step responses,
 	// so steered messages are re-inserted every step at their response offset.
-	var steered []steeredMsg
 	steer := r.Steer
 	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
+		if persistErr != nil {
+			return ctx, fantasy.PrepareStepResult{}, persistErr
+		}
 		resp := stepMessages(o.Steps)
 		if steer != nil {
 			for _, text := range steer() {
-				steered = append(steered, steeredMsg{at: len(resp), msg: r.compose(text)})
+				m := r.compose(text)
+				steered = append(steered, steeredMsg{at: len(resp), msg: m})
+				save(m)
 			}
 		}
 		msgs := o.Messages
@@ -193,34 +240,75 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		return ctx, fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}, nil
 	}
 
-	result, err := r.agent.Stream(tctx, call)
-	if err != nil {
-		hooks.TurnDone(err, fantasy.Usage{})
-		return err
+	_, err := r.agent.Stream(tctx, call)
+	if err == nil {
+		err = persistErr
 	}
-	// step messages (assistant content, tool results, steered user
-	// messages) join history in the order the model saw them
-	turnMsgs := interleave(nil, stepMessages(result.Steps), steered)
+	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
+		err = ErrReplyCut
+	}
+	if err == nil {
+		err = stopErr
+	}
+	// Completed steps (assistant content, tool results, steered user
+	// messages) join history in the order the model saw them, also after an
+	// error; the step that failed is dropped whole, so no call lacks its result.
 	var usage fantasy.Usage
-	r.mu.Lock()
-	r.cut = cut
-	r.History = append(r.History, turnMsgs...)
-	for _, step := range result.Steps {
-		usage.InputTokens += step.Usage.InputTokens
-		usage.OutputTokens += step.Usage.OutputTokens
-		usage.TotalTokens += step.Usage.TotalTokens
+	for _, s := range steps {
+		usage.InputTokens += s.Usage.InputTokens
+		usage.OutputTokens += s.Usage.OutputTokens
+		usage.TotalTokens += s.Usage.TotalTokens
+		// cache reads and writes are billed apart from input, and providers
+		// report them apart: keep them for the price
+		usage.CacheReadTokens += s.Usage.CacheReadTokens
+		usage.CacheCreationTokens += s.Usage.CacheCreationTokens
 	}
+	r.mu.Lock()
+	r.cut = cut && err == nil
+	r.History = append(r.History, interleave(nil, stepMessages(steps), steered)...)
 	r.mu.Unlock()
-	if persist != nil {
-		for _, m := range turnMsgs {
-			if err := persist(string(m.Role), m); err != nil {
-				hooks.TurnDone(err, usage)
-				return err
-			}
+	hooks.TurnDone(err, usage)
+	return err
+}
+
+const (
+	maxSteps    = 200
+	loopWindow  = 10 // recent steps repeatsToolCalls looks at
+	loopRepeats = 5  // identical tool steps allowed within the window
+)
+
+// maxRetries is the provider retries a step gets; fantasy's default of 3
+// gives up on an overloaded provider inside a minute.
+var maxRetries = 5
+
+var (
+	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
+	ErrToolLoop  = fmt.Errorf("stopped: the agent repeated the same tool call with the same result %d times", loopRepeats+1)
+)
+
+// repeatsToolCalls reports whether one step's tool calls and results, as a
+// whole, occur more than loopRepeats times in the last loopWindow steps.
+// Results count, so polling that makes progress is not a loop.
+func repeatsToolCalls(steps []fantasy.StepResult) bool {
+	counts := map[string]int{}
+	for _, s := range steps[max(len(steps)-loopWindow, 0):] {
+		calls := s.Content.ToolCalls()
+		if len(calls) == 0 {
+			continue
+		}
+		sig := ""
+		for _, c := range calls {
+			sig += c.ToolName + "\x00" + c.Input + "\x00"
+		}
+		for _, res := range s.Content.ToolResults() {
+			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
+			sig += txt.Text + "\x00"
+		}
+		if counts[sig]++; counts[sig] > loopRepeats {
+			return true
 		}
 	}
-	hooks.TurnDone(nil, usage)
-	return nil
+	return false
 }
 
 // ContextUsed is the context one model call took: providers report cache
@@ -314,6 +402,39 @@ func ToolOutput(c fantasy.ToolResultOutputContent) string {
 	}
 	return ""
 }
+
+// closeToolCalls inserts an error result after every tool call that has
+// none: fantasy records the calls of a reply cut off by the output limit or
+// a provider error without running them, and providers refuse such history.
+func closeToolCalls(history []fantasy.Message) []fantasy.Message {
+	out := make([]fantasy.Message, 0, len(history))
+	for i, m := range history {
+		out = append(out, m)
+		if m.Role != fantasy.MessageRoleAssistant {
+			continue
+		}
+		answered := map[string]bool{}
+		if i+1 < len(history) && history[i+1].Role == fantasy.MessageRoleTool {
+			for _, p := range history[i+1].Content {
+				if res, ok := p.(fantasy.ToolResultPart); ok {
+					answered[res.ToolCallID] = true
+				}
+			}
+		}
+		var missing []fantasy.MessagePart
+		for _, p := range m.Content {
+			if c, ok := p.(fantasy.ToolCallPart); ok && !c.ProviderExecuted && !answered[c.ToolCallID] {
+				missing = append(missing, fantasy.ToolResultPart{ToolCallID: c.ToolCallID, Output: fantasy.ToolResultOutputContentError{Error: errNotRun}})
+			}
+		}
+		if len(missing) > 0 {
+			out = append(out, fantasy.Message{Role: fantasy.MessageRoleTool, Content: missing})
+		}
+	}
+	return out
+}
+
+var errNotRun = fmt.Errorf("not run: the reply was cut off")
 
 func isErrResult(c fantasy.ToolResultContent) bool {
 	if c.Result == nil {

@@ -25,9 +25,9 @@ const (
 	compactReserve  = 20_000 // reply room; claude-code measured p99.99 summaries at ~17k
 	compactBuffer   = 13_000
 	compactMaxFails = 3
-	summaryMaxOut   = 8_000
-	toolKeepTokens  = 40_000 // newest tool output pruning leaves alone
-	pruneMinTokens  = 20_000 // a smaller saving is not worth a prompt cache miss
+	summaryMaxOut   = compactReserve // the reply room compaction plans for
+	toolKeepTokens  = 40_000         // newest tool output pruning leaves alone
+	pruneMinTokens  = 20_000         // a smaller saving is not worth a prompt cache miss
 
 	compactAuto     = "auto"
 	compactOverflow = "overflow"
@@ -181,12 +181,21 @@ func (h *Host) CompactNow(focus string) error {
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.refresh()
+	ctx, cancel := context.WithCancel(context.Background())
+	h.turn.Store(&turnScope{ctx: ctx, cancel: cancel}) // esc stops the summary call
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
-		h.compactReporting(context.Background(), runner, compactManual, strings.TrimSpace(focus))
+		h.compactReporting(ctx, runner, compactManual, strings.TrimSpace(focus))
+		stopped := ctx.Err() != nil
+		h.turn.Store(nil)
+		cancel()
 		ag.mu.Lock()
-		queued := strings.Join(ag.steering, "\n\n")
-		ag.steering, ag.active = nil, false
+		queued := ""
+		if !stopped { // a cancel leaves the queue for the UI to hand back
+			queued = strings.Join(ag.steering, "\n\n")
+			ag.steering = nil
+		}
+		ag.active = false
 		ag.mu.Unlock()
 		h.refresh()
 		if queued != "" {
@@ -276,7 +285,10 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 		return err
 	}
 	runner.History = append([]fantasy.Message{summary}, tail...)
-	h.compactDone(estTokens(runner.History...), reason == compactManual)
+	h.agents.mu.Lock()
+	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
+	h.agents.mu.Unlock()
+	h.compactDone(estTokens(runner.History...)+overhead, reason == compactManual)
 	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "compact", Text: fmt.Sprintf("compacted %d messages", len(head))})
 	return nil
 }
@@ -331,7 +343,7 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // context-too-long refusal, up to three times. An empty or cut-off reply is
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
-	model, err := h.resolveModel(nil)
+	model, err := h.modelFor("compact.model")
 	if err != nil {
 		return "", err
 	}
@@ -372,8 +384,13 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 			return "", err
 		}
 		out := strings.TrimSpace(concatText(res.Response.Content))
-		if out == "" || res.Response.FinishReason == fantasy.FinishReasonLength {
+		if out == "" {
 			return "", errNoSummary
+		}
+		// A summary cut at the output limit still beats the fallback, which
+		// drops the earlier history unsummarized.
+		if res.Response.FinishReason == fantasy.FinishReasonLength {
+			out += "\n\n(the summary was cut off at the output limit)"
 		}
 		return out, nil
 	}
@@ -424,6 +441,16 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 			}
 		}
 	}
+	// Output after the last user message belongs to the turn in flight (a
+	// step Full cut continues from it): it counts against the kept budget
+	// but is never cleared.
+	live := len(history)
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == fantasy.MessageRoleUser {
+			live = i
+			break
+		}
+	}
 	type loc struct{ msg, part int }
 	var old []loc
 	var seen, freed int64
@@ -435,7 +462,7 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 				continue
 			}
 			n := int64(len(text) / 4)
-			if seen += n; seen > toolKeepTokens {
+			if seen += n; seen > toolKeepTokens && i < live {
 				old, freed = append(old, loc{i, j}), freed+n
 			}
 		}
@@ -499,6 +526,9 @@ func transcriptText(history []fantasy.Message) string {
 			switch p := part.(type) {
 			case fantasy.TextPart:
 				fmt.Fprintf(&b, "%s: %s\n", m.Role, p.Text)
+			case fantasy.FilePart:
+				// the summarizer only reads this text: name what it cannot see
+				fmt.Fprintf(&b, "%s: [attached %s]\n", m.Role, p.MediaType)
 			case fantasy.ToolCallPart:
 				fmt.Fprintf(&b, "tool call %s: %s\n", p.ToolName, truncRunes(p.Input, 500))
 			case fantasy.ToolResultPart:

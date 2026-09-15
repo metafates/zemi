@@ -249,6 +249,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(prof), h.Effort())
+	runner.MaxOutputTokens = h.maxOutput(h.currentModelID(prof))
 
 	sid := ""
 	if h.DB != nil {
@@ -281,10 +282,12 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	err = runner.Send(ctx, prompt)
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
-	if err != nil {
-		return "", err
-	}
+	// history keeps the steps finished before a failure: text is then the
+	// last thing the agent said, for callers that show a partial report
 	text = lastAssistantText(runner.History)
+	if err != nil {
+		return text, err
+	}
 	if text == "" {
 		text = "(the agent finished without a reply)"
 	}
@@ -318,6 +321,7 @@ type subagentHooks struct {
 	modelID  string
 	progress func(string)
 	sid      string
+	stepText int // len(run.text) when the step began, where a retry restarts
 }
 
 func (s *subagentHooks) report(line string) {
@@ -360,13 +364,22 @@ func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, _ string) {
 	s.h.refreshViewed(run)
 }
 
+func (s *subagentHooks) StepStart() {
+	s.run.mu.Lock()
+	s.stepText = len(s.run.text)
+	s.run.mu.Unlock()
+}
+
 func (s *subagentHooks) Retrying(err error, delay time.Duration) {
+	s.run.mu.Lock()
+	s.run.text = s.run.text[:min(s.stepText, len(s.run.text))]
+	s.run.mu.Unlock()
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, delay.Round(time.Second)))
 }
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
-	cost := h.turnCost(s.modelID, usage.InputTokens, usage.OutputTokens)
+	cost := h.turnCost(s.modelID, usage)
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.sessionID == s.run.parent { // a background run may outlive its session
@@ -507,12 +520,16 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	}
 	t.h.setToolDetail(call.ID, summary+" · "+fmtDuration(time.Since(start)))
 	if err != nil {
+		msg := "agent failed: " + friendlyError(err)
 		if errors.Is(err, context.Canceled) {
-			return fantasy.NewTextErrorResponse("agent cancelled"), nil
+			msg = "agent cancelled"
 		}
-		return fantasy.NewTextErrorResponse("agent failed: " + friendlyError(err)), nil
+		if text != "" {
+			msg += "\n\nIts last message before that:\n" + text
+		}
+		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	return fantasy.NewTextResponse(text), nil
+	return fantasy.NewTextResponse(truncOutput(text)), nil
 }
 
 // preCheck runs the tool.pre events for a host-implemented tool: deny

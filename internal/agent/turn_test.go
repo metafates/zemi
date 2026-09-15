@@ -98,6 +98,8 @@ func (h *recHooks) ReasoningDelta(string) {}
 
 func (h *recHooks) Retrying(error, time.Duration) {}
 
+func (h *recHooks) StepStart() {}
+
 func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "start:"+name)
@@ -209,6 +211,107 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	}
 	if len(r.History) != 5 {
 		t.Fatalf("history: %d", len(r.History))
+	}
+}
+
+// TestFailedTurnKeepsCompletedSteps: a step that fails after a tool step and
+// a steered message keeps both in history and the store, drops only the
+// failed step, and reports the finished steps' usage.
+func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls, Usage: fantasy.Usage{InputTokens: 7, OutputTokens: 3}},
+		},
+		{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}},
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	hooks := newRecHooks()
+	r.Hooks = hooks
+	var roles []string
+	r.Persist = func(role string, _ fantasy.Message) error {
+		roles = append(roles, role)
+		return nil
+	}
+	polls := 0
+	r.Steer = func() []string {
+		if polls++; polls == 2 {
+			return []string{"steer me"}
+		}
+		return nil
+	}
+	if err := r.Send(context.Background(), "hi"); err == nil {
+		t.Fatal("want the step error")
+	}
+	var hist []string
+	for _, msg := range r.History {
+		hist = append(hist, string(msg.Role))
+	}
+	if got, want := strings.Join(roles, ","), "user,assistant,tool,user"; got != want || strings.Join(hist, ",") != want {
+		t.Fatalf("persisted %s, history %v; want %s", got, hist, want)
+	}
+	if hooks.usage.InputTokens != 7 || hooks.usage.OutputTokens != 3 {
+		t.Fatalf("usage: %+v", hooks.usage)
+	}
+}
+
+// TestCutOffToolCallGetsResult: a reply cut off with a tool call in it
+// leaves the call unrun; the next send answers it with an error result so
+// the provider accepts the history.
+func TestCutOffToolCallGetsResult(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonLength},
+		},
+		textParts("done"),
+	}}
+	r := NewRunner(m, nil, "")
+	r.MaxOutputTokens = 32000
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
+		t.Fatalf("cut-off reply: %v, want ErrReplyCut", err)
+	}
+	if n := m.lastCall.MaxOutputTokens; n == nil || *n != 32000 {
+		t.Fatalf("max output tokens: %v", n)
+	}
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
+	}
+	var roles []string
+	for _, msg := range m.lastCall.Prompt {
+		roles = append(roles, string(msg.Role))
+	}
+	if got := strings.Join(roles, ","); got != "user,assistant,tool,user" {
+		t.Fatalf("prompt roles: %s", got)
+	}
+	res, ok := m.lastCall.Prompt[2].Content[0].(fantasy.ToolResultPart)
+	if !ok || res.ToolCallID != "c1" || res.Output.GetType() != fantasy.ToolResultContentTypeError {
+		t.Fatalf("tool message: %+v", m.lastCall.Prompt[2])
+	}
+}
+
+// TestToolLoopEndsTurn: the same tool call with the same result, step after
+// step, ends the turn on its sixth repeat with ErrToolLoop.
+func TestToolLoopEndsTurn(t *testing.T) {
+	m := &mockModel{parts: []fantasy.StreamPart{
+		{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("same"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
+		t.Fatalf("err = %v, want ErrToolLoop", err)
+	}
+	if n := len(r.History); n != 1+2*(loopRepeats+1) {
+		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopRepeats+1)
 	}
 }
 

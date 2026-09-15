@@ -1,13 +1,86 @@
 package hostapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 )
+
+// TestContextEstimateCountsPrompt: the estimate a compaction installs counts
+// the system prompt and tool schemas every prompt carries, not only the
+// messages that survived.
+func TestContextEstimateCountsPrompt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("hi")
+	h.agents.mu.Lock()
+	runner, overhead := h.agents.runner, h.agents.promptTokens
+	h.agents.mu.Unlock()
+	if overhead <= 0 {
+		t.Fatal("the runner's prompt was never measured")
+	}
+	if err := h.compact(context.Background(), runner, compactManual, ""); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	h.agents.mu.Lock()
+	got, want := h.agents.lastIn, estTokens(runner.History...)+overhead
+	h.agents.mu.Unlock()
+	if got != want {
+		t.Fatalf("estimate %d, want %d (messages plus the prompt)", got, want)
+	}
+}
+
+// TestCompactModelSetting: compaction summaries can run on their own model.
+func TestCompactModelSetting(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
+			models = { { id = "sum" } } })
+		zemi.config.set("compact.model", "p/sum")
+	`)
+	m, err := h.modelFor("compact.model")
+	if err != nil || m.Model() != "sum" {
+		t.Fatalf("summarizer model = %v, err %v", m, err)
+	}
+}
+
+// TestSummaryKeptWhenCutOff: a summary the model cut at the output limit is
+// used with a note, instead of dropping the history unsummarized.
+func TestSummaryKeptWhenCutOff(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "## Goal\nship it")
+	m.cutReply = true
+	out, err := h.summarize(context.Background(), []fantasy.Message{textMessage("hi")}, "", "", 0)
+	if err != nil {
+		t.Fatalf("summarize: %v", err)
+	}
+	if !strings.HasPrefix(out, "## Goal") || !strings.Contains(out, "cut off") {
+		t.Fatalf("summary = %q", out)
+	}
+}
+
+// TestCompactNowCancels: esc during /compact stops the summary call instead
+// of leaving the agent busy until the model answers.
+func TestCompactNowCancels(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "") // an empty reply starts no title call
+	m.block = time.Minute
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("hi")
+	if err := h.CompactNow(""); err != nil {
+		t.Fatal(err)
+	}
+	h.AgentCancel()
+	waitIdle(t, h)
+}
 
 // TestCompaction: a context past the threshold summarizes the history
 // before the next turn while the recent messages stay verbatim, the summary
@@ -187,6 +260,41 @@ func TestPruneToolOutput(t *testing.T) {
 		if cleared != (c.wantFreed > 0) || estTokens(out[1]) != toolKeepTokens || estTokens(history[0]) != int64(c.oldTokens) {
 			t.Errorf("%s: cleared %v, newest %d tokens, input %d tokens", c.name, cleared, estTokens(out[1]), estTokens(history[0]))
 		}
+	}
+}
+
+// TestPruneKeepsRunningTurn: pruning between the steps of one turn must
+// leave the output after the last user message, which the turn continues
+// from, even when it is past the kept budget.
+func TestPruneKeepsRunningTurn(t *testing.T) {
+	history := []fantasy.Message{
+		textMessage("old ask"), toolResult("old", 30_000),
+		textMessage("live ask"), toolResult("live", 50_000),
+	}
+	out, freed := pruneToolOutput(history)
+	if freed != 30_000 {
+		t.Fatalf("freed %d tokens, want the old 30000", freed)
+	}
+	if toolText(out[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
+		t.Fatal("old tool output must be cleared")
+	}
+	if estTokens(out[3]) != 50_000 {
+		t.Fatalf("the running turn's output was pruned to %d tokens", estTokens(out[3]))
+	}
+}
+
+// TestTranscriptTextNotesAttachments: a compacted transcript names attached
+// files, which the summarizer cannot see, instead of dropping them silently.
+func TestTranscriptTextNotesAttachments(t *testing.T) {
+	got := transcriptText([]fantasy.Message{{
+		Role: fantasy.MessageRoleUser,
+		Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: "what is wrong here"},
+			fantasy.FilePart{MediaType: "image/png", Data: []byte("x")},
+		},
+	}})
+	if !strings.Contains(got, "what is wrong here") || !strings.Contains(got, "[attached image/png]") {
+		t.Fatalf("transcript = %q", got)
 	}
 }
 

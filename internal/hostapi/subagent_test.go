@@ -148,6 +148,52 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	}
 }
 
+// TestSubagentFailureKeepsReport: a step failing after the agent already
+// reported something returns that partial report with the error, instead of
+// throwing the finished work away.
+func TestSubagentFailureKeepsReport(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("provider down")}}
+			}
+			return append(textParts("partial finding")[:3], toolCallParts("c1", "read", `{"file_path":"/nope"}`)...)
+		}}, nil
+	}
+	def, err := h.agentDef("explore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := h.runSubagent(context.Background(), def, "d", "look", nil)
+	if err == nil {
+		t.Fatal("want the step error")
+	}
+	if text != "partial finding" {
+		t.Fatalf("partial report = %q", text)
+	}
+}
+
+// TestSubagentReportTruncated: a runaway report is cut before it lands in
+// the caller's context.
+func TestSubagentReportTruncated(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return textParts(strings.Repeat("x", 40_000))
+		}}, nil
+	}
+	resp, err := h.agentTool().Run(context.Background(), fantasy.ToolCall{
+		ID: "c1", Name: "agent", Input: `{"description":"d","prompt":"look","agent":"explore"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Content) > 31_000 || !strings.HasSuffix(resp.Content, "... (truncated)") {
+		t.Fatalf("report is %d bytes and ends %q", len(resp.Content), truncRunes(resp.Content, 20))
+	}
+}
+
 func TestAgentDefs(t *testing.T) {
 	cfg, proj := t.TempDir(), t.TempDir()
 	write := func(dir, name, body string) {

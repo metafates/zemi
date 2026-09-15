@@ -89,9 +89,14 @@ type agentHost struct {
 	active    bool
 	textBuf   string
 	reasonBuf string
-	tools     []StreamTool
-	steering  []string
-	modelSeed string
+	// stepText and stepReason are the buffer lengths when the current step
+	// began; a provider retry streams the step again from there.
+	stepText   int
+	stepReason int
+	tools      []StreamTool
+	steering   []string
+	modelSeed  string
+	turnModel  string // model id the running turn was built with, for its price
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
@@ -102,6 +107,10 @@ type agentHost struct {
 	lastIn   int64
 	ctxWin   int64
 	sessCost float64 // USD, from model spec prices
+
+	// promptTokens estimates the system prompt and tool schemas the runner
+	// carries; every prompt holds them, so the context estimate counts them.
+	promptTokens int64
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.chat.reasoning config).
@@ -324,9 +333,13 @@ func (h *Host) systemWith(sys string, files []string) string {
 	if len(files) == 0 {
 		files = h.instructionFiles()
 	} else {
+		// a copy: these are the profile's own paths, and rewriting them in
+		// place would make the next send join them to the project dir again
+		abs := make([]string, len(files))
 		for i, f := range files {
-			files[i] = filepath.Join(h.Dirs.ProjectDir, f)
+			abs[i] = filepath.Join(h.Dirs.ProjectDir, f)
 		}
+		files = abs
 	}
 	budget := contextBudget
 	var sections string
@@ -477,8 +490,13 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
+	toolset, sys := h.profileTools(p), h.buildSystem(p)
+	r := agent.NewRunner(model, toolset, sys)
+	h.agents.mu.Lock()
+	h.agents.promptTokens = promptTokens(sys, toolset)
+	h.agents.mu.Unlock()
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
+	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
 	if p != nil {
 		r.Temperature = p.Temperature
 	}
@@ -488,6 +506,18 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Compose = h.composeUserMessage
 	r.Full = h.contextFull
 	return r, nil
+}
+
+// promptTokens estimates what every prompt carries besides the messages:
+// the system prompt and the tool schemas sent with it.
+func promptTokens(sys string, toolset []fantasy.AgentTool) int64 {
+	n := len(sys)
+	for _, t := range toolset {
+		info := t.Info()
+		schema, _ := json.Marshal(info.Parameters)
+		n += len(info.Name) + len(info.Description) + len(schema)
+	}
+	return int64(n / 4)
 }
 
 // AgentSend sends one user message to the agent (DESIGN §4, §6.3). Idle,
@@ -502,19 +532,29 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
+	// Held from here on: building the prompt waits on the interpreter, and a
+	// send arriving meanwhile must queue instead of starting a second turn.
+	ag.active = true
 	profName := ag.defProf
 	ag.mu.Unlock()
+	fail := func(err error) error {
+		ag.mu.Lock()
+		ag.active = false
+		ag.mu.Unlock()
+		h.refresh()
+		return err
+	}
 
 	p, err := h.resolveProfile(profName)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	if err := h.ensureSession(p, text); err != nil {
-		return err
+		return fail(err)
 	}
 	runner, err := h.ensureRunner(p)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 
 	ag.mu.Lock()
@@ -524,8 +564,8 @@ func (h *Host) AgentSend(text string) error {
 		runner.History = prev.History
 	}
 	ag.runner = runner
-	ag.active = true
 	ag.modelSeed = ""
+	ag.turnModel = h.currentModelID(p)
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
@@ -547,9 +587,10 @@ func (h *Host) runTurns(runner *agent.Runner, text string) {
 			h.compactReporting(ctx, runner, compactAuto, "")
 		}
 		h.sendCompacting(ctx, runner, text)
+		cancelled := ctx.Err() != nil
 		h.turn.Store(nil)
 		cancel()
-		text = h.nextTurn()
+		text = h.nextTurn(cancelled)
 	}
 }
 
@@ -565,12 +606,16 @@ func (h *Host) startTurn(text string) {
 // nextTurn runs after each turn: messages queued after the last step
 // boundary become one follow-up turn, otherwise the agent goes idle.
 // active stays held across the handoff, so a submit in between queues
-// instead of starting a turn out of order.
-func (h *Host) nextTurn() string {
+// instead of starting a turn out of order. After a cancelled turn nothing
+// starts: the queue waits for the UI to hand it back to the composer.
+func (h *Host) nextTurn(cancelled bool) string {
 	ag := h.agents
 	ag.mu.Lock()
-	text := strings.Join(ag.steering, "\n\n")
-	ag.steering = nil
+	text := ""
+	if !cancelled {
+		text = strings.Join(ag.steering, "\n\n")
+		ag.steering = nil
+	}
 	if text == "" {
 		ag.active = false
 	} else {
@@ -682,9 +727,18 @@ func (s *streamAdapter) TextDelta(text string) {
 	}
 }
 
+func (s *streamAdapter) StepStart() {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.stepText, ag.stepReason = len(ag.textBuf), len(ag.reasonBuf)
+	ag.mu.Unlock()
+}
+
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	ag.textBuf = ag.textBuf[:min(ag.stepText, len(ag.textBuf))]
+	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
 	// fantasy passes no error when a network failure (DNS, refused, reset)
@@ -766,7 +820,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return // sendCompacting compacts and resends, or reports it
 	}
-	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
+	ag.mu.Lock()
+	model := ag.turnModel
+	ag.mu.Unlock()
+	if model == "" {
+		model = h.currentModelID(nil) // a turn the host did not start (tests)
+	}
+	cost := h.turnCost(model, usage)
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost
@@ -1159,11 +1219,20 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				if cw, ok := mt.RawGetString("context_window").(glua.LNumber); ok && cw > 0 {
 					m.ContextWindow = int64(cw)
 				}
+				if n, ok := mt.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
+					m.MaxOutput = int64(n)
+				}
 				if c, ok := mt.RawGetString("cost_per_1m_in").(glua.LNumber); ok && c > 0 {
 					m.CostPer1MIn = float64(c)
 				}
 				if c, ok := mt.RawGetString("cost_per_1m_out").(glua.LNumber); ok && c > 0 {
 					m.CostPer1MOut = float64(c)
+				}
+				if c, ok := mt.RawGetString("cost_per_1m_in_cached").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MInCached = float64(c)
+				}
+				if c, ok := mt.RawGetString("cost_per_1m_out_cached").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MOutCached = float64(c)
 				}
 				spec.Models = append(spec.Models, m)
 			}
@@ -1240,10 +1309,14 @@ func (h *Host) modelSpec(id string) (agent.Model, bool) {
 }
 
 // turnCost prices one turn's tokens from the model spec; 0 when the spec
-// carries no prices.
-func (h *Host) turnCost(modelID string, in, out int64) float64 {
+// carries no prices. Cache writes and reads are priced apart: providers bill
+// them apart and do not count them as prompt tokens.
+func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 	m, _ := h.modelSpec(modelID)
-	return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+	return (float64(u.InputTokens)*m.CostPer1MIn +
+		float64(u.OutputTokens)*m.CostPer1MOut +
+		float64(u.CacheCreationTokens)*m.CostPer1MInCached +
+		float64(u.CacheReadTokens)*m.CostPer1MOutCached) / 1e6
 }
 
 // contextWindow: agent.context_window, then the model spec, else 0
@@ -1254,6 +1327,20 @@ func (h *Host) contextWindow(modelID string) int64 {
 	}
 	m, _ := h.modelSpec(modelID)
 	return m.ContextWindow
+}
+
+// maxOutput is the reply token limit: the model spec's, else 32000 for
+// Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
+// 0 (the provider default).
+func (h *Host) maxOutput(modelID string) int64 {
+	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
+		return m.MaxOutput
+	}
+	prov, _, _ := strings.Cut(modelID, "/")
+	if spec, ok := h.Providers.Lookup(prov); ok && spec.Kind == agent.KindAnthropic {
+		return 32_000
+	}
+	return 0
 }
 
 // pickModel opens the Go-owned model picker overlay (DESIGN §8).

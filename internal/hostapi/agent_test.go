@@ -271,11 +271,23 @@ func TestSteeringQueue(t *testing.T) {
 	}
 
 	send("a", "b")
-	if text := h.nextTurn(); text != "a\n\nb" || !h.AgentActive() {
+	if text := h.nextTurn(false); text != "a\n\nb" || !h.AgentActive() {
 		t.Fatalf("follow-up = %q, active = %v", text, h.AgentActive())
 	}
-	if text := h.nextTurn(); text != "" || h.AgentActive() {
+	if text := h.nextTurn(false); text != "" || h.AgentActive() {
 		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
+	}
+
+	// a cancelled turn starts nothing: the queue waits for the composer
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.mu.Unlock()
+	send("c")
+	if text := h.nextTurn(true); text != "" || h.AgentActive() {
+		t.Fatalf("cancelled handoff = %q, active = %v", text, h.AgentActive())
+	}
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "c" {
+		t.Fatalf("queue after a cancel = %q", q)
 	}
 
 	h.AgentCancel() // no runner: must not panic
@@ -627,6 +639,114 @@ func TestAlwaysChoice(t *testing.T) {
 		}
 		if label != c.label || strings.Join(pats, "|") != strings.Join(c.patterns, "|") {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
+		}
+	}
+}
+
+// TestTurnPricedWithProfileModel: a turn records the model it was built
+// with, so a profile's turn is not priced off the session default.
+func TestTurnPricedWithProfileModel(t *testing.T) {
+	h, r := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	runUser(t, r, `
+		zemi.agent.profile("cheap", { model = "p/cheap" })
+		zemi.agent.set_default("cheap")
+	`)
+	if err := h.AgentSend("hi"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	h.agents.mu.Lock()
+	got := h.agents.turnModel
+	h.agents.mu.Unlock()
+	if got != "p/cheap" {
+		t.Fatalf("turn model = %q, want the profile's", got)
+	}
+}
+
+// TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
+// profile's context files as written, or the second build joins them to the
+// project directory twice and silently reads nothing.
+func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.agent.profile("p", { context = { files = { "NOTES.md" } } })`)
+	p, err := h.resolveProfile("p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.buildSystem(p)
+	h.buildSystem(p)
+	if got := p.ContextFiles; len(got) != 1 || got[0] != "NOTES.md" {
+		t.Fatalf("context files = %v", got)
+	}
+}
+
+// TestConcurrentSendsQueue: two sends racing to start a turn run one after
+// the other, so the history keeps both messages.
+func TestConcurrentSendsQueue(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	errs := make(chan error, 2)
+	for _, text := range []string{"one", "two"} {
+		go func() { errs <- h.AgentSend(text) }()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitIdle(t, h)
+	h.agents.mu.Lock()
+	history := h.agents.runner.History
+	h.agents.mu.Unlock()
+	users := 0
+	for _, m := range history {
+		if m.Role == fantasy.MessageRoleUser {
+			users++
+		}
+	}
+	if users != 2 {
+		t.Fatalf("history keeps %d of 2 user messages", users)
+	}
+}
+
+// TestRetryRestreamsStep: a provider retry streams the step again from its
+// start, so the failed attempt's text is dropped instead of shown twice.
+func TestRetryRestreamsStep(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	type hooks interface {
+		TextDelta(string)
+		StepStart()
+		Retrying(error, time.Duration)
+	}
+	for name, c := range map[string]struct {
+		hooks hooks
+		text  func() string
+	}{
+		"main":     {h.streamHooks().(*streamAdapter), func() string { return h.AgentStream().Text }},
+		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run}, func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text }},
+	} {
+		c.hooks.TextDelta("before ")
+		c.hooks.StepStart()
+		c.hooks.TextDelta("partial")
+		c.hooks.Retrying(nil, 0)
+		c.hooks.TextDelta("full")
+		if got := c.text(); got != "before full" {
+			t.Errorf("%s: text %q, want %q", name, got, "before full")
+		}
+	}
+}
+
+func TestMaxOutput(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096 } } })
+		zemi.provider.register({ id = "o", kind = "openai", models = { { id = "gpt" } } })
+	`)
+	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
+		if got := h.maxOutput(model); got != want {
+			t.Errorf("%s: max output %d, want %d", model, got, want)
 		}
 	}
 }
