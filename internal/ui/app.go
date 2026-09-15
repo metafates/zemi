@@ -85,8 +85,6 @@ type App struct {
 	now         func() time.Time // animation clock; tests pin it
 	cancelling  bool             // interrupt sent, turn not finished yet
 	focused     bool             // terminal focus (true until the terminal reports a blur)
-	lastMode    string           // permission mode at the last frame
-	modeShownAt time.Time        // when the mode strip appeared
 	keySeq      []string         // keys of a bound sequence typed so far
 	keySeqAt    time.Time
 	quitArmed   time.Time // a second idle ctrl+c before this quits
@@ -574,12 +572,7 @@ func (a *App) compose(w, h int) string {
 
 	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
 
-	// the blank row above the composer carries the mode strip after a switch
-	spacer := padSegs(nil, w)
-	if strip := a.modeStrip(); strip != nil {
-		spacer = padSegs(truncateSegs(strip, w), w)
-	}
-	rows = append(rows, spacer)
+	rows = append(rows, padSegs(nil, w))
 	// The working row renders above the composer.
 	rows = append(rows, working...)
 	rows = append(rows, compRows...)
@@ -589,6 +582,10 @@ func (a *App) compose(w, h int) string {
 	// match this order so input reaches the box drawn on top.
 	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
 	for _, ov := range a.overlays {
+		if ov.o.Anchor == "bottom" {
+			rows = anchorBottom(rows, overlayBox(ov, w), w, len(header), chatH)
+			continue
+		}
 		splice(overlayBox(ov, w))
 	}
 	if a.trust != nil {
@@ -622,36 +619,6 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	return b.String()
-}
-
-const modeStripTTL = 3 * time.Second
-
-// modeStrip shows every permission mode with the active one lit and what it
-// means, for a few seconds after the mode changes.
-func (a *App) modeStrip() []hostapi.Segment {
-	mode := a.host.PermMode()
-	info := ""
-	switch {
-	case a.lastMode == "":
-		a.lastMode = mode
-		return nil
-	case mode != a.lastMode:
-		a.lastMode, a.modeShownAt = mode, a.now()
-	}
-	if a.modeShownAt.IsZero() || a.now().Sub(a.modeShownAt) > modeStripTTL {
-		return nil
-	}
-	row := []hostapi.Segment{{Text: " "}}
-	for _, m := range a.host.PermModeList() {
-		hl := "Comment"
-		if m.Name == mode {
-			hl, info = "Mode"+strings.ToUpper(m.Base[:1])+m.Base[1:], m.Description
-		}
-		row = append(row, hostapi.Segment{Text: " " + m.Name + " ", HL: hl}, hostapi.Segment{Text: " "})
-	}
-	return append(row,
-		hostapi.Segment{Text: " " + info, HL: "Normal"},
-		hostapi.Segment{Text: "   tab or click switches", HL: "Comment"})
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of

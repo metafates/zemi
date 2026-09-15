@@ -100,7 +100,7 @@ func (h *Host) OpenModePicker() error {
 		}
 		items = append(items, map[string]any{"text": fmt.Sprintf("%s%-7s %s", mark, m.Name, m.Description), "run": "mode " + m.Name})
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Anchor: "bottom"})
 	return nil
 }
 

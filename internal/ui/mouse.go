@@ -241,30 +241,21 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		lo, hi, _, ok := list(p.count(), &p.selected, nil)
 		return lo, hi, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
 	case y >= a.lastChatBottom:
-		// the statusline mode pill opens the picker; a mode in the strip
-		// shown after a switch selects it
+		// the statusline mode pill opens the picker
 		text := plainSegs(row)
 		lo, hi := wordSpan(text, x)
-		word := ""
-		if lo < hi {
-			word = ansi.Cut(text, lo, hi)
+		if y != len(a.lastRows)-1 || lo >= hi {
+			break
 		}
+		word := ansi.Cut(text, lo, hi)
 		for _, def := range a.host.PermModeList() {
-			m := def.Name
-			if word != m {
-				continue
+			if word == def.Name {
+				return lo, hi, func() {
+					if err := a.host.OpenModePicker(); err != nil {
+						a.pushToast("error", "mode", err.Error())
+					}
+				}, true
 			}
-			return lo, hi, func() {
-				var err error
-				if y == len(a.lastRows)-1 {
-					err = a.host.OpenModePicker()
-				} else {
-					err = a.host.SetPermMode(m)
-				}
-				if err != nil {
-					a.pushToast("error", "mode", err.Error())
-				}
-			}, true
 		}
 	default:
 		text := plainSegs(row)

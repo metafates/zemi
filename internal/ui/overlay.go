@@ -311,6 +311,20 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	return rows
 }
 
+// anchorBottom lays box over the bottom rows of the chat area at the left
+// edge, just above the statusline that opened it; what it does not cover
+// stays visible.
+func anchorBottom(rows, box [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
+	bottom := min(headerH+chatH, len(rows))
+	y0 := max(headerH, bottom-len(box))
+	for i := y0; i < bottom; i++ {
+		b := box[i-y0]
+		row := append([]hostapi.Segment{{Text: " "}}, b...)
+		rows[i] = padSegs(truncateSegs(append(row, dropCells(rows[i], segsWidth(b)+1)...), w), w)
+	}
+	return rows
+}
+
 // dropCells removes the first n display cells of a row.
 func dropCells(segs []hostapi.Segment, n int) []hostapi.Segment {
 	var out []hostapi.Segment

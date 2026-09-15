@@ -113,22 +113,30 @@ func TestResizeSweep(t *testing.T) {
 	}
 }
 
-// TestModeStrip: switching modes shows all of them with what the new one
-// means, and the strip goes away after a few seconds.
-func TestModeStrip(t *testing.T) {
+// TestModeSwitchQuiet: tab-style switches only change the pill, and the
+// picker opens at the bottom-left by the statusline instead of mid-chat.
+func TestModeSwitchQuiet(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
-	now := time.Now()
-	a.now = func() time.Time { return now }
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
 	_ = a.Frame()
 	if err := a.host.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}
-	if f := a.Frame(); !strings.Contains(f, "manual") || !strings.Contains(f, "safe actions run on their own") {
-		t.Fatalf("no mode strip:\n%s", f)
-	}
-	now = now.Add(4 * time.Second)
 	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
-		t.Fatalf("strip outlived its time:\n%s", f)
+		t.Fatalf("a switch must not explain itself:\n%s", ansi.Strip(f))
+	}
+	a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "auto"}, Anchor: "bottom"})
+	rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
+	bottom := -1
+	for i, row := range rows {
+		if strings.Contains(row, "Permission mode") && !strings.HasPrefix(row, " ╭") {
+			t.Fatalf("picker not at the left edge: %q", row)
+		}
+		if strings.HasPrefix(row, " ╰") {
+			bottom = i
+		}
+	}
+	if bottom != a.lastChatBottom-1 {
+		t.Fatalf("picker ends on row %d, want the last chat row %d", bottom, a.lastChatBottom-1)
 	}
 }

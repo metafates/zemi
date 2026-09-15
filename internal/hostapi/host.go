@@ -54,6 +54,7 @@ type Overlay struct {
 	OnSelect   *glua.LFunction
 	OnClose    *glua.LFunction
 	Gen        Gen
+	Anchor     string // "bottom": over the chat's bottom-left, by the statusline; "" centered
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
