@@ -95,6 +95,7 @@ type agentHost struct {
 	tools      []StreamTool
 	steering  []string
 	modelSeed string
+	turnModel string // model id the running turn was built with, for its price
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
@@ -543,6 +544,7 @@ func (h *Host) AgentSend(text string) error {
 	}
 	ag.runner = runner
 	ag.modelSeed = ""
+	ag.turnModel = h.currentModelID(p)
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
@@ -796,7 +798,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return // sendCompacting compacts and resends, or reports it
 	}
-	cost := h.turnCost(h.currentModelID(nil), usage)
+	ag.mu.Lock()
+	model := ag.turnModel
+	ag.mu.Unlock()
+	if model == "" {
+		model = h.currentModelID(nil) // a turn the host did not start (tests)
+	}
+	cost := h.turnCost(model, usage)
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost

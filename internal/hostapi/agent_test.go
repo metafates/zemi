@@ -643,6 +643,27 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 }
 
+// TestTurnPricedWithProfileModel: a turn records the model it was built
+// with, so a profile's turn is not priced off the session default.
+func TestTurnPricedWithProfileModel(t *testing.T) {
+	h, r := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	runUser(t, r, `
+		zemi.agent.profile("cheap", { model = "p/cheap" })
+		zemi.agent.set_default("cheap")
+	`)
+	if err := h.AgentSend("hi"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	h.agents.mu.Lock()
+	got := h.agents.turnModel
+	h.agents.mu.Unlock()
+	if got != "p/cheap" {
+		t.Fatalf("turn model = %q, want the profile's", got)
+	}
+}
+
 // TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
 // profile's context files as written, or the second build joins them to the
 // project directory twice and silently reads nothing.
