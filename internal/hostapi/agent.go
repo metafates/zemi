@@ -139,6 +139,11 @@ type agentHost struct {
 
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
+
+	// titled is false for a new session until its first exchange named it
+	// (autoTitle); firstUser is that session's first message.
+	titled    bool
+	firstUser string
 }
 
 func newAgentHost() *agentHost {
@@ -653,6 +658,16 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
 	})
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
+	if err == nil && strings.TrimSpace(text) != "" {
+		ag.mu.Lock()
+		first := !ag.titled && ag.sessionID == sid
+		ag.titled = true
+		user := ag.firstUser
+		ag.mu.Unlock()
+		if first {
+			h.autoTitle(sid, user, text)
+		}
+	}
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
@@ -816,6 +831,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
+	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
 	ag.digest = h.digestFor()
 	ag.memAuto = 0

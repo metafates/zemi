@@ -5,6 +5,8 @@
 package hostapi
 
 import (
+	"github.com/metafates/zemi/internal/sanitize"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,7 +61,7 @@ func (h *Host) ResumeSession(id string) error {
 	history, tr := resumeHistory(sess, rows)
 	ag := h.agents
 	ag.mu.Lock()
-	ag.sessionID = id
+	ag.sessionID, ag.titled = id, true
 	// A bare runner carries the history; AgentSend copies it into the
 	// runner it builds for the next turn.
 	ag.runner = &agent.Runner{History: history}
@@ -191,6 +193,49 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 	}
 	return history, tr
+}
+
+const titleSystem = `Name a coding conversation for a session list. Reply with the title only: 3 to 6 words, no quotes, no trailing period, in the language of the user's message.`
+
+// autoTitle names a new session from its first exchange with a short model
+// call in the background; any failure keeps the first-line title.
+func (h *Host) autoTitle(sid, user, reply string) {
+	if v, ok := h.Settings.Get("session.auto_title"); ok && v == false {
+		return
+	}
+	if h.DB == nil {
+		return
+	}
+	h.GoSafe("session title", func() {
+		model, err := h.reflectModel()
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		out, err := generateText(ctx, model, titleSystem, "User: "+truncRunes(user, 2000)+"\n\nAssistant: "+truncRunes(reply, 2000))
+		if err != nil {
+			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
+			return
+		}
+		title := strings.Trim(strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]), `"'.# `)
+		if r := []rune(title); len(r) > 60 {
+			title = string(r[:60])
+		}
+		if title == "" {
+			return
+		}
+		if err := h.DB.RenameSession(sid, sanitize.String(title)); err != nil {
+			return
+		}
+		h.recentStale.Store(true)
+		if h.AgentSessionID() == sid {
+			h.tMu.Lock()
+			h.session.Title = sanitize.String(title)
+			h.tMu.Unlock()
+			h.refresh()
+		}
+	})
 }
 
 // recentSessions feeds the splash screen. Widget renders must not wait on
