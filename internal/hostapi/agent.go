@@ -478,6 +478,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	}
 	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
+	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
 	if p != nil {
 		r.Temperature = p.Temperature
 	}
@@ -1157,6 +1158,9 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				if cw, ok := mt.RawGetString("context_window").(glua.LNumber); ok && cw > 0 {
 					m.ContextWindow = int64(cw)
 				}
+				if n, ok := mt.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
+					m.MaxOutput = int64(n)
+				}
 				if c, ok := mt.RawGetString("cost_per_1m_in").(glua.LNumber); ok && c > 0 {
 					m.CostPer1MIn = float64(c)
 				}
@@ -1252,6 +1256,20 @@ func (h *Host) contextWindow(modelID string) int64 {
 	}
 	m, _ := h.modelSpec(modelID)
 	return m.ContextWindow
+}
+
+// maxOutput is the reply token limit: the model spec's, else 32000 for
+// Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
+// 0 (the provider default).
+func (h *Host) maxOutput(modelID string) int64 {
+	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
+		return m.MaxOutput
+	}
+	prov, _, _ := strings.Cut(modelID, "/")
+	if spec, ok := h.Providers.Lookup(prov); ok && spec.Kind == agent.KindAnthropic {
+		return 32_000
+	}
+	return 0
 }
 
 // pickModel opens the Go-owned model picker overlay (DESIGN §8).

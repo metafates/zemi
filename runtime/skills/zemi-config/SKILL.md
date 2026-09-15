@@ -53,6 +53,10 @@ rejects a prompt as too long, and stops for the session after 3 failed tries (`/
 `/new` then). Without a window zemi compacts only on that rejection or on
 `/compact <what to keep>` (refused while a turn runs).
 
+`max_output` caps each reply in tokens. Unset, Anthropic models get 32000 and other kinds
+the provider's default; set it lower for a model that rejects that. A reply that hits the
+cap ends the turn with an error row.
+
 Only `init.lua` may register providers, and only user config may read secret-looking
 variables with `zemi.env.get`. MCP `headers` and `env` values are plain strings: build them
 in Lua (`Authorization = "Bearer " .. zemi.env.get("GITHUB_TOKEN")`). `/model` picks a model

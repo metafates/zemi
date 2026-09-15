@@ -268,9 +268,17 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 		textParts("done"),
 	}}
 	r := NewRunner(m, nil, "")
-	for _, text := range []string{"hi", "go on"} {
-		r.Hooks = newRecHooks()
-		_ = r.Send(context.Background(), text)
+	r.MaxOutputTokens = 32000
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
+		t.Fatalf("cut-off reply: %v, want ErrReplyCut", err)
+	}
+	if n := m.lastCall.MaxOutputTokens; n == nil || *n != 32000 {
+		t.Fatalf("max output tokens: %v", n)
+	}
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
 	}
 	var roles []string
 	for _, msg := range m.lastCall.Prompt {

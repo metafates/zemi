@@ -40,6 +40,9 @@ type Runner struct {
 	Persist     PersistFunc
 	Temperature *float64
 
+	// MaxOutputTokens caps each reply; 0 leaves the provider default.
+	MaxOutputTokens int64
+
 	// ProviderOptions ride on every call (reasoning effort).
 	ProviderOptions fantasy.ProviderOptions
 
@@ -71,6 +74,9 @@ func (r *Runner) CutShort() bool {
 
 // ErrTurnActive is returned when a turn is already running.
 var ErrTurnActive = fmt.Errorf("agent: a turn is already active")
+
+// ErrReplyCut ends a turn whose last reply hit the output token limit.
+var ErrReplyCut = fmt.Errorf("the reply hit the output token limit (the model's max_output) and was cut off")
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
@@ -179,6 +185,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		t := *temp
 		call.Temperature = &t
 	}
+	if n := r.MaxOutputTokens; n > 0 {
+		call.MaxOutputTokens = &n
+	}
 	// Each finished step and each steered message is stored as it happens, so
 	// a turn that fails or is cancelled later keeps the work done before.
 	var steps []fantasy.StepResult
@@ -221,6 +230,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	_, err := r.agent.Stream(tctx, call)
 	if err == nil {
 		err = persistErr
+	}
+	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
+		err = ErrReplyCut
 	}
 	// Completed steps (assistant content, tool results, steered user
 	// messages) join history in the order the model saw them, also after an

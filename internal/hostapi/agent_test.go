@@ -630,3 +630,16 @@ func TestAlwaysChoice(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxOutput(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096 } } })
+		zemi.provider.register({ id = "o", kind = "openai", models = { { id = "gpt" } } })
+	`)
+	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
+		if got := h.maxOutput(model); got != want {
+			t.Errorf("%s: max output %d, want %d", model, got, want)
+		}
+	}
+}

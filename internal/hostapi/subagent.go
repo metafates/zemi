@@ -247,6 +247,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(prof), h.Effort())
+	runner.MaxOutputTokens = h.maxOutput(h.currentModelID(prof))
 
 	sid := ""
 	if h.DB != nil {
