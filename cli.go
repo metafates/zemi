@@ -1,0 +1,204 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"slices"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/metafates/zemi/internal/hostapi"
+)
+
+const usage = `zemi - a terminal coding agent that learns how you work
+
+Usage:
+  zemi [flags] [prompt]
+
+  zemi                          open the TUI
+  zemi "fix the failing test"   open the TUI and send a first message
+  zemi -p "explain main.go"     answer on stdout and exit
+  git diff | zemi -p "review"   piped stdin is appended to the prompt
+
+Flags:
+  -p, --print         answer the prompt on stdout and exit (no TUI)
+  -c, --continue      continue the most recent session
+  -r, --resume id     resume the session with this id
+  -m, --model id      model to use (provider/model)
+      --mode mode     permission mode: manual, auto or yolo
+  -v, --version       print the version and exit
+  -h, --help          show this help
+
+With -p nobody can answer a permission ask, so asks are denied unless
+--mode is auto (a model approves routine actions) or yolo.
+
+Environment:
+  ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
+  ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
+  ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
+
+Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
+`
+
+// version is set at release time with -ldflags "-X main.version=v1.2.3";
+// otherwise the module version from the build info is used.
+var version string
+
+type options struct {
+	print, cont   bool
+	resume, model string
+	mode, prompt  string
+}
+
+// parseArgs parses the command line. code is -1 when zemi should run, or
+// the exit status when it is done (help, version, usage error).
+func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
+	fs := flag.NewFlagSet("zemi", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var help, ver bool
+	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "h": &help, "help": &help, "v": &ver, "version": &ver} {
+		fs.BoolVar(p, name, false, "")
+	}
+	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode} {
+		fs.StringVar(p, name, "", "")
+	}
+	bad := func(format string, a ...any) (options, int) {
+		fmt.Fprintf(stderr, "zemi: "+format+"\nRun 'zemi --help' for usage.\n", a...)
+		return o, 2
+	}
+	if err := fs.Parse(args); err != nil {
+		return bad("%v", err)
+	}
+	switch {
+	case help:
+		fmt.Fprint(stdout, usage)
+		return o, 0
+	case ver:
+		fmt.Fprintln(stdout, "zemi", versionString())
+		return o, 0
+	case o.mode != "" && !slices.Contains(hostapi.PermModes, o.mode):
+		return bad("unknown --mode %q (want manual, auto or yolo)", o.mode)
+	case o.cont && o.resume != "":
+		return bad("--continue and --resume cannot be combined")
+	}
+	o.prompt = strings.TrimSpace(strings.Join(fs.Args(), " "))
+	return o, -1
+}
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return "(unknown)"
+}
+
+// readStdin appends piped stdin to the prompt in print mode. The TUI needs
+// the terminal on stdin, so a pipe there is a usage error.
+func (o *options) readStdin(stdin *os.File) error {
+	fi, err := stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
+		return nil
+	}
+	if !o.print {
+		return errors.New("stdin is not a terminal; use -p to answer from a pipe")
+	}
+	// NOTE: stdin is capped at 1 MiB; larger input belongs in a file the
+	// agent reads.
+	first, got := make(chan struct{}), make(chan []byte, 1)
+	go func() {
+		head := make([]byte, 1)
+		n, _ := stdin.Read(head)
+		close(first)
+		rest, _ := io.ReadAll(io.LimitReader(stdin, 1<<20-1))
+		got <- append(head[:n], rest...)
+	}()
+	// Schedulers and editors often leave an idle pipe on stdin: with a
+	// prompt argument, stdin that stays silent for 3s is skipped. A slow
+	// producer is fine once its first byte arrives.
+	if o.prompt != "" {
+		select {
+		case <-first:
+		case <-time.After(3 * time.Second):
+			fmt.Fprintln(os.Stderr, "zemi: no stdin within 3s, continuing without it")
+			return nil
+		}
+	}
+	if in := strings.TrimSpace(string(<-got)); in != "" {
+		o.prompt = strings.TrimSpace(o.prompt + "\n\n" + in)
+	}
+	return nil
+}
+
+// applyOptions applies the flags after boot, so they win over init.lua.
+func applyOptions(h *hostapi.Host, o options) error {
+	if o.model != "" {
+		if err := h.Settings.SetHost("agent.model", o.model); err != nil {
+			return err
+		}
+	}
+	if o.mode != "" {
+		if err := h.Settings.SetHost("permissions.mode", o.mode); err != nil {
+			return err
+		}
+	}
+	if o.cont || o.resume != "" {
+		return h.ResumeSession(o.resume)
+	}
+	return nil
+}
+
+// printTurn runs one turn without the TUI: the reply goes to stdout, a
+// failure to stderr with status 1, an interrupt ends with 130.
+func printTurn(h *hostapi.Host, prompt string, stdout, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	start := len(h.Session().Transcript)
+	if err := h.AgentSend(prompt); err != nil {
+		fmt.Fprintln(stderr, "zemi:", err)
+		return 1
+	}
+	interrupted := false
+	for h.AgentActive() {
+		select {
+		case <-ctx.Done():
+			if !interrupted {
+				interrupted = true
+				h.AgentCancel()
+			}
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	if interrupted {
+		return 130
+	}
+	code := 0
+	var replies []string
+	for _, m := range h.Session().Transcript[start:] {
+		switch {
+		case m.Role != "assistant":
+		case m.Kind == "":
+			replies = append(replies, strings.TrimSpace(m.Text))
+		case m.Kind == "error":
+			head, detail, _ := strings.Cut(m.Text, "\n")
+			fmt.Fprintln(stderr, "zemi:", head)
+			if detail != "" {
+				fmt.Fprintln(stderr, "  "+detail)
+			}
+			code = 1
+		}
+	}
+	if len(replies) > 0 {
+		fmt.Fprintln(stdout, strings.Join(replies, "\n\n"))
+	}
+	return code
+}

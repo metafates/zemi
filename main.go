@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"runtime/debug"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -26,18 +26,31 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "zemi:", err)
-		os.Exit(1)
-	}
+	os.Exit(run(os.Args[1:]))
 }
 
-func run() error {
+func run(args []string) int {
+	opts, code := parseArgs(args, os.Stdout, os.Stderr)
+	if code >= 0 {
+		return code
+	}
+	fail := func(err error) int {
+		fmt.Fprintln(os.Stderr, "zemi:", err)
+		return 1
+	}
+	if err := opts.readStdin(os.Stdin); err != nil {
+		fmt.Fprintf(os.Stderr, "zemi: %v\nRun 'zemi --help' for usage.\n", err)
+		return 2
+	}
+	if opts.print && opts.prompt == "" {
+		fmt.Fprintln(os.Stderr, "zemi: -p needs a prompt (an argument or stdin)\nRun 'zemi --help' for usage.")
+		return 2
+	}
 	ctx := context.Background()
 
 	dirs := config.ResolveDirs()
 	if err := dirs.Ensure(); err != nil {
-		return err
+		return fail(err)
 	}
 	log := logging.New(dirs.LogDir())
 	defer log.Close()
@@ -60,14 +73,21 @@ func run() error {
 	})
 
 	host := hostapi.NewHost(rt, log, settings, dirs)
-	app := ui.NewApp(host, log)
-	host.SetUIHooks(app)
+	// Print mode has no UI: nothing to quit, and an untrusted project
+	// config is skipped instead of asked about.
+	quit, askTrust := func() {}, func(string, string) string { return "once" }
+	var app *ui.App
+	if !opts.print {
+		app = ui.NewApp(host, log)
+		host.SetUIHooks(app)
+		quit, askTrust = app.Quit, app.AskTrust
+	}
 	host.EnsureConfigRepo()
 
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
 		host.PermissionsLoadStep(),
-		builtinCommandsStep(host, app),
+		builtinCommandsStep(host, quit),
 		host.MemoryCommandsStep(),
 		host.ReflectorCommandsStep(),
 		host.ConfigCommandsStep(),
@@ -76,10 +96,20 @@ func run() error {
 		pluginsStep(dirs),
 		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
 		host.SkillsAuthoredHooksStep(),
-		projectConfigStep(host, app, dirs),
+		projectConfigStep(host, askTrust, dirs),
 		crushImportStep(host, settings),
-		readyStep(host, settings),
+		readyStep(host, settings, !opts.print),
 		host.SkillsLearnedHooksStep(),
+	}
+
+	if opts.print {
+		if err := rt.Boot(ctx, steps); err != nil {
+			return fail(err)
+		}
+		if err := applyOptions(host, opts); err != nil {
+			return fail(err)
+		}
+		return printTurn(host, opts.prompt, os.Stdout, os.Stderr)
 	}
 
 	p := tea.NewProgram(app)
@@ -101,11 +131,28 @@ func run() error {
 				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, dirs.LogDir()))
 			}
 		}()
-		app.SignalBoot(rt.Boot(ctx, steps))
+		err := rt.Boot(ctx, steps)
+		app.SignalBoot(err)
+		if err != nil {
+			return
+		}
+		// A bad flag (no session to resume, say) is a toast, not a boot
+		// failure: the TUI is still usable.
+		if err := applyOptions(host, opts); err != nil {
+			app.Notify("error", "zemi", err.Error())
+			return
+		}
+		if opts.prompt != "" {
+			if err := host.AgentSend(opts.prompt); err != nil {
+				app.Notify("error", "zemi", err.Error())
+			}
+		}
 	}()
 
-	_, err := p.Run()
-	return err
+	if _, err := p.Run(); err != nil {
+		return fail(err)
+	}
+	return 0
 }
 
 // crushImportStep imports providers from the user's crush.json (config
@@ -150,16 +197,15 @@ func expandPath(p string) string {
 // builtinCommandsStep registers the Go-owned shell commands (/quit, /help,
 // /model). They carry the builtin origin, so user config can
 // rebind them.
-func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
+func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 	return lua.BootStep{
 		Name: "builtin commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			quit := func(h *hostapi.Host, args string) error {
-				app.Quit()
-				return nil
-			}
 			for _, c := range []*hostapi.Command{
-				{Name: "quit", Desc: "quit zemi", GoFn: quit, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
+					quit()
+					return nil
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "help", Desc: "show keys and commands", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenHelp()
 					return nil
@@ -186,6 +232,13 @@ func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 					h.OpenModelPicker()
 					return nil
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "mode", NArgs: "?", Desc: "permission mode: manual, auto or yolo (shift+tab cycles)", GoFn: func(h *hostapi.Host, args string) error {
+					if args = strings.TrimSpace(args); args == "" {
+						return fmt.Errorf("permission mode is %s (want manual, auto or yolo)", h.PermMode())
+					}
+					return h.SetPermMode(args)
+				}, GoComplete: func(*hostapi.Host, string, string) []string { return hostapi.PermModes },
+					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {
 					return err
@@ -221,7 +274,7 @@ func pluginsStep(dirs config.Dirs) lua.BootStep {
 // trust prompt: the config tree is hashed (symlinks refused), the hash
 // stored in the state dir, and a changed hash re-prompts before load
 // (DESIGN §5).
-func projectConfigStep(h *hostapi.Host, app *ui.App, dirs config.Dirs) lua.BootStep {
+func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string, dirs config.Dirs) lua.BootStep {
 	return lua.BootStep{
 		Name: "project config",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -246,7 +299,7 @@ func projectConfigStep(h *hostapi.Host, app *ui.App, dirs config.Dirs) lua.BootS
 				h.Log.Info("trust", "project config denied earlier; not loading", map[string]any{"dir": pdir})
 				return nil
 			default:
-				answer := app.AskTrust(pdir, hash)
+				answer := askTrust(pdir, hash)
 				if answer == "once" {
 					h.Log.Warn("trust", "project config refused; not loading", map[string]any{"dir": pdir})
 					return nil
@@ -326,8 +379,9 @@ func writeTrust(path string, m map[string]string) error {
 }
 
 // readyStep closes the autonomy-knob boot window and emits app.ready; the
-// window closes before the handlers run (DESIGN §10.8).
-func readyStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
+// window closes before the handlers run (DESIGN §10.8). Print mode skips
+// the startup reflection: the process exits before it could finish.
+func readyStep(h *hostapi.Host, settings *config.Store, reflect bool) lua.BootStep {
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -335,7 +389,9 @@ func readyStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
 			h.EmitOnState(g.L, "app.ready", nil)
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).
-			h.GoSafe("reflect last session", h.ReflectLastSession)
+			if reflect {
+				h.GoSafe("reflect last session", h.ReflectLastSession)
+			}
 			return nil
 		},
 	}

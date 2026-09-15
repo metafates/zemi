@@ -10,7 +10,8 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   structured questions, skills and memory.
 - Asks before anything risky. Edits show their diff in the permission prompt; `a`
   (always) stores an exact rule, and permanent rules live in a generated
-  `permissions.lua` that is versioned with git.
+  `permissions.lua` that is versioned with git. `shift+tab` switches the mode: `manual`,
+  `auto` (a model approves routine actions, you get the rest) or `yolo`.
 - Lets you steer mid-turn: messages typed while the agent works join the running turn at
   the next step. `up` on an empty composer pulls the queue back for editing, `esc`
   interrupts.
@@ -68,6 +69,21 @@ zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 Run `zemi` in your project. `/health` checks the model key, the store, `permissions.lua`,
 git and the reflector.
 
+## Command line
+
+```sh
+zemi                              # TUI
+zemi "fix the failing test"       # TUI with a first message
+zemi -c                           # continue the last session (-r <id> for another)
+zemi -p "explain main.go"         # answer on stdout, no TUI
+git diff | zemi -p "review this"  # piped stdin joins the prompt
+zemi -p --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
+```
+
+With `-p` nobody can answer a permission ask, so asks are denied unless `--mode` is
+`auto` or `yolo`. Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
+`zemi --help` lists every flag.
+
 ## Keys and commands
 
 | Key | Action |
@@ -75,12 +91,14 @@ git and the reflector.
 | `enter` / `alt+enter` | send / newline |
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
+| `shift+tab` | cycle permission mode |
 | `ctrl+o` | expand reasoning |
+| `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
 | `/` | command palette (tab completes names and arguments) |
 | `@` | attach a project file |
 
-Commands: `/help`, `/model`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
+Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
 `/remember`, `/memory`, `/config`, `/skills`, `/reflect`, `/health`, `/errors`, `/quit`.
 
 ## Lua

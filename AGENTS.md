@@ -116,6 +116,11 @@ falls through and **forces ask**. The default when nothing matches is set by
 writes ask) and finally ask — there is no fail-open path. New host-API side effects must
 be gated with the same `lua.` subject at the Lua boundary.
 
+`permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
+and the `permission.request` veto: `yolo` allows, `auto` runs a one-shot screening model
+and falls back to the user ask with its reason. Unknown values read as manual. Only user
+config sets it; binding a key to the mode cycle is refused for other origins.
+
 ### Origin model (internal/lua/origin.go, registries)
 
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi) >
