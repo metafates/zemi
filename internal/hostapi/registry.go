@@ -204,7 +204,7 @@ type Widget struct {
 	Region   string
 	Priority int
 	Render   *glua.LFunction
-	Keys     *glua.LFunction
+	Keys     *glua.LFunction // stored but never invoked
 	Wrap     bool
 	Origin   lua.Origin
 	Path     string
@@ -284,7 +284,7 @@ type EventHandler struct {
 	Origin   lua.Origin
 	Path     string
 	Gen      Gen
-	Coalesce bool
+	Coalesce bool // parsed from zemi.event.on opts; delivery does not coalesce
 	Once     bool // removed before its first call
 }
 

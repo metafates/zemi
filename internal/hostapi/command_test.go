@@ -30,3 +30,21 @@ func TestCompleteCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestNargsOK(t *testing.T) {
+	for _, c := range []struct{ nargs, args, want string }{
+		{"", "", ""},
+		{"", "bar", "/foo takes no arguments"},
+		{"?", "a b", "/foo takes at most one argument"},
+		{"+", " ", "/foo requires an argument"},
+		{"*", "a b c", ""},
+	} {
+		got := ""
+		if err := nargsOK("foo", c.nargs, c.args); err != nil {
+			got = err.Error()
+		}
+		if got != c.want {
+			t.Errorf("nargsOK(%q, %q) = %q, want %q", c.nargs, c.args, got, c.want)
+		}
+	}
+}

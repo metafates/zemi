@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/metafates/zemi/internal/config"
@@ -21,20 +20,18 @@ type watchRec struct {
 	src    string
 }
 
+// watchReg keys records by the config.Store watch id.
 type watchReg struct {
 	mu   sync.Mutex
-	next int
 	byID map[int]watchRec
 }
 
 func newWatchReg() *watchReg { return &watchReg{byID: map[int]watchRec{}} }
 
-func (w *watchReg) add(rec watchRec) int {
+func (w *watchReg) add(id int, rec watchRec) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.next++
-	w.byID[w.next] = rec
-	return w.next
+	w.byID[id] = rec
 }
 
 func (w *watchReg) rec(id int) (watchRec, bool) {
@@ -44,24 +41,26 @@ func (w *watchReg) rec(id int) (watchRec, bool) {
 	return rec, ok
 }
 
-func (w *watchReg) idsFor(gen Gen) []int {
+// purge drops the generation's records and returns their ids.
+func (w *watchReg) purge(gen Gen) []int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	var out []int
+	var ids []int
 	for id, rec := range w.byID {
 		if rec.gen == gen {
-			out = append(out, id)
+			ids = append(ids, id)
+			delete(w.byID, id)
 		}
 	}
-	return out
+	return ids
 }
 
 func (h *Host) purgeWatches() {
-	gen := h.currentGen()
-	for _, id := range h.watches.idsFor(gen) {
+	for _, id := range h.watches.purge(h.currentGen()) {
 		h.Settings.RemoveWatch(id)
 	}
 }
+
 func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
@@ -123,14 +122,9 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			origin: h.RT.CurrentOrigin(),
 			src:    h.RT.CurrentPath(),
 		}
-		id := h.watches.add(rec)
-		h.Settings.AddWatch(config.Watcher{
-			Path: path,
-			Fn: func(old, new any) {
-				// Go-side Set path: deliver on the interpreter via the queue.
-				h.deliverWatch(rec, id, old, new)
-			},
-		})
+		// Go-side Set path: deliver on the interpreter via the queue.
+		id := h.Settings.AddWatch(config.Watcher{Path: path, Fn: func(old, new any) { h.deliverWatch(rec, old, new) }})
+		h.watches.add(id, rec)
 		L.Push(glua.LNumber(id))
 		return 1
 	}))
@@ -152,27 +146,15 @@ func isAutonomyKnob(s *config.Store, path string) bool {
 // dropped and failures logged (DESIGN §4). Only for Go-side Set callers;
 // interpreter-side Sets use deliverFired (a blocking RT.Do from inside a
 // running request would deadlock the queue).
-func (h *Host) deliverWatch(rec watchRec, watchID int, old, new any) {
+func (h *Host) deliverWatch(rec watchRec, old, new any) {
 	if h.currentGen() != rec.gen {
-		h.Log.Debug("config", "stale config watch dropped", map[string]any{
-			"path": rec.path, "watch": watchID,
-		})
+		h.Log.Debug("config", "stale config watch dropped", map[string]any{"path": rec.path})
 		return
 	}
 	_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		h.pushWatchFrame(rec)
-		defer h.RT.PopFrame()
-		base := L.GetTop()
-		L.Push(rec.fn)
-		L.Push(lua.FromGo(L, new))
-		L.Push(lua.FromGo(L, old))
-		if err := L.PCall(2, 0, nil); err != nil {
-			L.SetTop(base)
-			return nil, err
-		}
-		return nil, nil
+		return nil, h.callWatch(L, rec, old, new)
 	})
-	if err != nil && !errors.Is(err, lua.ErrHot) && !errors.Is(err, lua.ErrReloaded) {
+	if err != nil && !isQuietLuaErr(err) {
 		h.Log.Error("config", "config watch failed", map[string]any{
 			"path": rec.path, "error": err.Error(),
 		})
@@ -188,21 +170,21 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 		if !ok || h.currentGen() != rec.gen {
 			continue
 		}
-		h.pushWatchFrame(rec)
-		base := L.GetTop()
-		L.Push(rec.fn)
-		L.Push(lua.FromGo(L, f.New))
-		L.Push(lua.FromGo(L, f.Old))
-		if err := L.PCall(2, 0, nil); err != nil {
+		if err := h.callWatch(L, rec, f.Old, f.New); err != nil {
 			h.Log.Error("config", "config watch failed", map[string]any{
 				"path": rec.path, "watch": f.ID, "error": err.Error(),
 			})
 		}
-		h.RT.PopFrame()
-		L.SetTop(base)
 	}
 }
 
-func (h *Host) pushWatchFrame(rec watchRec) {
+func (h *Host) callWatch(L *glua.LState, rec watchRec, old, new any) error {
 	h.RT.PushFrame(rec.origin, rec.src)
+	defer h.RT.PopFrame()
+	base := L.GetTop()
+	defer L.SetTop(base)
+	L.Push(rec.fn)
+	L.Push(lua.FromGo(L, new))
+	L.Push(lua.FromGo(L, old))
+	return L.PCall(2, 0, nil)
 }

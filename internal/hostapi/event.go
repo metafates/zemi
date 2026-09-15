@@ -48,18 +48,8 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			Path:   h.RT.CurrentPath(),
 			Gen:    h.currentGen(),
 		}
-		if L.GetTop() >= 3 && L.Get(3) != glua.LNil {
-			opts, ok := L.Get(3).(*glua.LTable)
-			if !ok {
-				L.RaiseError("zemi.event.on: opts must be a table")
-			}
-			if id, ok := opts.RawGetString("id").(glua.LString); ok {
-				hd.ID = string(id)
-			}
-			if c, ok := opts.RawGetString("coalesce").(glua.LBool); ok {
-				hd.Coalesce = bool(c)
-			}
-			hd.Once = rawBool(opts, "once")
+		if opts := L.OptTable(3, nil); opts != nil {
+			hd.ID, hd.Coalesce, hd.Once = rawString(opts, "id"), rawBool(opts, "coalesce"), rawBool(opts, "once")
 		}
 		added, err := h.Events.Add(hd)
 		if err != nil {
@@ -92,7 +82,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.event.emit: only user.* events can be emitted from Lua")
 		}
 		payload := map[string]any{}
-		if L.GetTop() >= 2 && L.Get(2) != glua.LNil {
+		if L.Get(2) != glua.LNil {
 			v, err := lua.ToGo(L.Get(2))
 			if err != nil {
 				L.RaiseError("zemi.event.emit: %v", err)
