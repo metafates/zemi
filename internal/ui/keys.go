@@ -484,3 +484,63 @@ func keyText(msg tea.KeyPressMsg) string {
 	}
 	return msg.Text
 }
+
+// modeBase is the behavior of the active permission mode (manual, plan,
+// auto or yolo), which picks its colors.
+func (a *App) modeBase() string {
+	cur := a.host.PermMode()
+	for _, m := range a.host.PermModeList() {
+		if m.Name == cur {
+			return m.Base
+		}
+	}
+	return "manual"
+}
+
+// wheelChrome scrolls the topmost prompt or list instead of the chat;
+// it reports whether one took the wheel.
+func (a *App) wheelChrome(step int) bool {
+	move := func(sel *int, n int) { *sel = max(0, min(*sel+step, n-1)) }
+	switch {
+	case a.permAsk != nil:
+		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
+	case a.trust != nil:
+	case a.modelPick != nil:
+		move(&a.modelPick.selected, len(a.modelPick.visible))
+	case a.memReview != nil:
+		move(&a.memReview.sel, len(a.memReview.items))
+	case a.cfgReview != nil:
+		move(&a.cfgReview.sel, len(a.cfgReview.items))
+	case a.question != nil:
+		move(&a.question.sel, len(a.question.q.Options))
+	case len(a.overlays) > 0 && !a.overlays[len(a.overlays)-1].o.Input:
+		st := &a.overlays[len(a.overlays)-1]
+		move(&st.selected, len(st.visible))
+	default:
+		return false
+	}
+	a.frameGen++
+	return true
+}
+
+// pasteChrome sends a paste to the topmost filter or input instead of the
+// composer hidden under it; prompts without text input swallow it.
+func (a *App) pasteChrome(text string) bool {
+	line := strings.Join(strings.Fields(text), " ")
+	switch {
+	case a.permAsk != nil, a.trust != nil, a.memReview != nil, a.cfgReview != nil, a.question != nil:
+	case a.modelPick != nil:
+		a.modelPick.edit("", line, a.modelPick.texts)
+	case len(a.overlays) > 0:
+		st := &a.overlays[len(a.overlays)-1]
+		if st.o.Input {
+			st.input.insert(line)
+		} else {
+			st.edit("", line, st.itemText)
+		}
+	default:
+		return false
+	}
+	a.frameGen++
+	return true
+}

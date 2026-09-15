@@ -361,11 +361,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			a.scrollChatRows(-chatWheelStep)
-		case tea.MouseWheelDown:
-			a.scrollChatRows(chatWheelStep)
+		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
+		if step != 0 && !a.wheelChrome(step) {
+			a.scrollChatRows(step * chatWheelStep)
 		}
 		return a, nil
 	case clipboardMsg:
@@ -377,6 +375,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, nil
 	case tea.PasteMsg:
+		if a.pasteChrome(msg.Content) {
+			return a, nil
+		}
 		// a dropped file arrives as a paste of its path
 		if paths, ok := parseDrop(msg.Content); ok {
 			a.insertAttachments(paths)
@@ -743,6 +744,7 @@ const modeStripTTL = 3 * time.Second
 // means, for a few seconds after the mode changes.
 func (a *App) modeStrip() []hostapi.Segment {
 	mode := a.host.PermMode()
+	info := ""
 	switch {
 	case a.lastMode == "":
 		a.lastMode = mode
@@ -754,15 +756,15 @@ func (a *App) modeStrip() []hostapi.Segment {
 		return nil
 	}
 	row := []hostapi.Segment{{Text: " "}}
-	for _, m := range hostapi.PermModes {
+	for _, m := range a.host.PermModeList() {
 		hl := "Comment"
-		if m == mode {
-			hl = "Mode" + strings.ToUpper(m[:1]) + m[1:]
+		if m.Name == mode {
+			hl, info = "Mode"+strings.ToUpper(m.Base[:1])+m.Base[1:], m.Description
 		}
-		row = append(row, hostapi.Segment{Text: " " + m + " ", HL: hl}, hostapi.Segment{Text: " "})
+		row = append(row, hostapi.Segment{Text: " " + m.Name + " ", HL: hl}, hostapi.Segment{Text: " "})
 	}
 	return append(row,
-		hostapi.Segment{Text: " " + hostapi.PermModeInfo[mode], HL: "Normal"},
+		hostapi.Segment{Text: " " + info, HL: "Normal"},
 		hostapi.Segment{Text: "   tab or click switches", HL: "Comment"})
 }
 

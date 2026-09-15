@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -87,8 +86,6 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	case ver:
 		fmt.Fprintln(stdout, "zemi", versionString())
 		return o, 0
-	case o.mode != "" && !slices.Contains(hostapi.PermModes, o.mode):
-		return bad("unknown --mode %q (want manual, plan, auto or yolo)", o.mode)
 	case o.cont && o.resume != "":
 		return bad("--continue and --resume cannot be combined")
 	case o.output != "" && o.output != "text" && o.output != "json":
@@ -155,7 +152,8 @@ func applyOptions(h *hostapi.Host, o options) error {
 		}
 	}
 	if o.mode != "" {
-		if err := h.Settings.SetHost("permissions.mode", o.mode); err != nil {
+		// checked here, after init.lua: it may add modes
+		if err := h.SetPermMode(o.mode); err != nil {
 			return err
 		}
 	}

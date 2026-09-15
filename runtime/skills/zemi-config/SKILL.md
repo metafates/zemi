@@ -68,8 +68,22 @@ writable; prefer it over guessing. Common keys:
   approves routine actions and hands the rest to the user) or `yolo` (every ask is
   allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
-  `zemi --mode auto`. Widgets read it as `ctx.permission_mode`. Suggest yolo only
-  when the user asks for it.
+  `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
+  `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
+- Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
+  `zemi.permission.mode.remove("yolo")` takes a mode out of tab and `/mode`, and
+  `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules })`
+  adds one (or replaces one with that name) after the others. It behaves like its base; its
+  `rules` (`{ "tool.bash", "go test*", "allow" }`, `{ "tool.bash", "git push*", "deny" }`) answer
+  what would otherwise ask, and `prompt` joins the system prompt while it is on:
+
+  ```lua
+  zemi.permission.mode.remove("yolo")
+  zemi.permission.mode.add("tests", {
+    base = "manual", description = "tests and git reads run, the rest asks",
+    rules = { { "tool.bash", "go test*", "allow" }, { "tool.bash", "git status*", "allow" } },
+  })
+  ```
 
 ## Command line
 

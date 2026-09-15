@@ -184,7 +184,8 @@ zemi.ui.widget.register({
   priority = 5,
   render = function(ctx)
     local mode = ctx.permission_mode or "manual"
-    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[mode] or "ModeManual"
+    local base = ctx.permission_mode_base or mode
+    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeManual"
     return { { { text = " " .. mode .. " ", hl = hl } } }
   end,
 })

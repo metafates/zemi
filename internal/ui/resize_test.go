@@ -124,11 +124,11 @@ func TestModeStrip(t *testing.T) {
 	if err := a.host.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}
-	if f := a.Frame(); !strings.Contains(f, "manual") || !strings.Contains(f, hostapi.PermModeInfo["auto"]) {
+	if f := a.Frame(); !strings.Contains(f, "manual") || !strings.Contains(f, "safe actions run on their own") {
 		t.Fatalf("no mode strip:\n%s", f)
 	}
 	now = now.Add(4 * time.Second)
-	if f := a.Frame(); strings.Contains(f, hostapi.PermModeInfo["auto"]) {
+	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
 		t.Fatalf("strip outlived its time:\n%s", f)
 	}
 }

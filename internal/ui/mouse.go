@@ -250,7 +250,8 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		if lo < hi {
 			word = ansi.Cut(text, lo, hi)
 		}
-		for _, m := range hostapi.PermModes {
+		for _, def := range a.host.PermModeList() {
+			m := def.Name
 			if word != m {
 				continue
 			}

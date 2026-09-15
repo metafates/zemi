@@ -23,7 +23,6 @@ func TestParseArgs(t *testing.T) {
 		{"help", []string{"-h"}, 0, options{}},
 		{"version", []string{"--version"}, 0, options{}},
 		{"unknown flag", []string{"--nope"}, 2, options{}},
-		{"bad mode", []string{"--mode", "wild"}, 2, options{}},
 		{"continue with resume", []string{"-c", "-r", "s1"}, 2, options{}},
 		{"json output", []string{"-p", "--output", "json", "hi"}, -1, options{print: true, output: "json", prompt: "hi"}},
 		{"json output needs print", []string{"--output", "json"}, 2, options{}},

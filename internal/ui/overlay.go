@@ -46,15 +46,19 @@ func (f *listFilter) apply(texts []string) {
 	f.selected = max(0, min(f.selected, len(f.visible)-1))
 }
 
-// edit applies a filtering key: typed text, backspace, and esc while a
-// query is set (clearing it). It reports whether the key was used.
+// edit applies a filtering key: typed text, the composer's deletion keys,
+// and esc while a query is set (clearing it). It reports whether the key
+// was used.
 func (f *listFilter) edit(key, text string, texts []string) bool {
+	q := composerState{text: f.query, cursor: len([]rune(f.query))}
 	switch {
 	case key == "backspace":
-		if r := []rune(f.query); len(r) > 0 {
-			f.query = string(r[:len(r)-1])
-		}
-	case key == "esc" && f.query != "":
+		q.backspace()
+		f.query = q.text
+	case key == "ctrl+w" || key == "alt+backspace":
+		q.delWord()
+		f.query = q.text
+	case key == "ctrl+u" || (key == "esc" && f.query != ""):
 		f.query = ""
 	case text != "":
 		f.query += text

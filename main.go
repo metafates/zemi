@@ -355,7 +355,13 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 						return h.OpenModePicker()
 					}
 					return h.SetPermMode(args)
-				}, GoComplete: func(*hostapi.Host, string, string) []string { return hostapi.PermModes },
+				}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
+					var names []string
+					for _, m := range h.PermModeList() {
+						names = append(names, m.Name)
+					}
+					return names
+				},
 					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {

@@ -151,3 +151,26 @@ func TestDropPaste(t *testing.T) {
 	}
 	_ = host
 }
+
+func TestComposerCursorColumn(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.text, app.composer.cursor = "hello world", 2
+	app.renderSync(t)
+	if !strings.Contains(ansi.Strip(app.Frame()), "> he▏llo world") {
+		t.Fatalf("cursor not at its column:\n%s", ansi.Strip(app.Frame()))
+	}
+}
+
+func TestFilterKeys(t *testing.T) {
+	for _, c := range []struct{ query, key, want string }{
+		{"foo bar", "ctrl+w", "foo "},
+		{"foo bar", "alt+backspace", "foo "},
+		{"foo bar", "ctrl+u", ""},
+		{"foo", "backspace", "fo"},
+	} {
+		f := listFilter{query: c.query}
+		if !f.edit(c.key, "", []string{"a"}) || f.query != c.want {
+			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
+		}
+	}
+}

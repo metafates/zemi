@@ -192,6 +192,8 @@ type Host struct {
 	// compaction, the model, tools and auto-mode screening.
 	turn atomic.Pointer[turnScope]
 
+	modes modeReg // permission modes in tab order
+
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
@@ -720,7 +722,9 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort()))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	tb.RawSetString("permission_mode", glua.LString(h.PermMode()))
+	mode := h.permModeDef()
+	tb.RawSetString("permission_mode", glua.LString(mode.Name))
+	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
@@ -967,7 +971,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.10.0"))
+	api.RawSetString("version", glua.LString("0.11.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -978,6 +982,9 @@ func (h *Host) currentGen() Gen { return Gen(h.gen.Load()) }
 // replaying the boot steps so no stale callback fires into a dropped
 // LState (DESIGN §4).
 func (h *Host) PurgeGeneration() {
+	h.modes.mu.Lock()
+	h.modes.list = nil
+	h.modes.mu.Unlock()
 	h.Keymaps.Purge()
 	h.Commands.Purge()
 	h.Widgets.Purge()

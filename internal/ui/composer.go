@@ -242,10 +242,11 @@ const composerMaxRows = 8
 func (a *App) composerRows(w int) [][]hostapi.Segment {
 	prefix := "> "
 	cont := "  "
-	cursorRow, rows := a.wrapComposer(w - len(prefix))
+	// one cell stays free for the cursor mark at the end of a full row
+	cursorRow, cursorCol, rows := a.wrapComposer(w - len(prefix) - 1)
 	if len(rows) == 0 {
 		rows = [][]rune{nil}
-		cursorRow = 0
+		cursorRow, cursorCol = 0, 0
 	}
 	start := 0
 	if len(rows) > composerMaxRows {
@@ -255,7 +256,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		}
 	}
 	// The prompt takes the permission mode's color.
-	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.host.PermMode()]
+	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
 	if promptHL == "" {
 		promptHL = "Comment"
 	}
@@ -266,15 +267,15 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 			p = prefix
 		}
 		segs := []hostapi.Segment{{Text: p, HL: promptHL}}
-		text := string(rows[i])
-		marker := "▏"
 		if i == cursorRow {
+			col := min(cursorCol, len(rows[i]))
 			segs = append(segs,
-				hostapi.Segment{Text: text, HL: "Normal"},
-				hostapi.Segment{Text: marker, HL: "Comment"},
+				hostapi.Segment{Text: string(rows[i][:col]), HL: "Normal"},
+				hostapi.Segment{Text: "▏", HL: "Comment"},
+				hostapi.Segment{Text: string(rows[i][col:]), HL: "Normal"},
 			)
 		} else {
-			segs = append(segs, hostapi.Segment{Text: text, HL: "Normal"})
+			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})
 		}
 		out = append(out, segs)
 	}
@@ -282,8 +283,8 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 }
 
 // wrapComposer splits the text into visual rows of at most width runes,
-// splitting on newlines, and reports which row holds the cursor.
-func (a *App) wrapComposer(w int) (cursorRow int, rows [][]rune) {
+// splitting on newlines, and reports the cursor's row and column.
+func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 	if w < 1 {
 		w = 1
 	}
@@ -292,7 +293,7 @@ func (a *App) wrapComposer(w int) (cursorRow int, rows [][]rune) {
 	row := 0
 	for i, x := range r {
 		if i == a.composer.cursor {
-			cursorRow = row
+			cursorRow, cursorCol = row, len(cur)
 		}
 		if x == '\n' {
 			rows = append(rows, cur)
@@ -309,7 +310,7 @@ func (a *App) wrapComposer(w int) (cursorRow int, rows [][]rune) {
 	}
 	rows = append(rows, cur)
 	if a.composer.cursor >= len(r) {
-		cursorRow = row
+		cursorRow, cursorCol = row, len(cur)
 	}
-	return cursorRow, rows
+	return cursorRow, cursorCol, rows
 }

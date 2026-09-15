@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/fantasy"
@@ -14,12 +16,62 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
+	glua "github.com/yuin/gopher-lua"
 )
 
-// PermModes are the permission.mode values in tab cycle order. auto and yolo
-// only answer asks (deny rules and the tool.pre/permission.request vetoes
-// still run first); plan also refuses file changes outright.
-var PermModes = []string{"manual", "plan", "auto", "yolo"}
+// PermModeDef is one permission mode. Base picks the behavior: manual (the
+// user answers asks), plan (file changes refused, risky commands ask), auto
+// (local checks and a screening model answer routine asks) or yolo (every
+// ask allowed). Every mode only answers asks: deny rules and the
+// tool.pre/permission.request vetoes still run first. Rules answer asks
+// before the base does, and Prompt joins the system prompt while the mode
+// is on.
+type PermModeDef struct {
+	Name, Base, Description, Prompt string
+	Rules                           *perm.Store
+}
+
+var builtinModes = []PermModeDef{
+	{Name: "manual", Base: "manual", Description: "you approve every change and command"},
+	{Name: "plan", Base: "plan", Description: "read and plan only: no edits, risky commands ask"},
+	{Name: "auto", Base: "auto", Description: "safe actions run on their own, risky ones ask"},
+	{Name: "yolo", Base: "yolo", Description: "everything runs without asking"},
+}
+
+// modeReg is the mode list in tab order: the builtins until user config
+// changes it, reset on reload so init.lua replays onto a clean list.
+type modeReg struct {
+	mu   sync.Mutex
+	list []PermModeDef // nil = builtinModes
+}
+
+func (h *Host) PermModeList() []PermModeDef {
+	h.modes.mu.Lock()
+	defer h.modes.mu.Unlock()
+	if h.modes.list == nil {
+		return builtinModes
+	}
+	return slices.Clone(h.modes.list)
+}
+
+func (h *Host) setModes(fn func([]PermModeDef) ([]PermModeDef, error)) error {
+	h.modes.mu.Lock()
+	defer h.modes.mu.Unlock()
+	cur := h.modes.list
+	if cur == nil {
+		cur = slices.Clone(builtinModes)
+	}
+	next, err := fn(cur)
+	if err != nil {
+		return err
+	}
+	h.modes.list = next
+	return nil
+}
+
+func modeIndex(list []PermModeDef, name string) int {
+	return slices.IndexFunc(list, func(d PermModeDef) bool { return d.Name == name })
+}
 
 // planPrompt joins the system prompt while plan mode is on; the pipeline
 // enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
@@ -27,14 +79,6 @@ const planPrompt = `
 
 # Plan mode
 The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and commands that could change anything need the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
-
-// PermModeInfo says what each mode means (mode strip, /mode picker).
-var PermModeInfo = map[string]string{
-	"manual": "you approve every change and command",
-	"plan":   "read and plan only: no edits, risky commands ask",
-	"auto":   "safe actions run on their own, risky ones ask",
-	"yolo":   "everything runs without asking",
-}
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {
@@ -44,48 +88,172 @@ func (h *Host) OpenModePicker() error {
 	}
 	cur := h.PermMode()
 	var items []any
-	for _, m := range PermModes {
+	for _, m := range h.PermModeList() {
 		mark := "  "
-		if m == cur {
+		if m.Name == cur {
 			mark = "● "
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%s%-7s %s", mark, m, PermModeInfo[m]), "run": "mode " + m})
+		items = append(items, map[string]any{"text": fmt.Sprintf("%s%-7s %s", mark, m.Name, m.Description), "run": "mode " + m.Name})
 	}
 	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 
-// PermMode reports the active permission mode (unknown values read as
-// manual, the fail-closed choice).
-func (h *Host) PermMode() string {
+// PermMode reports the active permission mode. An unknown value reads as
+// the most careful mode on the list (fail closed).
+func (h *Host) PermMode() string { return h.permModeDef().Name }
+
+func (h *Host) permModeDef() PermModeDef {
+	list := h.PermModeList()
 	v, _ := h.Settings.Get("permissions.mode")
-	if s, _ := v.(string); slices.Contains(PermModes, s) {
-		return s
+	if s, _ := v.(string); modeIndex(list, s) >= 0 {
+		return list[modeIndex(list, s)]
 	}
-	return "manual"
+	for _, base := range []string{"manual", "plan", "auto", "yolo"} {
+		for _, d := range list {
+			if d.Base == base {
+				return d
+			}
+		}
+	}
+	return builtinModes[0]
 }
 
-// SetPermMode switches the mode at runtime (/mode, shift+tab).
+// SetPermMode switches the mode at runtime (/mode, tab).
 func (h *Host) SetPermMode(mode string) error {
-	if !slices.Contains(PermModes, mode) {
-		return fmt.Errorf("unknown permission mode %q (want %s)", mode, strings.Join(PermModes, ", "))
+	list := h.PermModeList()
+	i := modeIndex(list, mode)
+	if i < 0 {
+		names := make([]string, len(list))
+		for j, d := range list {
+			names[j] = d.Name
+		}
+		return fmt.Errorf("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
 	if err := h.Settings.SetHost("permissions.mode", mode); err != nil {
 		return err
 	}
 	// The statusline pill shows the mode; only the risky one also warns.
-	if mode == "yolo" {
-		h.memNotify("warn", "yolo", "every permission ask is allowed; deny rules still apply")
+	if list[i].Base == "yolo" {
+		h.memNotify("warn", mode, "every permission ask is allowed; deny rules still apply")
 	}
 	h.refresh()
 	return nil
 }
 
-// cyclePermMode steps through PermModes (tab forward, shift+tab back).
+// cyclePermMode steps through the modes (tab forward, shift+tab back).
 func (h *Host) cyclePermMode(step int) error {
-	n := len(PermModes)
-	i := slices.Index(PermModes, h.PermMode())
-	return h.SetPermMode(PermModes[((i+step)%n+n)%n])
+	list := h.PermModeList()
+	n := len(list)
+	i := modeIndex(list, h.PermMode())
+	return h.SetPermMode(list[((i+step)%n+n)%n].Name)
+}
+
+var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
+
+// modeNamespace is zemi.permission.mode: add, remove and list modes from
+// user config (a mode answers permission asks, so no other origin may).
+func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	gate := func(L *glua.LState, fn string) bool {
+		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+			L.RaiseError("zemi.permission.mode.%s: only user config may change permission modes", fn)
+			return false
+		}
+		return true
+	}
+	// add(name, { base, description, prompt, rules = { { subject, pattern, decision }, ... } })
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		name, spec := L.CheckString(1), L.CheckTable(2)
+		if !gate(L, "add") {
+			return 0
+		}
+		def := PermModeDef{Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt")}
+		if !modeName.MatchString(name) {
+			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
+			return 0
+		}
+		if modeIndex(builtinModes, def.Base) < 0 {
+			L.RaiseError("zemi.permission.mode.add: base must be manual, plan, auto or yolo")
+			return 0
+		}
+		if rules, ok := spec.RawGetString("rules").(*glua.LTable); ok {
+			def.Rules = perm.NewStore()
+			var bad string
+			rules.ForEach(func(_, v glua.LValue) {
+				rt, ok := v.(*glua.LTable)
+				if !ok {
+					bad = "each rule must be a table"
+					return
+				}
+				field := func(i int, key string) string {
+					if s := rawString(rt, key); s != "" {
+						return s
+					}
+					s, _ := rt.RawGetInt(i).(glua.LString)
+					return string(s)
+				}
+				r := perm.Rule{Subject: field(1, "subject"), Pattern: field(2, "pattern"), Decision: perm.Decision(field(3, "decision"))}
+				if r.Subject == "" || r.Pattern == "" || (r.Decision != perm.Allow && r.Decision != perm.Deny && r.Decision != perm.Ask) {
+					bad = "each rule needs subject, pattern and decision (allow, ask or deny)"
+					return
+				}
+				def.Rules.Add(r)
+			})
+			if bad != "" {
+				L.RaiseError("zemi.permission.mode.add: %s", bad)
+				return 0
+			}
+		}
+		if def.Description == "" {
+			def.Description = "like " + def.Base
+		}
+		_ = h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
+			if i := modeIndex(list, name); i >= 0 {
+				list[i] = def
+				return list, nil
+			}
+			return append(list, def), nil
+		})
+		h.refresh()
+		return 0
+	}))
+	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		if !gate(L, "remove") {
+			return 0
+		}
+		err := h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
+			i := modeIndex(list, name)
+			switch {
+			case i < 0:
+				return nil, fmt.Errorf("no mode %q", name)
+			case len(list) == 1:
+				return nil, errors.New("the last mode cannot be removed")
+			}
+			return slices.Delete(list, i, i+1), nil
+		})
+		if err != nil {
+			L.RaiseError("zemi.permission.mode.remove: %v", err)
+		}
+		h.refresh()
+		return 0
+	}))
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		cur := h.PermMode()
+		for _, d := range h.PermModeList() {
+			row := L.NewTable()
+			row.RawSetString("name", glua.LString(d.Name))
+			row.RawSetString("base", glua.LString(d.Base))
+			row.RawSetString("description", glua.LString(d.Description))
+			row.RawSetString("active", glua.LBool(d.Name == cur))
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+	return tb
 }
 
 // autoLocal settles the asks auto mode needs no model for: reading files

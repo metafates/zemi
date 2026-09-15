@@ -86,3 +86,47 @@ func TestAutoModeLocal(t *testing.T) {
 		}
 	}
 }
+
+// TestCustomModes: user config removes a mode and adds one whose rules
+// answer asks before its base does.
+func TestCustomModes(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `
+		zemi.permission.mode.remove("yolo")
+		zemi.permission.mode.add("tests", {
+			base = "manual", description = "tests run",
+			rules = { { "tool.bash", "go test*", "allow" }, { subject = "tool.bash", pattern = "git push*", decision = "deny" } },
+		})
+		local names = {}
+		for _, m in ipairs(zemi.permission.mode.list()) do names[#names + 1] = m.name end
+		assert(table.concat(names, ",") == "manual,plan,auto,tests", table.concat(names, ","))
+		assert(not pcall(zemi.permission.mode.add, "x", { base = "nope" }), "bad base must raise")
+	`)
+	if err := h.SetPermMode("yolo"); err == nil {
+		t.Fatal("a removed mode must not be selectable")
+	}
+	if err := h.SetPermMode("tests"); err != nil {
+		t.Fatal(err)
+	}
+	ask := h.askHook()
+	for _, c := range []struct {
+		cmd     string
+		allowed bool
+		asks    int
+	}{
+		{"go test ./...", true, 0},
+		{"git push origin main", false, 0},
+		{"rm -rf build", false, 1},
+	} {
+		before := len(ui.asked)
+		allowed, _ := ask(tools.Request{Subject: "tool.bash", Arg: c.cmd})
+		if allowed != c.allowed || len(ui.asked)-before != c.asks {
+			t.Errorf("%q: allowed=%v asks=%d", c.cmd, allowed, len(ui.asked)-before)
+		}
+	}
+	if err := h.cyclePermMode(1); err != nil || h.PermMode() != "manual" {
+		t.Fatalf("cycle after the last mode: %v %s", err, h.PermMode())
+	}
+}

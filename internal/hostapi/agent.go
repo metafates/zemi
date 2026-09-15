@@ -288,8 +288,11 @@ func (h *Host) buildSystem(p *Profile) string {
 		files = p.ContextFiles
 	}
 	sys += h.zemiPrompt()
-	if h.PermMode() == "plan" {
+	if def := h.permModeDef(); def.Base == "plan" {
 		sys += planPrompt
+	}
+	if def := h.permModeDef(); def.Prompt != "" {
+		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
 	return h.systemWith(sys, files)
 }
@@ -1469,6 +1472,8 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
+	tb.RawSetString("mode", h.modeNamespace(L))
+
 	tb.RawSetString("rules", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, r := range h.Perm.Rules() {
@@ -1575,25 +1580,38 @@ func (h *Host) askHook() tools.Asker {
 		if res.Denied {
 			return resolved(false, "event")
 		}
-		switch h.PermMode() {
+		def := h.permModeDef()
+		if def.Rules != nil {
+			o := def.Rules.Evaluate(req.Subject, req.Arg, "")
+			if req.Subject == "tool.bash" {
+				o = def.Rules.CheckCommand(req.Arg, "")
+			}
+			switch o.Decision {
+			case perm.Allow:
+				return resolved(true, "mode:"+def.Name)
+			case perm.Deny:
+				return resolved(false, "mode:"+def.Name)
+			}
+		}
+		switch def.Base {
 		case "yolo":
-			return resolved(true, "mode:yolo")
+			return resolved(true, "mode:"+def.Name)
 		case "plan":
 			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, h.safeCommandPath) {
-				return resolved(true, "mode:plan")
+				return resolved(true, "mode:"+def.Name)
 			}
 		case "auto":
 			key := req.Subject + "\x00" + req.Arg
 			if h.autoLocal(req) {
-				return resolved(true, "mode:auto")
+				return resolved(true, "mode:"+def.Name)
 			}
 			if _, ok := h.autoApproved.Load(key); ok {
-				return resolved(true, "mode:auto")
+				return resolved(true, "mode:"+def.Name)
 			}
 			ok, why := h.autoApprove(req)
 			if ok {
 				h.autoApproved.Store(key, true)
-				return resolved(true, "mode:auto")
+				return resolved(true, "mode:"+def.Name)
 			}
 			h.Log.Info("permissions", "auto mode deferred to the user", map[string]any{"subject": req.Subject, "why": why})
 			req.Reason = why
@@ -1716,7 +1734,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.lspAfterWrite,
 		Diagnostics: h.lspDiagnostics,
-		Plan:        func() bool { return h.PermMode() == "plan" },
+		Plan:        func() bool { return h.permModeDef().Base == "plan" },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			if len(h.Events.Handlers("tool.denied")) > 0 {
 				h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
