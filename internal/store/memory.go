@@ -16,7 +16,7 @@ type Memory struct {
 	ID                  string
 	Scope               string   // "user" or "project"
 	Kind                string   // fact | gotcha | preference | convention | decision
-	Text                string   // <= 512 chars, scrubbed at intake
+	Text                string   // capped and scrubbed at intake (learn.MaxTextLen)
 	Tags                []string // comma-joined in the DB
 	ProvenanceSessionID string
 	Confidence          float64
