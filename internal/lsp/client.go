@@ -312,7 +312,11 @@ func (c *Client) read(r *bufio.Reader) {
 			ch := c.pending[id]
 			c.mu.Unlock()
 			if ch != nil {
-				ch <- m
+				// a duplicate id must not block the reader on a full channel
+				select {
+				case ch <- m:
+				default:
+				}
 			}
 		}
 	}
