@@ -356,20 +356,30 @@ func (h *Host) OpenHelp() {
 	if ui == nil {
 		return
 	}
+	keys, cmds := h.Keymaps.List(), h.Commands.List()
+	pad := 0
+	for _, b := range keys {
+		pad = max(pad, len(b.Key))
+	}
+	for _, c := range cmds {
+		if !c.Hidden {
+			pad = max(pad, len(c.Name)+1)
+		}
+	}
 	var items []any
-	for _, b := range h.Keymaps.List() {
+	for _, b := range keys {
 		desc := b.Desc
 		if desc == "" {
 			desc = describeRHS(b.RHS)
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Key, desc)})
+		items = append(items, map[string]any{"text": fmt.Sprintf("%-*s  %s", pad, b.Key, desc)})
 	}
-	for _, c := range h.Commands.List() {
+	for _, c := range cmds {
 		if c.Hidden {
 			continue
 		}
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-12s %s", "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
+			"text": fmt.Sprintf("%-*s  %s", pad, "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
 		})
 	}
 	ui.OpenOverlay(Overlay{
