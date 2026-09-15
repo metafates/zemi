@@ -162,10 +162,8 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s\n\n", resp.Proto, resp.Status)
-	for _, ct := range []string{"Content-Type"} {
-		if v := resp.Header.Get(ct); v != "" {
-			fmt.Fprintf(&b, "%s: %s\n", ct, v)
-		}
+	if v := resp.Header.Get("Content-Type"); v != "" {
+		fmt.Fprintf(&b, "Content-Type: %s\n", v)
 	}
 	b.WriteString("\n")
 	b.WriteString(truncOut(text))

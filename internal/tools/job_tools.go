@@ -33,7 +33,7 @@ type Job struct {
 	mu     sync.Mutex
 }
 
-// Running reports whether the process has exited.
+// Running reports whether the process is still running.
 func (j *Job) Running() bool {
 	select {
 	case <-j.done:
@@ -56,10 +56,10 @@ func (j *Job) Status() string {
 }
 
 // snapshot returns the buffered output and the exit state.
-func (j *Job) snapshot() (out, errOut string, code int, running bool, errText string) {
+func (j *Job) snapshot() (out, errOut string, running bool, errText string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.stdout.String(), j.stderr.String(), j.code, j.Running(), j.err
+	return j.stdout.String(), j.stderr.String(), j.Running(), j.err
 }
 
 // Jobs owns every model-started job for one host.
@@ -75,7 +75,7 @@ func NewJobs() *Jobs {
 
 // Start launches argv in dir with env; returns the job id. Output is
 // captured as it arrives, so job_read shows a server's lines while it runs.
-func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, error) {
+func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return "", fmt.Errorf("command is required")
 	}
@@ -179,15 +179,11 @@ func envIsSecretName(name string) bool {
 	return false
 }
 
-// jobStartInput is the job_start schema: { command, args?, env? }.
 func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
 	name := str(input["command"])
-	if strings.TrimSpace(name) == "" {
-		return fantasy.NewTextErrorResponse("command is required"), nil
-	}
 	argv := []string{name}
 	if list, ok := input["args"].([]any); ok {
 		for _, v := range list {
@@ -206,7 +202,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	env = append(env, proc.NonInteractiveEnv...)
-	id, err := p.Jobs.Start(workdir(), name, argv, env)
+	id, err := p.Jobs.Start(workdir(), argv, env)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -221,7 +217,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	out, errOut, _, running, errText := j.snapshot()
+	out, errOut, running, errText := j.snapshot()
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s\n", j.ID, j.Status())
 	if errText != "" {

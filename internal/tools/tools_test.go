@@ -230,6 +230,10 @@ func TestGlobAndGrep(t *testing.T) {
 	if !strings.Contains(resp.Content, "x.go:1") {
 		t.Fatalf("grep: %+v", resp)
 	}
+	resp = call(t, grep, `{"pattern":"package","path":"`+dir+`","include":"[m]*.go"}`)
+	if !strings.Contains(resp.Content, "main.go:1") || strings.Contains(resp.Content, "x.go") {
+		t.Fatalf("grep include: %+v", resp)
+	}
 	resp = call(t, grep, `{"pattern":"package y","path":"`+dir+`"}`)
 	if !strings.Contains(resp.Content, "no matches") {
 		t.Fatalf("grep must skip node_modules: %+v", resp)

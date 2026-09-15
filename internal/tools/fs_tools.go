@@ -81,9 +81,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if v, ok := input["offset"].(float64); ok && v > 1 {
 		start = int(v) - 1
 	}
-	if start > len(lines) {
-		start = len(lines)
-	}
+	start = min(start, len(lines))
 	end := len(lines)
 	if v, ok := input["limit"].(float64); ok && v > 0 {
 		if start+int(v) < end {
@@ -155,10 +153,7 @@ func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	path := str(input["path"])
 	old := str(input["old_string"])
 	new := str(input["new_string"])
-	all := false
-	if v, ok := input["replace_all"].(bool); ok {
-		all = v
-	}
+	all, _ := input["replace_all"].(bool)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -233,9 +228,7 @@ func plural(n int) string {
 	return "s"
 }
 
-// runMultiedit applies edits in order to one file; a failed edit aborts
-// with its index (the file keeps earlier edits, matching the design's
-// sequential semantics).
+// runMultiedit applies edits in order; any failed edit writes nothing.
 func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
 	edits, ok := input["edits"].([]any)
@@ -318,27 +311,15 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
-// grepRe compiles the pattern; invalid regexes are tool errors.
-func grepRe(pattern string) (*regexp.Regexp, error) {
-	return regexp.Compile(pattern)
-}
-
 // runGrep searches file contents (Go-native; case sensitive) under root,
 // optionally filtered by an include glob on the file name.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern := str(input["pattern"])
 	root := argOr(input["path"], ".")
 	include := str(input["include"])
-	re, err := grepRe(pattern)
+	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil
-	}
-	var inc *regexp.Regexp
-	if include != "" {
-		inc, err = regexp.Compile(globToRegexp(include))
-		if err != nil {
-			inc = nil
-		}
 	}
 	var b strings.Builder
 	count := 0
@@ -356,7 +337,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 			return nil
 		}
-		if inc != nil && !inc.MatchString(name) {
+		if ok, _ := filepath.Match(include, name); include != "" && !ok {
 			return nil
 		}
 		if d.Type().IsRegular() && isTextFile(path) {
@@ -394,24 +375,6 @@ func truncLine(s string) string {
 	return s
 }
 
-// globToRegexp converts a filename glob (`*`, `?`) to a regexp.
-func globToRegexp(glob string) string {
-	var b strings.Builder
-	b.WriteString(`^`)
-	for _, r := range glob {
-		switch r {
-		case '*':
-			b.WriteString(`.*`)
-		case '?':
-			b.WriteString(`.`)
-		default:
-			b.WriteString(regexp.QuoteMeta(string(r)))
-		}
-	}
-	b.WriteString(`$`)
-	return b.String()
-}
-
 // isTextFile rejects obviously binary files by NUL in the first 512 bytes.
 func isTextFile(path string) bool {
 	f, err := os.Open(path)
@@ -434,7 +397,9 @@ func skipDir(name string) bool {
 }
 
 // workdir is the bash execution root; tests override it.
-var workdir = func() string {
+var workdir = osWorkdir
+
+func osWorkdir() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."
@@ -445,15 +410,8 @@ var workdir = func() string {
 // SetWorkdir pins the session working directory for bash calls; an empty
 // string restores the process working directory.
 func SetWorkdir(dir string) {
-	if dir == "" {
-		workdir = func() string {
-			wd, err := os.Getwd()
-			if err != nil {
-				return "."
-			}
-			return wd
-		}
-		return
+	workdir = osWorkdir
+	if dir != "" {
+		workdir = func() string { return dir }
 	}
-	workdir = func() string { return dir }
 }
