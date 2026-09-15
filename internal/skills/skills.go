@@ -1,4 +1,4 @@
-// Package skills implements M3 skill discovery and validation
+// Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
 // description), authored under the config repo's skills/ and learned
 // under the data dir's skills/. Learned skills are quarantined by the
