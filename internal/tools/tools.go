@@ -71,6 +71,13 @@ type Pipeline struct {
 	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
 	Recall   func(query string, limit int) ([]*store.Memory, error)
 
+	// AfterWrite returns text to append to a successful write, edit or
+	// multiedit result (language server diagnostics); nil = nothing.
+	AfterWrite func(path string) string
+
+	// Diagnostics backs the diagnostics tool; nil = unavailable.
+	Diagnostics func(path string) (string, error)
+
 	// Denied reports a call the gate refused (the tool.denied event); nil
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
@@ -527,6 +534,29 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			[]string{"query"},
 			func(in map[string]any) []Request { return nil },
 			runMemorySearch),
+
+		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path": map[string]any{"type": "string"},
+				},
+			},
+			[]string{"path"},
+			func(in map[string]any) []Request {
+				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "read diagnostics"}}
+			},
+			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+				if p.Diagnostics == nil {
+					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
+				}
+				out, err := p.Diagnostics(str(in["path"]))
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse(out), nil
+			}),
 
 		mk("skill", "Load an installed skill's SKILL.md body on demand.",
 			true,

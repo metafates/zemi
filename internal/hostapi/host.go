@@ -172,6 +172,7 @@ type Host struct {
 
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // background agents
+	lsp   *lspReg  // language servers
 
 	todoMu     sync.Mutex
 	todoSID    string
@@ -216,6 +217,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		skillsReg: &skillReg{},
 		mcp:       newMCPReg(),
 		tasks:     newTaskReg(),
+		lsp:       newLSPReg(),
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {
@@ -922,6 +924,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.json", h.jsonNamespace(L), nil},
 		{"zemi.composer", h.composerNamespace(L), nil},
 		{"zemi.mcp", h.mcpNamespace(L), nil},
+		{"zemi.lsp", h.lspNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
@@ -933,7 +936,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.7.0"))
+	api.RawSetString("version", glua.LString("0.8.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -953,4 +956,5 @@ func (h *Host) PurgeGeneration() {
 	h.luaTools.purge(h.currentGen())
 	h.timers.purge()
 	h.mcp.stopAll()
+	h.lsp.stopAll()
 }

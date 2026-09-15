@@ -99,6 +99,7 @@ func run(args []string) int {
 		host.AgentsCommandsStep(),
 		host.WorkflowCommandsStep(),
 		host.MCPCommandsStep(),
+		host.LSPCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
@@ -234,7 +235,11 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					n, err := h.RewindTo(args)
 					if err == nil {
-						h.Notify("info", "rewind", fmt.Sprintf("restored %d files; the prompt is back in the composer", n))
+						files := "files"
+						if n == 1 {
+							files = "file"
+						}
+						h.Notify("info", "rewind", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

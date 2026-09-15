@@ -220,6 +220,11 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
   argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
   server).
+- **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file (user
+  `zemi.lsp.add` first, then an installed builtin whose marker is at the repo root); the
+  pipeline's `AfterWrite` appends errors and warnings to write/edit/multiedit results and
+  the `diagnostics` tool reads any file. A slow or failed server only means no
+  diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send`
   and `zemi.command.run` of host commands go through `GoSafe`.
@@ -280,7 +285,7 @@ next reload, not in-place).
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.7.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.8.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;

@@ -852,19 +852,19 @@ func (h *Host) AgentSessionID() string {
 
 // StreamSnapshot is the live stream state for widgets.
 type StreamSnapshot struct {
-	Active    bool
-	Text      string
-	Reasoning string
-	Tools     []StreamTool
-	Model     string
-	Profile   string
-	Steering  []string      // queued messages, oldest first
-	Thought   time.Duration // wall time spent in reasoning blocks
-	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
-	RetryIn   time.Duration // time until the next provider retry (0 when none waits)
-	Retries   int           // provider retries this turn
-	RetryWhy  string        // what failed, for the retry countdown
-	Compacting bool         // history is being summarized before the turn
+	Active     bool
+	Text       string
+	Reasoning  string
+	Tools      []StreamTool
+	Model      string
+	Profile    string
+	Steering   []string      // queued messages, oldest first
+	Thought    time.Duration // wall time spent in reasoning blocks
+	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
+	RetryIn    time.Duration // time until the next provider retry (0 when none waits)
+	Retries    int           // provider retries this turn
+	RetryWhy   string        // what failed, for the retry countdown
+	Compacting bool          // history is being summarized before the turn
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
@@ -1534,11 +1534,13 @@ func truncateString(s string, n int) string {
 // PipelineFor builds the tools pipeline for the model's tool calls.
 func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
-		Store:     h.Perm,
-		Pre:        h.toolPreHook(),
-		Ask:        h.askHook(),
-		Checkpoint: h.checkpointFile,
-		Plan:       func() bool { return h.PermMode() == "plan" },
+		Store:       h.Perm,
+		Pre:         h.toolPreHook(),
+		Ask:         h.askHook(),
+		Checkpoint:  h.checkpointFile,
+		AfterWrite:  h.lspAfterWrite,
+		Diagnostics: h.lspDiagnostics,
+		Plan:        func() bool { return h.PermMode() == "plan" },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			if len(h.Events.Handlers("tool.denied")) > 0 {
 				h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})

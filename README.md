@@ -27,6 +27,19 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   changed since (through `write`, `edit` and `multiedit`, not bash), drops that part of
   the conversation and puts the prompt back in the composer to edit.
 
+## Language servers
+
+After `write`, `edit` or `multiedit` changes a file, the language server's errors and
+warnings for it are appended to the result, so the model sees a broken build right away;
+the `diagnostics` tool checks any other file. gopls, pyright, rust-analyzer,
+typescript-language-server and clangd start on their own when installed and the project
+has their marker file (`go.mod`, `pyproject.toml`, `Cargo.toml`, `package.json`, ...).
+Add others in `init.lua`, and see what runs with `/lsp`:
+
+```lua
+zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
+```
+
 ## MCP servers
 
 Tools from [MCP](https://modelcontextprotocol.io) servers join the model's tool set as
@@ -194,7 +207,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/tasks`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/effort`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/tasks`, `/workflow`, `/mcp`, `/lsp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

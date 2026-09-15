@@ -105,7 +105,14 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content))), nil
+	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content)) + p.afterWrite(path)), nil
+}
+
+func (p *Pipeline) afterWrite(path string) string {
+	if p.AfterWrite == nil {
+		return ""
+	}
+	return p.AfterWrite(path)
 }
 
 func (p *Pipeline) checkpoint(path string) {
@@ -153,7 +160,7 @@ func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	return fantasy.NewTextResponse(fmt.Sprintf("edited %s (%d replacement%s)", path, n, plural(n))), nil
+	return fantasy.NewTextResponse(fmt.Sprintf("edited %s (%d replacement%s)", path, n, plural(n)) + p.afterWrite(path)), nil
 }
 
 // applyTolerant matches a multi-line block ignoring whitespace runs:
@@ -249,7 +256,7 @@ func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	return fantasy.NewTextResponse(fmt.Sprintf("multiedit %s (%d replacement%s)", path, applied, plural(applied))), nil
+	return fantasy.NewTextResponse(fmt.Sprintf("multiedit %s (%d replacement%s)", path, applied, plural(applied)) + p.afterWrite(path)), nil
 }
 
 // runGlob matches the pattern against paths under root (default session
