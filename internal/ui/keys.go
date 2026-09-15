@@ -24,6 +24,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPerm(false, "user")
 		case a.modelPick != nil:
 			a.answerPick("", false)
+		case a.memReview != nil:
+			a.answerMemReview()
 		case a.host.AgentActive():
 			a.host.AgentCancel()
 			a.pushToast("warn", "cancel", "cancelling turn")
@@ -75,6 +77,27 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case "esc", "q":
 			a.answerPick("", false)
+		}
+		return nil
+	}
+
+	// 2c. Memory review: Go-owned chrome capturing all keys (§8, §10.4).
+	if a.memReview != nil {
+		switch key {
+		case "up", "k":
+			if a.memReview.sel > 0 {
+				a.memReview.sel--
+			}
+		case "down", "j":
+			if a.memReview.sel < len(a.memReview.items)-1 {
+				a.memReview.sel++
+			}
+		case "d", " ":
+			if a.memReview.sel < len(a.memReview.items) {
+				a.memReview.marked[a.memReview.sel] = !a.memReview.marked[a.memReview.sel]
+			}
+		case "esc", "enter", "q":
+			a.answerMemReview()
 		}
 		return nil
 	}

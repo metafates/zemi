@@ -31,6 +31,7 @@ type UIHooks interface {
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
+	ReviewMemories(items []MemoryRow) (deleteIdx []int)
 }
 
 // Overlay is the Go-side record of an open Lua overlay. Items are plain
@@ -92,6 +93,11 @@ type Host struct {
 	agents  *agentHost
 	luaTools *toolReg
 	timers  *timerReg
+
+	// memReviewMu serializes the :memory review overlay: the hook runs on
+	// its own goroutine (cmdline execution sits on the UI goroutine, which
+	// must never block on a hook).
+	memReview sync.Mutex
 
 	hostActions map[string]func(h *Host, args string) error
 }
@@ -675,6 +681,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.model", h.modelNamespace(L), nil},
 		{"zemi.agent", h.agentNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
+		{"zemi.memory", h.memoryNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {

@@ -64,6 +64,7 @@ func run() error {
 	steps := []lua.BootStep{
 			host.NamespacesStep(),
 			builtinCommandsStep(host, app),
+			host.MemoryCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		pluginsStep(dirs),
 		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),

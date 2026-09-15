@@ -35,6 +35,13 @@ func fixedStyle(hl string) (uv.Style, bool) {
 		}, true
 	case "Host:PickSel":
 		return uv.Style{Attrs: uv.AttrBold}, true
+	case "Host:MemTitle":
+		return uv.Style{
+			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
+			Bg: ansi.RGBColor{R: 0x5a, G: 0xf7, B: 0x8e},
+		}, true
+	case "Host:MemMark":
+		return uv.Style{Attrs: uv.AttrBold}, true
 	}
 	return uv.Style{}, false
 }

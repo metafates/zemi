@@ -49,10 +49,12 @@ type App struct {
 	toastSeq int
 
 	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
-	// (with a queue for concurrent asks) and the model picker.
+	// (with a queue for concurrent asks), the model picker and the memory
+	// review overlay.
 	permAsk   *permAskPrompt
 	permQueue []permAskMsg
 	modelPick *modelPickPrompt
+	memReview *memReviewPrompt
 
 	caches   map[string]*widgetCache
 	frameGen int64
@@ -155,6 +157,11 @@ type modelPickMsg struct {
 	answer  chan modelPick
 }
 
+type memReviewMsg struct {
+	items  []hostapi.MemoryRow
+	answer chan []int
+}
+
 type toastMsg struct {
 	level string
 	title string
@@ -245,6 +252,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frameGen++
 	case modelPickMsg:
 		a.modelPick = &modelPickPrompt{items: msg.items, sel: msg.sel, answer: msg.answer}
+		a.frameGen++
+	case memReviewMsg:
+		a.memReview = &memReviewPrompt{items: msg.items, marked: map[int]bool{}, answer: msg.answer}
 		a.frameGen++
 	case toastMsg:
 		a.pushToast(msg.level, msg.title, msg.body)
@@ -597,6 +607,9 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.modelPick != nil {
 		rows = a.splicePick(rows, a.modelPick, w, len(header), chatH)
+	}
+	if a.memReview != nil {
+		rows = a.spliceMemReview(rows, a.memReview, w, len(header), chatH)
 	}
 	if a.permAsk != nil {
 		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)

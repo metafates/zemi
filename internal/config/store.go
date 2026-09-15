@@ -64,6 +64,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, UserWritable: true, Desc: "completion popup rows"},
 		{Path: "reflector.every_n_sessions", Kind: "int", Default: 1, Desc: "run the reflector every N sessions"},
 		{Path: "memory.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "memory autonomy mode"},
+		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},
 		{Path: "skills.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "skills autonomy mode"},
 		{Path: "config.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "config revision autonomy mode"},
 	}
@@ -144,6 +145,23 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	}
 	s.mu.Unlock()
 	return fired, nil
+}
+
+// SetHost writes any schema key from Go code (settings UI, host internals),
+// bypassing the Lua writability gate but still validating kind. Autonomy
+// knobs are host-owned: this is their only write path after boot.
+func (s *Store) SetHost(path string, val any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	def, ok := s.schema[path]
+	if !ok {
+		return &ErrUnknownKey{Path: path}
+	}
+	if err := checkKind(def, val); err != nil {
+		return err
+	}
+	s.values[path] = val
+	return nil
 }
 
 // AddWatch registers a change observer and returns its handle id.

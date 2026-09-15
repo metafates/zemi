@@ -16,6 +16,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -85,6 +86,13 @@ type agentHost struct {
 	usage     fantasy.Usage
 	steering  []string
 	modelSeed string
+
+	// digest is pinned at session start (DESIGN §10.7) and refreshed only
+	// at compaction; memProposals parks model-proposed memories behind the
+	// autonomy gate, memAuto counts auto-applies against the session cap.
+	digest       string
+	memProposals []*learn.Result
+	memAuto      int
 }
 
 func newAgentHost() *agentHost {
@@ -167,7 +175,21 @@ func (h *Host) buildSystem(p *Profile) string {
 		budget -= len(b)
 		sections += "\n\n## Project context: " + f + "\n" + string(b)
 	}
-	return sys + sections
+	return h.withDigest(sys + sections)
+}
+
+// withDigest appends the pinned session digest behind the project context
+// (DESIGN §10.7): the digest is computed once at session creation and
+// refreshed only at compaction, keeping provider prompt caches warm.
+func (h *Host) withDigest(sys string) string {
+	ag := h.agents
+	ag.mu.Lock()
+	digest := ag.digest
+	ag.mu.Unlock()
+	if digest == "" {
+		return sys
+	}
+	return sys + "\n\n" + digest
 }
 
 // profileTools selects the tool set: profile names filter the builtin set;
@@ -227,11 +249,11 @@ func (h *Host) AgentSend(text string) error {
 	if err != nil {
 		return err
 	}
-	runner, err := h.ensureRunner(p)
-	if err != nil {
+	if err := h.ensureSession(p, text); err != nil {
 		return err
 	}
-	if err := h.ensureSession(p, text); err != nil {
+	runner, err := h.ensureRunner(p)
+	if err != nil {
 		return err
 	}
 
@@ -463,6 +485,8 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
+	ag.digest = h.digestFor()
+	ag.memAuto = 0
 	return nil
 }
 

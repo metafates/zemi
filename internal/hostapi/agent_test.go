@@ -284,12 +284,14 @@ func TestStoreBackedState(t *testing.T) {
 
 // fakeUI is a UIHooks stub driving the host-side overlay paths in tests.
 type fakeUI struct {
-	askAllowed bool
-	askBy      string
-	asked      []PermRequest
-	pickID     string
-	pickOK     bool
-	pickItems  []ModelOption
+	askAllowed   bool
+	askBy        string
+	asked        []PermRequest
+	pickID       string
+	pickOK       bool
+	pickItems    []ModelOption
+	reviewItems  [][]MemoryRow
+	reviewDelete []int
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -308,6 +310,11 @@ func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 func (f *fakeUI) PickModel(items []ModelOption, current string) (string, bool) {
 	f.pickItems = items
 	return f.pickID, f.pickOK
+}
+
+func (f *fakeUI) ReviewMemories(items []MemoryRow) []int {
+	f.reviewItems = append(f.reviewItems, items)
+	return f.reviewDelete
 }
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
