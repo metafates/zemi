@@ -77,6 +77,19 @@ func (s *DB) SetRevisionCommit(id, commit string) error {
 	return s.execOne("set revision commit", `UPDATE config_revisions SET commit_sha = ? WHERE id = ?`, commit, id)
 }
 
+// FailStalePending marks pending revisions created before cutoff failed and
+// returns how many moved: the row lands before its git commit, so a crash
+// between the two leaves a pending row nothing else ever revisits.
+func (s *DB) FailStalePending(cutoff int64) (int, error) {
+	res, err := s.db.Exec(`UPDATE config_revisions SET status = 'failed'
+		WHERE status = 'pending' AND created_at < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("store: fail stale revisions: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // SetRevisionStatus moves one revision to applied or failed (the revert
 // status is recorded as a new row by the caller).
 func (s *DB) SetRevisionStatus(id, status string) error {
