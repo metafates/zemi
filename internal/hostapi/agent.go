@@ -53,6 +53,7 @@ type PermRequest struct {
 	Subject string
 	Arg     string
 	Reason  string
+	Preview string // file tools: the proposed change as "- "/"+ " lines
 }
 
 // ModelOption is one picker row.
@@ -1239,7 +1240,7 @@ func (h *Host) askHook() tools.Asker {
 		if ui == nil {
 			return false, "default"
 		}
-		allowed, by := ui.AskPermission(PermRequest{Subject: req.Subject, Arg: req.Arg, Reason: req.Reason})
+		allowed, by := ui.AskPermission(PermRequest{Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview})
 		if allowed && by == "user:always" {
 			h.storeAlwaysRules(req)
 		}

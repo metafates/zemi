@@ -269,6 +269,29 @@ func TestInterruptKeys(t *testing.T) {
 	}
 }
 
+// TestPermissionPreview: a file tool's ask shows the proposed change, with
+// escape sequences from model input stripped.
+func TestPermissionPreview(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan struct{})
+	go func() {
+		app.AskPermission(hostapi.PermRequest{Subject: "fs.write", Arg: "main.go\x1b[31m", Reason: "edit file",
+			Preview: "- old line\n+ new line"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	frame := app.Frame()
+	if plain := ansi.Strip(frame); !strings.Contains(plain, "- old line") || !strings.Contains(plain, "+ new line") {
+		t.Fatalf("preview missing:\n%s", plain)
+	}
+	if strings.Contains(frame, "\x1b[31m") {
+		t.Fatal("model escape reached the permission chrome")
+	}
+	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	<-done
+}
+
 // TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
 // with a countdown so the turn does not look stuck.
 func TestWorkingRowRetry(t *testing.T) {

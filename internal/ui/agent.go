@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 // agentEventMsg carries one streaming update from the turn goroutine. The
@@ -42,6 +43,9 @@ func (a *App) AgentEvent(ev hostapi.AgentEvent) {
 // run on the turn goroutine) until the user answers the overlay; safe from
 // any goroutine via the hook channel + buffered answer, mirroring AskTrust.
 func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
+	// Every field carries model input: strip escapes before the chrome.
+	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
+	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	ch := make(chan permAnswer, 1)
 	a.dispatch(permAskMsg{req: req, answer: ch})
 	ans := <-ch
@@ -252,6 +256,25 @@ func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH
 	}
 	if pa.req.Reason != "" {
 		body = append(body, []hostapi.Segment{{Text: pa.req.Reason, HL: "Comment"}})
+	}
+	if p := pa.req.Preview; p != "" {
+		const maxPreview = 12
+		lines := strings.Split(p, "\n")
+		more := len(lines) - maxPreview
+		if more > 0 {
+			lines = lines[:maxPreview]
+		}
+		body = append(body, []hostapi.Segment{{Text: ""}})
+		for _, l := range lines {
+			hl := "Host:DiffAdd"
+			if strings.HasPrefix(l, "- ") {
+				hl = "Host:DiffDel"
+			}
+			body = append(body, []hostapi.Segment{{Text: strings.ReplaceAll(l, "\t", "    "), HL: hl}})
+		}
+		if more > 0 {
+			body = append(body, []hostapi.Segment{{Text: fmt.Sprintf("… %d more lines", more), HL: "Comment"}})
+		}
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("o", "once", "a", "always", "n", "no"))
 	box := hostBox(" Permission required ", "Host:PermTitle", "", body, w)

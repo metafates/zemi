@@ -13,8 +13,13 @@ import (
 // security chrome rendered in fixed colors that no theme group can restyle
 // (DESIGN §8). Returning false leaves the segment to theme resolution.
 func fixedStyle(hl string) (uv.Style, bool) {
-	if hl == "Host:Bold" {
+	switch hl {
+	case "Host:Bold":
 		return uv.Style{Attrs: uv.AttrBold}, true
+	case "Host:DiffAdd":
+		return uv.Style{Fg: ansi.RGBColor{R: 0x9e, G: 0xce, B: 0x6a}}, true
+	case "Host:DiffDel":
+		return uv.Style{Fg: ansi.RGBColor{R: 0xf7, G: 0x76, B: 0x8e}}, true
 	}
 	if bg, ok := hostTitleBg[hl]; ok {
 		return uv.Style{Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14}, Bg: bg}, true

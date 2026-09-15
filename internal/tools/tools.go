@@ -22,6 +22,7 @@ type Request struct {
 	Subject string // tool.bash, fs.read, fs.write, net.<host>
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
+	Preview string // file tools: the proposed change as "- "/"+ " lines
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -296,7 +297,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file"}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: changePreview(in)}}
 			},
 			runWrite),
 
@@ -312,7 +313,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file"}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: changePreview(in)}}
 			},
 			runEdit),
 
@@ -326,7 +327,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			[]string{"path", "edits"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file"}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: changePreview(in)}}
 			},
 			runMultiedit),
 
@@ -552,6 +553,33 @@ func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy
 		fmt.Fprintf(&b, "[%s · %s · %s] %s\n", m.Kind, m.Origin, m.Scope, m.Text)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// changePreview renders a file tool's change for the permission overlay
+// from the input alone (the file is not read before the gate): "- " lines
+// for replaced text, "+ " lines for new text.
+func changePreview(in map[string]any) string {
+	var lines []string
+	add := func(prefix, text string) {
+		if text == "" {
+			return
+		}
+		for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+			lines = append(lines, prefix+l)
+		}
+	}
+	add("+ ", str(in["content"]))
+	add("- ", str(in["old_string"]))
+	add("+ ", str(in["new_string"]))
+	if edits, ok := in["edits"].([]any); ok {
+		for _, e := range edits {
+			if m, ok := e.(map[string]any); ok {
+				add("- ", str(m["old_string"]))
+				add("+ ", str(m["new_string"]))
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // bashRequests routes the whole command through the tool.bash subject;
