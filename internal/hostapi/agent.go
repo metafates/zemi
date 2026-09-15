@@ -1271,6 +1271,13 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Principal: "model",
 		Jobs:      h.jobs,
 		Skills:    h.skillIndex,
+		Remember: func(scope, kind, text string, tags []string) (bool, error) {
+			stored, _, err := h.proposeMemory(scope, kind, text, tags)
+			return stored, err
+		},
+		Recall: func(query string, limit int) ([]*store.Memory, error) {
+			return h.memorySearch("all", query, limit)
+		},
 		Question: func(q tools.Question) (string, bool) {
 			ui := h.hooks()
 			if ui == nil {

@@ -64,6 +64,12 @@ type Pipeline struct {
 	// Skills resolves enabled skills for the skill tool; nil = skills error.
 	Skills func() []SkillInfo
 
+	// Remember proposes a memory through the host's intake and autonomy
+	// gate (stored reports auto-apply vs queued for review); Recall
+	// searches memories. nil = memory tools error.
+	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
+	Recall   func(query string, limit int) ([]*store.Memory, error)
+
 	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
 	// decisions ask instead (never skips the gate, §6.4).
 	RewriteLoosened bool
@@ -458,6 +464,34 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
+		mk("memory_add", "Save a durable lesson for future sessions in this project: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence; never secrets. It may be queued for the user's review.",
+			false,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
+					"text":  map[string]any{"type": "string"},
+					"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}},
+					"tags":  map[string]any{"type": "array"},
+				},
+			},
+			[]string{"kind", "text"},
+			func(in map[string]any) []Request { return nil },
+			runMemoryAdd),
+
+		mk("memory_search", "Search memories saved in earlier sessions (facts, gotchas, preferences, conventions, decisions).",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{"type": "string"},
+					"limit": map[string]any{"type": "number"},
+				},
+			},
+			[]string{"query"},
+			func(in map[string]any) []Request { return nil },
+			runMemorySearch),
+
 		mk("skill", "Load an installed skill's SKILL.md body on demand.",
 			true,
 			map[string]any{
@@ -470,6 +504,54 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			func(in map[string]any) []Request { return nil },
 			runSkill),
 	}
+}
+
+func runMemoryAdd(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+	if p.Remember == nil {
+		return fantasy.NewTextErrorResponse("memory unavailable"), nil
+	}
+	var tags []string
+	if list, ok := in["tags"].([]any); ok {
+		for _, t := range list {
+			if s, ok := t.(string); ok {
+				tags = append(tags, s)
+			}
+		}
+	}
+	scope := str(in["scope"])
+	if scope == "" {
+		scope = "project"
+	}
+	stored, err := p.Remember(scope, str(in["kind"]), str(in["text"]), tags)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if stored {
+		return fantasy.NewTextResponse("memory saved"), nil
+	}
+	return fantasy.NewTextResponse("memory queued for the user's review"), nil
+}
+
+func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+	if p.Recall == nil {
+		return fantasy.NewTextErrorResponse("memory unavailable"), nil
+	}
+	limit := 10
+	if n, ok := in["limit"].(float64); ok && n > 0 {
+		limit = int(n)
+	}
+	rows, err := p.Recall(str(in["query"]), limit)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if len(rows) == 0 {
+		return fantasy.NewTextResponse("no matching memories"), nil
+	}
+	var b strings.Builder
+	for _, m := range rows {
+		fmt.Fprintf(&b, "[%s · %s · %s] %s\n", m.Kind, m.Origin, m.Scope, m.Text)
+	}
+	return fantasy.NewTextResponse(b.String()), nil
 }
 
 // bashRequests routes the whole command through the tool.bash subject;

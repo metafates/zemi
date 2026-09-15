@@ -437,6 +437,40 @@ func TestModelPickStores(t *testing.T) {
 	}
 }
 
+// TestMemoryToolsThroughPipeline drives memory_add and memory_search as the
+// model sees them: under ask autonomy the add queues for review, search
+// finds stored memories.
+func TestMemoryToolsThroughPipeline(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	run := func(name, input string) fantasy.ToolResponse {
+		t.Helper()
+		for _, ag := range tools.All(h.PipelineFor()) {
+			if ag.Info().Name == name {
+				resp, err := ag.Run(context.Background(), fantasy.ToolCall{ID: "t", Name: name, Input: input})
+				if err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				return resp
+			}
+		}
+		t.Fatalf("no tool %s", name)
+		return fantasy.ToolResponse{}
+	}
+	if resp := run("memory_add", `{"kind":"gotcha","text":"bump the labels sequence before deploying"}`); resp.IsError || !strings.Contains(resp.Content, "queued") {
+		t.Fatalf("memory_add: %+v", resp)
+	}
+	if n := len(h.memoryProposals()); n != 1 {
+		t.Fatalf("proposals=%d", n)
+	}
+	if err := h.Remember("deploys run from bin/deploy"); err != nil {
+		t.Fatal(err)
+	}
+	if resp := run("memory_search", `{"query":"deploy"}`); resp.IsError || !strings.Contains(resp.Content, "bin/deploy") {
+		t.Fatalf("memory_search: %+v", resp)
+	}
+}
+
 // TestPipelineQuestionToolEndToEnd drives the question tool through
 // PipelineFor and the fakeUI: the structured ask reaches the UI hooks and
 // the chosen label comes back as the tool output; with no UI the ask

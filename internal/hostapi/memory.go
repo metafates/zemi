@@ -517,21 +517,16 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 				}
 			})
 		}
-		res, err := h.storeMemory(scope, learn.OriginLearned, kind, text, tags)
+		stored, id, err := h.proposeMemory(scope, kind, text, tags)
 		if err != nil {
 			L.RaiseError("zemi.memory.add: %v", err)
 			return 0
 		}
 		out := L.NewTable()
-		if h.memoryAutonomy() == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
-			if err := h.applyProposal(res); err != nil {
-				L.RaiseError("zemi.memory.add: %v", err)
-				return 0
-			}
+		if stored {
 			out.RawSetString("stored", glua.LTrue)
-			out.RawSetString("id", glua.LString(res.Memory.ID))
+			out.RawSetString("id", glua.LString(id))
 		} else {
-			h.queueProposal(res)
 			out.RawSetString("queued", glua.LTrue)
 		}
 		L.Push(out)
@@ -593,6 +588,27 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	return tb
+}
+
+// proposeMemory runs a learned memory (zemi.memory.add, the memory_add
+// tool) through intake and the autonomy gate (DESIGN §10.4): stored under
+// auto when policy-clean and within budget, queued for review otherwise.
+func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bool, id string, err error) {
+	if scope != "project" && scope != "user" {
+		return false, "", errors.New("scope must be project or user")
+	}
+	res, err := h.storeMemory(scope, learn.OriginLearned, kind, text, tags)
+	if err != nil {
+		return false, "", err
+	}
+	if h.memoryAutonomy() == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
+		if err := h.applyProposal(res); err != nil {
+			return false, "", err
+		}
+		return true, res.Memory.ID, nil
+	}
+	h.queueProposal(res)
+	return false, res.Memory.ID, nil
 }
 
 func (h *Host) autoApplyBudgetLeft() bool {
