@@ -446,6 +446,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	}
 	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
+	if p != nil {
+		r.Temperature = p.Temperature
+	}
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
@@ -1409,30 +1412,12 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			NotMatch: rawString(spec, "not_match"),
 			Scope:    perm.Scope(rawString(spec, "scope")),
 		}
-		if r.Subject == "" || r.Pattern == "" {
-			L.RaiseError("zemi.permission.rule: subject and pattern are required")
-			return 0
-		}
-		switch r.Decision {
-		case perm.Allow, perm.Ask, perm.Deny:
-		default:
-			L.RaiseError("zemi.permission.rule: decision must be allow, ask or deny")
-			return 0
-		}
-		if r.Scope == "" {
-			r.Scope = perm.ScopeSession
-		}
-		if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
-			L.RaiseError("zemi.permission.rule: scope must be session or permanent")
-			return 0
-		}
-		origin := h.RT.CurrentOrigin()
 		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
 		// user config only; permanent scope survives restarts, so it is
 		// user-only too (learned proposals reach it only through the
 		// review commit); every other origin may only add session-scope
 		// deny/ask rules.
-		if origin != lua.OriginUser {
+		if h.RT.CurrentOrigin() != lua.OriginUser {
 			if r.Decision == perm.Allow {
 				L.RaiseError("zemi.permission.rule: allow rules may only come from user config")
 				return 0
@@ -1442,26 +1427,15 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 				return 0
 			}
 		}
-		if err := validateRuleExamples(r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
+		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0
 		}
 		h.Perm.Add(r)
 		if r.Scope == perm.ScopePermanent {
-			if err := h.permRegenerate(); err != nil {
+			if err := h.persistPermanentRule(r, "rules: "+string(r.Decision)+" "+r.Subject+" "+r.Pattern, "user"); err != nil {
 				L.RaiseError("zemi.permission.rule: %v", err)
 				return 0
-			}
-			// The keypress is the review (§6.1): a permanent rule lands
-			// as a one-line commit; a failed commit is logged, the rule
-			// and the dump stay (the revisions table records failure).
-			changes, _ := json.Marshal(r)
-			title := "rules: " + string(r.Decision) + " " + r.Subject + " " + r.Pattern
-			if err := h.commitConfigRevision(title, string(changes),
-				[]string{"permissions.lua"}, "user"); err != nil {
-				h.Log.Warn("config-repo", "permanent-rule commit failed", map[string]any{
-					"error": err.Error(),
-				})
 			}
 		}
 		return 0
@@ -1487,10 +1461,23 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// validateRuleExamples checks Lua-authored rule examples at load (DESIGN
-// §9): the match example must match the pattern without being excluded,
-// the not_match example must be excluded; a guard needs both examples.
-func validateRuleExamples(r perm.Rule, matchEx, notMatchEx string) error {
+// validateRule checks a Lua or reflector rule and defaults its scope to
+// session. Examples are required (DESIGN §9): the match example must match
+// the pattern without being excluded, the not_match example must be
+// excluded; a guard needs both examples.
+func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+	switch {
+	case r.Subject == "" || r.Pattern == "":
+		return errors.New("subject and pattern are required")
+	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
+		return errors.New("decision must be allow, ask or deny")
+	}
+	if r.Scope == "" {
+		r.Scope = perm.ScopeSession
+	}
+	if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
+		return errors.New("scope must be session or permanent")
+	}
 	if r.NotMatch == "" {
 		if matchEx == "" {
 			return fmt.Errorf("rule %s %q needs a match example", r.Subject, r.Pattern)

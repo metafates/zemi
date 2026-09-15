@@ -445,10 +445,6 @@ func (h *Host) applyConfigProposals(sid string, p *reflectProposal) (queued, app
 		}
 		if h.autoApplyCfgOK(prop) {
 			h.applyCfgProposal(prop)
-			ag := h.agents
-			ag.mu.Lock()
-			ag.cfgAuto += len(prop.Entries)
-			ag.mu.Unlock()
 			applied++
 		} else {
 			h.queueCfgProposal(prop)

@@ -10,6 +10,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,6 +113,19 @@ func (h *Host) permRegenerate() error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// persistPermanentRule rewrites permissions.lua and commits it as one
+// revision. A failed commit is only logged: the rule and the dump stay.
+func (h *Host) persistPermanentRule(r perm.Rule, title, by string) error {
+	if err := h.permRegenerate(); err != nil {
+		return err
+	}
+	changes, _ := json.Marshal(r)
+	if err := h.commitConfigRevision(title, string(changes), []string{"permissions.lua"}, by); err != nil {
+		h.Log.Warn("config-repo", "permanent-rule commit failed", map[string]any{"error": err.Error()})
+	}
+	return nil
 }
 
 // parsePermissionsDump parses permissions.lua without executing any of

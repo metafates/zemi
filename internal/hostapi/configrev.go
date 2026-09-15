@@ -154,17 +154,8 @@ func intakeCfgRule(raw json.RawMessage) (cfgRuleEntry, bool, error) {
 		NotMatch: scrub(rr.NotMatch),
 		Scope:    perm.Scope(strings.TrimSpace(rr.Scope)),
 	}
-	if r.Subject == "" || r.Pattern == "" {
-		return cfgRuleEntry{}, scrubbed, errors.New("subject and pattern are required")
-	}
-	if r.Scope == "" {
-		r.Scope = perm.ScopeSession
-	}
-	if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
-		return cfgRuleEntry{}, scrubbed, errors.New("scope must be session or permanent")
-	}
 	matchEx, notMatchEx := scrub(rr.Match), scrub(rr.NotMatchExample)
-	if err := validateRuleExamples(r, matchEx, notMatchEx); err != nil {
+	if err := validateRule(&r, matchEx, notMatchEx); err != nil {
 		return cfgRuleEntry{}, scrubbed, err
 	}
 	return cfgRuleEntry{Rule: r, MatchEx: matchEx, NotMatchEx: notMatchEx}, scrubbed, nil
@@ -181,17 +172,8 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 		if e.Rule.Scope != perm.ScopePermanent {
 			continue
 		}
-		if err := h.permRegenerate(); err != nil {
+		if err := h.persistPermanentRule(e.Rule, "learn: "+p.Title+" (from "+p.SessionID+")", "review"); err != nil {
 			h.Log.Warn("config-rev", "dump regenerate failed", map[string]any{"error": err.Error()})
-			continue
-		}
-		changes, _ := json.Marshal(e.Rule)
-		title := "learn: " + p.Title + " (from " + p.SessionID + ")"
-		if err := h.commitConfigRevision(title, string(changes),
-			[]string{"permissions.lua"}, "review"); err != nil {
-			h.Log.Warn("config-repo", "learned permanent-rule commit failed", map[string]any{
-				"error": err.Error(),
-			})
 		}
 	}
 	note := ""
@@ -202,25 +184,26 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 	h.EmitAsync("config.applied", map[string]any{"id": p.ID, "title": p.Title})
 }
 
-// autoApplyCfgOK reports whether a patch may apply without review
-// (DESIGN §10.4): config.autonomy is "auto" and every rule is a
-// session-scope deny/ask. Permanent scope always requires the review
-// commit; allow rules widen and never auto-apply.
+// autoApplyCfgOK reports whether a patch may apply without review and, if
+// so, spends its rules from the session cap (DESIGN §10.4): config.autonomy
+// is "auto" and every rule is a session-scope deny/ask. Permanent scope
+// always requires the review commit; allow rules widen and never auto-apply.
 func (h *Host) autoApplyCfgOK(p *cfgProposal) bool {
-	if h.configAutonomy() != "auto" || len(p.Entries) == 0 {
-		return false
-	}
-	if h.agents.cfgAuto+len(p.Entries) > rulesAutoApplyCap {
+	if h.configAutonomy() != "auto" {
 		return false
 	}
 	for _, e := range p.Entries {
-		if e.Rule.Scope != perm.ScopeSession {
-			return false
-		}
-		if e.Rule.Decision != perm.Deny && e.Rule.Decision != perm.Ask {
+		if e.Rule.Scope != perm.ScopeSession || (e.Rule.Decision != perm.Deny && e.Rule.Decision != perm.Ask) {
 			return false
 		}
 	}
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if ag.cfgAuto+len(p.Entries) > rulesAutoApplyCap {
+		return false
+	}
+	ag.cfgAuto += len(p.Entries)
 	return true
 }
 
