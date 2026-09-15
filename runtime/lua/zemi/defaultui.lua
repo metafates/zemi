@@ -418,18 +418,29 @@ zemi.ui.widget.register({
           first = false
         end
       elseif m.role == "user" then
-        -- markdown like replies, but typed line breaks stay (outside code
-        -- fences a trailing double space makes a hard break)
-        local src, fence = {}, false
+        -- Markdown like replies, one typed line at a time so line breaks
+        -- stay (glamour joins lines into paragraphs); a code fence renders
+        -- as one block.
+        local chunks, fence = {}, nil
         for l in (m.text .. "\n"):gmatch("(.-)\n") do
           local marker = l:match("^%s*```") ~= nil
-          if marker then fence = not fence end
-          src[#src + 1] = (fence or marker) and l or (l .. "  ")
+          if fence then
+            fence[#fence + 1] = l
+            if marker then chunks[#chunks + 1], fence = table.concat(fence, "\n"), nil end
+          elseif marker then
+            fence = { l }
+          else
+            chunks[#chunks + 1] = l
+          end
         end
-        for _, segs in ipairs(zemi.ui.markdown(table.concat(src, "\n"), width - 2)) do
-          local row = { { text = "▌ ", hl = "UserMsg" } }
-          for _, s in ipairs(segs) do row[#row + 1] = s end
-          lines[#lines + 1] = row
+        if fence then chunks[#chunks + 1] = table.concat(fence, "\n") end
+        for _, chunk in ipairs(chunks) do
+          local rendered = chunk:match("%S") and zemi.ui.markdown(chunk, width - 2) or { {} }
+          for _, segs in ipairs(rendered) do
+            local row = { { text = "▌ ", hl = "UserMsg" } }
+            for _, sg in ipairs(segs) do row[#row + 1] = sg end
+            lines[#lines + 1] = row
+          end
         end
       else
         add_markdown(m.text)
