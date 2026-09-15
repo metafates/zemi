@@ -26,8 +26,8 @@ description: Diagnose problems with zemi itself - crashes, errors, a model that 
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no models registered" | no provider: see zemi-config (`zemi.provider.register` or crush.json) |
-| 401 / unauthorized | the `api_key_env` variable is not exported in the shell that started zemi |
+| "no models registered" | no provider: see zemi-config (`zemi.provider.register`) |
+| 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | boot error "permissions.lua refused" | the file was edited by hand; restore it from the git history of `~/.config/zemi` or delete it (permanent rules are lost) |
 | statusline "HOT /reload" | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |

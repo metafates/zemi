@@ -108,7 +108,6 @@ func run(args []string) int {
 		softStep(host, host.SkillsAuthoredHooksStep()),
 		softStep(host, projectConfigStep(host, askTrust, dirs)),
 		host.MarkdownCommandsStep(),
-		crushImportStep(host),
 		readyStep(host, !opts.print),
 		host.SkillsLearnedHooksStep(),
 	}
@@ -214,46 +213,6 @@ func configFingerprint(roots ...string) string {
 		})
 	}
 	return hex.EncodeToString(sum.Sum(nil))
-}
-
-// crushImportStep imports providers from the user's crush.json (config
-// key providers.crush_json, default ~/.config/crush/crush.json) after
-// user config ran, so init.lua can point the knob elsewhere or disable
-// it. Import problems never fail boot; they are logged.
-func crushImportStep(h *hostapi.Host) lua.BootStep {
-	return lua.BootStep{
-		Name: "crush providers import",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			path, _ := h.Settings.Get("providers.crush_json")
-			p, _ := path.(string)
-			p = expandPath(p)
-			if p == "" {
-				return nil
-			}
-			res, err := h.Providers.ImportCrushFile(p)
-			if err != nil {
-				h.Log.Warn("providers", "crush.json import failed", map[string]any{"error": err.Error()})
-				return nil
-			}
-			for _, id := range res.Imported {
-				h.Log.Info("providers", "imported from crush.json", map[string]any{"provider": id})
-			}
-			for _, w := range res.Warnings {
-				h.Log.Warn("providers", w, nil)
-			}
-			h.ImportCrushMCP(p)
-			return nil
-		},
-	}
-}
-
-func expandPath(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(p, "~"))
-		}
-	}
-	return p
 }
 
 // builtinCommandsStep registers the Go-owned slash commands; builtin origin

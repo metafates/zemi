@@ -617,7 +617,7 @@ zemi.provider.register({
   id = "myllm",
   kind = "openai_compat",            -- fantasy/openaicompat under the hood
   base_url = "https://llm.internal/v1",
-  api_key_env = "MYLLM_KEY",
+  api_key = zemi.env.get("MYLLM_KEY"),
   models = { { id = "main", display = "Main" } },
 })
 ```
@@ -633,8 +633,8 @@ mechanism to Lua in M5.
 `zemi.provider.register` requires a user-owned registration origin: Lua
 from a plugin, a project, or a learned source cannot call it (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
-gate, and `api_key_env` names resolve inside the Go provider layer, never
-in Lua.
+gate; the key comes from user config (`zemi.env.get` reads secret-shaped
+variables for user origin only) and is never exposed back to Lua.
 
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
@@ -912,7 +912,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `priority` ascending, overflow truncates the lowest-priority ones; the
   shipped `statusline.info` widget shows the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
-  `cost_per_1m_out`, imported from crush.json), and
+  `cost_per_1m_out`), and
   the context-window percent, warning colors past 80%/95%).
   Overlays float, centered or anchored.
 - **Rendering loop**: the state generation is bumped at most once per

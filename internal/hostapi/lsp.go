@@ -133,7 +133,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 			defer close(p.ready)
 			env, _ := perm.ChildEnv(nil)
 			for k, v := range def.Env {
-				env = append(env, k+"="+os.ExpandEnv(v))
+				env = append(env, k+"="+v)
 			}
 			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()

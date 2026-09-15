@@ -2,7 +2,6 @@
                                                                                 
                                                                                 
                                                                                 
-                                                                                
 [38;2;122;162;247m▌ [m[38;2;192;202;245mwhy does the build fail?[m                                                      
                                                                                 
 [38;2;192;202;245m● [m[38;2;192;202;245mRead the build log and checked the fixture dir.[m                               
@@ -10,6 +9,7 @@
 [38;2;86;95;137m  38.0s · 1.2k out[m                                                              
                                                                                 
 [38;2;158;206;106m● [m[38;2;192;202;245mRead 1 file[m                                                                   
+                                                                                
 [38;2;86;95;137m● [m[1;38;2;192;202;245mRun[m[38;2;86;95;137m go test ./... 2>&1 | tail -5[m                                              
                                                                                 
 [38;2;192;202;245m● [m[38;2;192;202;245mThe test binary exits 1 because the fixture path moved.[m                       

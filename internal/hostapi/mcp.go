@@ -1,5 +1,5 @@
 // mcp.go bridges MCP servers (DESIGN §13, M5). User config registers them
-// with zemi.mcp.add, or crush.json's mcp section imports them; each starts
+// with zemi.mcp.add; each starts
 // in the background, and every tool it lists becomes a model tool named
 // mcp_<server>_<tool>. Calls run tool.pre and the permission gate under
 // subject mcp.<server> with the tool name as argument (ask by default).
@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -35,13 +34,13 @@ import (
 type MCPSpec struct {
 	Command       string
 	Args          []string
-	Env           map[string]string // values expand $VARS from zemi's environment
+	Env           map[string]string
 	URL           string
-	Headers       map[string]string // values expand $VARS too
-	EnabledTools  []string          // nil = all
+	Headers       map[string]string
+	EnabledTools  []string // nil = all
 	DisabledTools []string
 	Timeout       time.Duration // per call; 0 = 2 minutes
-	Source        string        // init.lua or crush.json
+	Source        string        // where it was added: init.lua
 }
 
 type mcpServer struct {
@@ -89,11 +88,11 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 func (h *Host) startMCP(s *mcpServer) {
 	env, _ := perm.ChildEnv(nil)
 	for k, v := range s.spec.Env {
-		env = append(env, k+"="+os.ExpandEnv(v))
+		env = append(env, k+"="+v)
 	}
 	headers := map[string]string{}
 	for k, v := range s.spec.Headers {
-		headers[k] = os.ExpandEnv(v)
+		headers[k] = v
 	}
 	cfg := mcp.Config{
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.ProjectDir,
@@ -331,7 +330,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 }
 
 // ---------------------------------------------------------------------------
-// zemi.mcp, /mcp and the crush.json import
+// zemi.mcp and /mcp
 
 func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -552,55 +551,5 @@ func (h *Host) openBrowser(u string) {
 	cmd := proc.Command(argv[0], append(argv[1:], u)...)
 	if proc.Start(cmd) == nil {
 		h.GoSafe("open browser", func() { _ = proc.Wait(cmd) })
-	}
-}
-
-// ImportCrushMCP registers the enabled servers from crush.json's mcp
-// section that init.lua did not already define. Problems are logged, never
-// fatal.
-func (h *Host) ImportCrushMCP(path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var file struct {
-		MCP map[string]struct {
-			Type          string            `json:"type"`
-			Command       string            `json:"command"`
-			Args          []string          `json:"args"`
-			Env           map[string]string `json:"env"`
-			URL           string            `json:"url"`
-			Headers       map[string]string `json:"headers"`
-			Disabled      bool              `json:"disabled"`
-			EnabledTools  []string          `json:"enabled_tools"`
-			DisabledTools []string          `json:"disabled_tools"`
-			Timeout       int               `json:"timeout"`
-		} `json:"mcp"`
-	}
-	if err := json.Unmarshal(data, &file); err != nil {
-		h.Log.Warn("mcp", "crush.json mcp import failed", map[string]any{"error": err.Error()})
-		return
-	}
-	existing := map[string]bool{}
-	for _, s := range h.mcp.list() {
-		existing[s.name] = true
-	}
-	for raw, c := range file.MCP {
-		name := strings.ToLower(strings.ReplaceAll(mcpNameUnsafe.ReplaceAllString(raw, "-"), "_", "-"))
-		if c.Disabled || existing[name] {
-			continue
-		}
-		if c.Type == "sse" {
-			h.Log.Warn("mcp", "crush.json server uses the old SSE transport, skipped", map[string]any{"server": raw})
-			continue
-		}
-		spec := MCPSpec{Command: c.Command, Args: c.Args, Env: c.Env, URL: c.URL, Headers: c.Headers,
-			EnabledTools: c.EnabledTools, DisabledTools: c.DisabledTools, Source: "crush.json"}
-		if c.Timeout > 0 {
-			spec.Timeout = time.Duration(c.Timeout) * time.Second
-		}
-		if err := h.addMCP(name, spec); err != nil {
-			h.Log.Warn("mcp", "crush.json server skipped", map[string]any{"server": raw, "error": err.Error()})
-		}
 	}
 }

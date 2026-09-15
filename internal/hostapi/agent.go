@@ -1091,7 +1091,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.provider.register: %v", err)
 			return 0
 		}
-		if err := h.Providers.Register(spec); err != nil {
+		if err := h.Providers.Register(spec, rawString(L.CheckTable(1), "api_key")); err != nil {
 			L.RaiseError("zemi.provider.register: %v", err)
 			return 0
 		}
@@ -1118,11 +1118,13 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	if !ok {
 		return agent.Spec{}, fmt.Errorf("spec must be a table")
 	}
+	if name := rawString(tb, "api_key_env"); name != "" {
+		return agent.Spec{}, fmt.Errorf(`api_key_env is gone: pass the key itself, api_key = zemi.env.get("%s")`, name)
+	}
 	spec := agent.Spec{
-		ID:        rawString(tb, "id"),
-		Kind:      rawString(tb, "kind"),
-		BaseURL:   rawString(tb, "base_url"),
-		APIKeyEnv: rawString(tb, "api_key_env"),
+		ID:      rawString(tb, "id"),
+		Kind:    rawString(tb, "kind"),
+		BaseURL: rawString(tb, "base_url"),
 	}
 	models, ok := tb.RawGetString("models").(*glua.LTable)
 	if ok {

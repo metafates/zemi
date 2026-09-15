@@ -43,8 +43,7 @@ zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
 ## MCP servers
 
 Tools from [MCP](https://modelcontextprotocol.io) servers join the model's tool set as
-`mcp_<server>_<tool>`. Servers from Crush's `crush.json` are imported; add your own in
-`init.lua`:
+`mcp_<server>_<tool>`. Add servers in `init.lua`:
 
 ```lua
 zemi.mcp.add("github", {
@@ -150,15 +149,13 @@ Requires Go 1.27. No CGO. `git` is optional (config changes are versioned when p
 
 ## Configure
 
-zemi ships no providers. If you use [Crush](https://github.com/charmbracelet/crush), its
-`~/.config/crush/crush.json` providers are imported automatically. Otherwise register one
-in `~/.config/zemi/init.lua`:
+zemi ships no providers. Register one in `~/.config/zemi/init.lua`:
 
 ```lua
 zemi.provider.register({
   id = "anthropic",
   kind = "anthropic",            -- anthropic | openai | openai_compat
-  api_key_env = "ANTHROPIC_API_KEY",
+  api_key = zemi.env.get("ANTHROPIC_API_KEY"),
   models = {
     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- optional: session cost in the statusline

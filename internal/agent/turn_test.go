@@ -289,7 +289,7 @@ func TestRegistryResolve(t *testing.T) {
 	err := r.Register(Spec{
 		ID: "myllm", Kind: "openai_compat", BaseURL: "https://llm.internal/v1",
 		Models: []Model{{ID: "main", Display: "Main"}},
-	})
+	}, "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestRegistryResolve(t *testing.T) {
 	if _, err := r.Resolve("myllm/main"); err != nil {
 		t.Fatalf("openai_compat resolve: %v", err)
 	}
-	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}); err == nil {
+	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}, ""); err == nil {
 		t.Fatal("duplicate id must fail")
 	}
 	if specs := r.List(); len(specs) != 1 {

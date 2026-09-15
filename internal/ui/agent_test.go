@@ -617,3 +617,26 @@ func TestToolRows(t *testing.T) {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
 }
+
+// TestReasoningWrapKeepsWords: an expanded thought longer than the chat
+// width wraps without losing or repeating words.
+func TestReasoningWrapKeepsWords(t *testing.T) {
+	app, host := bootAgentApp(t, 60, 40)
+	var words []string
+	for i := range 40 {
+		words = append(words, fmt.Sprintf("w%02d", i))
+	}
+	host.AppendMessage("user", "why?")
+	host.AppendReasoning(strings.Join(words, " ")+"\n\nsecond paragraph", hostapi.TurnStat{ThoughtMS: 1000})
+	host.ToggleReasoning()
+	app.renderSync(t)
+	var got []string
+	for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+		if _, body, ok := strings.Cut(row, "│ "); ok {
+			got = append(got, strings.Fields(body)...)
+		}
+	}
+	if want := append(words, "second", "paragraph"); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("wrapped words:\n%s", strings.Join(got, " "))
+	}
+}

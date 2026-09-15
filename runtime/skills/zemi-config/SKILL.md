@@ -27,7 +27,7 @@ Rules when editing:
   answering `a` in a permission prompt.
 - Writes outside the project ask first and show the diff. zemi reloads when config files
   change; `/reload` forces it.
-- Never write API keys into files. Providers name an environment variable.
+- Never write API keys into files: read them with `zemi.env.get("NAME")`.
 
 ## Providers and models
 
@@ -35,7 +35,7 @@ Rules when editing:
 zemi.provider.register({
   id = "anthropic",
   kind = "anthropic",                 -- anthropic | openai | openai_compat
-  api_key_env = "ANTHROPIC_API_KEY",  -- name of the env var, not the key
+  api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
   -- base_url = "https://llm.internal/v1",   -- required for openai_compat
   models = {
     { id = "claude-sonnet-4-5", display = "Sonnet 4.5",
@@ -45,9 +45,10 @@ zemi.provider.register({
 zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```
 
-Only `init.lua` may register providers. Providers in `~/.config/crush/crush.json` import
-automatically; `zemi.config.set("providers.crush_json", "")` turns that off. `/model`
-picks a model interactively.
+Only `init.lua` may register providers, and only user config may read secret-looking
+variables with `zemi.env.get`. MCP `headers` and `env` values are plain strings: build them
+in Lua (`Authorization = "Bearer " .. zemi.env.get("GITHUB_TOKEN")`). `/model` picks a model
+interactively.
 
 ## Settings
 
@@ -57,8 +58,8 @@ writable; prefer it over guessing. Common keys:
 
 - `agent.model`, `reflector.model` (empty: use the agent model)
 - `agent.small_model`: a fast, cheap model for small jobs (session titles, and auto-mode
-  screening unless `permissions.auto_model` is set); empty uses the agent model. With the acme
-  provider, `zemi.config.set("agent.small_model", "acme/OpenAI-GPT-OSS-120B[CM]")`.
+  screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
+  `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`

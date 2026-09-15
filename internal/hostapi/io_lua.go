@@ -137,7 +137,9 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if perm.EnvIsSecret(name) {
+		// user config reads its own keys (api_key = zemi.env.get(...));
+		// plugins, projects and learned code never see secret-shaped names
+		if o := h.RT.CurrentOrigin(); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
 		L.Push(lua.FromGo(L, os.Getenv(name)))

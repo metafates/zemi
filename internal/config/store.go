@@ -53,7 +53,6 @@ func (s *Store) defineDefaults() {
 		{Path: "permissions.mode", Kind: "string", Default: "manual", UserWritable: true, Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "agent.small_model", Kind: "string", Default: "", UserWritable: true, Desc: "a fast, cheap model for small jobs: session titles and, unless permissions.auto_model is set, auto-mode screening (provider/model; empty uses agent.model)"},
 		{Path: "permissions.auto_model", Kind: "string", Default: "", UserWritable: true, Desc: "model that screens asks in auto mode (provider/model; empty uses agent.small_model, then agent.model)"},
-		{Path: "providers.crush_json", Kind: "string", Default: "~/.config/crush/crush.json", UserWritable: true, Desc: "crush.json imported at boot for providers (empty disables)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, UserWritable: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.effort", Kind: "string", Default: "", UserWritable: true, Desc: "reasoning effort: low, medium, high, or empty for the provider default"},

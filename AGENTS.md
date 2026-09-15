@@ -55,8 +55,8 @@ workflow (+ `/review`), mcp and lsp commands ->
 plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/` (`init.lua`,
 `agents/`, `commands/`, `workflows/`; any of them triggers the one-time trust prompt that
 hashes the config tree and refuses symlinks, and trust sets `Host.SetProjectTrusted`) ->
-markdown commands (`commands/*.md`, user then trusted project) -> crush.json provider and
-MCP import -> `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
+markdown commands (`commands/*.md`, user then trusted project) ->
+`app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
 its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
 After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
 "Permanent rules" below).
@@ -221,8 +221,7 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   back through `AgentSend` with the body behind `attachMarker`, which both the live
   transcript (`startTurn`, `deliverSteering`) and resume cut off.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
-  with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only) or
-  crush.json; they start in the background and stop on `PurgeGeneration`. Tools are
+  with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`. Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
   argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
   server).
@@ -311,8 +310,7 @@ next reload, not in-place).
 - Agent-turn tests stub the model with `reflectStub` (sets `h.modelFn`; answers Generate and
   Stream with `TextContent` like real providers) and wait with `waitIdle`.
 - End to end, drive the real binary in tmux against a fake OpenAI-compatible server: point
-  `ZEMI_*` at temp dirs, register it in `init.lua` (`kind = "openai_compat"`, `base_url`),
-  set `providers.crush_json = ""`, then `tmux send-keys` / `tmux capture-pane -p`.
+  `ZEMI_*` at temp dirs, register it in `init.lua` (`kind = "openai_compat"`, `base_url`), then `tmux send-keys` / `tmux capture-pane -p`.
   Python terminal emulators like pyte garble bubbletea's incremental renderer; tmux does not.
 - The sandbox, freeze, and origin-classification behavior in `internal/lua/sandbox_test.go`
   is adversarial by design (monkey-patching attempts must raise); don't weaken those
@@ -343,9 +341,9 @@ next reload, not in-place).
   `learned` and gates autonomy/supersede/digest-labeling. The autonomy knob is host-owned:
   only Go may flip it (`Settings.SetHost`), never user config.
 - **Config store** (`internal/config/store.go`): dotted-path keys; `SetHost` is Go-only,
-  user config cannot set host-owned knobs. Providers ship none; they are registered from
-  user config (or imported from the user's `~/.config/crush/crush.json`, best-effort,
-  never fails boot — `providers.crush_json` key).
+  user config cannot set host-owned knobs. Providers ship none; user config registers them, keys
+  included (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for
+  user and builtin origin only). Config fields hold values, never names of env vars.
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
   keymaps and cannot be rebound — `/reload` is matched on composer submit (exact,
   case-sensitive, before the command registry is consulted), so no registered command can
@@ -382,6 +380,8 @@ next reload, not in-place).
   `Host.AttachPath`. Files from outside the project are copied to `<data>/drops` and
   referenced as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that
   directory, so a forged reference cannot attach other files outside the project.
+- **gopher-lua multiple assignment**: `a[#a + 1], b = b, x` stores `x` in `a`. Split any
+  assignment whose right side names a left-side target (this once garbled wrapped text).
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables
   with colon methods; everything else is a plain snapshot copy. Marshaling across the Lua
   <-> Go boundary caps string size (16 MB) and depth (64) and refuses cycles.

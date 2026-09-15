@@ -327,8 +327,10 @@ zemi.ui.widget.register({
     -- Blocks are separated by one blank line: the user's message, a run of
     -- activity (thinking and tools), the reply, its stats.
     local prev
+    -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
+    -- assignments whose right side names a left-side target stay split.
     local function gap(block)
-      if prev and (prev ~= block or block ~= "activity") then blank() end
+      if prev then blank() end
       prev = block
     end
     local function has_text(segs)
@@ -356,7 +358,8 @@ zemi.ui.widget.register({
         local cur = ""
         for word in para:gmatch("%S+") do
           if cur ~= "" and cells(cur) + 1 + cells(word) > room then
-            out[#out + 1], cur = cur, word
+            out[#out + 1] = cur
+            cur = word
           else
             cur = cur == "" and word or (cur .. " " .. word)
           end
@@ -539,7 +542,10 @@ zemi.ui.widget.register({
           local marker = l:match("^%s*```") ~= nil
           if fence then
             fence[#fence + 1] = l
-            if marker then chunks[#chunks + 1], fence = table.concat(fence, "\n"), nil end
+            if marker then
+              chunks[#chunks + 1] = table.concat(fence, "\n")
+              fence = nil
+            end
           elseif marker then
             fence = { l }
           else

@@ -5,7 +5,7 @@ import "testing"
 func TestEffortOptions(t *testing.T) {
 	r := NewRegistry()
 	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat"}} {
-		if err := r.RegisterKeyed(s, "k"); err != nil {
+		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
 		}
 	}

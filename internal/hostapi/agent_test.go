@@ -168,9 +168,12 @@ func TestModelNamespace(t *testing.T) {
 
 	runUser(t, r, `zemi.provider.register({
 		id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1",
-		api_key_env = "MYLLM_KEY",
+		api_key = "test-key",
 		models = { { id = "main", display = "Main" }, { id = "mini" } },
 	})`)
+	runExpectErr(t, r, `zemi.provider.register({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, "api_key_env is gone")
+	t.Setenv("ZEMI_TEST_TOKEN", "abc")
+	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 
 	runUser(t, r, `zemi.model.set("myllm/main")`)
 	if v, ok := h.Settings.Get("agent.model"); !ok || v != "myllm/main" {

@@ -5,10 +5,8 @@
 package agent
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -30,44 +28,33 @@ type Model struct {
 	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
 }
 
-// Spec describes one provider: kind selects the fantasy implementation,
-// api_key_env names the environment variable resolved in Go, never in
-// Lua (DESIGN §6.3).
+// Spec describes one provider: kind selects the fantasy implementation.
 type Spec struct {
-	ID        string  `json:"id"`
-	Kind      string  `json:"kind"` // anthropic | openai | openaicompat
-	BaseURL   string  `json:"base_url,omitempty"`
-	APIKeyEnv string  `json:"api_key_env,omitempty"`
-	Models    []Model `json:"models"`
+	ID      string  `json:"id"`
+	Kind    string  `json:"kind"` // anthropic | openai | openaicompat
+	BaseURL string  `json:"base_url,omitempty"`
+	Models  []Model `json:"models"`
 }
 
-// Registry holds provider specs; ids are unique. API keys resolved from
-// files (not env vars) live in a side map keyed by provider id; they are
-// never exposed through List or Lookup.
+// Registry holds provider specs; ids are unique. API keys live in a side
+// map keyed by provider id and are never exposed through List or Lookup.
 type Registry struct {
 	specs []Spec
 	keys  map[string]string
 }
 
 // NewRegistry returns an empty registry. zemi ships no providers: every
-// provider and its model catalog comes from user config (config.lua calls
-// zemi.provider.register) or an imported crush.json (config key
-// providers.crush_json, DESIGN §6.3); without one the agent fails closed
-// with "no models registered".
+// provider, its key and its model catalog come from user config
+// (zemi.provider.register); without one the agent fails closed with "no
+// models registered".
 func NewRegistry() *Registry {
 	return &Registry{keys: map[string]string{}}
 }
 
-// Register adds a provider spec; a duplicate id is an error. Requires a
-// user-owned registration origin (the Lua boundary enforces it, DESIGN
-// §6.3).
-func (r *Registry) Register(spec Spec) error {
-	return r.RegisterKeyed(spec, "")
-}
-
-// RegisterKeyed adds a provider spec with a literal API key (crush.json
-// import). The key stays in the side map, invisible to List and Lookup.
-func (r *Registry) RegisterKeyed(spec Spec, apiKey string) error {
+// Register adds a provider spec and its API key; a duplicate id is an
+// error. Only user config may register (the Lua boundary enforces it,
+// DESIGN §6.3).
+func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
 		return fmt.Errorf("provider needs id and kind")
 	}
@@ -100,8 +87,8 @@ func (r *Registry) Lookup(providerID string) (Spec, bool) {
 	return Spec{}, false
 }
 
-// HasKey reports whether an api key is available for the provider
-// (picked from the provider's key env var). Values are never exposed.
+// HasKey reports whether user config gave the provider an API key. Values
+// are never exposed.
 func (r *Registry) HasKey(providerID string) bool {
 	spec, ok := r.Lookup(providerID)
 	if !ok {
@@ -110,23 +97,7 @@ func (r *Registry) HasKey(providerID string) bool {
 	return r.apiKey(spec) != ""
 }
 
-// apiKey returns the spec's key: the imported literal, else its env var.
-func (r *Registry) apiKey(spec Spec) string {
-	if k := r.keys[spec.ID]; k != "" {
-		return k
-	}
-	env := spec.APIKeyEnv
-	switch spec.Kind {
-	case "anthropic":
-		env = cmp.Or(spec.APIKeyEnv, "ANTHROPIC_API_KEY")
-	case "openai", "openaicompat":
-		env = cmp.Or(spec.APIKeyEnv, "OPENAI_API_KEY")
-	}
-	if env == "" {
-		return ""
-	}
-	return os.Getenv(env)
-}
+func (r *Registry) apiKey(spec Spec) string { return r.keys[spec.ID] }
 
 // Efforts are the reasoning effort levels zemi offers ("" = provider
 // default).
