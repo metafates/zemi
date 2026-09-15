@@ -316,8 +316,10 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	if p != nil && len(p.Tools) > 0 {
 		want = p.Tools
 	}
-	out := filterTools(append(tools.All(h.PipelineFor()), h.agentTool(), h.workflowTool()), want, nil)
-	return append(out, h.luaFantasyTools()...)
+	pipe := h.PipelineFor()
+	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool()), want, nil)
+	out = append(out, h.luaFantasyTools()...)
+	return append(out, h.mcpFantasyTools(pipe)...)
 }
 
 // resolveModel picks the agent model for a profile (tests stub modelFn).

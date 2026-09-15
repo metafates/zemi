@@ -169,6 +169,8 @@ type Host struct {
 	recent      []*store.Session
 	recentStale atomic.Bool
 
+	mcp *mcpReg // MCP servers and their tools
+
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
@@ -205,6 +207,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		timers:    newTimerReg(),
 		jobs:      tools.NewJobs(),
 		skillsReg: &skillReg{},
+		mcp:       newMCPReg(),
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {
@@ -898,6 +901,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.workflow", h.workflowNamespace(L), nil},
 		{"zemi.json", h.jsonNamespace(L), nil},
 		{"zemi.composer", h.composerNamespace(L), nil},
+		{"zemi.mcp", h.mcpNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
@@ -909,7 +913,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.5.0"))
+	api.RawSetString("version", glua.LString("0.6.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -928,4 +932,5 @@ func (h *Host) PurgeGeneration() {
 	h.purgeWatches()
 	h.luaTools.purge(h.currentGen())
 	h.timers.purge()
+	h.mcp.stopAll()
 }

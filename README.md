@@ -23,6 +23,23 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   changed since (through `write`, `edit` and `multiedit`, not bash), drops that part of
   the conversation and puts the prompt back in the composer to edit.
 
+## MCP servers
+
+Tools from [MCP](https://modelcontextprotocol.io) servers join the model's tool set as
+`mcp_<server>_<tool>`. Servers from Crush's `crush.json` are imported; add your own in
+`init.lua`:
+
+```lua
+zemi.mcp.add("github", {
+  command = "github-mcp-server", args = { "stdio" },
+  env = { GITHUB_PERSONAL_ACCESS_TOKEN = "$GITHUB_TOKEN" },  -- expanded from your environment
+})
+zemi.mcp.add("docs", { url = "https://mcp.example.com/mcp", disabled_tools = { "delete_page" } })
+```
+
+Each call asks first (subject `mcp.<server>`, the tool name as argument, so "always"
+approves that tool). `/mcp` shows every server's state; enter restarts one.
+
 ## Prompt commands
 
 A markdown file in `~/.config/zemi/commands/` or `.zemi/commands/` becomes a slash
@@ -166,7 +183,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/rewind`, `/agents`, `/workflow`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/rewind`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

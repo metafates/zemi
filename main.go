@@ -98,6 +98,7 @@ func run(args []string) int {
 		host.SkillsCommandsStep(),
 		host.AgentsCommandsStep(),
 		host.WorkflowCommandsStep(),
+		host.MCPCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
@@ -187,6 +188,7 @@ func crushImportStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
 			for _, w := range res.Warnings {
 				h.Log.Warn("providers", w, nil)
 			}
+			h.ImportCrushMCP(p)
 			return nil
 		},
 	}
