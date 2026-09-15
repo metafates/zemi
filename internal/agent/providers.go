@@ -28,10 +28,17 @@ type Model struct {
 	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
 }
 
+// Provider kinds: which fantasy implementation talks to the provider.
+const (
+	KindAnthropic    = "anthropic"
+	KindOpenAI       = "openai"
+	KindOpenAICompat = "openai_compat"
+)
+
 // Spec describes one provider: kind selects the fantasy implementation.
 type Spec struct {
 	ID      string  `json:"id"`
-	Kind    string  `json:"kind"` // anthropic | openai | openaicompat
+	Kind    string  `json:"kind"` // KindAnthropic, KindOpenAI or KindOpenAICompat
 	BaseURL string  `json:"base_url,omitempty"`
 	Models  []Model `json:"models"`
 }
@@ -57,6 +64,12 @@ func NewRegistry() *Registry {
 func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
 		return fmt.Errorf("provider needs id and kind")
+	}
+	if spec.Kind == "openaicompat" {
+		spec.Kind = KindOpenAICompat
+	}
+	if spec.Kind != KindAnthropic && spec.Kind != KindOpenAI && spec.Kind != KindOpenAICompat {
+		return fmt.Errorf("unknown provider kind %q (want %s, %s or %s)", spec.Kind, KindAnthropic, KindOpenAI, KindOpenAICompat)
 	}
 	for _, s := range r.specs {
 		if s.ID == spec.ID {
@@ -118,12 +131,12 @@ func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions
 	}
 	re := openai.ReasoningEffort(effort)
 	switch spec.Kind {
-	case "anthropic":
+	case KindAnthropic:
 		e := anthropic.Effort(effort)
 		return anthropic.NewProviderOptions(&anthropic.ProviderOptions{Effort: &e})
-	case "openai":
+	case KindOpenAI:
 		return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: &re})
-	case "openaicompat", "openai_compat":
+	case KindOpenAICompat:
 		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: &re})
 	}
 	return nil
@@ -142,7 +155,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		return nil, fmt.Errorf("unknown provider %q", providerID)
 	}
 	switch spec.Kind {
-	case "anthropic":
+	case KindAnthropic:
 		opts := []anthropic.Option{}
 		if spec.BaseURL != "" {
 			opts = append(opts, anthropic.WithBaseURL(spec.BaseURL))
@@ -155,7 +168,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 			return nil, err
 		}
 		return p.LanguageModel(context.Background(), model)
-	case "openai":
+	case KindOpenAI:
 		opts := []openai.Option{}
 		if spec.BaseURL != "" {
 			opts = append(opts, openai.WithBaseURL(spec.BaseURL))
@@ -168,7 +181,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 			return nil, err
 		}
 		return p.LanguageModel(context.Background(), model)
-	case "openaicompat", "openai_compat":
+	case KindOpenAICompat:
 		opts := []openaicompat.Option{}
 		if spec.BaseURL != "" {
 			opts = append(opts, openaicompat.WithBaseURL(spec.BaseURL))

@@ -34,7 +34,7 @@ Rules when editing:
 ```lua
 zemi.provider.register({
   id = "anthropic",
-  kind = "anthropic",                 -- anthropic | openai | openai_compat
+  kind = zemi.provider.kind.ANTHROPIC,                 -- or OPENAI, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
   -- base_url = "https://llm.internal/v1",   -- required for openai_compat
   models = {

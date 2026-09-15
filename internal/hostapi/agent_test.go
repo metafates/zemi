@@ -188,6 +188,7 @@ func TestModelNamespace(t *testing.T) {
 		end
 	`)
 	runExpectErr(t, r, `zemi.provider.register({ id = "myllm", kind = "openai" })`, "already registered")
+	runExpectErr(t, r, `zemi.provider.register({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
 }
 
 // TestFsDefaults pins the §9 built-in permission defaults: reads inside

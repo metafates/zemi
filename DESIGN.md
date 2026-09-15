@@ -615,7 +615,7 @@ zemi.model.pick()                    -- model picker overlay (catalog from M1)
 
 zemi.provider.register({
   id = "myllm",
-  kind = "openai_compat",            -- fantasy/openaicompat under the hood
+  kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
   base_url = "https://llm.internal/v1",
   api_key = zemi.env.get("MYLLM_KEY"),
   models = { { id = "main", display = "Main" } },

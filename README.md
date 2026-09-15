@@ -154,7 +154,7 @@ zemi ships no providers. Register one in `~/.config/zemi/init.lua`:
 ```lua
 zemi.provider.register({
   id = "anthropic",
-  kind = "anthropic",            -- anthropic | openai | openai_compat
+  kind = zemi.provider.kind.ANTHROPIC,            -- or OPENAI, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
   models = {
     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
