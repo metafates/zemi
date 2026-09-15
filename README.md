@@ -65,7 +65,9 @@ Read $1 and write a failing test that shows: $ARGUMENTS. Do not fix the bug yet.
 The model can hand a self-contained task to a subagent with the `agent` tool. A subagent
 gets a fresh context and its own tool set, runs in parallel with others, and returns one
 report; its tool calls go through the same permission prompts, labeled with the agent's
-name. The row under the tool call shows live progress. zemi ships `general` and a
+name. The row under the tool call shows live progress. The model can also start one in the
+background: it keeps working (or goes idle) and the report arrives as a message when the
+agent is done; `/tasks` lists them and cancels one. zemi ships `general` and a
 read-only `explore`; add your own as markdown in `~/.config/zemi/agents/` or
 `.zemi/agents/`:
 
@@ -191,7 +193,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/effort`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/tasks`, `/workflow`, `/mcp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

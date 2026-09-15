@@ -421,7 +421,10 @@ func (h *Host) runTurns(runner *agent.Runner, text string) {
 }
 
 func (h *Host) startTurn(text string) {
-	h.AppendMessage("user", text)
+	// what follows attachMarker is for the model (background reports), the
+	// same cut resumed transcripts make
+	shown, _, _ := strings.Cut(text, attachMarker)
+	h.AppendMessage("user", shown)
 	h.agentEvent(AgentEvent{Kind: "turn_start"})
 	h.EmitAsync("agent.start", map[string]any{"text": text})
 }
@@ -468,7 +471,8 @@ func (h *Host) deliverSteering() []string {
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	out := make([]string, len(msgs))
 	for i, m := range msgs {
-		h.AppendMessage("user", m)
+		shown, _, _ := strings.Cut(m, attachMarker)
+		h.AppendMessage("user", shown)
 		out[i] = h.expandAttachments(m)
 	}
 	return out

@@ -390,7 +390,9 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Use it for broad searches and research that would flood your context, and for independent tasks in parallel" +
 		" (prefer explore for questions about code: it only reads, so it never stops to ask the user for permission)" +
 		" (call the tool several times in one message). The subagent cannot see this conversation: the prompt must carry" +
-		" everything it needs and say what to report back. Its report is not shown to the user; relay what matters.\n\nAgents:")
+		" everything it needs and say what to report back. Its report is not shown to the user; relay what matters." +
+		" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
+		" as a message, so keep working (or end your turn) meanwhile.\n\nAgents:")
 	names := make([]string, 0, len(t.defs))
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -403,6 +405,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 			"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user"},
 			"prompt":      map[string]any{"type": "string", "description": "the full task"},
 			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run: explore for reading and searching, general only when it must run commands or edit"},
+			"background":  map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"},
 		},
 		Required: []string{"description", "prompt", "agent"},
 		Parallel: true,
@@ -417,6 +420,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		Description string `json:"description"`
 		Prompt      string `json:"prompt"`
 		Agent       string `json:"agent"`
+		Background  bool   `json:"background"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -430,6 +434,14 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	def, err := t.h.agentDef(in.Agent)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if in.Background {
+		id, err := t.h.startBackgroundAgent(def, in.Description, in.Prompt)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		t.h.setToolDetail(call.ID, def.Name+" · background "+id+" (/tasks)")
+		return fantasy.NewTextResponse("Started background agent " + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
 	}
 	start := time.Now()
 	var last atomic.Value
@@ -487,7 +499,10 @@ func (h *Host) AgentsCommandsStep() lua.BootStep {
 				GoFn:   func(h *Host, _ string) error { return h.openAgents() },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
-			return err
+			if err != nil {
+				return err
+			}
+			return h.TasksCommandsStep().Run(ctx, r, g)
 		},
 	}
 }

@@ -170,7 +170,8 @@ type Host struct {
 	recent      []*store.Session
 	recentStale atomic.Bool
 
-	mcp *mcpReg // MCP servers and their tools
+	mcp   *mcpReg  // MCP servers and their tools
+	tasks *taskReg // background agents
 
 	todoMu     sync.Mutex
 	todoSID    string
@@ -214,6 +215,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		jobs:      tools.NewJobs(),
 		skillsReg: &skillReg{},
 		mcp:       newMCPReg(),
+		tasks:     newTaskReg(),
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {
