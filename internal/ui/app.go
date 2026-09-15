@@ -79,6 +79,7 @@ type App struct {
 	question  *questionPrompt
 
 	caches      map[string]*widgetCache
+	pending     map[string]int64 // widget id -> generation of the render in flight
 	frameGen    int64
 	timeStr     string
 	activeBump  time.Time
@@ -103,6 +104,11 @@ type widgetCache struct {
 	lines [][]hostapi.Segment
 	width int
 	gen   int64
+
+	// wrapped holds the lines re-wrapped for wrapW cells: compose runs
+	// every frame and wrapping the transcript is its biggest cost.
+	wrapped [][]hostapi.Segment
+	wrapW   int
 }
 
 // NewApp builds the root model; host hooks are attached by the caller via
@@ -390,6 +396,7 @@ func (a *App) pulse() bool {
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
+	delete(a.pending, msg.id)
 	if msg.err != nil {
 		if !isTolerableRenderErr(msg.err) {
 			a.host.RecordError("widget "+msg.id, msg.err.Error())
@@ -434,6 +441,15 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == width {
 			continue
 		}
+		// One render per widget in flight: at 30 fps a slow widget would
+		// otherwise pile up a queue of renders of the same generation.
+		if a.pending[w.ID] == gen {
+			continue
+		}
+		if a.pending == nil {
+			a.pending = map[string]int64{}
+		}
+		a.pending[w.ID] = gen
 		cmds = append(cmds, func() tea.Msg {
 			lines, err := a.host.RenderWidget(a.ctx(), w, width, st)
 			return widgetRenderedMsg{id: w.ID, lines: lines, width: width, gen: gen, err: err}
@@ -699,18 +715,28 @@ func (a *App) applyChatScroll(kind string) {
 func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
-		lines := expandTabs(a.widgetLines(wgt.ID))
-		if wgt.Wrap {
-			// Word-wrap instead of truncating; the transcript shows the
-			// wrapped tail (bottom-anchored).
+		c := a.caches[wgt.ID]
+		if c == nil {
+			continue
+		}
+		lines := expandTabs(c.lines)
+		if !wgt.Wrap {
 			for _, line := range lines {
-				out = append(out, wrapSegs(line, width)...)
+				out = append(out, truncateSegs(line, width))
 			}
 			continue
 		}
-		for _, line := range lines {
-			out = append(out, truncateSegs(line, width))
+		// Word-wrap instead of truncating; the transcript shows the
+		// wrapped tail (bottom-anchored). The rows change only when the
+		// widget renders again or the width does.
+		if c.wrapped == nil || c.wrapW != width {
+			var rows [][]hostapi.Segment
+			for _, line := range lines {
+				rows = append(rows, wrapSegs(line, width)...)
+			}
+			c.wrapped, c.wrapW = rows, width
 		}
+		out = append(out, c.wrapped...)
 	}
 	return out
 }
