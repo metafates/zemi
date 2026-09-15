@@ -12,7 +12,6 @@ func TestConfigRevisionsCRUD(t *testing.T) {
 	}
 	defer db.Close()
 
-	ok := true
 	rev := &ConfigRevision{
 		ID:          NewID(),
 		Title:       "rules: deny tool.bash rm -rf *",
@@ -20,7 +19,6 @@ func TestConfigRevisionsCRUD(t *testing.T) {
 		PathsJSON:   `["permissions.lua"]`,
 		Status:      "pending",
 		AppliedBy:   "user",
-		EvalOK:      &ok,
 	}
 	if err := db.AddRevision(rev); err != nil {
 		t.Fatalf("add: %v", err)
@@ -33,7 +31,7 @@ func TestConfigRevisionsCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Title != rev.Title || got.Status != "pending" || got.EvalOK == nil || !*got.EvalOK {
+	if got.Title != rev.Title || got.Status != "pending" || got.AppliedBy != "user" {
 		t.Fatalf("row: %+v", got)
 	}
 

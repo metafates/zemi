@@ -136,17 +136,7 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 	case float32:
 		return lua.LNumber(t)
 	case []any:
-		if depth >= MaxTableDepth {
-			L.RaiseError("zemi.lua: table nesting exceeds depth cap")
-			return lua.LNil
-		}
-		p := reflect.ValueOf(v).Pointer()
-		if _, ok := seen[p]; ok {
-			L.RaiseError("zemi.lua: cyclic Go value refused at marshal boundary")
-			return lua.LNil
-		}
-		seen[p] = struct{}{}
-		defer delete(seen, p)
+		defer delete(seen, enterGo(L, v, depth, seen))
 		tb := L.NewTable()
 		for _, item := range t {
 			tb.Append(fromGo(L, item, depth+1, seen))
@@ -159,17 +149,7 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 		}
 		return tb
 	case map[string]any:
-		if depth >= MaxTableDepth {
-			L.RaiseError("zemi.lua: table nesting exceeds depth cap")
-			return lua.LNil
-		}
-		p := reflect.ValueOf(v).Pointer()
-		if _, ok := seen[p]; ok {
-			L.RaiseError("zemi.lua: cyclic Go value refused at marshal boundary")
-			return lua.LNil
-		}
-		seen[p] = struct{}{}
-		defer delete(seen, p)
+		defer delete(seen, enterGo(L, v, depth, seen))
 		tb := L.NewTable()
 		for k, item := range t {
 			tb.RawSetString(k, fromGo(L, item, depth+1, seen))
@@ -189,4 +169,18 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 		L.RaiseError("zemi.lua: cannot marshal Go value of type %T", v)
 		return lua.LNil
 	}
+}
+
+// enterGo applies the depth cap and cycle refusal to a Go slice or map
+// (RaiseError panics) and returns the seen key the caller removes after.
+func enterGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) uintptr {
+	if depth >= MaxTableDepth {
+		L.RaiseError("zemi.lua: table nesting exceeds depth cap")
+	}
+	p := reflect.ValueOf(v).Pointer()
+	if _, ok := seen[p]; ok {
+		L.RaiseError("zemi.lua: cyclic Go value refused at marshal boundary")
+	}
+	seen[p] = struct{}{}
+	return p
 }

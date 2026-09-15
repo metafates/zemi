@@ -55,7 +55,7 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 | `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
-| `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules`  `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (user config only; see zemi-config) |
+| `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules`, `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (user config only; see zemi-config) |
 | `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |
 | `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
 | `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })` |

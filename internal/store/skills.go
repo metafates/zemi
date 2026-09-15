@@ -1,4 +1,4 @@
-// skills.go implements the M3 skills table (DESIGN §7, §10.5): the
+// skills.go is the skills table (DESIGN §7, §10.5): the
 // enabled-state store for discovered skills. Skills are user-scope: they
 // live in the global DB. Discovery (internal/skills) drives which rows
 // exist; SyncSkills reconciles the table with the filesystem.
@@ -22,7 +22,7 @@ type Skill struct {
 	CreatedAt      int64
 }
 
-func (s *DB) scanSkill(row interface{ Scan(...any) error }) (*Skill, error) {
+func scanSkill(row scanner) (*Skill, error) {
 	var sk Skill
 	var enabled int
 	if err := row.Scan(&sk.Name, &sk.Path, &sk.Source, &enabled, &sk.CreatedAt); err != nil {
@@ -35,7 +35,7 @@ func (s *DB) scanSkill(row interface{ Scan(...any) error }) (*Skill, error) {
 // GetSkill returns one skill row by name.
 func (s *DB) GetSkill(name string) (*Skill, error) {
 	row := s.db.QueryRow(`SELECT name, path, source, enabled, created_at FROM skills WHERE name = ?`, name)
-	sk, err := s.scanSkill(row)
+	sk, err := scanSkill(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -45,35 +45,12 @@ func (s *DB) GetSkill(name string) (*Skill, error) {
 // ListSkills returns all skill rows ordered by name.
 func (s *DB) ListSkills() ([]*Skill, error) {
 	rows, err := s.db.Query(`SELECT name, path, source, enabled, created_at FROM skills ORDER BY name`)
-	if err != nil {
-		return nil, fmt.Errorf("store: list skills: %w", err)
-	}
-	defer rows.Close()
-	var out []*Skill
-	for rows.Next() {
-		sk, err := s.scanSkill(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, sk)
-	}
-	return out, rows.Err()
+	return collect(rows, err, scanSkill)
 }
 
 // SetSkillEnabled flips the enabled flag of one skill row.
 func (s *DB) SetSkillEnabled(name string, enabled bool) error {
-	v := 0
-	if enabled {
-		v = 1
-	}
-	res, err := s.db.Exec(`UPDATE skills SET enabled = ? WHERE name = ?`, v, name)
-	if err != nil {
-		return fmt.Errorf("store: set skill enabled: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.execOne("set skill enabled", `UPDATE skills SET enabled = ? WHERE name = ?`, enabled, name)
 }
 
 // SyncSkills reconciles the skills table with filesystem discovery:
@@ -86,45 +63,19 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 		return fmt.Errorf("store: sync skills: %w", err)
 	}
 	defer tx.Rollback()
-	keep := make(map[string]bool, len(discovered))
-	for _, sk := range discovered {
-		keep[sk.Name] = true
-		def := 0
-		if sk.DefaultEnabled {
-			def = 1
-		}
+	names := make([]any, len(discovered))
+	for i, sk := range discovered {
+		names[i] = sk.Name
 		if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
 			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
-			sk.Name, sk.Path, sk.Source, def, now()); err != nil {
+			sk.Name, sk.Path, sk.Source, sk.DefaultEnabled, now()); err != nil {
 			return fmt.Errorf("store: sync skills: %w", err)
 		}
 	}
-	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (`+placeholders(len(keep))+`)`,
-		keys(keep)...); err != nil {
+	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (`+placeholders(len(names))+`)`,
+		names...); err != nil {
 		return fmt.Errorf("store: sync skills: %w", err)
 	}
 	return tx.Commit()
-}
-
-func placeholders(n int) string {
-	if n == 0 {
-		return "''"
-	}
-	out := ""
-	for i := 0; i < n; i++ {
-		if i > 0 {
-			out += ","
-		}
-		out += "?"
-	}
-	return out
-}
-
-func keys(m map[string]bool) []any {
-	out := make([]any, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }

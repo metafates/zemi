@@ -11,13 +11,12 @@ import (
 // Sandbox builds a sandboxed LState: curated stdlib, frozen shared tables,
 // per-chunk environments with protected names (DESIGN §5).
 type Sandbox struct {
-	L          *glua.LState
-	frozen     *glua.LTable
-	protected  map[string]struct{}
-	namespaces []*glua.LTable
-	integrity  []namespaceCheck
-	originOf   func() Origin
-	start      time.Time
+	L         *glua.LState
+	frozen    *glua.LTable
+	protected map[string]struct{}
+	integrity []namespaceCheck
+	originOf  func() Origin
+	start     time.Time
 }
 
 type namespaceCheck struct {
@@ -395,7 +394,6 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 	tbl.ForEach(func(k, v glua.LValue) {
 		members[k.String()] = v
 	})
-	s.namespaces = append(s.namespaces, tbl)
 	s.integrity = append(s.integrity, namespaceCheck{name: name, table: tbl, members: members})
 	parent, err := s.ensureParent(strings.Split(name, "."))
 	if err != nil {

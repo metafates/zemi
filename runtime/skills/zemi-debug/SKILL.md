@@ -32,7 +32,7 @@ description: Diagnose problems with zemi itself - crashes, errors, a model that 
 | boot error "permissions.lua refused" | the file was edited by hand; restore it from the git history of `~/.config/zemi` or delete it (permanent rules are lost) |
 | statusline "HOT /reload" | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | project `.zemi/init.lua` ignored | trust refused; `~/.local/state/zemi/project_trust.json` maps the dir to a hash, a `!` prefix means denied; remove the entry to be asked again |
-| reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now; `reflector.every_n_sessions = 0` disables it |
+| reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, enter toggles |
 
 ## Stores

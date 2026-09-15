@@ -203,7 +203,7 @@ Contracts that make this safe:
   blocks the queue only for its own duration; documented, configurable
   `timeout`, and tools are required to do I/O via async APIs. A stuck handler
   fails the tool call with an error and marks the runtime "hot";
-  force-reload is the Go-reserved `/Reload` command plus the Go-reserved
+  force-reload is the Go-reserved `/reload` command plus the Go-reserved
   cancel trigger, never routed through Lua (while hot, every Lua keymap is
   dead; the reserved cancel and reload triggers are not, they dispatch
   before any Lua-visible keymap and are fixed in v1). Reloading builds a
@@ -515,7 +515,7 @@ loading last cannot shadow a user binding, and `zemi.keymap.del` unmaps
 keys set by the caller's origin or a less trusted one (user config can
 remove shipped defaults; a plugin cannot remove user keys). The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
-exact, case-sensitive, non-abbreviable `/Reload` command, checked on
+exact, case-sensitive, non-abbreviable `/reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed
 in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
@@ -829,7 +829,7 @@ UI extensibility contract:
   navigate, `tab` accepts (fills `/name `), `enter` submits the typed
   line, so `/name args` runs the command instead of sending to the
   model; an unknown name toasts and does not send; `esc` closes. The
-  exact, case-sensitive `/Reload` is Go-reserved: it is checked on
+  exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
 - `zemi.ui.invalidate(id)` (or `id = "all"`) is a no-op in v1 (every
   visible widget re-renders on every generation change anyway); the API
@@ -1494,7 +1494,7 @@ toolset (§6.3).
   profile, a user command, or the shipped chat widget. Command names
   collide case-insensitively: a registration whose name differs from an
   existing command only by case is refused, so `/reload`/`/RELOAD`
-  cannot shadow the reserved `/Reload`. MCP tool names (M5) register
+  cannot shadow the reserved `/reload`. MCP tool names (M5) register
   through the same cross-origin collision path with `mcp:<server>`
   ranked below `project`, so an MCP server cannot shadow a builtin
   tool, a command, or another origin's registration; two `mcp:<server>`
