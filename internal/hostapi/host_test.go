@@ -52,7 +52,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.4.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.5.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		for _, fn in ipairs({ "set", "del", "get", "list" }) do
@@ -74,6 +74,16 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
 		assert(type(zemi.learn.proposals) == "function", "zemi.learn.proposals missing")
 		assert(type(zemi.learn.decide) == "function", "zemi.learn.decide missing")
+		for _, fn in ipairs({ "encode", "decode" }) do
+			assert(type(zemi.json[fn]) == "function", "zemi.json." .. fn .. " missing")
+		end
+		for _, fn in ipairs({ "get", "set", "insert", "submit" }) do
+			assert(type(zemi.composer[fn]) == "function", "zemi.composer." .. fn .. " missing")
+		end
+		assert(type(zemi.event.off) == "function", "zemi.event.off missing")
+		for _, fn in ipairs({ "list", "new", "open", "todos" }) do
+			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
+		end
 		for _, fn in ipairs({ "run", "list" }) do
 			assert(type(zemi.agent[fn]) == "function", "zemi.agent." .. fn .. " missing")
 			assert(type(zemi.workflow[fn]) == "function", "zemi.workflow." .. fn .. " missing")
@@ -249,7 +259,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.4.0", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.5.0", "interpreter wedged after veto timeout")
 	`)
 }
 

@@ -246,7 +246,7 @@ func (h *Host) systemWith(sys string, files []string) string {
 		}
 		sections += "\n\n## Instructions: " + name + "\n" + string(b)
 	}
-	return h.withDigest(sys + sections + h.skillsIndexPrompt())
+	return h.withDigest(sys + sections + h.assembleSections() + h.skillsIndexPrompt())
 }
 
 // instructionFiles lists the instruction files for this project, general
@@ -1155,12 +1155,18 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	// send returns at once: starting a turn builds the system prompt, which
+	// runs agent.assemble handlers on this interpreter and must not wait on it.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
-		if err := h.AgentSend(text); err != nil {
-			L.RaiseError("zemi.agent.send: %v", err)
-			return 0
-		}
+		h.GoSafe("zemi.agent.send", func() {
+			if err := h.AgentSend(text); err != nil {
+				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
+				if ui := h.hooks(); ui != nil {
+					ui.Notify("error", "agent", err.Error())
+				}
+			}
+		})
 		return 0
 	}))
 
@@ -1347,6 +1353,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 		L.Push(out)
 		return 1
 	}))
+	h.sessionExtraFns(L, tb)
 	return tb
 }
 

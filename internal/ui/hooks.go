@@ -115,6 +115,40 @@ func (a *App) Refresh() {
 	a.dispatch(invalidateMsg{})
 }
 
+type composerEditMsg struct {
+	op, text string
+	cursor   int
+}
+
+// ComposerEdit posts a zemi.composer edit to the UI goroutine.
+func (a *App) ComposerEdit(op, text string, cursor int) {
+	a.dispatch(composerEditMsg{op: op, text: sanitize.String(text), cursor: cursor})
+}
+
+// applyComposerEdit runs on the UI goroutine.
+func (a *App) applyComposerEdit(m composerEditMsg) {
+	switch m.op {
+	case "set":
+		a.composer.text = m.text
+		if n := len([]rune(m.text)); m.cursor < 0 || m.cursor > n {
+			a.composer.cursor = n
+		} else {
+			a.composer.cursor = m.cursor
+		}
+	case "insert":
+		a.composer.insert(m.text)
+	case "submit":
+		a.submitComposer()
+	}
+	a.publishComposer()
+	a.frameGen++
+}
+
+// publishComposer hands the draft to the host for zemi.composer.get.
+func (a *App) publishComposer() {
+	a.host.SetComposerSnapshot(a.composer.text, a.composer.cursor)
+}
+
 // ScrollChat moves the transcript viewport (zemi.ui.scroll.* host
 // actions); posted to the UI goroutine like every other hook.
 func (a *App) ScrollChat(kind string) {

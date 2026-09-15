@@ -200,9 +200,12 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		if err := h.GlobalDB.SetKV(key, string(b)); err != nil {
-			L.RaiseError("zemi.state.put: %v", err)
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
 		}
-		return 0
+		L.Push(glua.LTrue)
+		return 1
 	}))
 	return tb
 }
@@ -251,7 +254,9 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			}
 			ms := L.CheckNumber(1)
 			fn := L.CheckFunction(2)
-			if ms <= 0 {
+			// set(0, fn) runs fn on the next queue turn (vim.schedule); a
+			// repeating timer needs a real interval.
+			if ms < 0 || (repeat && ms == 0) {
 				L.RaiseError("zemi.timer: interval must be positive")
 				return 0
 			}
@@ -259,7 +264,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			gen := h.currentGen()
 			handle := &timerHandle{stop: make(chan struct{})}
 			h.timers.add(handle)
-			go func() {
+			h.GoSafe("zemi.timer", func() {
 				t := time.NewTimer(d)
 				defer t.Stop()
 				for {
@@ -285,7 +290,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 					}
 					t.Reset(d)
 				}
-			}()
+			})
 			handleTb := L.NewTable()
 			handleTb.RawSetString("stop", L.NewFunction(func(L *glua.LState) int {
 				handle.stopIt()
@@ -318,8 +323,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		}
 		b, err := os.ReadFile(resolved)
 		if err != nil {
-			L.RaiseError("zemi.fs.read: %v", err)
-			return 0
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
 		}
 		L.Push(glua.LString(b))
 		return 1
@@ -336,14 +342,17 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err := h.luaGate(L, "lua.fs.write", resolved); err != nil {
 			return 0
 		}
-		if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
-			L.RaiseError("zemi.fs.write: %v", err)
-			return 0
+		err = os.MkdirAll(filepath.Dir(resolved), 0o755)
+		if err == nil {
+			err = os.WriteFile(resolved, []byte(content), 0o644)
 		}
-		if err := os.WriteFile(resolved, []byte(content), 0o644); err != nil {
-			L.RaiseError("zemi.fs.write: %v", err)
+		if err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
 		}
-		return 0
+		L.Push(glua.LTrue)
+		return 1
 	}))
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {

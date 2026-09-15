@@ -62,12 +62,30 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			if c, ok := opts.RawGetString("coalesce").(glua.LBool); ok {
 				hd.Coalesce = bool(c)
 			}
+			hd.Once = rawBool(opts, "once")
 		}
-		if _, err := h.Events.Add(hd); err != nil {
+		added, err := h.Events.Add(hd)
+		if err != nil {
 			L.RaiseError("zemi.event.on: %v", err)
 			return 0
 		}
-		return 0
+		L.Push(glua.LString(added.ID))
+		return 1
+	}))
+
+	// off(id) removes a handler registered by this origin or a lower-trust
+	// one; it returns whether a handler was removed.
+	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.event.off") {
+			return 0
+		}
+		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin())
+		if err != nil {
+			L.RaiseError("zemi.event.off: %v", err)
+			return 0
+		}
+		L.Push(glua.LBool(ok))
+		return 1
 	}))
 
 	tb.RawSetString("emit", L.NewFunction(func(L *glua.LState) int {

@@ -284,6 +284,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.pushToast(msg.level, msg.title, msg.body)
 	case chatScrollMsg:
 		a.applyChatScroll(msg.kind)
+	case composerEditMsg:
+		a.applyComposerEdit(msg)
 	case overlayOpenMsg:
 		a.openOverlay(msg.o)
 	case overlayCloseMsg:
@@ -300,7 +302,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frameGen++
 		return a, a.frameTickCmd()
 	case tea.KeyPressMsg:
-		return a, a.handleKey(msg)
+		cmd := a.handleKey(msg)
+		a.publishComposer()
+		return a, cmd
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
@@ -315,6 +319,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
 		a.composer.insert(s)
+		a.publishComposer()
 		return a, a.updateCompletion()
 	case filesScannedMsg:
 		a.onFilesScanned(msg)

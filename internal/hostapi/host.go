@@ -37,6 +37,9 @@ type UIHooks interface {
 	ReviewMemories(items []MemoryRow) map[string]string // row id -> accept, reject or delete
 	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
 	AskQuestion(q tools.Question) (answer string, ok bool)
+	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
+	// "set" (cursor -1 = end), "insert" or "submit".
+	ComposerEdit(op, text string, cursor int)
 }
 
 // Overlay is the Go-side record of an open Lua overlay. Items are plain
@@ -157,6 +160,10 @@ type Host struct {
 	// prompt; project agents, commands and workflows load only then.
 	// Version is the zemi build version for the splash screen.
 	Version string
+
+	composerMu     sync.Mutex
+	composerText   string
+	composerCursor int
 
 	recentMu    sync.Mutex
 	recent      []*store.Session
@@ -497,6 +504,9 @@ func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context,
 }
 
 func (h *Host) callHandler(L *glua.LState, hd *EventHandler, name string, payload map[string]any, from string, deadline time.Duration) {
+	if hd.Once {
+		h.Events.drop(hd)
+	}
 	h.RT.PushFrame(hd.Origin, hd.Path)
 	defer h.RT.PopFrame()
 	ev := map[string]any{"name": name, "from": from}
@@ -513,6 +523,9 @@ func (h *Host) callHandler(L *glua.LState, hd *EventHandler, name string, payloa
 }
 
 func (h *Host) callVetoHandler(L *glua.LState, hd *EventHandler, name string, payload map[string]any, from string, deadline time.Duration) (denied bool, reason string, timedOut bool) {
+	if hd.Once {
+		h.Events.drop(hd)
+	}
 	h.RT.PushFrame(hd.Origin, hd.Path)
 	defer h.RT.PopFrame()
 	ev := map[string]any{"name": name, "from": from}
@@ -876,6 +889,8 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.model", h.modelNamespace(L), nil},
 		{"zemi.agent", h.agentNamespace(L), nil},
 		{"zemi.workflow", h.workflowNamespace(L), nil},
+		{"zemi.json", h.jsonNamespace(L), nil},
+		{"zemi.composer", h.composerNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
@@ -887,7 +902,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.4.0"))
+	api.RawSetString("version", glua.LString("0.5.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

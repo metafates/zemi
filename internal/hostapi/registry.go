@@ -268,6 +268,7 @@ type EventHandler struct {
 	Path     string
 	Gen      Gen
 	Coalesce bool
+	Once     bool // removed before its first call
 }
 
 // EventRegistry stores event subscriptions. Handler ids collide across
@@ -323,6 +324,39 @@ func (r *EventRegistry) Handlers(event string) []*EventHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return append([]*EventHandler(nil), r.handlers[event]...)
+}
+
+// Remove drops the handler with id, refusing one registered by a
+// higher-trust origin than the caller; it reports whether one was removed.
+func (r *EventRegistry) Remove(id string, caller lua.Origin) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for ev, list := range r.handlers {
+		for i, hd := range list {
+			if hd.ID != id {
+				continue
+			}
+			if hd.Origin.Rank() > caller.Rank() {
+				return false, fmt.Errorf("event handler %q belongs to %s config", id, hd.Origin)
+			}
+			r.handlers[ev] = append(list[:i:i], list[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// drop removes one handler by identity (once handlers).
+func (r *EventRegistry) drop(h *EventHandler) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list := r.handlers[h.Event]
+	for i, hd := range list {
+		if hd == h {
+			r.handlers[h.Event] = append(list[:i:i], list[i+1:]...)
+			return
+		}
+	}
 }
 
 func (r *EventRegistry) Purge() {

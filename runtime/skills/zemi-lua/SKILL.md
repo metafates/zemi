@@ -16,8 +16,8 @@ Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) >
 `builtin` (shipped) > `plugin` (`site/pack`) > `project` (`<project>/.zemi`). A
 registration with the same id from a lower origin is refused; the same origin replaces
 its own. Only `user` may register providers, add allow rules or decide learning
-proposals. Lua calls to gated APIs never open a prompt: an "ask" decision fails with
-`nil, "permission ask required"` unless an allow rule exists.
+proposals. Lua calls to gated APIs never open a prompt: an "ask" decision raises
+`permission ask required` unless an allow rule exists.
 
 ## Modules
 
@@ -31,7 +31,8 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 - Keymap handlers, event handlers and widget `render` must finish in about 10 ms.
 - `render` must be pure: no `zemi.*` mutations (they raise during render).
 - Long work goes to `zemi.job`, `zemi.http` or `zemi.timer` with callbacks.
-- Misuse raises; a runtime failure of a synchronous call returns `nil, err`.
+- Misuse raises; a runtime failure of a synchronous call returns `nil, err` (`fs.read`,
+  `fs.write`, `state.put`, `json.decode`, `session.new`, `session.open`).
 - A wedged handler turns the runtime "hot"; `/Reload` rebuilds it. Errors show in `/errors`.
 
 ## Namespaces
@@ -41,18 +42,20 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()` |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `list` |
-| `zemi.event` | `on(name, fn, { id, coalesce })`, `emit("user.*", payload)` |
+| `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` |
 | `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` |
 | `zemi.provider`, `zemi.model` | `register`, `list`; `list`, `set`, `pick` |
-| `zemi.session` | `id`, `title`, `set_title`, `messages` |
+| `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()` |
+| `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
+| `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule({ subject, pattern, decision, match, not_match })`, `rules` |
 | `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |
-| `zemi.fs`, `zemi.http`, `zemi.job`, `zemi.timer` | `read`, `write`, `glob`, `grep`; `get`; `start`, `out`; `set`, `every` |
+| `zemi.fs`, `zemi.http`, `zemi.job`, `zemi.timer` | `read`, `write`, `glob`, `grep`; `get`; `start`, `out`; `set` (0 ms = next tick), `every` |
 | `zemi.state`, `zemi.env` | `put`, `get` (persisted kv); `get` (filtered environment) |
 
 `require("zemi.util")` adds `split`, `trim`, `startswith`, `endswith`, `keys`, `map`,
@@ -116,7 +119,9 @@ and workflow progress). Regions: `header`, `chat`, `statusline.left`,
 ## Events
 
 `app.ready`, `session.new`, `session.open`, `session.close`, `agent.start`,
-`agent.finish`, `agent.error`, `agent.subagent.start`, `agent.subagent.finish`, `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
+`agent.finish`, `agent.error`, `agent.subagent.start`, `agent.subagent.finish`,
+`agent.assemble` (return a string or `{ title, text }` to add a system prompt section;
+user, builtin and plugin handlers only), `composer.change`, `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
 (vetoable: deny, halt, rewrite), `tool.post`, `permission.request`, `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
 `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
