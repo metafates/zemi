@@ -469,7 +469,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	}
 	id := h.currentModelID(p)
 	if id == "" {
-		return nil, fmt.Errorf("agent: no models registered")
+		return nil, fmt.Errorf("agent: no model configured: uncomment the provider and agent.model lines in %s (see the README's Configure section)", filepath.Join(h.Dirs.ConfigHome, "init.lua"))
 	}
 	return h.Providers.Resolve(id)
 }
