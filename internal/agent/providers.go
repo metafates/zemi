@@ -1,6 +1,7 @@
-// Package agent is the M1 chat core (DESIGN §6.3): provider registry
-// (anthropic, openai, openaicompat), model catalog and the turn runner
-// that streams fantasy agent output into the UI and persists messages.
+// Package agent is the M1 chat core (DESIGN §6.3): a provider registry
+// (kinds: anthropic, openai, openaicompat; populated only from user
+// config), model catalog and the turn runner that streams fantasy agent
+// output into the UI and persists messages.
 package agent
 
 import (
@@ -38,27 +39,12 @@ type Registry struct {
 	specs []Spec
 }
 
-// DefaultRegistry ships the anthropic and openai providers with small
-// starter catalogs; model ids follow provider/model in callers.
-func DefaultRegistry() *Registry {
-	return &Registry{
-		specs: []Spec{
-			{
-				ID: "anthropic", Kind: "anthropic", APIKeyEnv: "ANTHROPIC_API_KEY",
-				Models: []Model{
-					{ID: "claude-sonnet-4-5", Display: "Claude Sonnet 4.5"},
-					{ID: "claude-haiku-4-5", Display: "Claude Haiku 4.5"},
-				},
-			},
-			{
-				ID: "openai", Kind: "openai", APIKeyEnv: "OPENAI_API_KEY",
-				Models: []Model{
-					{ID: "gpt-5", Display: "GPT-5"},
-					{ID: "gpt-5-mini", Display: "GPT-5 mini"},
-				},
-			},
-		},
-	}
+// NewRegistry returns an empty registry. zemi ships no providers: every
+// provider and its model catalog comes from user config (config.lua calls
+// zemi.provider.register, DESIGN §6.3); without one the agent fails closed
+// with "no models registered".
+func NewRegistry() *Registry {
+	return &Registry{}
 }
 
 // Register adds a provider spec; a duplicate id is an error. Requires a
@@ -92,6 +78,16 @@ func (r *Registry) Lookup(providerID string) (Spec, bool) {
 		}
 	}
 	return Spec{}, false
+}
+
+// HasKey reports whether an api key is available for the provider
+// (picked from the provider's key env var). Values are never exposed.
+func (r *Registry) HasKey(providerID string) bool {
+	spec, ok := r.Lookup(providerID)
+	if !ok {
+		return false
+	}
+	return r.apiKeys(spec) != ""
 }
 
 // apiKeys reports which providers have an api key available (for the
@@ -156,7 +152,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 			return nil, err
 		}
 		return p.LanguageModel(context.Background(), model)
-	case "openaicompat":
+	case "openaicompat", "openai_compat":
 		opts := []openaicompat.Option{}
 		if spec.BaseURL != "" {
 			opts = append(opts, openaicompat.WithBaseURL(spec.BaseURL))

@@ -212,22 +212,32 @@ func TestCancelAbortsTurn(t *testing.T) {
 }
 
 func TestRegistryResolve(t *testing.T) {
-	r := DefaultRegistry()
+	r := NewRegistry()
 	if _, err := r.Resolve("nosuch/model"); err == nil {
 		t.Fatal("unknown provider must fail")
 	}
 	if _, err := r.Resolve("justone"); err == nil {
 		t.Fatal("model id needs provider/model shape")
 	}
-	// anthropic with no key still resolves (error surfaces at send)
-	if _, err := r.Resolve("anthropic/claude-sonnet-4-5"); err != nil {
-		t.Fatalf("anthropic resolve: %v", err)
+	// The registry starts empty; providers come only from user config.
+	if specs := r.List(); len(specs) != 0 {
+		t.Fatalf("registry must start empty, got %v", specs)
 	}
-	if err := r.Register(Spec{ID: "anthropic", Kind: "openai"}); err == nil {
+	err := r.Register(Spec{
+		ID: "myllm", Kind: "openai_compat", BaseURL: "https://llm.internal/v1",
+		Models: []Model{{ID: "main", Display: "Main"}},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// user-registered provider with no key still resolves (error surfaces at send)
+	if _, err := r.Resolve("myllm/main"); err != nil {
+		t.Fatalf("openai_compat resolve: %v", err)
+	}
+	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}); err == nil {
 		t.Fatal("duplicate id must fail")
 	}
-	specs := r.List()
-	if len(specs) < 2 {
+	if specs := r.List(); len(specs) != 1 {
 		t.Fatalf("catalog: %v", specs)
 	}
 }
