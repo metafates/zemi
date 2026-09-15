@@ -1,4 +1,4 @@
-// agent.go is the M1 agent core in the host (DESIGN §6.3, §13): the
+// agent.go is the agent core in the host (DESIGN §6.3): the
 // provider/model/agent/permission/session namespaces, profile resolution,
 // turn streaming into the UI, message persistence and the steering queue.
 package hostapi
@@ -41,15 +41,10 @@ type Profile struct {
 // AgentEvent is one streaming update delivered to the UI (hostapi stays
 // UI-agnostic; internal/ui implements the display).
 type AgentEvent struct {
-	Kind             string // turn_start, text, reasoning, tool_start, tool_end, turn_done
-	Text             string
-	CallID           string
-	Tool             string
-	Input            string
-	OK               bool
-	Err              string
-	PromptTokens     int64
-	CompletionTokens int64
+	Kind   string // turn_start, text, reasoning, tool_start, tool_end, tool_progress, retry, turn_done
+	Text   string
+	CallID string
+	Err    string
 }
 
 // PermRequest is one interactive permission ask for the overlay.
@@ -92,14 +87,13 @@ type agentHost struct {
 	textBuf   string
 	reasonBuf string
 	tools     []StreamTool
-	usage     fantasy.Usage
 	steering  []string
 	modelSeed string
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn pins the most recent prompt size (the
-	// current context estimate), ctxWin overrides the context window when
-	// the model spec or config provides one.
+	// current context estimate). ctxWin: seeded override (tests); 0
+	// resolves via contextWindow.
 	sessIn   int64
 	sessOut  int64
 	lastIn   int64
@@ -227,10 +221,28 @@ const delegationPrompt = `
 Hand work to subagents with the agent tool when a search or investigation would take many reads and you only need the conclusion, or when a task splits into independent parts (launch those in one response; they run in parallel). Use the explore agent for questions about code; general only when the subagent must run commands or edit. Use a workflow when the work has stages with logic between them: fan out, then verify or compare. Do small, targeted work yourself: a known file, a single grep, a one-line fix. Once you delegate a search, do not repeat it yourself. Never delegate understanding: the prompt must carry what you already know (paths, lines, what to change), not "based on your findings, fix it". Subagent reports are not shown to the user; relay what matters.`
 
 // Effort is the configured reasoning effort ("" = provider default).
-func (h *Host) Effort() string {
-	v, _ := h.Settings.Get("agent.effort")
+func (h *Host) Effort() string { return h.setStr("agent.effort") }
+
+// setStr reads a string setting, "" when unset or not a string.
+func (h *Host) setStr(key string) string {
+	v, _ := h.Settings.Get(key)
 	s, _ := v.(string)
 	return s
+}
+
+// setInt reads a number setting, def when unset or not a number (config
+// files decode numbers as float64).
+func (h *Host) setInt(key string, def int) int {
+	v, _ := h.Settings.Get(key)
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	}
+	return def
 }
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
@@ -262,10 +274,8 @@ func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
 		return p.Model
 	}
-	if v, ok := h.Settings.Get("agent.model"); ok {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
+	if s := h.setStr("agent.model"); s != "" {
+		return s
 	}
 	for _, spec := range h.Providers.List() {
 		for _, m := range spec.Models {
@@ -287,10 +297,11 @@ func (h *Host) buildSystem(p *Profile) string {
 		files = p.ContextFiles
 	}
 	sys += h.zemiPrompt()
-	if def := h.permModeDef(); def.Base == "plan" {
+	def := h.permModeDef()
+	if def.Base == "plan" {
 		sys += planPrompt
 	}
-	if def := h.permModeDef(); def.Prompt != "" {
+	if def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
 	return h.systemWith(sys, files)
@@ -370,9 +381,6 @@ func fileExists(p string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// withDigest appends the pinned session digest behind the project context
-// (DESIGN §10.7): the digest is computed once at session creation and
-// refreshed only at compaction, keeping provider prompt caches warm.
 // environmentPrompt describes the machine and repository. It is computed
 // once per session and pinned like the digest, so a changing git status
 // does not bust the prompt cache every turn.
@@ -402,6 +410,8 @@ func (h *Host) environmentPrompt() string {
 	return env
 }
 
+// withDigest appends the session digest, pinned so provider prompt caches
+// stay warm (§10.7).
 func (h *Host) withDigest(sys string) string {
 	ag := h.agents
 	ag.mu.Lock()
@@ -438,7 +448,15 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	return h.Providers.Resolve(id)
 }
 
-// ensureRunner builds the runner for the current profile and session.
+// modelFor resolves the model a setting names, the agent model when the
+// setting is unset.
+func (h *Host) modelFor(key string) (fantasy.LanguageModel, error) {
+	if id := h.setStr(key); id != "" && h.modelFn == nil {
+		return h.Providers.Resolve(id)
+	}
+	return h.resolveModel(nil)
+}
+
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	model, err := h.resolveModel(p)
 	if err != nil {
@@ -446,6 +464,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	}
 	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
+	if p != nil {
+		r.Temperature = p.Temperature
+	}
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
@@ -613,7 +634,6 @@ func (h *Host) AgentCancel() {
 	}
 }
 
-// AgentActive reports whether a turn is running.
 func (h *Host) AgentActive() bool {
 	ag := h.agents
 	ag.mu.Lock()
@@ -621,7 +641,6 @@ func (h *Host) AgentActive() bool {
 	return ag.active
 }
 
-// agentEvent delivers one streaming update to the UI.
 func (h *Host) agentEvent(ev AgentEvent) {
 	if ui := h.hooks(); ui != nil {
 		ui.AgentEvent(ev)
@@ -702,7 +721,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	}
-	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
+	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id})
 }
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
@@ -718,7 +737,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 		}
 	}
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id, Tool: name, OK: ok, Input: output})
+	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id})
 	s.h.recordToolCall(name, ok, output)
 }
 
@@ -728,7 +747,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.usage = usage
 	ag.sessCost += cost
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
@@ -749,10 +767,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	sid := ag.sessionID
 	ag.mu.Unlock()
 
-	h.agentEvent(AgentEvent{
-		Kind: "turn_done", Err: errString(err),
-		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
-	})
+	h.agentEvent(AgentEvent{Kind: "turn_done", Err: errString(err)})
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()
@@ -851,16 +866,9 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// persistMessage writes one fantasy message into the project store.
 func (h *Host) persistMessage(role string, msg fantasy.Message) error {
-	if h.DB == nil {
-		return nil
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid := ag.sessionID
-	ag.mu.Unlock()
-	if sid == "" {
+	sid := h.AgentSessionID()
+	if h.DB == nil || sid == "" {
 		return nil
 	}
 	parts, err := json.Marshal(msg)
@@ -872,9 +880,9 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 		return err
 	}
 	if role == "user" {
-		ag.mu.Lock()
-		ag.turnMsgID = row.ID
-		ag.mu.Unlock()
+		h.agents.mu.Lock()
+		h.agents.turnMsgID = row.ID
+		h.agents.mu.Unlock()
 	}
 	return nil
 }
@@ -882,14 +890,8 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 // recordToolCall stores one tool telemetry row (each tool call gets its
 // own "tool" message row so tool_calls.message_id stays a real FK).
 func (h *Host) recordToolCall(name string, ok bool, output string) {
-	if h.DB == nil {
-		return
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid := ag.sessionID
-	ag.mu.Unlock()
-	if sid == "" {
+	sid := h.AgentSessionID()
+	if h.DB == nil || sid == "" {
 		return
 	}
 	parts, _ := json.Marshal(map[string]any{"tool": name, "output": output})
@@ -926,10 +928,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	if p != nil {
 		name = p.Name
 	}
-	title := strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0]
-	if r := []rune(title); len(r) > 60 {
-		title = string(r[:60])
-	}
+	title := clipRunes(strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0], 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
@@ -980,7 +979,6 @@ type StreamSnapshot struct {
 	SessionCost float64
 }
 
-// AgentStream returns the current stream snapshot.
 func (h *Host) AgentStream() StreamSnapshot {
 	ag := h.agents
 	ag.mu.Lock()
@@ -1154,7 +1152,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if !h.modelExists(id) {
+		if _, ok := h.modelSpec(id); !ok {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
 			return 0
 		}
@@ -1184,75 +1182,40 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// contextWindow resolves the context window for the model id: the model
-// spec's context_window, then the agent.context_window config knob, then
-// the 200k default.
-// turnCost prices one turn's tokens from the model spec; 0 when the spec
-// carries no prices.
-func (h *Host) turnCost(modelID string, in, out int64) float64 {
-	prov, model, ok := strings.Cut(modelID, "/")
+// modelSpec finds the catalog entry for a "provider/model" id.
+func (h *Host) modelSpec(id string) (agent.Model, bool) {
+	prov, model, ok := strings.Cut(id, "/")
 	if !ok {
-		return 0
+		return agent.Model{}, false
 	}
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
-		return 0
+		return agent.Model{}, false
 	}
 	for _, m := range spec.Models {
 		if m.ID == model {
-			return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+			return m, true
 		}
 	}
-	return 0
+	return agent.Model{}, false
 }
 
+// turnCost prices one turn's tokens from the model spec; 0 when the spec
+// carries no prices.
+func (h *Host) turnCost(modelID string, in, out int64) float64 {
+	m, _ := h.modelSpec(modelID)
+	return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+}
+
+// contextWindow: agent.context_window, then the model spec, then 200k.
 func (h *Host) contextWindow(modelID string) int64 {
-	if v, ok := h.Settings.Get("agent.context_window"); ok {
-		switch n := v.(type) {
-		case int:
-			if n > 0 {
-				return int64(n)
-			}
-		case int64:
-			if n > 0 {
-				return n
-			}
-		case float64:
-			if n > 0 {
-				return int64(n)
-			}
-		}
+	if n := h.setInt("agent.context_window", 0); n > 0 {
+		return int64(n)
 	}
-	if modelID != "" {
-		prov, model, ok := strings.Cut(modelID, "/")
-		if ok {
-			if spec, ok := h.Providers.Lookup(prov); ok {
-				for _, m := range spec.Models {
-					if m.ID == model && m.ContextWindow > 0 {
-						return m.ContextWindow
-					}
-				}
-			}
-		}
+	if m, ok := h.modelSpec(modelID); ok && m.ContextWindow > 0 {
+		return m.ContextWindow
 	}
 	return 200_000
-}
-
-func (h *Host) modelExists(id string) bool {
-	prov, _, ok := strings.Cut(id, "/")
-	if !ok {
-		return false
-	}
-	spec, ok := h.Providers.Lookup(prov)
-	if !ok {
-		return false
-	}
-	for _, m := range spec.Models {
-		if m.ID == strings.TrimPrefix(id, prov+"/") {
-			return true
-		}
-	}
-	return false
 }
 
 // pickModel opens the Go-owned model picker overlay (DESIGN §8).
@@ -1269,13 +1232,7 @@ func (h *Host) pickModel() (string, bool) {
 			})
 		}
 	}
-	cur := ""
-	if v, ok := h.Settings.Get("agent.model"); ok {
-		if s, ok := v.(string); ok {
-			cur = s
-		}
-	}
-	return ui.PickModel(items, cur)
+	return ui.PickModel(items, h.setStr("agent.model"))
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
@@ -1409,30 +1366,12 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			NotMatch: rawString(spec, "not_match"),
 			Scope:    perm.Scope(rawString(spec, "scope")),
 		}
-		if r.Subject == "" || r.Pattern == "" {
-			L.RaiseError("zemi.permission.rule: subject and pattern are required")
-			return 0
-		}
-		switch r.Decision {
-		case perm.Allow, perm.Ask, perm.Deny:
-		default:
-			L.RaiseError("zemi.permission.rule: decision must be allow, ask or deny")
-			return 0
-		}
-		if r.Scope == "" {
-			r.Scope = perm.ScopeSession
-		}
-		if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
-			L.RaiseError("zemi.permission.rule: scope must be session or permanent")
-			return 0
-		}
-		origin := h.RT.CurrentOrigin()
 		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
 		// user config only; permanent scope survives restarts, so it is
 		// user-only too (learned proposals reach it only through the
 		// review commit); every other origin may only add session-scope
 		// deny/ask rules.
-		if origin != lua.OriginUser {
+		if h.RT.CurrentOrigin() != lua.OriginUser {
 			if r.Decision == perm.Allow {
 				L.RaiseError("zemi.permission.rule: allow rules may only come from user config")
 				return 0
@@ -1442,26 +1381,15 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 				return 0
 			}
 		}
-		if err := validateRuleExamples(r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
+		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0
 		}
 		h.Perm.Add(r)
 		if r.Scope == perm.ScopePermanent {
-			if err := h.permRegenerate(); err != nil {
+			if err := h.persistPermanentRule(r, "rules: "+string(r.Decision)+" "+r.Subject+" "+r.Pattern, "user"); err != nil {
 				L.RaiseError("zemi.permission.rule: %v", err)
 				return 0
-			}
-			// The keypress is the review (§6.1): a permanent rule lands
-			// as a one-line commit; a failed commit is logged, the rule
-			// and the dump stay (the revisions table records failure).
-			changes, _ := json.Marshal(r)
-			title := "rules: " + string(r.Decision) + " " + r.Subject + " " + r.Pattern
-			if err := h.commitConfigRevision(title, string(changes),
-				[]string{"permissions.lua"}, "user"); err != nil {
-				h.Log.Warn("config-repo", "permanent-rule commit failed", map[string]any{
-					"error": err.Error(),
-				})
 			}
 		}
 		return 0
@@ -1487,10 +1415,23 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// validateRuleExamples checks Lua-authored rule examples at load (DESIGN
-// §9): the match example must match the pattern without being excluded,
-// the not_match example must be excluded; a guard needs both examples.
-func validateRuleExamples(r perm.Rule, matchEx, notMatchEx string) error {
+// validateRule checks a Lua or reflector rule and defaults its scope to
+// session. Examples are required (DESIGN §9): the match example must match
+// the pattern without being excluded, the not_match example must be
+// excluded; a guard needs both examples.
+func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+	switch {
+	case r.Subject == "" || r.Pattern == "":
+		return errors.New("subject and pattern are required")
+	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
+		return errors.New("decision must be allow, ask or deny")
+	}
+	if r.Scope == "" {
+		r.Scope = perm.ScopeSession
+	}
+	if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
+		return errors.New("scope must be session or permanent")
+	}
 	if r.NotMatch == "" {
 		if matchEx == "" {
 			return fmt.Errorf("rule %s %q needs a match example", r.Subject, r.Pattern)
@@ -1708,16 +1649,9 @@ func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
 	return func(name string, input map[string]any, ok bool, output string) {
 		h.EmitAsync("tool.post", map[string]any{
 			"tool": name, "input": input, "ok": ok,
-			"output": truncateString(output, 4096),
+			"output": truncRunes(output, 4096),
 		})
 	}
-}
-
-func truncateString(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls.

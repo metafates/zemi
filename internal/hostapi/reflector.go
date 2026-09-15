@@ -1,12 +1,7 @@
-// reflector.go drives the §10.3 reflector: after a session closes, a
-// headless tool-less model turn reads the transcript, tool stats, the
-// memory index (ids, kinds, tags, a short gist) and the skills index, and
-// answers with a JSON proposal document (v1: memories and supersedes
-// only). Every proposed memory rides the §10.4 intake and the autonomy
-// gate; Go stamps provenance with the reflected session id and the
-// auto-apply decision never reads the proposal's own fields. Runs are
-// serialized and detached with a timeout; the shutdown run detaches the UI
-// hooks first so a review prompt can never block a dead program.
+// reflector.go: after a session closes, a tool-less model call reads the
+// transcript, tool stats and memory and skill indexes, and proposes
+// memories, config patches and skills (DESIGN §10.3). Every proposal goes
+// through intake and the autonomy gate.
 package hostapi
 
 import (
@@ -32,8 +27,7 @@ const (
 	reflectToolMax = 200
 )
 
-// reflectorSystem is the shipped reflector prompt (task profile in DESIGN
-// §6.3; the profile itself ships with M5 subagents).
+// reflectorSystem is the reflector prompt.
 const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions in the same project.
 
 Rules:
@@ -71,43 +65,16 @@ type reflectProposal struct {
 // reflectEveryN reads the trigger gate: reflect every N closed sessions,
 // 0 disables.
 func (h *Host) reflectEveryN() int {
-	if v, ok := h.Settings.Get("reflector.every_n_sessions"); ok {
-		if n, ok := v.(int); ok && n >= 0 {
-			return n
-		}
+	if n := h.setInt("reflector.every_n_sessions", 1); n >= 0 {
+		return n
 	}
 	return 1
-}
-
-// reflectTimeout reads the run timeout.
-func (h *Host) reflectTimeout() time.Duration {
-	ms := 120000
-	if v, ok := h.Settings.Get("reflector.timeout_ms"); ok {
-		if n, ok := v.(int); ok && n > 0 {
-			ms = n
-		}
-	}
-	return time.Duration(ms) * time.Millisecond
-}
-
-// reflectModelID picks the reflector model: reflector.model, else the
-// shared agent model.
-func (h *Host) reflectModelID() string {
-	if v, ok := h.Settings.Get("reflector.model"); ok {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
-	}
-	return h.currentModelID(nil)
 }
 
 // reflectOnClose is the session-close trigger (/new, /resume, startup):
 // the closed session is reflected when the closed-session counter hits
 // the every-N gate and it has messages the reflector has not seen.
 func (h *Host) reflectOnClose(prevID string) {
-	if prevID == "" {
-		return
-	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.reflected++
@@ -159,7 +126,11 @@ func (h *Host) runReflectDetached(sid string) bool {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), h.reflectTimeout())
+	ms := h.setInt("reflector.timeout_ms", 120000)
+	if ms <= 0 {
+		ms = 120000
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(ms)*time.Millisecond)
 	h.reflecting.Store(true)
 	h.refresh()
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})
@@ -187,11 +158,11 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	model, err := h.reflectModel()
+	model, err := h.modelFor("reflector.model")
 	if err != nil {
 		return err
 	}
-	out, err := h.reflectTurn(ctx, model, prompt)
+	out, err := generateText(ctx, model, reflectorSystem, prompt)
 	if err != nil {
 		return err
 	}
@@ -205,22 +176,17 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if msgs, err := h.DB.Messages(sid); err == nil {
 		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
 	}
-	h.Log.Info("reflector", "run complete", map[string]any{
-		"session": sid, "stored": stored, "queued": queued,
-		"superseded": superseded, "skipped": skipped,
-		"config_queued": cfgQueued, "config_applied": cfgApplied,
-		"config_skipped": cfgSkipped,
-	})
-	h.EmitAsync("reflector.done", map[string]any{
+	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
 		"config_queued": cfgQueued, "config_applied": cfgApplied,
 		"config_skipped": cfgSkipped, "skills_drafted": drafted,
-	})
+	}
+	h.Log.Info("reflector", "run complete", result)
+	h.EmitAsync("reflector.done", result)
 	return nil
 }
 
-// reflectPrompt assembles the reflector user message.
 func (h *Host) reflectPrompt(sid string) (string, error) {
 	if h.DB == nil {
 		return "", errors.New("reflector: session store unavailable")
@@ -260,14 +226,10 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 			b.WriteString(line + "\n")
 		}
 	}
-	if mems, err := h.memoryList(false); err == nil && len(mems) > 0 {
+	if mems, _ := h.memoryList(false); len(mems) > 0 {
 		b.WriteString("\n# Current memory index\n")
 		for _, m := range mems {
-			gist := m.Text
-			if runes := []rune(gist); len(runes) > 80 {
-				gist = string(runes[:80]) + "..."
-			}
-			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID, m.Scope, m.Kind, gist)
+			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID, m.Scope, m.Kind, truncRunes(m.Text, 80))
 			if len(m.Tags) > 0 {
 				line += " #" + strings.Join(m.Tags, " #")
 			}
@@ -284,7 +246,6 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 	return b.String(), nil
 }
 
-// reflectLine renders one stored message as one prompt line.
 func reflectLine(m *store.Message) string {
 	switch m.Role {
 	case "user", "assistant":
@@ -329,24 +290,17 @@ func concatText[T any](parts []T) string {
 }
 
 func truncRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
+	if c := clipRunes(s, n); c != s {
+		return c + "..."
 	}
-	return string(r[:n]) + "..."
+	return s
 }
 
-// reflectModel resolves the reflector model; tests stub modelFn.
-func (h *Host) reflectModel() (fantasy.LanguageModel, error) {
-	if h.modelFn != nil {
-		return h.modelFn()
+func clipRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
 	}
-	return h.Providers.Resolve(h.reflectModelID())
-}
-
-// reflectTurn runs the single-step tool-less headless turn.
-func (h *Host) reflectTurn(ctx context.Context, model fantasy.LanguageModel, prompt string) (string, error) {
-	return generateText(ctx, model, reflectorSystem, prompt)
+	return s
 }
 
 // generateText runs one tool-less, single-step model call (reflector,
@@ -408,19 +362,17 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
-		if h.memoryAutonomy() == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
-			if err := h.applyProposal(res); err != nil {
-				skipped++
-				h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
-				continue
-			}
+		switch ok, err := h.gateMemory(res); {
+		case err != nil:
+			skipped++
+			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
+		case !ok:
+			queued++
+		default:
 			stored++
 			if pm.Supersedes != "" {
 				links = append(links, link{fresh: res.Memory, old: pm.Supersedes})
 			}
-		} else {
-			h.queueProposal(res)
-			queued++
 		}
 	}
 	for _, l := range links {
@@ -445,10 +397,6 @@ func (h *Host) applyConfigProposals(sid string, p *reflectProposal) (queued, app
 		}
 		if h.autoApplyCfgOK(prop) {
 			h.applyCfgProposal(prop)
-			ag := h.agents
-			ag.mu.Lock()
-			ag.cfgAuto += len(prop.Entries)
-			ag.mu.Unlock()
 			applied++
 		} else {
 			h.queueCfgProposal(prop)

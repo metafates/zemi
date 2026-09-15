@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"charm.land/fantasy"
-
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -105,9 +103,8 @@ func (h *Host) PermMode() string { return h.permModeDef().Name }
 
 func (h *Host) permModeDef() PermModeDef {
 	list := h.PermModeList()
-	v, _ := h.Settings.Get("permissions.mode")
-	if s, _ := v.(string); modeIndex(list, s) >= 0 {
-		return list[modeIndex(list, s)]
+	if i := modeIndex(list, h.setStr("permissions.mode")); i >= 0 {
+		return list[i]
 	}
 	for _, base := range []string{"manual", "plan", "auto", "yolo"} {
 		for _, d := range list {
@@ -298,7 +295,7 @@ When unsure, reply UNSAFE.`
 // returns ok=false with the reason to show the user when the model flags
 // it or cannot be reached (failing toward a manual ask).
 func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
-	model, err := h.autoModel()
+	model, err := h.modelFor("permissions.auto_model")
 	if err != nil {
 		return false, "auto mode unavailable: " + err.Error()
 	}
@@ -323,16 +320,4 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 	}
 	why = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(out, "UNSAFE"), ":"))
 	return false, "auto mode flagged: " + truncRunes(why, 200)
-}
-
-func (h *Host) autoModel() (fantasy.LanguageModel, error) {
-	if h.modelFn != nil {
-		return h.modelFn()
-	}
-	v, _ := h.Settings.Get("permissions.auto_model")
-	id, _ := v.(string)
-	if id == "" {
-		id = h.currentModelID(nil)
-	}
-	return h.Providers.Resolve(id)
 }

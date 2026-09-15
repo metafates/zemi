@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// GoSafe runs fn on its own goroutine with panic recovery.
 func (h *Host) GoSafe(where string, fn func()) {
 	go func() {
 		defer func() {

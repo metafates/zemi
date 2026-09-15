@@ -34,7 +34,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 		return "", err
 	}
 	if path == "" {
-		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+sid[:min(8, len(sid))]+".md")
+		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+shortID(sid)+".md")
 	} else if !filepath.IsAbs(path) {
 		path = filepath.Join(h.Dirs.ProjectDir, path)
 	}

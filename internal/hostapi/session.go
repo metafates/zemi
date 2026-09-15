@@ -209,7 +209,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 		return
 	}
 	h.GoSafe("session title", func() {
-		model, err := h.reflectModel()
+		model, err := h.modelFor("reflector.model")
 		if err != nil {
 			return
 		}
@@ -220,20 +220,17 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
 			return
 		}
-		title := strings.Trim(strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]), `"'.# `)
-		if r := []rune(title); len(r) > 60 {
-			title = string(r[:60])
-		}
+		title := sanitize.String(clipRunes(strings.Trim(strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]), `"'.# `), 60))
 		if title == "" {
 			return
 		}
-		if err := h.DB.RenameSession(sid, sanitize.String(title)); err != nil {
+		if err := h.DB.RenameSession(sid, title); err != nil {
 			return
 		}
 		h.recentStale.Store(true)
 		if h.AgentSessionID() == sid {
 			h.tMu.Lock()
-			h.session.Title = sanitize.String(title)
+			h.session.Title = title
 			h.tMu.Unlock()
 			h.refresh()
 		}

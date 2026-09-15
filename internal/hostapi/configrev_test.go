@@ -33,6 +33,7 @@ func TestConfigPatchIntakeRefuses(t *testing.T) {
 		{"unknown patch field", `{"action":"patch","title":"t","extra":1,"rules":[` + ruleObj("deny", "") + `]}`},
 		{"unknown rule field", `{"action":"patch","title":"t","rules":[{"subject":"tool.bash","pattern":"a*","decision":"deny","match":"a1","handler":"function() end"}]}`},
 		{"bad decision", `{"action":"patch","title":"t","rules":[` + ruleObj("sudo", "") + `]}`},
+		{"unknown decision string", `{"action":"patch","title":"t","rules":[` + ruleObj(`"foo"`, "") + `]}`},
 		{"bad scope", `{"action":"patch","title":"t","rules":[` + ruleObj("deny", `"scope":"global",`) + `]}`},
 		{"match example not matching", `{"action":"patch","title":"t","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","match":"git push"}]}`},
 		{"not_match without both examples", `{"action":"patch","title":"t","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","match":"rm -rf build","not_match":"rm -f build"}]}`},

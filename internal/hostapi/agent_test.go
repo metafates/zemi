@@ -56,6 +56,23 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 	}
 }
 
+func TestProfileTemperatureReachesRunner(t *testing.T) {
+	h, r := newTestHost(t)
+	reflectStub(t, h, "")
+	runUser(t, r, `zemi.agent.profile("warm", { temperature = 0.3 })`)
+	p, err := h.resolveProfile("warm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := h.ensureRunner(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runner.Temperature == nil || *runner.Temperature != 0.3 {
+		t.Fatalf("temperature = %v", runner.Temperature)
+	}
+}
+
 // TestPermissionRuleValidation covers the zemi.permission.rule contract:
 // examples must be provided and must behave exactly as the rule claims
 // (DESIGN §6.2), allow rules are user-config-only, and accepted rules

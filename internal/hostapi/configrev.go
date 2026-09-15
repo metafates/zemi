@@ -1,12 +1,9 @@
-// configrev.go is the §10.3-§10.4 config-patch pipeline: the reflector
-// may propose permission rules as structured rule objects only (never
-// Lua), intake validates and scrubs every leaf, proposals park in the
-// session-scoped review queue, and accepting one applies the rules
-// through the same paths as zemi.permission.rule (session rules to the
-// perm store, permanent ones through the §6.1 review commit).
+// configrev.go is the config-patch pipeline (DESIGN §10.3-§10.4): reflector
+// rule objects pass strict intake, wait in /config review, then apply.
 package hostapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -75,23 +72,10 @@ type rawCfgRule struct {
 	NotMatchExample string `json:"not_match_example"`
 }
 
-// decodeStrict decodes exactly one JSON value with unknown fields
-// refused.
 func decodeStrict(data []byte, v any) error {
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
-}
-
-// configAutonomy reads the config.autonomy knob ("ask" unless Go set
-// "auto" at boot; the knob is host-owned).
-func (h *Host) configAutonomy() string {
-	if v, ok := h.Settings.Get("config.autonomy"); ok {
-		if s, ok := v.(string); ok && s == "auto" {
-			return "auto"
-		}
-	}
-	return "ask"
 }
 
 // intakeConfigPatch validates one model-proposed config patch. Every
@@ -116,10 +100,7 @@ func (h *Host) intakeConfigPatch(sid string, raw json.RawMessage) (*cfgProposal,
 	if title == "" {
 		title = "config patch"
 	}
-	if r := []rune(title); len(r) > cfgTitleMax {
-		title = string(r[:cfgTitleMax])
-	}
-	p := &cfgProposal{ID: store.NewID(), Title: title, SessionID: sid, Scrubbed: scrubbed}
+	p := &cfgProposal{ID: store.NewID(), Title: clipRunes(title, cfgTitleMax), SessionID: sid, Scrubbed: scrubbed}
 	for i, rr := range rp.Rules {
 		e, didScrub, err := intakeCfgRule(rr)
 		if err != nil {
@@ -154,17 +135,8 @@ func intakeCfgRule(raw json.RawMessage) (cfgRuleEntry, bool, error) {
 		NotMatch: scrub(rr.NotMatch),
 		Scope:    perm.Scope(strings.TrimSpace(rr.Scope)),
 	}
-	if r.Subject == "" || r.Pattern == "" {
-		return cfgRuleEntry{}, scrubbed, errors.New("subject and pattern are required")
-	}
-	if r.Scope == "" {
-		r.Scope = perm.ScopeSession
-	}
-	if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
-		return cfgRuleEntry{}, scrubbed, errors.New("scope must be session or permanent")
-	}
 	matchEx, notMatchEx := scrub(rr.Match), scrub(rr.NotMatchExample)
-	if err := validateRuleExamples(r, matchEx, notMatchEx); err != nil {
+	if err := validateRule(&r, matchEx, notMatchEx); err != nil {
 		return cfgRuleEntry{}, scrubbed, err
 	}
 	return cfgRuleEntry{Rule: r, MatchEx: matchEx, NotMatchEx: notMatchEx}, scrubbed, nil
@@ -181,50 +153,37 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 		if e.Rule.Scope != perm.ScopePermanent {
 			continue
 		}
-		if err := h.permRegenerate(); err != nil {
+		if err := h.persistPermanentRule(e.Rule, "learn: "+p.Title+" (from "+p.SessionID+")", "review"); err != nil {
 			h.Log.Warn("config-rev", "dump regenerate failed", map[string]any{"error": err.Error()})
-			continue
-		}
-		changes, _ := json.Marshal(e.Rule)
-		title := "learn: " + p.Title + " (from " + p.SessionID + ")"
-		if err := h.commitConfigRevision(title, string(changes),
-			[]string{"permissions.lua"}, "review"); err != nil {
-			h.Log.Warn("config-repo", "learned permanent-rule commit failed", map[string]any{
-				"error": err.Error(),
-			})
 		}
 	}
-	note := ""
-	if p.Scrubbed {
-		note = " (secrets redacted)"
-	}
-	h.memNotify("info", "config", "applied: "+p.Title+note)
+	h.memNotify("info", "config", "applied: "+p.Title+redactNote(p.Scrubbed))
 	h.EmitAsync("config.applied", map[string]any{"id": p.ID, "title": p.Title})
 }
 
-// autoApplyCfgOK reports whether a patch may apply without review
-// (DESIGN §10.4): config.autonomy is "auto" and every rule is a
-// session-scope deny/ask. Permanent scope always requires the review
-// commit; allow rules widen and never auto-apply.
+// autoApplyCfgOK reports whether a patch may apply without review and, if
+// so, spends its rules from the session cap (DESIGN §10.4): config.autonomy
+// is "auto" and every rule is a session-scope deny/ask. Permanent scope
+// always requires the review commit; allow rules widen and never auto-apply.
 func (h *Host) autoApplyCfgOK(p *cfgProposal) bool {
-	if h.configAutonomy() != "auto" || len(p.Entries) == 0 {
-		return false
-	}
-	if h.agents.cfgAuto+len(p.Entries) > rulesAutoApplyCap {
+	if h.setStr("config.autonomy") != "auto" {
 		return false
 	}
 	for _, e := range p.Entries {
-		if e.Rule.Scope != perm.ScopeSession {
-			return false
-		}
-		if e.Rule.Decision != perm.Deny && e.Rule.Decision != perm.Ask {
+		if e.Rule.Scope != perm.ScopeSession || (e.Rule.Decision != perm.Deny && e.Rule.Decision != perm.Ask) {
 			return false
 		}
 	}
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if ag.cfgAuto+len(p.Entries) > rulesAutoApplyCap {
+		return false
+	}
+	ag.cfgAuto += len(p.Entries)
 	return true
 }
 
-// queueCfgProposal parks a validated patch for review.
 func (h *Host) queueCfgProposal(p *cfgProposal) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -308,8 +267,8 @@ func (h *Host) configCommand(args string) error {
 
 // openConfigReview shows pending patches and applies the verdict:
 // accepted patches apply immediately, rejected ones are dropped,
-// undecided ones stay queued (they die with the process, like memory
-// proposals).
+// undecided ones stay queued (config proposals live in memory and die
+// with the process).
 func (h *Host) openConfigReview() {
 	ui := h.hooks()
 	if ui == nil {
@@ -443,18 +402,12 @@ func (h *Host) ConfigCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "config commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			for _, c := range []*Command{
-				{Name: "config", NArgs: "*", Hidden: true,
-					Desc:       "review pending config changes; revisions, revert <id>",
-					GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
-					GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
-					Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)},
-			} {
-				if _, err := h.Commands.Add(c); err != nil {
-					return err
-				}
-			}
-			return nil
+			_, err := h.Commands.Add(&Command{Name: "config", NArgs: "*", Hidden: true,
+				Desc:       "review pending config changes; revisions, revert <id>",
+				GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
+				GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
+				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
+			return err
 		},
 	}
 }
