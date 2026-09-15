@@ -48,7 +48,7 @@ Globals a chunk sets stay in that chunk.
 
 | Namespace | Members |
 | --- | --- |
-| `zemi.api` | `version` (API version string, currently "0.12.0") |
+| `zemi.api` | `version` (API version string, currently "0.13.0") |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
@@ -62,6 +62,7 @@ Globals a chunk sets stay in that chunk.
 | `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()`, `rewind(id)` -> files restored or nil, err |
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
+| `zemi.health` | `register(name, fn)`; `fn` returns `{ level = "ok"/"warn"/"error", detail = "..." }` or a detail string, and shows as a row in `/health`. It runs under the 50 ms handler deadline |
 | `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` (status: starting, running, failed, exited) |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |

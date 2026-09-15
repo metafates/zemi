@@ -178,6 +178,9 @@ type Host struct {
 	// rows in the global store are the durable state.
 	skillsReg *skillReg
 
+	// healthReg holds the /health checks Lua registered.
+	healthReg healthReg
+
 	hostActions map[string]func(h *Host, args string) error
 
 	// Version is the zemi build version for the splash screen.
@@ -975,6 +978,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
 		{"zemi.learn", h.learnNamespace(L), nil},
+		{"zemi.health", h.healthNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {
@@ -982,7 +986,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.12.0"))
+	api.RawSetString("version", glua.LString("0.13.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1002,6 +1006,7 @@ func (h *Host) PurgeGeneration() {
 	h.Events.Purge()
 	h.Themes.Purge()
 	h.purgeWatches()
+	h.healthReg.purge()
 	h.luaTools.purge(h.currentGen())
 	h.timers.purge()
 	h.mcp.stopAll()
