@@ -135,6 +135,8 @@ type Host struct {
 	// statusline badge (refreshPending).
 	pendingMemory, pendingConfig atomic.Int32
 
+	selectSeq atomic.Int64 // ids for zemi.ui.select overlays
+
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
 

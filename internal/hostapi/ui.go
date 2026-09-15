@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -197,6 +198,46 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("overlay", overlay)
+
+	// select(items, opts, on_choice): a picker in the shape of vim.ui.select
+	// over the overlay stack. on_choice(item) runs on enter, on_choice(nil)
+	// on cancel; opts.prompt titles it, opts.format_item renders rows.
+	tb.RawSetString("select", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.ui.select") {
+			return 0
+		}
+		itemsV := L.CheckTable(1)
+		opts := L.OptTable(2, L.NewTable())
+		cb := L.CheckFunction(3)
+		items, err := lua.ToGo(itemsV)
+		if err != nil {
+			L.RaiseError("zemi.ui.select: %v", err)
+			return 0
+		}
+		list, _ := items.([]any)
+		o := Overlay{
+			ID:       fmt.Sprintf("select:%d", h.selectSeq.Add(1)),
+			Title:    rawString(opts, "prompt"),
+			Origin:   h.RT.CurrentOrigin(),
+			Path:     h.RT.CurrentPath(),
+			Gen:      h.currentGen(),
+			Items:    list,
+			OnSelect: cb,
+			OnClose: L.NewFunction(func(L *glua.LState) int {
+				L.Push(cb)
+				L.Push(glua.LNil)
+				L.Call(1, 0)
+				return 0
+			}),
+		}
+		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
+			o.RenderItem = fn
+		}
+		if ui := h.hooks(); ui != nil {
+			ui.OpenOverlay(o)
+		}
+		return 0
+	}))
 
 	tb.RawSetString("invalidate", L.NewFunction(func(L *glua.LState) int {
 		id := "all"

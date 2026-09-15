@@ -292,6 +292,45 @@ func TestPermissionPreview(t *testing.T) {
 	<-done
 }
 
+// TestLuaSelect drives zemi.ui.select from Lua: enter hands the chosen item
+// to on_choice, esc hands it nil. The callback reports through a toast.
+func TestLuaSelect(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	run := func(src string) {
+		t.Helper()
+		if err := host.RT.ExecuteChunk(context.Background(), src, "select.lua", lua.OriginUser); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+	}
+	lastToast := func() string {
+		for app.Pump() {
+		}
+		if len(app.toasts) == 0 {
+			return ""
+		}
+		return app.toasts[len(app.toasts)-1].body
+	}
+	pick := `function(item) zemi.notify({ title = "picked", body = item or "none" }) end`
+
+	run(`zemi.ui.select({ "red", "green" }, { prompt = "Color" }, ` + pick + `)`)
+	if len(app.overlays) != 1 || app.overlays[0].o.Title != "Color" {
+		t.Fatalf("select overlay: %+v", app.overlays)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := lastToast(); got != "green" {
+		t.Fatalf("enter picked %q", got)
+	}
+
+	run(`zemi.ui.select({ "x" }, {}, ` + pick + `)`)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := lastToast(); got != "none" {
+		t.Fatalf("esc picked %q", got)
+	}
+}
+
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
 // the text indented under it, no per-line gutter marks.
 func TestReasoningExpanded(t *testing.T) {

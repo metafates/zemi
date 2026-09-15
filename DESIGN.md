@@ -772,6 +772,12 @@ zemi.ui.overlay.open({
   on_select = function(m) zemi.model.set(m.id) end,
 })
 
+-- Pickers in the shape of vim.ui.select: on_choice(item), nil on cancel
+zemi.ui.select(zemi.model.list(), {
+  prompt = "Model",
+  format_item = function(m) return m.display end,
+}, function(m) if m then zemi.model.set(m.id) end end)
+
 -- Themes: palettes + highlight groups resolved by Go (colorprofile-aware)
 zemi.ui.theme.register("tokyonight", {
   palette = { bg = "#1a1b26", fg = "#a9b1d6" },
