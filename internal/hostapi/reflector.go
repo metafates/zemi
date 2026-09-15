@@ -366,6 +366,12 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			continue
 		}
 		res.Supersedes = pm.Supersedes
+		if stored >= memoryAutoApplyCap {
+			// the run carries its own budget: it stores for a closed session
+			h.queueProposal(res)
+			queued++
+			continue
+		}
 		switch ok, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++

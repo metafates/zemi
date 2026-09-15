@@ -169,6 +169,7 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	h.Settings.SetHost("memory.autonomy", "auto")
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
+	seedSession(t, h) // the reflected session is closed, another one is live
 
 	oldID := store.NewID()
 	if err := h.DB.AddMemory(&store.Memory{
@@ -210,6 +211,9 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	}
 	if fresh.ProvenanceSessionID != sid {
 		t.Fatalf("provenance=%q", fresh.ProvenanceSessionID)
+	}
+	if h.agents.memAuto != 0 {
+		t.Fatalf("closed session spent the live budget: memAuto=%d", h.agents.memAuto)
 	}
 }
 

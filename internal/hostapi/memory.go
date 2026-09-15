@@ -91,7 +91,11 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	ag.memAuto++
+	// a detached reflector stores a closed session's memories; the live
+	// session's budget is not theirs to spend
+	if res.Memory.ProvenanceSessionID == ag.sessionID {
+		ag.memAuto++
+	}
 	ag.mu.Unlock()
 	h.Notify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
