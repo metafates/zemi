@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func openTest(t *testing.T) *DB {
@@ -38,6 +39,56 @@ func TestSchemaVersion(t *testing.T) {
 	db.Close()
 	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "upgrade zemi") {
 		t.Fatalf("a newer database must be refused, got %v", err)
+	}
+}
+
+// TestRetentionSweep: opening drops sessions untouched past sessionTTL and
+// checkpoints past checkpointTTL, and leaves everything inside the windows.
+func TestRetentionSweep(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"old", "new"} {
+		if err := db.CreateSession(id, "", id, ""); err != nil {
+			t.Fatal(err)
+		}
+		m := &Message{SessionID: id, Role: "user", PartsJSON: `[]`}
+		if err := db.AddMessage(m); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddCheckpoint(id, m.ID, "/tmp/f", true, []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = 'old'`,
+		time.Now().Add(-sessionTTL-time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	// the live session's own checkpoint is old enough to go on its own
+	if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = ? WHERE session_id = 'new'`,
+		time.Now().Add(-checkpointTTL-time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.GetSession("old"); err != ErrNotFound {
+		t.Fatalf("aged session survived: %v", err)
+	}
+	if _, err := db.GetSession("new"); err != nil {
+		t.Fatalf("session inside the window dropped: %v", err)
+	}
+	if counts, err := db.CheckpointCounts("new"); err != nil || len(counts) != 0 {
+		t.Fatalf("aged checkpoints survived: %+v %v", counts, err)
+	}
+	if msgs, _ := db.Messages("new"); len(msgs) != 1 {
+		t.Fatalf("messages of a kept session = %+v", msgs)
 	}
 }
 

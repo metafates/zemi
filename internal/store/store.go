@@ -43,6 +43,8 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
+	// best effort: a failed sweep must never keep zemi from starting
+	_ = s.sweep()
 	return s, nil
 }
 
@@ -233,6 +235,40 @@ func (s *DB) resyncFTS() error {
 	}
 	if _, err := s.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('rebuild')`); err != nil {
 		return fmt.Errorf("store: rebuild memory index: %w", err)
+	}
+	return nil
+}
+
+// Retention windows (DESIGN §7 keeps no archive): checkpoints hold a whole
+// file each, so they go first, and a session takes its messages, tool calls
+// and todos with it. Both windows are generous, and the sweep runs at open,
+// before the live session exists, so it can never cut the conversation in
+// progress.
+const (
+	checkpointTTL = 30 * 24 * time.Hour
+	sessionTTL    = 180 * 24 * time.Hour
+)
+
+// sweep drops aged rows and reclaims their pages when it removed any.
+func (s *DB) sweep() error {
+	cps, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
+		time.Now().Add(-checkpointTTL).UnixMilli())
+	if err != nil {
+		return fmt.Errorf("store: sweep checkpoints: %w", err)
+	}
+	sess, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
+		time.Now().Add(-sessionTTL).UnixMilli())
+	if err != nil {
+		return fmt.Errorf("store: sweep sessions: %w", err)
+	}
+	n, _ := cps.RowsAffected()
+	m, _ := sess.RowsAffected()
+	if n+m == 0 {
+		return nil
+	}
+	// VACUUM rewrites the whole file; only the rare open that deleted pays it
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return fmt.Errorf("store: vacuum: %w", err)
 	}
 	return nil
 }
