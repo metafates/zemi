@@ -157,7 +157,7 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 		pad := bw - 4 - segsWidth(line)
 		row := []hostapi.Segment{{Text: "│ "}}
 		row = append(row, line...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max0(pad)) + " │"})
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)) + " │"})
 		box = append(box, row)
 	}
 	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯"}})
@@ -498,7 +498,7 @@ func codePanel(text string, width int) [][]hostapi.Segment {
 				line += sg.Text
 			}
 			pad := width - 2 - ansi.StringWidth(line)
-			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max0(pad)) + " ", HL: "Host:Panel"}})
+			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: "Host:Panel"}})
 		}
 	}
 	return rows
@@ -564,7 +564,7 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		text := ansi.Truncate(strings.ReplaceAll(l.text, "\t", "    "), room, "…")
 		rows = append(rows, []hostapi.Segment{
 			{Text: gutter, HL: numHL},
-			{Text: sign + text + strings.Repeat(" ", max0(room-ansi.StringWidth(text))), HL: lineHL},
+			{Text: sign + text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
 		})
 	}
 	return rows

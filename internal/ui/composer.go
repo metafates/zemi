@@ -239,17 +239,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	cont := "  "
 	// one cell stays free for the cursor mark at the end of a full row
 	cursorRow, cursorCol, rows := a.wrapComposer(w - len(prefix) - 1)
-	if len(rows) == 0 {
-		rows = [][]rune{nil}
-		cursorRow, cursorCol = 0, 0
-	}
-	start := 0
-	if len(rows) > composerMaxRows {
-		start = cursorRow - composerMaxRows + 1
-		if start < 0 {
-			start = 0
-		}
-	}
+	start := max(0, cursorRow-composerMaxRows+1)
 	// The prompt takes the permission mode's color.
 	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
 	if promptHL == "" {
@@ -280,9 +270,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 // wrapComposer splits the text into visual rows of at most width runes,
 // splitting on newlines, and reports the cursor's row and column.
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
-	if w < 1 {
-		w = 1
-	}
+	w = max(w, 1)
 	r := []rune(a.composer.text)
 	cur := []rune{}
 	row := 0

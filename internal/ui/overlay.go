@@ -293,19 +293,12 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	if len(rows) == 0 || len(box) == 0 {
 		return rows
 	}
-	chatTop := headerH
-	chatBottom := headerH + chatH
-	if chatBottom > len(rows) {
-		chatBottom = len(rows)
-	}
-	bh := len(box)
-	if bh > chatBottom-chatTop {
-		bh = chatBottom - chatTop
-	}
+	chatBottom := min(headerH+chatH, len(rows))
+	bh := min(len(box), chatBottom-headerH)
 	if bh <= 0 {
 		return rows
 	}
-	y0 := chatTop + (chatBottom-chatTop-bh)/2
+	y0 := headerH + (chatBottom-headerH-bh)/2
 	for i := 0; i < bh; i++ {
 		bw := segsWidth(box[i])
 		x0 := max((w-bw)/2, 1)
@@ -335,11 +328,4 @@ func dropCells(segs []hostapi.Segment, n int) []hostapi.Segment {
 		out = append(out, s)
 	}
 	return out
-}
-
-func max0(n int) int {
-	if n < 0 {
-		return 0
-	}
-	return n
 }

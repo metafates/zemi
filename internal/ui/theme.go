@@ -31,13 +31,7 @@ func (t themeResolver) style(hl string) uv.Style {
 	if !ok {
 		return uv.Style{}
 	}
-	st := uv.Style{}
-	if c := t.colorValue(spec.Fg, theme); c != nil {
-		st.Fg = c
-	}
-	if c := t.colorValue(spec.Bg, theme); c != nil {
-		st.Bg = c
-	}
+	st := uv.Style{Fg: colorValue(spec.Fg, theme), Bg: colorValue(spec.Bg, theme)}
 	if spec.Bold {
 		st.Attrs |= uv.AttrBold
 	}
@@ -70,25 +64,13 @@ func (t themeResolver) sgrStyle(params string) uv.Style {
 }
 
 // colorValue resolves a theme color reference: raw hex, or a palette name.
-func (t themeResolver) colorValue(ref string, theme *hostapi.Theme) color.Color {
-	if ref == "" {
+func colorValue(ref string, theme *hostapi.Theme) color.Color {
+	if !strings.HasPrefix(ref, "#") {
+		ref = theme.Palette[ref]
+	}
+	if !strings.HasPrefix(ref, "#") {
 		return nil
 	}
-	if ref[0] == '#' {
-		col, err := hexColor(ref)
-		if err != nil {
-			return nil
-		}
-		return col
-	}
-	if hex, ok := theme.Palette[ref]; ok && hex != "" {
-		if hex[0] == '#' {
-			col, err := hexColor(hex)
-			if err != nil {
-				return nil
-			}
-			return col
-		}
-	}
-	return nil
+	col, _ := hexColor(ref)
+	return col
 }

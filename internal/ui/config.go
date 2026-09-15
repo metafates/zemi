@@ -9,7 +9,7 @@ import (
 )
 
 // cfgReviewPrompt is one open review overlay; the answer carries the
-// accepted and rejected indices in row order.
+// accepted and rejected row ids.
 type cfgReviewPrompt struct {
 	items   []hostapi.ConfigRow
 	sel     int
@@ -32,15 +32,10 @@ func (a *App) ReviewConfigs(items []hostapi.ConfigRow) ([]string, []string) {
 }
 
 func (a *App) answerCfgReview() {
-	cr := a.cfgReview
-	a.cfgReview = nil
-	var v cfgReviewVerdict
-	if cr != nil {
-		v = cr.verdict
-		if cr.answer != nil {
-			cr.answer <- v
-		}
+	if cr := a.cfgReview; cr != nil && cr.answer != nil {
+		cr.answer <- cr.verdict
 	}
+	a.cfgReview = nil
 	a.frameGen++
 }
 
@@ -57,16 +52,10 @@ func (a *App) cfgDecide(accept bool) {
 		cr.verdict.rejected = append(cr.verdict.rejected, id)
 	}
 	cr.items = append(cr.items[:i:i], cr.items[i+1:]...)
-	if cr.sel >= len(cr.items) {
-		cr.sel = len(cr.items) - 1
-	}
-	if cr.sel < 0 {
-		cr.sel = 0
-	}
+	cr.sel = max(0, min(cr.sel, len(cr.items)-1))
 	if len(cr.items) == 0 {
 		a.answerCfgReview()
 	}
-	a.frameGen++
 }
 
 // spliceCfgReview composes the review overlay over the chat area: title

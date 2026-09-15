@@ -201,27 +201,17 @@ func (a *App) cfgBool(key string, def bool) bool {
 	return def
 }
 
-// cfgInt reads an int config key clamped to [min, max].
-func (a *App) cfgInt(key string, def, min, max int) int {
+// cfgInt reads an int config key clamped to [lo, hi].
+func (a *App) cfgInt(key string, def, lo, hi int) int {
 	if v, ok := a.host.Settings.Get(key); ok {
 		switch n := v.(type) {
 		case int:
-			return clampInt(n, min, max)
+			return min(max(n, lo), hi)
 		case float64:
-			return clampInt(int(n), min, max)
+			return min(max(int(n), lo), hi)
 		}
 	}
 	return def
-}
-
-func clampInt(n, min, max int) int {
-	if n < min {
-		return min
-	}
-	if n > max {
-		return max
-	}
-	return n
 }
 
 // hookMsg wraps a message posted from a non-UI goroutine.
@@ -545,11 +535,7 @@ func (a *App) compose(w, h int) string {
 	// + statusline + composer, the working row and a blank row that keeps the
 	// input off the conversation; popups float over the chat (floatPopup), so
 	// opening one never moves the transcript
-	reserved := len(header) + 1 + len(compRows) + len(working) + 1
-	chatH := h - reserved
-	if chatH < 1 {
-		chatH = 1
-	}
+	chatH := max(h-len(header)-1-len(compRows)-len(working)-1, 1)
 
 	chat := a.regionLines("chat", w)
 
@@ -565,8 +551,8 @@ func (a *App) compose(w, h int) string {
 	a.chatViewH = chatH
 	if a.chatFollow {
 		a.chatTop = a.chatRows - chatH
-	} else if maxTop := max0(a.chatRows - chatH); a.chatTop > maxTop {
-		a.chatTop = maxTop
+	} else {
+		a.chatTop = min(a.chatTop, max(0, a.chatRows-chatH))
 	}
 
 	rows := make([][]hostapi.Segment, 0, h)
@@ -587,7 +573,7 @@ func (a *App) compose(w, h int) string {
 		box := toastBox(a.toasts[i], w)
 		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
 			y--
-			x0 := max0(w - segsWidth(box[j]) - 1)
+			x0 := max(0, w-segsWidth(box[j])-1)
 			rows[y] = append(padSegs(truncateSegs(rows[y], x0), x0), box[j]...)
 		}
 		y--
@@ -695,12 +681,7 @@ func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) [][]host
 // chatStep is one page of transcript scroll with a one-row overlap, from
 // the last composed chat height (compose runs every frame, so the value is
 // at most one frame stale).
-func (a *App) chatStep() int {
-	if step := a.chatViewH - 1; step > 0 {
-		return step
-	}
-	return 1
-}
+func (a *App) chatStep() int { return max(a.chatViewH-1, 1) }
 
 // scrollChatRows moves the transcript viewport by n rows (negative =
 // older). Scrolling down re-arms tail follow at the bottom; while
@@ -711,12 +692,9 @@ func (a *App) scrollChatRows(n int) {
 	}
 	if n < 0 && a.chatFollow {
 		a.chatFollow = false
-		a.chatTop = max0(a.chatRows - a.chatViewH)
+		a.chatTop = max(0, a.chatRows-a.chatViewH)
 	}
-	a.chatTop += n
-	if a.chatTop < 0 {
-		a.chatTop = 0
-	}
+	a.chatTop = max(0, a.chatTop+n)
 	if a.chatTop+a.chatViewH >= a.chatRows {
 		a.chatFollow = true
 	}
@@ -815,10 +793,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 			right, rightW = nil, 0
 		}
 	}
-	gap := w - leftW - rightW
-	if gap < 0 {
-		gap = 0
-	}
+	gap := max(0, w-leftW-rightW)
 	out := append([]hostapi.Segment{}, left...)
 	if gap > 0 {
 		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
@@ -939,9 +914,7 @@ func segsWidth(segs []hostapi.Segment) int {
 // transcript is bottom-anchored, so callers concatenate the rows and take
 // the tail.
 func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
-	if w < 1 {
-		w = 1
-	}
+	w = max(w, 1)
 	if segsWidth(line) <= w {
 		return [][]hostapi.Segment{line}
 	}
