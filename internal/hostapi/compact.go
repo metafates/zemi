@@ -181,9 +181,13 @@ func (h *Host) CompactNow(focus string) error {
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.refresh()
+	ctx, cancel := context.WithCancel(context.Background())
+	h.turn.Store(&turnScope{ctx: ctx, cancel: cancel}) // esc stops the summary call
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
-		h.compactReporting(context.Background(), runner, compactManual, strings.TrimSpace(focus))
+		h.compactReporting(ctx, runner, compactManual, strings.TrimSpace(focus))
+		h.turn.Store(nil)
+		cancel()
 		ag.mu.Lock()
 		queued := strings.Join(ag.steering, "\n\n")
 		ag.steering, ag.active = nil, false

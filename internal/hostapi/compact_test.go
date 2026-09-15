@@ -5,9 +5,26 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 )
+
+// TestCompactNowCancels: esc during /compact stops the summary call instead
+// of leaving the agent busy until the model answers.
+func TestCompactNowCancels(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "") // an empty reply starts no title call
+	m.block = time.Minute
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("hi")
+	if err := h.CompactNow(""); err != nil {
+		t.Fatal(err)
+	}
+	h.AgentCancel()
+	waitIdle(t, h)
+}
 
 // TestCompaction: a context past the threshold summarizes the history
 // before the next turn while the recent messages stay verbatim, the summary
