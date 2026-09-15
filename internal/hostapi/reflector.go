@@ -305,8 +305,12 @@ func reflectLine(m *store.Message) string {
 // concatText joins the text parts of a fantasy content slice.
 func concatText[T any](parts []T) string {
 	var b strings.Builder
+	// Stored messages hold TextPart; model responses hold TextContent.
 	for _, p := range parts {
-		if t, ok := any(p).(fantasy.TextPart); ok {
+		switch t := any(p).(type) {
+		case fantasy.TextPart:
+			b.WriteString(t.Text)
+		case fantasy.TextContent:
 			b.WriteString(t.Text)
 		}
 	}
