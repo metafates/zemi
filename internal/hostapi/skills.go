@@ -348,7 +348,14 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
 				Name: "skills", NArgs: "*", Desc: "browse skills (enter toggles); enable|disable <name>",
-				GoFn:   func(h *Host, args string) error { return h.skillsCommand(args) },
+				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
+				GoComplete: subcommandCompleter([]string{"enable", "disable"}, func(h *Host, _ string) []string {
+					var names []string
+					for _, s := range h.skillsReg.list() {
+						names = append(names, s.Name)
+					}
+					return names
+				}),
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
 			return err

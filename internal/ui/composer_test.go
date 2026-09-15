@@ -281,10 +281,11 @@ func TestPaletteComplete(t *testing.T) {
 	if got := app.composer.text; got != "/q " {
 		t.Fatalf("accepted text: %q", got)
 	}
-	// Args keep the palette open and do not shrink the first-word filter.
+	// Past "/q " the palette switches to argument candidates; q offers
+	// none, so it closes instead of listing commands again.
 	send(k{"e", "e"})
-	if !app.palette.open || len(app.palette.matches) != 2 || app.palette.matches[0].Name != "q" {
-		t.Fatalf("matches after /q e: %v", app.palette.matches)
+	if app.palette.open {
+		t.Fatalf("palette open for a command without completions: args=%v", app.palette.args)
 	}
 	// Esc clears the composer line and closes the palette.
 	send(k{"backspace", ""}, k{"backspace", ""})

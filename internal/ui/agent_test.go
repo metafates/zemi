@@ -331,6 +331,27 @@ func TestLuaSelect(t *testing.T) {
 	}
 }
 
+// TestPaletteArgumentCompletion: past "/name " the palette lists the
+// command's argument candidates and tab fills the argument under the cursor.
+func TestPaletteArgumentCompletion(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	host.Commands.Add(&hostapi.Command{
+		Name: "greet", GoFn: func(*hostapi.Host, string) error { return nil },
+		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
+		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
+	})
+	for _, k := range "/greet b" {
+		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+	}
+	if !app.palette.open || len(app.palette.args) != 1 || app.palette.args[0] != "bob" {
+		t.Fatalf("palette args = %+v (open=%v)", app.palette.args, app.palette.open)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if app.composer.text != "/greet bob " {
+		t.Fatalf("composer = %q", app.composer.text)
+	}
+}
+
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
 // the text indented under it, no per-line gutter marks.
 func TestReasoningExpanded(t *testing.T) {

@@ -16,7 +16,16 @@ import (
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
+	args     []string // argument candidates once the cursor is past "/name "
+	argStart int      // rune index where the argument under the cursor starts
 	selected int
+}
+
+func (p *cmdPalette) count() int {
+	if p.args != nil {
+		return len(p.args)
+	}
+	return len(p.matches)
 }
 
 // paletteTrigger reads the configured trigger character; a config value
@@ -41,16 +50,34 @@ func (a *App) updatePalette() {
 	tr := a.paletteTrigger()
 	r := a.composer.runes()
 	cur := a.composer.cursor
-	end := cur
-	for end < len(r) && r[end] != ' ' && r[end] != '\n' {
-		end++
-	}
 	if cur == 0 || len(r) == 0 || r[0] != rune(tr[0]) {
 		a.palette.close()
 		return
 	}
-	a.palette.open = true
-	a.palette.rematch(string(r[1:end]), a.host.Commands.List())
+	nameEnd := 1
+	for nameEnd < len(r) && r[nameEnd] != ' ' && r[nameEnd] != '\n' {
+		nameEnd++
+	}
+	if cur <= nameEnd {
+		a.palette.open, a.palette.args = true, nil
+		a.palette.rematch(string(r[1:nameEnd]), a.host.Commands.List())
+		return
+	}
+	// Past "/name ": complete the argument under the cursor.
+	start := cur
+	for start > nameEnd && r[start-1] != ' ' {
+		start--
+	}
+	lead := strings.ToLower(string(r[start:cur]))
+	args := []string{}
+	for _, c := range a.host.CompleteCommand(a.ctx(), string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])) {
+		if strings.HasPrefix(strings.ToLower(c), lead) {
+			args = append(args, c)
+		}
+	}
+	a.palette.args, a.palette.argStart = args, start
+	a.palette.open = len(args) > 0
+	a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
 }
 
 func (a *App) paletteEnabled() bool { return a.cfgBool("ui.palette.enabled", true) }
@@ -58,7 +85,7 @@ func (a *App) paletteEnabled() bool { return a.cfgBool("ui.palette.enabled", tru
 func (p *cmdPalette) close() {
 	p.open = false
 	p.selected = 0
-	p.matches = nil
+	p.matches, p.args = nil, nil
 }
 
 // rematch filters the command registry against the typed prefix. The
@@ -78,12 +105,20 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
-func (p *cmdPalette) move(d int) { p.selected = max(0, min(p.selected+d, len(p.matches)-1)) }
+func (p *cmdPalette) move(d int) { p.selected = max(0, min(p.selected+d, p.count()-1)) }
 
 // accept fills the composer with the selected "/name " and closes.
 func (a *App) acceptPalette() {
 	p := &a.palette
-	if !p.open || p.selected >= len(p.matches) || p.selected < 0 {
+	if !p.open || p.selected >= p.count() || p.selected < 0 {
+		return
+	}
+	if p.args != nil {
+		r := a.composer.runes()
+		repl := p.args[p.selected] + " "
+		a.composer.text = string(r[:p.argStart]) + repl + string(r[a.composer.cursor:])
+		a.composer.cursor = p.argStart + len([]rune(repl))
+		p.close()
 		return
 	}
 	a.composer.text = "/" + p.matches[p.selected].Name + " "
@@ -95,12 +130,15 @@ func (a *App) acceptPalette() {
 // paletteRows renders the popup rows shown above the composer.
 func (a *App) paletteRows(w int) [][]hostapi.Segment {
 	p := &a.palette
-	if !p.open || len(p.matches) == 0 {
+	if !p.open || p.count() == 0 {
 		return nil
 	}
-	items := make([]listItem, 0, len(p.matches))
+	items := make([]listItem, 0, p.count())
 	for _, c := range p.matches {
 		items = append(items, listItem{"/" + c.Name, c.Desc})
+	}
+	for _, s := range p.args {
+		items = append(items, listItem{label: s})
 	}
 	return listRows(items, p.selected, a.cfgInt("ui.palette.max_items", 8, 1, 20), "Title")
 }

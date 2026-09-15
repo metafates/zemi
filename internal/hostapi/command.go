@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -100,6 +101,58 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 
 // RunCommand executes a cmdline command by name. The reserved :Reload is
 // never routed here (the UI dispatches it before Lua-visible commands).
+// CompleteCommand returns argument candidates for a command line from the
+// command's Go completer or its Lua complete(arg_lead, cmdline). Results are
+// sanitized and capped; a failing completer offers nothing.
+func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []string {
+	cmd := h.Commands.Lookup(name)
+	if cmd == nil {
+		return nil
+	}
+	var out []string
+	switch {
+	case cmd.GoComplete != nil:
+		out = cmd.GoComplete(h, lead, line)
+	case cmd.Complete != nil:
+		res, err := h.RT.Call(ctx, cmd.Origin, cmd.Complete, lead, line)
+		if err != nil || len(res) == 0 {
+			return nil
+		}
+		list, _ := res[0].([]any)
+		for _, v := range list {
+			if s, ok := v.(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	if len(out) > 50 {
+		out = out[:50]
+	}
+	for i := range out {
+		out[i] = sanitize.String(out[i])
+	}
+	return out
+}
+
+// subcommandCompleter completes the first argument from a fixed list and,
+// when next is set, later arguments from next.
+func subcommandCompleter(subs []string, next func(h *Host, sub string) []string) func(h *Host, lead, line string) []string {
+	return func(h *Host, lead, line string) []string {
+		fields := strings.Fields(line)
+		arg := len(fields)
+		if lead != "" {
+			arg--
+		}
+		switch {
+		case arg <= 1:
+			return subs
+		case next != nil:
+			return next(h, fields[1])
+		}
+		return nil
+	}
+}
+
 func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	cmd := h.Commands.Lookup(name)
 	if cmd == nil {

@@ -423,7 +423,8 @@ func (h *Host) MemoryCommandsStep() lua.BootStep {
 					GoFn:   func(h *Host, args string) error { return h.Remember(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
 				{Name: "memory", NArgs: "*", Desc: "review, forget, or supersede memories",
-					GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
+					GoFn:       func(h *Host, args string) error { return h.memoryCommand(args) },
+					GoComplete: subcommandCompleter([]string{"forget", "supersede"}, nil),
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {
