@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -17,7 +18,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.frameGen++
 
 	// 1. Go-reserved cancel trigger: never routed to Lua, never rebindable
-	// (DESIGN §4, §6.2). During an active turn it aborts the agent.
+	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
+	// turn, and when idle quits on a second press within 2s.
 	if key == "ctrl+c" {
 		switch {
 		case a.permAsk != nil:
@@ -31,11 +33,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case a.question != nil:
 			a.answerQuestion("", false)
 		case a.host.AgentActive():
-			a.host.AgentCancel()
-			a.restoreQueue()
-			a.pushToast("warn", "cancel", "cancelling turn")
+			a.interrupt()
+		case a.now().Before(a.quitArmed):
+			a.Quit()
 		default:
-			a.pushToast("warn", "cancel", "no active turn")
+			a.quitArmed = a.now().Add(2 * time.Second)
 		}
 		return nil
 	}
@@ -261,8 +263,10 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		a.updatePalette()
 		return a.updateCompletion()
 	case "esc":
-		a.completion.close()
-		a.palette.close()
+		// Open popups consumed esc above, so a bare esc interrupts.
+		if a.host.AgentActive() {
+			a.interrupt()
+		}
 	default:
 		if t := keyText(msg); t != "" {
 			c.insert(t)
@@ -271,6 +275,14 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// interrupt cancels the running turn and hands queued messages back to the
+// composer; the working row reads "Cancelling" until the turn ends.
+func (a *App) interrupt() {
+	a.host.AgentCancel()
+	a.restoreQueue()
+	a.cancelling = true
 }
 
 // moveSel applies up/down (k/j) to a list selection over n items; it

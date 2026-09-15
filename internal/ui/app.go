@@ -70,6 +70,8 @@ type App struct {
 	timeStr    string
 	activeBump time.Time
 	now        func() time.Time // animation clock; tests pin it
+	cancelling bool             // interrupt sent, turn not finished yet
+	quitArmed  time.Time        // a second idle ctrl+c before this quits
 
 	bootErr error
 	errFlag bool
@@ -534,8 +536,10 @@ func (a *App) compose(w, h int) string {
 	compPopup := a.completionRows(w)
 	palPopup := a.paletteRows(w)
 	var working [][]hostapi.Segment
-	if a.host.AgentActive() {
-		working = [][]hostapi.Segment{a.workingRow()}
+	if !a.host.AgentActive() {
+		a.cancelling = false
+	} else if row := a.workingRow(); row != nil {
+		working = [][]hostapi.Segment{row}
 	}
 	// + statusline + composer (+ its popups and the working row)
 	reserved := len(header) + 1 + len(compRows) + len(compPopup) + len(palPopup) + len(working)
@@ -699,11 +703,14 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	left := a.statuslineSegments("statusline.left")
 	right := a.statuslineSegments("statusline.right")
 
+	if a.now().Before(a.quitArmed) {
+		left = append([]hostapi.Segment{{Text: "ctrl+c again to quit ", HL: "Title"}}, left...)
+	}
 	if a.bootErr != nil {
 		left = append(left, hostapi.Segment{Text: " boot failed ", HL: "ToastError"})
 	}
 	if a.host.RT.IsHot() {
-		left = append(left, hostapi.Segment{Text: " HOT :Reload ", HL: "ToastError"})
+		left = append(left, hostapi.Segment{Text: " HOT /Reload ", HL: "ToastError"})
 	}
 	if a.errFlag {
 		left = append(left, hostapi.Segment{Text: " !errors ", HL: "ToastError"})

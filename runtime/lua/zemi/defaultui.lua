@@ -154,6 +154,11 @@ zemi.ui.widget.register({
     if #tr == 0 and not ctx.agent_active then
       return { { { text = "no messages yet - type below, or / for commands", hl = "Comment" } } }
     end
+    -- Only the latest collapsed reasoning line carries the expand hint.
+    local last_reason = 0
+    for i, m in ipairs(tr) do
+      if m.kind == "reasoning" then last_reason = i end
+    end
     for i, m in ipairs(tr) do
       local is_reason = m.kind == "reasoning"
       -- Reasoning stays attached to the reply it belongs to.
@@ -164,7 +169,8 @@ zemi.ui.widget.register({
         if ctx.show_reasoning then
           add_reasoning(m.text)
         else
-          local label = "✻ thought " .. (fmt_secs(m.thought) or "0s") .. " (ctrl+o to expand)"
+          local label = "✻ thought " .. (fmt_secs(m.thought) or "0s")
+          if i == last_reason then label = label .. " (ctrl+o to expand)" end
           lines[#lines + 1] = { { text = "  " }, { text = label, hl = "AgentReason" } }
         end
       elseif m.role == "user" then

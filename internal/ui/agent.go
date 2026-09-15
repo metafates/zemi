@@ -149,9 +149,13 @@ func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segmen
 
 // workingRow is the activity line above the composer while a turn runs:
 // a pulsing bullet, a shimmering label naming what the agent is doing,
-// elapsed time, the interrupt key and the queue depth.
+// elapsed time, the interrupt key and the queue depth. It stays hidden for
+// the first 300ms so instant turns do not flash it.
 func (a *App) workingRow() []hostapi.Segment {
 	st := a.host.AgentStream()
+	if st.Elapsed < 300*time.Millisecond && !a.cancelling {
+		return nil
+	}
 	label := "Working"
 	for _, t := range st.Tools {
 		if t.Status == "run" {
@@ -161,6 +165,9 @@ func (a *App) workingRow() []hostapi.Segment {
 	if label == "Working" && st.Reasoning != "" && st.Text == "" {
 		label = "Thinking"
 	}
+	if a.cancelling {
+		label = "Cancelling"
+	}
 	now := a.now()
 	animate := a.cfgBool("ui.animations", true)
 	bullet := hostapi.Segment{Text: "• ", HL: "Title"}
@@ -168,7 +175,7 @@ func (a *App) workingRow() []hostapi.Segment {
 		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
-	hint := " (" + fmtElapsed(st.Elapsed) + " · ctrl+c to interrupt)"
+	hint := " (" + fmtElapsed(st.Elapsed) + " · esc to interrupt)"
 	if n := len(st.Steering); n > 0 {
 		hint += fmt.Sprintf(" · %d queued, up to edit", n)
 	}

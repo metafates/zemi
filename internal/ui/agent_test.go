@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -247,24 +248,24 @@ func TestGoldenAgentStream(t *testing.T) {
 	}
 }
 
-// TestCtrlCCancelsTurn covers the cancel trigger during an active turn:
-// ctrl+c cancels instead of the "no active turn" toast. The seeded stream
-// provides the active state.
-func TestCtrlCCancelsTurn(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "working"})
-
-	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	// No runner attached: cancel is a no-op that must not panic; the
-	// toast acknowledges the attempt.
-	found := false
-	for _, tt := range app.toasts {
-		if tt.title == "cancel" && tt.body == "cancelling turn" {
-			found = true
+// TestInterruptKeys: esc and ctrl+c interrupt a running turn (queue back
+// in the composer, working row reads Cancelling; no runner is attached, so
+// the cancel itself must just not panic), and an idle ctrl+c arms quit.
+func TestInterruptKeys(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEscape}, {Code: 'c', Mod: tea.ModCtrl}} {
+		app, host := bootAgentApp(t, 80, 16)
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Steering: []string{"also this"}})
+		app.Update(key)
+		app.renderSync(t)
+		if frame := ansi.Strip(app.Frame()); app.composer.text != "also this" || !strings.Contains(frame, "Cancelling") {
+			t.Fatalf("%s: composer=%q frame:\n%s", key, app.composer.text, frame)
 		}
 	}
-	if !found {
-		t.Fatalf("expected cancel toast, got %+v", app.toasts)
+
+	app, _ := bootAgentApp(t, 80, 16)
+	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if !strings.Contains(ansi.Strip(app.Frame()), "ctrl+c again to quit") {
+		t.Fatal("idle ctrl+c should arm quit")
 	}
 }
 

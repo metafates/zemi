@@ -234,8 +234,8 @@ Contracts that make this safe:
   and join the running turn as user-role messages at the next step
   boundary (before the next model call). Whatever is still queued when
   the turn ends starts one follow-up turn. `up` on an empty composer
-  takes the queue back for editing; `ctrl+c` cancels the turn and
-  returns the queue to the composer.
+  takes the queue back for editing; `esc` or `ctrl+c` cancels the turn
+  and returns the queue to the composer.
 
 Cancellation: `ctrl+c` (the cancel trigger, §8; the action is
 Go-reserved, §6.2, and in v1 its trigger is fixed: no origin, the user
@@ -933,7 +933,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   instead of spawning a second turn.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
-  send/newline, `ctrl+c` cancel turn, `ctrl+o` toggle reasoning,
+  send/newline, `esc`/`ctrl+c` interrupt the turn (idle, `ctrl+c`
+  twice within 2s quits), `ctrl+o` toggle reasoning,
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
