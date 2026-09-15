@@ -11,7 +11,7 @@ import (
 // Setting describes one config key.
 type Setting struct {
 	Path         string
-	Kind         string // "string" | "int" | "bool" | "float"
+	Kind         string // "string" | "int" | "bool"
 	Default      any
 	UserWritable bool
 	AutonomyKnob bool // refused by zemi.config.set from every origin after boot
@@ -103,29 +103,6 @@ func (s *Store) Get(path string) (any, bool) {
 	return v, ok
 }
 
-// Set applies a runtime override and synchronously notifies watchers. Only
-// safe to call from goroutines that may block on the interpreter; the
-// interpreter itself must use SetQuiet and deliver the returned watches
-// inline (a blocking RT.Do from inside a running request deadlocks).
-func (s *Store) Set(path string, val any) error {
-	fired, err := s.SetQuiet(path, val)
-	if err != nil {
-		return err
-	}
-	s.mu.RLock()
-	fns := make(map[int]func(any, any), len(fired))
-	for _, w := range s.watchers {
-		fns[w.ID] = w.Fn
-	}
-	s.mu.RUnlock()
-	for _, f := range fired {
-		if fn := fns[f.ID]; fn != nil {
-			fn(f.Old, f.New)
-		}
-	}
-	return nil
-}
-
 // SetQuiet applies a runtime override without notifying watchers; the
 // callers on the interpreter goroutine deliver the fired watches themselves
 // so a Lua watch callback never re-enters the request queue.
@@ -213,32 +190,23 @@ func (s *Store) BootWindowClosed() bool {
 }
 
 func checkKind(def Setting, val any) error {
+	ok := true
 	switch def.Kind {
 	case "string":
-		if _, ok := val.(string); !ok {
-			return &ErrBadValue{Path: def.Path, Want: def.Kind}
-		}
+		_, ok = val.(string)
 	case "int":
 		switch v := val.(type) {
-		case int:
-		case int64:
+		case int, int64:
 		case float64:
-			if v != float64(int64(v)) {
-				return &ErrBadValue{Path: def.Path, Want: def.Kind}
-			}
+			ok = v == float64(int64(v))
 		default:
-			return &ErrBadValue{Path: def.Path, Want: def.Kind}
+			ok = false
 		}
 	case "bool":
-		if _, ok := val.(bool); !ok {
-			return &ErrBadValue{Path: def.Path, Want: def.Kind}
-		}
-	case "float":
-		switch val.(type) {
-		case float64, int, int64:
-		default:
-			return &ErrBadValue{Path: def.Path, Want: def.Kind}
-		}
+		_, ok = val.(bool)
+	}
+	if !ok {
+		return &ErrBadValue{Path: def.Path, Want: def.Kind}
 	}
 	return nil
 }
