@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
@@ -39,8 +41,9 @@ var builtinModes = []PermModeDef{
 // modeReg is the mode list in tab order: the builtins until user config
 // changes it, reset on reload so init.lua replays onto a clean list.
 type modeReg struct {
-	mu   sync.Mutex
-	list []PermModeDef // nil = builtinModes
+	mu      sync.Mutex
+	list    []PermModeDef // nil = builtinModes
+	prePlan string        // the mode active before the last switch into plan mode
 }
 
 func (h *Host) PermModeList() []PermModeDef {
@@ -76,7 +79,11 @@ func modeIndex(list []PermModeDef, name string) int {
 const planPrompt = `
 
 # Plan mode
-The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and commands that could change anything need the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
+The user switched on plan mode: plan the work with them and do not do it until they approve a plan. File writes are refused and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
+1. Read the code the task touches first. Never ask what reading it would tell you.
+2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
+3. When nothing is left to decide, call the plan tool with the plan.
+End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan takes zemi out of plan mode: then implement it.`
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {
@@ -127,8 +134,14 @@ func (h *Host) SetPermMode(mode string) error {
 		}
 		return fmt.Errorf("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
+	prev := h.permModeDef()
 	if err := h.Settings.SetHost("permissions.mode", mode); err != nil {
 		return err
+	}
+	if list[i].Base == "plan" && prev.Base != "plan" {
+		h.modes.mu.Lock()
+		h.modes.prePlan = prev.Name
+		h.modes.mu.Unlock()
 	}
 	// The statusline pill shows the mode; only the risky one also warns.
 	if list[i].Base == "yolo" {
@@ -136,6 +149,64 @@ func (h *Host) SetPermMode(mode string) error {
 	}
 	h.refresh()
 	return nil
+}
+
+// approvePlan is the plan tool's hook: the plan joins the transcript and is
+// saved, then the user approves it or types what to change. In plan mode
+// each approval names the mode to implement in, the one active before plan
+// mode first; yolo modes are left out so an approval never allows everything.
+func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
+	ui := h.hooks()
+	if ui == nil {
+		return tools.PlanVerdict{}, false
+	}
+	var v tools.PlanVerdict
+	if sid := h.AgentSessionID(); sid != "" && h.Dirs.DataHome != "" {
+		path := filepath.Join(h.Dirs.DataHome, "plans", sid+".md")
+		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
+			v.Path = path
+		}
+	}
+	h.appendChatMessage(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
+	q := tools.Question{Question: "Implement this plan?", Other: "No, change it: type what to change"}
+	var modes []string
+	if h.permModeDef().Base == "plan" {
+		h.modes.mu.Lock()
+		prev := h.modes.prePlan
+		h.modes.mu.Unlock()
+		for _, d := range h.PermModeList() {
+			if d.Base == "plan" || d.Base == "yolo" {
+				continue
+			}
+			opt := tools.QuestionOption{Label: "Yes, in " + d.Name + " mode", Description: d.Description}
+			if d.Name == prev {
+				modes, q.Options = append([]string{d.Name}, modes...), append([]tools.QuestionOption{opt}, q.Options...)
+			} else {
+				modes, q.Options = append(modes, d.Name), append(q.Options, opt)
+			}
+		}
+	} else {
+		q.Options = []tools.QuestionOption{{Label: "Yes, implement it"}}
+	}
+	answers, ok := ui.AskQuestion([]tools.Question{q})
+	if !ok || len(answers) == 0 {
+		return v, false
+	}
+	for i, o := range q.Options {
+		if answers[0] != o.Label {
+			continue
+		}
+		if i < len(modes) {
+			if err := h.SetPermMode(modes[i]); err != nil {
+				return v, false
+			}
+			v.Mode = modes[i]
+		}
+		v.Approved = true
+		return v, true
+	}
+	v.Feedback = answers[0]
+	return v, true
 }
 
 // cyclePermMode steps through the modes (tab forward, shift+tab back).

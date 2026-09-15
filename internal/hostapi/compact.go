@@ -142,11 +142,11 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
 		}
 		reason := compactAuto
-		switch last := len(runner.History) - 1; {
+		switch {
 		case hold && contextTooLarge(err):
 			retried, reason = true, compactOverflow
-		case err == nil && last >= 0 && runner.History[last].Role == fantasy.MessageRoleTool:
-			// Full cut the turn before the model read these results
+		case err == nil && runner.CutShort():
+			// Full stopped the turn before the model read its tool results
 		default:
 			return
 		}

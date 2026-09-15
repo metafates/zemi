@@ -56,7 +56,7 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 
 `description` is required; `name` defaults to the file name (lowercase letters, digits,
 `-`); `model: inherit` or no model uses the agent model. `tools` limits what it may use
-(omit for everything but agent, workflow, todos, question). The model sees the description
+(omit for everything but agent, workflow, todos, question, plan). The model sees the description
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
 lists them. Builtin `explore` has `read, glob, grep, fetch, sourcegraph, memory_search,
 skill`; builtin `general` has everything a subagent may have. The model's `agent` tool also

@@ -182,7 +182,8 @@ const basePrompt = `You are zemi, a coding agent in the user's terminal. You hel
 - Report results as they are. If a check failed or you did not run it, say so. Never invent output, file contents or command results.
 
 # Asking the user
-Decide yourself when the answer can be found by searching, reading or following existing code, and state assumptions briefly. Ask with the question tool only when a requirement is ambiguous in a way that changes the result, when approaches have tradeoffs the user should choose between, or before destructive actions. When blocked, finish the unblocked parts, then say what you tried, why you are stuck and the smallest thing you need. If the user must run something interactive (a login, a password prompt), ask them to type ! followed by the command in zemi.
+Find out what you can yourself: read the code, search, run read-only commands, follow existing patterns. Ask with the question tool only what the user alone can answer (requirements, scope, expected behavior, preferences, tradeoffs between approaches), put related questions in one call, and recommend an option. Never ask whether to proceed or to run tests; risky actions already ask for permission.
+Small or clear tasks: just do them and state assumptions briefly. Before a larger task that could reasonably go several ways (a new feature, a design choice, changes across many files, unclear requirements), read the code it touches, ask the questions whose answers change the design, then present the plan with the plan tool and implement only after the user approves it. If a question gets no answer, take the option you recommended and say so. When blocked, finish the unblocked parts, then say what you tried, why you are stuck and the smallest thing you need. If the user must run something interactive (a login, a password prompt), ask them to type ! followed by the command in zemi.
 
 # Acting with care
 Local, reversible actions such as editing files or running tests need no confirmation. Ask first before actions that are hard to undo or reach beyond this machine: deleting files or branches, git reset --hard, checkout or restore over uncommitted work, force push, dropping data, changing dependencies or CI, pushing, posting to any external service. Approval for one action does not cover others. Do not bypass a safety check (--no-verify, skipping or deleting a test) to make an error go away. Unfamiliar files, branches or lock files may be the user's work in progress; investigate before removing them.
@@ -1715,13 +1716,10 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Recall: func(query string, limit int) ([]*store.Memory, error) {
 			return h.memorySearch("all", query, limit)
 		},
-		Question: func(q tools.Question) (string, bool) {
-			ui := h.hooks()
-			if ui == nil {
-				return "", false
-			}
-			return ui.AskQuestion(q)
-		},
+	}
+	if ui := h.hooks(); ui != nil {
+		p.Question = ui.AskQuestion
+		p.ApprovePlan = h.approvePlan
 	}
 	if h.DB != nil {
 		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }

@@ -1,7 +1,8 @@
-// misc_tools.go ships todos, question and skill (DESIGN §6.4): session
-// todo list, structured user questions and on-demand SKILL.md loading.
-// Todos, questions and the skill index come from the host through the
-// pipeline; a nil hook is an error result, never a panic.
+// misc_tools.go ships todos, question, plan and skill (DESIGN §6.4):
+// session todo list, structured user questions, plan approval and
+// on-demand SKILL.md loading. They reach the host through pipeline hooks;
+// a nil hook is a result the model can act on (no user to ask), never a
+// panic.
 package tools
 
 import (
@@ -74,45 +75,101 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
+// PlanVerdict is the user's answer to a presented plan.
+type PlanVerdict struct {
+	Approved bool
+	Mode     string // permission mode chosen on approval, "" when unchanged
+	Feedback string // what to change, when not approved
+	Path     string // where the plan was saved, "" when not saved
+}
+
+func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	plan := strings.TrimSpace(str(input["plan"]))
+	if plan == "" {
+		return fantasy.NewTextErrorResponse("plan is required"), nil
+	}
+	if p.ApprovePlan == nil {
+		return fantasy.NewTextResponse("No user is available to approve the plan. Put the plan in your reply and stop."), nil
+	}
+	v, ok := p.ApprovePlan(plan)
+	saved := ""
+	if v.Path != "" {
+		saved = "\nThe plan is saved at " + v.Path + "."
+	}
+	implement := " Implement it now: track its steps with todos, carry them through, verify, and report." + saved
+	switch {
+	case !ok:
+		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
+	case v.Approved && v.Mode != "":
+		return fantasy.NewTextResponse("The user approved the plan and plan mode is off; the permission mode is now " + v.Mode + "." + implement), nil
+	case v.Approved:
+		return fantasy.NewTextResponse("The user approved the plan." + implement), nil
+	}
+	return fantasy.NewTextResponse("The user has not approved the plan and asked for changes: " + v.Feedback +
+		"\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."), nil
+}
+
+// stopTurn is an error result that ends the turn: the user wants to speak next.
+func stopTurn(text string) fantasy.ToolResponse {
+	resp := fantasy.NewTextErrorResponse(text)
+	resp.StopTurn = true
+	return resp
+}
+
 // QuestionOption is one answer choice for a question ask.
 type QuestionOption struct {
 	Label       string
 	Description string
 }
 
-// Question is one structured ask to the user. The host renders it as a
-// Go-owned overlay; the tool returns the chosen label.
+// Question is one structured ask to the user, drawn by a Go-owned overlay.
+// The user picks options (several when Multi) or types an answer on a
+// last row named Other ("" = the default name); no options means an open
+// question.
 type Question struct {
-	Question    string
-	Description string
-	Options     []QuestionOption
+	Question string
+	Options  []QuestionOption
+	Multi    bool
+	Other    string
 }
 
+const maxQuestions = 4
+
 func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	raw, _ := input["questions"].([]any)
+	if len(raw) == 0 || len(raw) > maxQuestions {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("questions must hold 1 to %d questions", maxQuestions)), nil
+	}
+	qs := make([]Question, 0, len(raw))
+	for i, v := range raw {
+		m, _ := v.(map[string]any)
+		if str(m["question"]) == "" {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: the question text is required", i+1)), nil
+		}
+		q := Question{Question: str(m["question"]), Multi: m["multi_select"] == true}
+		opts, _ := m["options"].([]any)
+		for j, o := range opts {
+			om, _ := o.(map[string]any)
+			if str(om["label"]) == "" {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d, option %d: label is required", i+1, j+1)), nil
+			}
+			q.Options = append(q.Options, QuestionOption{Label: str(om["label"]), Description: str(om["description"])})
+		}
+		qs = append(qs, q)
+	}
 	if p.Question == nil {
-		return fantasy.NewTextErrorResponse("no UI available for questions"), nil
+		return fantasy.NewTextResponse("No user is available to answer. Take the option you would recommend, say which assumption you made, and continue."), nil
 	}
-	q := Question{Question: str(input["question"]), Description: str(input["description"])}
-	opts, ok := input["options"].([]any)
-	if !ok || len(opts) == 0 {
-		return fantasy.NewTextErrorResponse("options must be a non-empty array"), nil
+	answers, ok := p.Question(qs)
+	if !ok || len(answers) != len(qs) {
+		return stopTurn("The user dismissed the questions. Stop and wait for them to say how to proceed."), nil
 	}
-	for i, v := range opts {
-		m, ok := v.(map[string]any)
-		if !ok {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("option %d: not an object", i)), nil
-		}
-		label := str(m["label"])
-		if label == "" {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("option %d: label is required", i)), nil
-		}
-		q.Options = append(q.Options, QuestionOption{Label: label, Description: str(m["description"])})
+	var b strings.Builder
+	b.WriteString("The user answered:")
+	for i, q := range qs {
+		fmt.Fprintf(&b, "\n- %q: %s", q.Question, strings.ReplaceAll(answers[i], " (Recommended)", ""))
 	}
-	answer, ok := p.Question(q)
-	if !ok {
-		return fantasy.NewTextErrorResponse("question declined by user"), nil
-	}
-	return fantasy.NewTextResponse("user answered: " + answer), nil
+	return fantasy.NewTextResponse(b.String()), nil
 }
 
 // SkillInfo is one resolvable skill: name plus the directory holding

@@ -8,6 +8,41 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+// TestApprovePlan: in plan mode the approval choices name the mode to
+// implement in, the one active before plan mode first and never yolo;
+// approving switches to it, typed feedback stays in plan mode.
+func TestApprovePlan(t *testing.T) {
+	for _, c := range []struct {
+		name, answer, wantMode string
+		approved               bool
+	}{
+		{"approval returns to the earlier mode", "Yes, in auto mode", "auto", true},
+		{"feedback keeps planning", "use sqlite instead", "plan", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHost(t)
+			ui := &fakeUI{qAnswer: c.answer, qOK: true}
+			h.SetUIHooks(ui)
+			for _, m := range []string{"auto", "plan"} {
+				if err := h.SetPermMode(m); err != nil {
+					t.Fatal(err)
+				}
+			}
+			v, ok := h.approvePlan("1. do it")
+			if !ok || v.Approved != c.approved || h.PermMode() != c.wantMode || (!c.approved && v.Feedback != c.answer) {
+				t.Fatalf("verdict %+v ok=%v mode %s", v, ok, h.PermMode())
+			}
+			var labels []string
+			for _, o := range ui.qAsked[0].Options {
+				labels = append(labels, o.Label)
+			}
+			if got := fmt.Sprint(labels); got != "[Yes, in auto mode Yes, in manual mode]" {
+				t.Fatalf("choices %s", got)
+			}
+		})
+	}
+}
+
 // TestPermModes: with no UI to ask, manual denies, yolo allows, and auto
 // allows only what the screening model calls safe.
 func TestPermModes(t *testing.T) {

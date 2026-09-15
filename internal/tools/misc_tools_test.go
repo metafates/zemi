@@ -75,46 +75,50 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	}
 }
 
-func TestQuestionFlowAndValidation(t *testing.T) {
-	p, _ := testPipeline(t, false)
+// TestQuestionAndPlanTools pins what the model reads back from the user
+// tools: answers in order without the "(Recommended)" marker, a dismissal
+// that ends the turn, and guidance instead of an error when nobody can
+// answer.
+func TestQuestionAndPlanTools(t *testing.T) {
+	const two = `{"questions":[{"question":"Which path?","options":[{"label":"A (Recommended)","description":"first"},{"label":"B"}]},
+		{"question":"Checks?","multi_select":true,"options":[{"label":"tests"},{"label":"vet"}]}]}`
 	var asked []Question
-	p.Question = func(q Question) (string, bool) {
-		asked = append(asked, q)
-		return "Option B", true
+	answer := func(ans []string, ok bool) func([]Question) ([]string, bool) {
+		return func(qs []Question) ([]string, bool) { asked = qs; return ans, ok }
 	}
-	qt := toolNamed(t, "question", p)
-
-	resp := call(t, qt, `{"question":"Which path?","description":"pick one",
-		"options":[{"label":"Option A","description":"first"},{"label":"Option B"}]}`)
-	if resp.IsError || !strings.Contains(resp.Content, "user answered: Option B") {
-		t.Fatalf("answered flow: %+v", resp)
+	verdict := func(v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
+		return func(string) (PlanVerdict, bool) { return v, ok }
 	}
-	if len(asked) != 1 || asked[0].Question != "Which path?" || len(asked[0].Options) != 2 || asked[0].Options[0].Description != "first" {
-		t.Fatalf("question plumbing: %+v", asked)
-	}
-
-	p.Question = func(Question) (string, bool) { return "", false }
-	resp = call(t, qt, `{"question":"x","options":[{"label":"a"}]}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "declined") {
-		t.Fatalf("declined flow: %+v", resp)
-	}
-
-	for _, bad := range []string{
-		`{"question":"x"}`,
-		`{"question":"x","options":[]}`,
-		`{"question":"x","options":[{"description":"no label"}]}`,
-		`{"question":"x","options":["nope"]}`,
+	for _, c := range []struct {
+		name, tool, input string
+		question          func([]Question) ([]string, bool)
+		plan              func(string) (PlanVerdict, bool)
+		want              string
+		isErr, stop       bool
+	}{
+		{"answers in order", "question", two, answer([]string{"A (Recommended)", "tests, vet"}, true), nil,
+			"The user answered:\n- \"Which path?\": A\n- \"Checks?\": tests, vet", false, false},
+		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
+		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
+		{"too many questions", "question", `{"questions":[{"question":"1"},{"question":"2"},{"question":"3"},{"question":"4"},{"question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
+		{"option without label", "question", `{"questions":[{"question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "label is required", true, false},
+		{"approved in plan mode", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Mode: "auto", Path: "/p.md"}, true),
+			"plan mode is off; the permission mode is now auto. Implement it now", false, false},
+		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
+		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},
+		{"plan with no user", "plan", `{"plan":"1. do it"}`, nil, nil, "Put the plan in your reply", false, false},
 	} {
-		resp = call(t, qt, bad)
-		if !resp.IsError {
-			t.Fatalf("bad input must error: %s -> %+v", bad, resp)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			p, _ := testPipeline(t, false)
+			p.Question, p.ApprovePlan = c.question, c.plan
+			resp := call(t, toolNamed(t, c.tool, p), c.input)
+			if resp.IsError != c.isErr || resp.StopTurn != c.stop || !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("got %+v, want %q error=%v stop=%v", resp, c.want, c.isErr, c.stop)
+			}
+		})
 	}
-
-	p.Question = nil
-	resp = call(t, qt, `{"question":"x","options":[{"label":"a"}]}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "no UI available") {
-		t.Fatalf("nil hook: %+v", resp)
+	if len(asked) != 2 || !asked[1].Multi || asked[0].Options[0].Description != "first" {
+		t.Fatalf("question plumbing: %+v", asked)
 	}
 }
 

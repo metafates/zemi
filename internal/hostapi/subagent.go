@@ -40,8 +40,8 @@ type AgentDef struct {
 }
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
-// todo list and interactive questions.
-var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true}
+// todo list, and asking the user (questions, plan approval).
+var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true}
 
 var builtinAgents = []AgentDef{
 	{
@@ -223,7 +223,7 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 		return "", err
 	}
 	pipe := h.PipelineFor()
-	pipe.TodosRead, pipe.TodosWrite, pipe.Question = nil, nil, nil
+	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string) {
 			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)

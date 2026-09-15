@@ -177,9 +177,17 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 ## Tools and permission rules
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
-`sourcegraph`, `todos`, `question`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`sourcegraph`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `skill`, `diagnostics`, `agent`, `workflow`, plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
+
+Asking the user: `question` shows 1-4 questions one after another; the user picks an option
+(space marks several in a multi-select) or types an answer on the last row, and esc dismisses,
+which ends the turn. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
+type what to change and the agent revises it. In plan mode each approval names the mode to
+implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
+Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.
+Subagents cannot ask.
 
 Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command),
 `fs.read`, `fs.write` (path patterns), `net.<host>`, `mcp.<server>` (tool name as

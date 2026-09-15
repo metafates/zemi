@@ -55,7 +55,16 @@ type Runner struct {
 	Full func(used int64) bool
 
 	active bool
+	cut    bool
 	cancel context.CancelFunc
+}
+
+// CutShort reports whether the last Send ended because Full said the
+// context is full.
+func (r *Runner) CutShort() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cut
 }
 
 // ErrTurnActive is returned when a turn is already running.
@@ -99,7 +108,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		r.mu.Unlock()
 		return ErrTurnActive
 	}
-	r.active = true
+	r.active, r.cut = true, false
 	tctx, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
 	hooks := r.Hooks
@@ -135,10 +144,13 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// Full goes first: fantasy stops at the first condition that holds, and
 	// Full has to see every step.
 	var stops []fantasy.StopCondition
+	cut := false
 	if full != nil {
 		stops = append(stops, func(steps []fantasy.StepResult) bool {
 			last := steps[len(steps)-1]
-			return full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls
+			stop := full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls
+			cut = cut || stop
+			return stop
 		})
 	}
 	call := fantasy.AgentStreamCall{
@@ -193,6 +205,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	turnMsgs := interleave(nil, stepMessages(result.Steps), steered)
 	var usage fantasy.Usage
 	r.mu.Lock()
+	r.cut = cut
 	r.History = append(r.History, turnMsgs...)
 	for _, step := range result.Steps {
 		usage.InputTokens += step.Usage.InputTokens

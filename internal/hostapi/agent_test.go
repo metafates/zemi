@@ -397,9 +397,13 @@ func (f *fakeUI) ReviewConfigs(items []ConfigRow) ([]string, []string) {
 	return acc, rej
 }
 
-func (f *fakeUI) AskQuestion(q tools.Question) (string, bool) {
-	f.qAsked = append(f.qAsked, q)
-	return f.qAnswer, f.qOK
+func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
+	f.qAsked = append(f.qAsked, qs...)
+	answers := make([]string, len(qs))
+	for i := range answers {
+		answers[i] = f.qAnswer
+	}
+	return answers, f.qOK
 }
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
@@ -495,8 +499,8 @@ func TestMemoryToolsThroughPipeline(t *testing.T) {
 
 // TestPipelineQuestionToolEndToEnd drives the question tool through
 // PipelineFor and the fakeUI: the structured ask reaches the UI hooks and
-// the chosen label comes back as the tool output; with no UI the ask
-// fails closed.
+// the chosen label comes back as the tool output; with no UI the pipeline
+// has no question hook, so the tool tells the model nobody can answer.
 func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{qAnswer: "proceed", qOK: true}
@@ -510,13 +514,13 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 		}
 		var err error
 		resp, err = ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: "question",
-			Input: `{"question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}`})
+			Input: `{"questions":[{"question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
 		break
 	}
-	if resp.IsError || !strings.Contains(resp.Content, "user answered: proceed") {
+	if resp.IsError || !strings.Contains(resp.Content, `"Ship it?": proceed`) {
 		t.Fatalf("question through pipeline: %+v", resp)
 	}
 	if len(ui.qAsked) != 1 || ui.qAsked[0].Question != "Ship it?" || len(ui.qAsked[0].Options) != 2 {
@@ -524,10 +528,8 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 	}
 
 	bare, _ := newTestHost(t)
-	if _, ok := bare.PipelineFor().Question(tools.Question{
-		Question: "x", Options: []tools.QuestionOption{{Label: "a"}},
-	}); ok {
-		t.Fatal("missing UI must decline the question")
+	if bare.PipelineFor().Question != nil {
+		t.Fatal("a host without UI must leave the question hook unset")
 	}
 }
 

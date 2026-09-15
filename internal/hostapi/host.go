@@ -36,7 +36,7 @@ type UIHooks interface {
 	PickModel(items []ModelOption, current string) (string, bool)
 	ReviewMemories(items []MemoryRow) map[string]string // row id -> accept, reject or delete
 	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
-	AskQuestion(q tools.Question) (answer string, ok bool)
+	AskQuestion(qs []tools.Question) (answers []string, ok bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert" or "submit".
 	ComposerEdit(op, text string, cursor int)

@@ -33,7 +33,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case top == "memReview":
 			a.answerMemReview()
 		case top == "question":
-			a.answerQuestion("", false)
+			a.finishQuestion(false)
 		case top == "modelPick":
 			a.answerPick("", false)
 		case a.host.AgentActive() && a.cancelling:
@@ -137,20 +137,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerCfgReview()
 		}
 	case "question":
-		qp := a.question
-		if moveSel(&qp.sel, len(qp.q.Options), key) {
-			return nil
-		}
-		switch key {
-		case "enter":
-			if qp.sel < len(qp.q.Options) {
-				a.answerQuestion(qp.q.Options[qp.sel].Label, true)
-			} else {
-				a.answerQuestion("", false)
-			}
-		case "esc", "q":
-			a.answerQuestion("", false)
-		}
+		a.questionKey(key, keyText(msg))
 	case "overlay":
 		a.overlayKey(key, keyText(msg))
 	default:
@@ -464,7 +451,7 @@ func (a *App) wheelChrome(step int) bool {
 	case "cfgReview":
 		move(&a.cfgReview.sel, len(a.cfgReview.items))
 	case "question":
-		move(&a.question.sel, len(a.question.q.Options))
+		move(&a.question.sel, len(a.question.qs[a.question.at].Options)+1)
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {

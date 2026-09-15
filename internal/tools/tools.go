@@ -58,8 +58,12 @@ type Pipeline struct {
 	TodosRead  func() ([]store.Todo, error)
 	TodosWrite func([]store.Todo) error
 
-	// Question renders a structured ask overlay; nil = questions fail.
-	Question func(q Question) (answer string, ok bool)
+	// Question asks the user and returns one answer per question; false =
+	// dismissed. nil = nobody can answer (headless).
+	Question func(qs []Question) (answers []string, ok bool)
+	// ApprovePlan shows a plan and asks the user to approve it; false =
+	// dismissed. nil = nobody can answer (headless).
+	ApprovePlan func(plan string) (PlanVerdict, bool)
 
 	// Jobs owns model-started background processes; nil = jobs error.
 	Jobs *Jobs
@@ -413,23 +417,42 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk("question", "Ask the user to choose between options when the decision is theirs: an ambiguous requirement that changes the result, or a real tradeoff. Returns the chosen label. Do not ask what you can find out yourself.",
+		mk("question", `Ask the user up to 4 questions and wait for the answers. Use it only for what the user alone can decide: requirements, scope, expected behavior, preferences, tradeoffs between approaches. Never ask what reading code or a read-only command would tell you, never ask for permission (risky actions already ask), and never ask whether a plan is ready (use plan).
+
+Put independent questions in one call; ask separately when one answer changes another question. Give 2-4 mutually exclusive options with 1-5 word labels and a description of what each means; put the one you recommend first and end its label with "(Recommended)". The user can always type their own answer, so never add an "Other" option; omit options for an open question.`,
 			false,
 			map[string]any{
-				"question":    map[string]any{"type": "string"},
-				"description": map[string]any{"type": "string"},
-				"options": map[string]any{"type": "array", "items": map[string]any{
+				"questions": map[string]any{"type": "array", "description": "1 to 4 questions, shown one after another", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"label":       map[string]any{"type": "string"},
-						"description": map[string]any{"type": "string"},
+						"question": map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
+						"options": map[string]any{"type": "array", "items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"label":       map[string]any{"type": "string"},
+								"description": map[string]any{"type": "string"},
+							},
+							"required": []string{"label"},
+						}},
+						"multi_select": map[string]any{"type": "boolean", "description": "let the user pick several options"},
 					},
-					"required": []string{"label"},
+					"required": []string{"question"},
 				}},
 			},
-			[]string{"question", "options"},
+			[]string{"questions"},
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
+
+		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. Call it in plan mode once nothing is left to decide, and outside plan mode before a large or ambiguous change (a new feature, several reasonable designs, many files). Ask open questions with the question tool first; do not use it to answer a research question.
+
+The plan is markdown for someone who will implement it without guessing: the goal, what changes where (files, and existing code to reuse as path:line), how to verify, and the assumptions made. Only the approach you recommend, kept short.
+
+The user approves it (implement it; in plan mode this also ends plan mode), asks for changes (revise it and call plan again), or dismisses it (stop and wait).`,
+			false,
+			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
+			[]string{"plan"},
+			func(in map[string]any) []Request { return nil },
+			runPlan),
 
 		mk("sourcegraph", "Search public open-source repositories on sourcegraph.com.",
 			true,

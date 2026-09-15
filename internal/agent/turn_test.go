@@ -232,16 +232,19 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 		roles = append(roles, role)
 		return nil
 	}
-	for _, c := range []struct{ text, roles string }{
-		{"hi", "user,assistant,tool"},
-		{"", "user,assistant,tool,assistant"},
+	for _, c := range []struct {
+		text, roles string
+		cut         bool
+	}{
+		{"hi", "user,assistant,tool", true},
+		{"", "user,assistant,tool,assistant", false},
 	} {
 		r.Hooks = newRecHooks()
 		if err := r.Send(context.Background(), c.text); err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.Join(roles, ","); got != c.roles {
-			t.Fatalf("send %q persisted roles: %s, want %s", c.text, got, c.roles)
+		if got := strings.Join(roles, ","); got != c.roles || r.CutShort() != c.cut {
+			t.Fatalf("send %q persisted roles: %s, cut %v; want %s, cut %v", c.text, got, r.CutShort(), c.roles, c.cut)
 		}
 	}
 	if got := fmt.Sprint(used); got != "[105 15]" {

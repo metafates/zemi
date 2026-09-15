@@ -681,7 +681,9 @@ names it `view`), `write`, `edit` (incl. whitespace-tolerant variant),
 `multiedit`, `glob`, `grep` (Go-exec'd async against an `rg` binary
 resolved at boot from a fixed directory list excluding cwd-relative
 `PATH` entries, patterns passed as `-e <pattern>`, §2), `fetch`,
-`todos`, `question`,
+`todos`, `question` (1-4 questions in one overlay, options or a typed
+answer), `plan` (shows a plan and asks for approval; in plan mode the
+approval picks the mode to implement in),
 `sourcegraph`, `job_*`, `skill` (loads a SKILL.md body on demand). Every
 tool, Go or Lua, passes through the same pipeline:
 

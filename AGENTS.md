@@ -207,7 +207,7 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 - **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
   are prefixed with the agent name). Definitions: builtin `explore` (read-only tools) and
   `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
-  `agent`, `workflow`, `todos` or `question` (nesting depth 1). A run is a child session
+  `agent`, `workflow`, `todos`, `question` or `plan` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
   context estimate. The delegation guidance lives in `delegationPrompt` (agent.go):
   without it models rarely delegate.
