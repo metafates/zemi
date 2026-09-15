@@ -826,7 +826,15 @@ func toolSummary(input string) string {
 		}
 		return fmt.Sprintf("%d todos, %d done", len(list), done)
 	}
-	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name", "text", "description"} {
+	if cmd, ok := m["command"].(string); ok && cmd != "" {
+		if args, ok := m["args"].([]any); ok {
+			for _, a := range args {
+				cmd += " " + fmt.Sprint(a)
+			}
+		}
+		return cmd
+	}
+	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s
 		}

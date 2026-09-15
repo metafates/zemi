@@ -80,9 +80,14 @@ func TestTurnExtras(t *testing.T) {
 	}
 }
 
-func TestToolSummaryTodos(t *testing.T) {
-	in := `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`
-	if got := toolSummary(in); got != "2 todos, 1 done" {
-		t.Fatalf("toolSummary = %q", got)
+func TestToolSummary(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`: "2 todos, 1 done",
+		`{"command":"python3","args":["-m","http.server","8765"]}`:                       "python3 -m http.server 8765",
+		`{"id":"job-1"}`: "job-1",
+	} {
+		if got := toolSummary(in); got != want {
+			t.Errorf("toolSummary(%s) = %q, want %q", in, got, want)
+		}
 	}
 }
