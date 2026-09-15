@@ -58,6 +58,13 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "git", "config changes are versioned")
 	}
 
+	// internal/tools resolves rg the same way at init, in this process.
+	if rg, err := exec.LookPath("rg"); err != nil {
+		add("warn", "ripgrep", "not found; glob and grep use the slower Go walker")
+	} else {
+		add("ok", "ripgrep", rg+" runs glob and grep")
+	}
+
 	h.agents.mu.Lock()
 	reflectErr := h.agents.reflectErr
 	h.agents.mu.Unlock()
@@ -112,6 +119,18 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "lsp", strings.Join(servers, ", "))
 	} else {
 		add("ok", "lsp", "starts when the agent edits a supported file")
+	}
+	return out
+}
+
+// HealthRow is one check for a caller with no UI (zemi --health).
+type HealthRow struct{ Level, Name, Detail string }
+
+// HealthRows runs the checks and returns them as plain data.
+func (h *Host) HealthRows() []HealthRow {
+	out := make([]HealthRow, 0, len(h.healthChecks()))
+	for _, c := range h.healthChecks() {
+		out = append(out, HealthRow{Level: c.level, Name: c.name, Detail: c.detail})
 	}
 	return out
 }

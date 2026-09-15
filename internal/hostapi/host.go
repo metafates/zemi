@@ -367,9 +367,7 @@ func (h *Host) OpenHelp() {
 		pad = max(pad, len(b.Key))
 	}
 	for _, c := range cmds {
-		if !c.Hidden {
-			pad = max(pad, len(c.Name)+1)
-		}
+		pad = max(pad, len(c.Name)+1)
 	}
 	var items []any
 	for _, b := range keys {
@@ -379,10 +377,9 @@ func (h *Host) OpenHelp() {
 		}
 		items = append(items, map[string]any{"text": fmt.Sprintf("%-*s  %s", pad, b.Key, desc)})
 	}
+	// Hidden keeps a command out of the palette's default list, not out of
+	// /help: this is the index the README points people at.
 	for _, c := range cmds {
-		if c.Hidden {
-			continue
-		}
 		items = append(items, map[string]any{
 			"text": fmt.Sprintf("%-*s  %s", pad, "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
 		})

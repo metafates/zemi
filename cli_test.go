@@ -1,13 +1,33 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
+
+// TestFailPrintJSON: a failure before the turn still reaches a script on
+// stdout as the report it parses.
+func TestFailPrintJSON(t *testing.T) {
+	var out, errOut strings.Builder
+	if code := failPrint(errors.New("no model configured"), true, &out, &errOut); code != 1 || errOut.Len() != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	var rep report
+	if err := json.Unmarshal([]byte(out.String()), &rep); err != nil || !rep.IsError || rep.Error != "no model configured" {
+		t.Fatalf("stdout = %q (%v)", out.String(), err)
+	}
+	out.Reset()
+	if code := failPrint(errors.New("boom"), false, &out, &errOut); code != 1 || out.Len() != 0 || !strings.Contains(errOut.String(), "boom") {
+		t.Fatalf("text mode: code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	}
+}
 
 func TestParseArgs(t *testing.T) {
 	for _, c := range []struct {
@@ -27,10 +47,24 @@ func TestParseArgs(t *testing.T) {
 		{"json output", []string{"-p", "--output", "json", "hi"}, -1, options{print: true, output: "json", prompt: "hi"}},
 		{"json output needs print", []string{"--output", "json"}, 2, options{}},
 		{"bad output", []string{"-p", "--output", "yaml"}, 2, options{}},
+		{"health", []string{"--health"}, -1, options{health: true}},
 	} {
 		got, code := parseArgs(c.args, io.Discard, io.Discard)
 		if code != c.code || (code == -1 && got != c.want) {
 			t.Errorf("%s: code=%d opts=%+v", c.name, code, got)
+		}
+	}
+}
+
+func TestNormalizeVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                             "dev",
+		"(devel)":                      "dev",
+		"v0.0.0-20240101120000-abcdef": "dev",
+		"v1.2.3":                       "v1.2.3",
+	} {
+		if got := normalizeVersion(in); got != want {
+			t.Errorf("normalizeVersion(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -41,10 +75,15 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
 		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err"},
+		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
+			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
 		{Role: "assistant", Text: "found"},
 	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || len(rep.Tools) != 2 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
+	if rep.Result != "looking\n\nfound" || rep.IsError || len(rep.Tools) != 3 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
 		t.Fatalf("report = %+v", rep)
+	}
+	if rep.denied != 1 {
+		t.Fatalf("denied = %d, want 1", rep.denied)
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)

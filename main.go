@@ -75,15 +75,17 @@ func run(args []string) int {
 	})
 
 	host := hostapi.NewHost(rt, log, settings, dirs)
-	// a pseudo-version (untagged build) says nothing to a person
-	if host.Version = versionString(); strings.HasPrefix(host.Version, "v0.0.0-") || host.Version == "(devel)" {
-		host.Version = "dev"
+	host.Version = versionString()
+	// Headless: nothing to quit, and an untrusted project config is skipped
+	// instead of asked about. Say so, or the run looks like it applied the
+	// project's setup.
+	quit := func() {}
+	askTrust := func(dir, _ string) string {
+		fmt.Fprintf(os.Stderr, "zemi: %s is not trusted yet and was skipped; start zemi without -p once to review it\n", dir)
+		return "once"
 	}
-	// Print mode has no UI: nothing to quit, and an untrusted project
-	// config is skipped instead of asked about.
-	quit, askTrust := func() {}, func(string, string) string { return "once" }
 	var app *ui.App
-	if !opts.print {
+	if !opts.print && !opts.health {
 		app = ui.NewApp(host, log)
 		host.SetUIHooks(app)
 		quit, askTrust = app.Quit, app.AskTrust
@@ -112,14 +114,22 @@ func run(args []string) int {
 		host.SkillsLearnedHooksStep(),
 	}
 
-	if opts.print {
+	if opts.health {
 		if err := rt.Boot(ctx, steps); err != nil {
 			return fail(err)
 		}
-		if err := applyOptions(host, opts); err != nil {
-			return fail(err)
+		return printHealth(host, os.Stdout)
+	}
+
+	if opts.print {
+		jsonOut := opts.output == "json"
+		if err := rt.Boot(ctx, steps); err != nil {
+			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
 		}
-		return printTurn(host, opts.prompt, opts.output == "json", os.Stdout, os.Stderr)
+		if err := applyOptions(host, opts); err != nil {
+			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
+		}
+		return printTurn(host, opts.prompt, jsonOut, os.Stdout, os.Stderr)
 	}
 
 	p := tea.NewProgram(app)

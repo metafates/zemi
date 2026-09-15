@@ -35,6 +35,7 @@ Flags:
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: manual, plan, auto or yolo
       --output fmt    with -p: text (the reply) or json (reply, tools, usage)
+      --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
   -h, --help          show this help
 
@@ -55,6 +56,7 @@ var version string
 
 type options struct {
 	print, cont   bool
+	health        bool
 	resume, model string
 	mode, prompt  string
 	output        string
@@ -66,7 +68,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	fs := flag.NewFlagSet("zemi", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var help, ver bool
-	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "h": &help, "help": &help, "v": &ver, "version": &ver} {
+	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "health": &o.health, "h": &help, "help": &help, "v": &ver, "version": &ver} {
 		fs.BoolVar(p, name, false, "")
 	}
 	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "output": &o.output} {
@@ -99,12 +101,22 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 
 func versionString() string {
 	if version != "" {
-		return version
+		return normalizeVersion(version)
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
-		return bi.Main.Version
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		return normalizeVersion(bi.Main.Version)
 	}
-	return "(unknown)"
+	return normalizeVersion("")
+}
+
+// normalizeVersion is the one name a build answers to: --version, the
+// splash and /health all print this. A pseudo-version (untagged build)
+// says nothing to a person, so it reads "dev".
+func normalizeVersion(v string) string {
+	if v == "" || v == "(devel)" || strings.HasPrefix(v, "v0.0.0-") {
+		return "dev"
+	}
+	return v
 }
 
 // readStdin appends piped stdin to the prompt in print mode. The TUI needs
@@ -163,6 +175,32 @@ func applyOptions(h *hostapi.Host, o options) error {
 	return nil
 }
 
+// printHealth writes the /health checks for a headless run; any failed
+// check makes the exit status 1, so a script can gate on it.
+func printHealth(h *hostapi.Host, stdout io.Writer) int {
+	code := 0
+	for _, r := range h.HealthRows() {
+		if r.Level == "error" {
+			code = 1
+		}
+		fmt.Fprintf(stdout, "%-5s %-12s %s\n", r.Level, r.Name, r.Detail)
+	}
+	return code
+}
+
+// failPrint reports a print-mode failure. A script reading stdout for
+// --output json gets the same report shape it gets for a failed turn.
+func failPrint(err error, jsonOut bool, stdout, stderr io.Writer) int {
+	if !jsonOut {
+		fmt.Fprintln(stderr, "zemi:", err)
+		return 1
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report{IsError: true, Error: err.Error(), Tools: []reportTool{}})
+	return 1
+}
+
 // printTurn runs one turn without the TUI: the reply goes to stdout (or a
 // JSON report with --output json), a failure to stderr with status 1, an
 // interrupt ends with 130.
@@ -172,8 +210,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 	start := len(h.Session().Transcript)
 	began, before := time.Now(), h.AgentStream()
 	if err := h.AgentSend(prompt); err != nil {
-		fmt.Fprintln(stderr, "zemi:", err)
-		return 1
+		return failPrint(err, jsonOut, stdout, stderr)
 	}
 	interrupted := false
 	for h.AgentActive() {
@@ -213,6 +250,15 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 				fmt.Fprintln(stderr, "  "+detail)
 			}
 		}
+		// The denied calls are in the JSON report but nowhere in the text
+		// reply, so a run that did nothing looks like a lazy model.
+		if n := rep.denied; n > 0 {
+			calls := "calls"
+			if n == 1 {
+				calls = "call"
+			}
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, try --mode auto\n", n, calls)
+		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)
 		}
@@ -236,6 +282,8 @@ type report struct {
 		Output  int64   `json:"output_tokens"`
 		CostUSD float64 `json:"cost_usd"`
 	} `json:"usage"`
+
+	denied int // tool calls the permission gate refused; text mode notes them
 }
 
 type reportTool struct {
@@ -255,6 +303,9 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "":
 			replies = append(replies, strings.TrimSpace(m.Text))
 		case m.Kind == "tool":
+			if m.Status != "ok" && strings.Contains(m.Output, "permission denied") {
+				rep.denied++
+			}
 			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
 		case m.Kind == "error":
 			rep.IsError, rep.Error = true, m.Text
