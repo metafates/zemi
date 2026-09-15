@@ -48,6 +48,12 @@ type App struct {
 	toasts   []toast
 	toastSeq int
 
+	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
+	// (with a queue for concurrent asks) and the model picker.
+	permAsk   *permAskPrompt
+	permQueue []permAskMsg
+	modelPick *modelPickPrompt
+
 	caches   map[string]*widgetCache
 	frameGen int64
 	timeStr  string
@@ -55,9 +61,10 @@ type App struct {
 	bootErr error
 	errFlag bool
 
-	program *tea.Program
-	reload  func()
-	hooks   chan tea.Msg
+	program   *tea.Program
+	reload    func()
+	hooks     chan tea.Msg
+	testQueue chan tea.Msg
 }
 
 // widgetCache holds the last-good rendered lines of one widget keyed by
@@ -122,6 +129,30 @@ type trustAskMsg struct {
 	path   string
 	hash   string
 	answer chan bool
+}
+
+type agentEventMsg struct{ ev hostapi.AgentEvent }
+
+type permAskMsg struct {
+	req    hostapi.PermRequest
+	answer chan permAnswer
+}
+
+type permAnswer struct {
+	ok bool
+	by string
+}
+
+type modelPick struct {
+	id string
+	ok bool
+}
+
+type modelPickMsg struct {
+	items   []hostapi.ModelOption
+	sel     int
+	current string
+	answer  chan modelPick
 }
 
 type toastMsg struct {
@@ -201,6 +232,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frameGen++
 	case trustAskMsg:
 		a.trust = &trustPrompt{path: msg.path, hash: msg.hash, answer: msg.answer}
+		a.frameGen++
+	case agentEventMsg:
+		// Stream state lives in the host; just invalidate the frame.
+		a.frameGen++
+	case permAskMsg:
+		if a.permAsk != nil {
+			a.permQueue = append(a.permQueue, msg)
+		} else {
+			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer}
+		}
+		a.frameGen++
+	case modelPickMsg:
+		a.modelPick = &modelPickPrompt{items: msg.items, sel: msg.sel, answer: msg.answer}
 		a.frameGen++
 	case toastMsg:
 		a.pushToast(msg.level, msg.title, msg.body)
@@ -415,9 +459,41 @@ func (a *App) dispatch(msg tea.Msg) {
 		}
 		return
 	}
-	// No program (tests, headless boot): process inline on the caller's
-	// goroutine.
+	if a.testQueue != nil {
+		select {
+		case a.testQueue <- msg:
+		default:
+			a.log.Warn("ui", "hook queue full; dropping message", nil)
+		}
+		return
+	}
+	// No program (headless boot): process inline on the caller's goroutine.
 	a.Update(msg)
+}
+
+// CaptureHooks redirects hook dispatch into a queue drained by Pump
+// instead of inline processing. For tests that answer hooks from other
+// goroutines: with capture on, all state mutation happens on the single
+// goroutine that calls Pump, so no locks are needed.
+func (a *App) CaptureHooks() {
+	if a.testQueue == nil {
+		a.testQueue = make(chan tea.Msg, 64)
+	}
+}
+
+// Pump delivers one queued hook message; it reports whether one was
+// processed. Call from the owning goroutine until it returns false.
+func (a *App) Pump() bool {
+	if a.testQueue == nil {
+		return false
+	}
+	select {
+	case msg := <-a.testQueue:
+		a.Update(msg)
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *App) drainHooksCmd() tea.Cmd {
@@ -511,12 +587,19 @@ func (a *App) compose(w, h int) string {
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
 
-	// Lua overlays, then the Go-owned trust prompt on top.
+	// Lua overlays, then the Go-owned chrome on top: trust prompt, model
+	// picker, permission ask (most urgent).
 	for _, ov := range a.overlays {
 		rows = a.spliceOverlay(rows, ov, w, len(header), chatH)
 	}
 	if a.trust != nil {
 		rows = a.spliceTrust(rows, a.trust, w, len(header), chatH)
+	}
+	if a.modelPick != nil {
+		rows = a.splicePick(rows, a.modelPick, w, len(header), chatH)
+	}
+	if a.permAsk != nil {
+		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)
 	}
 
 	var b strings.Builder

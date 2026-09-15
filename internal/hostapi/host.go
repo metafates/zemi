@@ -9,10 +9,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -25,6 +28,9 @@ type UIHooks interface {
 	OpenOverlay(o Overlay)
 	CloseOverlay(id string) bool
 	Refresh()
+	AgentEvent(ev AgentEvent)
+	AskPermission(req PermRequest) (allowed bool, decidedBy string)
+	PickModel(items []ModelOption, current string) (string, bool)
 }
 
 // Overlay is the Go-side record of an open Lua overlay. Items are plain
@@ -54,11 +60,22 @@ type Host struct {
 	Settings *config.Store
 	Dirs     config.Dirs
 
+	// M1 agent core (DESIGN §6.3, §13). DB is the project store, GlobalDB
+	// the state-dir store; Perm holds config + session rules with the §9
+	// built-in defaults.
+	Providers *agent.Registry
+	Perm      *perm.Store
+	DB        *store.DB
+	GlobalDB  *store.DB
+
 	Keymaps  *KeymapRegistry
 	Commands *CommandRegistry
 	Widgets  *WidgetRegistry
 	Events   *EventRegistry
 	Themes   *ThemeRegistry
+
+	// initErr surfaces store-open failures at the namespaces boot step.
+	initErr error
 
 	uiMu sync.RWMutex
 	ui   UIHooks
@@ -72,6 +89,9 @@ type Host struct {
 	session *Session
 
 	watches *watchReg
+	agents  *agentHost
+	luaTools *toolReg
+	timers  *timerReg
 
 	hostActions map[string]func(h *Host, args string) error
 }
@@ -83,7 +103,8 @@ type Session struct {
 	Transcript []ChatMessage
 }
 
-// NewHost wires the registries.
+// NewHost wires the registries and opens the M1 stores (best effort:
+// failures surface at the namespaces boot step).
 func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs config.Dirs) *Host {
 	h := &Host{
 		RT:       rt,
@@ -97,11 +118,27 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		Themes:   NewThemeRegistry(),
 		session:  &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:  newWatchReg(),
+		Providers: agent.NewRegistry(),
+		Perm:      perm.NewStore(),
+		agents:    newAgentHost(),
+		luaTools:  newToolReg(),
+		timers:    newTimerReg(),
+	}
+	h.Perm.Default = h.fsDefault
+	if dirs.StateHome != "" {
+		h.DB, h.GlobalDB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.cmdline.open":      func(h *Host, args string) error { h.hooks().OpenCmdline(args); return nil },
 		"zemi.ui.sidebar.toggle": func(h *Host, _ string) error { h.ToggleSidebar(nil); return nil },
 		"zemi.ui.help":           func(h *Host, _ string) error { h.OpenHelp(); return nil },
+		"zemi.model.pick": func(h *Host, _ string) error {
+			if id, ok := h.pickModel(); ok {
+				_, _ = h.Settings.SetQuiet("agent.model", id)
+				h.refresh()
+			}
+			return nil
+		},
 		"zemi.reload":            nil, // Go-reserved; never dispatched here
 	}
 	return h
@@ -485,8 +522,29 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("pending", glua.LString(state.Pending))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("cwd", glua.LString(sess.CWD))
-	tb.RawSetString("profile", glua.LNil)
-	tb.RawSetString("model", glua.LNil)
+	stream := h.AgentStream()
+	if stream.Profile == "" {
+		stream.Profile = "default"
+	}
+	tb.RawSetString("profile", glua.LString(stream.Profile))
+	tb.RawSetString("model", glua.LString(stream.Model))
+	tb.RawSetString("agent_active", glua.LBool(stream.Active))
+	at := L.NewTable()
+	at.RawSetString("active", glua.LBool(stream.Active))
+	at.RawSetString("model", glua.LString(stream.Model))
+	at.RawSetString("text", glua.LString(stream.Text))
+	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
+	at.RawSetString("steering", glua.LNumber(stream.Steering))
+	toolsTb := L.NewTable()
+	for _, t := range stream.Tools {
+		row := L.NewTable()
+		row.RawSetString("name", glua.LString(t.Name))
+		row.RawSetString("input", glua.LString(t.Input))
+		row.RawSetString("status", glua.LString(t.Status))
+		toolsTb.Append(row)
+	}
+	at.RawSetString("tools", toolsTb)
+	tb.RawSetString("agent", at)
 	tr := L.NewTable()
 	for _, m := range sess.Transcript {
 		row := L.NewTable()
@@ -580,6 +638,9 @@ func (h *Host) NamespacesStep() lua.BootStep {
 }
 
 func (h *Host) installNamespaces(g *lua.Generation) error {
+	if h.initErr != nil {
+		return fmt.Errorf("stores: %w", h.initErr)
+	}
 	L := g.L
 	h.gen.Store(g.ID)
 
@@ -602,6 +663,18 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.notify", h.notifyNamespace(L), h.notifyCall(L)},
 		{"zemi.cmdline", h.cmdlineNamespace(L), nil},
 		{"zemi.ui", h.uiNamespace(L, g.SB), nil},
+		{"zemi.env", h.envNamespace(L), nil},
+		{"zemi.state", h.stateNamespace(L), nil},
+		{"zemi.timer", h.timerNamespace(L), nil},
+		{"zemi.fs", h.fsNamespace(L), nil},
+		{"zemi.http", h.httpNamespace(L), nil},
+		{"zemi.job", h.jobNamespace(L), nil},
+		{"zemi.tool", h.toolNamespace(L), nil},
+		{"zemi.permission", h.permissionNamespace(L), nil},
+		{"zemi.provider", h.providerNamespace(L), nil},
+		{"zemi.model", h.modelNamespace(L), nil},
+		{"zemi.agent", h.agentNamespace(L), nil},
+		{"zemi.session", h.sessionNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {
@@ -609,7 +682,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.1.0-m0"))
+	api.RawSetString("version", glua.LString("0.1.0-m1"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -626,4 +699,6 @@ func (h *Host) PurgeGeneration() {
 	h.Events.Purge()
 	h.Themes.Purge()
 	h.purgeWatches()
+	h.luaTools.purge(h.currentGen())
+	h.timers.purge()
 }

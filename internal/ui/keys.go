@@ -17,10 +17,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.frameGen++
 
 	// 1. Go-reserved cancel trigger: never routed to Lua, never rebindable
-	// (DESIGN §4, §6.2).
+	// (DESIGN §4, §6.2). During an active turn it aborts the agent.
 	if key == "ctrl+c" {
-		a.host.Log.Info("ui", "cancel trigger pressed (no active turn in M0)", nil)
-		a.pushToast("warn", "cancel", "no active turn")
+		switch {
+		case a.permAsk != nil:
+			a.answerPerm(false, "user")
+		case a.modelPick != nil:
+			a.answerPick("", false)
+		case a.host.AgentActive():
+			a.host.AgentCancel()
+			a.pushToast("warn", "cancel", "cancelling turn")
+		default:
+			a.pushToast("warn", "cancel", "no active turn")
+		}
 		return nil
 	}
 
@@ -31,6 +40,41 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerTrust(true)
 		case "n", "esc":
 			a.answerTrust(false)
+		}
+		return nil
+	}
+
+	// 2b. Permission ask and model picker: Go-owned chrome capturing all
+	// keys (§8).
+	if a.permAsk != nil {
+		switch key {
+		case "o":
+			a.answerPerm(true, "user:once")
+		case "a":
+			a.answerPerm(true, "user:always")
+		case "n", "esc":
+			a.answerPerm(false, "user")
+		}
+		return nil
+	}
+	if a.modelPick != nil {
+		switch key {
+		case "up", "k":
+			if a.modelPick.sel > 0 {
+				a.modelPick.sel--
+			}
+		case "down", "j":
+			if a.modelPick.sel < len(a.modelPick.items)-1 {
+				a.modelPick.sel++
+			}
+		case "enter":
+			if a.modelPick.sel < len(a.modelPick.items) {
+				a.answerPick(a.modelPick.items[a.modelPick.sel].ID, true)
+			} else {
+				a.answerPick("", false)
+			}
+		case "esc", "q":
+			a.answerPick("", false)
 		}
 		return nil
 	}
@@ -210,6 +254,11 @@ func (a *App) submitComposer() {
 	a.composer.cursor = 0
 	a.completion.close()
 	a.host.AppendMessage("user", text)
+	// M1 data flow (DESIGN §6.3): the message drives the agent; during an
+	// active turn it is enqueued as steering.
+	if err := a.host.AgentSend(text); err != nil {
+		a.pushToast("error", "agent", err.Error())
+	}
 }
 
 // keyText extracts the literal text a keypress should insert (printable

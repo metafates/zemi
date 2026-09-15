@@ -21,6 +21,20 @@ func fixedStyle(hl string) (uv.Style, bool) {
 		}, true
 	case "Host:TrustKey":
 		return uv.Style{Attrs: uv.AttrBold}, true
+	case "Host:PermTitle":
+		return uv.Style{
+			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
+			Bg: ansi.RGBColor{R: 0xf7, G: 0x76, B: 0x8e},
+		}, true
+	case "Host:PermKey":
+		return uv.Style{Attrs: uv.AttrBold}, true
+	case "Host:PickTitle":
+		return uv.Style{
+			Fg: ansi.RGBColor{R: 0x10, G: 0x10, B: 0x14},
+			Bg: ansi.RGBColor{R: 0x7a, G: 0xa2, B: 0xf7},
+		}, true
+	case "Host:PickSel":
+		return uv.Style{Attrs: uv.AttrBold}, true
 	}
 	return uv.Style{}, false
 }
