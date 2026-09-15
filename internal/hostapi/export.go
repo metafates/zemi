@@ -161,7 +161,7 @@ func (h *Host) OpenUsage() error {
 		return map[string]any{"text": text}
 	}
 	items := []any{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
-	if s.CtxWindow > 0 {
+	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %6s of %s tokens (%d%%)", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow), s.LastIn*100/s.CtxWindow)})
 	}
 	y, m, d := time.Now().Date()
