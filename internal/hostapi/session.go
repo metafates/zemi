@@ -118,6 +118,33 @@ func (h *Host) OpenSessions() error {
 	return nil
 }
 
+// InputHistory returns the messages typed in a session, oldest first, for
+// the composer history; "" reads the latest stored session.
+func (h *Host) InputHistory(sid string) []string {
+	if h.DB == nil {
+		return nil
+	}
+	if sid == "" {
+		list, err := h.DB.ListSessions(1)
+		if err != nil || len(list) == 0 {
+			return nil
+		}
+		sid = list[0].ID
+	}
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	_, tr := historyFrom(rows)
+	for _, m := range tr {
+		if m.Role == "user" && m.Kind == "" && strings.TrimSpace(m.Text) != "" {
+			out = append(out, m.Text)
+		}
+	}
+	return out
+}
+
 // firstUserLine is the first typed line of a stored user message, for the
 // session picker; attachments and later lines stay out.
 func firstUserLine(partsJSON string) string {

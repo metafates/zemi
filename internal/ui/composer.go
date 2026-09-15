@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -293,6 +294,29 @@ func (c *composerState) pushHistory(text string, cap int) {
 	c.history = append(c.history, text)
 	if len(c.history) > cap {
 		c.history = c.history[len(c.history)-cap:]
+	}
+	c.histIdx = len(c.history)
+}
+
+// seedHistory adds the messages stored for the open session (or, before the
+// first send, the latest one) to the history, so a restart or a resume does
+// not lose them. It runs when a recall starts, once per session.
+// NOTE: reads the messages on the key loop; one session is small enough
+// (upgrade: load it in the background when the session opens).
+func (a *App) seedHistory() {
+	sid := a.host.AgentSessionID()
+	if a.histLoaded && sid == a.histSID {
+		return
+	}
+	a.histLoaded, a.histSID = true, sid
+	stored := a.host.InputHistory(sid)
+	if len(stored) == 0 {
+		return
+	}
+	c := &a.composer
+	c.history = append(slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) }), stored...)
+	if n := a.historySize(); n > 0 && len(c.history) > n {
+		c.history = c.history[len(c.history)-n:]
 	}
 	c.histIdx = len(c.history)
 }

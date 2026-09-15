@@ -41,6 +41,10 @@ type App struct {
 
 	composer composerState
 
+	// the session whose stored messages seeded the composer history
+	histSID    string
+	histLoaded bool
+
 	// Chat scrollback (DESIGN §8): chatFollow pins the transcript to the
 	// tail; scrolling up freezes chatTop (the absolute first visible row
 	// of the wrapped chat region) until the user scrolls back or submits.
@@ -78,17 +82,17 @@ type App struct {
 	cfgReview *cfgReviewPrompt
 	question  *questionPrompt
 
-	caches      map[string]*widgetCache
-	pending     map[string]int64 // widget id -> generation of the render in flight
-	frameGen    int64
-	timeStr     string
-	activeBump  time.Time
-	now         func() time.Time // animation clock; tests pin it
-	cancelling  bool             // interrupt sent, turn not finished yet
-	focused     bool             // terminal focus (true until the terminal reports a blur)
-	keySeq      []string         // keys of a bound sequence typed so far
-	keySeqAt    time.Time
-	quitArmed   time.Time // a second idle ctrl+c before this quits
+	caches     map[string]*widgetCache
+	pending    map[string]int64 // widget id -> generation of the render in flight
+	frameGen   int64
+	timeStr    string
+	activeBump time.Time
+	now        func() time.Time // animation clock; tests pin it
+	cancelling bool             // interrupt sent, turn not finished yet
+	focused    bool             // terminal focus (true until the terminal reports a blur)
+	keySeq     []string         // keys of a bound sequence typed so far
+	keySeqAt   time.Time
+	quitArmed  time.Time // a second idle ctrl+c before this quits
 
 	bootErr error
 

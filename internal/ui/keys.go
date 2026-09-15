@@ -17,9 +17,18 @@ import (
 // are no modes: the composer is always focused.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
-	a.frameGen++
 	a.mouse = mouseSel{}
 	top := a.topChrome()
+
+	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
+	// printable keys stay with the composer, and an open popup keeps its
+	// keys (tab accepts even though tab is bound). The composer is Go-drawn,
+	// so typing must not bump the frame generation: that would re-render
+	// every Lua widget on every keystroke.
+	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.open || !a.keySequence(key)) {
+		return a.composerKey(key, msg)
+	}
+	a.frameGen++
 
 	// Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
@@ -141,13 +150,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.questionKey(key, keyText(msg))
 	case "overlay":
 		a.overlayKey(key, keyText(msg))
-	default:
-		// Keymaps (zemi.keymap.set) take single keys and bound sequences;
-		// printable keys stay with the composer, and an open popup keeps its
-		// keys (tab accepts even though tab is bound).
-		if a.palette.open || a.completion.open || !a.keySequence(key) {
-			return a.composerKey(key, msg)
-		}
 	}
 	return nil
 }
@@ -219,6 +221,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if strings.Contains(c.text, "\n") {
 			c.up()
 		} else {
+			a.seedHistory()
 			c.histPrev()
 		}
 	case "down":
@@ -228,6 +231,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			c.histNext()
 		}
 	case "ctrl+p":
+		a.seedHistory()
 		c.histPrev()
 		return nil
 	case "ctrl+n":
