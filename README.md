@@ -52,7 +52,10 @@ zemi.provider.register({
   id = "anthropic",
   kind = "anthropic",            -- anthropic | openai | openai_compat
   api_key_env = "ANTHROPIC_API_KEY",
-  models = { { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000 } },
+  models = {
+    { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
+      cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- optional: session cost in the statusline
+  },
 })
 zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```

@@ -841,6 +841,12 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				if cw, ok := mt.RawGetString("context_window").(glua.LNumber); ok && cw > 0 {
 					m.ContextWindow = int64(cw)
 				}
+				if c, ok := mt.RawGetString("cost_per_1m_in").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MIn = float64(c)
+				}
+				if c, ok := mt.RawGetString("cost_per_1m_out").(glua.LNumber); ok && c > 0 {
+					m.CostPer1MOut = float64(c)
+				}
 				spec.Models = append(spec.Models, m)
 			}
 		})
