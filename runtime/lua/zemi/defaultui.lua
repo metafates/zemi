@@ -84,6 +84,25 @@ local function cells(s)
   return select(2, s:gsub("[^\128-\191]", ""))
 end
 
+local UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
+
+-- clip cuts text to room cells, ending with an ellipsis when it cuts.
+local function clip(text, room)
+  if cells(text) <= room then return text end
+  if room < 1 then return "" end
+  local chars = {}
+  for ch in text:gmatch(UTF8_CHAR) do
+    if #chars == room - 1 then break end
+    chars[#chars + 1] = ch
+  end
+  return table.concat(chars) .. "…"
+end
+
+-- dot separates statusline groups.
+local function dot(segs)
+  if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
+end
+
 local LOGO = {
   "███████╗███████╗███╗   ███╗██╗",
   "╚══███╔╝██╔════╝████╗ ████║██║",
@@ -114,7 +133,7 @@ local function splash(ctx)
   if cells(cwd) > room and room > 1 then
     -- keep the tail: the project name is at the end
     local chars = {}
-    for ch in cwd:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+    for ch in cwd:gmatch(UTF8_CHAR) do chars[#chars + 1] = ch end
     cwd = "…" .. table.concat(chars, "", #chars - room + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
@@ -147,15 +166,7 @@ local function splash(ctx)
     for _, seg in ipairs(r) do
       local left = maxw - n
       if left <= 0 then break end
-      local text = seg.text
-      if cells(text) > left then
-        local chars = {}
-        for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-          if #chars >= left - 1 then break end
-          chars[#chars + 1] = ch
-        end
-        text = table.concat(chars) .. "…"
-      end
+      local text = clip(seg.text, left)
       clipped[#clipped + 1] = { text = text, hl = seg.hl }
       n = n + cells(text)
     end
@@ -238,7 +249,7 @@ zemi.ui.widget.register({
     local segs = {}
     local function add(n, what, cmd)
       if (n or 0) == 0 then return end
-      if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
+      dot(segs)
       segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title" }
       segs[#segs + 1] = { text = " " .. cmd, hl = "Comment" }
     end
@@ -278,7 +289,7 @@ zemi.ui.widget.register({
   render = function(ctx)
     local segs = {}
     local function add(text, hl)
-      if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
+      dot(segs)
       segs[#segs + 1] = { text = text, hl = hl }
     end
     if (ctx.model or "") ~= "" then
@@ -374,15 +385,7 @@ zemi.ui.widget.register({
         name = ({ ok = "loaded skill", err = "skill failed" })[status] or "loading skill"
         if status == "ok" then mark, hl = "✦", "Title" end
       end
-      local room, chars = width - #name - 7, {}
-      for ch in (input or ""):gsub("%s+", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-        if #chars >= room then
-          chars[#chars] = "…"
-          break
-        end
-        chars[#chars + 1] = ch
-      end
-      local inp = table.concat(chars)
+      local inp = clip((input or ""):gsub("%s+", " "), width - #name - 7)
       lines[#lines + 1] = {
         { text = "  " .. mark, hl = hl },
         { text = " " .. name, hl = "AgentToolName" },
@@ -541,9 +544,8 @@ zemi.ui.widget.register({
   end,
 })
 
--- Default keymap (§8): rebindable by user config. Insert-mode bindings are
--- exact single keys (ctrl/alt combos); printable keys stay with the
--- composer. The transcript is bottom-anchored, so these keys and the wheel
+-- Default keymap: user config can rebind or zemi.keymap.del these.
+-- Printable keys stay with the composer. The transcript is bottom-anchored, so these keys and the wheel
 -- move the viewport; sending snaps back to the tail.
 zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
 zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
