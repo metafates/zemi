@@ -1,4 +1,4 @@
-// memory.go implements the M2 memory store (DESIGN §7): user-scope memory
+// memory.go is the memory store (DESIGN §7): user-scope memory
 // lives in the global DB, project-scope in the project DB. Search is FTS5
 // over memory.text (external-content table kept in sync by triggers);
 // superseded memories never rank.
@@ -41,7 +41,7 @@ const memoryColsQualified = `m.id, m.scope, m.kind, m.text, m.tags,
 	m.provenance_session_id, m.confidence, m.hit_count, m.created_at,
 	m.updated_at, m.last_hit_at, m.superseded_by, m.origin`
 
-func scanMemory(row interface{ Scan(...any) error }) (*Memory, error) {
+func scanMemory(row scanner) (*Memory, error) {
 	var (
 		m         Memory
 		prov      any
@@ -110,52 +110,26 @@ func (s *DB) SearchMemory(scope, query string, limit int, bump bool) ([]*Memory,
 		rows, err := s.db.Query(`SELECT `+memoryCols+`, 0 AS score
 			FROM memory WHERE scope = ? AND superseded_by IS NULL
 			ORDER BY updated_at DESC LIMIT ?`, scope, limit)
-		if err != nil {
-			return nil, err
-		}
-		return scanMemories(rows)
+		return collect(rows, err, scanMemory)
 	}
 
 	rows, err := s.db.Query(`SELECT `+memoryColsQualified+`, -f.rank AS score
 		FROM memory_fts f JOIN memory m ON m.rowid = f.rowid
 		WHERE memory_fts MATCH ? AND m.scope = ? AND m.superseded_by IS NULL
 		ORDER BY f.rank LIMIT ?`, ftsQuery(query), scope, limit)
-	if err != nil {
-		return nil, err
-	}
-	out, err := scanMemories(rows)
+	out, err := collect(rows, err, scanMemory)
 	if err != nil || len(out) == 0 || !bump {
 		return out, err
 	}
-	ids := make([]string, len(out))
-	for i, m := range out {
-		ids[i] = m.ID
-	}
-	ph := make([]string, len(ids))
-	args := make([]any, 0, len(ids)+1)
-	args = append(args, now())
-	for i, id := range ids {
-		ph[i] = "?"
-		args = append(args, id)
+	args := []any{now()}
+	for _, m := range out {
+		args = append(args, m.ID)
 	}
 	if _, err := s.db.Exec(`UPDATE memory SET hit_count = hit_count + 1,
-		last_hit_at = ? WHERE id IN (`+strings.Join(ph, ",")+`)`, args...); err != nil {
+		last_hit_at = ? WHERE id IN (`+placeholders(len(out))+`)`, args...); err != nil {
 		return out, fmt.Errorf("store: memory hit bump: %w", err)
 	}
 	return out, nil
-}
-
-func scanMemories(rows *sql.Rows) ([]*Memory, error) {
-	defer rows.Close()
-	var out []*Memory
-	for rows.Next() {
-		m, err := scanMemory(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
 }
 
 // ftsQuery turns free text into an OR of quoted FTS5 tokens, so arbitrary
@@ -182,49 +156,25 @@ func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error)
 	}
 	q += ` ORDER BY updated_at DESC`
 	rows, err := s.db.Query(q, scope)
-	if err != nil {
-		return nil, err
-	}
-	return scanMemories(rows)
+	return collect(rows, err, scanMemory)
 }
 
 // UpdateMemoryText rewrites a memory's text; the update trigger re-syncs
 // the FTS index. Unknown ids are ErrNotFound.
 func (s *DB) UpdateMemoryText(id, text string) error {
-	res, err := s.db.Exec(`UPDATE memory SET text = ?, updated_at = ?
+	return s.execOne("update memory text", `UPDATE memory SET text = ?, updated_at = ?
 		WHERE id = ?`, text, now(), id)
-	if err != nil {
-		return fmt.Errorf("store: update memory text: %w", err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 // SupersedeMemory marks one memory as replaced by another; the row stays
 // (the supersede guard reads the trail). Unknown ids are ErrNotFound.
 func (s *DB) SupersedeMemory(id, byID string) error {
-	res, err := s.db.Exec(`UPDATE memory SET superseded_by = ?, updated_at = ?
+	return s.execOne("supersede memory", `UPDATE memory SET superseded_by = ?, updated_at = ?
 		WHERE id = ?`, nullString(byID), now(), id)
-	if err != nil {
-		return fmt.Errorf("store: supersede memory: %w", err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 // DeleteMemory removes a memory row; the FTS trigger keeps the index in
 // sync. Unknown ids are ErrNotFound.
 func (s *DB) DeleteMemory(id string) error {
-	res, err := s.db.Exec(`DELETE FROM memory WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("store: delete memory: %w", err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.execOne("delete memory", `DELETE FROM memory WHERE id = ?`, id)
 }

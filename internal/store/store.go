@@ -1,7 +1,4 @@
-// Package store holds the SQLite persistence layer (DESIGN §7): one global
-// database for user-scope data and one per project for sessions and
-// messages. The surface: sessions, messages, todos, tool_calls, kv and the
-// M2 memory store.
+// Package store is SQLite persistence (DESIGN §7): a global DB and one per project.
 package store
 
 import (
@@ -12,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -196,6 +194,45 @@ func nullString(s string) any {
 		return nil
 	}
 	return s
+}
+
+type scanner interface{ Scan(...any) error }
+
+// collect scans every row of a query and closes it.
+func collect[T any](rows *sql.Rows, err error, scan func(scanner) (T, error)) ([]T, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []T
+	for rows.Next() {
+		v, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// execOne runs an update or delete of one row by key; no match is ErrNotFound.
+func (s *DB) execOne(what, query string, args ...any) error {
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("store: %s: %w", what, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// placeholders returns n comma-separated "?" ("”" for none, so IN () stays valid).
+func placeholders(n int) string {
+	if n == 0 {
+		return "''"
+	}
+	return strings.Repeat(",?", n)[1:]
 }
 
 // ProjectDBPath is the per-project database location: a hash of the

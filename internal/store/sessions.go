@@ -39,7 +39,7 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 const sessionCols = `id, parent_id, title, profile, created_at, updated_at,
 	summary_message_id, prompt_tokens, completion_tokens, cost`
 
-func scanSession(row interface{ Scan(...any) error }) (*Session, error) {
+func scanSession(row scanner) (*Session, error) {
 	var (
 		s          Session
 		parent     any
@@ -79,25 +79,7 @@ func (s *DB) GetSession(id string) (*Session, error) {
 // by most recent activity.
 func (s *DB) ListSessions(limit int) ([]*Session, error) {
 	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE COALESCE(parent_id, '') = '' ORDER BY updated_at DESC LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*Session
-	for rows.Next() {
-		sess, err := scanSession(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, sess)
-	}
-	return out, rows.Err()
-}
-
-// TouchSession bumps updated_at and optionally rewrites title/profile.
-func (s *DB) TouchSession(id string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now(), id)
-	return err
+	return collect(rows, err, scanSession)
 }
 
 // RenameSession sets the session title.
@@ -156,19 +138,10 @@ func (s *DB) AddMessage(m *Message) error {
 func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
 		FROM messages WHERE session_id = ? ORDER BY rowid`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*Message
-	for rows.Next() {
+	return collect(rows, err, func(r scanner) (*Message, error) {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, &m)
-	}
-	return out, rows.Err()
+		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
+	})
 }
 
 // Todo is one item of a session's todo list.
@@ -205,19 +178,10 @@ func (s *DB) SetTodos(sessionID string, todos []Todo) error {
 func (s *DB) Todos(sessionID string) ([]Todo, error) {
 	rows, err := s.db.Query(`SELECT content, status, active_form, ord
 		FROM todos WHERE session_id = ? ORDER BY ord`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Todo
-	for rows.Next() {
-		var td Todo
-		if err := rows.Scan(&td.Content, &td.Status, &td.ActiveForm, &td.Ord); err != nil {
-			return nil, err
-		}
-		out = append(out, td)
-	}
-	return out, rows.Err()
+	return collect(rows, err, func(r scanner) (td Todo, err error) {
+		err = r.Scan(&td.Content, &td.Status, &td.ActiveForm, &td.Ord)
+		return
+	})
 }
 
 // ToolCall is one telemetry row for a tool invocation.
@@ -259,19 +223,10 @@ func (s *DB) ToolCallStats(sessionID string) ([]ToolStat, error) {
 		FROM tool_calls t JOIN messages m ON m.id = t.message_id
 		WHERE m.session_id = ?
 		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ToolStat
-	for rows.Next() {
-		var st ToolStat
-		if err := rows.Scan(&st.Tool, &st.Calls, &st.Failed, &st.Denied); err != nil {
-			return nil, err
-		}
-		out = append(out, st)
-	}
-	return out, rows.Err()
+	return collect(rows, err, func(r scanner) (st ToolStat, err error) {
+		err = r.Scan(&st.Tool, &st.Calls, &st.Failed, &st.Denied)
+		return
+	})
 }
 
 // GetKV loads a json value by key; ErrNotFound when absent.

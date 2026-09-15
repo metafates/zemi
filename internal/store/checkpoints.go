@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 )
 
 // Checkpoint is a file as it was before a turn first changed it.
@@ -31,23 +32,16 @@ func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) 
 		JOIN messages m ON m.id = c.message_id
 		WHERE c.session_id = ? AND m.rowid >= (SELECT rowid FROM messages WHERE id = ?)
 		ORDER BY m.rowid, c.created_at`, sessionID, messageID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	all, err := collect(rows, err, func(r scanner) (cp Checkpoint, err error) {
+		err = r.Scan(&cp.Path, &cp.Existed, &cp.Content)
+		return
+	})
 	seen := map[string]bool{}
-	var out []Checkpoint
-	for rows.Next() {
-		var cp Checkpoint
-		if err := rows.Scan(&cp.Path, &cp.Existed, &cp.Content); err != nil {
-			return nil, err
-		}
-		if !seen[cp.Path] {
-			seen[cp.Path] = true
-			out = append(out, cp)
-		}
-	}
-	return out, rows.Err()
+	return slices.DeleteFunc(all, func(cp Checkpoint) bool {
+		dup := seen[cp.Path]
+		seen[cp.Path] = true
+		return dup
+	}), err
 }
 
 // CheckpointCounts maps each user message id of a session to the number of

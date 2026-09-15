@@ -12,8 +12,7 @@ import (
 )
 
 // ConfigRevision is one recorded config-repo change. Status is pending,
-// applied, failed or reverted; EvalOK is nil when evals did not run (they
-// gate auto-apply from M4 on); Commit is the config-repo commit SHA once
+// applied, failed or reverted; Commit is the config-repo commit SHA once
 // the git commit landed.
 type ConfigRevision struct {
 	ID          string
@@ -23,24 +22,15 @@ type ConfigRevision struct {
 	PathsJSON   string
 	Status      string
 	AppliedBy   string
-	EvalOK      *bool
 	Commit      string
 }
 
-const revisionCols = `id, created_at, title, changes_json, paths_json, status, applied_by, eval_ok, commit_sha`
+const revisionCols = `id, created_at, title, changes_json, paths_json, status, applied_by, commit_sha`
 
-func scanRevision(row interface{ Scan(...any) error }) (*ConfigRevision, error) {
+func scanRevision(row scanner) (*ConfigRevision, error) {
 	var r ConfigRevision
-	var evalOK sql.NullInt64
-	if err := row.Scan(&r.ID, &r.CreatedAt, &r.Title, &r.ChangesJSON,
-		&r.PathsJSON, &r.Status, &r.AppliedBy, &evalOK, &r.Commit); err != nil {
-		return nil, err
-	}
-	if evalOK.Valid {
-		v := evalOK.Int64 != 0
-		r.EvalOK = &v
-	}
-	return &r, nil
+	return &r, row.Scan(&r.ID, &r.CreatedAt, &r.Title, &r.ChangesJSON,
+		&r.PathsJSON, &r.Status, &r.AppliedBy, &r.Commit)
 }
 
 // AddRevision records a new revision (status pending until its commit
@@ -55,14 +45,10 @@ func (s *DB) AddRevision(r *ConfigRevision) error {
 	if r.Status == "" {
 		r.Status = "pending"
 	}
-	var evalOK any
-	if r.EvalOK != nil {
-		evalOK = *r.EvalOK
-	}
 	_, err := s.db.Exec(`INSERT INTO config_revisions
-		(id, created_at, title, changes_json, paths_json, status, applied_by, eval_ok, commit_sha)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.CreatedAt, r.Title, r.ChangesJSON, r.PathsJSON, r.Status, r.AppliedBy, evalOK, r.Commit)
+		(id, created_at, title, changes_json, paths_json, status, applied_by, commit_sha)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.CreatedAt, r.Title, r.ChangesJSON, r.PathsJSON, r.Status, r.AppliedBy, r.Commit)
 	if err != nil {
 		return fmt.Errorf("store: add revision: %w", err)
 	}
@@ -82,43 +68,17 @@ func (s *DB) GetRevision(id string) (*ConfigRevision, error) {
 // ListRevisions returns revisions newest first.
 func (s *DB) ListRevisions() ([]*ConfigRevision, error) {
 	rows, err := s.db.Query(`SELECT ` + revisionCols + ` FROM config_revisions ORDER BY created_at DESC, id`)
-	if err != nil {
-		return nil, fmt.Errorf("store: list revisions: %w", err)
-	}
-	defer rows.Close()
-	var out []*ConfigRevision
-	for rows.Next() {
-		r, err := scanRevision(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+	return collect(rows, err, scanRevision)
 }
 
 // SetRevisionCommit records the config-repo commit SHA of an applied
-// revision (what :revision revert reverts).
+// revision (what /config revert reverts).
 func (s *DB) SetRevisionCommit(id, commit string) error {
-	res, err := s.db.Exec(`UPDATE config_revisions SET commit_sha = ? WHERE id = ?`, commit, id)
-	if err != nil {
-		return fmt.Errorf("store: set revision commit: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.execOne("set revision commit", `UPDATE config_revisions SET commit_sha = ? WHERE id = ?`, commit, id)
 }
 
 // SetRevisionStatus moves one revision to applied or failed (the revert
 // status is recorded as a new row by the caller).
 func (s *DB) SetRevisionStatus(id, status string) error {
-	res, err := s.db.Exec(`UPDATE config_revisions SET status = ? WHERE id = ?`, status, id)
-	if err != nil {
-		return fmt.Errorf("store: set revision status: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.execOne("set revision status", `UPDATE config_revisions SET status = ? WHERE id = ?`, status, id)
 }

@@ -30,19 +30,10 @@ func (s *DB) AddProposal(p *Proposal) error {
 // Proposals lists one kind's pending proposals, oldest first.
 func (s *DB) Proposals(kind string) ([]*Proposal, error) {
 	rows, err := s.db.Query(`SELECT id, kind, payload, created_at FROM proposals WHERE kind = ? ORDER BY rowid`, kind)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*Proposal
-	for rows.Next() {
+	return collect(rows, err, func(r scanner) (*Proposal, error) {
 		var p Proposal
-		if err := rows.Scan(&p.ID, &p.Kind, &p.Payload, &p.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, &p)
-	}
-	return out, rows.Err()
+		return &p, r.Scan(&p.ID, &p.Kind, &p.Payload, &p.CreatedAt)
+	})
 }
 
 // TakeProposal deletes one proposal and returns it; ErrNotFound when absent.
