@@ -17,6 +17,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -178,6 +179,7 @@ func (h *Host) OpenRewind() error {
 	if len(items) == 0 {
 		return errors.New("nothing to rewind yet")
 	}
-	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind to before", Items: items})
+	// builtin origin: the UI runs a row's command only for trusted overlays
+	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind to before", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }

@@ -748,7 +748,7 @@ func (a *App) applyChatScroll(kind string) {
 func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
-		lines := a.widgetLines(wgt.ID)
+		lines := expandTabs(a.widgetLines(wgt.ID))
 		if wgt.Wrap {
 			// Word-wrap instead of truncating; the transcript shows the
 			// wrapped tail (bottom-anchored).
@@ -762,6 +762,23 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		}
 	}
 	return out
+}
+
+// expandTabs turns tabs into four spaces: a tab has no cell width, so
+// layout and drawing would both lose it.
+func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
+	for i, line := range lines {
+		for j, s := range line {
+			if strings.Contains(s.Text, "\t") {
+				if j == 0 {
+					line = append([]hostapi.Segment(nil), line...)
+					lines[i] = line
+				}
+				line[j].Text = strings.ReplaceAll(s.Text, "\t", "    ")
+			}
+		}
+	}
+	return lines
 }
 
 // statusRow builds the one-row statusline: left widgets, Go chrome flags,

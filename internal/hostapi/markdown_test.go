@@ -1,6 +1,9 @@
 package hostapi
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMarkdown(t *testing.T) {
 	_, r := newTestHost(t)
@@ -28,4 +31,20 @@ func TestMarkdown(t *testing.T) {
 		local esc = zemi.ui.markdown("a\27[31mb", 20)
 		assert(join(esc[1]) == "ab", "escape leaked: " .. join(esc[1]))
 	`)
+}
+
+// TestMarkdownKeepsTabIndent: code indented with tabs keeps its indentation.
+func TestMarkdownKeepsTabIndent(t *testing.T) {
+	h, _ := newTestHost(t)
+	found := false
+	for _, line := range h.Markdown("```go\nfunc f() {\n\treturn\n}\n```", 40) {
+		var b strings.Builder
+		for _, s := range line {
+			b.WriteString(s.Text)
+		}
+		found = found || strings.Contains(b.String(), "    return")
+	}
+	if !found {
+		t.Fatal("tab-indented code lost its indentation")
+	}
 }

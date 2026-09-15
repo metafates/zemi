@@ -78,7 +78,9 @@ func (h *Host) Markdown(text string, width int) [][]Segment {
 		}
 		c.renderers[rk] = r
 	}
-	out, err := r.Render(sanitize.String(text))
+	// a tab occupies no cell once drawn into the buffer, so code would lose
+	// its indentation
+	out, err := r.Render(sanitize.String(strings.ReplaceAll(text, "\t", "    ")))
 	if err != nil {
 		return plainLines(text)
 	}
@@ -208,7 +210,7 @@ func ansiLines(s string) []uv.Line {
 
 func plainLines(text string) [][]Segment {
 	var out [][]Segment
-	for _, l := range strings.Split(sanitize.String(text), "\n") {
+	for _, l := range strings.Split(sanitize.String(strings.ReplaceAll(text, "\t", "    ")), "\n") {
 		out = append(out, []Segment{{Text: l}})
 	}
 	return out
