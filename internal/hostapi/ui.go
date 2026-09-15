@@ -23,12 +23,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			return 0
 		}
 		w := &Widget{
-			ID:       rawString(tb, "id"),
-			Region:   rawString(tb, "region"),
-			Wrap:     rawBool(tb, "wrap"),
-			Origin:   h.RT.CurrentOrigin(),
-			Path:     h.RT.CurrentPath(),
-			Gen:      h.currentGen(),
+			ID:     rawString(tb, "id"),
+			Region: rawString(tb, "region"),
+			Wrap:   rawBool(tb, "wrap"),
+			Origin: h.RT.CurrentOrigin(),
+			Path:   h.RT.CurrentPath(),
+			Gen:    h.currentGen(),
 		}
 		if n, ok := tb.RawGetString("priority").(glua.LNumber); ok {
 			w.Priority = int(n)

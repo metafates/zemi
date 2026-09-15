@@ -166,8 +166,8 @@ type tool struct {
 	pipe     *Pipeline
 }
 
-func (t *tool) Info() fantasy.ToolInfo { return t.info }
-func (t *tool) ProviderOptions() fantasy.ProviderOptions { return nil }
+func (t *tool) Info() fantasy.ToolInfo                     { return t.info }
+func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -208,10 +208,10 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			pipe.Denied(t.info.Name, req, v)
 		}
 		if v.Decision == perm.Deny {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + req.Subject + " " + req.Arg + ": " + v.Reason)), nil
+			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission denied ("+v.DecidedBy+"): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
 		}
 		if v.Decision == perm.Ask {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason)), nil
+			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
 		}
 	}
 	return t.runPost(ctx, pipe, input)
@@ -352,10 +352,10 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"path":         map[string]any{"type": "string"},
-					"old_string":   map[string]any{"type": "string"},
-					"new_string":   map[string]any{"type": "string"},
-					"replace_all":  map[string]any{"type": "boolean"},
+					"path":        map[string]any{"type": "string"},
+					"old_string":  map[string]any{"type": "string"},
+					"new_string":  map[string]any{"type": "string"},
+					"replace_all": map[string]any{"type": "boolean"},
 				},
 			},
 			[]string{"path", "old_string", "new_string"},
@@ -438,8 +438,8 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"question":     map[string]any{"type": "string"},
-					"description":  map[string]any{"type": "string"},
+					"question":    map[string]any{"type": "string"},
+					"description": map[string]any{"type": "string"},
 					"options":     map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 				},
 			},
@@ -493,7 +493,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		mk("job_list", "List background jobs with their state.",
 			true,
 			map[string]any{
-				"type": "object",
+				"type":       "object",
 				"properties": map[string]any{},
 			},
 			nil,

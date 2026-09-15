@@ -128,7 +128,7 @@ func waitDone(t *testing.T, h *recHooks) {
 }
 
 func TestTurnStreamsAndPersists(t *testing.T) {
-	m := &mockModel{parts: textParts("hel", "lo " + "world")}
+	m := &mockModel{parts: textParts("hel", "lo "+"world")}
 	hooks := newRecHooks()
 	var persisted []string
 	r := NewRunner(m, nil, "sys")

@@ -242,7 +242,7 @@ const composerMaxRows = 8
 func (a *App) composerRows(w int) [][]hostapi.Segment {
 	prefix := "> "
 	cont := "  "
-	cursorRow, rows := a.wrapComposer(w-len(prefix))
+	cursorRow, rows := a.wrapComposer(w - len(prefix))
 	if len(rows) == 0 {
 		rows = [][]rune{nil}
 		cursorRow = 0

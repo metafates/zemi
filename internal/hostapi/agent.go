@@ -4,14 +4,14 @@
 package hostapi
 
 import (
-	"regexp"
-	"net/url"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"

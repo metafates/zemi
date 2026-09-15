@@ -13,19 +13,19 @@ import (
 
 // Memory is one remembered fact.
 type Memory struct {
-	ID                 string
-	Scope              string   // "user" or "project"
-	Kind               string   // fact | gotcha | preference | convention | decision
-	Text               string   // <= 512 chars, scrubbed at intake
-	Tags               []string // comma-joined in the DB
+	ID                  string
+	Scope               string   // "user" or "project"
+	Kind                string   // fact | gotcha | preference | convention | decision
+	Text                string   // <= 512 chars, scrubbed at intake
+	Tags                []string // comma-joined in the DB
 	ProvenanceSessionID string
-	Confidence         float64
-	HitCount           int64
-	CreatedAt          int64
-	UpdatedAt          int64
-	LastHitAt          int64
-	SupersededBy       string
-	Origin             string // "user" | "learned"
+	Confidence          float64
+	HitCount            int64
+	CreatedAt           int64
+	UpdatedAt           int64
+	LastHitAt           int64
+	SupersededBy        string
+	Origin              string // "user" | "learned"
 	// Score is the FTS5 match score (higher is better); 0 for
 	// non-search listings.
 	Score float64
@@ -92,7 +92,7 @@ func (s *DB) AddMemory(m *Memory) error {
 
 // GetMemory loads one memory by id, superseded or not.
 func (s *DB) GetMemory(id string) (*Memory, error) {
-	row := s.db.QueryRow(`SELECT ` + memoryCols + `, 0 AS score FROM memory WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT `+memoryCols+`, 0 AS score FROM memory WHERE id = ?`, id)
 	m, err := scanMemory(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

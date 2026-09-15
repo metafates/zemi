@@ -5,10 +5,10 @@
 package agent
 
 import (
-	"slices"
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"charm.land/fantasy"
@@ -33,11 +33,11 @@ type Model struct {
 // api_key_env names the environment variable resolved in Go, never in
 // Lua (DESIGN §6.3).
 type Spec struct {
-	ID       string  `json:"id"`
-	Kind     string  `json:"kind"` // anthropic | openai | openaicompat
-	BaseURL  string  `json:"base_url,omitempty"`
-	APIKeyEnv string `json:"api_key_env,omitempty"`
-	Models   []Model `json:"models"`
+	ID        string  `json:"id"`
+	Kind      string  `json:"kind"` // anthropic | openai | openaicompat
+	BaseURL   string  `json:"base_url,omitempty"`
+	APIKeyEnv string  `json:"api_key_env,omitempty"`
+	Models    []Model `json:"models"`
 }
 
 // Registry holds provider specs; ids are unique. API keys resolved from

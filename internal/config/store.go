@@ -10,12 +10,12 @@ import (
 
 // Setting describes one config key.
 type Setting struct {
-	Path          string
-	Kind          string // "string" | "int" | "bool" | "float"
-	Default       any
-	UserWritable  bool
-	AutonomyKnob  bool // refused by zemi.config.set from every origin after boot
-	Desc          string
+	Path         string
+	Kind         string // "string" | "int" | "bool" | "float"
+	Default      any
+	UserWritable bool
+	AutonomyKnob bool // refused by zemi.config.set from every origin after boot
+	Desc         string
 }
 
 // Store holds the merged config values and user watches.

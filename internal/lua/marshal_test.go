@@ -43,7 +43,7 @@ func TestToGoArrayDetection(t *testing.T) {
 
 	arr := L.NewTable()
 	for i := 1; i <= 3; i++ {
-		arr.RawSetInt(i, glua.LNumber(i * 10))
+		arr.RawSetInt(i, glua.LNumber(i*10))
 	}
 	got := mustToGo(t, arr)
 	list, ok := got.([]any)

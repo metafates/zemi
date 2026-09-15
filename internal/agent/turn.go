@@ -123,9 +123,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Unlock()
 
 	call := fantasy.AgentStreamCall{
-		Messages:     history,
-		StopWhen:     []fantasy.StopCondition{fantasy.FinishReasonIs(fantasy.FinishReasonStop)},
-		OnTextDelta:  func(id, text string) error { hooks.TextDelta(text); return nil },
+		Messages:         history,
+		StopWhen:         []fantasy.StopCondition{fantasy.FinishReasonIs(fantasy.FinishReasonStop)},
+		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
 			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
@@ -139,7 +139,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), outText)
 			return nil
 		},
-		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
+		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
 		ProviderOptions: provOpts,
 	}
 	if temp != nil {

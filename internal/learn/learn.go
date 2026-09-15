@@ -15,7 +15,7 @@ var Kinds = []string{"fact", "gotcha", "preference", "convention", "decision"}
 // OriginUser and OriginLearned are the memory.origin values (DESIGN §7);
 // the digest labels and the supersede guard read them.
 const (
-	OriginUser   = "user"
+	OriginUser    = "user"
 	OriginLearned = "learned"
 )
 

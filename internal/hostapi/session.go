@@ -5,11 +5,11 @@
 package hostapi
 
 import (
-	"github.com/metafates/zemi/internal/sanitize"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/metafates/zemi/internal/sanitize"
 	"strings"
 	"time"
 
