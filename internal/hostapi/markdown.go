@@ -56,7 +56,48 @@ func (h *Host) Markdown(text string, width int) [][]Segment {
 	c := &h.md
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// A streaming reply is re-rendered on every delta: render its settled
+	// prefix from the cache and only the tail anew. The two halves meet at
+	// a blank line, which is where glamour would put one anyway.
+	if cut := settledPrefix(text); cut > 0 {
+		lines := append([][]Segment{}, c.render(cfg, styleKey, text[:cut], width)...)
+		lines = append(lines, []Segment{})
+		return append(lines, c.render(cfg, styleKey, text[cut:], width)...)
+	}
+	return c.render(cfg, styleKey, text, width)
+}
 
+// settledPrefix is the length of the part of a reply that will not change
+// as more deltas arrive: up to the last blank line outside a code fence.
+// 0 renders the whole text at once, which is cheap enough for short ones.
+func settledPrefix(s string) int {
+	if len(s) < 2000 {
+		return 0
+	}
+	fence, cut, at := false, 0, 0
+	for at < len(s) {
+		end := len(s)
+		if i := strings.IndexByte(s[at:], '\n'); i >= 0 {
+			end = at + i + 1
+		}
+		trimmed := strings.TrimSpace(s[at:end])
+		if strings.HasPrefix(trimmed, "```") {
+			fence = !fence
+		}
+		at = end
+		if !fence && trimmed == "" {
+			cut = at
+		}
+	}
+	if cut >= len(s) {
+		return 0 // nothing left to render as the tail
+	}
+	return cut
+}
+
+// render returns the rendered lines of one chunk, from the cache when it
+// holds them. The cache mutex must be held.
+func (c *markdownCache) render(cfg gansi.StyleConfig, styleKey, text string, width int) [][]Segment {
 	lk := fmt.Sprintf("%s|%d|%s", styleKey, width, text)
 	if lines, ok := c.lines[lk]; ok {
 		return lines
