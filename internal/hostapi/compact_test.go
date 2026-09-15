@@ -11,6 +11,32 @@ import (
 	"charm.land/fantasy"
 )
 
+// TestContextEstimateCountsPrompt: the estimate a compaction installs counts
+// the system prompt and tool schemas every prompt carries, not only the
+// messages that survived.
+func TestContextEstimateCountsPrompt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("hi")
+	h.agents.mu.Lock()
+	runner, overhead := h.agents.runner, h.agents.promptTokens
+	h.agents.mu.Unlock()
+	if overhead <= 0 {
+		t.Fatal("the runner's prompt was never measured")
+	}
+	if err := h.compact(context.Background(), runner, compactManual, ""); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	h.agents.mu.Lock()
+	got, want := h.agents.lastIn, estTokens(runner.History...)+overhead
+	h.agents.mu.Unlock()
+	if got != want {
+		t.Fatalf("estimate %d, want %d (messages plus the prompt)", got, want)
+	}
+}
+
 // TestCompactModelSetting: compaction summaries can run on their own model.
 func TestCompactModelSetting(t *testing.T) {
 	h, r := newTestHost(t)

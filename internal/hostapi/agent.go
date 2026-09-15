@@ -107,6 +107,10 @@ type agentHost struct {
 	ctxWin   int64
 	sessCost float64 // USD, from model spec prices
 
+	// promptTokens estimates the system prompt and tool schemas the runner
+	// carries; every prompt holds them, so the context estimate counts them.
+	promptTokens int64
+
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.chat.reasoning config).
 	reasoningShown *bool
@@ -485,7 +489,11 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
+	toolset, sys := h.profileTools(p), h.buildSystem(p)
+	r := agent.NewRunner(model, toolset, sys)
+	h.agents.mu.Lock()
+	h.agents.promptTokens = promptTokens(sys, toolset)
+	h.agents.mu.Unlock()
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
 	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
 	if p != nil {
@@ -497,6 +505,18 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Compose = h.composeUserMessage
 	r.Full = h.contextFull
 	return r, nil
+}
+
+// promptTokens estimates what every prompt carries besides the messages:
+// the system prompt and the tool schemas sent with it.
+func promptTokens(sys string, toolset []fantasy.AgentTool) int64 {
+	n := len(sys)
+	for _, t := range toolset {
+		info := t.Info()
+		schema, _ := json.Marshal(info.Parameters)
+		n += len(info.Name) + len(info.Description) + len(schema)
+	}
+	return int64(n / 4)
 }
 
 // AgentSend sends one user message to the agent (DESIGN §4, §6.3). Idle,

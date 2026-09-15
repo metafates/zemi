@@ -285,7 +285,10 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 		return err
 	}
 	runner.History = append([]fantasy.Message{summary}, tail...)
-	h.compactDone(estTokens(runner.History...), reason == compactManual)
+	h.agents.mu.Lock()
+	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
+	h.agents.mu.Unlock()
+	h.compactDone(estTokens(runner.History...)+overhead, reason == compactManual)
 	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "compact", Text: fmt.Sprintf("compacted %d messages", len(head))})
 	return nil
 }
