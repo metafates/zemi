@@ -256,17 +256,25 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 			} else {
 				seen[name] = true
 			}
-			out = append(out, &mcpTool{h: h, srv: s, tool: t, pipe: pipe})
+			props, err := tools.ResolveSchemaRefs(t.InputSchema)
+			if err != nil {
+				h.Log.Warn("mcp", "tool schema cannot be flattened, skipped", map[string]any{
+					"server": s.name, "tool": t.Name, "error": err.Error(),
+				})
+				continue
+			}
+			out = append(out, &mcpTool{h: h, srv: s, tool: t, pipe: pipe, props: props})
 		}
 	}
 	return out
 }
 
 type mcpTool struct {
-	h    *Host
-	srv  *mcpServer
-	tool mcp.Tool
-	pipe *tools.Pipeline
+	h     *Host
+	srv   *mcpServer
+	tool  mcp.Tool
+	pipe  *tools.Pipeline
+	props map[string]any // input schema properties, local $refs resolved
 }
 
 func (t *mcpTool) Info() fantasy.ToolInfo {
@@ -281,7 +289,7 @@ func (t *mcpTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name:        mcpToolName(t.srv.name, t.tool.Name),
 		Description: "(tool from the " + t.srv.name + " MCP server) " + truncRunes(t.tool.Description, 1024),
-		Parameters:  tools.SchemaProperties(t.tool.InputSchema),
+		Parameters:  t.props,
 		Required:    required,
 		Parallel:    true,
 	}

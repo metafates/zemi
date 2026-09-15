@@ -277,13 +277,13 @@ func TestParseNetURL(t *testing.T) {
 		"http://",
 		"http:///path",
 	} {
-		if _, err := parseNetURL(raw); err == nil {
-			t.Fatalf("parseNetURL(%q) must refuse", raw)
+		if _, err := ParseNetURL(raw); err == nil {
+			t.Fatalf("ParseNetURL(%q) must refuse", raw)
 		}
 	}
 	for _, raw := range []string{"http://example.com/", "https://example.com:8443/x?y=1"} {
-		if _, err := parseNetURL(raw); err != nil {
-			t.Fatalf("parseNetURL(%q): %v", raw, err)
+		if _, err := ParseNetURL(raw); err != nil {
+			t.Fatalf("ParseNetURL(%q): %v", raw, err)
 		}
 	}
 }

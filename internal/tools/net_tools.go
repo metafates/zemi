@@ -58,10 +58,12 @@ func ipDenied(ip net.IP) bool {
 	return false
 }
 
-// safeClient builds an HTTP client whose dialer refuses denied IPs at
+// SafeClient builds an HTTP client whose dialer refuses denied IPs at
 // connect time (after resolution) and whose redirect follow is driven by
-// the caller through onHop.
-func safeClient(onHop func(u *url.URL) error) *http.Client {
+// the caller through onHop. allowPrivate skips the address check: the §9
+// localhost development opt-in, which only an explicit user allow rule for
+// the named host earns.
+func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 	d := &net.Dialer{Timeout: 10 * time.Second}
 	d.Control = func(_, address string, _ syscall.RawConn) error {
 		host, _, err := net.SplitHostPort(address)
@@ -72,7 +74,7 @@ func safeClient(onHop func(u *url.URL) error) *http.Client {
 		if ip == nil {
 			return fmt.Errorf("non-IP dial address %q", host)
 		}
-		if ipDenied(ip) {
+		if !allowPrivate && ipDenied(ip) {
 			return fmt.Errorf("address %s is refused", ip)
 		}
 		return nil
@@ -97,8 +99,8 @@ func safeClient(onHop func(u *url.URL) error) *http.Client {
 	}
 }
 
-// parseNetURL validates scheme and userinfo for every fetch hop.
-func parseNetURL(raw string) (*url.URL, error) {
+// ParseNetURL validates scheme and userinfo for every fetch hop.
+func ParseNetURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("bad url: %v", err)
@@ -127,14 +129,14 @@ func netGate(p *Pipeline, u *url.URL, reason string) error {
 
 func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	raw := str(input["url"])
-	u, err := parseNetURL(raw)
+	u, err := ParseNetURL(raw)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if err := netGate(p, u, "fetch url"); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	client := safeClient(func(hop *url.URL) error {
+	client := SafeClient(func(hop *url.URL) error {
 		if hop.Scheme != "http" && hop.Scheme != "https" {
 			return fmt.Errorf("redirect to non-http scheme refused")
 		}
@@ -142,7 +144,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			return fmt.Errorf("redirect with userinfo refused")
 		}
 		return netGate(p, hop, "fetch redirect")
-	})
+	}, false)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -225,7 +227,7 @@ func runSourcegraph(ctx context.Context, p *Pipeline, input map[string]any) (fan
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	client := safeClient(nil)
+	client := SafeClient(nil, false)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

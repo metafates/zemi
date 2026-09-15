@@ -68,6 +68,7 @@ type message struct {
 type Client struct {
 	cmd   *exec.Cmd
 	wmu   sync.Mutex
+	smu   sync.Mutex // orders document syncs so versions arrive in order
 	stdin io.WriteCloser
 
 	nextID  atomic.Int64
@@ -142,34 +143,25 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 	if err != nil {
 		return nil, err
 	}
-	uri := fileURI(path)
-	c.mu.Lock()
-	before := c.pubs[path]
-	version := c.opened[path] + 1
-	c.opened[path] = version
-	c.mu.Unlock()
-	if version == 1 {
-		err = c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
-			"uri": uri, "languageId": languageID, "version": version, "text": string(data),
-		}})
-	} else {
-		err = c.notify("textDocument/didChange", map[string]any{
-			"textDocument":   map[string]any{"uri": uri, "version": version},
-			"contentChanges": []any{map[string]any{"text": string(data)}},
-		})
-	}
+	key := normPath(path)
+	before, err := c.sync(key, fileURI(path), languageID, string(data))
 	if err != nil {
 		return nil, err
 	}
-	_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
 
 	quiet := (<-chan time.Time)(nil)
+	// A server that publishes nothing for this file (an unsupported type,
+	// no project) would otherwise hold the caller to its whole timeout.
+	floor := time.After(1500 * time.Millisecond)
 	for {
 		c.mu.Lock()
-		fresh, wake := c.pubs[path] > before, c.wake
+		fresh, wake := c.pubs[key] > before, c.wake
 		c.mu.Unlock()
-		if fresh && quiet == nil {
-			quiet = time.After(300 * time.Millisecond)
+		if fresh {
+			floor = nil
+			if quiet == nil {
+				quiet = time.After(300 * time.Millisecond)
+			}
 		}
 		select {
 		case <-wake:
@@ -177,6 +169,8 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 				quiet = time.After(300 * time.Millisecond)
 			}
 		case <-quiet:
+			return c.Diagnostics(path), nil
+		case <-floor:
 			return c.Diagnostics(path), nil
 		case <-ctx.Done():
 			return c.Diagnostics(path), ctx.Err()
@@ -186,11 +180,41 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 	}
 }
 
+// sync sends the document's current text and reports the publish count it
+// started from. The version bump and the notify share one lock so a later
+// version can never reach the server first; c.mu, which the reader also
+// takes, is never held across the write.
+func (c *Client) sync(key, uri, languageID, text string) (int, error) {
+	c.smu.Lock()
+	defer c.smu.Unlock()
+	c.mu.Lock()
+	before := c.pubs[key]
+	version := c.opened[key] + 1
+	c.opened[key] = version
+	c.mu.Unlock()
+	var err error
+	if version == 1 {
+		err = c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
+			"uri": uri, "languageId": languageID, "version": version, "text": text,
+		}})
+	} else {
+		err = c.notify("textDocument/didChange", map[string]any{
+			"textDocument":   map[string]any{"uri": uri, "version": version},
+			"contentChanges": []any{map[string]any{"text": text}},
+		})
+	}
+	if err != nil {
+		return before, err
+	}
+	_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
+	return before, nil
+}
+
 // Diagnostics returns the last published diagnostics for path.
 func (c *Client) Diagnostics(path string) []Diagnostic {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return append([]Diagnostic(nil), c.diags[path]...)
+	return append([]Diagnostic(nil), c.diags[normPath(path)]...)
 }
 
 // Done is closed when the server exits.
@@ -344,7 +368,7 @@ func (c *Client) publish(raw json.RawMessage) {
 	if err != nil {
 		return
 	}
-	path := filepath.FromSlash(u.Path)
+	path := normPath(filepath.FromSlash(u.Path))
 	var out []Diagnostic
 	for _, d := range p.Diagnostics {
 		sev := d.Severity
@@ -359,6 +383,15 @@ func (c *Client) publish(raw json.RawMessage) {
 	close(c.wake)
 	c.wake = make(chan struct{})
 	c.mu.Unlock()
+}
+
+// normPath resolves symlinks so a server that answers with a canonicalized
+// URI (/tmp -> /private/tmp) keys the same file as the path asked about.
+func normPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
 }
 
 func fileURI(path string) string {

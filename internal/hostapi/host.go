@@ -178,6 +178,9 @@ type Host struct {
 	// rows in the global store are the durable state.
 	skillsReg *skillReg
 
+	// healthReg holds the /health checks Lua registered.
+	healthReg healthReg
+
 	hostActions map[string]func(h *Host, args string) error
 
 	// Version is the zemi build version for the splash screen.
@@ -846,8 +849,15 @@ func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
 	h.submitOverlay(ctx, o, text)
 }
 
+// staleOverlay reports an overlay left open across a reload: its callbacks
+// belong to a retired LState, so they are dropped rather than called
+// (DESIGN §4). Go-built overlays carry no generation.
+func (h *Host) staleOverlay(o Overlay) bool {
+	return o.Gen != 0 && o.Gen != h.currentGen()
+}
+
 func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
-	if o.OnSelect == nil {
+	if o.OnSelect == nil || h.staleOverlay(o) {
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(o.ID)
 		}
@@ -878,7 +888,7 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 
 // CancelOverlay closes an overlay and runs on_close if present.
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
-	if o.OnClose != nil {
+	if o.OnClose != nil && !h.staleOverlay(o) {
 		_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 			h.RT.PushFrame(o.Origin, o.Path)
 			defer h.RT.PopFrame()
@@ -965,6 +975,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
 		{"zemi.learn", h.learnNamespace(L), nil},
+		{"zemi.health", h.healthNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {
@@ -972,7 +983,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.12.0"))
+	api.RawSetString("version", glua.LString("0.13.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -992,6 +1003,7 @@ func (h *Host) PurgeGeneration() {
 	h.Events.Purge()
 	h.Themes.Purge()
 	h.purgeWatches()
+	h.healthReg.purge()
 	h.luaTools.purge(h.currentGen())
 	h.timers.purge()
 	h.mcp.stopAll()

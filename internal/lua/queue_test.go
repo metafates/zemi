@@ -3,6 +3,7 @@ package lua
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -242,6 +243,99 @@ func TestQueueForceReloadReplays(t *testing.T) {
 	}
 	if second := readMark(); first == 0 || second == 0 || first == second {
 		t.Fatalf("generation id not replaced on reload: %d -> %d", first, second)
+	}
+}
+
+// TestQueueHotAnswersQueued: when the watchdog wedges the interpreter,
+// requests already in the heap are answered with ErrHot. Hot mode only
+// fails fast the Do calls that arrive later, so without the drain these
+// would wait on their reply channel forever.
+func TestQueueHotAnswersQueued(t *testing.T) {
+	r := newTestRuntime(t)
+
+	started := make(chan struct{})
+	go func() {
+		_, _ = r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+			func(L *glua.LState) ([]any, error) {
+				close(started)
+				time.Sleep(700 * time.Millisecond)
+				return nil, nil
+			})
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("wedger never started")
+	}
+
+	queued := make(chan error, 1)
+	go func() {
+		_, err := r.Do(context.Background(), ClassUI, 0, 0,
+			func(L *glua.LState) ([]any, error) { return nil, nil })
+		queued <- err
+	}()
+	time.Sleep(20 * time.Millisecond) // reach the heap before the abandon
+
+	select {
+	case err := <-queued:
+		if !errors.Is(err, ErrHot) {
+			t.Fatalf("queued request got %v, want ErrHot", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued request never answered after the wedge")
+	}
+}
+
+// TestQueueIntegrityGoesHot: a frozen namespace mutated behind the
+// sandbox fails its request and wedges the runtime, so a tampered surface
+// never serves later calls.
+func TestQueueIntegrityGoesHot(t *testing.T) {
+	r := NewRuntime(RuntimeOptions{})
+	var ns *glua.LTable
+	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
+		ns = g.L.NewTable()
+		ns.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
+		return g.SB.RegisterNamespace("zemi.ui", ns)
+	}}
+	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	noop := func(L *glua.LState) ([]any, error) { return nil, nil }
+	if _, err := r.Do(context.Background(), ClassUI, 0, 0, noop); err != nil {
+		t.Fatalf("clean request: %v", err)
+	}
+	_, err := r.Do(context.Background(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		ns.RawSetString("sneaked", glua.LTrue) // a Go-side bypass of the freeze
+		return nil, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "integrity") {
+		t.Fatalf("tampered namespace returned %v, want an integrity error", err)
+	}
+	if !r.IsHot() {
+		t.Fatal("runtime not hot after an integrity failure")
+	}
+}
+
+// TestEvalKeepsProtectedGlobalGuard: the lua tool runs through Eval in a
+// wrapper env, which must keep the chunk env's __newindex guard so
+// assigning a protected global raises instead of silently shadowing it.
+func TestEvalKeepsProtectedGlobalGuard(t *testing.T) {
+	r := NewRuntime(RuntimeOptions{})
+	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
+		tbl := g.L.NewTable()
+		tbl.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
+		return g.SB.RegisterNamespace("zemi.ui", tbl)
+	}}
+	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	discard := func(string) {}
+	if _, err := r.Eval(context.Background(), `zemi = { ui = false }`, "lua-tool", OriginLearned, time.Second, discard); err == nil {
+		t.Fatal("assignment to the protected zemi global was accepted")
+	}
+	vals, err := r.Eval(context.Background(), `x = 5 return x`, "lua-tool", OriginLearned, time.Second, discard)
+	if err != nil || len(vals) != 1 {
+		t.Fatalf("ordinary global in the wrapper env: %v (%v)", err, vals)
 	}
 }
 

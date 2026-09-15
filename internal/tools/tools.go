@@ -313,6 +313,88 @@ func SchemaProperties(schema map[string]any) map[string]any {
 	return map[string]any{}
 }
 
+// ResolveSchemaRefs returns a schema's properties with local $ref pointers
+// ("#/$defs/X", "#/definitions/X") replaced by what they point at. Only
+// the properties map is shipped to the provider, so refs into sibling
+// definitions would arrive dangling and strict providers reject the whole
+// tool. A recursive or unresolvable ref is an error: the caller skips that
+// tool rather than offering a broken schema.
+func ResolveSchemaRefs(schema map[string]any) (map[string]any, error) {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return map[string]any{}, nil
+	}
+	v, err := resolveRefs(props, schema, map[string]bool{}, 0)
+	if err != nil {
+		return nil, err
+	}
+	out, _ := v.(map[string]any)
+	return out, nil
+}
+
+func resolveRefs(v, root any, seen map[string]bool, depth int) (any, error) {
+	if depth > 64 {
+		return nil, fmt.Errorf("schema nests deeper than 64 levels")
+	}
+	switch v := v.(type) {
+	case map[string]any:
+		if ref, ok := v["$ref"].(string); ok {
+			if seen[ref] {
+				return nil, fmt.Errorf("recursive $ref %q", ref)
+			}
+			target, err := schemaPointer(root, ref)
+			if err != nil {
+				return nil, err
+			}
+			seen[ref] = true
+			out, err := resolveRefs(target, root, seen, depth+1)
+			delete(seen, ref)
+			return out, err
+		}
+		out := make(map[string]any, len(v))
+		for k, sub := range v {
+			r, err := resolveRefs(sub, root, seen, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = r
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(v))
+		for i, sub := range v {
+			r, err := resolveRefs(sub, root, seen, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	}
+	return v, nil
+}
+
+// schemaPointer walks a local JSON pointer; anything else (an http ref, a
+// bare name) is refused rather than guessed at.
+func schemaPointer(root any, ref string) (any, error) {
+	rest, ok := strings.CutPrefix(ref, "#/")
+	if !ok {
+		return nil, fmt.Errorf("unsupported $ref %q", ref)
+	}
+	cur := root
+	for _, seg := range strings.Split(rest, "/") {
+		seg = strings.ReplaceAll(strings.ReplaceAll(seg, "~1", "/"), "~0", "~")
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("$ref %q does not resolve", ref)
+		}
+		if cur, ok = m[seg]; !ok {
+			return nil, fmt.Errorf("$ref %q does not resolve", ref)
+		}
+	}
+	return cur, nil
+}
+
 // All returns the M1+M2 builtin set bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
@@ -440,7 +522,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 				// the real host, so a rule (or an "always allow") matches the
 				// per-hop check runFetch makes later
 				host := "invalid"
-				if u, err := parseNetURL(str(in["url"])); err == nil {
+				if u, err := ParseNetURL(str(in["url"])); err == nil {
 					host = u.Hostname()
 				}
 				return []Request{{Subject: "net." + host, Arg: str(in["url"]), Reason: "fetch url"}}

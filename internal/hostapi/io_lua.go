@@ -13,6 +13,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,7 +120,7 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // the §6.5 contract ("permission ask required"): host-API calls from Lua
 // never open the interactive overlay, so the asker is stripped from the
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
-func (h *Host) luaGate(L *glua.LState, subject, arg string) {
+func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	// rules are attributed to the calling code's origin, not to the model
@@ -135,6 +136,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) {
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
+	return v
 }
 
 // ---------------------------------------------------------------------------
@@ -603,11 +605,18 @@ type httpHandle struct {
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
-	h.luaGate(L, subject, req.url)
+	origin := h.RT.CurrentOrigin()
+	v := h.luaGate(L, subject, req.url)
+	// §9 localhost development opt-in: an explicit user allow rule for the
+	// host overrides the resolved-address deny. Allow rules are user-only
+	// (zemi.permission.rule refuses them elsewhere), and project and
+	// learned callers never get the override.
+	allowPrivate := v.DecidedBy == "rule" &&
+		origin != lua.OriginProject && origin != lua.OriginLearned
 	hnd := &httpHandle{done: make(chan struct{})}
 	gen := h.currentGen()
 	h.GoSafe(subject, func() {
-		res, err := h.httpFetch(subject, req)
+		res, err := h.httpFetch(subject, string(origin), allowPrivate, req)
 		hnd.res, hnd.err = res, err
 		close(hnd.done)
 		if onDone != nil {
@@ -637,27 +646,28 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	return 1
 }
 
-// httpFetch performs the request with size and time caps; redirects re-gate
-// through the permission store under the same subject (deny/ask refuses the
-// hop, §6.5).
-func (h *Host) httpFetch(subject string, r httpReq) (map[string]any, error) {
+// httpFetch performs the request with size and time caps under the same §9
+// network rules as the fetch tool: http/https only, no userinfo, denied
+// addresses refused at connect time, and every redirect hop re-gated under
+// the same subject as the calling origin (deny/ask refuses the hop, §6.5).
+func (h *Host) httpFetch(subject, principal string, allowPrivate bool, r httpReq) (map[string]any, error) {
+	if _, err := tools.ParseNetURL(r.url); err != nil {
+		return nil, err
+	}
 	timeout := r.timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	client := &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
-			}
-			o := h.Perm.Evaluate(subject, req.URL.String(), "user")
-			if o.Decision != perm.Allow {
-				return fmt.Errorf("redirect to %s refused by the permission gate", req.URL)
-			}
-			return nil
-		},
-	}
+	client := tools.SafeClient(func(hop *url.URL) error {
+		if _, err := tools.ParseNetURL(hop.String()); err != nil {
+			return err
+		}
+		if o := h.Perm.Evaluate(subject, hop.String(), principal); o.Decision != perm.Allow {
+			return fmt.Errorf("redirect to %s refused by the permission gate", hop)
+		}
+		return nil
+	}, allowPrivate)
+	client.Timeout = timeout
 	var body io.Reader
 	if r.body != "" {
 		body = strings.NewReader(r.body)

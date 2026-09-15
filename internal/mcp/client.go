@@ -262,10 +262,28 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 		}
 		return json.Unmarshal(m.Result, out)
 	case <-ctx.Done():
+		// initialize is the one request the protocol forbids cancelling.
+		if method != "initialize" {
+			c.cancelCall(id)
+		}
 		return ctx.Err()
 	case <-c.done:
 		return c.endErr
 	}
+}
+
+// cancelCall tells the server to stop working on a request its caller gave
+// up on; without it the server keeps going and its late reply arrives with
+// nothing waiting for it.
+func (c *Client) cancelCall(id int64) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = c.send(ctx, map[string]any{
+			"jsonrpc": "2.0", "method": "notifications/cancelled",
+			"params": map[string]any{"requestId": id, "reason": "client cancelled"},
+		})
+	}()
 }
 
 // handle routes one incoming message: a response to its caller, a server
@@ -418,7 +436,6 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			return ErrAuthRequired
 		}
 	}
-	defer resp.Body.Close()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
 		t.mu.Lock()
 		t.session = id
@@ -426,14 +443,30 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 	}
 	switch {
 	case resp.StatusCode == http.StatusAccepted:
+		resp.Body.Close()
 		return nil
 	case resp.StatusCode/100 != 2:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
 		return fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	case strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"):
-		return readSSE(resp.Body, t.c.handle)
+		// A server may hold its POST stream open after answering. Reading
+		// it here would cost the caller the whole request timeout, so the
+		// stream is drained off the request path and the reply reaches the
+		// waiting call through handle.
+		go func() {
+			defer resp.Body.Close()
+			defer func() {
+				if r := recover(); r != nil {
+					t.c.end(fmt.Errorf("mcp: sse reader panic: %v", r))
+				}
+			}()
+			_ = readSSE(resp.Body, t.c.handle)
+		}()
+		return nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMessage))
+	resp.Body.Close()
 	if err != nil {
 		return err
 	}

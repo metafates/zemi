@@ -32,6 +32,33 @@ func echoAgents(h *Host) *atomic.Int32 {
 	return &peak
 }
 
+// TestWorkflowCancelBoundedDrain: an agent that never notices the cancel
+// must not hold runWorkflow open past the drain grace.
+func TestWorkflowCancelBoundedDrain(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			time.Sleep(30 * time.Second)
+			return textParts(last)
+		}}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := h.runWorkflow(ctx, `agent("x")`, nil, nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancelled workflow returned no error")
+		}
+	case <-time.After(workflowDrainGrace + 3*time.Second):
+		t.Fatal("runWorkflow waited on an agent that ignores cancellation")
+	}
+}
+
 func TestWorkflowRun(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	peak := echoAgents(h)
@@ -67,6 +94,7 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "agent inside pcall refused", script: `local ok, err = pcall(agent, "x") return tostring(ok) .. " " .. err`, want: "false"},
 		{name: "agent in a library callback", script: `local t = {3, 1, 2} table.sort(t, function(a, b) agent("x") return a < b end) return "sorted"`, wantErr: true, want: "cannot wait"},
 		{name: "many instant parallel calls", script: `local n = 0 for i = 1, 20000 do n = n + parallel({function() return 1 end})[1] end return tostring(n)`, want: "20000"},
+		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},

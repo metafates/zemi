@@ -4,13 +4,18 @@
 package hostapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
+
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 type healthCheck struct {
@@ -18,6 +23,93 @@ type healthCheck struct {
 	name   string
 	detail string
 	run    string // command enter runs on the row
+}
+
+// healthReg holds the checks Lua registered with zemi.health.register;
+// healthChecks runs them after the built-in rows.
+type healthReg struct {
+	mu   sync.Mutex
+	list []luaHealthCheck
+}
+
+type luaHealthCheck struct {
+	name   string
+	fn     *glua.LFunction
+	origin lua.Origin
+	gen    Gen
+}
+
+func (r *healthReg) purge() {
+	r.mu.Lock()
+	r.list = nil
+	r.mu.Unlock()
+}
+
+// health.register(name, fn): fn returns { level = "ok"|"warn"|"error",
+// detail = "..." } or a bare detail string.
+func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
+		name, fn := L.CheckString(1), L.CheckFunction(2)
+		if strings.TrimSpace(name) == "" {
+			L.RaiseError("zemi.health.register: name is required")
+			return 0
+		}
+		h.healthReg.mu.Lock()
+		h.healthReg.list = append(h.healthReg.list, luaHealthCheck{
+			name: name, fn: fn, origin: h.RT.CurrentOrigin(), gen: h.currentGen(),
+		})
+		h.healthReg.mu.Unlock()
+		return 0
+	}))
+	return tb
+}
+
+// luaHealthRows runs the registered checks, each bounded by the veto
+// deadline so a slow one cannot stall /health. It goes through the queue,
+// so it must not run on the interpreter goroutine; /health is Go-side.
+func (h *Host) luaHealthRows() []healthCheck {
+	h.healthReg.mu.Lock()
+	list := append([]luaHealthCheck(nil), h.healthReg.list...)
+	h.healthReg.mu.Unlock()
+	gen := h.currentGen()
+	var out []healthCheck
+	for _, c := range list {
+		if c.gen != gen {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), lua.VetoDeadline)
+		vals, err := h.RT.Call(ctx, c.origin, c.fn)
+		cancel()
+		row := healthCheck{level: "ok", name: c.name}
+		switch {
+		case err != nil:
+			row.level, row.detail = "error", sanitize.String(err.Error())
+		case len(vals) == 0:
+			row.detail = "no result"
+		default:
+			row.level, row.detail = healthResult(vals[0])
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func healthResult(v any) (level, detail string) {
+	switch v := v.(type) {
+	case string:
+		return "ok", sanitize.String(v)
+	case map[string]any:
+		level, _ = v["level"].(string)
+		detail, _ = v["detail"].(string)
+		switch level {
+		case "ok", "warn", "error":
+		default:
+			level = "ok"
+		}
+		return level, sanitize.String(detail)
+	}
+	return "ok", ""
 }
 
 func (h *Host) healthChecks() []healthCheck {
@@ -120,7 +212,7 @@ func (h *Host) healthChecks() []healthCheck {
 	} else {
 		add("ok", "lsp", "starts when the agent edits a supported file")
 	}
-	return out
+	return append(out, h.luaHealthRows()...)
 }
 
 // HealthRow is one check for a caller with no UI (zemi --health).

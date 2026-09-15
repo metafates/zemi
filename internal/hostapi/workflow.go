@@ -38,6 +38,9 @@ const (
 	// NOTE: a hard cap on agents per run keeps a runaway loop from spending
 	// without bound; make it a config knob if real workflows outgrow it.
 	workflowMaxAgents = 100
+	// workflowDrainGrace bounds the wait for in-flight agents after a
+	// cancel, so one that ignores its context cannot hold the run open.
+	workflowDrainGrace = 2 * time.Second
 )
 
 // Workflow is one saved workflow file.
@@ -236,19 +239,14 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 				run.resume(d.task, glua.LString(d.text))
 			}
 		case <-ctx.Done():
-			// in-flight agents share ctx and return promptly; drain them
-			for run.running > 0 {
-				<-run.done
-				run.running--
-			}
+			run.drainAgents()
 			return WorkflowResult{}, ctx.Err()
 		}
 		run.report()
 	}
-	for run.running > 0 { // a script that returned early leaves agents behind
+	if run.running > 0 { // a script that returned early leaves agents behind
 		cancel()
-		<-run.done
-		run.running--
+		run.drainAgents()
 	}
 	res := WorkflowResult{Log: run.log, Agents: run.started}
 	if run.resultErr != nil {
@@ -256,6 +254,23 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 	}
 	res.Value = luaResultString(run.result)
 	return res, nil
+}
+
+// drainAgents waits for in-flight agents to report after a cancel. They
+// share the run's context and normally return at once; one that ignores it
+// must not hold the run open, and done is buffered at workflowMaxAgents so
+// giving up early leaks nothing.
+func (r *wfRun) drainAgents() {
+	t := time.NewTimer(workflowDrainGrace)
+	defer t.Stop()
+	for r.running > 0 {
+		select {
+		case <-r.done:
+			r.running--
+		case <-t.C:
+			return
+		}
+	}
 }
 
 func luaResultString(v glua.LValue) string {
@@ -420,6 +435,12 @@ func (r *wfRun) luaParallel(L *glua.LState) int {
 	}
 	list := L.CheckTable(1)
 	n := list.Len()
+	// Every entry becomes a coroutine before the concurrency cap applies,
+	// so refuse a batch larger than the run's whole agent budget.
+	if n > workflowMaxAgents {
+		L.RaiseError("parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
+		return 0
+	}
 	for i := 1; i <= n; i++ {
 		fn, ok := list.RawGetInt(i).(*glua.LFunction)
 		if !ok {

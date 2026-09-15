@@ -16,6 +16,58 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
+func TestResolveSchemaRefs(t *testing.T) {
+	defs := map[string]any{
+		"$defs": map[string]any{
+			"Point": map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "number"}}},
+			"Loop":  map[string]any{"$ref": "#/$defs/Loop"},
+		},
+	}
+	with := func(props map[string]any) map[string]any {
+		s := map[string]any{"properties": props}
+		s["$defs"] = defs["$defs"]
+		return s
+	}
+	for _, c := range []struct {
+		name    string
+		schema  map[string]any
+		want    string
+		wantErr string
+	}{
+		{name: "no properties", schema: map[string]any{"type": "object"}, want: `{}`},
+		{
+			name:   "nested ref resolves",
+			schema: with(map[string]any{"at": map[string]any{"$ref": "#/$defs/Point"}}),
+			want:   `{"at":{"properties":{"x":{"type":"number"}},"type":"object"}}`,
+		},
+		{
+			name:   "ref inside an array resolves",
+			schema: with(map[string]any{"all": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/$defs/Point"}}}),
+			want:   `{"all":{"items":{"properties":{"x":{"type":"number"}},"type":"object"},"type":"array"}}`,
+		},
+		{name: "recursive ref", schema: with(map[string]any{"l": map[string]any{"$ref": "#/$defs/Loop"}}), wantErr: "recursive"},
+		{name: "missing target", schema: with(map[string]any{"n": map[string]any{"$ref": "#/$defs/Nope"}}), wantErr: "does not resolve"},
+		{name: "external ref", schema: with(map[string]any{"e": map[string]any{"$ref": "https://example.com/s.json"}}), wantErr: "unsupported"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := ResolveSchemaRefs(c.schema)
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("err = %v, want %q", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := json.Marshal(got)
+			if string(b) != c.want {
+				t.Fatalf("got %s, want %s", b, c.want)
+			}
+		})
+	}
+}
+
 // testPipeline builds a store with the given rules and an overlay that
 // answers overlayAllows. Deny by default: nothing executes unless a rule
 // allows it.

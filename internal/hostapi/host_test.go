@@ -52,7 +52,8 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.12.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.13.0", "version=" .. tostring(zemi.api.version))
+		assert(type(zemi.health.register) == "function", "zemi.health.register missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai", "zemi.provider.kind missing")
 		for _, fn in ipairs({ "add", "remove", "list" }) do
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
@@ -104,6 +105,42 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.workflow[fn]) == "function", "zemi.workflow." .. fn .. " missing")
 		end
 	`)
+}
+
+// TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a
+// reload must not run its on_select, which belongs to the retired LState;
+// it is closed instead (DESIGN §4).
+func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
+	h, r := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+
+	called := false
+	var onSelect *glua.LFunction
+	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		onSelect = L.NewFunction(func(*glua.LState) int { called = true; return 0 })
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("build callback: %v", err)
+	}
+	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []any{"a"}}
+
+	h.SelectOverlay(context.Background(), o, 0)
+	if !called {
+		t.Fatal("a live overlay did not run on_select")
+	}
+
+	called = false
+	if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	h.SelectOverlay(context.Background(), o, 0)
+	if called {
+		t.Fatal("a stale overlay ran a retired generation's on_select")
+	}
+	if len(ui.closed) == 0 || ui.closed[len(ui.closed)-1] != "x" {
+		t.Fatalf("stale overlay was not closed: %v", ui.closed)
+	}
 }
 
 // TestEventRoundTrip covers the user.* event path end to end: register from
@@ -274,7 +311,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.12.0", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.13.0", "interpreter wedged after veto timeout")
 	`)
 }
 
