@@ -982,12 +982,67 @@ func truncateString(s string, n int) string {
 
 // PipelineFor builds the tools pipeline for the model's tool calls.
 func (h *Host) PipelineFor() *tools.Pipeline {
-	return &tools.Pipeline{
+	p := &tools.Pipeline{
 		Store:     h.Perm,
 		Pre:       h.toolPreHook(),
 		Ask:       h.askHook(),
 		Post:      h.toolPostHook(),
 		Principal: "model",
+		Jobs:      h.jobs,
+		Skills:    h.skillIndex,
+		Question: func(q tools.Question) (string, bool) {
+			ui := h.hooks()
+			if ui == nil {
+				return "", false
+			}
+			return ui.AskQuestion(q)
+		},
 	}
+	if h.DB != nil {
+		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }
+		p.TodosWrite = func(todos []store.Todo) error {
+			sid := h.AgentSessionID()
+			if sid == "" {
+				return fmt.Errorf("no active session")
+			}
+			return h.DB.SetTodos(sid, todos)
+		}
+	}
+	return p
+}
+
+// skillIndex resolves enabled skills for the skill tool: authored skills
+// under the config repo (enabled by default) plus learned skills under the
+// data dir (M3 adds the enabled-state store; both are listed today).
+func (h *Host) skillIndex() []tools.SkillInfo {
+	var out []tools.SkillInfo
+	dirs := []string{
+		filepath.Join(h.Dirs.ConfigHome, "skills"),
+		filepath.Join(h.Dirs.DataHome, "skills"),
+	}
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() || seen[e.Name()] {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err != nil {
+				continue
+			}
+			if seen[e.Name()] {
+				continue
+			}
+			seen[e.Name()] = true
+			out = append(out, tools.SkillInfo{Name: e.Name(), Path: filepath.Join(dir, e.Name())})
+		}
+	}
+	return out
 }
 

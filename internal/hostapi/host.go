@@ -16,6 +16,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -32,6 +33,7 @@ type UIHooks interface {
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
 	ReviewMemories(items []MemoryRow) (deleteIdx []int)
+	AskQuestion(q tools.Question) (answer string, ok bool)
 }
 
 // Overlay is the Go-side record of an open Lua overlay. Items are plain
@@ -99,6 +101,9 @@ type Host struct {
 	// must never block on a hook).
 	memReview sync.Mutex
 
+	// jobs owns the model's background processes (job_* tools).
+	jobs *tools.Jobs
+
 	hostActions map[string]func(h *Host, args string) error
 }
 
@@ -129,6 +134,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		agents:    newAgentHost(),
 		luaTools:  newToolReg(),
 		timers:    newTimerReg(),
+		jobs:      tools.NewJobs(),
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {

@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -55,6 +56,7 @@ type App struct {
 	permQueue []permAskMsg
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
+	question  *questionPrompt
 
 	caches   map[string]*widgetCache
 	frameGen int64
@@ -162,6 +164,11 @@ type memReviewMsg struct {
 	answer chan []int
 }
 
+type questionMsg struct {
+	q      tools.Question
+	answer chan qAnswer
+}
+
 type toastMsg struct {
 	level string
 	title string
@@ -255,6 +262,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frameGen++
 	case memReviewMsg:
 		a.memReview = &memReviewPrompt{items: msg.items, marked: map[int]bool{}, answer: msg.answer}
+		a.frameGen++
+	case questionMsg:
+		a.question = &questionPrompt{q: msg.q, sel: 0, answer: msg.answer}
 		a.frameGen++
 	case toastMsg:
 		a.pushToast(msg.level, msg.title, msg.body)
@@ -607,6 +617,9 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.modelPick != nil {
 		rows = a.splicePick(rows, a.modelPick, w, len(header), chatH)
+	}
+	if a.question != nil {
+		rows = a.spliceQuestion(rows, a.question, w, len(header), chatH)
 	}
 	if a.memReview != nil {
 		rows = a.spliceMemReview(rows, a.memReview, w, len(header), chatH)

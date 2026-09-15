@@ -9,10 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // Request is one permission check the pipeline needs answered.
@@ -43,11 +45,24 @@ type Asker func(req Request) (allowed bool, decidedBy string)
 
 // Pipeline wires tools to the permission store and the host hooks.
 type Pipeline struct {
-	Store  *perm.Store
-	Pre    PreHook // nil = no tool.pre events
-	Ask    Asker   // nil = asks fail closed
-	Post   func(tool string, input map[string]any, ok bool, output string)
+	Store     *perm.Store
+	Pre       PreHook // nil = no tool.pre events
+	Ask       Asker   // nil = asks fail closed
+	Post      func(tool string, input map[string]any, ok bool, output string)
 	Principal string
+
+	// TodosRead/TodosWrite back the session todo list; nil = todos error.
+	TodosRead  func() ([]store.Todo, error)
+	TodosWrite func([]store.Todo) error
+
+	// Question renders a structured ask overlay; nil = questions fail.
+	Question func(q Question) (answer string, ok bool)
+
+	// Jobs owns model-started background processes; nil = jobs error.
+	Jobs *Jobs
+
+	// Skills resolves enabled skills for the skill tool; nil = skills error.
+	Skills func() []SkillInfo
 
 	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
 	// decisions ask instead (never skips the gate, §6.4).
@@ -218,7 +233,7 @@ func typeOK(want string, v any) bool {
 	return true
 }
 
-// All returns the M1 builtin set bound to a pipeline.
+// All returns the M1+M2 builtin set bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, schema map[string]any, required []string,
 		subjects func(map[string]any) []Request,
@@ -337,6 +352,123 @@ func All(p *Pipeline) []fantasy.AgentTool {
 				return []Request{{Subject: "fs.read", Arg: argOr(in["path"], "."), Reason: "search files"}}
 			},
 			runGrep),
+
+		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML is stripped). Every redirect hop is re-gated and private addresses are refused.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"url": map[string]any{"type": "string"},
+				},
+			},
+			[]string{"url"},
+			func(in map[string]any) []Request {
+				return []Request{{Subject: "net.*", Arg: str(in["url"]), Reason: "fetch url"}}
+			},
+			runFetch),
+
+		mk("todos", "Read or replace this session's todo list. Each todo: content, status (pending, in_progress or done), optional active_form.",
+			false,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"todos": map[string]any{"type": "array"},
+				},
+			},
+			nil,
+			func(in map[string]any) []Request { return nil },
+			runTodos),
+
+		mk("question", "Ask the user a question with a fixed set of answer options; returns the chosen label.",
+			false,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"question":     map[string]any{"type": "string"},
+					"description":  map[string]any{"type": "string"},
+					"options":      map[string]any{"type": "array"},
+				},
+			},
+			[]string{"question", "options"},
+			func(in map[string]any) []Request { return nil },
+			runQuestion),
+
+		mk("sourcegraph", "Search public open-source repositories on sourcegraph.com.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{"type": "string"},
+					"count": map[string]any{"type": "number"},
+				},
+			},
+			[]string{"query"},
+			func(in map[string]any) []Request {
+				return []Request{{Subject: "net.sourcegraph.com", Arg: "sourcegraph.com", Reason: "sourcegraph search"}}
+			},
+			runSourcegraph),
+
+		mk("job_start", "Start a command in the background and return a job id. The child env is filtered; stdio are pipes.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"command": map[string]any{"type": "string"},
+					"args":    map[string]any{"type": "array"},
+					"env":     map[string]any{"type": "object"},
+				},
+			},
+			[]string{"command"},
+			func(in map[string]any) []Request {
+				return bashRequests(strings.Join(append([]string{str(in["command"])}, strList(in["args"])...), " "))
+			},
+			runJobStart),
+
+		mk("job_read", "Read a background job's buffered stdout/stderr and exit state.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "string"},
+				},
+			},
+			[]string{"id"},
+			func(in map[string]any) []Request { return nil },
+			runJobRead),
+
+		mk("job_list", "List background jobs with their state.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{},
+			},
+			nil,
+			func(in map[string]any) []Request { return nil },
+			runJobList),
+
+		mk("job_kill", "Kill one background job started with job_start.",
+			false,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "string"},
+				},
+			},
+			[]string{"id"},
+			func(in map[string]any) []Request { return nil },
+			runJobKill),
+
+		mk("skill", "Load an installed skill's SKILL.md body on demand.",
+			true,
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string"},
+				},
+			},
+			[]string{"name"},
+			func(in map[string]any) []Request { return nil },
+			runSkill),
 	}
 }
 
@@ -351,6 +483,18 @@ func str(v any) string {
 		return s
 	}
 	return ""
+}
+
+func strList(v any) []string {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, str(s))
+	}
+	return out
 }
 
 func argOr(v any, def string) string {

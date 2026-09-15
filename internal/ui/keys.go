@@ -26,6 +26,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPick("", false)
 		case a.memReview != nil:
 			a.answerMemReview()
+		case a.question != nil:
+			a.answerQuestion("", false)
 		case a.host.AgentActive():
 			a.host.AgentCancel()
 			a.pushToast("warn", "cancel", "cancelling turn")
@@ -98,6 +100,29 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case "esc", "enter", "q":
 			a.answerMemReview()
+		}
+		return nil
+	}
+
+	// 2d. Question overlay: Go-owned chrome capturing all keys (§8).
+	if a.question != nil {
+		switch key {
+		case "up", "k":
+			if a.question.sel > 0 {
+				a.question.sel--
+			}
+		case "down", "j":
+			if a.question.sel < len(a.question.q.Options)-1 {
+				a.question.sel++
+			}
+		case "enter":
+			if a.question.sel < len(a.question.q.Options) {
+				a.answerQuestion(a.question.q.Options[a.question.sel].Label, true)
+			} else {
+				a.answerQuestion("", false)
+			}
+		case "esc", "q":
+			a.answerQuestion("", false)
 		}
 		return nil
 	}

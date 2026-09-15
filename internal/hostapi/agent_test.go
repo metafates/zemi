@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -292,6 +295,9 @@ type fakeUI struct {
 	pickItems    []ModelOption
 	reviewItems  [][]MemoryRow
 	reviewDelete []int
+	qAsked       []tools.Question
+	qAnswer      string
+	qOK          bool
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -315,6 +321,11 @@ func (f *fakeUI) PickModel(items []ModelOption, current string) (string, bool) {
 func (f *fakeUI) ReviewMemories(items []MemoryRow) []int {
 	f.reviewItems = append(f.reviewItems, items)
 	return f.reviewDelete
+}
+
+func (f *fakeUI) AskQuestion(q tools.Question) (string, bool) {
+	f.qAsked = append(f.qAsked, q)
+	return f.qAnswer, f.qOK
 }
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
@@ -371,5 +382,74 @@ func TestModelPickStores(t *testing.T) {
 	runUser(t, r, `assert(zemi.model.pick() == nil, "cancel must return nil")`)
 	if v, _ := h.Settings.Get("agent.model"); v != "myllm/main" {
 		t.Fatalf("cancel changed agent.model to %v", v)
+	}
+}
+
+// TestPipelineQuestionToolEndToEnd drives the question tool through
+// PipelineFor and the fakeUI: the structured ask reaches the UI hooks and
+// the chosen label comes back as the tool output; with no UI the ask
+// fails closed.
+func TestPipelineQuestionToolEndToEnd(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{qAnswer: "proceed", qOK: true}
+	h.SetUIHooks(ui)
+	pipe := h.PipelineFor()
+
+	var resp fantasy.ToolResponse
+	for _, ag := range tools.All(pipe) {
+		if ag.Info().Name != "question" {
+			continue
+		}
+		var err error
+		resp, err = ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: "question",
+			Input: `{"question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}`})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		break
+	}
+	if resp.IsError || !strings.Contains(resp.Content, "user answered: proceed") {
+		t.Fatalf("question through pipeline: %+v", resp)
+	}
+	if len(ui.qAsked) != 1 || ui.qAsked[0].Question != "Ship it?" || len(ui.qAsked[0].Options) != 2 {
+		t.Fatalf("ask plumbing: %+v", ui.qAsked)
+	}
+
+	bare, _ := newTestHost(t)
+	if _, ok := bare.PipelineFor().Question(tools.Question{
+		Question: "x", Options: []tools.QuestionOption{{Label: "a"}},
+	}); ok {
+		t.Fatal("missing UI must decline the question")
+	}
+}
+
+// TestPipelineTodosAndJobsWiring checks PipelineFor wires the session todo
+// hooks, the shared job manager and the skill index, and that todos
+// round-trip through the store for the active session.
+func TestPipelineTodosAndJobsWiring(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+
+	pipe := h.PipelineFor()
+	if pipe.TodosRead == nil || pipe.TodosWrite == nil {
+		t.Fatal("todos hooks must be wired when a store is present")
+	}
+	if pipe.Jobs == nil {
+		t.Fatal("job manager must be wired")
+	}
+	if pipe.Skills == nil {
+		t.Fatal("skill index must be wired")
+	}
+
+	if err := pipe.TodosWrite([]store.Todo{{Content: "first", Status: "in_progress", ActiveForm: "doing first"}}); err != nil {
+		t.Fatalf("TodosWrite: %v", err)
+	}
+	rows, err := pipe.TodosRead()
+	if err != nil || len(rows) != 1 || rows[0].Content != "first" || rows[0].Status != "in_progress" {
+		t.Fatalf("TodosRead: %v %+v", err, rows)
+	}
+	persisted, err := h.DB.Todos(sid)
+	if err != nil || len(persisted) != 1 || persisted[0].Content != "first" {
+		t.Fatalf("todos must persist for the session: %v %+v", err, persisted)
 	}
 }
