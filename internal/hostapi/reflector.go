@@ -43,7 +43,7 @@ Rules:
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - Each memory is one self-contained single line, at most 500 characters.
 - Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
-- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets.
+- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything instruction files and tool descriptions already say.
 - Propose nothing rather than something weak.
 
@@ -257,10 +257,15 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 			b.WriteString(line + "\n")
 		}
 	}
-	if skills := h.skillIndex(); len(skills) > 0 {
+	// disabled drafts count too, or the reflector drafts them again
+	if all := h.skillsReg.list(); len(all) > 0 {
 		b.WriteString("\n# Skills\n")
-		for _, s := range skills {
-			b.WriteString("- " + s.Name + "\n")
+		for _, s := range all {
+			state := "disabled"
+			if h.skillsReg.isEnabled(s.Name) {
+				state = "enabled"
+			}
+			fmt.Fprintf(&b, "- %s (%s): %s\n", s.Name, state, truncRunes(s.Description, reflectIndexText))
 		}
 	}
 	b.WriteString("\nProduce the proposal JSON now.")

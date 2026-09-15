@@ -13,6 +13,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -253,6 +254,31 @@ func TestReflectPromptWindow(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestReflectPromptSkills: disabled drafts are listed too, with their
+// description, so the reflector does not draft them again.
+func TestReflectPromptSkills(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	h.skillsReg.set([]skills.Skill{
+		{Name: "run-harness", Description: "when asked to run the harness", Source: skills.Learned},
+		{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored},
+	}, map[string]bool{"cut-release": true})
+
+	prompt, err := h.reflectPrompt(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"- run-harness (disabled): when asked to run the harness",
+		"- cut-release (enabled): when cutting a release",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("missing %q in:\n%s", want, prompt)
+		}
 	}
 }
 
