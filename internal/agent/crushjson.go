@@ -8,9 +8,10 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -49,7 +50,7 @@ func (r *Registry) ImportCrushJSON(data []byte) (CrushImport, error) {
 		return CrushImport{}, fmt.Errorf("crush.json: %w", err)
 	}
 	res := CrushImport{}
-	for _, id := range sortedKeys(file.Providers) {
+	for _, id := range slices.Sorted(maps.Keys(file.Providers)) {
 		p := file.Providers[id]
 		kind := crushKind(p.Type)
 		if kind == "" {
@@ -88,15 +89,6 @@ func (r *Registry) ImportCrushJSON(data []byte) (CrushImport, error) {
 
 func (res *CrushImport) warn(format string, args ...any) {
 	res.Warnings = append(res.Warnings, fmt.Sprintf(format, args...))
-}
-
-func sortedKeys[T any](m map[string]T) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // crushKind maps crush provider types onto zemi kinds; "" means unknown.

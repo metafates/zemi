@@ -5,6 +5,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -77,9 +78,6 @@ func (r *Registry) RegisterKeyed(spec Spec, apiKey string) error {
 	}
 	r.specs = append(r.specs, spec)
 	if apiKey != "" {
-		if r.keys == nil {
-			r.keys = map[string]string{}
-		}
 		r.keys[spec.ID] = apiKey
 	}
 	return nil
@@ -109,21 +107,20 @@ func (r *Registry) HasKey(providerID string) bool {
 	if !ok {
 		return false
 	}
-	return r.apiKeys(spec) != ""
+	return r.apiKey(spec) != ""
 }
 
-// apiKeys reports which providers have an api key available (for the
-// picker to grey out unusable providers without leaking values).
-func (r *Registry) apiKeys(spec Spec) string {
-	if k, ok := r.keys[spec.ID]; ok && k != "" {
+// apiKey returns the spec's key: the imported literal, else its env var.
+func (r *Registry) apiKey(spec Spec) string {
+	if k := r.keys[spec.ID]; k != "" {
 		return k
 	}
 	env := spec.APIKeyEnv
 	switch spec.Kind {
 	case "anthropic":
-		env = cmpOr(spec.APIKeyEnv, "ANTHROPIC_API_KEY")
+		env = cmp.Or(spec.APIKeyEnv, "ANTHROPIC_API_KEY")
 	case "openai", "openaicompat":
-		env = cmpOr(spec.APIKeyEnv, "OPENAI_API_KEY")
+		env = cmp.Or(spec.APIKeyEnv, "OPENAI_API_KEY")
 	}
 	if env == "" {
 		return ""
@@ -131,16 +128,6 @@ func (r *Registry) apiKeys(spec Spec) string {
 	return os.Getenv(env)
 }
 
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
-// Resolve turns "provider/model" into a fantasy language model. The api
-// key is read from the named env var here; missing keys surface as an
-// error at send time.
 // Efforts are the reasoning effort levels zemi offers ("" = provider
 // default).
 var Efforts = []string{"low", "medium", "high"}
@@ -171,6 +158,9 @@ func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions
 	return nil
 }
 
+// Resolve turns "provider/model" into a fantasy language model. The api
+// key is read from the named env var here; missing keys surface as an
+// error at send time.
 func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	providerID, model, ok := strings.Cut(modelID, "/")
 	if !ok {
@@ -186,7 +176,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, anthropic.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKeys(spec); k != "" {
+		if k := r.apiKey(spec); k != "" {
 			opts = append(opts, anthropic.WithAPIKey(k))
 		}
 		p, err := anthropic.New(opts...)
@@ -199,7 +189,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, openai.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKeys(spec); k != "" {
+		if k := r.apiKey(spec); k != "" {
 			opts = append(opts, openai.WithAPIKey(k))
 		}
 		p, err := openai.New(opts...)
@@ -212,7 +202,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, openaicompat.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKeys(spec); k != "" {
+		if k := r.apiKey(spec); k != "" {
 			opts = append(opts, openaicompat.WithAPIKey(k))
 		}
 		p, err := openaicompat.New(opts...)

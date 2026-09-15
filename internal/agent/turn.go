@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -252,12 +251,4 @@ func isErrResult(c fantasy.ToolResultContent) bool {
 		return false
 	}
 	return c.Result.GetType() == fantasy.ToolResultContentTypeError
-}
-
-// HistoryJSON returns the raw history as JSON lines (debug copy path).
-func (r *Runner) HistoryJSON() (string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	b, err := json.Marshal(r.History)
-	return string(b), err
 }

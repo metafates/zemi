@@ -8,6 +8,7 @@ package mcp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -89,13 +90,6 @@ func (a *Auth) save(t *Token) error {
 		return err
 	}
 	return os.Rename(tmp, a.Path)
-}
-
-// SignedIn reports whether a grant is stored.
-func (a *Auth) SignedIn() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.load() != nil
 }
 
 // Logout forgets the grant.
@@ -214,7 +208,7 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 		var err error
 		switch {
 		case cq.Get("error") != "":
-			err = fmt.Errorf("the server refused: %s", firstNonEmpty(cq.Get("error_description"), cq.Get("error")))
+			err = fmt.Errorf("the server refused: %s", cmp.Or(cq.Get("error_description"), cq.Get("error")))
 		case cq.Get("code") == "":
 			err = errors.New("the server sent no authorization code")
 		default:
@@ -294,7 +288,7 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 			Scopes      []string `json:"scopes_supported"`
 		}
 		if getJSON(ctx, pu, &prm) == nil && len(prm.AuthServers) > 0 {
-			issuer, m.resource = prm.AuthServers[0], firstNonEmpty(prm.Resource, serverURL)
+			issuer, m.resource = prm.AuthServers[0], cmp.Or(prm.Resource, serverURL)
 			if m.scope == "" {
 				m.scope = strings.Join(prm.Scopes, " ")
 			}
@@ -428,7 +422,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r)
 	if resp.StatusCode != http.StatusOK || r.AccessToken == "" {
-		why := firstNonEmpty(r.Description, r.Error, fmt.Sprintf("http %d", resp.StatusCode))
+		why := cmp.Or(r.Description, r.Error, fmt.Sprintf("http %d", resp.StatusCode))
 		return nil, fmt.Errorf("%w: the server refused the token request: %.200s", ErrAuthRequired, why)
 	}
 	nt := *t
@@ -461,15 +455,6 @@ func randomString(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, v := range s {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func writeCallbackPage(w http.ResponseWriter, server string, err error) {
