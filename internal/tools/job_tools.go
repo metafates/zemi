@@ -29,6 +29,7 @@ type Job struct {
 	done   chan struct{}
 	code   int
 	err    string
+	sent   [2]int // bytes of stdout/stderr already read, see since
 	mu     sync.Mutex
 }
 
@@ -54,11 +55,21 @@ func (j *Job) Status() string {
 	return state
 }
 
-// snapshot returns the buffered output and the exit state.
-func (j *Job) snapshot() (out, errOut string, running bool, errText string) {
+// since returns the output written after the previous read and the exit
+// state: a job that is polled while it runs would otherwise resend its
+// whole buffer every time.
+func (j *Job) since() (out, errOut string, running bool, errText string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.stdout.String(), j.stderr.String(), j.Running(), j.err
+	rest := func(s string, sent *int) string {
+		if len(s) < *sent {
+			*sent = 0 // the buffer dropped its middle, so the offset means nothing
+		}
+		out := s[*sent:]
+		*sent = len(s)
+		return out
+	}
+	return rest(j.stdout.String(), &j.sent[0]), rest(j.stderr.String(), &j.sent[1]), j.Running(), j.err
 }
 
 // Jobs owns every model-started job for one host.
@@ -185,7 +196,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	out, errOut, running, errText := j.snapshot()
+	out, errOut, running, errText := j.since()
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s\n", j.ID, j.Status())
 	if errText != "" {
@@ -198,7 +209,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		b.WriteString("[stderr]\n" + truncMiddle(errOut) + "\n")
 	}
 	if running && out == "" && errOut == "" {
-		b.WriteString("(no output yet)")
+		b.WriteString("(no new output)")
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

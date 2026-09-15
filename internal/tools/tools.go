@@ -350,9 +350,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. When you know the part you need, read only that part.", true,
 			map[string]any{
-				"path":   map[string]any{"type": "string"},
-				"offset": map[string]any{"type": "number"},
-				"limit":  map[string]any{"type": "number"},
+				"path":   map[string]any{"type": "string", "description": "file path, absolute or relative to the project root"},
+				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
+				"limit":  map[string]any{"type": "number", "description": "how many lines to read"},
 			},
 			[]string{"path"},
 			func(in map[string]any) []Request {
@@ -405,8 +405,8 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
 			map[string]any{
-				"pattern": map[string]any{"type": "string"},
-				"path":    map[string]any{"type": "string"},
+				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
+				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -416,9 +416,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 
 		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
 			map[string]any{
-				"pattern": map[string]any{"type": "string"},
-				"path":    map[string]any{"type": "string"},
-				"include": map[string]any{"type": "string"},
+				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
+				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
+				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -517,7 +517,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			runJobStart),
 
-		mk("job_read", "Read a background job's output so far (the first and last part when it is long) and whether it is still running.",
+		mk("job_read", "Read what a background job printed since your last read of it (everything on the first read, the first and last part when that is long) and whether it is still running.",
 			true,
 			map[string]any{
 				"id": map[string]any{"type": "string"},

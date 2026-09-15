@@ -51,6 +51,9 @@ func TestJobStreamsOutput(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	if out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"}); strings.Contains(out.Content, "ready") {
+		t.Fatalf("a second read must not repeat delivered output: %q", out.Content)
+	}
 	runJobKill(context.Background(), p, map[string]any{"id": "job-1"})
 	j, _ := p.Jobs.Get("job-1")
 	select {
