@@ -415,8 +415,30 @@ type Theme struct {
 
 // ThemeRegistry stores themes by name; same rules as widgets.
 type ThemeRegistry struct {
-	mu     sync.RWMutex
-	themes map[string]*Theme
+	mu        sync.RWMutex
+	themes    map[string]*Theme
+	overrides map[string]HLSpec // zemi.ui.hl: groups set on top of any theme
+}
+
+// SetHL overrides one highlight group on top of every theme.
+func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.overrides == nil {
+		r.overrides = map[string]HLSpec{}
+	}
+	r.overrides[group] = spec
+}
+
+// Group resolves a highlight group: an override first, then the theme's.
+func (r *ThemeRegistry) Group(t *Theme, group string) (HLSpec, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if s, ok := r.overrides[group]; ok {
+		return s, true
+	}
+	s, ok := t.HL[group]
+	return s, ok
 }
 
 func NewThemeRegistry() *ThemeRegistry {
@@ -457,6 +479,6 @@ func (r *ThemeRegistry) List() []*Theme {
 
 func (r *ThemeRegistry) Purge() {
 	r.mu.Lock()
-	r.themes = map[string]*Theme{}
+	r.themes, r.overrides = map[string]*Theme{}, nil
 	r.mu.Unlock()
 }

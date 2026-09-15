@@ -155,3 +155,21 @@ func TestKeySequences(t *testing.T) {
 		t.Fatal("prefix lookup")
 	}
 }
+
+// TestHighlightOverride: zemi.ui.hl changes one group of the active theme
+// and leaves the others as the theme defines them.
+func TestHighlightOverride(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.ui.theme.register("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" } } })
+		zemi.ui.theme.set("t")
+		zemi.ui.hl("Title", { fg = "#ffffff", bold = true })
+	`)
+	theme := h.Themes.Get("t")
+	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || !s.Bold {
+		t.Fatalf("Title = %+v", s)
+	}
+	if s, _ := h.Themes.Group(theme, "Comment"); s.Fg != "#777777" {
+		t.Fatalf("Comment = %+v", s)
+	}
+}

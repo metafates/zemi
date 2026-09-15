@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/metafates/zemi/internal/tools"
@@ -11,8 +13,7 @@ import (
 func TestPermModes(t *testing.T) {
 	h, _ := newTestHost(t)
 	ask := h.askHook()
-	req := tools.Request{Subject: "tool.bash", Arg: "go test ./..."}
-	for _, c := range []struct {
+	for i, c := range []struct {
 		mode, model string
 		allowed     bool
 		by          string
@@ -25,11 +26,41 @@ func TestPermModes(t *testing.T) {
 	} {
 		h.Settings.SetHost("permissions.mode", c.mode)
 		reflectStub(t, h, c.model)
+		// a command auto mode cannot settle locally, new per case (approvals are cached)
+		req := tools.Request{Subject: "tool.bash", Arg: fmt.Sprintf("./deploy.sh %d", i)}
 		if allowed, by := ask(req); allowed != c.allowed || by != c.by {
 			t.Errorf("%s/%q: allowed=%v by=%s", c.mode, c.model, allowed, by)
 		}
 	}
 	if err := h.SetPermMode("bogus"); err == nil {
 		t.Error("SetPermMode accepted an unknown mode")
+	}
+}
+
+// TestAutoModeLocal: auto mode approves project edits and safe commands
+// without the model (which here refuses everything) and still asks for the
+// rest.
+func TestAutoModeLocal(t *testing.T) {
+	h, _ := newTestHost(t)
+	reflectStub(t, h, "UNSAFE: refuses everything")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	ask := h.askHook()
+	for _, c := range []struct {
+		req     tools.Request
+		allowed bool
+	}{
+		{tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, "main.go")}, true},
+		{tools.Request{Subject: "tool.bash", Arg: "git status && go test ./..."}, true},
+		{tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}, false},
+	} {
+		asked := len(ui.asked)
+		allowed, _ := ask(c.req)
+		if allowed != c.allowed || (len(ui.asked) > asked) == c.allowed {
+			t.Fatalf("%s %q: allowed=%v asked=%v", c.req.Subject, c.req.Arg, allowed, len(ui.asked) > asked)
+		}
 	}
 }

@@ -11,7 +11,7 @@ import (
 // "/" as the first character lists the registered commands filtered as you
 // type; up/down navigate, tab/enter accept, esc closes. Submitting a
 // "/name args" line runs the command instead of sending a message. The
-// exact, case-sensitive "/Reload" is the Go-reserved force-reload trigger
+// exact "/reload" is the Go-reserved force-reload trigger
 // and never reaches the command registry (DESIGN §4).
 type cmdPalette struct {
 	open     bool
@@ -167,16 +167,17 @@ func (a *App) submitComposer() {
 	a.sendMessage(text)
 }
 
-// runSlashCommand executes a "/name args" line. Raw "/Reload" (exact, case
+// runSlashCommand executes a "/name args" line. Raw "/reload" (exact, case
 // sensitive, non-abbreviable) is the Go-reserved force-reload trigger and
 // never reaches the Lua-visible command registry (DESIGN §4, §6.2).
 func (a *App) runSlashCommand(text string) {
 	raw := strings.TrimPrefix(text, a.paletteTrigger())
-	if raw == "Reload" {
+	if raw == "reload" {
 		a.composer.text, a.composer.cursor = "", 0
 		a.palette.close()
 		if a.reload != nil {
-			a.reload()
+			// off the UI goroutine: replaying project config may ask for trust
+			go a.reload()
 		}
 		return
 	}

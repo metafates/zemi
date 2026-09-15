@@ -87,7 +87,7 @@ func (h *Host) healthChecks() []healthCheck {
 	add("ok", "skills", fmt.Sprintf("%d found, %d enabled", len(all), enabled))
 
 	if h.RT.IsHot() {
-		add("error", "lua", "runtime is hot after a wedged call; /Reload")
+		add("error", "lua", "runtime is hot after a wedged call; /reload")
 	} else {
 		add("ok", "lua", "runtime healthy")
 	}

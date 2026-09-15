@@ -10,8 +10,8 @@ below is a file you write with your file tools; show the user what you wrote and
 
 | Scope | Directory | Loads |
 | --- | --- | --- |
-| every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, on `/Reload` for Lua and commands |
-| this repository | `<repo>/.zemi/` | after the user trusts the project config: a prompt at start or on `/Reload` |
+| every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, on `/reload` for Lua and commands |
+| this repository | `<repo>/.zemi/` | after the user trusts the project config: a prompt at start or on `/reload` |
 
 Always use the exact directories from the system prompt: `ZEMI_CONFIG_HOME` can move the
 user directory, and writing to a guessed `~/.config/zemi` changes the wrong config.
@@ -68,8 +68,8 @@ argument-hint: <file> <symptom>
 Read $1 and add a failing test showing: $ARGUMENTS. Do not fix the bug.
 ```
 
-`$ARGUMENTS` is everything after the name, `$1`..`$9` single words. Commands load at
-startup: tell the user to run `/Reload`.
+`$ARGUMENTS` is everything after the name, `$1`..`$9` single words. Commands load when
+the file is saved (zemi reloads config on change).
 
 ## UI (`init.lua`, or modules under `lua/`)
 
@@ -77,7 +77,8 @@ Everything on screen except the composer and the Go-drawn prompts is a Lua widge
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
 `splash`, `chat`, `statusline.mode`, `statusline.cwd`, `statusline.reflect`,
 `statusline.agents`, `statusline.learn`, `statusline.info`. Regions: `header`, `chat`,
-`statusline.left`, `statusline.right`. Changes apply on `/Reload`.
+`statusline.left`, `statusline.right`. zemi reloads config on its own when these files
+change; `/reload` forces it.
 
 ```lua
 -- <user config>/init.lua
@@ -104,6 +105,12 @@ zemi.ui.widget.register({
   render = function(ctx) return { { { text = zemi.state.get("branch") or "", hl = "Comment" } } } end,
 })
 
+-- Change a few colors: override just those groups. theme.register below
+-- builds a complete theme, and groups it leaves out lose their colors.
+zemi.ui.hl("ModePlan", { fg = "bg", bg = "warn", bold = true })
+zemi.ui.hl("ModeAuto", { fg = "bg", bg = "#c4a7e7", bold = true })
+
+-- A whole theme (define every group the UI uses, or copy the default's)
 zemi.ui.theme.register("dusk", {
   palette = { bg = "#1e1e2e", fg = "#cdd6f4", muted = "#6c7086", accent = "#f5c2e7", ok = "#a6e3a1", warn = "#f9e2af", err = "#f38ba8", panel = "#313244" },
   hl = { Normal = { fg = "fg" }, Comment = { fg = "muted" }, Title = { fg = "accent", bold = true } },
@@ -123,4 +130,4 @@ Full API: the zemi-lua skill.
 ## After writing
 
 Run a quick check where possible (`/health` for config errors, `/errors` for Lua errors
-after `/Reload`) and tell the user the path and how to use or undo it.
+after `/reload`) and tell the user the path and how to use or undo it.

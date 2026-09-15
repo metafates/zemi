@@ -285,7 +285,7 @@ next reload, not in-place).
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.9.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.10.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -336,8 +336,8 @@ next reload, not in-place).
   user config cannot set host-owned knobs. Providers ship none; they are registered from
   user config (or imported from the user's `~/.config/crush/crush.json`, best-effort,
   never fails boot — `providers.crush_json` key).
-- **The Go-reserved triggers** (`ctrl+c` cancel, `/Reload`) are never routed through Lua
-  keymaps and cannot be rebound — `/Reload` is matched on composer submit (exact,
+- **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
+  keymaps and cannot be rebound — `/reload` is matched on composer submit (exact,
   case-sensitive, before the command registry is consulted), so no registered command can
   shadow it. Keep them out of any "make everything rebindable" refactor.
 - **No editor modes.** The composer is always focused; commands are slash commands typed in

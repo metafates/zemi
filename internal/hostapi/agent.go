@@ -166,7 +166,7 @@ func (h *Host) defaultSystemPrompt() string {
 		" config after loading the zemi-customize skill, never zemi's own source code. zemi's user config" +
 		" directory is " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi) and this" +
 		" project's is " + h.Dirs.ProjectConfigDir() + "; project files load only after the user trusts" +
-		" them on /Reload, user files right away." +
+		" them on /reload, user files right away." +
 		delegationPrompt
 }
 
@@ -1482,8 +1482,16 @@ func (h *Host) askHook() tools.Asker {
 		case "yolo":
 			return resolved(true, "mode:yolo")
 		case "auto":
+			key := req.Subject + "\x00" + req.Arg
+			if h.autoLocal(req) {
+				return resolved(true, "mode:auto")
+			}
+			if _, ok := h.autoApproved.Load(key); ok {
+				return resolved(true, "mode:auto")
+			}
 			ok, why := h.autoApprove(req)
 			if ok {
+				h.autoApproved.Store(key, true)
 				return resolved(true, "mode:auto")
 			}
 			h.Log.Info("permissions", "auto mode deferred to the user", map[string]any{"subject": req.Subject, "why": why})

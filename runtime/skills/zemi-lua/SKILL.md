@@ -24,7 +24,7 @@ proposals. Lua calls to gated APIs never open a prompt: an "ask" decision raises
 `require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
 plugin; project code also searches `.zemi/lua/` first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
-tree. Each file loads once per runtime (both names share it); `/Reload` loads fresh.
+tree. Each file loads once per runtime (both names share it); `/reload` loads fresh.
 
 ## Rules that keep zemi responsive
 
@@ -33,7 +33,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 - Long work goes to `zemi.job`, `zemi.http` or `zemi.timer` with callbacks.
 - Misuse raises; a runtime failure of a synchronous call returns `nil, err` (`fs.read`,
   `fs.write`, `state.put`, `json.decode`, `session.new`, `session.open`).
-- A wedged handler turns the runtime "hot"; `/Reload` rebuilds it. Errors show in `/errors`.
+- A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 
 ## Namespaces
 
@@ -43,7 +43,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
-| `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |
+| `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |

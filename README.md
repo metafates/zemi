@@ -71,7 +71,7 @@ argument-hint: <file> <what breaks>
 Read $1 and write a failing test that shows: $ARGUMENTS. Do not fix the bug yet.
 ```
 
-`/repro parser.go empty input panics` runs it. Changes load on `/Reload`.
+`/repro parser.go empty input panics` runs it. Changes load on `/reload`.
 
 ## Subagents and workflows
 

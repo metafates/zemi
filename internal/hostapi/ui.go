@@ -299,6 +299,28 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 1
 	}))
 
+	// hl(group, spec) changes one highlight group on top of the active theme
+	// (and any theme set later): { fg, bg, bold, italic, underline, reverse },
+	// colors as hex or palette names. theme.register builds a whole theme.
+	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
+		if h.refuseDuringRender(L, "zemi.ui.hl") {
+			return 0
+		}
+		group := L.CheckString(1)
+		v, err := luaToGoChecked(L, 2, "zemi.ui.hl")
+		if err != nil {
+			return 0
+		}
+		m, _ := v.(map[string]any)
+		h.Themes.SetHL(group, HLSpec{
+			Fg: strField(m, "fg"), Bg: strField(m, "bg"),
+			Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
+			Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
+		})
+		h.refresh()
+		return 0
+	}))
+
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.ui.help") {
 			return 0

@@ -27,7 +27,7 @@ func (t themeResolver) style(hl string) uv.Style {
 	if theme == nil {
 		return uv.Style{}
 	}
-	spec, ok := theme.HL[hl]
+	spec, ok := t.host.Themes.Group(theme, hl)
 	if !ok {
 		return uv.Style{}
 	}

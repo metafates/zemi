@@ -313,10 +313,10 @@ func TestPaletteComplete(t *testing.T) {
 		t.Fatal("no toast for unknown command")
 	}
 
-	// The reserved /Reload never reaches the registry.
-	app.composer.text, app.composer.cursor = "/Reload", 7
+	// The reserved /reload never reaches the registry.
+	app.composer.text, app.composer.cursor = "/reload", 7
 	app.updatePalette()
 	if len(app.palette.matches) != 0 {
-		t.Fatalf("/Reload listed: %d", len(app.palette.matches))
+		t.Fatalf("/reload listed: %d", len(app.palette.matches))
 	}
 }

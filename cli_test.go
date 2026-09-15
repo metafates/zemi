@@ -2,6 +2,8 @@ package main
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -47,5 +49,31 @@ func TestTurnReport(t *testing.T) {
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)
+	}
+}
+
+// TestConfigFingerprint: edits to config files change the fingerprint,
+// zemi's own permissions.lua and git data do not.
+func TestConfigFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("init.lua", "-- one")
+	base := configFingerprint(dir)
+	write("permissions.lua", "return {}")
+	write(".git/index", "x")
+	if configFingerprint(dir) != base {
+		t.Fatal("zemi-owned files changed the fingerprint")
+	}
+	write("init.lua", "-- two!")
+	if configFingerprint(dir) == base {
+		t.Fatal("an init.lua edit went unnoticed")
 	}
 }

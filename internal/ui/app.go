@@ -813,7 +813,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 		pill(" boot failed ")
 	}
 	if a.host.RT.IsHot() {
-		pill(" HOT /Reload ")
+		pill(" stuck: /reload ")
 	}
 	if a.host.HasUnseenErrors() {
 		pill(" ! errors /errors ")

@@ -15,6 +15,8 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"time"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/config"
@@ -123,11 +125,18 @@ func run(args []string) int {
 
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
-	app.SetReload(func() {
+	var reloadMu sync.Mutex
+	reload := func() {
+		reloadMu.Lock()
+		defer reloadMu.Unlock()
 		if err := rt.ForceReload(ctx, steps, host.PurgeGeneration); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
+			app.Notify("error", "reload", err.Error())
+			return
 		}
-	})
+		app.Notify("info", "reload", "config reloaded")
+	}
+	app.SetReload(reload)
 
 	// Boot runs on its own goroutine (it may block on the trust prompt);
 	// the outcome reaches the UI through the hook channel.
@@ -145,6 +154,7 @@ func run(args []string) int {
 		if err != nil {
 			return
 		}
+		host.GoSafe("config watch", func() { watchConfig(host, dirs, reload) })
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, opts); err != nil {
@@ -162,6 +172,44 @@ func run(args []string) int {
 		return fail(err)
 	}
 	return 0
+}
+
+// watchConfig reloads when files under the user or project config change,
+// once no turn is running (an edit made mid-turn applies after it).
+func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
+	last := configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir())
+	for range time.Tick(time.Second) {
+		if fp := configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()); fp != last && !h.AgentActive() {
+			last = fp
+			reload()
+		}
+	}
+}
+
+// configFingerprint summarizes config trees by path, size and modification
+// time, skipping git data and the permissions.lua zemi writes itself.
+func configFingerprint(roots ...string) string {
+	sum := sha256.New()
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return nil
+			case d.IsDir() && d.Name() == ".git":
+				return filepath.SkipDir
+			case d.IsDir() || d.Name() == "permissions.lua":
+				return nil
+			}
+			if info, err := d.Info(); err == nil {
+				fmt.Fprintf(sum, "%s|%d|%d\n", p, info.Size(), info.ModTime().UnixNano())
+			}
+			return nil
+		})
+	}
+	return hex.EncodeToString(sum.Sum(nil))
 }
 
 // crushImportStep imports providers from the user's crush.json (config
@@ -277,6 +325,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "fork", Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
 					_, err := h.ForkSession()
 					return err
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "reload", Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
+					return nil // the composer runs /reload before the registry
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "errors", Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()

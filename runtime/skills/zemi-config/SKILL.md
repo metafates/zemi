@@ -25,7 +25,7 @@ Rules when editing:
 - Never hand-edit `permissions.lua`. zemi refuses a file it did not generate and then
   starts with no permanent rules. Add rules with `zemi.permission.rule` in init.lua or by
   answering `a` in a permission prompt.
-- Writes outside the project ask first and show the diff. Tell the user to run `/Reload`
+- Writes outside the project ask first and show the diff. Tell the user to run `/reload`
   (exactly that, capital R) after editing init.lua; it rebuilds the Lua runtime.
 - Never write API keys into files. Providers name an environment variable.
 

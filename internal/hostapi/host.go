@@ -184,6 +184,10 @@ type Host struct {
 	todos      []store.Todo
 	todosStale atomic.Bool
 
+	// autoApproved remembers requests the auto-mode model approved, so the
+	// same command does not cost a second check.
+	autoApproved sync.Map
+
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
@@ -955,7 +959,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.9.0"))
+	api.RawSetString("version", glua.LString("0.10.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
