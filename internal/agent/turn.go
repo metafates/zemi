@@ -195,6 +195,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
+		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
 	}
 	if temp != nil {
@@ -279,6 +280,10 @@ const (
 	loopWindow  = 10 // recent steps repeatsToolCalls looks at
 	loopRepeats = 5  // identical tool steps allowed within the window
 )
+
+// maxRetries is the provider retries a step gets; fantasy's default of 3
+// gives up on an overloaded provider inside a minute.
+var maxRetries = 5
 
 var (
 	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
