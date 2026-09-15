@@ -30,8 +30,12 @@ type Verdict struct {
 }
 
 // PreHook runs the tool.pre Lua events; decision is "" (pass),
-// "deny", "rewrite" or "halt". Rewritten carries the replacement input.
-type PreHook func(tool string, input map[string]any) (decision, reason string, rewritten map[string]any)
+// "deny", "rewrite" or "halt". Rewritten carries the replacement input
+// (already shallow-merged over the original). Loosened reports a rewrite
+// decided by a non-user principal: on re-entry an allow decision flips
+// to ask, so a rewrite can never ride a pre-existing allow glob (DESIGN
+// §6.2, §6.4).
+type PreHook func(tool string, input map[string]any) (decision, reason string, rewritten map[string]any, loosened bool)
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side).
@@ -42,17 +46,32 @@ type Pipeline struct {
 	Store  *perm.Store
 	Pre    PreHook // nil = no tool.pre events
 	Ask    Asker   // nil = asks fail closed
+	Post   func(tool string, input map[string]any, ok bool, output string)
 	Principal string
+
+	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
+	// decisions ask instead (never skips the gate, §6.4).
+	RewriteLoosened bool
 }
 
 // check decides one request; tool.bash is special: the store normalizes
 // the command (segments, redirect gates, assignment gate) in one call.
+// Check exposes one permission check (host-side callers outside the
+// pipeline, e.g. Lua-namespace gates).
+func (p *Pipeline) Check(req Request) Verdict { return p.check(req) }
+
 func (p *Pipeline) check(req Request) Verdict {
+	loosen := func(v Verdict) Verdict {
+		if v.Decision == perm.Allow && p.RewriteLoosened {
+			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
+		}
+		return v
+	}
 	if req.Subject == "tool.bash" {
 		o := p.Store.CheckCommand(req.Arg, p.Principal)
 		switch o.Decision {
 		case perm.Allow:
-			return Verdict{perm.Allow, o.Reason, decidedBy(o)}
+			return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)})
 		case perm.Deny:
 			return Verdict{perm.Deny, o.Reason, decidedBy(o)}
 		}
@@ -61,7 +80,7 @@ func (p *Pipeline) check(req Request) Verdict {
 	o := p.Store.Evaluate(req.Subject, req.Arg, p.Principal)
 	switch o.Decision {
 	case perm.Allow:
-		return Verdict{perm.Allow, o.Reason, decidedBy(o)}
+		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)})
 	case perm.Deny:
 		return Verdict{perm.Deny, o.Reason, decidedBy(o)}
 	}
@@ -98,18 +117,6 @@ func (t *tool) Info() fantasy.ToolInfo { return t.info }
 func (t *tool) ProviderOptions() fantasy.ProviderOptions { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-// denyOnly wraps a PreHook so rewrite and halt cannot re-fire; only deny
-// decisions survive the re-entry (DESIGN §6.4).
-func denyOnly(h PreHook) PreHook {
-	return func(name string, input map[string]any) (string, string, map[string]any) {
-		decision, reason, rewritten := h(name, input)
-		if decision == "deny" {
-			return "deny", reason, nil
-		}
-		return "", "", rewritten
-	}
-}
-
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	var input map[string]any
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
@@ -118,8 +125,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	if err := validate(t.info, input); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	pipe := t.pipe
 	if t.pipe.Pre != nil {
-		decision, reason, rewritten := t.pipe.Pre(t.info.Name, input)
+		decision, reason, rewritten, loosened := t.pipe.Pre(t.info.Name, input)
 		switch decision {
 		case "deny":
 			return fantasy.NewTextErrorResponse("denied by hook: " + reason), nil
@@ -127,29 +135,45 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			return fantasy.ToolResponse{}, fmt.Errorf("halted by hook: %s", reason)
 		case "rewrite":
 			if rewritten != nil {
-				// re-enter validation; tool.pre runs deny-only now and the
-				// permission gate below still runs. A per-run pipeline copy
-				// keeps concurrent tools race-free.
+				// The rewritten input re-enters at the permission gate
+				// below (never skips it, DESIGN §6.4); a per-run pipeline
+				// copy keeps concurrent tools race-free.
 				if err := validate(t.info, rewritten); err != nil {
 					return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
 				}
 				input = rewritten
 				rp := *t.pipe
-				rp.Pre = denyOnly(t.pipe.Pre)
-				return t.run(ctx, &rp, input)
+				rp.RewriteLoosened = loosened
+				pipe = &rp
 			}
 		}
 	}
 	for _, req := range t.subjects(input) {
-		v := t.pipe.check(req)
+		v := pipe.check(req)
 		if v.Decision == perm.Deny {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + req.Subject + " " + req.Arg + ": " + v.Reason), nil
+			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + req.Subject + " " + req.Arg + ": " + v.Reason)), nil
 		}
 		if v.Decision == perm.Ask {
-			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason), nil
+			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason)), nil
 		}
 	}
-	return t.run(ctx, t.pipe, input)
+	return t.runPost(ctx, pipe, input)
+}
+
+// runPost wraps run with the tool.post notification.
+func (t *tool) runPost(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	res, err := t.run(ctx, p, input)
+	return t.post(p, input, res), err
+}
+
+// post delivers the tool.post notification with a text summary of the
+// response; Post is optional.
+func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse) fantasy.ToolResponse {
+	if p.Post == nil {
+		return res
+	}
+	p.Post(t.info.Name, input, !res.IsError, res.Content)
+	return res
 }
 
 // validate checks required fields and their types against the schema.

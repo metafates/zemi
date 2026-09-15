@@ -48,6 +48,11 @@ func envGated(name string) bool {
 	return false
 }
 
+// EnvAssignmentGate reports whether a name matches the environment-affecting
+// denylist (case-insensitive). Host-side callers (Lua job env extras) use
+// it to refuse dangerous extras outright.
+func EnvAssignmentGate(name string) bool { return envGated(name) }
+
 // Normalize turns a raw bash command into matched-form segments plus the
 // redirect gates. It never errors: problems surface in Fail/ForceAsk.
 func Normalize(cmd string) Normalized {

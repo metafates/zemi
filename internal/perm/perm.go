@@ -36,6 +36,12 @@ type Rule struct {
 // by the host; config-file rules are loaded into it at boot.
 type Store struct {
 	rules []Rule
+
+	// Default applies when no rule matched a subject+arg (DESIGN §9
+	// built-in defaults: fs.read inside the jail allows except secret
+	// paths). It never overrides a matched rule, and an explicit
+	// not_match exclusion still asks.
+	Default func(subject, arg string) Decision
 }
 
 // NewStore returns an empty store.
@@ -60,6 +66,11 @@ func globMatch(pattern, s string) bool {
 	}
 	return globRegexp(pattern).MatchString(s)
 }
+
+// MatchExample reports whether the rule pattern would match the example
+// string. Used by zemi.permission.rule to validate that a rule does what
+// its author claims before it is stored.
+func MatchExample(pattern, s string) bool { return globMatch(pattern, s) }
 
 // Outcome is the aggregated verdict for one operation.
 type Outcome struct {
@@ -115,6 +126,11 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 	}
 	if len(fellThru) > 0 {
 		return Outcome{Decision: Ask, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
+	}
+	if s.Default != nil {
+		if d := s.Default(subject, arg); d != Ask {
+			return Outcome{Decision: d, Reason: "default"}
+		}
 	}
 	return Outcome{Decision: Ask, Reason: "no rule matched"}
 }

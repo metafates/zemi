@@ -52,6 +52,7 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
+		{Path: "agent.model", Kind: "string", Default: "", UserWritable: true, Desc: "active model id (provider/model)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
 		{Path: "ui.sidebar.width", Kind: "int", Default: 30, UserWritable: true, Desc: "sidebar width in cells"},
 		{Path: "ui.sidebar.open", Kind: "bool", Default: false, UserWritable: true, Desc: "sidebar visible"},

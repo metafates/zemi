@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,23 +94,23 @@ func TestPreHookDenyRewriteReentry(t *testing.T) {
 		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
 	denied := 0
 	rewrites := 0
-	p.Pre = func(tool string, input map[string]any) (string, string, map[string]any) {
+	p.Pre = func(tool string, input map[string]any) (string, string, map[string]any, bool) {
 		if tool != "bash" {
-			return "", "", nil
+			return "", "", nil, false
 		}
 		cmd := str(input["command"])
 		if cmd == "danger --x" {
 			denied++
-			return "deny", "no danger", nil
+			return "deny", "no danger", nil, false
 		}
 		if cmd == "echo {{TWICE}}" {
 			rewrites++
 			if rewrites == 1 {
-				return "rewrite", "", map[string]any{"command": "echo once"}
+				return "rewrite", "", map[string]any{"command": "echo once"}, false
 			}
 			t.Fatal("rewrite hook re-fired on re-entry")
 		}
-		return "", "", nil
+		return "", "", nil, false
 	}
 	ag := All(p)[0]
 	resp := call(t, ag, `{"command":"danger --x"}`)
@@ -255,5 +256,45 @@ func TestNoOverlayFailsClosed(t *testing.T) {
 	resp := call(t, ag, `{"command":"echo hi"}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "ask failed") {
 		t.Fatalf("no overlay must fail closed: %+v", resp)
+	}
+}
+
+func TestRewriteLoosensAllows(t *testing.T) {
+	p, asked := testPipeline(t, false,
+		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
+	p.Pre = func(tool string, input map[string]any) (string, string, map[string]any, bool) {
+		if tool == "bash" && str(input["command"]) == "rewrite-me" {
+			return "rewrite", "", map[string]any{"command": "echo hi"}, true
+		}
+		return "", "", nil, false
+	}
+	ag := All(p)[0]
+	resp := call(t, ag, `{"command":"rewrite-me"}`)
+	if !resp.IsError || !strings.Contains(resp.Content, "permission denied (overlay)") {
+		t.Fatalf("loosened rewrite must ask (deny overlay): %+v", resp)
+	}
+	if len(*asked) != 1 {
+		t.Fatalf("re-entered allow must consult the overlay: %+v", *asked)
+	}
+}
+
+func TestPostHookRuns(t *testing.T) {
+	p, _ := testPipeline(t, false,
+		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow})
+	var posts []string
+	p.Post = func(tool string, input map[string]any, ok bool, output string) {
+		posts = append(posts, fmt.Sprintf("%s ok=%v %s", tool, ok, output))
+	}
+	ag := All(p)[0]
+	call(t, ag, `{"command":"echo posted"}`)
+	call(t, ag, `{"command":"echo nope; rm x"}`)
+	if len(posts) != 2 {
+		t.Fatalf("post must run for success and denial: %+v", posts)
+	}
+	if !strings.Contains(posts[0], "ok=true") || !strings.Contains(posts[0], "posted") {
+		t.Fatalf("success post: %+v", posts)
+	}
+	if !strings.Contains(posts[1], "ok=false") {
+		t.Fatalf("denial post: %+v", posts)
 	}
 }
