@@ -22,8 +22,9 @@ import (
 
 const (
 	attachMarker   = "\n\n<attached-files>"
-	attachMax      = 64 << 10 // bytes per text file
-	attachImageMax = 5 << 20  // bytes per image
+	attachMax      = 64 << 10           // bytes per text file
+	attachImageMax = 5 << 20            // bytes per image
+	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 )
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
@@ -145,6 +146,7 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	defer sweepDrops(dir) // after the write, so the name just handed out stays
 	base = strings.TrimLeft(dropUnsafe.ReplaceAllString(base, "-"), ".-")
 	if base == "" {
 		base = "file"
@@ -160,11 +162,25 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 		old, err := os.ReadFile(target)
 		switch {
 		case err == nil && string(old) == string(data):
+			t := time.Now()
+			_ = os.Chtimes(target, t, t) // attaching it again keeps it alive
 			return name, nil
 		case os.IsNotExist(err):
 			return name, os.WriteFile(target, data, 0o600)
 		case err != nil:
 			return "", err
+		}
+	}
+}
+
+// sweepDrops removes copies idle past dropTTL; without it the directory
+// grows for the life of the install. An @drop: reference older than that
+// stops resolving, like a scratchpad file.
+func sweepDrops(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && !e.IsDir() && time.Since(info.ModTime()) > dropTTL {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
 }
