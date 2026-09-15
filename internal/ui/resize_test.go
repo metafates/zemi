@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,36 @@ func TestGoldenHelpOverlay(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if len(app.overlays) != 0 || app.composer.text != "/model " {
 		t.Fatalf("enter on a command row: overlays=%d composer=%q", len(app.overlays), app.composer.text)
+	}
+}
+
+// TestOverlayWidthStableWhileScrolling: a list longer than its window
+// keeps one box width as the selection scrolls past rows of other widths.
+func TestOverlayWidthStableWhileScrolling(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	for i := range 14 {
+		host.Commands.Add(&hostapi.Command{Name: fmt.Sprintf("cmd%02d", i), Desc: strings.Repeat("d", 3+i*3),
+			Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
+	}
+	host.OpenHelp()
+	for app.Pump() {
+	}
+	boxWidth := func() int {
+		app.renderSync(t)
+		for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+			if strings.Contains(row, "┌") {
+				return ansi.StringWidth(strings.TrimSpace(row))
+			}
+		}
+		t.Fatal("no box on screen")
+		return 0
+	}
+	want := boxWidth()
+	for range len(app.overlays[0].itemText) {
+		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		if got := boxWidth(); got != want {
+			t.Fatalf("box width changed while scrolling: %d -> %d", want, got)
+		}
 	}
 }
 

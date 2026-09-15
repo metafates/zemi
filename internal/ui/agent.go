@@ -132,6 +132,19 @@ type listItem struct{ label, desc string }
 // selHL on the selected row, dim descriptions, and an "i/n" counter once
 // the list scrolls.
 func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segment {
+	// Every row pads to the widest item in the whole list, so a box sized
+	// from the visible window keeps its width while scrolling.
+	itemWidth := func(it listItem) int {
+		n := ansi.StringWidth(it.label)
+		if it.desc != "" {
+			n += 2 + ansi.StringWidth(it.desc)
+		}
+		return n
+	}
+	widest := 0
+	for _, it := range items {
+		widest = max(widest, itemWidth(it))
+	}
 	start := max(0, min(sel-limit/2, len(items)-limit))
 	var rows [][]hostapi.Segment
 	for i := start; i < len(items) && i < start+limit; i++ {
@@ -142,6 +155,9 @@ func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segmen
 		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl}}
 		if items[i].desc != "" {
 			row = append(row, hostapi.Segment{Text: "  " + items[i].desc, HL: "Comment"})
+		}
+		if pad := widest - itemWidth(items[i]); pad > 0 {
+			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad)})
 		}
 		rows = append(rows, row)
 	}
