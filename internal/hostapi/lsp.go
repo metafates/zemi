@@ -56,20 +56,27 @@ type lspProc struct {
 	err    error
 }
 
+// lspMaxStarts caps the restarts of a server that keeps dying, so a
+// crash loop cannot respawn it on every edit.
+const lspMaxStarts = 3
+
 type lspReg struct {
-	mu      sync.Mutex
-	user    []lspDef
-	running map[string]*lspProc
+	mu       sync.Mutex
+	user     []lspDef
+	running  map[string]*lspProc
+	attempts map[string]int
 }
 
-func newLSPReg() *lspReg { return &lspReg{running: map[string]*lspProc{}} }
+func newLSPReg() *lspReg {
+	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}}
+}
 
 // stopAll stops every server and forgets user definitions (reload replays
 // them).
 func (r *lspReg) stopAll() {
 	r.mu.Lock()
 	procs := r.running
-	r.running, r.user = map[string]*lspProc{}, nil
+	r.running, r.user, r.attempts = map[string]*lspProc{}, nil, map[string]int{}
 	r.mu.Unlock()
 	for _, p := range procs {
 		p.close()
@@ -124,6 +131,11 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 	h.lsp.mu.Lock()
 	p, ok := h.lsp.running[def.Name]
 	if !ok {
+		if h.lsp.attempts[def.Name] >= lspMaxStarts {
+			h.lsp.mu.Unlock()
+			return nil, fmt.Errorf("%s died %d times; /lsp restart %s to try again", def.Name, lspMaxStarts, def.Name)
+		}
+		h.lsp.attempts[def.Name]++
 		p = &lspProc{h: h, def: def, ready: make(chan struct{})}
 		h.lsp.running[def.Name] = p
 	}
@@ -156,10 +168,30 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 	}
 	select {
 	case <-p.client.Done():
-		return nil, fmt.Errorf("%s exited", def.Name)
+		// The server died: forget it so the next file starts a fresh one,
+		// and tell the user, who would otherwise only see diagnostics stop.
+		h.lsp.mu.Lock()
+		if h.lsp.running[def.Name] == p {
+			delete(h.lsp.running, def.Name)
+		}
+		h.lsp.mu.Unlock()
+		err := fmt.Errorf("%s exited", def.Name)
+		h.RecordError("lsp", err.Error())
+		return nil, err
 	default:
 	}
 	return p.client, nil
+}
+
+// languageID is the LSP language id for a file: the known name, else the
+// extension without its dot, so a filetype from zemi.lsp.add still sends
+// something rather than an empty string.
+func languageID(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	if id, ok := languageIDs[ext]; ok {
+		return id
+	}
+	return strings.TrimPrefix(ext, ".")
 }
 
 // lspCheck syncs path to its server and formats diagnostics with severity
@@ -182,7 +214,7 @@ func (h *Host) lspCheck(path string, maxSeverity int) (out string, ok bool) {
 	if err != nil {
 		return "", false
 	}
-	diags, err := c.Touch(ctx, abs, languageIDs[strings.ToLower(filepath.Ext(abs))])
+	diags, err := c.Touch(ctx, abs, languageID(abs))
 	if err != nil && len(diags) == 0 {
 		return "", false
 	}
@@ -306,11 +338,15 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 					if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
 						name = strings.TrimSpace(name)
 						h.lsp.mu.Lock()
-						p := h.lsp.running[name]
+						p, tries := h.lsp.running[name], h.lsp.attempts[name]
 						delete(h.lsp.running, name)
+						delete(h.lsp.attempts, name)
 						h.lsp.mu.Unlock()
-						if p == nil {
+						if p == nil && tries == 0 {
 							return fmt.Errorf("no language server %q", name)
+						}
+						if p == nil {
+							return nil // capped out earlier; the counter is clear now
 						}
 						p.close()
 						return nil

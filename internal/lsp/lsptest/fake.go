@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lsp"
@@ -19,6 +20,10 @@ func Serve(in io.Reader, out io.Writer) {
 		b, _ := json.Marshal(v)
 		_ = lsp.WriteMessage(out, b)
 	}
+	// Document versions must arrive in order; once they do not, every later
+	// publish carries the regression so the client's last read sees it.
+	seen := map[string]int{}
+	regressed := false
 	for {
 		body, err := lsp.ReadMessage(r)
 		if err != nil {
@@ -29,8 +34,9 @@ func Serve(in io.Reader, out io.Writer) {
 			Method string          `json:"method"`
 			Params struct {
 				TextDocument struct {
-					URI  string `json:"uri"`
-					Text string `json:"text"`
+					URI     string `json:"uri"`
+					Text    string `json:"text"`
+					Version int    `json:"version"`
 				} `json:"textDocument"`
 				ContentChanges []struct {
 					Text string `json:"text"`
@@ -48,6 +54,16 @@ func Serve(in io.Reader, out io.Writer) {
 		case "exit":
 			return
 		case "textDocument/didOpen", "textDocument/didChange":
+			// A .quiet document is one the server has nothing to say about.
+			if strings.HasSuffix(m.Params.TextDocument.URI, ".quiet") {
+				continue
+			}
+			uri0 := m.Params.TextDocument.URI
+			if v := m.Params.TextDocument.Version; v <= seen[uri0] {
+				regressed = true
+			} else {
+				seen[uri0] = v
+			}
 			text := m.Params.TextDocument.Text
 			if n := len(m.Params.ContentChanges); n > 0 {
 				text = m.Params.ContentChanges[n-1].Text
@@ -62,8 +78,20 @@ func Serve(in io.Reader, out io.Writer) {
 					})
 				}
 			}
+			if regressed {
+				diags = append(diags, map[string]any{
+					"range":    map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 0, "character": 1}},
+					"severity": 1, "message": "version regression", "source": "fake",
+				})
+			}
+			// Publish the symlink-resolved path, the way servers that
+			// canonicalize their URIs do.
+			uri := m.Params.TextDocument.URI
+			if p, err := filepath.EvalSymlinks(strings.TrimPrefix(uri, "file://")); err == nil {
+				uri = "file://" + p
+			}
 			write(map[string]any{"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
-				"params": map[string]any{"uri": m.Params.TextDocument.URI, "diagnostics": diags}})
+				"params": map[string]any{"uri": uri, "diagnostics": diags}})
 		}
 	}
 }
