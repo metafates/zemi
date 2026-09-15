@@ -643,6 +643,23 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 }
 
+// TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
+// profile's context files as written, or the second build joins them to the
+// project directory twice and silently reads nothing.
+func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.agent.profile("p", { context = { files = { "NOTES.md" } } })`)
+	p, err := h.resolveProfile("p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.buildSystem(p)
+	h.buildSystem(p)
+	if got := p.ContextFiles; len(got) != 1 || got[0] != "NOTES.md" {
+		t.Fatalf("context files = %v", got)
+	}
+}
+
 // TestConcurrentSendsQueue: two sends racing to start a turn run one after
 // the other, so the history keeps both messages.
 func TestConcurrentSendsQueue(t *testing.T) {

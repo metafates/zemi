@@ -327,9 +327,13 @@ func (h *Host) systemWith(sys string, files []string) string {
 	if len(files) == 0 {
 		files = h.instructionFiles()
 	} else {
+		// a copy: these are the profile's own paths, and rewriting them in
+		// place would make the next send join them to the project dir again
+		abs := make([]string, len(files))
 		for i, f := range files {
-			files[i] = filepath.Join(h.Dirs.ProjectDir, f)
+			abs[i] = filepath.Join(h.Dirs.ProjectDir, f)
 		}
+		files = abs
 	}
 	budget := contextBudget
 	var sections string
