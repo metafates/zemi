@@ -183,11 +183,7 @@ func (a *App) acceptCompletion() {
 	if !f.open || f.selected >= len(f.matches) {
 		return
 	}
-	r := a.composer.runes()
-	cur := a.composer.cursor
-	repl := f.matches[f.selected] + " "
-	a.composer.text = string(r[:f.start]) + repl + string(r[cur:])
-	a.composer.cursor = f.start + len([]rune(repl))
+	a.composer.replace(f.start, f.matches[f.selected]+" ")
 	f.close()
 }
 

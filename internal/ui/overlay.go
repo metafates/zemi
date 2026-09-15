@@ -202,11 +202,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.runOverlayRow(o, idx)
 		}
 	case "esc":
-		a.closeOverlayByID(o.ID)
-		a.frameGen++
-		if o.OnClose != nil {
-			a.host.CancelOverlay(a.ctx(), o)
-		}
+		a.cancelOverlay(o)
 	}
 	return nil
 }
@@ -220,33 +216,22 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 		a.closeOverlayByID(o.ID)
 		a.host.SubmitOverlayInput(a.ctx(), o, value)
 	case "esc":
-		o := st.o
-		a.closeOverlayByID(o.ID)
-		if o.OnClose != nil {
-			a.host.CancelOverlay(a.ctx(), o)
-		}
-	case "backspace":
-		in.backspace()
-	case "delete":
-		in.delete()
-	case "left":
-		in.left()
-	case "right":
-		in.right()
-	case "home", "ctrl+a":
-		in.lineStart()
-	case "end", "ctrl+e":
-		in.lineEnd()
-	case "ctrl+u":
-		in.delToLineStart()
-	case "ctrl+w":
-		in.delWord()
+		a.cancelOverlay(st.o)
 	default:
-		if text != "" {
+		if !in.editKey(key) && text != "" {
 			in.insert(strings.ReplaceAll(text, "\n", " "))
 		}
 	}
 	a.frameGen++
+}
+
+// cancelOverlay closes o and runs its on_close.
+func (a *App) cancelOverlay(o hostapi.Overlay) {
+	a.closeOverlayByID(o.ID)
+	a.frameGen++
+	if o.OnClose != nil {
+		a.host.CancelOverlay(a.ctx(), o)
+	}
 }
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the

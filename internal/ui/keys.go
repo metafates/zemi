@@ -237,34 +237,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	switch key {
 	case "enter":
 		a.submitComposer()
+		return nil
 	case "shift+enter", "alt+enter":
-		if a.multiline() {
-			c.insert("\n")
-			return a.updateCompletion()
+		if !a.multiline() {
+			return nil
 		}
-	case "backspace":
-		c.backspace()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "delete":
-		c.delete()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "left":
-		c.left()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "right":
-		c.right()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "home", "ctrl+a":
-		c.lineStart()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "end", "ctrl+e":
-		c.lineEnd()
-		a.updatePalette()
+		c.insert("\n")
 		return a.updateCompletion()
 	case "up":
 		if c.empty() && a.restoreQueue() {
@@ -275,32 +253,18 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		} else {
 			c.histPrev()
 		}
-		a.updatePalette()
-		return a.updateCompletion()
 	case "down":
 		if strings.Contains(c.text, "\n") {
 			c.down()
 		} else {
 			c.histNext()
 		}
-		a.updatePalette()
-		return a.updateCompletion()
 	case "ctrl+p":
 		c.histPrev()
+		return nil
 	case "ctrl+n":
 		c.histNext()
-	case "ctrl+w", "alt+backspace":
-		c.delWord()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "ctrl+u":
-		c.delToLineStart()
-		a.updatePalette()
-		return a.updateCompletion()
-	case "ctrl+k":
-		c.delToLineEnd()
-		a.updatePalette()
-		return a.updateCompletion()
+		return nil
 	case "ctrl+v":
 		// terminals paste text themselves; this also reaches images
 		return a.pasteClipboard()
@@ -309,14 +273,18 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if a.host.AgentActive() {
 			a.interrupt()
 		}
+		return nil
 	default:
-		if t := keyText(msg); t != "" {
+		if !c.editKey(key) {
+			t := keyText(msg)
+			if t == "" {
+				return nil
+			}
 			c.insert(t)
-			a.updatePalette()
-			return a.updateCompletion()
 		}
 	}
-	return nil
+	a.updatePalette()
+	return a.updateCompletion()
 }
 
 // forceQuit leaves without the app.quit veto.
