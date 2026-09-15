@@ -255,9 +255,9 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 	}
 }
 
-// spliceOverlay composes the overlay box into the frame rows, centered
-// over the chat area, with the Go-stamped origin badge (DESIGN §8).
-func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, headerH, chatH int) [][]hostapi.Segment {
+// overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
+// §8).
+func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
@@ -270,21 +270,20 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	if st.o.Input {
 		r := []rune(st.input.text)
 		line := []hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:st.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[st.input.cursor:])}}
-		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, keyHints("enter", "confirm", "esc", "cancel")}
-		return spliceBox(rows, hostBox(" "+st.o.Title+" ", "Title", badge, body, w), w, headerH, chatH)
+		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
+		return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
 	}
 	items := make([]listItem, 0, len(st.visible))
 	for _, i := range st.visible {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
 	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
-	hints := keyHints("enter", "select", "type", "filter", "esc", "close")
+	hints := hintLine("enter", "select", "type", "filter", "esc", "close")
 	if st.o.Reload != nil {
-		hints = keyHints("space", "toggle", "type", "filter", "esc", "close")
+		hints = hintLine("space", "toggle", "type", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
-	box := hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	return hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
 }
 
 // spliceBox writes box rows centered over the chat area, replacing the

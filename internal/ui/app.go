@@ -348,9 +348,7 @@ func (a *App) frameTickCmd() tea.Cmd {
 func (a *App) onFrame() tea.Cmd {
 	now := time.Now()
 	a.pruneToasts(now)
-	cmds := []tea.Cmd{a.frameTickCmd()}
-	// The clock plays timer.fire's role in M0: bumping the generation on
-	// a minute change re-renders time-reading widgets (DESIGN §8).
+	// A minute change re-renders time-reading widgets.
 	if ts := now.Format("15:04"); ts != a.timeStr {
 		a.timeStr = ts
 		a.frameGen++
@@ -363,8 +361,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
-	cmds = append(cmds, a.renderStaleWidgetsCmd())
-	return tea.Batch(cmds...)
+	return tea.Batch(a.frameTickCmd(), a.renderStaleWidgetsCmd())
 }
 
 func (a *App) uiState() hostapi.UIState {
@@ -393,11 +390,10 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 // isTolerableRenderErr reports failures the UI expects under load (hot
 // mode, reload in flight): they keep the cached lines without flagging.
 func isTolerableRenderErr(err error) bool {
-	return err == nil || err == lua.ErrHot || err == lua.ErrReloaded || err == lua.ErrCanceled
+	return err == lua.ErrHot || err == lua.ErrReloaded || err == lua.ErrCanceled
 }
 
-// visibleRegions lists the regions composed into the frame together with
-// the width each widget renders at.
+// visibleWidgets lists the widgets of every region composed into the frame.
 func (a *App) visibleWidgets() []*hostapi.Widget {
 	var out []*hostapi.Widget
 	out = append(out, a.host.Widgets.InRegion("header")...)
@@ -407,7 +403,7 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	return out
 }
 
-func (a *App) widgetWidth(w *hostapi.Widget) int {
+func (a *App) widgetWidth() int {
 	if a.width <= 0 {
 		return 80
 	}
@@ -417,16 +413,12 @@ func (a *App) widgetWidth(w *hostapi.Widget) int {
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
 // is missing or stale for the current frame generation.
 func (a *App) renderStaleWidgetsCmd() tea.Cmd {
-	gen := a.frameGen
+	gen, width, st := a.frameGen, a.widgetWidth(), a.uiState()
 	var cmds []tea.Cmd
 	for _, w := range a.visibleWidgets() {
-		c := a.caches[w.ID]
-		width := a.widgetWidth(w)
-		if c != nil && c.gen == gen && c.width == width {
+		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == width {
 			continue
 		}
-		st := a.uiState()
-		w := w
 		cmds = append(cmds, func() tea.Msg {
 			lines, err := a.host.RenderWidget(a.ctx(), w, width, st)
 			return widgetRenderedMsg{id: w.ID, lines: lines, width: width, gen: gen, err: err}
@@ -593,28 +585,28 @@ func (a *App) compose(w, h int) string {
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
 
-	// Lua overlays, then the Go-owned chrome on top: trust prompt, model
-	// picker, permission ask (most urgent).
+	// Lua overlays, then the Go-owned chrome, bottom to top.
+	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
 	for _, ov := range a.overlays {
-		rows = a.spliceOverlay(rows, ov, w, len(header), chatH)
+		splice(overlayBox(ov, w))
 	}
 	if a.trust != nil {
-		rows = a.spliceTrust(rows, a.trust, w, len(header), chatH)
+		splice(trustBox(a.trust, w))
 	}
 	if a.modelPick != nil {
-		rows = a.splicePick(rows, a.modelPick, w, len(header), chatH)
+		splice(pickBox(a.modelPick, w))
 	}
 	if a.question != nil {
-		rows = a.spliceQuestion(rows, a.question, w, len(header), chatH)
+		splice(questionBox(a.question, w))
 	}
 	if a.memReview != nil {
-		rows = a.spliceMemReview(rows, a.memReview, w, len(header), chatH)
+		splice(memReviewBox(a.memReview, w))
 	}
 	if a.cfgReview != nil {
-		rows = a.spliceCfgReview(rows, a.cfgReview, w, len(header), chatH)
+		splice(cfgReviewBox(a.cfgReview, w))
 	}
 	if a.permAsk != nil {
-		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)
+		splice(a.permBox(a.permAsk, w, chatH))
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH

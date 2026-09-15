@@ -77,11 +77,10 @@ func (a *App) answerTrust(answer string) {
 	a.frameGen++
 }
 
-// spliceTrust composes the Go-owned trust prompt box over the chat area
-// (DESIGN §5, §8): title and answer keys use fixed host styles via the
-// "Host:*" highlight names, so no theme group can forge or restyle them,
-// and no Lua text is rendered inside this chrome.
-func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+// trustBox draws the Go-owned trust prompt (DESIGN §5, §8): title and
+// answer keys use fixed host styles via the "Host:*" highlight names, so no
+// theme group can forge or restyle them, and no Lua text is rendered inside.
+func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
 	short := tp.hash
 	if len(short) > 12 {
 		short = short[:12]
@@ -90,10 +89,9 @@ func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH,
 		{{Text: tp.path}},
 		{{Text: "hash: " + short}},
 		{{Text: ""}},
-		keyHints("y", "trust this config", "n", "not now", "d", "never for this version"),
+		hintLine("y", "trust this config", "n", "not now", "d", "never for this version"),
 	}
-	box := hostBox(" Trust project config? ", "Host:TrustTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	return hostBox(" Trust project config? ", "Host:TrustTitle", "", body, w)
 }
 
 // ---------------------------------------------------------------------------

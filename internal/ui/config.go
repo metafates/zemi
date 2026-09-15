@@ -58,9 +58,9 @@ func (a *App) cfgDecide(accept bool) {
 	}
 }
 
-// spliceCfgReview composes the review overlay over the chat area: title
-// line, provenance, then the rule lines (the diff body).
-func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+// cfgReviewBox draws the review overlay: title line, provenance, then the
+// rule lines (the diff body).
+func cfgReviewBox(cr *cfgReviewPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	if len(cr.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "no pending config proposals", HL: "Comment"}})
@@ -88,7 +88,6 @@ func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, 
 			})
 		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("y", "accept", "n", "reject", "esc", "leave queued"))
-	box := hostBox(" Config review ", "Host:MemTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("y", "accept", "n", "reject", "esc", "leave queued"))
+	return hostBox(" Config review ", "Host:MemTitle", "", body, w)
 }

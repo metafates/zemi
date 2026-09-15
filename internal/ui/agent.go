@@ -315,12 +315,9 @@ func fmtElapsed(d time.Duration) string {
 	return fmt.Sprintf("%dh %02dm %02ds", s/3600, s/60%60, s%60)
 }
 
-// keyHints is the footer of every Go-drawn box: "enter select · esc close".
-func keyHints(pairs ...string) []hostapi.Segment { return hintLine(pairs...) }
-
-// splicePerm draws the permission prompt: what the tool wants to do, the
+// permBox draws the permission prompt: what the tool wants to do, the
 // command or the diff it would apply, and the choices.
-func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	req := pa.req
 	isDiff := strings.HasPrefix(req.Preview, "--- ")
 	maxW := 96
@@ -357,7 +354,7 @@ func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH
 	// panels span the box, and the box fits its content (at least 56 wide)
 	fit := 56
 	for _, r := range append(append([][]hostapi.Segment{}, body...), content...) {
-		fit = max(fit, trimmedWidth(r))
+		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
 	fit = min(max(fit, segsWidth(permButtons(pa, inner))), inner)
 	for i := range content {
@@ -374,17 +371,7 @@ func (a *App) splicePerm(rows [][]hostapi.Segment, pa *permAskPrompt, w, headerH
 	if n := len(a.permQueue); n > 0 {
 		badge = fmt.Sprintf(" 1 of %d ", n+1)
 	}
-	box := hostBoxW(" Permission required ", "Host:PermTitle", badge, body, w, maxW)
-	return spliceBox(rows, box, w, headerH, chatH)
-}
-
-// trimmedWidth is a row's width without trailing blanks.
-func trimmedWidth(r []hostapi.Segment) int {
-	var b strings.Builder
-	for _, s := range r {
-		b.WriteString(s.Text)
-	}
-	return ansi.StringWidth(strings.TrimRight(b.String(), " "))
+	return hostBoxW(" Permission required ", "Host:PermTitle", badge, body, w, maxW)
 }
 
 // padPanel cuts or extends a panel row to width, keeping its last style.
@@ -400,33 +387,29 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 
 // permTitle names what the request does, and on what.
 func permTitle(req hostapi.PermRequest, root string) (verb, target string) {
-	verb, target = permTitleAbs(req)
-	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
-		target = rel
-	}
-	return verb, target
-}
-
-func permTitleAbs(req hostapi.PermRequest) (verb, target string) {
+	verb, target = req.Subject, req.Arg
 	switch {
 	case req.Subject == "tool.bash":
 		return "Run a command", ""
 	case req.Tool == "write":
-		return "Write", req.Arg
+		verb = "Write"
 	case req.Tool == "edit" || req.Tool == "multiedit":
-		return "Edit", req.Arg
+		verb = "Edit"
 	case req.Subject == "fs.write":
-		return "Change", req.Arg
+		verb = "Change"
 	case req.Subject == "fs.read":
-		return "Read", req.Arg
+		verb = "Read"
 	case strings.HasPrefix(req.Subject, "net."):
-		return "Fetch", req.Arg
+		verb = "Fetch"
 	case strings.HasPrefix(req.Subject, "mcp."):
-		return "Use the " + strings.TrimPrefix(req.Subject, "mcp.") + " tool", req.Arg
+		verb = "Use the " + strings.TrimPrefix(req.Subject, "mcp.") + " tool"
 	case req.Subject == "tool.workflow":
-		return "Run a workflow", req.Arg
+		verb = "Run a workflow"
 	}
-	return req.Subject, req.Arg
+	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
+		target = rel
+	}
+	return verb, target
 }
 
 // permNote turns a request reason into a line worth reading: generic tool
@@ -493,10 +476,7 @@ func codePanel(text string, width int) [][]hostapi.Segment {
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		l = strings.ReplaceAll(l, "\t", "    ")
 		for _, wrapped := range wrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
-			line := ""
-			for _, sg := range wrapped {
-				line += sg.Text
-			}
+			line := plainSegs(wrapped)
 			pad := width - 2 - ansi.StringWidth(line)
 			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: "Host:Panel"}})
 		}
@@ -570,28 +550,25 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 	return rows
 }
 
-// splicePick composes the model picker over the chat area.
-func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, headerH, chatH int) [][]hostapi.Segment {
+func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	if len(mp.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "no models registered", HL: "Comment"}})
-	}
-	items := make([]listItem, 0, len(mp.visible))
-	for _, i := range mp.visible {
-		it := mp.items[i]
-		desc := ""
-		if it.Display != "" && it.Display != it.ID {
-			desc = it.Display
+	} else {
+		items := make([]listItem, 0, len(mp.visible))
+		for _, i := range mp.visible {
+			it := mp.items[i]
+			desc := ""
+			if it.Display != "" && it.Display != it.ID {
+				desc = it.Display
+			}
+			if !it.HasKey {
+				desc = strings.TrimSpace(desc + "  (no api key)")
+			}
+			items = append(items, listItem{it.ID, desc})
 		}
-		if !it.HasKey {
-			desc = strings.TrimSpace(desc + "  (no api key)")
-		}
-		items = append(items, listItem{it.ID, desc})
+		body = mp.filterRows(listRows(items, mp.selected, 12, "Host:Bold"))
 	}
-	if len(mp.items) > 0 {
-		body = append(body, mp.filterRows(listRows(items, mp.selected, 12, "Host:Bold"))...)
-	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("enter", "pick", "type", "filter", "esc", "cancel"))
-	box := hostBox(" Select model ", "Host:PickTitle", "", body, w)
-	return spliceBox(rows, box, w, headerH, chatH)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("enter", "pick", "type", "filter", "esc", "cancel"))
+	return hostBox(" Select model ", "Host:PickTitle", "", body, w)
 }

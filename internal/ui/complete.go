@@ -1,9 +1,10 @@
 package ui
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,8 +12,8 @@ import (
 )
 
 // fileCompleter is the composer popup listing project files after the
-// trigger character (default "@", DESIGN-style composer completion). The
-// file list is scanned off the UI goroutine and fuzzy-ranked client-side.
+// trigger character (default "@"). The file list is scanned off the UI
+// goroutine and fuzzy-ranked client-side.
 type fileCompleter struct {
 	open     bool
 	start    int      // rune index of the trigger char in the composer
@@ -124,14 +125,8 @@ func (f *fileCompleter) rematch(maxItems int) {
 				cands = append(cands, scored{p, s})
 			}
 		}
-		sort.Slice(cands, func(i, j int) bool {
-			if cands[i].score != cands[j].score {
-				return cands[i].score < cands[j].score
-			}
-			if len(cands[i].path) != len(cands[j].path) {
-				return len(cands[i].path) < len(cands[j].path)
-			}
-			return cands[i].path < cands[j].path
+		slices.SortFunc(cands, func(x, y scored) int {
+			return cmp.Or(cmp.Compare(x.score, y.score), cmp.Compare(len(x.path), len(y.path)), strings.Compare(x.path, y.path))
 		})
 		for _, c := range cands {
 			f.matches = append(f.matches, c.path)
@@ -230,7 +225,7 @@ func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 			}
 			return nil
 		})
-		sort.Strings(files)
+		slices.Sort(files)
 		return filesScannedMsg{gen: gen, files: files}
 	}
 }

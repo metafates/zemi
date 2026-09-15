@@ -7,7 +7,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -319,7 +318,7 @@ func wordSpan(text string, x int) (from, to int) {
 func copyCmd(text string) tea.Cmd {
 	return tea.Batch(tea.SetClipboard(text), func() tea.Msg {
 		for _, c := range [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}} {
-			if _, err := exec.LookPath(c[0]); err != nil {
+			if !has(c[0]) {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
