@@ -32,7 +32,7 @@ func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name: "lua",
-		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, errors. It runs at the lowest trust, so it cannot widen permissions, add MCP servers or read secret-shaped environment names. Load the zemi-lua skill for the API first." +
+		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, errors. It cannot widen permissions, add MCP servers or read secret-shaped environment names. Load the zemi-lua skill for the API first." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops; start slow work with zemi.job or zemi.timer." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
