@@ -9,6 +9,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // RedactedMarker is the placeholder left in place of a redacted span.
@@ -70,12 +71,10 @@ func scrubMatches(s string, re *regexp.Regexp, scrubbed bool) (string, bool) {
 		return s, scrubbed
 	}
 	for _, m := range ms {
-		s = strings.ReplaceAll(s, m, redactMarker(utf8RuneCount(m)))
+		s = strings.ReplaceAll(s, m, redactMarker(utf8.RuneCountInString(m)))
 	}
 	return s, true
 }
-
-func utf8RuneCount(s string) int { return len([]rune(s)) }
 
 func redactMarker(n int) string {
 	return fmt.Sprintf(RedactedMarker, n)

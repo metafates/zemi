@@ -1,4 +1,4 @@
-// Package learn is the M2 learning core (DESIGN §10): memory intake with
+// Package learn is the learning core (DESIGN §10): memory intake with
 // the §10.4 policy (length cap, kind enum, provenance, secret scrubbing,
 // instruction-shaped flagging) and the §10.7 digest builder. Autonomy
 // gating and the review queue live above it, in hostapi.
@@ -30,12 +30,3 @@ var ErrBadOrigin = errors.New("learn: origin must be user or learned")
 
 // ErrNoProvenance marks missing provenance (DESIGN §10.4 requires it).
 var ErrNoProvenance = errors.New("learn: provenance required")
-
-func validKind(k string) bool {
-	for _, v := range Kinds {
-		if v == k {
-			return true
-		}
-	}
-	return false
-}

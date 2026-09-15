@@ -6,6 +6,7 @@ package learn
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/sanitize"
@@ -30,7 +31,7 @@ type Result struct {
 // ErrRefused (one-blob secrets), ErrBadKind, ErrBadOrigin or
 // ErrNoProvenance; everything else is cleaned into the result.
 func Intake(scope, origin, kind, text string, tags []string, provenance string) (*Result, error) {
-	if !validKind(kind) {
+	if !slices.Contains(Kinds, kind) {
 		return nil, ErrBadKind
 	}
 	if origin != OriginUser && origin != OriginLearned {
@@ -40,11 +41,7 @@ func Intake(scope, origin, kind, text string, tags []string, provenance string) 
 		return nil, ErrNoProvenance
 	}
 
-	clean := collapse(sanitize.String(text))
-	if runes := utf8Len(clean); runes > MaxTextLen {
-		clean = truncate(clean, MaxTextLen)
-	}
-	clean, scrubbed := ScrubSecrets(clean)
+	clean, scrubbed := ScrubSecrets(truncate(collapse(sanitize.String(text)), MaxTextLen))
 	clean = strings.TrimSpace(clean)
 	if clean == "" {
 		return nil, fmt.Errorf("%w: empty text", ErrRefused)
@@ -53,16 +50,15 @@ func Intake(scope, origin, kind, text string, tags []string, provenance string) 
 		return nil, fmt.Errorf("%w: text is one secret blob", ErrRefused)
 	}
 
-	m := store.Memory{
-		Scope:               scope,
-		Kind:                kind,
-		Text:                clean,
-		Tags:                cleanTags(tags),
-		ProvenanceSessionID: provenance,
-		Origin:              origin,
-	}
 	return &Result{
-		Memory:            m,
+		Memory: store.Memory{
+			Scope:               scope,
+			Kind:                kind,
+			Text:                clean,
+			Tags:                cleanTags(tags),
+			ProvenanceSessionID: provenance,
+			Origin:              origin,
+		},
 		Scrubbed:          scrubbed,
 		InstructionShaped: InstructionShaped(clean),
 	}, nil
@@ -73,11 +69,7 @@ func cleanTags(tags []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, t := range tags {
-		t = collapse(sanitize.String(t))
-		if runes := utf8Len(t); runes > MaxTagLen {
-			t = truncate(t, MaxTagLen)
-		}
-		t, _ = ScrubSecrets(t)
+		t, _ = ScrubSecrets(truncate(collapse(sanitize.String(t)), MaxTagLen))
 		t = strings.TrimSpace(t)
 		// A tag that kept a redaction marker is junk as a tag; text keeps
 		// its markers, tags do not.
@@ -97,10 +89,6 @@ func cleanTags(tags []string) []string {
 // is single-line by construction.
 func collapse(s string) string {
 	return strings.Join(strings.Fields(s), " ")
-}
-
-func utf8Len(s string) int {
-	return len([]rune(s))
 }
 
 func truncate(s string, n int) string {
