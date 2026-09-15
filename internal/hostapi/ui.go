@@ -207,6 +207,26 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 
+	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
+		text := L.CheckString(1)
+		width := L.CheckInt(2)
+		out := L.NewTable()
+		for _, line := range h.Markdown(text, width) {
+			row := L.NewTable()
+			for _, s := range line {
+				seg := L.NewTable()
+				seg.RawSetString("text", glua.LString(s.Text))
+				if s.HL != "" {
+					seg.RawSetString("hl", glua.LString(s.HL))
+				}
+				row.Append(seg)
+			}
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+
 	tb.RawSetString("toggle_sidebar", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.ui.toggle_sidebar") {
 			return 0

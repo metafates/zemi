@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
@@ -92,7 +93,7 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 	return &App{
 		host:       host,
 		log:        log,
-		thm:        themeResolver{host: host},
+		thm:        themeResolver{host: host, sgr: map[string]uv.Style{}},
 		caches:     map[string]*widgetCache{},
 		timeStr:    "--:--",
 		chatFollow: true,
@@ -618,13 +619,17 @@ func (a *App) compose(w, h int) string {
 		rows = append(rows, row)
 	}
 
-	// Toasts replace the bottom chat rows (right-aligned).
-	for i := range a.toasts {
-		idx := len(rows) - 1 - i
-		if idx <= len(header) {
-			break
+	// Toasts stack up from the bottom of the chat area, newest lowest,
+	// right-aligned over the chat rows they cover, one blank row apart.
+	y := len(rows)
+	for i := len(a.toasts) - 1; i >= 0; i-- {
+		box := toastBox(a.toasts[i], w)
+		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
+			y--
+			x0 := max0(w - segsWidth(box[j]) - 1)
+			rows[y] = append(padSegs(truncateSegs(rows[y], x0), x0), box[j]...)
 		}
-		rows[idx] = a.toastRow(a.toasts[len(a.toasts)-1-i], w)
+		y--
 	}
 
 	// Popups render above the composer, then the composer rows.
@@ -803,20 +808,33 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 	return out
 }
 
-func (a *App) toastRow(t toast, w int) []hostapi.Segment {
-	hl := map[string]string{
-		"info": "Comment", "warn": "ToastWarn", "error": "ToastError",
-	}[t.level]
-	if hl == "" {
-		hl = "Comment"
+// toastBox lays a toast out as a panel: a level-colored bar, the bold
+// title, then the body word-wrapped, every row padded to one width.
+func toastBox(t toast, w int) [][]hostapi.Segment {
+	bar := map[string]string{"warn": "ToastWarn", "error": "ToastErr"}[t.level]
+	if bar == "" {
+		bar = "ToastInfo"
 	}
-	seg := hostapi.Segment{Text: "[" + t.title + "] " + t.body, HL: hl}
-	tw := segsWidth([]hostapi.Segment{seg})
-	if tw > w {
-		tw = w
+	inner := max(min(w-2, 60)-3, 1)
+	var body [][]hostapi.Segment
+	if t.title != "" {
+		body = append(body, truncateSegs([]hostapi.Segment{{Text: t.title, HL: "ToastTitle"}}, inner))
 	}
-	pad := w - tw
-	return []hostapi.Segment{{Text: strings.Repeat(" ", pad)}, seg}
+	if t.body != "" {
+		for _, l := range strings.Split(t.body, "\n") {
+			body = append(body, wrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
+		}
+	}
+	bw := 0
+	for _, r := range body {
+		bw = max(bw, segsWidth(r))
+	}
+	box := make([][]hostapi.Segment, 0, len(body))
+	for _, r := range body {
+		row := append([]hostapi.Segment{{Text: "▌ ", HL: bar}}, r...)
+		box = append(box, append(row, hostapi.Segment{Text: strings.Repeat(" ", bw-segsWidth(r)+1), HL: "Toast"}))
+	}
+	return box
 }
 
 // ---------------------------------------------------------------------------

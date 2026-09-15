@@ -12,6 +12,7 @@ zemi.ui.theme.register("default", {
     ok = "#9ece6a",
     warn = "#e0af68",
     err = "#f7768e",
+    panel = "#24283b",
   },
   hl = {
     Normal = { fg = "fg" },
@@ -22,8 +23,16 @@ zemi.ui.theme.register("default", {
     Cmdline = { fg = "fg" },
     CmdlineError = { fg = "err" },
     UserMsg = { fg = "accent" },
-    ToastWarn = { fg = "warn" },
     ToastError = { fg = "bg", bg = "err", bold = true },
+    Toast = { fg = "fg", bg = "panel" },
+    ToastTitle = { fg = "fg", bg = "panel", bold = true },
+    ToastInfo = { fg = "accent", bg = "panel" },
+    ToastWarn = { fg = "warn", bg = "panel" },
+    ToastErr = { fg = "err", bg = "panel" },
+    MarkdownHeading = { fg = "accent", bold = true },
+    MarkdownCode = { fg = "warn", bg = "panel" },
+    MarkdownLink = { fg = "accent", underline = true },
+    MarkdownQuote = { fg = "muted", italic = true },
     AgentTag = { fg = "accent", bold = true },
     AgentReason = { fg = "muted", italic = true },
     AgentToolName = { fg = "fg", bold = true },
@@ -65,6 +74,38 @@ zemi.ui.widget.register({
     return { { { text = " ● agent", hl = "AgentTag" } } }
   end,
 })
+
+-- Reflector feedback (§10.3): a statusline badge while a run is active,
+-- and a toast with the outcome when it ends.
+zemi.ui.widget.register({
+  id = "statusline.reflect",
+  region = "statusline.left",
+  priority = 20,
+  render = function(ctx)
+    if not ctx.reflecting then
+      return { { { text = "" } } }
+    end
+    return { { { text = " ✻ reflecting", hl = "AgentReason" } } }
+  end,
+})
+
+zemi.event.on("reflector.done", function(ev)
+  if ev.error then
+    zemi.notify.error({ title = "reflect failed", body = ev.error })
+    return
+  end
+  local parts = {}
+  local function add(n, label)
+    if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. label end
+  end
+  add(ev.stored, "memories stored")
+  add(ev.queued, "memories queued for /memory")
+  add(ev.superseded, "superseded")
+  add(ev.config_applied, "config applied")
+  add(ev.config_queued, "config queued for /config")
+  local body = #parts > 0 and table.concat(parts, ", ") or "nothing worth keeping"
+  zemi.notify({ title = "reflect", body = body })
+end)
 
 -- Clock. The time comes from ctx.time (host-provided UI state), so the
 -- golden harness can pin it; no os.date polling.
@@ -153,6 +194,18 @@ zemi.ui.widget.register({
       if s >= 60 then return string.format("%dm%02ds", s / 60, s % 60) end
       return string.format("%.1fs", s)
     end
+    local width = ctx.width or 80
+    -- Assistant text goes through glamour (zemi.ui.markdown, cached in Go
+    -- per text and width); every rendered row gets the gutter prefix.
+    local function add_markdown(out, prefix, prefix_hl, text, w)
+      for _, segs in ipairs(zemi.ui.markdown(text, w)) do
+        local row = { { text = prefix, hl = prefix_hl } }
+        for _, s in ipairs(segs) do
+          row[#row + 1] = s
+        end
+        out[#out + 1] = row
+      end
+    end
     local lines = {}
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
@@ -179,17 +232,17 @@ zemi.ui.widget.register({
         end
       else
         local is_user = m.role == "user"
-        local bar, bar_hl, body_hl = "  ", "", "Normal"
         if is_user then
-          bar, bar_hl, body_hl = "▌ ", "UserMsg", "UserMsg"
-        end
-        local first = true
-        for text in (m.text .. "\n"):gmatch("(.-)\n") do
-          lines[#lines + 1] = {
-            { text = first and bar or "  ", hl = bar_hl },
-            { text = text, hl = body_hl },
-          }
-          first = false
+          local first = true
+          for text in (m.text .. "\n"):gmatch("(.-)\n") do
+            lines[#lines + 1] = {
+              { text = first and "▌ " or "  ", hl = "UserMsg" },
+              { text = text, hl = "UserMsg" },
+            }
+            first = false
+          end
+        else
+          add_markdown(lines, "  ", "", m.text, width - 2)
         end
         if not is_user then
           local parts = {}
@@ -249,9 +302,7 @@ zemi.ui.widget.register({
         end
       end
       if ag.text and ag.text ~= "" then
-        for tl in (ag.text .. "\n"):gmatch("(.-)\n") do
-          lines[#lines + 1] = { { text = "  ┃ ", hl = "AgentTag" }, { text = tl, hl = "Normal" } }
-        end
+        add_markdown(lines, "  ┃ ", "AgentTag", ag.text, width - 4)
       end
       if (ag.steering or 0) > 0 then
         lines[#lines + 1] = { { text = "  ⧗ " .. ag.steering .. " queued", hl = "AgentToolRun" } }

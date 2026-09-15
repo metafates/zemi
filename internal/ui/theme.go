@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -12,9 +13,13 @@ import (
 // groups reference palette names or raw hex; Go resolves them).
 type themeResolver struct {
 	host *hostapi.Host
+	sgr  map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
 }
 
 func (t themeResolver) style(hl string) uv.Style {
+	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
+		return t.sgrStyle(params)
+	}
 	if hl == "" || t.host == nil {
 		return uv.Style{}
 	}
@@ -44,6 +49,22 @@ func (t themeResolver) style(hl string) uv.Style {
 	}
 	if spec.Reverse {
 		st.Attrs |= uv.AttrReverse
+	}
+	return st
+}
+
+// sgrStyle decodes inline SGR params (zemi.ui.markdown output), cached
+// because compose runs every frame.
+func (t themeResolver) sgrStyle(params string) uv.Style {
+	if st, ok := t.sgr[params]; ok {
+		return st
+	}
+	st := hostapi.SGRStyle(params)
+	if t.sgr != nil {
+		if len(t.sgr) >= 1024 {
+			clear(t.sgr)
+		}
+		t.sgr[params] = st
 	}
 	return st
 }

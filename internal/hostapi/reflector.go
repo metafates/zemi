@@ -117,21 +117,30 @@ func (h *Host) reflectOnClose(prevID string) {
 	h.runReflectDetached(prevID)
 }
 
-// runReflectDetached starts one reflect run on its own goroutine; a second
-// concurrent run is skipped with a log (one reflector at a time).
-func (h *Host) runReflectDetached(sid string) {
+// runReflectDetached starts one reflect run on its own goroutine and
+// reports whether it started; a second concurrent run is skipped (one
+// reflector at a time). Progress reaches Lua as ctx.reflecting plus the
+// reflector.start / reflector.done events (done carries error on failure).
+func (h *Host) runReflectDetached(sid string) bool {
 	if !h.reflectMu.TryLock() {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), h.reflectTimeout())
+	h.reflecting.Store(true)
+	h.refresh()
+	h.EmitAsync("reflector.start", map[string]any{"session": sid})
 	go func() {
 		defer h.reflectMu.Unlock()
 		defer cancel()
+		defer h.refresh()
+		defer h.reflecting.Store(false)
 		if err := h.reflectSession(ctx, sid); err != nil {
 			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
+			h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
 		}
 	}()
+	return true
 }
 
 // ShutdownReflect runs the reflector over the live session once, after the
@@ -496,6 +505,8 @@ func (h *Host) reflectCommand() error {
 	if sid == "" {
 		return errors.New("no session to reflect on")
 	}
-	h.runReflectDetached(sid)
+	if !h.runReflectDetached(sid) {
+		return errors.New("a reflect run is already active")
+	}
 	return nil
 }

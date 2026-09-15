@@ -122,7 +122,10 @@ type Host struct {
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// reflectModelFn stubs the reflector model in tests.
 	reflectMu      sync.Mutex
+	reflecting     atomic.Bool
 	reflectModelFn func() (fantasy.LanguageModel, error)
+
+	md markdownCache
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
@@ -656,6 +659,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
+	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
 	at := L.NewTable()

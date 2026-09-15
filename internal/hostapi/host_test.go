@@ -60,6 +60,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.log) == "table", "zemi.log missing")
 		assert(type(zemi.notify) == "table", "zemi.notify missing")
 		assert(type(zemi.ui.theme.set) == "function", "zemi.ui.theme.set missing")
+		assert(type(zemi.ui.markdown) == "function", "zemi.ui.markdown missing")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")

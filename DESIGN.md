@@ -527,7 +527,8 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
   `composer.change` (coalesced), `composer.submit` (vetoable)
-- learn: `memory.written`, `skill.learned`, `config.proposed`, `config.applied`
+- learn: `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
+  `reflector.start`, `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `timer.fire`, `fs.changed`
 
 The `tool.pre` event is the generalization of crush's `hookedTool` +
@@ -806,7 +807,10 @@ UI extensibility contract:
   Lua; highlight names only. Rich text goes through
   `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
   styled segment lines (how the default chat widget renders assistant
-  text).
+  text). Glamour's styles come from the active theme's `Normal` and
+  `Markdown*` groups; its output is parsed back into segments whose `hl`
+  is `sgr:<params>`, an inline SGR style that only ever decodes to
+  colors and attributes, never other escapes.
 - Themes: palettes map names to colors; `hl` groups reference palette
   names or raw hex; Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed).
