@@ -62,6 +62,10 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.ui.theme.set) == "function", "zemi.ui.theme.set missing")
 		assert(type(zemi.ui.markdown) == "function", "zemi.ui.markdown missing")
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
+		local writable = {}
+		for _, s in ipairs(zemi.config.schema()) do writable[s.path] = s.writable end
+		assert(writable["ui.theme"] == true, "ui.theme must be writable")
+		assert(writable["memory.autonomy"] == false, "autonomy knobs must not look writable")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")

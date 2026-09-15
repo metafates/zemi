@@ -76,6 +76,23 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	// schema() lists every known setting: path, kind, default, desc and
+	// whether zemi.config.set accepts it (autonomy knobs never do).
+	tb.RawSetString("schema", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		for _, s := range h.Settings.Schema() {
+			row := L.NewTable()
+			row.RawSetString("path", glua.LString(s.Path))
+			row.RawSetString("kind", glua.LString(s.Kind))
+			row.RawSetString("default", lua.FromGo(L, s.Default))
+			row.RawSetString("desc", glua.LString(s.Desc))
+			row.RawSetString("writable", glua.LBool(s.UserWritable && !s.AutonomyKnob))
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.config.set") {
 			return 0
