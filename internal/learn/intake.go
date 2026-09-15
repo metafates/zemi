@@ -23,7 +23,7 @@ const (
 // autonomy gate needs.
 type Result struct {
 	Memory            store.Memory
-	Scrubbed          bool // a secret span was redacted
+	Scrubbed          bool   // a secret span was redacted
 	InstructionShaped bool   // routes to the review queue even under auto
 	Supersedes        string // id of the memory this one replaces, linked when stored
 }
