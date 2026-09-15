@@ -83,12 +83,7 @@ func (s *Store) Rules() []Rule {
 // globMatch matches a whole-string glob: `*` spans any characters
 // (including separators), `?` matches one. Empty pattern matches only
 // the empty string.
-func globMatch(pattern, s string) bool {
-	if pattern == "" {
-		return s == ""
-	}
-	return globRegexp(pattern).MatchString(s)
-}
+func globMatch(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
 
 // MatchExample reports whether the rule pattern would match the example
 // string. Used by zemi.permission.rule to validate that a rule does what

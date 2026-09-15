@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -33,12 +34,12 @@ var envGateNames = []string{
 	"git_ssh_command", "git_editor", "git_pager",
 }
 
-func envGated(name string) bool {
+// EnvAssignmentGate reports whether a name matches the environment-affecting
+// denylist (case-insensitive). Job env extras are refused on it outright.
+func EnvAssignmentGate(name string) bool {
 	n := strings.ToLower(name)
-	for _, g := range envGateNames {
-		if n == g {
-			return true
-		}
+	if slices.Contains(envGateNames, n) {
+		return true
 	}
 	for _, p := range []string{"ld_", "dyld_", "bash_func_", "git_config_"} {
 		if strings.HasPrefix(n, p) {
@@ -47,11 +48,6 @@ func envGated(name string) bool {
 	}
 	return false
 }
-
-// EnvAssignmentGate reports whether a name matches the environment-affecting
-// denylist (case-insensitive). Host-side callers (Lua job env extras) use
-// it to refuse dangerous extras outright.
-func EnvAssignmentGate(name string) bool { return envGated(name) }
 
 // Normalize turns a raw bash command into matched-form segments plus the
 // redirect gates. It never errors: problems surface in Fail/ForceAsk.
@@ -82,14 +78,7 @@ type token struct {
 type scanner struct {
 	toks   []token
 	depth  int
-	failed bool
-}
-
-func (s *scanner) fail(reason string) {
-	if !s.failed {
-		s.failed = true
-		s.toks = append(s.toks, token{kind: tokSep, op: "!" + reason})
-	}
+	failed bool // unbalanced quotes or parens
 }
 
 func (n *Normalized) scan(cmd string) {
@@ -114,7 +103,7 @@ func (n *Normalized) scan(cmd string) {
 				cur.WriteRune(rs[j])
 			}
 			if j >= len(rs) {
-				sc.fail("unbalanced quotes")
+				sc.failed = true
 				flush()
 				n.eat(&sc)
 				return
@@ -130,7 +119,7 @@ func (n *Normalized) scan(cmd string) {
 				cur.WriteRune(rs[j])
 			}
 			if j >= len(rs) {
-				sc.fail("unbalanced quotes")
+				sc.failed = true
 				flush()
 				n.eat(&sc)
 				return
@@ -145,17 +134,7 @@ func (n *Normalized) scan(cmd string) {
 		case r == '`':
 			flush()
 			sc.toks = append(sc.toks, token{kind: tokSep})
-		case r == '$' && i+1 < len(rs) && rs[i+1] == '(':
-			flush()
-			i++
-			sc.depth++
-			sc.toks = append(sc.toks, token{kind: tokSep})
-		case r == '<' && i+1 < len(rs) && rs[i+1] == '(':
-			flush()
-			i++
-			sc.depth++
-			sc.toks = append(sc.toks, token{kind: tokSep})
-		case r == '>' && i+1 < len(rs) && rs[i+1] == '(':
+		case (r == '$' || r == '<' || r == '>') && i+1 < len(rs) && rs[i+1] == '(':
 			flush()
 			i++
 			sc.depth++
@@ -168,7 +147,7 @@ func (n *Normalized) scan(cmd string) {
 			flush()
 			sc.depth--
 			if sc.depth < 0 {
-				sc.fail("unbalanced parens")
+				sc.failed = true
 			}
 			sc.toks = append(sc.toks, token{kind: tokSep})
 		case unicode.IsSpace(r):
@@ -197,9 +176,7 @@ func (n *Normalized) scan(cmd string) {
 			i += n2 - 1
 			// classify: heredoc forms, fd forms, file forms
 			switch op {
-			case "<<", "<<-":
-				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op})
-			case "<<<":
+			case "<<", "<<-", "<<<":
 				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op})
 			default:
 				sc.toks = append(sc.toks, token{kind: tokRedirect, op: op})
@@ -211,7 +188,7 @@ func (n *Normalized) scan(cmd string) {
 	}
 	flush()
 	if sc.depth != 0 {
-		sc.fail("unbalanced parens")
+		sc.failed = true
 	}
 	n.eat(&sc)
 }
@@ -219,42 +196,13 @@ func (n *Normalized) scan(cmd string) {
 // readRedirectOp reads a redirect operator starting at rs[i]; returns the
 // operator text and how many runes it consumed.
 func readRedirectOp(rs []rune, i int) (string, int) {
-	n := 0
-	r := rs[i]
-	n++
-	i++
-	switch {
-	case r == '>' && i < len(rs) && rs[i] == '>':
-		n++
-		return ">>", n
-	case r == '>' && i < len(rs) && rs[i] == '|':
-		n++
-		return ">|", n
-	case r == '>' && i < len(rs) && rs[i] == '&':
-		n++
-		return ">&", n
-	case r == '<' && i < len(rs) && rs[i] == '<':
-		n++
-		if i < len(rs) && rs[i] == '-' {
-			n++
-			return "<<-", n
+	s := string(rs[i:min(i+3, len(rs))])
+	for _, op := range []string{"<<<", "<<-", ">>", ">|", ">&", "<<", "<&", "<>"} {
+		if strings.HasPrefix(s, op) {
+			return op, len(op)
 		}
-		if i < len(rs) && rs[i] == '<' {
-			n++
-			return "<<<", n
-		}
-		return "<<", n
-	case r == '<' && i < len(rs) && rs[i] == '&':
-		n++
-		return "<&", n
-	case r == '<' && i < len(rs) && rs[i] == '>':
-		n++
-		return "<>", n
-	case r == '>':
-		return ">", n
-	default:
-		return string(r), n
 	}
+	return string(rs[i]), 1
 }
 
 // eat walks the token stream: redirects take the next word as target,
@@ -266,9 +214,6 @@ func (n *Normalized) eat(sc *scanner) {
 		t := toks[i]
 		switch t.kind {
 		case tokSep:
-			if strings.HasPrefix(t.op, "!") {
-				n.Fail = strings.TrimPrefix(t.op, "!")
-			}
 			n.fold(seg)
 			seg = nil
 		case tokHeredoc:
@@ -297,33 +242,15 @@ func (n *Normalized) gate(op, target string) {
 		n.Fail = "empty redirect target"
 		return
 	}
-	plain := devNull(target)
-	switch op {
-	case ">", ">>", ">|", "&>", "&>>":
-		if !plain {
-			n.WritePaths = append(n.WritePaths, target)
-		}
-	case "<", "<>":
-		if !plain {
-			n.ReadPaths = append(n.ReadPaths, target)
-		}
-		if op == "<>" && !plain {
-			n.WritePaths = append(n.WritePaths, target)
-		}
-	case ">&":
-		if isAllDigits(target) || target == "-" {
-			return
-		}
-		if !plain {
-			n.WritePaths = append(n.WritePaths, target)
-		}
-	case "<&":
-		if isAllDigits(target) || target == "-" {
-			return
-		}
-		if !plain {
-			n.ReadPaths = append(n.ReadPaths, target)
-		}
+	if devNull(target) || ((op == ">&" || op == "<&") && (isAllDigits(target) || target == "-")) {
+		return
+	}
+	// < <> <& read; > >> >| &> &>> >& <> write
+	if strings.HasPrefix(op, "<") {
+		n.ReadPaths = append(n.ReadPaths, target)
+	}
+	if strings.Contains(op, ">") {
+		n.WritePaths = append(n.WritePaths, target)
 	}
 }
 
@@ -341,15 +268,9 @@ func attachedRedirect(word string) (op, target string, ok bool) {
 			if t == "" {
 				return "", "", false
 			}
-			switch cand {
-			case ">&", "<&":
-				if isAllDigits(t) || t == "-" {
-					return "", "", false
-				}
-				if cand == ">&" {
-					return ">&", t, true
-				}
-				return "<&", t, true
+			// fd duplication (2>&1) stays part of the segment text
+			if (cand == ">&" || cand == "<&") && (isAllDigits(t) || t == "-") {
+				return "", "", false
 			}
 			return cand, t, true
 		}
@@ -392,17 +313,16 @@ func (n *Normalized) fold(seg []string) {
 		return
 	}
 	for _, a := range argv {
-		if name, ok := assignmentName(a); ok && envGated(name) {
+		if name, ok := assignmentName(a); ok && EnvAssignmentGate(name) {
 			n.ForceAsk = "environment assignment: " + name
 			return
 		}
 	}
 	for len(argv) > 0 {
-		if _, ok := assignmentName(argv[0]); ok {
-			argv = argv[1:]
-			continue
+		if _, ok := assignmentName(argv[0]); !ok {
+			break
 		}
-		break
+		argv = argv[1:]
 	}
 	if len(argv) == 0 {
 		return

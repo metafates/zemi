@@ -48,11 +48,7 @@ func globRegexp(pattern string) *regexp.Regexp {
 // specificity scores a pattern: fewer wildcards is more specific (lower
 // score wins); ties break on the longer literal prefix.
 func specificity(pattern string) int {
-	score := strings.Count(pattern, "*") + strings.Count(pattern, "?")
-	if score == 0 {
-		return 0
-	}
-	return score
+	return strings.Count(pattern, "*") + strings.Count(pattern, "?")
 }
 
 // literalPrefix counts the pattern's literal characters before the first
