@@ -103,6 +103,7 @@ func run(args []string) int {
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 		softStep(host, host.SkillsAuthoredHooksStep()),
 		softStep(host, projectConfigStep(host, askTrust, dirs)),
+		host.MarkdownCommandsStep(),
 		crushImportStep(host, settings),
 		readyStep(host, settings, !opts.print),
 		host.SkillsLearnedHooksStep(),

@@ -19,6 +19,22 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 - Keeps sessions: `/new`, `/sessions`, `/resume`. Long sessions compact into a summary
   before the context window fills (`/compact` does it on demand).
 
+## Prompt commands
+
+A markdown file in `~/.config/zemi/commands/` or `.zemi/commands/` becomes a slash
+command that sends its body to the agent. `$ARGUMENTS` is everything typed after the
+name, `$1` to `$9` are single words:
+
+```markdown
+---
+description: Write a test that reproduces a bug
+argument-hint: <file> <what breaks>
+---
+Read $1 and write a failing test that shows: $ARGUMENTS. Do not fix the bug yet.
+```
+
+`/repro parser.go empty input panics` runs it. Changes load on `/Reload`.
+
 ## Subagents and workflows
 
 The model can hand a self-contained task to a subagent with the `agent` tool. A subagent
@@ -162,7 +178,7 @@ local myui = require("myui.status") -- ~/.config/zemi/lua/myui/status.lua
 
 Plugins load from `~/.local/share/zemi/site/pack/*/start/*`. A repository can ship its own
 setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua`, modules under
-`.zemi/lua/`, `agents/` and `workflows/`, found from any subdirectory and loaded after a trust prompt that repeats
+`.zemi/lua/`, `agents/`, `commands/` and `workflows/`, found from any subdirectory and loaded after a trust prompt that repeats
 whenever those files change. Lua runs sandboxed, and every registration carries its
 origin (`user > builtin > plugin > project`), so project code cannot override yours.
 [DESIGN.md](DESIGN.md) is the full specification.
@@ -171,7 +187,7 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 
 | Path | Contents |
 | --- | --- |
-| `~/.config/zemi/` | `init.lua`, `permissions.lua`, authored `skills/`, `agents/`, `workflows/` (a git repo) |
+| `~/.config/zemi/` | `init.lua`, `permissions.lua`, authored `skills/`, `agents/`, `commands/`, `workflows/` (a git repo) |
 | `~/.local/share/zemi/` | plugins, learned `skills/` |
 | `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
 
