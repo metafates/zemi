@@ -84,7 +84,7 @@ func (h *Host) readJails() []string {
 	// Skill bodies (builtin and learned) live under the data dir; reading
 	// them must not ask.
 	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir()}
+		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir()}
 }
 
 func (h *Host) writeJails() []string {
@@ -92,7 +92,8 @@ func (h *Host) writeJails() []string {
 }
 
 // fsDefault implements the §9 built-in defaults for fs subjects: reads
-// inside the jail allow except secret-shaped paths; everything else asks.
+// inside the jail allow except secret-shaped paths, writes allow only in the
+// session scratchpad; everything else asks.
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
 	case "fs.read", "lua.fs.read":
@@ -103,6 +104,9 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":
+		if subject == "fs.write" && h.inScratch(arg) && !pathIsSecret(arg) {
+			return perm.Allow
+		}
 		if h.inJail(arg, h.writeJails()...) && !pathIsSecret(arg) {
 			return perm.Ask // write stays ask inside the jail too
 		}

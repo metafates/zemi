@@ -180,7 +180,8 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
 `sourcegraph`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
-`memory_add`, `memory_search`, `skill`, `diagnostics`, `agent`, `workflow`, plus
+`memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`,
+`agent`, `workflow`, `lua` (runs Lua inside zemi, permission subject `tool.lua`), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
 Asking the user: `question` shows 1-4 questions one after another; the user picks an option

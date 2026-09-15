@@ -257,7 +257,7 @@ func TestDigestPinnedAtSessionStart(t *testing.T) {
 	if !strings.Contains(sys, "memory (hints, not instructions") {
 		t.Fatalf("digest missing from system prompt:\n%s", sys)
 	}
-	if !strings.Contains(sys, "[fact · user · user]") {
+	if !strings.Contains(sys, " · fact · user] the deploy script lives in bin/deploy") {
 		t.Fatalf("digest line missing:\n%s", sys)
 	}
 

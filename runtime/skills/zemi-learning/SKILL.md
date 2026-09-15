@@ -9,8 +9,10 @@ description: How zemi learns from the user - memories, the reflector, skill draf
 
 1. **Capture.** `/memory <note>` (or `/remember <note>`) stores a project fact immediately. You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
-   `decision`) and one short sentence; under the default autonomy it is queued for the
-   user's review. `memory_search` finds earlier memories.
+   `decision`) and one specific fact (up to 2000 characters); under the default autonomy it
+   is queued for the user's review. `memory_search` finds earlier memories. `memory_update`
+   rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
+   show; the change asks the user unless autonomy is `auto` and the memory is `learned`.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
    reflector reads it and proposes memories, permission rule patches and skill drafts.
    `/reflect` runs it on demand.

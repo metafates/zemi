@@ -35,6 +35,15 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
   `fs.write`, `state.put`, `json.decode`, `session.new`, `session.open`).
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 
+## Running Lua from the agent
+
+The `lua` tool runs a chunk in the live runtime as `user` origin, so the agent can read or
+change zemi's state with the same API: `print` output and return values (as JSON) come
+back. Each run asks (`tool.lua`, script shown) unless a rule or mode allows it. It holds
+the interpreter for at most 10s. Keep reusable scripts in the session scratchpad (its path is
+in the Environment section; files there are read and written without asking) and pass `path`.
+Globals a chunk sets stay in that chunk.
+
 ## Namespaces
 
 | Namespace | Members |

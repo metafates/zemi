@@ -406,6 +406,10 @@ func permTitle(req hostapi.PermRequest, root string) (verb, target string) {
 		verb = "Use the " + strings.TrimPrefix(req.Subject, "mcp.") + " tool"
 	case req.Subject == "tool.workflow":
 		verb = "Run a workflow"
+	case req.Subject == "tool.lua":
+		verb = "Run Lua inside zemi"
+	case req.Subject == "memory.write":
+		verb = "Change a memory"
 	}
 	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
 		target = rel

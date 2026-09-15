@@ -15,7 +15,9 @@ import (
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -293,6 +295,28 @@ func (h *Host) memoryRows() []MemoryRow {
 // locateMemory finds a memory id across both scopes and returns the DB
 // owning it.
 func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
+	if len(id) >= 6 && len(id) < 32 {
+		// the digest and memory_search show 8-character id prefixes
+		// NOTE: scans every memory; fine for the hundreds of rows memories reach.
+		all, err := h.memoryList(true)
+		if err != nil {
+			return nil, nil, err
+		}
+		var hits []string
+		for _, m := range all {
+			if strings.HasPrefix(m.ID, id) {
+				hits = append(hits, m.ID)
+			}
+		}
+		switch len(hits) {
+		case 0:
+			return nil, nil, fmt.Errorf("no such memory %q", id)
+		case 1:
+			id = hits[0]
+		default:
+			return nil, nil, fmt.Errorf("memory id %q matches %d memories; pass more of it", id, len(hits))
+		}
+	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
@@ -554,6 +578,45 @@ func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bo
 	}
 	stored, err = h.gateMemory(res)
 	return stored, res.Memory.ID, err
+}
+
+// modelEditMemory is memory_update (text set) and memory_forget (text "").
+// The change applies at once only under auto autonomy, to a learned memory,
+// with text that is not instruction-shaped; otherwise it asks, so an edit
+// cannot slip past the review a new memory would get.
+func (h *Host) modelEditMemory(id, text string) (string, error) {
+	db, m, err := h.locateMemory(id)
+	if err != nil {
+		return "", err
+	}
+	verb, preview, shaped := "delete", "- "+m.Text, false
+	if text != "" {
+		prov := h.AgentSessionID()
+		if prov == "" {
+			prov = m.ProvenanceSessionID
+		}
+		res, err := learn.Intake(m.Scope, m.Origin, m.Kind, text, m.Tags, prov)
+		if err != nil {
+			return "", err
+		}
+		text, verb, shaped = res.Memory.Text, "update", res.InstructionShaped
+		preview += "\n+ " + text
+	}
+	if h.setStr("memory.autonomy") != "auto" || m.Origin != learn.OriginLearned || shaped {
+		req := tools.Request{Tool: "memory_" + verb, Subject: "memory.write", Arg: m.ID[:8], Reason: verb + " memory", Preview: preview}
+		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
+			return "", fmt.Errorf("permission denied (%s): %s memory %s", v.DecidedBy, verb, m.ID[:8])
+		}
+	}
+	if text == "" {
+		err = db.DeleteMemory(m.ID)
+	} else {
+		err = db.UpdateMemoryText(m.ID, text)
+	}
+	if err != nil {
+		return "", err
+	}
+	return "memory " + m.ID[:8] + " " + verb + "d", nil
 }
 
 // gateMemory is the autonomy gate (DESIGN §10.4): an intake result is

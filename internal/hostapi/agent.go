@@ -218,6 +218,7 @@ Help with defensive security, authorized testing, CTFs and security education. R
 func (h *Host) zemiPrompt() string {
 	return "\n\n# zemi\nYou run inside zemi. For questions about zemi itself (config, Lua API, keys, errors, what it learned), load the matching zemi-* skill first." +
 		" To change zemi's behavior (UI, keys, commands, subagents, workflows), write Lua or markdown config after loading zemi-customize; never edit zemi's source code." +
+		" To look at zemi's live state (this session, agent runs, memories, settings, errors) or change it now, run Lua with the lua tool; load zemi-lua for the API first." +
 		" User config directory: " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi). Project config directory: " + h.Dirs.ProjectConfigDir() + "."
 }
 
@@ -402,6 +403,9 @@ func (h *Host) environmentPrompt() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
+	if dir := h.ensureScratch(); dir != "" {
+		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), Lua scripts for the lua tool. Reading and writing here never asks, even in plan mode, and subagents share it: have them write large findings here and report the path. It is removed a week after the session.\n", dir)
+	}
 	if out, err := h.git(h.Dirs.ProjectDir, "status", "--short", "--branch"); err != nil {
 		b.WriteString("Git repository: no")
 	} else {
@@ -439,7 +443,7 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 		want = p.Tools
 	}
 	pipe := h.PipelineFor()
-	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool()), want, nil)
+	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool()), want, nil)
 	out = append(out, h.luaFantasyTools()...)
 	return append(out, h.mcpFantasyTools(pipe)...)
 }
@@ -1712,6 +1716,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Recall: func(query string, limit int) ([]*store.Memory, error) {
 			return h.memorySearch("all", query, limit)
 		},
+		EditMemory: h.modelEditMemory,
+		Scratch:    h.inScratch,
 	}
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion

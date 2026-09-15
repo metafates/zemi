@@ -76,6 +76,13 @@ type Pipeline struct {
 	// searches memories. nil = memory tools error.
 	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
 	Recall   func(query string, limit int) ([]*store.Memory, error)
+	// EditMemory rewrites a memory by id, or deletes it when text is "",
+	// and returns what happened. nil = memory tools error.
+	EditMemory func(id, text string) (string, error)
+
+	// Scratch reports a path inside the session scratchpad: writes there
+	// pass plan mode. nil = no scratchpad.
+	Scratch func(path string) bool
 
 	// AfterWrite returns text to append to a successful write, edit or
 	// multiedit result (language server diagnostics); nil = nothing.
@@ -105,7 +112,7 @@ type Pipeline struct {
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
-	if plan && req.Subject == "fs.write" {
+	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
 		return Verdict{perm.Deny, "plan mode is on: no file changes (tab switches mode)", "mode:plan"}
 	}
 	loosen := func(v Verdict) Verdict {
@@ -114,7 +121,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
 		case plan && req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, nil):
-		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
+		case plan && (req.Subject == "tool.bash" || req.Subject == "tool.lua" || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "plan mode: commands that change things ask")
 		}
 		return v
@@ -527,7 +534,31 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runMemorySearch),
 
-		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
+		mk("memory_update", "Rewrite a saved memory that is outdated or incomplete, by the id shown in your memory list or in memory_search results. Keep it one specific fact.",
+			false,
+			map[string]any{
+				"id":   map[string]any{"type": "string"},
+				"text": map[string]any{"type": "string", "description": "the whole new text"},
+			},
+			[]string{"id", "text"},
+			func(in map[string]any) []Request { return nil },
+			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+				if str(in["text"]) == "" {
+					return fantasy.NewTextErrorResponse("text is empty; use memory_forget to delete a memory"), nil
+				}
+				return runMemoryEdit(p, str(in["id"]), str(in["text"]))
+			}),
+
+		mk("memory_forget", "Delete a saved memory that is wrong or no longer true, by its id.",
+			false,
+			map[string]any{"id": map[string]any{"type": "string"}},
+			[]string{"id"},
+			func(in map[string]any) []Request { return nil },
+			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+				return runMemoryEdit(p, str(in["id"]), "")
+			}),
+
+		mk("diagnostics","Report compiler and linter diagnostics for one file from its language server (gopls, pyright, rust-analyzer, typescript-language-server or clangd when installed, or servers from config). write, edit and multiedit already append diagnostics for the file they change; use this to check other files.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
@@ -601,9 +632,20 @@ func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy
 	}
 	var b strings.Builder
 	for _, m := range rows {
-		fmt.Fprintf(&b, "[%s · %s · %s] %s\n", m.Kind, m.Origin, m.Scope, m.Text)
+		fmt.Fprintf(&b, "[%s · %s · %s · %s] %s\n", m.ID[:min(8, len(m.ID))], m.Kind, m.Origin, m.Scope, m.Text)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+func runMemoryEdit(p *Pipeline, id, text string) (fantasy.ToolResponse, error) {
+	if p.EditMemory == nil {
+		return fantasy.NewTextErrorResponse("memory unavailable"), nil
+	}
+	msg, err := p.EditMemory(id, text)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	return fantasy.NewTextResponse(msg), nil
 }
 
 // ChangeDiff renders what write, edit or multiedit would do to its file as

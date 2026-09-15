@@ -77,7 +77,7 @@ func TestIntakeValidation(t *testing.T) {
 }
 
 func TestIntakeCapsTextAndTags(t *testing.T) {
-	long := strings.Repeat("word ", 300)
+	long := strings.Repeat("words ", MaxTextLen) // the cut lands mid-word, so no space is trimmed
 	res, err := Intake("project", OriginUser, "fact", long, []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}, "s1")
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +169,7 @@ func TestInstructionShaped(t *testing.T) {
 func TestDigestRanksAndFrames(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
 	old := &store.Memory{Kind: "fact", Text: "old fact", Origin: "learned", ProvenanceSessionID: "aaaabbbbcccc", UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), Score: 3}
-	fresh := &store.Memory{Kind: "gotcha", Text: "fresh gotcha", Origin: "user", ProvenanceSessionID: "dddd00001111", Tags: []string{"ci"}, UpdatedAt: at.UnixMilli(), Score: 3}
+	fresh := &store.Memory{ID: "dddd0000ffffffff", Kind: "gotcha", Text: "fresh gotcha", Origin: "user", ProvenanceSessionID: "dddd00001111", Tags: []string{"ci"}, UpdatedAt: at.UnixMilli(), Score: 3}
 	hits := &store.Memory{Kind: "fact", Text: "popular fact", Origin: "user", ProvenanceSessionID: "eeee00002222", UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), Score: 3, HitCount: 5}
 	scrubbed := &store.Memory{Kind: "fact", Text: "token [redacted 24 chars] stored", Origin: "user", ProvenanceSessionID: "ffff00003333", UpdatedAt: at.UnixMilli(), Score: 100}
 
@@ -199,7 +199,7 @@ func TestDigestRanksAndFrames(t *testing.T) {
 		t.Fatalf("old line = %q", lines[3])
 	}
 	if !strings.Contains(lines[1], "dddd0000") {
-		t.Fatalf("provenance missing: %q", lines[1])
+		t.Fatalf("id prefix missing: %q", lines[1])
 	}
 }
 

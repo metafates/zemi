@@ -283,6 +283,49 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	return nil
 }
 
+// Eval runs src as a chunk of origin on the interpreter and returns its
+// results. print in the chunk (and functions it defines) goes to out
+// instead of the print hook: the chunk runs in a wrapper environment over
+// the sandbox one, so its globals stay in the wrapper too.
+func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceiling time.Duration, out func(string)) ([]any, error) {
+	return r.Do(ctx, ClassIO, ceiling, time.Second, func(L *glua.LState) ([]any, error) {
+		fn, err := r.current().SB.CompileChunk(src, origin.ChunkName(rel))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", rel, err)
+		}
+		env, meta := L.NewTable(), L.NewTable()
+		meta.RawSetString("__index", fn.Env)
+		L.SetMetatable(env, meta)
+		env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
+			parts := make([]string, L.GetTop())
+			for i := range parts {
+				parts[i] = L.ToStringMeta(L.Get(i + 1)).String()
+			}
+			out(strings.Join(parts, "\t"))
+			return 0
+		}))
+		fn.Env = env
+		r.PushFrame(origin, rel)
+		defer r.PopFrame()
+		base := L.GetTop()
+		L.Push(fn)
+		if err := L.PCall(0, glua.MultRet, nil); err != nil {
+			L.SetTop(base)
+			return nil, err
+		}
+		var vals []any
+		for i := base + 1; i <= L.GetTop(); i++ {
+			v, err := ToGo(L.Get(i))
+			if err != nil {
+				v = L.ToStringMeta(L.Get(i)).String()
+			}
+			vals = append(vals, v)
+		}
+		L.SetTop(base)
+		return vals, nil
+	})
+}
+
 // EvalFileInline loads and runs a file on the caller's interpreter turn:
 // for use from inside a namespace call, which already runs on the
 // interpreter goroutine (Do would deadlock there). The path is

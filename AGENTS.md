@@ -229,6 +229,16 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   `Agent` row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
   session's (live stream and todos hidden); esc or a submit clears it, and so does
   `setTranscript`. Runs the process no longer holds load from their child session.
+- **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, created when
+  the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
+  `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
+  `safeCommandPath` include it.
+- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as user origin on the
+  interpreter (10s ceiling), in a wrapper env whose `print` is captured, after a `tool.lua`
+  check that rules and modes answer; plan mode flips its allows to ask. Main agent only.
+- **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
+  which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
+  learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`. Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
@@ -345,7 +355,7 @@ next reload, not in-place).
   before reaching widgets, overlays, or the log; logging is one-record-per-line and
   sanitized. Secrets (key-shaped strings) are scrubbed by the learn intake scrubber at the
   memory/store boundary — don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 512, fixed kind enum
+- **Memory intake policy** (`internal/learn`): text cap 2000, fixed kind enum
   (fact/gotcha/preference/convention/decision), provenance required, `origin` is `user` or
   `learned` and gates autonomy/supersede/digest-labeling. The autonomy knob is host-owned:
   only Go may flip it (`Settings.SetHost`), never user config.
