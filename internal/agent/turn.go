@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 )
@@ -16,6 +17,9 @@ type StreamHooks interface {
 	ReasoningDelta(text string)
 	ToolCallStart(id, name, input string)
 	ToolCallEnd(id, name string, ok bool, output string)
+	// Retrying reports a provider retry (rate limit, overload) before the
+	// backoff delay.
+	Retrying(err error, delay time.Duration)
 	TurnDone(err error, usage fantasy.Usage)
 }
 
@@ -127,6 +131,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), outText)
 			return nil
 		},
+		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(err, delay) },
 	}
 	if temp != nil {
 		t := *temp

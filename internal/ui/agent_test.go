@@ -269,6 +269,17 @@ func TestInterruptKeys(t *testing.T) {
 	}
 }
 
+// TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
+// with a countdown so the turn does not look stuck.
+func TestWorkingRowRetry(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Retrying (attempt 2) (next try in 4s") {
+		t.Fatalf("retry row missing:\n%s", frame)
+	}
+}
+
 // TestWrapSegs covers the chat word-wrap: short lines pass through, long
 // lines wrap at word boundaries with styles preserved, overlong words
 // hard-split.

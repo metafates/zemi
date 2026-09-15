@@ -107,6 +107,11 @@ type agentHost struct {
 	thinking   bool
 	thought    time.Duration
 
+	// retryAt is when the next provider retry fires; retries counts them
+	// this turn (the working row counts down instead of looking stuck).
+	retryAt time.Time
+	retries int
+
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
 	// session cap (memory proposals persist in the store), cfgProposals
@@ -383,6 +388,7 @@ func (ag *agentHost) beginTurn() {
 	ag.tools = nil
 	ag.turnStart = time.Now()
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
+	ag.retryAt, ag.retries = time.Time{}, 0
 }
 
 // AgentCancel aborts the active turn (DESIGN §6.3).
@@ -425,6 +431,16 @@ func (s *streamAdapter) TextDelta(text string) {
 	ag.textBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "text", Text: text})
+}
+
+func (s *streamAdapter) Retrying(err error, delay time.Duration) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.retries++
+	ag.retryAt = time.Now().Add(delay)
+	ag.mu.Unlock()
+	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
+	s.h.agentEvent(AgentEvent{Kind: "retry"})
 }
 
 func (s *streamAdapter) ReasoningDelta(text string) {
@@ -648,6 +664,8 @@ type StreamSnapshot struct {
 	Steering  []string      // queued messages, oldest first
 	Thought   time.Duration // wall time spent in reasoning blocks
 	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
+	RetryIn   time.Duration // time until the next provider retry (0 when none waits)
+	Retries   int           // provider retries this turn
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
@@ -690,6 +708,10 @@ func (h *Host) AgentStream() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	out.Tools = append(out.Tools, ag.tools...)
+	out.Retries = ag.retries
+	if d := time.Until(ag.retryAt); d > 0 {
+		out.RetryIn = d
+	}
 	return out
 }
 
@@ -717,6 +739,10 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 		ag.turnStart = time.Time{}
 	}
 	ag.steering = append([]string(nil), s.Steering...)
+	ag.retries, ag.retryAt = s.Retries, time.Time{}
+	if s.RetryIn > 0 {
+		ag.retryAt = time.Now().Add(s.RetryIn)
+	}
 }
 
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes

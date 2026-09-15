@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 )
@@ -93,6 +94,8 @@ func (h *recHooks) TextDelta(s string) {
 }
 
 func (h *recHooks) ReasoningDelta(string) {}
+
+func (h *recHooks) Retrying(error, time.Duration) {}
 
 func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Lock()

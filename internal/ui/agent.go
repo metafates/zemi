@@ -165,6 +165,11 @@ func (a *App) workingRow() []hostapi.Segment {
 	if label == "Working" && st.Reasoning != "" && st.Text == "" {
 		label = "Thinking"
 	}
+	timing := fmtElapsed(st.Elapsed)
+	if st.RetryIn > 0 {
+		label = fmt.Sprintf("Retrying (attempt %d)", st.Retries+1)
+		timing = "next try in " + fmtElapsed(st.RetryIn.Round(time.Second))
+	}
 	if a.cancelling {
 		label = "Cancelling"
 	}
@@ -175,7 +180,7 @@ func (a *App) workingRow() []hostapi.Segment {
 		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
-	hint := " (" + fmtElapsed(st.Elapsed) + " · esc to interrupt)"
+	hint := " (" + timing + " · esc to interrupt)"
 	if n := len(st.Steering); n > 0 {
 		hint += fmt.Sprintf(" · %d queued, up to edit", n)
 	}
