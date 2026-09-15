@@ -189,7 +189,19 @@ func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segmen
 		}
 		return n
 	}
-	widest := 0
+	widest, labelW := 0, 0
+	for _, it := range items {
+		labelW = max(labelW, ansi.StringWidth(it.label))
+	}
+	// descriptions line up in one column unless a long label would push them far out
+	labelW = min(labelW, 24)
+	itemWidth = func(it listItem) int {
+		n := ansi.StringWidth(it.label)
+		if it.desc != "" {
+			n = max(n, labelW) + 2 + ansi.StringWidth(it.desc)
+		}
+		return n
+	}
 	for _, it := range items {
 		widest = max(widest, itemWidth(it))
 	}
@@ -202,7 +214,8 @@ func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segmen
 		}
 		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl, Hit: i + 1}}
 		if items[i].desc != "" {
-			row = append(row, hostapi.Segment{Text: "  " + items[i].desc, HL: "Comment", Hit: i + 1})
+			gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(items[i].label))+2)
+			row = append(row, hostapi.Segment{Text: gap + items[i].desc, HL: "Comment", Hit: i + 1})
 		}
 		if pad := widest - itemWidth(items[i]); pad > 0 {
 			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad), Hit: i + 1})
@@ -298,18 +311,8 @@ func fmtElapsed(d time.Duration) string {
 	return fmt.Sprintf("%dh %02dm %02ds", s/3600, s/60%60, s%60)
 }
 
-// keyHints lays out a footer of "[key] label" pairs, keys in the fixed
-// host style.
-func keyHints(pairs ...string) []hostapi.Segment {
-	var out []hostapi.Segment
-	for i := 0; i+1 < len(pairs); i += 2 {
-		if i > 0 {
-			out = append(out, hostapi.Segment{Text: "   "})
-		}
-		out = append(out, hostapi.Segment{Text: "[" + pairs[i] + "]", HL: "Host:Bold"}, hostapi.Segment{Text: " " + pairs[i+1]})
-	}
-	return out
-}
+// keyHints is the footer of every Go-drawn box: "enter select · esc close".
+func keyHints(pairs ...string) []hostapi.Segment { return hintLine(pairs...) }
 
 // splicePerm draws the permission prompt: what the tool wants to do, the
 // command or the diff it would apply, and the choices.

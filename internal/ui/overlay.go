@@ -271,15 +271,20 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 // spliceOverlay composes the overlay box into the frame rows, centered
 // over the chat area, with the Go-stamped origin badge (DESIGN §8).
 func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, headerH, chatH int) [][]hostapi.Segment {
-	badge := " " + string(st.o.Origin)
-	if st.o.Path != "" {
-		badge += ":" + st.o.Path
+	// the origin badge marks boxes that plugins and project config draw
+	badge := ""
+	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
+		badge = " " + string(st.o.Origin)
+		if st.o.Path != "" {
+			badge += ":" + st.o.Path
+		}
+		badge += " "
 	}
 	if st.o.Input {
 		r := []rune(st.input.text)
 		line := []hostapi.Segment{{Text: "> ", HL: "Comment"}, {Text: string(r[:st.input.cursor])}, {Text: "▏", HL: "Title"}, {Text: string(r[st.input.cursor:])}}
 		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, keyHints("enter", "confirm", "esc", "cancel")}
-		return spliceBox(rows, hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w), w, headerH, chatH)
+		return spliceBox(rows, hostBox(" "+st.o.Title+" ", "Title", badge, body, w), w, headerH, chatH)
 	}
 	items := make([]listItem, 0, len(st.visible))
 	for _, i := range st.visible {
@@ -291,7 +296,7 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 		hints = keyHints("space", "toggle", "type", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
-	box := hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w)
+	box := hostBox(" "+st.o.Title+" ", "Title", badge, body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }
 

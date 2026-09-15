@@ -418,7 +418,7 @@ func (h *Host) MCPCommandsStep() lua.BootStep {
 		Name: "mcp commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "mcp", NArgs: "*", Desc: "MCP servers and their status; restart <name>",
+				Name: "mcp", NArgs: "*", Desc: "connected tool servers (MCP)",
 				GoFn: func(h *Host, args string) error {
 					sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
 					switch sub {

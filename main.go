@@ -277,7 +277,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "resume", Hidden: true, Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "rewind", NArgs: "?", Desc: "undo turns: restore files and the conversation to before a prompt", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "rewind", NArgs: "?", Desc: "undo back to an earlier prompt, files included", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenRewind()
 					}
@@ -309,7 +309,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					return err
 				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} },
 					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "usage", Desc: "tokens and cost: this session, today, 7 days, all time", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "usage", Desc: "tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenUsage()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
@@ -332,7 +332,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "errors", Hidden: true, Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "health", Desc: "check model, store, permissions, reflector and runtime", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "compact", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, _ string) error {
@@ -342,7 +342,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					h.OpenModelPicker()
 					return nil
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "mode", NArgs: "?", Desc: "permission mode: manual, plan, auto or yolo (tab cycles)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "mode", NArgs: "?", Desc: "who approves actions (tab switches)", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenModePicker()
 					}

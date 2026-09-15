@@ -675,7 +675,7 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 		Name: "workflow commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "workflow", NArgs: "*", Desc: "run a saved workflow: /workflow <name> [args]",
+				Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
 				GoFn: func(h *Host, args string) error {
 					name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 					if name == "" {
@@ -705,7 +705,7 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 				return err
 			}
 			_, err = h.Commands.Add(&Command{
-				Name: "review", NArgs: "?", Desc: "review changes with parallel agents, then verify the findings: /review [git ref]",
+				Name: "review", NArgs: "?", Desc: "review your changes with several agents",
 				GoFn: func(h *Host, args string) error {
 					return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
 				},

@@ -263,8 +263,9 @@ zemi.event.on("reflector.done", function(ev)
   add(ev.config_applied, "config rule applied", "config rules applied")
   add(ev.config_queued, "config change to review in /config", "config changes to review in /config")
   add(ev.skills_drafted, "skill drafted, enable it in /skills", "skills drafted, enable them in /skills")
-  local body = #parts > 0 and table.concat(parts, ", ") or "nothing worth keeping"
-  zemi.notify({ title = "reflect", body = body })
+  -- a session with nothing worth keeping ends quietly
+  if #parts == 0 then return end
+  zemi.notify({ title = "learned from the last session", body = table.concat(parts, ", ") })
 end)
 
 -- Statusline right: "model · 12.3k tok · 45%". The context percent colors
