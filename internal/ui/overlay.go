@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -99,12 +100,20 @@ func (a *App) overlayKey(key string) tea.Cmd {
 		} else {
 			a.closeOverlayByID(o.ID)
 			a.frameGen++
-			// A row's "fill" goes into the composer, like tab in the palette.
+			// A row's "fill" goes into the composer, like tab in the palette;
+			// "run" executes a command, honored only for builtin and user
+			// overlays so a plugin row label cannot disguise a command.
 			if idx < len(o.Items) {
 				if m, ok := o.Items[idx].(map[string]any); ok {
 					if fill, _ := m["fill"].(string); fill != "" {
 						a.composer.text = sanitize.String(fill)
 						a.composer.moveEnd()
+					}
+					if run, _ := m["run"].(string); run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
+						name, args := splitCommand(run)
+						if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
+							a.pushToast("error", "/"+name, err.Error())
+						}
 					}
 				}
 			}

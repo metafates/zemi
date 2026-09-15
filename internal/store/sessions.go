@@ -143,10 +143,11 @@ func (s *DB) AddMessage(m *Message) error {
 	return nil
 }
 
-// Messages returns a session's messages in order.
+// Messages returns a session's messages in insertion order: rowid, since a
+// turn persists several messages within one millisecond and ids are random.
 func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
-		FROM messages WHERE session_id = ? ORDER BY created_at, id`, sessionID)
+		FROM messages WHERE session_id = ? ORDER BY rowid`, sessionID)
 	if err != nil {
 		return nil, err
 	}

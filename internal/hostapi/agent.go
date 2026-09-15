@@ -614,21 +614,20 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	if p != nil {
 		name = p.Name
 	}
-	title := firstText
-	if len(title) > 60 {
-		title = title[:60]
+	title := strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0]
+	if r := []rune(title); len(r) > 60 {
+		title = string(r[:60])
 	}
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
 	}
-	prev := ag.sessionID
 	ag.sessionID = sid
 	ag.digest = h.digestFor()
 	ag.memAuto = 0
 	ag.cfgAuto = 0
 	ag.mu.Unlock()
-	h.reflectOnClose(prev)
+	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
 	return nil
 }
 

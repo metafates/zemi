@@ -270,10 +270,7 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 		if err := h.AgentSend(text); err != nil {
 			t.Fatalf("send %q: %v", text, err)
 		}
-		deadline := time.Now().Add(3 * time.Second)
-		for h.AgentActive() && time.Now().Before(deadline) {
-			time.Sleep(5 * time.Millisecond)
-		}
+		waitIdle(t, h)
 	}
 	if n := m.lastPrompt.Load(); n != 4 {
 		t.Fatalf("second turn prompt has %d messages, want 4", n)

@@ -159,6 +159,15 @@ func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 					h.OpenHelp()
 					return nil
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "new", Desc: "start a fresh session", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.NewSession()
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "sessions", Desc: "list and resume sessions", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.OpenSessions()
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "resume", Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
+					return h.ResumeSession(strings.TrimSpace(args))
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenModelPicker()
 					return nil

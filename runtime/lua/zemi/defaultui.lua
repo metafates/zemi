@@ -197,7 +197,8 @@ zemi.ui.widget.register({
         if ctx.show_reasoning then
           add_reasoning(m.text)
         else
-          local label = "✻ thought " .. (fmt_secs(m.thought) or "0s")
+          local secs = fmt_secs(m.thought)
+          local label = "✻ thought" .. (secs and " " .. secs or "")
           if i == last_reason then label = label .. " (ctrl+o to expand)" end
           lines[#lines + 1] = { { text = "  " }, { text = label, hl = "AgentReason" } }
         end

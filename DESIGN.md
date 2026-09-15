@@ -939,7 +939,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
   Slash commands replace the old cmdline: `/quit`, `/help`, `/model`,
-  plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
+  `/new` (close the session: reflector trigger, clean slate), `/sessions`
+  (list; enter resumes), `/resume [id]` (latest without an id; history and
+  transcript rebuilt from the store), plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
   `/skills`, `/reflect`). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
