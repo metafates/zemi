@@ -198,17 +198,27 @@ zemi.ui.widget.register({
     if not (ag.active or #tools > 0 or text ~= "") then return lines end
     lines[#lines + 1] = { { text = "" } }
     for _, t in ipairs(tools) do
-      local mark, hl = "•", "AgentToolRun"
+      -- Running tools pulse in step with the working row (ctx.pulse).
+      local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
       if t.status == "ok" then
         mark, hl = "✓", "AgentToolOk"
       elseif t.status == "err" then
         mark, hl = "✗", "AgentToolErr"
       end
-      local inp = (t.input or ""):gsub("%s+", " ")
-      if #inp > 48 then inp = inp:sub(1, 45) .. "..." end
+      local name = t.name or "?"
+      -- One row: cut the input by UTF-8 character, never mid-sequence.
+      local room, chars = width - #name - 7, {}
+      for ch in (t.input or ""):gsub("%s+", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        if #chars >= room then
+          chars[#chars] = "…"
+          break
+        end
+        chars[#chars + 1] = ch
+      end
+      local inp = table.concat(chars)
       lines[#lines + 1] = {
         { text = "  " .. mark, hl = hl },
-        { text = " " .. (t.name or "?"), hl = "AgentToolName" },
+        { text = " " .. name, hl = "AgentToolName" },
         { text = inp ~= "" and "  " .. inp or "", hl = "Comment" },
       }
     end

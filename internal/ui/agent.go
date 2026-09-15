@@ -171,7 +171,7 @@ func (a *App) workingRow() []hostapi.Segment {
 	now := a.now()
 	animate := a.cfgBool("ui.animations", true)
 	bullet := hostapi.Segment{Text: "• ", HL: "Title"}
-	if animate && now.UnixMilli()/600%2 == 1 {
+	if a.pulse() {
 		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)

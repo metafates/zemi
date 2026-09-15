@@ -375,7 +375,13 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 func (a *App) uiState() hostapi.UIState {
-	return hostapi.UIState{Time: a.timeStr}
+	return hostapi.UIState{Time: a.timeStr, Pulse: a.pulse()}
+}
+
+// pulse is the 600ms blink phase shared by the working row and running
+// tool markers; always false with animations off.
+func (a *App) pulse() bool {
+	return a.cfgBool("ui.animations", true) && a.now().UnixMilli()/600%2 == 1
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {

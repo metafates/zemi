@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -37,6 +39,22 @@ func TestResizeSweep(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "show me")
 	host.AppendTurnResult("# Heading\n\nsome **bold** and `code` with a verylongunbreakableidentifierthatneverfits\n\n```go\nfunc main() { println(\"a long line of code that overflows\") }\n```\n\n- item one\n- item two\n", hostapi.TurnStat{Out: 10})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Tools: []hostapi.StreamTool{
+		{Name: "bash", Input: strings.Repeat("ёж ", 60), Status: "run"},
+	}})
+
+	// Before any popup covers it: the long tool input stays on one row, cut
+	// by character with "…".
+	app.renderSync(t)
+	var toolRows []string
+	for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+		if strings.Contains(row, "ёж") {
+			toolRows = append(toolRows, row)
+		}
+	}
+	if len(toolRows) != 1 || !strings.Contains(toolRows[0], "• bash") || !strings.HasSuffix(strings.TrimRight(toolRows[0], " "), "…") {
+		t.Fatalf("tool row must be one truncated row, got %q", toolRows)
+	}
 	app.pushToast("warn", "a rather long toast title that must truncate", "line one of the body\nline two which is long enough to need wrapping at small widths")
 	host.OpenHelp()
 	for app.Pump() {
@@ -52,7 +70,11 @@ func TestResizeSweep(t *testing.T) {
 	for _, sz := range sizes {
 		app.Update(tea.WindowSizeMsg{Width: sz.w, Height: sz.h})
 		app.renderSync(t)
-		for i, row := range strings.Split(app.Frame(), "\r\n") {
+		frame := app.Frame()
+		if !utf8.ValidString(frame) {
+			t.Fatalf("%dx%d: frame is not valid UTF-8", sz.w, sz.h)
+		}
+		for i, row := range strings.Split(frame, "\r\n") {
 			if n := ansi.StringWidth(row); n > sz.w {
 				t.Fatalf("%dx%d: row %d is %d cells wide: %q", sz.w, sz.h, i, n, ansi.Strip(row))
 			}

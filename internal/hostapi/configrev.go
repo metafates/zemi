@@ -342,8 +342,9 @@ func (h *Host) openConfigReview() {
 	}
 }
 
-// listRevisions shows the recent revisions as a toast (the audit trail
-// lives in the revisions table and the git log).
+// listRevisions opens the revisions as a list; enter on a row fills
+// "/config revert <id>" (the audit trail lives in the revisions table and
+// the git log).
 func (h *Host) listRevisions() error {
 	if h.GlobalDB == nil {
 		return errors.New("revision store unavailable")
@@ -352,22 +353,19 @@ func (h *Host) listRevisions() error {
 	if err != nil {
 		return err
 	}
-	if len(revs) == 0 {
+	ui := h.hooks()
+	if len(revs) == 0 || ui == nil {
 		h.memNotify("info", "revisions", "no config revisions yet")
 		return nil
 	}
-	n := 10
-	if len(revs) < n {
-		n = len(revs)
+	items := make([]any, 0, len(revs))
+	for _, r := range revs {
+		items = append(items, map[string]any{
+			"text": shortID(r.ID) + " " + r.Status + " " + r.Title,
+			"fill": "/config revert " + r.ID,
+		})
 	}
-	var b strings.Builder
-	for i, r := range revs[:n] {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-		b.WriteString(shortID(r.ID) + " " + r.Status + " " + r.Title)
-	}
-	h.memNotify("info", "revisions", b.String())
+	ui.OpenOverlay(Overlay{ID: "revisions", Title: "Config revisions", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 

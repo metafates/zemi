@@ -294,13 +294,11 @@ func (h *Host) OpenHelp() {
 		if desc == "" {
 			desc = describeRHS(b.RHS)
 		}
-		items = append(items, map[string]any{
-			"kind": "key", "keys": b.Keys, "desc": desc,
-		})
+		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Keys, desc)})
 	}
 	for _, c := range h.Commands.List() {
 		items = append(items, map[string]any{
-			"kind": "command", "name": "/" + c.Name, "desc": c.Desc,
+			"text": fmt.Sprintf("%-12s %s", "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
 		})
 	}
 	ui.OpenOverlay(Overlay{
@@ -608,7 +606,8 @@ func convertSegments(v any) ([][]Segment, error) {
 
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
-	Time string
+	Time  string
+	Pulse bool // shared blink phase for running markers
 }
 
 func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LTable {
@@ -616,6 +615,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb := L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
+	tb.RawSetString("pulse", glua.LBool(state.Pulse))
 	cwd := sess.CWD
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(cwd, home+"/") {
 		cwd = "~" + cwd[len(home):]

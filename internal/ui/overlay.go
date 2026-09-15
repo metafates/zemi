@@ -58,18 +58,16 @@ func (a *App) renderOverlayItem(o hostapi.Overlay, idx int, item any) (string, e
 	return fmt.Sprint(res[0]), nil
 }
 
-// formatOverlayItem renders plain data items (Go-built overlays like help).
+// formatOverlayItem renders items without render_item: strings, or
+// {text, fill} maps (help, revisions).
 func formatOverlayItem(item any) string {
-	switch v := item.(type) {
-	case string:
-		return v
-	case map[string]any:
-		switch v["kind"] {
-		case "key":
-			return fmt.Sprintf("%-12s %s", v["keys"], v["desc"])
-		case "command":
-			return fmt.Sprintf("%-12s %s", v["name"], v["desc"])
+	if m, ok := item.(map[string]any); ok {
+		if s, ok := m["text"].(string); ok {
+			return s
 		}
+	}
+	if s, ok := item.(string); ok {
+		return s
 	}
 	return fmt.Sprint(item)
 }
@@ -101,12 +99,13 @@ func (a *App) overlayKey(key string) tea.Cmd {
 		} else {
 			a.closeOverlayByID(o.ID)
 			a.frameGen++
-			// Help's command rows fill the composer, like tab in the palette.
+			// A row's "fill" goes into the composer, like tab in the palette.
 			if idx < len(o.Items) {
-				if m, ok := o.Items[idx].(map[string]any); ok && m["kind"] == "command" {
-					name, _ := m["name"].(string)
-					a.composer.text = name + " "
-					a.composer.moveEnd()
+				if m, ok := o.Items[idx].(map[string]any); ok {
+					if fill, _ := m["fill"].(string); fill != "" {
+						a.composer.text = sanitize.String(fill)
+						a.composer.moveEnd()
+					}
 				}
 			}
 		}
