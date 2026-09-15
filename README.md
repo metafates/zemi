@@ -79,7 +79,7 @@ gets a fresh context and its own tool set, runs in parallel with others, and ret
 report; its tool calls go through the same permission prompts, labeled with the agent's
 name. The row under the tool call shows live progress. The model can also start one in the
 background: it keeps working (or goes idle) and the report arrives as a message when the
-agent is done; `/tasks` lists them and cancels one. zemi ships `general` and a
+agent is done; `/agents` lists them and stops one. zemi ships `general` and a
 read-only `explore`; add your own as markdown in `~/.config/zemi/agents/` or
 `.zemi/agents/`:
 
@@ -134,9 +134,10 @@ and `args` plus Lua's string, table and math libraries, with no file or network 
 Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
 reversible (`/memory`, `/config revert <id>`, `/skills disable <name>`).
 
-zemi also knows itself: builtin skills (`zemi-config`, `zemi-debug`, `zemi-lua`,
-`zemi-learning`) teach the agent where zemi's files live, how to change its config, how
-to read its logs and errors, and how its learning works. Ask it to "set up a provider",
+zemi also knows itself: builtin skills (`zemi-config`, `zemi-customize`, `zemi-debug`,
+`zemi-lua`, `zemi-learning`) teach the agent where zemi's files live, how to change its
+config, how to restyle the UI and add workflows, how to read its logs and errors, and how
+its learning works. Ask it to "set up a provider",
 "why did that fail" or "write a statusline widget".
 
 ## Install
@@ -145,7 +146,8 @@ to read its logs and errors, and how its learning works. Ask it to "set up a pro
 go install github.com/metafates/zemi@latest
 ```
 
-Requires Go 1.27. No CGO. `git` is optional (config changes are versioned when present).
+Requires Go 1.27. No CGO. `git` is optional (config changes are versioned when present), and
+so is `ripgrep` (`glob` and `grep` use `rg` when installed and fall back to a Go walker).
 
 ## Configure
 
@@ -206,7 +208,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/usage`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/tasks`, `/workflow`, `/mcp`, `/lsp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/effort`, `/usage`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua
