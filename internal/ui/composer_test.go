@@ -144,6 +144,16 @@ func TestWrapComposer(t *testing.T) {
 	}
 }
 
+func TestComposerHiddenRows(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composer.text = strings.Repeat("line\n", 9) + "end"
+	app.composer.cursor = len(app.composer.text)
+	rows := app.composerRows(40)
+	if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != "  +2 lines" {
+		t.Fatalf("rows %d, last %q", len(rows), plainSegs(rows[len(rows)-1]))
+	}
+}
+
 func TestComposerKeysMultilineOff(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.host.Settings.SetQuiet("ui.composer.multiline", false)

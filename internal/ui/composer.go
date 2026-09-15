@@ -301,6 +301,9 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		}
 		out = append(out, segs)
 	}
+	if hidden := len(rows) - len(out); hidden > 0 {
+		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment"}})
+	}
 	return out
 }
 
