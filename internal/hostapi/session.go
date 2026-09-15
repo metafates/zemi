@@ -163,6 +163,7 @@ func (h *Host) closeSession() (string, error) {
 func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Title, h.session.Transcript, h.view = title, tr, ""
+	h.trEpoch.Add(1)
 	h.tMu.Unlock()
 	h.refresh()
 }

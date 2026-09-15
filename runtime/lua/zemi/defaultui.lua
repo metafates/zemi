@@ -349,6 +349,11 @@ zemi.ui.widget.register({
   end,
 })
 
+-- Rows of the settled transcript, kept across frames: while a reply
+-- streams the widget renders many times a second and only the live turn
+-- changes. One entry, replaced whenever its key changes.
+local chat_cache = {}
+
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
@@ -567,7 +572,16 @@ zemi.ui.widget.register({
     for i, m in ipairs(tr) do
       if m.kind == "reasoning" then last_reason = i end
     end
-    local i = 1
+    -- An agent run's transcript mutates in place and reports epoch 0, so
+    -- only the session's settled rows are cached.
+    local key = (ctx.transcript_epoch or 0) ~= 0 and table.concat({
+      ctx.transcript_epoch, #tr, width, tostring(ctx.show_reasoning), ctx.cwd or "" }, "|") or nil
+    local cached = key and chat_cache[key]
+    if cached then
+      for _, l in ipairs(cached.lines) do lines[#lines + 1] = l end
+      prev = cached.prev
+    end
+    local i = cached and (#tr + 1) or 1
     while i <= #tr do
       local m = tr[i]
       local next_i = i + 1
@@ -650,6 +664,11 @@ zemi.ui.widget.register({
         end
       end
       i = next_i
+    end
+    if key and not cached then
+      local snap = {}
+      for n, l in ipairs(lines) do snap[n] = l end
+      chat_cache = { [key] = { lines = snap, prev = prev } }
     end
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go

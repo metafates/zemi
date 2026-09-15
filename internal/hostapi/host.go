@@ -141,6 +141,10 @@ type Host struct {
 	session *Session
 	view    string // the agent run the chat shows instead of the session, "" for none
 
+	// trEpoch changes whenever the transcript is replaced (new, resume,
+	// rewind), so the chat widget can cache the rows of settled messages.
+	trEpoch atomic.Int64
+
 	watches  *watchReg
 	agents   *agentHost
 	luaTools *toolReg
@@ -267,6 +271,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.refreshPending()
 	h.recentStale.Store(true)
+	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	return h
 }
 
@@ -779,6 +784,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		tr.Append(row)
 	}
 	tb.RawSetString("transcript", tr)
+	// 0 while an agent run is shown: its rows mutate in place as the run
+	// goes, so the chat widget must not cache them.
+	epoch := h.trEpoch.Load()
+	if run != nil {
+		epoch = 0
+	}
+	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
 	if len(sess.Transcript) == 0 {
 		recent := L.NewTable()
 		for _, r := range h.recentSessions() {

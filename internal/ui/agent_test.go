@@ -20,7 +20,7 @@ import (
 
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
-func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {
+func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
 	ctx := context.Background()
 	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
@@ -53,6 +53,38 @@ func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {
 	app.timeStr = "12:34"
 	app.now = func() time.Time { return time.UnixMilli(500) }
 	return app, host
+}
+
+// seedLongChat fills the session with a long conversation.
+func seedLongChat(host *hostapi.Host, turns int) {
+	for i := range turns {
+		host.AppendMessage("user", fmt.Sprintf("question %d about the build", i))
+		host.AppendTurnResult(strings.Repeat("a paragraph of the reply that wraps across the chat width. ", 6),
+			hostapi.TurnStat{Out: 200})
+	}
+}
+
+// BenchmarkStreamingFrame is one frame while a reply streams: the widget
+// re-renders and the transcript is re-wrapped.
+func BenchmarkStreamingFrame(b *testing.B) {
+	app, host := bootAgentApp(b, 100, 40)
+	seedLongChat(host, 100)
+	for i := 0; b.Loop(); i++ {
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: fmt.Sprintf("streaming token %d", i)})
+		app.frameGen++
+		app.renderSync(b)
+		_ = app.Frame()
+	}
+}
+
+// BenchmarkIdleFrame is a frame with nothing changed since the last one.
+func BenchmarkIdleFrame(b *testing.B) {
+	app, host := bootAgentApp(b, 100, 40)
+	seedLongChat(host, 100)
+	app.renderSync(b)
+	for b.Loop() {
+		_ = app.Frame()
+	}
 }
 
 // waitPrompt pumps queued hook messages onto the owning goroutine until
