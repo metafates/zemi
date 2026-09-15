@@ -29,7 +29,7 @@ type Job struct {
 	done   chan struct{}
 	code   int
 	err    string
-	sent   [2]int // bytes of stdout/stderr already read, see since
+	sent   [2]int64 // bytes of stdout/stderr already read, see since
 	mu     sync.Mutex
 }
 
@@ -61,15 +61,22 @@ func (j *Job) Status() string {
 func (j *Job) since() (out, errOut string, running bool, errText string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	rest := func(s string, sent *int) string {
-		if len(s) < *sent {
-			*sent = 0 // the buffer dropped its middle, so the offset means nothing
+	// Count bytes ever written, not buffer length: a saturated buffer drops
+	// its middle, so its length stops growing while output keeps arriving.
+	// Whatever is new sits at the end of what the buffer still holds.
+	rest := func(b *proc.Buffer, sent *int64) string {
+		s, written := b.String(), b.Written()
+		n := written - *sent
+		*sent = written
+		switch {
+		case n <= 0:
+			return ""
+		case n >= int64(len(s)):
+			return s
 		}
-		out := s[*sent:]
-		*sent = len(s)
-		return out
+		return s[int64(len(s))-n:]
 	}
-	return rest(j.stdout.String(), &j.sent[0]), rest(j.stderr.String(), &j.sent[1]), j.Running(), j.err
+	return rest(j.stdout, &j.sent[0]), rest(j.stderr, &j.sent[1]), j.Running(), j.err
 }
 
 // Jobs owns every model-started job for one host.

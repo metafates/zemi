@@ -108,6 +108,13 @@ type agentHost struct {
 	ctxWin   int64
 	sessCost float64 // USD, from model spec prices
 
+	// readMu guards reads and instr, the per-session file bookkeeping the
+	// tools pipeline carries (what the model has read, which instruction
+	// files it has been given). Both are dropped when the session changes.
+	readMu sync.Mutex
+	reads  map[string]*sync.Map
+	instr  map[string]bool
+
 	// promptTokens estimates the system prompt and tool schemas the runner
 	// carries; every prompt holds them, so the context estimate counts them.
 	promptTokens int64
@@ -399,8 +406,6 @@ func (h *Host) instructionFiles() []string {
 	return out
 }
 
-var sentInstructions sync.Map // session id + path -> true, see nearestInstructions
-
 // nearestInstructions returns the instruction file that governs path and is
 // not already in the prompt: in a monorepo opened at the root, a package's
 // own AGENTS.md sits below the files instructionFiles collects. Each one is
@@ -415,13 +420,20 @@ func (h *Host) nearestInstructions(path string) string {
 		inPrompt[p] = true
 	}
 	root := h.Dirs.RepoRoot()
-	for dir := filepath.Dir(abs); strings.HasPrefix(dir, root); dir = filepath.Dir(dir) {
+	if root == "" {
+		return ""
+	}
+	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
+		// a path boundary, not a string prefix: /repo2 is not inside /repo
+		if rel, err := filepath.Rel(root, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return ""
+		}
 		for _, name := range []string{"ZEMI.md", "AGENTS.md", "CLAUDE.md"} {
 			p := filepath.Join(dir, name)
 			if !fileExists(p) || inPrompt[p] {
 				continue
 			}
-			if _, sent := sentInstructions.LoadOrStore(h.AgentSessionID()+"\x00"+p, true); sent {
+			if h.instructionSent(p) {
 				return ""
 			}
 			data, err := os.ReadFile(p)
@@ -868,7 +880,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost
-	ag.sessIn += usage.InputTokens
+	// cache reads and writes are input the session paid for: leaving them
+	// out would show a token total the cost does not match
+	ag.sessIn += usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
 	ag.sessOut += usage.OutputTokens
 	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
@@ -1370,9 +1384,26 @@ func (h *Host) contextWindow(modelID string) int64 {
 // maxOutput is the reply token limit: the model spec's, else 32000 for
 // Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
 // 0 (the provider default).
+// capRejected remembers models whose provider refused zemi's default output
+// cap: an older Anthropic model with a lower ceiling would otherwise fail
+// every turn until the user set max_output by hand.
+var capRejected sync.Map
+
+// maxTokensRefused reports a provider error about the output cap zemi set.
+func maxTokensRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "max_tokens") || strings.Contains(s, "max_output_tokens")
+}
+
 func (h *Host) maxOutput(modelID string) int64 {
 	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
 		return m.MaxOutput
+	}
+	if _, refused := capRejected.Load(modelID); refused {
+		return 0
 	}
 	prov, _, _ := strings.Cut(modelID, "/")
 	if spec, ok := h.Providers.Lookup(prov); ok && spec.Kind == agent.KindAnthropic {
@@ -1817,14 +1848,37 @@ func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
 	}
 }
 
-var readLogs sync.Map // session id -> *sync.Map, see readLog
-
 // readLog is the live session's record of the files the model read. It
 // outlives the pipeline, which is rebuilt every send, so a file read in one
-// turn can be edited in the next.
+// turn can be edited in the next. Only the live session is kept: an older
+// one cannot be edited, and holding every path of every session would grow
+// without end.
 func (h *Host) readLog() *sync.Map {
-	m, _ := readLogs.LoadOrStore(h.AgentSessionID(), &sync.Map{})
-	return m.(*sync.Map)
+	sid := h.AgentSessionID()
+	ag := h.agents
+	ag.readMu.Lock()
+	defer ag.readMu.Unlock()
+	if ag.reads[sid] == nil {
+		ag.reads = map[string]*sync.Map{sid: new(sync.Map)}
+		ag.instr = map[string]bool{}
+	}
+	return ag.reads[sid]
+}
+
+// instructionSent reports whether this session already carried p, and
+// records it otherwise.
+func (h *Host) instructionSent(p string) bool {
+	ag := h.agents
+	ag.readMu.Lock()
+	defer ag.readMu.Unlock()
+	if ag.instr[p] {
+		return true
+	}
+	if ag.instr == nil {
+		ag.instr = map[string]bool{}
+	}
+	ag.instr[p] = true
+	return false
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls.

@@ -158,7 +158,6 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	p.markRead(path, fi)
 	switch mt := http.DetectContentType(data); {
 	case mt == "image/png" || mt == "image/jpeg" || mt == "image/gif" || mt == "image/webp":
 		if len(data) > readMaxImage {
@@ -168,6 +167,9 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0:
 		return fantasy.NewTextErrorResponse(path + " is a binary file"), nil
 	}
+	// a page of a file still counts as seen: the edit guard is about what
+	// changed under the model, and an exact old_string is its own proof
+	p.markRead(path, fi)
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	start := 0
 	if v, ok := input["offset"].(float64); ok && v > 1 {
@@ -240,11 +242,18 @@ func lockFile(path string) func() {
 	return mu.Unlock
 }
 
+// absPath is the key both the read log and the file locks use: symlinks
+// resolve, so an alias and its target are the same file. A path that does
+// not exist yet (a write) keeps its absolute form.
 func absPath(path string) string {
-	if a, err := filepath.Abs(path); err == nil {
-		return a
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
 	}
-	return path
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real
+	}
+	return abs
 }
 
 // runWrite creates or overwrites a file (parents created).
@@ -315,7 +324,9 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	if bytes.Contains(data, []byte("\r\n")) {
+	// only a file that is CRLF throughout: one stray \r\n must not rewrite
+	// every other line
+	if n := bytes.Count(data, []byte("\r\n")); n > 0 && n == bytes.Count(data, []byte("\n")) {
 		out = strings.ReplaceAll(out, "\n", "\r\n")
 	}
 	p.checkpoint(path)
@@ -590,6 +601,10 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 // walk visits the regular files under root for the Go fallback, which skips
 // hidden and generated directories instead of reading .gitignore.
 func walk(ctx context.Context, root string, fn func(path, rel string) error) error {
+	// WalkDir does not follow a symlinked root, and would visit nothing
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		root = real
+	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()

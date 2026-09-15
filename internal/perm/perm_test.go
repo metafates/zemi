@@ -101,6 +101,27 @@ func TestNormalizeSubshellIsSegment(t *testing.T) {
 	}
 }
 
+// TestSubjectFamilyRule: a rule written as net.* covers the net.<host>
+// subject the fetch tool asks with, so an existing deny keeps denying.
+func TestSubjectFamilyRule(t *testing.T) {
+	s := NewStore()
+	s.Add(Rule{Subject: "net.*", Pattern: "*", Decision: Deny})
+	s.Add(Rule{Subject: "fs.read", Pattern: "*", Decision: Allow})
+	for _, c := range []struct {
+		subject, arg string
+		want         Decision
+	}{
+		{"net.example.com", "https://example.com/x", Deny},
+		{"net.*", "https://example.com/x", Deny},
+		{"fs.read", "main.go", Allow},
+		{"network.example.com", "x", Ask},
+	} {
+		if got := s.Evaluate(c.subject, c.arg, "model").Decision; got != c.want {
+			t.Errorf("%s: got %v, want %v", c.subject, got, c.want)
+		}
+	}
+}
+
 // TestQuotedSubstitutionAsks: the shell runs what is inside "$( )", so an
 // allow rule covering the outer command must not carry it.
 func TestQuotedSubstitutionAsks(t *testing.T) {

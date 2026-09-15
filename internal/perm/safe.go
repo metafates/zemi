@@ -106,11 +106,16 @@ var projectTools = map[string]bool{
 	"tsc": true, "vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
 }
 
-// sedWrite matches sed's w command, which writes a file: at the start of
-// the script, after another command, or as a s///w flag.
-var sedWrite = regexp.MustCompile(`(^|[;}\s/])[wW][ \t]*\S`)
+// sedWrite matches sed's w command, which writes a file: `w file`, the
+// no-space `w/tmp/out` GNU accepts, and the s///w flag. The character after
+// w must not be a letter, or every path holding a word like "web" or
+// "workflow" would read as a write.
+var sedWrite = regexp.MustCompile(`(^|[;}\s/])[wW](\s+\S|[/.])`)
 
-var safeMakeTarget = regexp.MustCompile(`^(all|build|test[\w.-]*|check[\w.-]*|lint[\w.-]*|fmt|format|vet|compile|bench[\w.-]*|cover(age)?)$`)
+var awkGetline = regexp.MustCompile(`\bgetline\b`)
+
+// npm script names routinely carry a colon: test:unit, lint:fix.
+var safeMakeTarget = regexp.MustCompile(`^(all|build[\w.:-]*|test[\w.:-]*|check[\w.:-]*|lint[\w.:-]*|fmt|format|vet|compile|bench[\w.:-]*|cover(age)?)$`)
 
 func safeSegment(a []string) bool {
 	if len(a) == 0 {
@@ -129,12 +134,13 @@ func safeSegment(a []string) bool {
 	case name == "find":
 		return !hasFlag(rest, "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
 	case name == "sed":
-		// w writes a file, with or without a space after it
+		// quotes are gone by now, so the script and the file names are one
+		// string; sedWrite is written to tell a w command from a path
 		return !hasFlag(rest, "-i", "--in-place") && !sedWrite.MatchString(strings.Join(rest, " "))
 	case name == "awk":
-		// getline reads a file the same way > and | write one
-		script := strings.Join(rest, " ")
-		return !strings.ContainsAny(script, "><|") && !strings.Contains(script, "system") && !strings.Contains(script, "getline")
+		// getline reads a file, > and | write one. A bare < is a comparison.
+		s := strings.Join(rest, " ")
+		return !strings.ContainsAny(s, ">|") && !strings.Contains(s, "system") && !awkGetline.MatchString(s)
 	case name == "gofmt":
 		return !hasFlag(rest, "-w")
 	case name == "git":

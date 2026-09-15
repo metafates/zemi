@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/proc"
 )
 
 func TestEditRefusesAmbiguousMatch(t *testing.T) {
@@ -29,6 +31,31 @@ func TestEditRefusesAmbiguousMatch(t *testing.T) {
 		if !strings.Contains(res.Content, c.want) || string(got) != c.file {
 			t.Fatalf("%v: %q, file %q", c.input, res.Content, got)
 		}
+	}
+}
+
+// TestJobReadAfterBufferDrop: a job that floods its buffer keeps delivering
+// new output. The buffer drops its middle, so its length stops growing and
+// a length-based offset would report "no new output" forever.
+func TestJobReadAfterBufferDrop(t *testing.T) {
+	j := &Job{stdout: &proc.Buffer{Max: 64}, stderr: &proc.Buffer{Max: 64}, done: make(chan struct{})}
+	close(j.done)
+	j.stdout.Write([]byte(strings.Repeat("a", 40)))
+	if out, _, _, _ := j.since(); out != strings.Repeat("a", 40) {
+		t.Fatalf("first read: %q", out)
+	}
+	if out, _, _, _ := j.since(); out != "" {
+		t.Fatalf("nothing written since: %q", out)
+	}
+	// more arrived than the buffer holds, so it returns what is left of it,
+	// skip marker and all, rather than reporting nothing new
+	j.stdout.Write([]byte(strings.Repeat("b", 200)))
+	out, _, _, _ := j.since()
+	if !strings.HasSuffix(out, "bb") || !strings.Contains(out, "skipped") {
+		t.Fatalf("new output after the drop: %q", out)
+	}
+	if out, _, _, _ := j.since(); out != "" {
+		t.Fatalf("nothing written since the drop: %q", out)
 	}
 }
 

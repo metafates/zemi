@@ -143,6 +143,15 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Written counts every byte ever written, including what the middle drop
+// removed. A reader that kept a previous count knows how much is new even
+// though the buffer's length barely moves once it saturates.
+func (b *Buffer) Written() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.dropped + int64(len(b.head)+len(b.tail))
+}
+
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

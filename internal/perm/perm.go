@@ -103,6 +103,16 @@ type Outcome struct {
 // (fewest wildcards, then longest literal prefix) wins. An argument that
 // matches a rule's pattern but also its NotMatch is skipped (and the
 // fall-through is reported for the audit log).
+// subjectMatches compares a rule's subject with the one being asked about.
+// A rule may end in ".*" to cover a family: net.* answers net.example.com,
+// the subject the fetch tool asks with.
+func subjectMatches(rule, subject string) bool {
+	if prefix, ok := strings.CutSuffix(rule, ".*"); ok {
+		return subject == prefix || strings.HasPrefix(subject, prefix+".")
+	}
+	return rule == subject
+}
+
 func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 	type cand struct {
 		rule  Rule
@@ -117,7 +127,7 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 	copy(rules, s.rules)
 	s.mu.Unlock()
 	for _, r := range rules {
-		if r.Subject != subject {
+		if !subjectMatches(r.Subject, subject) {
 			continue
 		}
 		if r.Principal != "" && principal != "" && r.Principal != principal {

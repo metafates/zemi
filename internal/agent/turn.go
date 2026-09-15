@@ -273,9 +273,12 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 
 const (
 	maxSteps    = 200
-	loopWindow  = 10 // recent steps repeatsToolCalls looks at
-	loopRepeats = 5  // identical tool steps allowed within the window
+	loopRepeats = 5 // identical tool steps in a row allowed
 )
+
+// pollingTools are meant to be called again with the same input: waiting on
+// a job is not a loop, it is how the model watches one.
+var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 
 // maxRetries is the provider retries a step gets; fantasy's default of 3
 // gives up on an overloaded provider inside a minute.
@@ -283,32 +286,45 @@ var maxRetries = 5
 
 var (
 	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
-	ErrToolLoop  = fmt.Errorf("stopped: the agent repeated the same tool call with the same result %d times", loopRepeats+1)
+	ErrToolLoop  = fmt.Errorf("stopped: the agent made the same tool call with the same result %d times in a row", loopRepeats+1)
 )
 
-// repeatsToolCalls reports whether one step's tool calls and results, as a
-// whole, occur more than loopRepeats times in the last loopWindow steps.
-// Results count, so polling that makes progress is not a loop.
+// repeatsToolCalls reports whether the last loopRepeats+1 tool steps made
+// the same calls and got the same results. Stuck models repeat themselves
+// immediately; an edit-build-edit cycle whose build keeps printing nothing
+// does not, which is why the repeats must be consecutive.
 func repeatsToolCalls(steps []fantasy.StepResult) bool {
-	counts := map[string]int{}
-	for _, s := range steps[max(len(steps)-loopWindow, 0):] {
+	var sigs []string
+	for _, s := range steps {
 		calls := s.Content.ToolCalls()
 		if len(calls) == 0 {
 			continue
 		}
 		sig := ""
 		for _, c := range calls {
+			if pollingTools[c.ToolName] {
+				sig = ""
+				break
+			}
 			sig += c.ToolName + "\x00" + c.Input + "\x00"
 		}
-		for _, res := range s.Content.ToolResults() {
-			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
-			sig += txt.Text + "\x00"
+		if sig != "" {
+			for _, res := range s.Content.ToolResults() {
+				txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
+				sig += txt.Text + "\x00"
+			}
 		}
-		if counts[sig]++; counts[sig] > loopRepeats {
-			return true
+		sigs = append(sigs, sig)
+	}
+	if len(sigs) <= loopRepeats || sigs[len(sigs)-1] == "" {
+		return false
+	}
+	for _, s := range sigs[len(sigs)-loopRepeats-1:] {
+		if s != sigs[len(sigs)-1] {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // ContextUsed is the context one model call took: providers report cache

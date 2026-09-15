@@ -130,7 +130,7 @@ func contextTooLarge(err error) bool {
 // refuses as too long is compacted and resent once.
 func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text string) {
 	ag := h.agents
-	retried := false
+	retried, capDropped := false, false
 	for {
 		ag.mu.Lock()
 		ag.holdOverflow = !retried && ag.compactFails < compactMaxFails
@@ -140,6 +140,17 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		text = "" // history holds the user message from here on
 		if err != nil && !errors.Is(err, agent.ErrTurnActive) {
 			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
+		}
+		// a model whose ceiling is lower than the cap zemi asked for: drop
+		// the cap, remember it, and send again rather than failing every turn
+		if !capDropped && runner.MaxOutputTokens > 0 && maxTokensRefused(err) {
+			capDropped = true
+			ag.mu.Lock()
+			capRejected.Store(ag.turnModel, true)
+			ag.beginTurn()
+			ag.mu.Unlock()
+			runner.MaxOutputTokens = 0
+			continue
 		}
 		reason := compactAuto
 		switch {

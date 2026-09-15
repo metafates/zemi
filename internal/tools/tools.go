@@ -407,7 +407,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runMultiedit),
 
-		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
+		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files when ripgrep is installed. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
@@ -418,7 +418,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
+		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},

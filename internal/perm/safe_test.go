@@ -20,6 +20,11 @@ func TestSafeCommand(t *testing.T) {
 		{"cd internal && go vet ./...", true},
 		{"python3 -m pytest -q", true},
 
+		{"sed -n 1,50p internal/web/main.go", true},
+		{"awk '$3 < 100 {print $1}' data.txt", true},
+		{"npm run test:unit", true},
+		{"npm run lint:fix", true},
+
 		{"git fetch --upload-pack=./pwn.sh ./repo", false},
 		{"git fetch", false},
 		{"go run ./cmd/x", false},
