@@ -125,6 +125,7 @@ type agentHost struct {
 	cfgProposals []*cfgProposal
 	cfgAuto      int
 	reflected    int
+	reflectErr   string // last reflector run's error, "" after a success (/health)
 }
 
 func newAgentHost() *agentHost {

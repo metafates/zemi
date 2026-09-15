@@ -164,6 +164,9 @@ func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 				{Name: "resume", Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "health", Desc: "check model, store, permissions, reflector and runtime", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.OpenHealth()
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "compact", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.CompactNow()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

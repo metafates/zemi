@@ -941,7 +941,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   Slash commands replace the old cmdline: `/quit`, `/help`, `/model`,
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter resumes), `/resume [id]` (latest without an id; history and
-  transcript rebuilt from the store), plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
+  transcript rebuilt from the store), `/compact`, `/health` (one row per
+  check: store, model key, permissions.lua, git, reflector, pending
+  reviews, skills, Lua runtime), plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
   `/skills`, `/reflect`). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
