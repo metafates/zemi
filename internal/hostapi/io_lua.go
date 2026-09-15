@@ -31,15 +31,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// secretEnvShape matches env var names zemi refuses to expose or pass to
-// children (case-insensitive).
-var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "PRIVATE_KEY"}
-
-func envIsSecret(name string) bool {
-	up := strings.ToUpper(name)
-	return slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
-}
-
 // secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
 var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
 
@@ -123,22 +114,19 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // the §6.5 contract ("permission ask required"): host-API calls from Lua
 // never open the interactive overlay, so the asker is stripped from the
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
-func (h *Host) luaGate(L *glua.LState, subject, arg string) error {
+func (h *Host) luaGate(L *glua.LState, subject, arg string) {
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	switch v.Decision {
 	case perm.Allow:
-		return nil
 	case perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
 		})
 		L.RaiseError("%s %s: permission ask required", subject, arg)
-		return fmt.Errorf("ask")
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
-		return fmt.Errorf("deny")
 	}
 }
 
@@ -149,7 +137,7 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if envIsSecret(name) {
+		if perm.EnvIsSecret(name) {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
 		L.Push(lua.FromGo(L, os.Getenv(name)))
@@ -183,10 +171,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("put", L.NewFunction(func(L *glua.LState) int {
 		key := L.CheckString(1)
-		v, err := luaToGoChecked(L, 2, "zemi.state.put")
-		if err != nil {
-			return 0
-		}
+		v := luaToGoChecked(L, 2, "zemi.state.put")
 		if h.GlobalDB == nil {
 			L.RaiseError("zemi.state.put: store unavailable")
 		}
@@ -238,9 +223,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	set := func(repeat bool) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
-			if h.refuseDuringRender(L, "zemi.timer") {
-				return 0
-			}
+			h.refuseDuringRender(L, "zemi.timer")
 			ms := L.CheckNumber(1)
 			fn := L.CheckFunction(2)
 			// set(0, fn) runs fn on the next queue turn (vim.schedule); a
@@ -309,9 +292,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		if err := h.luaGate(L, subject, resolved); err != nil {
-			return "", false
-		}
+		h.luaGate(L, subject, resolved)
 		return resolved, true
 	}
 	kind := func(fi os.FileInfo) string {
@@ -411,9 +392,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		if err := h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir); err != nil {
-			return 0
-		}
+		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir)
 		matches, err := h.jailedGlob(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
@@ -424,9 +403,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("grep", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		if err := h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir); err != nil {
-			return 0
-		}
+		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir)
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
@@ -617,9 +594,7 @@ type httpHandle struct {
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
-	if err := h.luaGate(L, subject, req.url); err != nil {
-		return 0
-	}
+	h.luaGate(L, subject, req.url)
 	hnd := &httpHandle{done: make(chan struct{})}
 	gen := h.currentGen()
 	h.GoSafe(subject, func() {
@@ -753,25 +728,6 @@ func (j *jobHandle) snapshot() map[string]any {
 	}
 }
 
-// jobEnvFilters builds the child environment: parent minus secret-shaped
-// names plus Lua-supplied extras (§6.5).
-func jobEnvFilters(extras map[string]any) ([]string, error) {
-	var out []string
-	for _, kv := range os.Environ() {
-		name, _, ok := strings.Cut(kv, "=")
-		if ok && !envIsSecret(name) {
-			out = append(out, kv)
-		}
-	}
-	for k, v := range extras {
-		if envIsSecret(k) || perm.EnvAssignmentGate(k) {
-			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
-		}
-		out = append(out, k+"="+fmt.Sprint(v))
-	}
-	return out, nil
-}
-
 // lineSink batches output lines for a Lua callback: a line waits at most
 // 30ms, and one delivery runs at a time, so a chatty process cannot flood
 // the queue.
@@ -869,9 +825,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
-		if err := h.luaGate(L, "lua.job.start", cmdName); err != nil {
-			return nil
-		}
+		h.luaGate(L, "lua.job.start", cmdName)
 		var args []string
 		if list, ok := spec.RawGetString("args").(*glua.LTable); ok {
 			list.ForEach(func(_, v glua.LValue) {
@@ -891,7 +845,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 		}
-		env, err := jobEnvFilters(extras)
+		env, err := perm.ChildEnv(extras)
 		if err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
 		}

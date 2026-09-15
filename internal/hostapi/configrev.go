@@ -157,7 +157,7 @@ func (h *Host) applyCfgProposal(p *cfgProposal) {
 			h.Log.Warn("config-rev", "dump regenerate failed", map[string]any{"error": err.Error()})
 		}
 	}
-	h.memNotify("info", "config", "applied: "+p.Title+redactNote(p.Scrubbed))
+	h.Notify("info", "config", "applied: "+p.Title+redactNote(p.Scrubbed))
 	h.EmitAsync("config.applied", map[string]any{"id": p.ID, "title": p.Title})
 }
 
@@ -272,12 +272,12 @@ func (h *Host) configCommand(args string) error {
 func (h *Host) openConfigReview() {
 	ui := h.hooks()
 	if ui == nil {
-		h.memNotify("warn", "config", "review UI unavailable")
+		h.Notify("warn", "config", "review UI unavailable")
 		return
 	}
 	rows := h.cfgRows()
 	if len(rows) == 0 {
-		h.memNotify("info", "config", "no pending config proposals")
+		h.Notify("info", "config", "no pending config proposals")
 		return
 	}
 	accepted, rejected := ui.ReviewConfigs(rows)
@@ -304,7 +304,7 @@ func (h *Host) openConfigReview() {
 		}
 	}
 	if applied+dropped > 0 {
-		h.memNotify("info", "config", fmt.Sprintf("applied %d, rejected %d", applied, dropped))
+		h.Notify("info", "config", fmt.Sprintf("applied %d, rejected %d", applied, dropped))
 	}
 }
 
@@ -321,7 +321,7 @@ func (h *Host) listRevisions() error {
 	}
 	ui := h.hooks()
 	if len(revs) == 0 || ui == nil {
-		h.memNotify("info", "revisions", "no config revisions yet")
+		h.Notify("info", "revisions", "no config revisions yet")
 		return nil
 	}
 	items := make([]any, 0, len(revs))
@@ -385,7 +385,7 @@ func (h *Host) revertRevision(id string) error {
 			"id": rev.ID, "error": err.Error(),
 		})
 	}
-	h.memNotify("info", "revisions", "reverted: "+rev.Title+" (reload to apply)")
+	h.Notify("info", "revisions", "reverted: "+rev.Title+" (reload to apply)")
 	return nil
 }
 

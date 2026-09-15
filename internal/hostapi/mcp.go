@@ -87,7 +87,7 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 }
 
 func (h *Host) startMCP(s *mcpServer) {
-	env, _ := jobEnvFilters(nil)
+	env, _ := perm.ChildEnv(nil)
 	for k, v := range s.spec.Env {
 		env = append(env, k+"="+os.ExpandEnv(v))
 	}
@@ -110,7 +110,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		if errors.Is(err, mcp.ErrAuthRequired) {
 			s.status, s.err = "needs sign-in", ""
 			s.mu.Unlock()
-			h.memNotify("info", "mcp", s.name+" needs you to sign in: open /mcp")
+			h.Notify("info", "mcp", s.name+" needs you to sign in: open /mcp")
 			h.refresh()
 			return
 		}
@@ -512,16 +512,16 @@ func (h *Host) signInMCP(name string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		err := auth.Authorize(ctx, func(u string) {
-			h.memNotify("info", "Sign in to "+name, "Finish in your browser. If it did not open, visit "+u)
+			h.Notify("info", "Sign in to "+name, "Finish in your browser. If it did not open, visit "+u)
 			h.openBrowser(u)
 		})
 		if err != nil {
-			h.memNotify("error", "mcp", "signing in to "+name+" failed: "+err.Error())
+			h.Notify("error", "mcp", "signing in to "+name+" failed: "+err.Error())
 			return
 		}
-		h.memNotify("info", "mcp", "signed in to "+name)
+		h.Notify("info", "mcp", "signed in to "+name)
 		if err := h.restartMCP(name); err != nil {
-			h.memNotify("error", "mcp", err.Error())
+			h.Notify("error", "mcp", err.Error())
 		}
 	})
 	return nil
@@ -535,7 +535,7 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
-	h.memNotify("info", "mcp", "signed out of "+name)
+	h.Notify("info", "mcp", "signed out of "+name)
 	return h.restartMCP(name)
 }
 

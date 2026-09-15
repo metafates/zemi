@@ -1,6 +1,8 @@
 package perm
 
 import (
+	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"unicode"
@@ -383,4 +385,31 @@ func isName(s string) bool {
 		return false
 	}
 	return true
+}
+
+var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "PRIVATE_KEY"}
+
+// EnvIsSecret reports whether an env var name looks like it holds a secret
+// (case-insensitive); such variables never reach children or Lua.
+func EnvIsSecret(name string) bool {
+	up := strings.ToUpper(name)
+	return slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
+}
+
+// ChildEnv is a child process environment: zemi's own minus secret-shaped
+// names, plus extras that pass the secret and assignment gates.
+func ChildEnv(extras map[string]any) ([]string, error) {
+	var out []string
+	for _, kv := range os.Environ() {
+		if name, _, ok := strings.Cut(kv, "="); ok && !EnvIsSecret(name) {
+			out = append(out, kv)
+		}
+	}
+	for k, v := range extras {
+		if EnvIsSecret(k) || EnvAssignmentGate(k) {
+			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
+		}
+		out = append(out, k+"="+fmt.Sprint(v))
+	}
+	return out, nil
 }

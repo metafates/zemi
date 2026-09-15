@@ -343,7 +343,7 @@ func (h *Host) skillsCommand(args string) error {
 		if err := h.setSkillEnabled(nil, fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
-		h.memNotify("info", "skills", fields[0]+"d "+fields[1])
+		h.Notify("info", "skills", fields[0]+"d "+fields[1])
 		return nil
 	default:
 		return errors.New("usage: /skills | /skills enable <name> | /skills disable <name>")
@@ -356,7 +356,7 @@ func (h *Host) skillsCommand(args string) error {
 func (h *Host) openSkills() {
 	ui := h.hooks()
 	if ui == nil || len(h.skillsReg.list()) == 0 {
-		h.memNotify("info", "skills", "no skills found (add them under skills/ in your config)")
+		h.Notify("info", "skills", "no skills found (add them under skills/ in your config)")
 		return
 	}
 	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems})

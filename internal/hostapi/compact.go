@@ -59,7 +59,7 @@ func (h *Host) CompactNow() error {
 		h.refresh()
 		if queued != "" {
 			if err := h.AgentSend(queued); err != nil {
-				h.memNotify("error", "agent", err.Error())
+				h.Notify("error", "agent", err.Error())
 			}
 		}
 	})
@@ -73,7 +73,7 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner) {
 	defer h.setCompacting(false)
 	if err := h.compact(ctx, runner); err != nil {
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error()})
-		h.memNotify("error", "compact", err.Error())
+		h.Notify("error", "compact", err.Error())
 	}
 }
 

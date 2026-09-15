@@ -1164,9 +1164,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.model.pick") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.model.pick")
 		id, ok := h.pickModel()
 		if !ok {
 			L.Push(glua.LNil)

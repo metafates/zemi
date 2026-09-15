@@ -61,7 +61,7 @@ func (h *Host) OpenErrors() error {
 		return errors.New("no UI attached")
 	}
 	if len(entries) == 0 {
-		h.memNotify("info", "errors", "no errors recorded")
+		h.Notify("info", "errors", "no errors recorded")
 		return nil
 	}
 	items := make([]any, 0, len(entries))

@@ -22,6 +22,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 type lspDef struct {
@@ -130,7 +131,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 	if !ok {
 		h.GoSafe("lsp start "+def.Name, func() {
 			defer close(p.ready)
-			env, _ := jobEnvFilters(nil)
+			env, _ := perm.ChildEnv(nil)
 			for k, v := range def.Env {
 				env = append(env, k+"="+os.ExpandEnv(v))
 			}

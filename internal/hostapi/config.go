@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"sync"
 
 	"github.com/metafates/zemi/internal/config"
@@ -82,7 +81,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		for _, s := range h.Settings.Schema() {
 			rows = append(rows, map[string]any{
 				"path": s.Path, "kind": s.Kind, "default": s.Default, "desc": s.Desc,
-				"writable": s.UserWritable && !s.AutonomyKnob,
+				"writable": s.UserWritable,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -90,9 +89,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.config.set") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.config.set")
 		path := L.CheckString(1)
 		v, err := lua.ToGo(L.Get(2))
 		if err != nil {
@@ -100,9 +97,6 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.RT.CurrentOrigin() != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
-		}
-		if h.Settings.BootWindowClosed() && isAutonomyKnob(h.Settings, path) {
-			L.RaiseError("zemi.config.set: autonomy knob %q is host-owned and cannot be set after boot", path)
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
@@ -122,43 +116,13 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			origin: h.RT.CurrentOrigin(),
 			src:    h.RT.CurrentPath(),
 		}
-		// Go-side Set path: deliver on the interpreter via the queue.
-		id := h.Settings.AddWatch(config.Watcher{Path: path, Fn: func(old, new any) { h.deliverWatch(rec, old, new) }})
+		id := h.Settings.AddWatch(config.Watcher{Path: path})
 		h.watches.add(id, rec)
 		L.Push(glua.LNumber(id))
 		return 1
 	}))
 
 	return tb
-}
-
-func isAutonomyKnob(s *config.Store, path string) bool {
-	for _, def := range s.Schema() {
-		if def.Path == path && def.AutonomyKnob {
-			return true
-		}
-	}
-	return false
-}
-
-// deliverWatch runs a config-watch callback on the interpreter in a ui-class
-// request. It never blocks the setter: stale-generation callbacks are
-// dropped and failures logged (DESIGN §4). Only for Go-side Set callers;
-// interpreter-side Sets use deliverFired (a blocking RT.Do from inside a
-// running request would deadlock the queue).
-func (h *Host) deliverWatch(rec watchRec, old, new any) {
-	if h.currentGen() != rec.gen {
-		h.Log.Debug("config", "stale config watch dropped", map[string]any{"path": rec.path})
-		return
-	}
-	_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		return nil, h.callWatch(L, rec, old, new)
-	})
-	if err != nil && !isQuietLuaErr(err) {
-		h.Log.Error("config", "config watch failed", map[string]any{
-			"path": rec.path, "error": err.Error(),
-		})
-	}
 }
 
 // deliverFired runs the watches a SetQuiet fired inline on the interpreter

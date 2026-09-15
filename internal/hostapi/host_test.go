@@ -282,11 +282,10 @@ func TestEmitVetoable(t *testing.T) {
 // refused, and a writable key applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
-	h.Settings.CloseBootWindow()
 	runUser(t, r, `
-		local ok, err = pcall(zemi.config.set, "skills.autonomy", "yolo")
-		assert(not ok, "autonomy knob accepted after boot")
-		assert(tostring(err):find("autonomy knob", 1, true) ~= nil, "err=" .. tostring(err))
+		local ok, err = pcall(zemi.config.set, "memory.autonomy", "auto")
+		assert(not ok, "autonomy knob accepted")
+		assert(tostring(err):find("not writable", 1, true) ~= nil, "err=" .. tostring(err))
 
 		local ok2, err2 = pcall(zemi.config.set, "reflector.every_n_sessions", 5)
 		assert(not ok2, "non-writable key accepted")
@@ -294,7 +293,7 @@ func TestConfigSetGating(t *testing.T) {
 
 		zemi.config.set("ui.composer.history", 42)
 	`)
-	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != float64(42) {
+	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != 42 {
 		t.Fatalf("ui.composer.history = %v, want 42", v)
 	}
 }

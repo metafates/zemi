@@ -83,9 +83,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.keymap.set: %v", err)
 		}
-		if h.refuseDuringRender(L, "zemi.keymap.set") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.keymap.set")
 		b := &KeyBinding{Key: key, Origin: h.RT.CurrentOrigin(), Path: h.RT.CurrentPath(), Gen: h.currentGen()}
 		switch v := L.Get(2).(type) {
 		case *glua.LFunction:
@@ -124,9 +122,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}
-		if h.refuseDuringRender(L, "zemi.keymap.del") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.keymap.del")
 		if err := h.Keymaps.Del(h.RT.CurrentOrigin(), key); err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}

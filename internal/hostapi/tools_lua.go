@@ -113,9 +113,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.tool.register") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.tool.register")
 		if h.RT.CurrentOrigin() == lua.OriginLearned {
 			L.RaiseError("zemi.tool.register: learned code may not register tools (DESIGN §10.4, §10.5)")
 		}
@@ -174,9 +172,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("override", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.tool.override") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.tool.override")
 		if o := h.RT.CurrentOrigin(); o == lua.OriginLearned || o == lua.OriginProject {
 			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
 		}

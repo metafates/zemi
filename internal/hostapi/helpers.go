@@ -7,13 +7,12 @@ import (
 
 // luaToGoChecked marshals the value at arg idx, raising a Lua error tagged
 // with the calling API on failure.
-func luaToGoChecked(L *glua.LState, idx int, api string) (any, error) {
+func luaToGoChecked(L *glua.LState, idx int, api string) any {
 	v, err := lua.ToGo(L.Get(idx))
 	if err != nil {
 		L.RaiseError("%s: %v", api, err)
-		return nil, err
 	}
-	return v, nil
+	return v
 }
 
 // luaResult is the sync-op return shape (DESIGN §6.0): true, or nil and the

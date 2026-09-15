@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -148,37 +147,6 @@ func (m *Jobs) Kill(id string) error {
 	return nil
 }
 
-// childEnv builds the job environment: parent minus secret-shaped names
-// plus validated extras (Lua-supplied values only, §6.5).
-func childEnv(extras map[string]any) ([]string, error) {
-	out := make([]string, 0, len(extras)+16)
-	for _, kv := range os.Environ() {
-		name, _, ok := strings.Cut(kv, "=")
-		if ok && !envIsSecretName(name) {
-			out = append(out, kv)
-		}
-	}
-	for k, v := range extras {
-		if envIsSecretName(k) || perm.EnvAssignmentGate(k) {
-			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
-		}
-		out = append(out, k+"="+fmt.Sprint(v))
-	}
-	return out, nil
-}
-
-// envIsSecretName mirrors the hostapi denylist: token/secret/password/
-// credential/api_key/private_key appear anywhere in the name.
-func envIsSecretName(name string) bool {
-	upper := strings.ToUpper(name)
-	for _, s := range []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "PRIVATE_KEY"} {
-		if strings.Contains(upper, s) {
-			return true
-		}
-	}
-	return false
-}
-
 func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
@@ -197,7 +165,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	if m, ok := input["env"].(map[string]any); ok {
 		extras = m
 	}
-	env, err := childEnv(extras)
+	env, err := perm.ChildEnv(extras)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

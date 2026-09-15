@@ -1,6 +1,6 @@
 // Package config: runtime settings with a Go-owned schema. Only keys the
-// schema marks user-writable can be set from Lua, and only during boot from
-// user-origin code (the window closes when app.ready is emitted).
+// schema marks user-writable can be set from Lua; the rest (autonomy knobs
+// among them) only from Go.
 package config
 
 import (
@@ -14,7 +14,6 @@ type Setting struct {
 	Kind         string // "string" | "int" | "bool"
 	Default      any
 	UserWritable bool
-	AutonomyKnob bool // refused by zemi.config.set from every origin after boot
 	Desc         string
 }
 
@@ -25,7 +24,6 @@ type Store struct {
 	schema   map[string]Setting
 	watchers []Watcher
 	watchSeq int
-	ready    bool // boot window closed when true
 }
 
 // WatchFired is one watch that a SetQuiet would have notified.
@@ -38,7 +36,6 @@ type WatchFired struct {
 type Watcher struct {
 	ID   int // assigned by AddWatch
 	Path string
-	Fn   func(old, new any)
 }
 
 func NewStore() *Store {
@@ -72,10 +69,9 @@ func (s *Store) defineDefaults() {
 		{Path: "reflector.every_n_sessions", Kind: "int", Default: 1, Desc: "run the reflector every N sessions"},
 		{Path: "reflector.model", Kind: "string", Default: "", UserWritable: true, Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
 		{Path: "reflector.timeout_ms", Kind: "int", Default: 120000, Desc: "reflector run timeout in milliseconds"},
-		{Path: "memory.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "memory autonomy mode"},
+		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "memory autonomy mode"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},
-		{Path: "skills.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "skills autonomy mode"},
-		{Path: "config.autonomy", Kind: "string", Default: "ask", AutonomyKnob: true, Desc: "config revision autonomy mode"},
+		{Path: "config.autonomy", Kind: "string", Default: "ask", Desc: "config revision autonomy mode"},
 	}
 	for _, def := range defaults {
 		s.schema[def.Path] = def
@@ -117,7 +113,8 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 		s.mu.Unlock()
 		return nil, &ErrNotWritable{Path: path}
 	}
-	if err := checkKind(def, val); err != nil {
+	val, err := checkKind(def, val)
+	if err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
@@ -133,9 +130,8 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	return fired, nil
 }
 
-// SetHost writes any schema key from Go code (settings UI, host internals),
-// bypassing the Lua writability gate but still validating kind. Autonomy
-// knobs are host-owned: this is their only write path after boot.
+// SetHost writes any schema key from Go code, bypassing the Lua writability
+// gate but still validating kind.
 func (s *Store) SetHost(path string, val any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,7 +139,8 @@ func (s *Store) SetHost(path string, val any) error {
 	if !ok {
 		return &ErrUnknownKey{Path: path}
 	}
-	if err := checkKind(def, val); err != nil {
+	val, err := checkKind(def, val)
+	if err != nil {
 		return err
 	}
 	s.values[path] = val
@@ -173,32 +170,21 @@ func (s *Store) RemoveWatch(id int) bool {
 	return false
 }
 
-// CloseBootWindow marks the boot load complete: autonomy knobs become
-// unwritable and config.set is only legal through host API origin checks
-// (which also require user origin).
-func (s *Store) CloseBootWindow() {
-	s.mu.Lock()
-	s.ready = true
-	s.mu.Unlock()
-}
-
-// BootWindowClosed reports whether app.ready has been emitted.
-func (s *Store) BootWindowClosed() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.ready
-}
-
-func checkKind(def Setting, val any) error {
+// checkKind validates val and returns it in stored form: ints as int, so
+// readers can assert int whether Lua (float64) or Go handed it in.
+func checkKind(def Setting, val any) (any, error) {
 	ok := true
 	switch def.Kind {
 	case "string":
 		_, ok = val.(string)
 	case "int":
 		switch v := val.(type) {
-		case int, int64:
+		case int:
+		case int64:
+			val = int(v)
 		case float64:
 			ok = v == float64(int64(v))
+			val = int(v)
 		default:
 			ok = false
 		}
@@ -206,7 +192,7 @@ func checkKind(def Setting, val any) error {
 		_, ok = val.(bool)
 	}
 	if !ok {
-		return &ErrBadValue{Path: def.Path, Want: def.Kind}
+		return nil, &ErrBadValue{Path: def.Path, Want: def.Kind}
 	}
-	return nil
+	return val, nil
 }

@@ -47,14 +47,14 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		if action == "reject" {
-			h.memNotify("info", "learn", "proposal rejected")
+			h.Notify("info", "learn", "proposal rejected")
 			return 0
 		}
 		if err := h.storeProposal(res); err != nil {
 			L.RaiseError("zemi.learn.decide: %v", err)
 			return 0
 		}
-		h.memNotify("info", "learn", "stored: "+res.Memory.Text)
+		h.Notify("info", "learn", "stored: "+res.Memory.Text)
 		return 0
 	}))
 

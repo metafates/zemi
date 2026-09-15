@@ -57,13 +57,6 @@ func (h *Host) storeMemory(scope, origin, kind, text string, tags []string) (*le
 	return learn.Intake(scope, origin, kind, text, tags, prov)
 }
 
-// memNotify is a nil-safe toast.
-func (h *Host) memNotify(level, title, body string) {
-	if ui := h.hooks(); ui != nil {
-		ui.Notify(level, title, body)
-	}
-}
-
 // queueProposal persists a policy-clean memory for review in its scope's
 // store. The id is assigned here so review decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) {
@@ -95,7 +88,7 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	ag.mu.Lock()
 	ag.memAuto++
 	ag.mu.Unlock()
-	h.memNotify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
+	h.Notify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -135,7 +128,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.memNotify("info", "memory", "remembered"+redactNote(res.Scrubbed))
+	h.Notify("info", "memory", "remembered"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -179,12 +172,12 @@ func (h *Host) memoryCommand(args string) error {
 func (h *Host) openMemoryReview() {
 	ui := h.hooks()
 	if ui == nil {
-		h.memNotify("warn", "memory", "review UI unavailable")
+		h.Notify("warn", "memory", "review UI unavailable")
 		return
 	}
 	rows := h.memoryRows()
 	if len(rows) == 0 {
-		h.memNotify("info", "memory", "nothing remembered yet; /memory <note> saves one")
+		h.Notify("info", "memory", "nothing remembered yet; /memory <note> saves one")
 		return
 	}
 	decisions := ui.ReviewMemories(rows)
@@ -219,7 +212,7 @@ func (h *Host) openMemoryReview() {
 		}
 	}
 	if len(parts) > 0 {
-		h.memNotify("info", "memory", strings.Join(parts, ", "))
+		h.Notify("info", "memory", strings.Join(parts, ", "))
 	}
 }
 

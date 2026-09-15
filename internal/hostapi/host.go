@@ -838,15 +838,13 @@ func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
 // ---------------------------------------------------------------------------
 // registration guard (mutators refuse during widget render)
 
-func (h *Host) refuseDuringRender(L *glua.LState, what string) bool {
+func (h *Host) refuseDuringRender(L *glua.LState, what string) {
 	h.renderMu.Lock()
 	w := h.renderSize
 	h.renderMu.Unlock()
 	if w != 0 {
 		L.RaiseError("zemi: %s is not allowed during widget render (render must be pure)", what)
-		return true
 	}
-	return false
 }
 
 // ---------------------------------------------------------------------------

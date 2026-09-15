@@ -274,8 +274,7 @@ the fail-closed direction). Git is the audit trail, files + DB are the source of
 missing git degrades to log warnings. Git helpers shell out to the `git` binary (no git
 library in go.mod), run with `GIT_CONFIG_NOSYSTEM=1` and a 15s timeout.
 
-`skills.autonomy` / `config.autonomy` knobs are currently no-ops for
-skills (skill proposals are mandatory-review by design, DESIGN §10.4);
+Skill proposals always wait for review (DESIGN §10.4);
 `config.autonomy = auto` lets session-scope deny/ask patches auto-apply.
 The reflector (§10.3) may propose config patches as rule objects only —
 `intakeConfigPatch` strict-decodes them (unknown fields refuse the patch)

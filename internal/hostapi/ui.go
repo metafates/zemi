@@ -14,9 +14,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	widget := L.NewTable()
 	widget.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.widget.register") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.widget.register")
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.widget.register: expected a spec table")
@@ -56,14 +54,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	theme := L.NewTable()
 	theme.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.theme.register") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.theme.register")
 		name := L.CheckString(1)
-		spec, err := luaToGoChecked(L, 2, "zemi.ui.theme.register")
-		if err != nil {
-			return 0
-		}
+		spec := luaToGoChecked(L, 2, "zemi.ui.theme.register")
 		m, _ := spec.(map[string]any)
 		t := &Theme{
 			Name:    name,
@@ -93,9 +86,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.theme.set") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.theme.set")
 		name := L.CheckString(1)
 		if h.Themes.Get(name) == nil {
 			L.RaiseError("zemi.ui.theme.set: unknown theme %q", name)
@@ -117,9 +108,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	overlay := L.NewTable()
 	overlay.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.overlay.open") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.overlay.open")
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
@@ -160,9 +149,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	overlay.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if h.refuseDuringRender(L, "zemi.ui.overlay.close") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.overlay.close")
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(id)
 		}
@@ -175,9 +162,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// over the overlay stack. on_choice(item) runs on enter, on_choice(nil)
 	// on cancel; opts.prompt titles it, opts.format_item renders rows.
 	tb.RawSetString("select", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.select") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.select")
 		itemsV := L.CheckTable(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
@@ -209,9 +194,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// vim.ui.input. on_confirm(text) runs on enter, on_confirm(nil) on esc;
 	// opts.prompt titles it, opts.default prefills it.
 	tb.RawSetString("input", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.input") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.input")
 		opts := L.OptTable(1, L.NewTable())
 		cb := L.CheckFunction(2)
 		o := Overlay{
@@ -264,14 +247,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// (and any theme set later): { fg, bg, bold, italic, underline, reverse },
 	// colors as hex or palette names. theme.register builds a whole theme.
 	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.hl") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.hl")
 		group := L.CheckString(1)
-		v, err := luaToGoChecked(L, 2, "zemi.ui.hl")
-		if err != nil {
-			return 0
-		}
+		v := luaToGoChecked(L, 2, "zemi.ui.hl")
 		m, _ := v.(map[string]any)
 		h.Themes.SetHL(group, hlSpec(m))
 		h.refresh()
@@ -279,9 +257,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.help") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.ui.help")
 		h.OpenHelp()
 		return 0
 	}))

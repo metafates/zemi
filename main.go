@@ -524,14 +524,12 @@ func writeTrust(path string, m map[string]string) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-// readyStep closes the autonomy-knob boot window and emits app.ready; the
-// window closes before the handlers run (DESIGN §10.8). Print mode skips
-// the startup reflection: the process exits before it could finish.
+// readyStep emits app.ready. Print mode skips the startup reflection: the
+// process exits before it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			h.Settings.CloseBootWindow()
 			h.EmitOnState(g.L, "app.ready", nil)
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).

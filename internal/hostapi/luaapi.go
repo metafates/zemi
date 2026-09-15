@@ -63,9 +63,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	edit := func(what string, op func(L *glua.LState) (string, int)) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
-			if h.refuseDuringRender(L, "zemi.composer."+what) {
-				return 0
-			}
+			h.refuseDuringRender(L, "zemi.composer."+what)
 			text, cursor := op(L)
 			if ui := h.hooks(); ui != nil {
 				ui.ComposerEdit(what, text, cursor)
@@ -121,22 +119,16 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		return 1
 	}))
 	tb.RawSetString("new", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.session.new") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.session.new")
 		return luaResult(L, h.NewSession())
 	}))
 	tb.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.session.open") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.session.open")
 		return luaResult(L, h.ResumeSession(L.CheckString(1)))
 	}))
 	// rewind(message_id) -> restored file count, or nil, err
 	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.session.rewind") {
-			return 0
-		}
+		h.refuseDuringRender(L, "zemi.session.rewind")
 		n, err := h.RewindTo(L.CheckString(1))
 		if err != nil {
 			return luaResult(L, err)
