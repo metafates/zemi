@@ -110,6 +110,34 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	}
 }
 
+// TestAddCompaction: summary, tail copies and the summary pointer land
+// together, and a write that fails leaves none of them behind.
+func TestAddCompaction(t *testing.T) {
+	db := openTest(t)
+	if err := db.CreateSession("s1", "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	summary := &Message{Role: "user", PartsJSON: `{"summary":1}`}
+	tail := []*Message{{Role: "tail", PartsJSON: `{"a":1}`}, {Role: "tail", PartsJSON: `{"b":2}`}}
+	if err := db.AddCompaction("s1", summary, tail); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := db.Messages("s1")
+	if err != nil || len(msgs) != 3 || msgs[0].ID != summary.ID {
+		t.Fatalf("messages = %+v, %v", msgs, err)
+	}
+	if s, _ := db.GetSession("s1"); s.SummaryMessageID != summary.ID {
+		t.Fatalf("summary pointer = %q", s.SummaryMessageID)
+	}
+	if err := db.AddCompaction("ghost", &Message{Role: "user", PartsJSON: `{}`},
+		[]*Message{{Role: "tail", PartsJSON: `{}`}}); err == nil {
+		t.Fatal("an unknown session must fail")
+	}
+	if msgs, _ := db.Messages("ghost"); len(msgs) != 0 {
+		t.Fatalf("rolled back rows remain: %+v", msgs)
+	}
+}
+
 func TestTodosReplace(t *testing.T) {
 	db := openTest(t)
 	if err := db.CreateSession("s1", "", "t", ""); err != nil {

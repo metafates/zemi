@@ -122,21 +122,50 @@ type Message struct {
 	CreatedAt int64
 }
 
-// AddMessage inserts a message row.
-func (s *DB) AddMessage(m *Message) error {
+// execer is what *sql.DB and *sql.Tx share, so one insert serves both.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func insertMessage(ex execer, m *Message) error {
 	if m.ID == "" {
 		m.ID = NewID()
 	}
 	if m.CreatedAt == 0 {
 		m.CreatedAt = now()
 	}
-	_, err := s.db.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
+	_, err := ex.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		m.ID, m.SessionID, m.Role, m.PartsJSON, m.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("store: add message: %w", err)
 	}
 	return nil
+}
+
+// AddMessage inserts a message row.
+func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
+
+// AddCompaction stores a compaction's summary row, the verbatim tail copies
+// that follow it and the session's summary pointer in one transaction: a
+// crash partway would leave a resumed conversation missing the tail.
+func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, m := range append([]*Message{summary}, tail...) {
+		m.SessionID = sessionID
+		if err := insertMessage(tx, m); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
+		summary.ID, now(), sessionID); err != nil {
+		return fmt.Errorf("store: add compaction: %w", err)
+	}
+	return tx.Commit()
 }
 
 // Messages returns a session's messages in insertion order: rowid, since a
