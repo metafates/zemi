@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 	cost REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
+-- the picker and the splash order by recency on every render
+CREATE INDEX IF NOT EXISTS sessions_updated ON sessions(updated_at);
 
 CREATE TABLE IF NOT EXISTS messages (
 	id TEXT PRIMARY KEY,
@@ -158,6 +160,8 @@ CREATE TABLE IF NOT EXISTS memory (
 	origin TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS memory_scope_hit ON memory(scope, last_hit_at);
+-- listings and keywordless digest assembly order by recency within a scope
+CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 
 -- External-content FTS5 over memory.text; triggers keep it in sync
 -- (DESIGN §7). The TEXT primary key leaves the implicit rowid intact.
