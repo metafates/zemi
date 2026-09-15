@@ -40,14 +40,30 @@ type permChoice struct {
 	label string
 	by    string
 	ok    bool
+	tell  bool // deny and stop the turn so the user can say what to do instead
 }
 
 func (pa *permAskPrompt) choices() []permChoice {
-	out := []permChoice{{"Yes", "user:once", true}}
+	out := []permChoice{{"Yes", "user:once", true, false}}
 	if pa.req.Always != "" {
-		out = append(out, permChoice{"Yes, " + pa.req.Always, "user:always", true})
+		out = append(out, permChoice{"Yes, " + pa.req.Always, "user:always", true, false})
 	}
-	return append(out, permChoice{"No", "user", false})
+	return append(out, permChoice{"No", "user", false, false}, permChoice{"No, and tell zemi what to do", "user", false, true})
+}
+
+// choosePerm answers the prompt with c. Telling zemi what to do also denies
+// the queued asks and interrupts the turn; the composer already has focus.
+func (a *App) choosePerm(c permChoice) {
+	a.answerPerm(c.ok, c.by)
+	if !c.tell {
+		return
+	}
+	for a.permAsk != nil {
+		a.answerPerm(false, "user")
+	}
+	if a.host.AgentActive() {
+		a.interrupt()
+	}
 }
 
 type modelPickPrompt struct {
@@ -141,7 +157,7 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 		bw = max(bw, segsWidth(r)+4)
 	}
 	// wide boxes read badly; long rows end in an ellipsis instead
-	bw = max(min(bw, w-4, maxW), 12)
+	bw = max(min(bw, w-4, maxW), min(12, max(w, 4)))
 	badge = ansi.Truncate(badge, bw-2, "…")
 	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
@@ -325,7 +341,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if isDiff {
 		maxW = 120
 	}
-	inner := max(min(w-4, maxW)-4, 20)
+	inner := max(min(w-4, maxW)-4, 1)
 	blank := []hostapi.Segment{{Text: ""}}
 
 	verb, target := permTitle(req, a.host.Dirs.ProjectDir)
@@ -347,7 +363,8 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	case req.Preview != "":
 		content = codePanel(req.Preview, inner)
 	}
-	if room := max(chatH-11, 3); len(content) > room {
+	// the rest of the box: borders, title rows, blanks, hint and the buttons
+	if room := max(chatH-10-len(permButtons(pa, inner)), 3); len(content) > room {
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
 		more := fmt.Sprintf("  %d of %d lines · j/k scroll", pa.scroll+room, len(content))
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
@@ -357,7 +374,10 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for _, r := range append(append([][]hostapi.Segment{}, body...), content...) {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
-	fit = min(max(fit, segsWidth(permButtons(pa, inner))), inner)
+	for _, r := range permButtons(pa, inner) {
+		fit = max(fit, segsWidth(r))
+	}
+	fit = min(fit, inner)
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
@@ -365,8 +385,9 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		body = append(body, blank)
 		body = append(body, content...)
 	}
-	body = append(body, blank, permButtons(pa, fit), blank,
-		hintLine("←→", "choose", "enter", "confirm", "esc", "deny"))
+	body = append(body, blank)
+	body = append(body, permButtons(pa, fit)...)
+	body = append(body, blank, hintLine("←→", "choose", "enter", "confirm", "esc", "deny"))
 
 	badge := ""
 	if n := len(a.permQueue); n > 0 {
@@ -434,33 +455,27 @@ func permNote(reason string) (string, string) {
 	return reason, "Host:Hint"
 }
 
-func permButtons(pa *permAskPrompt, width int) []hostapi.Segment {
-	choices := pa.choices()
-	render := func(labels []string) []hostapi.Segment {
-		var row []hostapi.Segment
-		for i, c := range choices {
-			if i > 0 {
-				row = append(row, hostapi.Segment{Text: "  "})
-			}
-			hl := "Host:Btn"
-			if i == pa.sel {
-				hl = map[bool]string{true: "Host:BtnSel", false: "Host:BtnNo"}[c.ok]
-			}
-			row = append(row, hostapi.Segment{Text: " " + labels[i] + " ", HL: hl, Hit: i + 1})
+// permButtons lays the choices out in one row, or one per row when they do
+// not fit: every label stays whole, since the user approves what it says.
+func permButtons(pa *permAskPrompt, width int) [][]hostapi.Segment {
+	var row []hostapi.Segment
+	var stacked [][]hostapi.Segment
+	for i, c := range pa.choices() {
+		hl := "Host:Btn"
+		if i == pa.sel {
+			hl = map[bool]string{true: "Host:BtnSel", false: "Host:BtnNo"}[c.ok]
 		}
-		return row
+		btn := hostapi.Segment{Text: " " + c.label + " ", HL: hl, Hit: i + 1}
+		if i > 0 {
+			row = append(row, hostapi.Segment{Text: "  "})
+		}
+		row = append(row, btn)
+		stacked = append(stacked, []hostapi.Segment{btn})
 	}
-	labels := make([]string, len(choices))
-	for i, c := range choices {
-		labels[i] = c.label
+	if segsWidth(row) > width {
+		return stacked
 	}
-	row := render(labels)
-	if over := segsWidth(row) - width; over > 0 && len(choices) == 3 {
-		// the "don't ask again" label gives way, the buttons stay
-		labels[1] = ansi.Truncate(labels[1], max(ansi.StringWidth(labels[1])-over, 8), "…")
-		row = render(labels)
-	}
-	return row
+	return [][]hostapi.Segment{row}
 }
 
 // hintLine is a footer of key/label pairs: "←→ choose · enter confirm".

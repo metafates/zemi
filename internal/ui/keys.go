@@ -80,12 +80,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "right", "tab", "l":
 			pa.sel = (pa.sel + 1) % len(choices)
 		case "enter":
-			c := choices[pa.sel]
-			a.answerPerm(c.ok, c.by)
+			a.choosePerm(choices[pa.sel])
 		case "y", "o":
 			pick("user:once")
 		case "a":
 			pick("user:always")
+		case "t":
+			a.choosePerm(choices[len(choices)-1])
 		case "n", "esc":
 			a.answerPerm(false, "user")
 		case "j", "down", "shift+down":

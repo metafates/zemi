@@ -159,6 +159,31 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 	}
 }
 
+// TestPermissionTellNarrow: at 30 columns the box keeps its right border
+// and stacks its buttons, and "t" denies the open ask and the queued one.
+func TestPermissionTellNarrow(t *testing.T) {
+	app, _ := bootAgentApp(t, 30, 30)
+	res := make(chan bool, 2)
+	for _, arg := range []string{"make test", "make lint"} {
+		go func() {
+			ok, _ := app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: arg})
+			res <- ok
+		}()
+	}
+	waitPrompt(t, app, func() bool { return app.permAsk != nil && len(app.permQueue) == 1 })
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "╮") || !strings.Contains(frame, "│  Yes ") || !strings.Contains(frame, "│  No, and tell") {
+		t.Fatalf("narrow box:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
+	for range 2 {
+		if <-res {
+			t.Fatal("tell must deny every ask")
+		}
+	}
+}
+
 // TestGoldenModelPicker pins the Go-owned model picker; enter returns the
 // selected id and stores it, esc cancels.
 func TestGoldenModelPicker(t *testing.T) {
