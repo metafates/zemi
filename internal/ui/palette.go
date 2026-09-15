@@ -75,7 +75,7 @@ func (a *App) updatePalette() {
 			args = append(args, c)
 		}
 	}
-	a.palette.args, a.palette.argStart = args, start
+	a.palette.matches, a.palette.args, a.palette.argStart = nil, args, start
 	a.palette.open = len(args) > 0
 	a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
 }
