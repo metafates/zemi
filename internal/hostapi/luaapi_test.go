@@ -116,6 +116,10 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(zemi.fs.remove("d/e/f.txt") == true and not zemi.fs.exists("d/e/f.txt"), "remove")
 
 		zemi.permission.rule({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "sh" })
+		-- a grandchild holding stdout does not keep the job alive
+		zemi.job.start({ cmd = "sh", args = { "-c", "sleep 5 & echo hi" }, on_exit = function(r) zemi.state.put("bg", r.stdout) end })
+		-- without stdin = true a reader gets EOF instead of hanging
+		zemi.job.start({ cmd = "cat", on_exit = function(r) zemi.state.put("cat", r.code) end })
 		local got = {}
 		zemi.job.start({ cmd = "sh", args = { "-c", "echo one; echo two; exit 3" },
 			on_stdout = function(lines) for _, l in ipairs(lines) do got[#got + 1] = l end end,
@@ -123,7 +127,10 @@ func TestLuaAPIIO(t *testing.T) {
 	`, srv.URL))
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		if v, _ := h.GlobalDB.GetKV("job"); v == `{"code":3,"lines":["one","two"]}` {
+		v, _ := h.GlobalDB.GetKV("job")
+		c, _ := h.GlobalDB.GetKV("cat")
+		bg, _ := h.GlobalDB.GetKV("bg")
+		if v == `{"code":3,"lines":["one","two"]}` && c == "0" && bg == `"hi\n"` {
 			break
 		}
 		if time.Now().After(deadline) {

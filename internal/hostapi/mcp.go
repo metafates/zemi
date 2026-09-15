@@ -59,12 +59,13 @@ type mcpReg struct {
 
 func newMCPReg() *mcpReg { return &mcpReg{servers: map[string]*mcpServer{}} }
 
-var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
+// no "_" in server names: mcp_<server>_<tool> must split one way
+var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // addMCP registers (or replaces) a server and starts it in the background.
 func (h *Host) addMCP(name string, spec MCPSpec) error {
 	if !mcpServerName.MatchString(name) {
-		return fmt.Errorf("server name %q must match [a-z0-9][a-z0-9_-]{0,31}", name)
+		return fmt.Errorf("server name %q must match [a-z0-9][a-z0-9-]{0,31}", name)
 	}
 	if (spec.Command == "") == (spec.URL == "") {
 		return errors.New("give exactly one of command or url")
@@ -223,6 +224,7 @@ func mcpToolName(server, tool string) string {
 // mcpFantasyTools exposes the ready servers' tools, checked through pipe.
 func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var out []fantasy.AgentTool
+	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
 		list, ready := s.tools, s.status == "ready"
@@ -233,6 +235,12 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 		for _, t := range list {
 			if (s.spec.EnabledTools != nil && !contains(s.spec.EnabledTools, t.Name)) || contains(s.spec.DisabledTools, t.Name) {
 				continue
+			}
+			if name := mcpToolName(s.name, t.Name); seen[name] {
+				h.Log.Warn("mcp", "tool name collides, skipped", map[string]any{"server": s.name, "tool": t.Name})
+				continue
+			} else {
+				seen[name] = true
 			}
 			out = append(out, &mcpTool{h: h, srv: s, tool: t, pipe: pipe})
 		}
@@ -491,7 +499,7 @@ func (h *Host) ImportCrushMCP(path string) {
 		existing[s.name] = true
 	}
 	for raw, c := range file.MCP {
-		name := strings.ToLower(mcpNameUnsafe.ReplaceAllString(raw, "-"))
+		name := strings.ToLower(strings.ReplaceAll(mcpNameUnsafe.ReplaceAllString(raw, "-"), "_", "-"))
 		if c.Disabled || existing[name] {
 			continue
 		}

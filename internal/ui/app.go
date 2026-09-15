@@ -123,14 +123,23 @@ func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
 // UI goroutine: the bubbletea event loop owns the only receive of the
 // (unbuffered) msgs channel and is currently inside our Update, so a
 // direct Quit() deadlocks.
+// The app.quit veto waits on the interpreter, so it runs off the UI
+// goroutine too.
 func (a *App) Quit() {
-	if res := a.host.EmitVetoable(a.ctx(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-		a.pushToast("warn", "quit", "blocked: "+res.Reason)
-		return
+	quit := func() {
+		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+			a.dispatch(toastMsg{level: "warn", title: "quit", body: "blocked: " + res.Reason})
+			return
+		}
+		if a.program != nil {
+			a.program.Quit()
+		}
 	}
 	if a.program != nil {
-		go a.program.Quit()
+		go quit()
+		return
 	}
+	quit()
 }
 
 // ---------------------------------------------------------------------------

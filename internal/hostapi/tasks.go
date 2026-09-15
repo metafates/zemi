@@ -38,20 +38,6 @@ type taskReg struct {
 
 func newTaskReg() *taskReg { return &taskReg{tasks: map[string]*bgTask{}} }
 
-func (r *taskReg) running() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	n := 0
-	for _, t := range r.tasks {
-		t.mu.Lock()
-		if t.status == "running" {
-			n++
-		}
-		t.mu.Unlock()
-	}
-	return n
-}
-
 func (r *taskReg) list() []*bgTask {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -66,21 +52,31 @@ func (r *taskReg) list() []*bgTask {
 // startBackgroundAgent launches def on prompt detached from the turn and
 // returns the task id.
 func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (string, error) {
-	if h.tasks.running() >= maxBackgroundAgents {
+	// count and insert under one lock: parallel tool calls race here
+	h.tasks.mu.Lock()
+	running := 0
+	for _, x := range h.tasks.tasks {
+		x.mu.Lock()
+		if x.status == "running" {
+			running++
+		}
+		x.mu.Unlock()
+	}
+	if running >= maxBackgroundAgents {
+		h.tasks.mu.Unlock()
 		return "", fmt.Errorf("%d background agents are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &bgTask{id: store.NewID()[:8], agent: def.Name, description: description, sessionID: h.AgentSessionID(),
 		started: time.Now(), cancel: cancel, status: "running"}
-	h.tasks.mu.Lock()
 	h.tasks.tasks[t.id] = t
 	h.tasks.mu.Unlock()
 	h.bgAgents.Add(1)
 	h.refresh()
 	h.GoSafe("background agent", func() {
 		defer cancel()
+		defer h.bgAgents.Add(-1)
 		text, err := h.runSubagent(ctx, def, description, prompt, nil)
-		h.bgAgents.Add(-1)
 		t.mu.Lock()
 		t.finished = time.Now()
 		switch {

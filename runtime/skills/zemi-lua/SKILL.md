@@ -46,7 +46,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | `debug`, `info`, `warn`, `error` |
-| `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` |
+| `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
 | `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` |
 | `zemi.provider`, `zemi.model` | `register`, `list`; `list`, `set`, `pick` |
 | `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()` |
@@ -59,7 +59,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.tool` | `register({ name, description, input, execute })`, `override`, `list` |
 | `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
 | `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })` |
-| `zemi.job` | `start({ cmd, args, env, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }`; `out(spec)` runs to completion |
+| `zemi.job` | `start({ cmd, args, env, stdin, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }` (`write` needs `stdin = true`); `out(spec)` runs to completion |
 | `zemi.timer` | `set(ms, fn)` (0 ms = next tick), `every(ms, fn)` -> `{ stop }` |
 | `zemi.state`, `zemi.env` | `put`, `get` (persisted kv); `get` (filtered environment) |
 

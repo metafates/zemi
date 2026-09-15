@@ -239,7 +239,7 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 			sid = ""
 		}
 	}
-	hooks := &subagentHooks{h: h, def: def, modelID: h.currentModelID(prof), progress: progress, sid: sid}
+	hooks := &subagentHooks{h: h, def: def, modelID: h.currentModelID(prof), progress: progress, sid: sid, parent: h.AgentSessionID()}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(role string, msg fantasy.Message) error {
@@ -288,6 +288,7 @@ type subagentHooks struct {
 	modelID  string
 	progress subagentProgress
 	sid      string
+	parent   string // the session that started the run
 	calls    atomic.Int32
 }
 
@@ -318,13 +319,14 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	cost := h.turnCost(s.modelID, usage.InputTokens, usage.OutputTokens)
 	ag := h.agents
 	ag.mu.Lock()
-	ag.sessIn += usage.InputTokens
-	ag.sessOut += usage.OutputTokens
-	ag.sessCost += cost
-	parent := ag.sessionID
+	if ag.sessionID == s.parent { // a background run may outlive its session
+		ag.sessIn += usage.InputTokens
+		ag.sessOut += usage.OutputTokens
+		ag.sessCost += cost
+	}
 	ag.mu.Unlock()
 	if h.DB != nil {
-		for _, id := range []string{s.sid, parent} {
+		for _, id := range []string{s.sid, s.parent} {
 			if id != "" {
 				_ = h.DB.AddUsage(id, usage.InputTokens, usage.OutputTokens, cost)
 			}
@@ -542,8 +544,10 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		onDone, _ := L.Get(2).(*glua.LFunction)
-		if h.RT.CurrentOrigin() == lua.OriginLearned {
-			L.RaiseError("zemi.agent.run: learned code may not launch agents")
+		// agents act with the user's tools and permissions: only user config
+		// (and shipped code) may start them from Lua
+		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+			L.RaiseError("zemi.agent.run: only user config may launch agents")
 			return 0
 		}
 		prompt := rawString(spec, "prompt")
@@ -566,9 +570,8 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		h.refresh()
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
+			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			text, err := h.runSubagent(ctx, def, desc, prompt, nil)
-			h.bgAgents.Add(-1)
-			h.refresh()
 			if onDone == nil {
 				return
 			}

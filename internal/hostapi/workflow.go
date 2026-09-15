@@ -147,7 +147,8 @@ type wfTask struct {
 	waiting int
 	vals    *glua.LTable
 	errs    *glua.LTable
-	req     *wfAgentReq // set by agent() before it yields
+	req     *wfAgentReq   // set by agent() before it yields
+	args    []glua.LValue // resume values while waiting in ready
 }
 
 type wfAgentReq struct {
@@ -176,6 +177,8 @@ type wfRun struct {
 	log      []string
 	progress func(string)
 
+	ready []*wfTask // parents whose parallel() branches all finished
+
 	result    glua.LValue
 	resultErr error
 	over      bool
@@ -200,7 +203,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 	for _, name := range []string{"dofile", "loadfile", "module", "require", "_printregs", "xpcall", "newproxy"} {
 		L.SetGlobal(name, glua.LNil)
 	}
-	run := &wfRun{h: h, ctx: ctx, L: L, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone), progress: progress}
+	run := &wfRun{h: h, ctx: ctx, L: L, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), progress: progress}
 	run.install(args)
 
 	fn, err := L.LoadString(src)
@@ -208,7 +211,17 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 		return WorkflowResult{}, fmt.Errorf("workflow script: %w", err)
 	}
 	run.start(fn, nil, 0)
-	for !run.over {
+	for {
+		// parents resume here, not from inside finish: instant branches
+		// would otherwise recurse without bound
+		for len(run.ready) > 0 && !run.over {
+			t := run.ready[0]
+			run.ready = run.ready[1:]
+			run.resume(t, t.args...)
+		}
+		if run.over {
+			break
+		}
 		if run.running == 0 && len(run.queue) == 0 {
 			return WorkflowResult{}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
 		}
@@ -433,7 +446,11 @@ func (r *wfRun) start(fn *glua.LFunction, parent *wfTask, slot int) {
 func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 	fn := t.fn
 	t.fn = nil
-	st, err, vals := r.L.Resume(t.co, fn, args...)
+	st, err, vals, broken := r.safeResume(t, fn, args)
+	if broken {
+		r.result, r.resultErr, r.over = glua.LNil, err, true
+		return
+	}
 	switch st {
 	case glua.ResumeError:
 		r.finish(t, glua.LNil, err)
@@ -455,6 +472,20 @@ func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 			r.finish(t, glua.LNil, errors.New("coroutine.yield is not available in workflows"))
 		}
 	}
+}
+
+// safeResume turns a panic out of the VM into a failed run: gopher-lua
+// panics when agent() or parallel() yields from inside a Go library callback
+// (table.sort, string.gsub), and the state is not usable afterwards.
+func (r *wfRun) safeResume(t *wfTask, fn *glua.LFunction, args []glua.LValue) (st glua.ResumeState, err error, vals []glua.LValue, broken bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			st, broken = glua.ResumeError, true
+			err = fmt.Errorf("agent() or parallel() ran where it cannot wait (inside pcall or a library callback such as table.sort): %v", p)
+		}
+	}()
+	st, err, vals = r.L.Resume(t.co, fn, args...)
+	return st, err, vals, false
 }
 
 func (r *wfRun) dispatch() {
@@ -488,7 +519,8 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 		if p.errs.Len() > 0 || p.errs.MaxN() > 0 {
 			errs = p.errs
 		}
-		r.resume(p, p.vals, errs)
+		p.args = []glua.LValue{p.vals, errs}
+		r.ready = append(r.ready, p)
 	}
 }
 
@@ -725,8 +757,10 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		onDone, _ := L.Get(2).(*glua.LFunction)
-		if h.RT.CurrentOrigin() == lua.OriginLearned {
-			L.RaiseError("zemi.workflow.run: learned code may not run workflows")
+		// agents act with the user's tools and permissions: only user config
+		// (and shipped code) may start them from Lua
+		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+			L.RaiseError("zemi.workflow.run: only user config may run workflows")
 			return 0
 		}
 		src := rawString(spec, "script")
@@ -753,9 +787,8 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		h.refresh()
 		h.GoSafe("zemi.workflow.run", func() {
 			defer cancel()
+			defer func() { h.bgAgents.Add(-1); h.refresh() }()
 			res, err := h.runWorkflow(ctx, src, args, nil)
-			h.bgAgents.Add(-1)
-			h.refresh()
 			if onDone == nil {
 				return
 			}

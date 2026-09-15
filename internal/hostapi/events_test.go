@@ -9,6 +9,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -40,6 +41,17 @@ func TestToolDeniedEvent(t *testing.T) {
 			t.Fatalf("tool.denied payload = %s", v)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestLuaAgentsNeedUserConfig: project code cannot start agents or
+// workflows from Lua.
+func TestLuaAgentsNeedUserConfig(t *testing.T) {
+	_, r := newTestHostDB(t)
+	for _, src := range []string{`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`} {
+		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
+			t.Fatalf("%s from project: %v", src, err)
+		}
 	}
 }
 

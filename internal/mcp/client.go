@@ -374,10 +374,10 @@ func (t *stdioTransport) send(_ context.Context, msg []byte) error {
 
 // close closes stdin, which ends a well-behaved server, and kills it if it
 // is still running a moment later.
+// close closes stdin without the send lock: a write blocked on a server
+// that stopped reading returns once the pipe closes.
 func (t *stdioTransport) close() error {
-	t.mu.Lock()
 	err := t.stdin.Close()
-	t.mu.Unlock()
 	time.AfterFunc(2*time.Second, func() { _ = t.cmd.Process.Kill() })
 	return err
 }

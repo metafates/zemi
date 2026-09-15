@@ -5,7 +5,7 @@
 package hostapi
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -768,12 +768,59 @@ func (s *lineSink) add(line string) {
 	s.h.GoSafe("job output", func() {
 		defer s.wg.Done()
 		time.Sleep(30 * time.Millisecond)
-		s.mu.Lock()
-		lines := s.pending
-		s.pending, s.scheduled = nil, false
-		s.mu.Unlock()
-		s.h.callLuaAsync(s.gen, s.fn, lines)
+		for {
+			s.mu.Lock()
+			lines := s.pending
+			s.pending = nil
+			if len(lines) == 0 {
+				s.scheduled = false
+				s.mu.Unlock()
+				return
+			}
+			s.mu.Unlock()
+			s.h.callLuaAsync(s.gen, s.fn, lines)
+		}
 	})
+}
+
+// lineWriter is a process stream: it keeps up to 1 MiB for wait() and hands
+// complete lines to sink. exec writes each stream from one goroutine.
+type lineWriter struct {
+	mu      *sync.Mutex
+	buf     *strings.Builder
+	sink    *lineSink
+	partial []byte
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	if room := 1<<20 - w.buf.Len(); room > 0 {
+		w.buf.Write(p[:min(len(p), room)])
+	}
+	w.mu.Unlock()
+	if w.sink == nil {
+		return len(p), nil
+	}
+	w.partial = append(w.partial, p...)
+	for {
+		i := bytes.IndexByte(w.partial, '\n')
+		if i < 0 {
+			break
+		}
+		w.sink.add(string(w.partial[:i]))
+		w.partial = w.partial[i+1:]
+	}
+	if len(w.partial) > 1<<20 { // a line that never ends still arrives
+		w.flush()
+	}
+	return len(p), nil
+}
+
+func (w *lineWriter) flush() {
+	if w.sink != nil && len(w.partial) > 0 {
+		w.sink.add(string(w.partial))
+		w.partial = nil
+	}
 }
 
 var jobSeq atomic.Int64
@@ -825,60 +872,45 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := exec.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
+		// a background grandchild holding stdout must not keep the job alive
+		cmd.WaitDelay = time.Second
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
-		stdout, errS := cmd.StdoutPipe()
-		stderr, errE := cmd.StderrPipe()
-		stdin, errI := cmd.StdinPipe()
-		if errS != nil || errE != nil || errI != nil {
-			L.RaiseError("zemi.job.start: pipes unavailable")
-			return nil
-		}
-		jh.stdin = stdin
-		if err := cmd.Start(); err != nil {
-			L.RaiseError("zemi.job.start: %v", err)
-			return nil
-		}
 		gen := h.currentGen()
-		fnOf := func(key string) *lineSink {
+		sinkOf := func(key string) *lineSink {
 			if fn, ok := spec.RawGetString(key).(*glua.LFunction); ok {
 				return &lineSink{h: h, gen: gen, fn: fn}
 			}
 			return nil
 		}
-		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
-		var readers sync.WaitGroup
-		read := func(r io.Reader, buf *strings.Builder, sink *lineSink) {
-			readers.Add(1)
-			h.GoSafe("job reader", func() {
-				defer readers.Done()
-				sc := bufio.NewScanner(r)
-				sc.Buffer(make([]byte, 64<<10), 1<<20)
-				for sc.Scan() {
-					line := sc.Text()
-					jh.mu.Lock()
-					if buf.Len() < 1<<20 {
-						buf.WriteString(line + "\n")
-					}
-					jh.mu.Unlock()
-					if sink != nil {
-						sink.add(line)
-					}
-				}
-			})
-		}
-		outSink, errSink := fnOf("on_stdout"), fnOf("on_stderr")
-		read(stdout, &jh.stdout, outSink)
-		read(stderr, &jh.stderr, errSink)
-		h.GoSafe("job wait", func() {
-			readers.Wait()
-			err := cmd.Wait()
-			jh.mu.Lock()
+		outSink, errSink := sinkOf("on_stdout"), sinkOf("on_stderr")
+		outW := &lineWriter{mu: &jh.mu, buf: &jh.stdout, sink: outSink}
+		errW := &lineWriter{mu: &jh.mu, buf: &jh.stderr, sink: errSink}
+		cmd.Stdout, cmd.Stderr = outW, errW
+		// stdin stays closed unless asked for: cat, grep or rg would wait on it
+		if rawBool(spec, "stdin") {
+			stdin, err := cmd.StdinPipe()
 			if err != nil {
-				if ee, ok := err.(*exec.ExitError); ok {
-					jh.code = ee.ExitCode()
-				} else {
-					jh.err = err.Error()
-				}
+				L.RaiseError("zemi.job.start: %v", err)
+				return nil
+			}
+			jh.stdin = stdin
+		}
+		if err := cmd.Start(); err != nil {
+			L.RaiseError("zemi.job.start: %v", err)
+			return nil
+		}
+		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
+		h.GoSafe("job wait", func() {
+			err := cmd.Wait()
+			outW.flush()
+			errW.flush()
+			jh.mu.Lock()
+			var ee *exec.ExitError
+			switch {
+			case errors.As(err, &ee):
+				jh.code = ee.ExitCode()
+			case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+				jh.err = err.Error()
 			}
 			jh.mu.Unlock()
 			close(jh.done)
@@ -929,6 +961,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}))
 		handle.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
+			if jh.stdin == nil {
+				L.RaiseError("zemi.job: write needs the job started with stdin = true")
+				return 0
+			}
 			if _, err := io.WriteString(jh.stdin, L.CheckString(1)); err != nil {
 				L.Push(glua.LNil)
 				L.Push(glua.LString(err.Error()))
@@ -938,7 +974,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			return 1
 		}))
 		handle.RawSetString("close_stdin", L.NewFunction(func(L *glua.LState) int {
-			_ = jh.stdin.Close()
+			if jh.stdin != nil {
+				_ = jh.stdin.Close()
+			}
 			return 0
 		}))
 		L.Push(handle)
@@ -952,7 +990,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		if jh == nil {
 			return 0
 		}
-		_ = jh.stdin.Close()
 		timeout := 60 * time.Second
 		if spec, ok := L.Get(1).(*glua.LTable); ok {
 			if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
