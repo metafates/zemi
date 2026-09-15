@@ -262,9 +262,7 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 	}
 	if run, _ := m["run"].(string); run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
 		name, args := splitCommand(run)
-		if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
-			a.pushToast("error", "/"+name, err.Error())
-		}
+		a.runCommand(name, args)
 	}
 }
 

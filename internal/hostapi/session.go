@@ -67,6 +67,7 @@ func (h *Host) ResumeSession(id string) error {
 	ag.runner = &agent.Runner{History: history}
 	ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
 	ag.digest = h.digestFor()
+	ag.env = ""
 	ag.mu.Unlock()
 	h.setTranscript(sess.Title, tr)
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})

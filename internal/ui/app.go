@@ -11,6 +11,7 @@ package ui
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -67,8 +68,12 @@ type App struct {
 	mouse          mouseSel
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	lastChatBottom int
-	cfgReview      *cfgReviewPrompt
-	question       *questionPrompt
+
+	// work runs Lua-backed keymaps and commands in order off the key loop
+	work      chan func()
+	workOnce  sync.Once
+	cfgReview *cfgReviewPrompt
+	question  *questionPrompt
 
 	caches      map[string]*widgetCache
 	frameGen    int64

@@ -255,7 +255,7 @@ func (h *Host) skillsIndexPrompt() string {
 			continue
 		}
 		if n == 0 {
-			b.WriteString("\n\n## Skills\nAvailable skills (invoke the `skill` tool with the name to load its full instructions):\n")
+			b.WriteString("\n\n# Skills\nA description only says when a skill applies. When one matches the task, load it with the skill tool before acting, and follow it.\n")
 		}
 		n++
 		desc := s.Description

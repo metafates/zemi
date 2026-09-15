@@ -248,6 +248,11 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
   goroutine. Completion popups float over the chat (`floatPopup`), they never reserve
   rows.
+- **System prompt** (agent.go): `basePrompt` (task, care, tools, commands that do not exit,
+  git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`
+  for every profile, plan mode, the per-session pinned `environmentPrompt`, instruction
+  files under `# Project instructions`, Lua sections, skills, digest. Anything that varies
+  per turn must be pinned per session or it busts the provider's prompt cache.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools
   pass `tools.SchemaProperties(schema)` and a non-nil `Required`
   (`TestToolSchemasAreProperties`); strict providers reject anything else.
@@ -359,6 +364,16 @@ next reload, not in-place).
   Helpers that rebuild segments must carry `Hit`. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
   scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
+- **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua
+  jobs, MCP and LSP servers, git). A child runs in its own session: no controlling terminal
+  (nothing can read the TUI's keys or hang on a password prompt) and its own process group,
+  which cancel, timeout, `proc.Wait` and `proc.KillAll` on exit kill whole. `WaitDelay`
+  keeps an orphan holding stdout from blocking `Wait`; `proc.Buffer` caps output. A plain
+  `exec.Command` here is a bug: a cancelled `sh -c` pipeline once hung the turn forever.
+- **The key loop never waits on Lua.** Keymap right-hand sides and Lua commands run in
+  order on one worker goroutine (`App.background`); Go commands stay inline. A turn's
+  `turnScope` context (host.go) covers compaction, the model, tools and auto-mode
+  screening, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables
   with colon methods; everything else is a plain snapshot copy. Marshaling across the Lua
   <-> Go boundary caps string size (16 MB) and depth (64) and refuses cycles.

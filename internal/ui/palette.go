@@ -190,9 +190,7 @@ func (a *App) runSlashCommand(text string) {
 	a.composer.text, a.composer.cursor = "", 0
 	a.palette.close()
 	a.completion.close()
-	if err := a.host.RunCommand(a.ctx(), cmd.Name, args); err != nil {
-		a.pushToast("error", "/"+name, err.Error())
-	}
+	a.runCommand(cmd.Name, args)
 }
 
 // sendMessage runs the composer.submit vetoable event, then appends the

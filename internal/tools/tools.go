@@ -305,13 +305,19 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk("bash", "Run a shell command in the session directory. Output is truncated to 10000 characters.",
+		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. Output is cut at 10000 characters, so filter large output with grep or head.
+
+The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it is stopped with everything it started. Never use it for:
+- servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
+- interactive programs (vim, less, REPLs, git rebase -i, git add -p, npm init, password or y/n prompts): use the non-interactive form, such as git --no-pager log, git commit -m "msg", npm init -y, --yes, CI=1.
+
+Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Chain dependent steps with &&; send independent commands as separate calls in one response.`,
 			false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"command":    map[string]any{"type": "string"},
-					"timeout_ms": map[string]any{"type": "number"},
+					"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 				},
 			},
 			[]string{"command"},
@@ -320,7 +326,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runBash),
 
-		mk("read", "Read a file as text.", true,
+		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. Output is cut at 10000 characters: page large files with offset and limit.", true,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -335,7 +341,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runRead),
 
-		mk("write", "Write a file, creating or overwriting it.", false,
+		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for changes to an existing file, and read a file before overwriting it.", false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -349,7 +355,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runWrite),
 
-		mk("edit", "Replace an exact substring in a file.", false,
+		mk("edit", "Replace an exact substring in a file you have read. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. A multi-line old_string also matches when only whitespace differs.", false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -365,12 +371,20 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runEdit),
 
-		mk("multiedit", "Apply several exact replacements to one file in order.", false,
+		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same matching rules as edit. If any edit fails, nothing is written.", false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"path":  map[string]any{"type": "string"},
-					"edits": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+					"path": map[string]any{"type": "string"},
+					"edits": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"old_string":  map[string]any{"type": "string"},
+							"new_string":  map[string]any{"type": "string"},
+							"replace_all": map[string]any{"type": "boolean"},
+						},
+						"required": []string{"old_string", "new_string"},
+					}},
 				},
 			},
 			[]string{"path", "edits"},
@@ -379,7 +393,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runMultiedit),
 
-		mk("glob", "List files matching a glob pattern.", true,
+		mk("glob", "List files whose path matches a glob pattern, searched under path (default: the project root). Use it instead of find or ls.", true,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -393,7 +407,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runGlob),
 
-		mk("grep", "Search file contents with a regular expression.", true,
+		mk("grep", "Search file contents under path (default: the project root) with a Go regular expression (RE2: no lookaround or backreferences); include limits the files by glob, such as *.go. Use it instead of grep or rg in bash.", true,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -422,26 +436,41 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runFetch),
 
-		mk("todos", "Read or replace this session's todo list. Each todo: content, status (pending, in_progress or done), optional active_form.",
+		mk("todos", "Track multi-step work (three or more steps, or several tasks from the user) in a list the user sees. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"todos": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+					"todos": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"content":     map[string]any{"type": "string"},
+							"status":      map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done"}},
+							"active_form": map[string]any{"type": "string", "description": "present tense shown while in progress, e.g. Running tests"},
+						},
+						"required": []string{"content", "status"},
+					}},
 				},
 			},
 			nil,
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk("question", "Ask the user a question with a fixed set of answer options; returns the chosen label.",
+		mk("question", "Ask the user to choose between options when the decision is theirs: an ambiguous requirement that changes the result, or a real tradeoff. Returns the chosen label. Do not ask what you can find out yourself.",
 			false,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"question":    map[string]any{"type": "string"},
 					"description": map[string]any{"type": "string"},
-					"options":     map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+					"options": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"label":       map[string]any{"type": "string"},
+							"description": map[string]any{"type": "string"},
+						},
+						"required": []string{"label"},
+					}},
 				},
 			},
 			[]string{"question", "options"},
@@ -463,14 +492,14 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runSourcegraph),
 
-		mk("job_start", "Start a command in the background and return a job id. The child env is filtered; stdio are pipes.",
+		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
 			true,
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"command": map[string]any{"type": "string"},
 					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-					"env":     map[string]any{"type": "object"},
+					"env":     map[string]any{"type": "object", "description": "extra environment variables"},
 				},
 			},
 			[]string{"command"},
@@ -479,7 +508,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			},
 			runJobStart),
 
-		mk("job_read", "Read a background job's buffered stdout/stderr and exit state.",
+		mk("job_read", "Read a background job's output so far (the first and last part when it is long) and whether it is still running.",
 			true,
 			map[string]any{
 				"type": "object",
@@ -501,7 +530,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			func(in map[string]any) []Request { return nil },
 			runJobList),
 
-		mk("job_kill", "Kill one background job started with job_start.",
+		mk("job_kill", "Stop a background job and everything it started.",
 			false,
 			map[string]any{
 				"type": "object",
@@ -513,7 +542,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk("memory_add", "Save a durable lesson for future sessions in this project: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence; never secrets. It may be queued for the user's review.",
+		mk("memory_add", "Save a durable lesson for future sessions in this project: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"type": "object",
@@ -564,7 +593,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 				return fantasy.NewTextResponse(out), nil
 			}),
 
-		mk("skill", "Load an installed skill's SKILL.md body on demand.",
+		mk("skill", "Load a skill's full instructions by name. Load it before acting whenever a skill's description matches the task.",
 			true,
 			map[string]any{
 				"type": "object",

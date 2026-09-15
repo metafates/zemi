@@ -134,7 +134,12 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 	if err != nil {
 		return false, "auto mode unavailable: " + err.Error()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// an interrupt stops the screening too
+	parent := context.Background()
+	if t := h.turn.Load(); t != nil {
+		parent = t.ctx
+	}
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	prompt := fmt.Sprintf("Project: %s\nAction: %s\nReason: %s\n<action>\n%s\n</action>", h.Dirs.ProjectDir, req.Subject, req.Reason, req.Arg)
 	if req.Preview != "" {

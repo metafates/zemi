@@ -36,6 +36,9 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			}
 			content := str(m["content"])
 			status := str(m["status"])
+			if status == "completed" { // the name other harnesses taught models
+				status = "done"
+			}
 			if content == "" {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: content is required", i)), nil
 			}

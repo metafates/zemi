@@ -126,16 +126,26 @@ func (p *Pipeline) checkpoint(path string) {
 	}
 }
 
-// applyEdit replaces old with new in s; count 0 means not found.
+// applyEdit replaces old with new in s and returns the match count. With
+// several matches and !all nothing changes: guessing which one was meant
+// edits the wrong place silently.
 func applyEdit(s, old, new string, all bool) (string, int) {
 	n := strings.Count(s, old)
-	if n == 0 {
-		return s, 0
+	if n == 0 || (n > 1 && !all) {
+		return s, n
 	}
-	if all {
-		return strings.ReplaceAll(s, old, new), n
+	return strings.ReplaceAll(s, old, new), n
+}
+
+// editError explains a failed match, or returns "" when the edit applied.
+func editError(n int, all bool, where string) string {
+	switch {
+	case n == 0:
+		return "old_string not found in " + where + "; read the file again and copy the text exactly"
+	case n > 1 && !all:
+		return fmt.Sprintf("old_string matches %d places in %s; add surrounding lines to make it unique, or set replace_all", n, where)
 	}
-	return strings.Replace(s, old, new, 1), 1
+	return ""
 }
 
 // runEdit replaces one exact substring; whitespace-tolerant fallback:
@@ -154,12 +164,15 @@ func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	src := string(data)
+	if old == "" {
+		return fantasy.NewTextErrorResponse("old_string is empty; use write to create a file"), nil
+	}
 	out, n := applyEdit(src, old, new, all)
 	if n == 0 {
 		out, n = applyTolerant(src, old, new, all)
 	}
-	if n == 0 {
-		return fantasy.NewTextErrorResponse("old_string not found in " + path), nil
+	if msg := editError(n, all, path); msg != "" {
+		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	p.checkpoint(path)
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
@@ -198,12 +211,8 @@ func applyTolerant(src, old, new string, all bool) (string, int) {
 			i += m - 1
 		}
 	}
-	if count == 0 {
-		return src, 0
-	}
-	if !all {
-		spans = spans[:1]
-		count = 1
+	if count == 0 || (count > 1 && !all) {
+		return src, count
 	}
 	newLines := strings.Split(strings.Trim(new, "\n"), "\n")
 	var b []string
@@ -247,12 +256,15 @@ func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 		old := str(em["old_string"])
 		new := str(em["new_string"])
 		all, _ := em["replace_all"].(bool)
-		var out string
-		var n int
-		if out, n = applyEdit(src, old, new, all); n == 0 {
-			if out, n = applyTolerant(src, old, new, all); n == 0 {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("edit %d: old_string not found", i)), nil
-			}
+		if old == "" {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("edit %d: old_string is empty", i)), nil
+		}
+		out, n := applyEdit(src, old, new, all)
+		if n == 0 {
+			out, n = applyTolerant(src, old, new, all)
+		}
+		if msg := editError(n, all, path); msg != "" {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("edit %d: %s; nothing was written", i, msg)), nil
 		}
 		src = out
 		applied += n

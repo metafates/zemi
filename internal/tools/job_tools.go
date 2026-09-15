@@ -7,8 +7,8 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -24,8 +24,8 @@ import (
 type Job struct {
 	ID     string
 	Name   string
-	stdout strings.Builder
-	stderr strings.Builder
+	stdout *proc.Buffer
+	stderr *proc.Buffer
 	cmd    *exec.Cmd
 	done   chan struct{}
 	code   int
@@ -73,7 +73,8 @@ func NewJobs() *Jobs {
 	return &Jobs{jobs: map[string]*Job{}}
 }
 
-// Start launches argv in dir with env; returns the job id.
+// Start launches argv in dir with env; returns the job id. Output is
+// captured as it arrives, so job_read shows a server's lines while it runs.
 func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, error) {
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return "", fmt.Errorf("command is required")
@@ -83,56 +84,31 @@ func (m *Jobs) Start(dir, name string, argv []string, env []string) (string, err
 	if env != nil {
 		cmd.Env = env
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return "", err
-	}
+	j := &Job{Name: strings.Join(argv, " "), cmd: cmd, done: make(chan struct{}),
+		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}}
+	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
 	if err := proc.Start(cmd); err != nil {
 		return "", err
 	}
 	m.mu.Lock()
 	m.seq++
-	id := fmt.Sprintf("job-%d", m.seq)
-	j := &Job{ID: id, Name: strings.Join(argv, " "), cmd: cmd, done: make(chan struct{})}
-	m.jobs[id] = j
+	j.ID = fmt.Sprintf("job-%d", m.seq)
+	m.jobs[j.ID] = j
 	m.mu.Unlock()
-	// Drain both pipes to EOF before Wait: Wait closes the pipe read
-	// ends, so concurrent reads would race and could drop output.
-	var wg sync.WaitGroup
-	wg.Add(2)
 	go func() {
-		defer wg.Done()
-		b, _ := io.ReadAll(io.LimitReader(stdout, 1<<20))
-		j.mu.Lock()
-		j.stdout.Write(b)
-		j.mu.Unlock()
-	}()
-	go func() {
-		defer wg.Done()
-		b, _ := io.ReadAll(io.LimitReader(stderr, 1<<20))
-		j.mu.Lock()
-		j.stderr.Write(b)
-		j.mu.Unlock()
-	}()
-	go func() {
-		wg.Wait()
 		err := proc.Wait(cmd)
 		j.mu.Lock()
 		if err != nil {
 			if ee, ok := err.(*exec.ExitError); ok {
 				j.code = ee.ExitCode()
-			} else {
+			} else if !errors.Is(err, exec.ErrWaitDelay) {
 				j.err = err.Error()
 			}
 		}
 		j.mu.Unlock()
 		close(j.done)
 	}()
-	return id, nil
+	return j.ID, nil
 }
 
 // Get returns one job by id.
@@ -212,12 +188,14 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	if strings.TrimSpace(name) == "" {
 		return fantasy.NewTextErrorResponse("command is required"), nil
 	}
-	var argv []string
-	argv = append(argv, name)
+	argv := []string{name}
 	if list, ok := input["args"].([]any); ok {
 		for _, v := range list {
 			argv = append(argv, str(v))
 		}
+	}
+	if len(argv) == 1 && strings.ContainsAny(name, " \t|&;<>()$`'\"") {
+		argv = []string{"sh", "-c", name} // a shell line, as the description allows
 	}
 	extras := map[string]any{}
 	if m, ok := input["env"].(map[string]any); ok {
@@ -227,6 +205,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	env = append(env, proc.NonInteractiveEnv...)
 	id, err := p.Jobs.Start(workdir(), name, argv, env)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

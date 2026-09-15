@@ -188,8 +188,9 @@ type Host struct {
 	// same command does not cost a second check.
 	autoApproved sync.Map
 
-	// turnCancel stops the turn runTurns is on, compaction included.
-	turnCancel atomic.Pointer[context.CancelFunc]
+	// turn is the scope of the turn runTurns is on: cancelling it stops
+	// compaction, the model, tools and auto-mode screening.
+	turn atomic.Pointer[turnScope]
 
 	projectTrusted atomic.Bool
 	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
@@ -987,4 +988,9 @@ func (h *Host) PurgeGeneration() {
 	h.timers.purge()
 	h.mcp.stopAll()
 	h.lsp.stopAll()
+}
+
+type turnScope struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 }

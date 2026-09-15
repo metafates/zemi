@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"context"
+	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -385,20 +388,78 @@ func listMove(key string) int {
 }
 
 // runRHS executes a keymap right-hand side on the ui class under the
-// binding's registration origin (DESIGN §9 attribution).
+// binding's registration origin (DESIGN §9 attribution), on the background
+// worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
-	if err := a.host.RunRHS(a.ctx(), b.Origin, b.RHS, ""); err != nil {
-		if err == lua.ErrHot || err == lua.ErrReloaded {
+	a.background(func() {
+		err := a.host.RunRHS(context.Background(), b.Origin, b.RHS, "")
+		switch {
+		case err == nil:
+		case err == lua.ErrHot || err == lua.ErrReloaded:
 			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Key})
-			return nil
+		default:
+			a.host.RecordError("keymap "+b.Key, err.Error())
+			a.host.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
+			a.notifyUI("error", "keymap "+b.Key, err.Error())
 		}
-		a.host.RecordError("keymap "+b.Key, err.Error())
-		a.host.Log.Error("ui", "keymap rhs failed", map[string]any{
-			"keys": b.Key, "error": err.Error(),
-		})
-		a.pushToast("error", "keymap "+b.Key, err.Error())
-	}
+	})
 	return nil
+}
+
+// background runs fn in order on one worker goroutine: Lua keymaps and
+// commands can block in a Go call (a job wait, say) for as long as the
+// runtime's ceiling and grace, and the key loop, ctrl+c included, must not
+// wait on them. Without a program (tests) fn runs inline.
+func (a *App) background(fn func()) {
+	if a.program == nil {
+		fn()
+		return
+	}
+	a.workOnce.Do(func() {
+		a.work = make(chan func(), 64)
+		go func() {
+			for f := range a.work {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							a.log.Error("panic", fmt.Sprintf("keymap or command panicked: %v", r), map[string]any{"stack": string(debug.Stack())})
+						}
+					}()
+					f()
+				}()
+			}
+		}()
+	})
+	select {
+	case a.work <- fn:
+	default:
+		a.pushToast("warn", "busy", "still running an earlier key or command")
+	}
+}
+
+// notifyUI shows a toast from any goroutine.
+func (a *App) notifyUI(level, title, body string) {
+	if a.program == nil {
+		a.pushToast(level, title, body)
+		return
+	}
+	a.dispatch(toastMsg{level: level, title: title, body: body})
+}
+
+// runCommand runs a slash command: Go commands inline, Lua ones on the
+// background worker.
+func (a *App) runCommand(name, args string) {
+	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
+		a.background(func() {
+			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
+				a.notifyUI("error", "/"+name, err.Error())
+			}
+		})
+		return
+	}
+	if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
+		a.pushToast("error", "/"+name, err.Error())
+	}
 }
 
 // keyText extracts the literal text a keypress should insert (printable
