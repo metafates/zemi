@@ -223,6 +223,7 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
+	runner.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(prof), h.Effort())
 
 	sid := ""
 	if h.DB != nil {

@@ -56,6 +56,8 @@ picks a model interactively.
 writable; prefer it over guessing. Common keys:
 
 - `agent.model`, `reflector.model` (empty: use the agent model)
+- `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
+  Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`
 - `ui.completion.files`, `ui.completion.trigger`, `ui.completion.max_items`
 - `memory.digest_lines`

@@ -238,6 +238,24 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					return err
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "effort", NArgs: "?", Desc: "reasoning effort: low, medium, high or default", GoFn: func(h *hostapi.Host, args string) error {
+					switch args = strings.TrimSpace(args); args {
+					case "":
+						cur := h.Effort()
+						if cur == "" {
+							cur = "default"
+						}
+						return fmt.Errorf("reasoning effort is %s (want low, medium, high or default)", cur)
+					case "default":
+						args = ""
+					case "low", "medium", "high":
+					default:
+						return fmt.Errorf("unknown effort %q (want low, medium, high or default)", args)
+					}
+					_, err := h.Settings.SetQuiet("agent.effort", args)
+					return err
+				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} },
+					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.InitProject()
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},

@@ -5,6 +5,7 @@
 package agent
 
 import (
+	"slices"
 	"context"
 	"fmt"
 	"os"
@@ -140,6 +141,36 @@ func cmpOr(a, b string) string {
 // Resolve turns "provider/model" into a fantasy language model. The api
 // key is read from the named env var here; missing keys surface as an
 // error at send time.
+// Efforts are the reasoning effort levels zemi offers ("" = provider
+// default).
+var Efforts = []string{"low", "medium", "high"}
+
+// EffortOptions translates a reasoning effort into the provider options of
+// the model's provider kind; nil for the provider default or a kind without
+// the knob. A model that does not support the option fails its turn with the
+// provider's error.
+func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions {
+	if !slices.Contains(Efforts, effort) {
+		return nil
+	}
+	providerID, _, _ := strings.Cut(modelID, "/")
+	spec, ok := r.Lookup(providerID)
+	if !ok {
+		return nil
+	}
+	re := openai.ReasoningEffort(effort)
+	switch spec.Kind {
+	case "anthropic":
+		e := anthropic.Effort(effort)
+		return anthropic.NewProviderOptions(&anthropic.ProviderOptions{Effort: &e})
+	case "openai":
+		return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: &re})
+	case "openaicompat", "openai_compat":
+		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: &re})
+	}
+	return nil
+}
+
 func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	providerID, model, ok := strings.Cut(modelID, "/")
 	if !ok {

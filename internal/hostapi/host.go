@@ -697,6 +697,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	}
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("model", glua.LString(stream.Model))
+	tb.RawSetString("effort", glua.LString(h.Effort()))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	tb.RawSetString("permission_mode", glua.LString(h.PermMode()))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))

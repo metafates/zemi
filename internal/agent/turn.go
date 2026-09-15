@@ -39,6 +39,9 @@ type Runner struct {
 	Persist     PersistFunc
 	Temperature *float64
 
+	// ProviderOptions ride on every call (reasoning effort).
+	ProviderOptions fantasy.ProviderOptions
+
 	// Steer is polled at every step boundary; the messages it returns join
 	// the running turn as user messages (DESIGN §4 steering).
 	Steer func() []string
@@ -112,6 +115,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.History = append(r.History, userMsg)
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
+	provOpts := r.ProviderOptions
 	r.mu.Unlock()
 
 	call := fantasy.AgentStreamCall{
@@ -132,6 +136,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
+		ProviderOptions: provOpts,
 	}
 	if temp != nil {
 		t := *temp

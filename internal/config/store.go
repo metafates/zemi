@@ -58,6 +58,7 @@ func (s *Store) defineDefaults() {
 		{Path: "providers.crush_json", Kind: "string", Default: "~/.config/crush/crush.json", UserWritable: true, Desc: "crush.json imported at boot for providers (empty disables)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, UserWritable: true, Desc: "animate the working indicator (false keeps it static)"},
+		{Path: "agent.effort", Kind: "string", Default: "", UserWritable: true, Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
 		{Path: "ui.notify", Kind: "bool", Default: true, UserWritable: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
 		{Path: "ui.composer.multiline", Kind: "bool", Default: true, UserWritable: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
 		{Path: "ui.composer.history", Kind: "int", Default: 50, UserWritable: true, Desc: "composer history entries kept (0 disables)"},

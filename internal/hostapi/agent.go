@@ -172,6 +172,13 @@ You can hand work to subagents with the agent tool. Each starts with an empty co
 - Do small, targeted work yourself: a known file, a single grep, a one-line fix. Delegating it only adds latency.
 Subagent reports are not shown to the user; summarize what matters.`
 
+// Effort is the configured reasoning effort ("" = provider default).
+func (h *Host) Effort() string {
+	v, _ := h.Settings.Get("agent.effort")
+	s, _ := v.(string)
+	return s
+}
+
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
 func (h *Host) InitProject() error { return h.AgentSend(initPrompt) }
 
@@ -347,6 +354,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 		return nil, err
 	}
 	r := agent.NewRunner(model, h.profileTools(p), h.buildSystem(p))
+	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering

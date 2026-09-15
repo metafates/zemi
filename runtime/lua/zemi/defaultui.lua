@@ -277,7 +277,9 @@ zemi.ui.widget.register({
       if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
       segs[#segs + 1] = { text = text, hl = hl }
     end
-    if (ctx.model or "") ~= "" then add(ctx.model, "Comment") end
+    if (ctx.model or "") ~= "" then
+      add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment")
+    end
     local total = fmt_tokens((ctx.usage or {}).total)
     if total then
       add(total .. " tok", "Comment")
