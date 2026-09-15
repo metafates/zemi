@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +47,9 @@ func projectRoot() string {
 	return wd
 }
 
-// Ensure creates the directories zemi writes into.
+// Ensure creates the directories zemi writes into, and the starter
+// init.lua when there is none: zemi ships no providers, so an empty
+// config cannot answer a single prompt.
 func (d Dirs) Ensure() error {
 	for _, dir := range []string{
 		d.ConfigHome,
@@ -58,8 +61,42 @@ func (d Dirs) Ensure() error {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
+	init := filepath.Join(d.ConfigHome, "init.lua")
+	if _, err := os.Stat(init); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(init, []byte(starterInit), 0o600); err != nil {
+			return fmt.Errorf("create %s: %w", init, err)
+		}
+	}
 	return nil
 }
+
+// starterInit is the file a first run leaves behind: everything is
+// commented, so zemi registers nothing the user did not ask for, and the
+// provider block only needs uncommenting.
+const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
+
+-- A provider and a model: zemi ships none, so uncomment this and zemi
+-- works. The key is read from your environment; paste it here instead if
+-- you keep it elsewhere.
+-- zemi.provider.register({
+--   id = "anthropic",
+--   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, OPENAI_COMPAT
+--   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
+--   models = {
+--     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
+--       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional
+--   },
+-- })
+-- zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
+
+-- Settings: /config list shows every one with its default.
+-- zemi.config.set("ui.theme", "default")
+
+-- Keys: <leader> is keymap.leader, ctrl+g unless you change it.
+-- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
+
+-- /help lists the keys and commands, /health says what is missing.
+`
 
 // ProjectConfigDir is <project>/.zemi.
 func (d Dirs) ProjectConfigDir() string {
