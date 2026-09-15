@@ -165,7 +165,7 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if err := db.AddMessage(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`}); err != nil {
 		t.Fatal(err)
 	}
-	prev, err := db.SessionPreviews()
+	prev, err := db.SessionPreviews([]string{"s1"})
 	if err != nil || prev["s1"].Count != 2 || prev["s1"].FirstJSON != m.PartsJSON {
 		t.Fatalf("preview: %+v %v", prev, err)
 	}

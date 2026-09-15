@@ -186,13 +186,20 @@ type SessionPreview struct {
 	FirstJSON string
 }
 
-// SessionPreviews returns one preview per session; tool telemetry and
-// compaction tails have their own roles and stay out of the count.
-func (s *DB) SessionPreviews() (map[string]SessionPreview, error) {
+// SessionPreviews returns one preview per listed session; tool telemetry and
+// compaction tails have their own roles and stay out of the count. The ids
+// bound the scan: the picker shows a page of sessions, not every message
+// ever stored.
+func (s *DB) SessionPreviews(ids []string) (map[string]SessionPreview, error) {
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
 	rows, err := s.db.Query(`SELECT session_id, COUNT(*), COALESCE((
 			SELECT parts_json FROM messages f
 			WHERE f.session_id = m.session_id AND f.role = 'user' ORDER BY rowid LIMIT 1), '')
-		FROM messages m WHERE role IN ('user', 'assistant') GROUP BY session_id`)
+		FROM messages m WHERE role IN ('user', 'assistant')
+		AND session_id IN (`+placeholders(len(ids))+`) GROUP BY session_id`, args...)
 	if err != nil {
 		return nil, err
 	}
