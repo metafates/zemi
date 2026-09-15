@@ -105,8 +105,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		if err := nargsOK(name, cmd.NArgs, args); err != nil {
 			return luaResult(L, err)
 		}
-		h.RT.PushFrame(cmd.Origin, cmd.Path)
-		defer h.RT.PopFrame()
+		defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, args))
 		return luaResult(L, L.PCall(1, 0, nil))
@@ -193,8 +192,7 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 		return err
 	}
 	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		h.RT.PushFrame(cmd.Origin, cmd.Path)
-		defer h.RT.PopFrame()
+		defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
 		base := L.GetTop()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, argString))
@@ -227,8 +225,7 @@ func (h *Host) RunRHS(ctx context.Context, origin lua.Origin, rhs RHS, argString
 	switch {
 	case rhs.Fn != nil:
 		_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			h.RT.PushFrame(origin, "")
-			defer h.RT.PopFrame()
+			defer h.RT.PushFrame(origin, "")()
 			base := L.GetTop()
 			L.Push(rhs.Fn)
 			if err := L.PCall(0, 0, nil); err != nil {

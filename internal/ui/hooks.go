@@ -120,6 +120,21 @@ func (a *App) CloseOverlay(id string) bool {
 	return true
 }
 
+// CloseLuaOverlays drops every overlay owned by the interpreter (Gen != 0)
+// on reload; Go-built ones (Gen 0) keep working and stay.
+func (a *App) CloseLuaOverlays() {
+	a.do(func() {
+		kept := a.overlays[:0]
+		for _, st := range a.overlays {
+			if st.o.Gen == 0 {
+				kept = append(kept, st)
+			}
+		}
+		a.overlays = kept
+		a.frameGen++
+	})
+}
+
 // Refresh invalidates the widget caches (state changed outside Update).
 func (a *App) Refresh() { a.do(func() {}) }
 

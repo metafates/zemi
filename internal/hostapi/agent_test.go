@@ -369,11 +369,13 @@ type fakeUI struct {
 	qAnswer         string
 	qOK             bool
 	closed          []string
+	closedLua       int
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
 func (f *fakeUI) OpenOverlay(o Overlay)            {}
 func (f *fakeUI) CloseOverlay(id string) bool      { f.closed = append(f.closed, id); return true }
+func (f *fakeUI) CloseLuaOverlays()                { f.closedLua++ }
 func (f *fakeUI) Refresh()                         {}
 func (f *fakeUI) ScrollChat(kind string)           {}
 func (f *fakeUI) AgentEvent(ev AgentEvent)         {}

@@ -143,8 +143,7 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 }
 
 func (h *Host) callWatch(L *glua.LState, rec watchRec, old, new any) error {
-	h.RT.PushFrame(rec.origin, rec.src)
-	defer h.RT.PopFrame()
+	defer h.RT.PushFrame(rec.origin, rec.src)()
 	base := L.GetTop()
 	defer L.SetTop(base)
 	L.Push(rec.fn)

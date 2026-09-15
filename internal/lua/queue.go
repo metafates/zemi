@@ -256,9 +256,9 @@ func (g *Generation) execute(r *request) {
 
 	started := time.Now()
 	g.L.SetContext(reqCtx)
-	g.rt.PushFrame(OriginHost, "")
+	pop := g.rt.PushFrame(OriginHost, "")
 	vals, err := g.safeRun(r)
-	g.rt.PopFrame()
+	pop()
 	g.L.RemoveContext()
 
 	// A frozen namespace that changed under the request means the surface
