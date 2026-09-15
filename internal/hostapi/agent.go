@@ -92,10 +92,11 @@ type agentHost struct {
 	// every turn's counts, lastIn pins the most recent prompt size (the
 	// current context estimate), ctxWin overrides the context window when
 	// the model spec or config provides one.
-	sessIn  int64
-	sessOut int64
-	lastIn  int64
-	ctxWin  int64
+	sessIn   int64
+	sessOut  int64
+	lastIn   int64
+	ctxWin   int64
+	sessCost float64 // USD, from model spec prices
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.chat.reasoning config).
@@ -494,9 +495,11 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
+	cost := h.turnCost(h.currentModelID(nil), usage.InputTokens, usage.OutputTokens)
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.usage = usage
+	ag.sessCost += cost
 	ag.sessIn += usage.InputTokens
 	ag.sessOut += usage.OutputTokens
 	ag.lastIn = usage.InputTokens
@@ -532,8 +535,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	} else {
 		h.EmitAsync("agent.finish", map[string]any{})
 	}
-	if sid != "" && h.GlobalDB != nil {
-		_ = h.DB.AddUsage(sid, usage.InputTokens, usage.OutputTokens, 0)
+	if sid != "" && h.DB != nil {
+		_ = h.DB.AddUsage(sid, usage.InputTokens, usage.OutputTokens, cost)
 	}
 }
 
@@ -687,10 +690,11 @@ type StreamSnapshot struct {
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
 	// the percent readout.
-	SessionIn  int64
-	SessionOut int64
-	LastIn     int64
-	CtxWindow  int64
+	SessionIn   int64
+	SessionOut  int64
+	LastIn      int64
+	CtxWindow   int64
+	SessionCost float64
 }
 
 // AgentStream returns the current stream snapshot.
@@ -725,7 +729,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	out.Tools = append(out.Tools, ag.tools...)
-	out.Retries, out.Compacting = ag.retries, ag.compacting
+	out.Retries, out.Compacting, out.SessionCost = ag.retries, ag.compacting, ag.sessCost
 	if d := time.Until(ag.retryAt); d > 0 {
 		out.RetryIn = d
 	}
@@ -898,6 +902,25 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 // contextWindow resolves the context window for the model id: the model
 // spec's context_window, then the agent.context_window config knob, then
 // the 200k default.
+// turnCost prices one turn's tokens from the model spec; 0 when the spec
+// carries no prices.
+func (h *Host) turnCost(modelID string, in, out int64) float64 {
+	prov, model, ok := strings.Cut(modelID, "/")
+	if !ok {
+		return 0
+	}
+	spec, ok := h.Providers.Lookup(prov)
+	if !ok {
+		return 0
+	}
+	for _, m := range spec.Models {
+		if m.ID == model {
+			return (float64(in)*m.CostPer1MIn + float64(out)*m.CostPer1MOut) / 1e6
+		}
+	}
+	return 0
+}
+
 func (h *Host) contextWindow(modelID string) int64 {
 	if v, ok := h.Settings.Get("agent.context_window"); ok {
 		switch n := v.(type) {

@@ -694,6 +694,7 @@ func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	u.RawSetString("in", glua.LNumber(s.SessionIn))
 	u.RawSetString("out", glua.LNumber(s.SessionOut))
 	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
+	u.RawSetString("cost", glua.LNumber(s.SessionCost))
 	return u
 }
 

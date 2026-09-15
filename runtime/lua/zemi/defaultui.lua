@@ -145,6 +145,8 @@ zemi.ui.widget.register({
         local hl = pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
         add(string.format("%d%%", pct), hl)
       end
+      local cost = tonumber((ctx.usage or {}).cost or 0) or 0
+      if cost > 0 then add(string.format("$%.2f", cost), "Comment") end
     end
     if #segs == 0 then return empty() end
     return { segs }

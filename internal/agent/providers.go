@@ -21,9 +21,11 @@ import (
 // the token budget the statusline percent readout divides by; models
 // without one fall back to agent.context_window config.
 type Model struct {
-	ID            string `json:"id"`
-	Display       string `json:"display"`
-	ContextWindow int64  `json:"context_window,omitempty"`
+	ID            string  `json:"id"`
+	Display       string  `json:"display"`
+	ContextWindow int64   `json:"context_window,omitempty"`
+	CostPer1MIn   float64 `json:"cost_per_1m_in,omitempty"`  // USD per million prompt tokens
+	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
 }
 
 // Spec describes one provider: kind selects the fantasy implementation,

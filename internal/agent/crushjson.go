@@ -33,8 +33,10 @@ type crushProvider struct {
 }
 
 type crushModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	CostPer1MIn  float64 `json:"cost_per_1m_in"`
+	CostPer1MOut float64 `json:"cost_per_1m_out"`
 }
 
 // ImportCrushJSON parses crush.json content and registers every provider
@@ -64,7 +66,8 @@ func (r *Registry) ImportCrushJSON(data []byte) (CrushImport, error) {
 			if display == "" {
 				display = m.ID
 			}
-			spec.Models = append(spec.Models, Model{ID: m.ID, Display: display})
+			spec.Models = append(spec.Models, Model{ID: m.ID, Display: display,
+				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut})
 		}
 		if len(spec.Models) == 0 {
 			res.warn("provider %s: no models, skipped", id)

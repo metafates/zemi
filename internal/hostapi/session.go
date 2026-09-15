@@ -70,7 +70,7 @@ func (h *Host) ResumeSession(id string) error {
 	// A bare runner carries the history; AgentSend copies it into the
 	// runner it builds for the next turn.
 	ag.runner = &agent.Runner{History: history}
-	ag.sessIn, ag.sessOut = sess.PromptTokens, sess.CompletionTokens
+	ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
 	ag.digest = h.digestFor()
 	ag.mu.Unlock()
 	h.setTranscript(sess.Title, tr)
@@ -122,7 +122,7 @@ func (h *Host) closeSession() (string, error) {
 	prev := ag.sessionID
 	ag.sessionID, ag.runner, ag.steering = "", nil, nil
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
-	ag.sessIn, ag.sessOut, ag.lastIn = 0, 0, 0
+	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.digest, ag.memAuto, ag.cfgAuto = "", 0, 0
 	ag.mu.Unlock()
 	if prev != "" {

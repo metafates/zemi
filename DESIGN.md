@@ -907,7 +907,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   key, queue depth; `ui.animations = false` keeps it static), composer (3..8 rows, textarea grows), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
-  shipped `statusline.usage` widget shows the session token tally and
+  shipped `statusline.info` widget shows the model, the session token tally, the
+  session cost when the model spec carries prices (`cost_per_1m_in` /
+  `cost_per_1m_out`, imported from crush.json), and
   the context-window percent, warning colors past 80%/95%).
   Overlays float, centered or anchored.
 - **Rendering loop**: the state generation is bumped at most once per
