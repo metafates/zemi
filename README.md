@@ -19,6 +19,46 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 - Keeps sessions: `/new`, `/sessions`, `/resume`. Long sessions compact into a summary
   before the context window fills (`/compact` does it on demand).
 
+## Subagents and workflows
+
+The model can hand a self-contained task to a subagent with the `agent` tool. A subagent
+gets a fresh context and its own tool set, runs in parallel with others, and returns one
+report; its tool calls go through the same permission prompts, labeled with the agent's
+name. The row under the tool call shows live progress. zemi ships `general` and a
+read-only `explore`; add your own as markdown in `~/.config/zemi/agents/` or
+`.zemi/agents/`:
+
+```markdown
+---
+description: Reviews a diff for correctness bugs and reports them with file:line
+tools: read, grep, glob, bash
+model: anthropic/claude-sonnet-4-5    # optional, default is the session model
+---
+You are a strict reviewer. Report only defects you can point to in the code.
+```
+
+For work shaped like several agents with logic between them, the model writes a
+workflow: a short Lua script that runs agents in sequence or with `parallel`, and returns
+the combined result. You see the script in the permission prompt before it runs. Save
+workflows you reuse as `workflows/<name>.lua` (the leading `--` comment is the
+description) and run them with `/workflow <name> [args]`, or from Lua:
+
+```lua
+-- workflows/review.lua: review the current diff from three angles, then verify
+local jobs = {}
+for _, lens in ipairs({ "correctness", "security", "simplicity" }) do
+  jobs[#jobs + 1] = function()
+    return agent("Review `git diff` for " .. lens .. " problems, with file:line.", { agent = "explore" })
+  end
+end
+phase("verify")
+return agent("Keep only the findings that hold up against the code:\n" .. table.concat(parallel(jobs), "\n\n"))
+```
+
+Workflow scripts run in their own sandbox: `agent`, `parallel`, `phase`, `log`, `json`
+and `args` plus Lua's string, table and math libraries, with no file or network access.
+`/agents` and `/workflow` list what is installed.
+
 ## How it learns
 
 1. **Capture.** `/remember <text>` stores a fact right away. The model can save lessons
@@ -100,7 +140,8 @@ With `-p` nobody can answer a permission ask, so asks are denied unless `--mode`
 | `@` | attach a project file |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/remember`, `/memory`, `/config`, `/skills`, `/reflect`, `/health`, `/errors`, `/quit`.
+`/agents`, `/workflow`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/health`, `/errors`, `/quit`.
 
 ## Lua
 
@@ -120,8 +161,8 @@ local myui = require("myui.status") -- ~/.config/zemi/lua/myui/status.lua
 ```
 
 Plugins load from `~/.local/share/zemi/site/pack/*/start/*`. A repository can ship its own
-setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua` plus modules under
-`.zemi/lua/`, found from any subdirectory and loaded after a trust prompt that repeats
+setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua`, modules under
+`.zemi/lua/`, `agents/` and `workflows/`, found from any subdirectory and loaded after a trust prompt that repeats
 whenever those files change. Lua runs sandboxed, and every registration carries its
 origin (`user > builtin > plugin > project`), so project code cannot override yours.
 [DESIGN.md](DESIGN.md) is the full specification.
@@ -130,7 +171,7 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 
 | Path | Contents |
 | --- | --- |
-| `~/.config/zemi/` | `init.lua`, `permissions.lua`, authored `skills/` (a git repo) |
+| `~/.config/zemi/` | `init.lua`, `permissions.lua`, authored `skills/`, `agents/`, `workflows/` (a git repo) |
 | `~/.local/share/zemi/` | plugins, learned `skills/` |
 | `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
 

@@ -66,6 +66,8 @@ type ModelOption struct {
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {
+	ID     string
+	Detail string // live progress line (subagents, workflows)
 	Name   string
 	Input  string
 	Status string // "run", "ok", "err"
@@ -146,8 +148,21 @@ func (h *Host) defaultSystemPrompt() string {
 		" Keep replies concise. Use the provided tools to inspect and edit" +
 		" files; destructive or unusual actions need a clear reason." +
 		" You run inside zemi: when the user asks about zemi itself (its config," +
-		" Lua API, errors or what it learned), load the matching zemi-* skill first."
+		" Lua API, errors or what it learned), load the matching zemi-* skill first." +
+		delegationPrompt
 }
+
+// delegationPrompt tells the main agent when subagents and workflows pay
+// off; without it models rarely reach for them unprompted.
+const delegationPrompt = `
+
+# Delegating
+You can hand work to subagents with the agent tool. Each starts with an empty context, so write a complete prompt: the goal, what you already know, and what to report.
+- Use the explore agent for open-ended searches ("where is X handled", "how does Y work") that would take many reads, so your context keeps only the answer.
+- When a task splits into independent parts (several modules, several questions), launch one agent per part in the same message; they run in parallel.
+- When the work has stages with logic between them (fan out reviews then verify findings, migrate files then check each, try alternatives then compare), write a workflow script and run it with the workflow tool.
+- Do small, targeted work yourself: a known file, a single grep, a one-line fix. Delegating it only adds latency.
+Subagent reports are not shown to the user; summarize what matters.`
 
 // resolveProfile returns the profile to run: explicit name, the default,
 // or the implicit shipped profile.
@@ -190,12 +205,21 @@ func (h *Host) currentModelID(p *Profile) string {
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
 	sys := h.defaultSystemPrompt()
-	if p != nil && p.System != "" {
-		sys = p.System
-	}
-	files := []string{"ZEMI.md", "AGENTS.md"}
-	if p != nil && len(p.ContextFiles) > 0 {
+	var files []string
+	if p != nil {
+		if p.System != "" {
+			sys = p.System
+		}
 		files = p.ContextFiles
+	}
+	return h.systemWith(sys, files)
+}
+
+// systemWith appends project context files (nil = the defaults), the
+// skills index and the session digest to a base prompt.
+func (h *Host) systemWith(sys string, files []string) string {
+	if len(files) == 0 {
+		files = []string{"ZEMI.md", "AGENTS.md"}
 	}
 	budget := contextBudget
 	var sections string
@@ -233,22 +257,11 @@ func (h *Host) withDigest(sys string) string {
 // profileTools selects the tool set: profile names filter the builtin set;
 // Lua-registered tools are always included (the pipeline gates them).
 func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
-	pipe := h.PipelineFor()
-	var out []fantasy.AgentTool
-	builtins := tools.All(pipe)
-	if p == nil || len(p.Tools) == 0 {
-		out = append(out, builtins...)
-	} else {
-		want := map[string]bool{}
-		for _, n := range p.Tools {
-			want[n] = true
-		}
-		for _, t := range builtins {
-			if want[t.Info().Name] {
-				out = append(out, t)
-			}
-		}
+	var want []string
+	if p != nil && len(p.Tools) > 0 {
+		want = p.Tools
 	}
+	out := filterTools(append(tools.All(h.PipelineFor()), h.agentTool(), h.workflowTool()), want, nil)
 	return append(out, h.luaFantasyTools()...)
 }
 
@@ -484,7 +497,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.tools = append(ag.tools, StreamTool{Name: name, Input: toolSummary(input), Status: "run"})
+	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Status: "run"})
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
 }
@@ -493,7 +506,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
-		if ag.tools[i].Name == name && ag.tools[i].Status == "run" {
+		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
 			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
 			break
 		}
@@ -564,7 +577,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		if status == "run" {
 			status = "err"
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status})
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Status: status, Detail: t.Detail})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)
@@ -578,7 +591,7 @@ func toolSummary(input string) string {
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
 	}
-	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name", "text"} {
+	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name", "text", "description"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s
 		}
@@ -1115,6 +1128,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	h.agentRunFns(L, tb)
 	return tb
 }
 

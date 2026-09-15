@@ -45,7 +45,8 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `markdown`, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | `debug`, `info`, `warn`, `error` |
-| `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage` |
+| `zemi.agent` | `send`, `cancel`, `current`, `profile`, `set_default`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` |
+| `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` |
 | `zemi.provider`, `zemi.model` | `register`, `list`; `list`, `set`, `pick` |
 | `zemi.session` | `id`, `title`, `set_title`, `messages` |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
@@ -89,17 +90,33 @@ zemi.tool.register({
   input = { type = "object", properties = { id = { type = "string" } }, required = { "id" } },
   execute = function(args) return "ticket " .. args.id end,
 })
+
+-- Subagents and workflows run off the interpreter; callbacks fire when done
+zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
+  zemi.notify({ title = "explore", body = text or err })
+end)
+zemi.command.add("review", function()
+  zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
+end, { desc = "run workflows/review.lua and hand the result to the agent" })
 ```
+
+Subagent definitions are markdown files in `agents/` (frontmatter `description`, optional
+`name`, `tools` list or comma string, `model`; the body is the system prompt). Workflow
+scripts (`workflows/<name>.lua`) run in a separate sandbox, not this interpreter: they see
+only `agent(prompt, { agent, description })` -> text or nil, err, `parallel({ fn, ... })` ->
+results, errs, `phase(name)`, `log(...)`, `json.encode/decode`, `args`, and Lua's string,
+table and math libraries. `agent` and `parallel` cannot run inside `pcall`.
 
 Widget `ctx` carries `width`, `cwd`, `model`, `transcript`, `agent` (live turn: `text`,
 `tools`, `steering`), `usage`, `context`, `show_reasoning`, `pulse`, `reflecting`,
-`pending_memory`, `pending_config`. Regions: `header`, `chat`, `statusline.left`,
+`pending_memory`, `pending_config`, `agents_running`; tool rows carry `detail` (subagent
+and workflow progress). Regions: `header`, `chat`, `statusline.left`,
 `statusline.right`. Segments are `{ text = "...", hl = "Group" }`.
 
 ## Events
 
 `app.ready`, `session.new`, `session.open`, `session.close`, `agent.start`,
-`agent.finish`, `agent.error`, `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
+`agent.finish`, `agent.error`, `agent.subagent.start`, `agent.subagent.finish`, `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
 (vetoable: deny, halt, rewrite), `tool.post`, `permission.request`, `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
 `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,

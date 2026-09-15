@@ -92,6 +92,8 @@ func run(args []string) int {
 		host.ReflectorCommandsStep(),
 		host.ConfigCommandsStep(),
 		host.SkillsCommandsStep(),
+		host.AgentsCommandsStep(),
+		host.WorkflowCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
@@ -298,8 +300,16 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 			if pdir == "" {
 				return nil
 			}
+			// Agents, commands and workflows are project config too: any of
+			// them triggers the same trust prompt as init.lua.
 			initPath := filepath.Join(pdir, "init.lua")
-			if _, err := os.Stat(initPath); err != nil {
+			present := false
+			for _, name := range []string{"init.lua", "agents", "commands", "workflows"} {
+				if _, err := os.Stat(filepath.Join(pdir, name)); err == nil {
+					present = true
+				}
+			}
+			if !present {
 				return nil
 			}
 			hash, err := hashTree(pdir)
@@ -331,6 +341,10 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 					h.Log.Warn("trust", "project config denied; not loading", map[string]any{"dir": pdir})
 					return nil
 				}
+			}
+			h.SetProjectTrusted(true)
+			if _, err := os.Stat(initPath); err != nil {
+				return nil
 			}
 			return lua.LoadFileStep("project init", initPath, lua.OriginProject).Run(ctx, r, g)
 		},

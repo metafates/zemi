@@ -67,6 +67,7 @@ type ChatMessage struct {
 	Text   string // tool rows: the input summary
 	Tool   string
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
+	Detail string // tool rows: subagent or workflow progress summary
 	Stat   *TurnStat
 }
 
@@ -151,7 +152,15 @@ type Host struct {
 	skillsReg *skillReg
 
 	hostActions map[string]func(h *Host, args string) error
+
+	// projectTrusted is set once the project config tree passed the trust
+	// prompt; project agents, commands and workflows load only then.
+	projectTrusted atomic.Bool
+	bgAgents       atomic.Int32 // zemi.agent.run and workflow runs in flight
 }
+
+// SetProjectTrusted records the project config trust decision.
+func (h *Host) SetProjectTrusted(ok bool) { h.projectTrusted.Store(ok) }
 
 // Session is the M0 session state (title, cwd, transcript).
 type Session struct {
@@ -654,6 +663,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("pending_config", glua.LNumber(h.pendingConfig.Load()))
+	tb.RawSetString("agents_running", glua.LNumber(h.bgAgents.Load()))
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
 	at := L.NewTable()
@@ -674,6 +684,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("name", glua.LString(t.Name))
 		row.RawSetString("input", glua.LString(t.Input))
 		row.RawSetString("status", glua.LString(t.Status))
+		row.RawSetString("detail", glua.LString(t.Detail))
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
@@ -686,6 +697,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("text", glua.LString(m.Text))
 		row.RawSetString("tool", glua.LString(m.Tool))
 		row.RawSetString("status", glua.LString(m.Status))
+		row.RawSetString("detail", glua.LString(m.Detail))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))
@@ -841,6 +853,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.provider", h.providerNamespace(L), nil},
 		{"zemi.model", h.modelNamespace(L), nil},
 		{"zemi.agent", h.agentNamespace(L), nil},
+		{"zemi.workflow", h.workflowNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
 		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
@@ -852,7 +865,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.3.0"))
+	api.RawSetString("version", glua.LString("0.4.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

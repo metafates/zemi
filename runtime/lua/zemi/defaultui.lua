@@ -104,6 +104,18 @@ zemi.ui.widget.register({
   end,
 })
 
+-- Agents launched from Lua or workflows, running outside the turn.
+zemi.ui.widget.register({
+  id = "statusline.agents",
+  region = "statusline.left",
+  priority = 25,
+  render = function(ctx)
+    local n = ctx.agents_running or 0
+    if n == 0 then return empty() end
+    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title" } } }
+  end,
+})
+
 -- Learned proposals waiting for review; they persist across restarts.
 zemi.ui.widget.register({
   id = "statusline.learn",
@@ -210,7 +222,7 @@ zemi.ui.widget.register({
     end
     -- One tool row: status mark (running marks pulse with the working
     -- row), name, input cut by UTF-8 character to fit.
-    local function add_tool(name, input, status)
+    local function add_tool(name, input, status, detail)
       local mark, hl = ctx.pulse and "◦" or "•", "AgentToolRun"
       if status == "ok" then
         mark, hl = "✓", "AgentToolOk"
@@ -236,6 +248,10 @@ zemi.ui.widget.register({
         { text = " " .. name, hl = "AgentToolName" },
         { text = inp ~= "" and "  " .. inp or "", hl = "Comment" },
       }
+      -- Subagents and workflows report progress under their row.
+      if (detail or "") ~= "" then
+        lines[#lines + 1] = { { text = "    └ " .. detail:gsub("%s+", " "), hl = "Comment" } }
+      end
     end
 
     local tr = ctx.transcript or {}
@@ -256,7 +272,7 @@ zemi.ui.widget.register({
         if i == last_reason and not ctx.show_reasoning then label = label .. " (ctrl+o to expand)" end
         add_reasoning(label, m.text)
       elseif m.kind == "tool" then
-        add_tool(m.tool, m.text, m.status)
+        add_tool(m.tool, m.text, m.status, m.detail)
       elseif m.kind == "compact" then
         lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then
@@ -295,7 +311,7 @@ zemi.ui.widget.register({
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
     if ag.active or #tools > 0 or text ~= "" then
       if #tr > 0 and tr[#tr].role == "user" then blank() end
-      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status) end
+      for _, t in ipairs(tools) do add_tool(t.name, t.input, t.status, t.detail) end
       if ctx.show_reasoning and (ag.reasoning or "") ~= "" then add_reasoning("thinking", ag.reasoning) end
       if text ~= "" then add_markdown(text) end
       for _, q in ipairs(queued) do

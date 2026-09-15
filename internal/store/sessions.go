@@ -75,9 +75,10 @@ func (s *DB) GetSession(id string) (*Session, error) {
 	return sess, err
 }
 
-// ListSessions returns sessions ordered by most recent activity.
+// ListSessions returns top-level sessions (subagent runs excluded) ordered
+// by most recent activity.
 func (s *DB) ListSessions(limit int) ([]*Session, error) {
-	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions ORDER BY updated_at DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE COALESCE(parent_id, '') = '' ORDER BY updated_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}

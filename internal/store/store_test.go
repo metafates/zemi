@@ -40,9 +40,12 @@ func TestSessionLifecycle(t *testing.T) {
 	if s.Title != "renamed" || s.PromptTokens != 10 || s.CompletionTokens != 20 || s.Cost != 0.5 {
 		t.Fatalf("usage/rename not applied: %+v", s)
 	}
+	if err := db.CreateSession("top", "", "top", ""); err != nil {
+		t.Fatal(err)
+	}
 	all, err := db.ListSessions(10)
-	if err != nil || len(all) != 1 {
-		t.Fatalf("list: %v %v", all, err)
+	if err != nil || len(all) != 1 || all[0].ID != "top" {
+		t.Fatalf("list must hold only the top-level session: %v %v", all, err)
 	}
 }
 
