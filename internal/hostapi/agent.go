@@ -399,6 +399,44 @@ func (h *Host) instructionFiles() []string {
 	return out
 }
 
+var sentInstructions sync.Map // session id + path -> true, see nearestInstructions
+
+// nearestInstructions returns the instruction file that governs path and is
+// not already in the prompt: in a monorepo opened at the root, a package's
+// own AGENTS.md sits below the files instructionFiles collects. Each one is
+// sent once per session, with the read that first reaches it.
+func (h *Host) nearestInstructions(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	inPrompt := map[string]bool{}
+	for _, p := range h.instructionFiles() {
+		inPrompt[p] = true
+	}
+	root := h.Dirs.RepoRoot()
+	for dir := filepath.Dir(abs); strings.HasPrefix(dir, root); dir = filepath.Dir(dir) {
+		for _, name := range []string{"ZEMI.md", "AGENTS.md", "CLAUDE.md"} {
+			p := filepath.Join(dir, name)
+			if !fileExists(p) || inPrompt[p] {
+				continue
+			}
+			if _, sent := sentInstructions.LoadOrStore(h.AgentSessionID()+"\x00"+p, true); sent {
+				return ""
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return ""
+			}
+			return fmt.Sprintf("\n# Instructions from %s, which apply to this file\n%s\n", p, truncRunes(string(data), 4000))
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return ""
+}
+
 func fileExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.Mode().IsRegular()
@@ -1815,10 +1853,11 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Recall: func(query string, limit int) ([]*store.Memory, error) {
 			return h.memorySearch("all", query, limit)
 		},
-		EditMemory: h.modelEditMemory,
-		Scratch:    h.inScratch,
-		ScratchDir: h.ScratchDir,
-		Seen:       h.readLog(),
+		EditMemory:   h.modelEditMemory,
+		Scratch:      h.inScratch,
+		ScratchDir:   h.ScratchDir,
+		Seen:         h.readLog(),
+		Instructions: h.nearestInstructions,
 	}
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion

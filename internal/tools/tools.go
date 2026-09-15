@@ -93,6 +93,10 @@ type Pipeline struct {
 	// check.
 	Seen *sync.Map
 
+	// Instructions returns the instruction file governing a file the model
+	// just read, when it is not already in the prompt; nil = none.
+	Instructions func(path string) string
+
 	// AfterWrite returns text to append to a successful write, edit or
 	// multiedit result (language server diagnostics); nil = nothing.
 	AfterWrite func(path string) string

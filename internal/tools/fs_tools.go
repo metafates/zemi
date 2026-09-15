@@ -172,6 +172,9 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if i < end {
 		fmt.Fprintf(&b, "... (%d more lines; continue with offset %d)\n", end-i, i+1)
 	}
+	if p != nil && p.Instructions != nil {
+		b.WriteString(p.Instructions(path))
+	}
 	return fantasy.NewTextResponse(b.String()), nil
 }
 

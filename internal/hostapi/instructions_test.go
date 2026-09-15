@@ -5,55 +5,29 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestInstructionFiles: the user's AGENTS.md comes first, then each
-// directory from the repository root down to the working directory; a
-// directory without ZEMI.md or AGENTS.md falls back to CLAUDE.md, and
-// nothing above the repository root is read.
-func TestInstructionFiles(t *testing.T) {
-	cfg, top := t.TempDir(), t.TempDir()
-	repo := filepath.Join(top, "repo")
-	sub := filepath.Join(repo, "svc", "api")
-	for path, body := range map[string]string{
-		filepath.Join(cfg, "AGENTS.md"):         "global rules",
-		filepath.Join(top, "AGENTS.md"):         "outside the repo",
-		filepath.Join(repo, "AGENTS.md"):        "root agents",
-		filepath.Join(repo, "CLAUDE.md"):        "root claude, shadowed",
-		filepath.Join(repo, "svc", "CLAUDE.md"): "svc claude fallback",
-		filepath.Join(sub, "ZEMI.md"):           "api zemi",
-		filepath.Join(sub, "AGENTS.md"):         "api agents",
-		filepath.Join(repo, ".git", "HEAD"):     "ref: main",
-	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
+// TestNearestInstructions: a package's own AGENTS.md rides the first read of
+// a file under it, once per session. Files already in the prompt do not
+// repeat, which is every instruction file from the repo root down.
+func TestNearestInstructions(t *testing.T) {
+	h, _ := newTestHost(t)
+	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	log := logging.New(t.TempDir())
-	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: sub})
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("root rules"), 0o644)
+	os.WriteFile(filepath.Join(pkg, "AGENTS.md"), []byte("use tabs here"), 0o644)
+	file := filepath.Join(pkg, "x.go")
+	os.WriteFile(file, []byte("package sub\n"), 0o644)
 
-	sys := h.systemWith("base", nil)
-	for _, want := range []string{"global rules", "root agents", "svc claude fallback", "api zemi", "api agents"} {
-		i := strings.Index(sys, want)
-		if i < 0 {
-			t.Fatalf("system prompt misses %q:\n%s", want, sys)
-		}
-		sys = sys[i:]
+	if got := h.nearestInstructions(file); !strings.Contains(got, "use tabs here") {
+		t.Fatalf("first read must carry the package instructions: %q", got)
 	}
-	full := h.systemWith("base", nil)
-	for _, absent := range []string{"outside the repo", "root claude, shadowed"} {
-		if strings.Contains(full, absent) {
-			t.Fatalf("system prompt must not contain %q", absent)
-		}
+	if got := h.nearestInstructions(file); got != "" {
+		t.Fatalf("they must not repeat in the same session: %q", got)
 	}
-	if !strings.Contains(full, "## Instructions: svc/CLAUDE.md") {
-		t.Fatalf("sections should name files relative to the repo root:\n%s", full)
+	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go")); got != "" {
+		t.Fatalf("the root file is already in the prompt: %q", got)
 	}
 }

@@ -354,11 +354,12 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	s.h.refreshViewed(run)
 }
 
-func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, _ string) {
+func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, out string) {
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		run.tr[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+		run.tr[i].Output = outputTail(out)
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
