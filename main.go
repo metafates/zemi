@@ -77,8 +77,13 @@ func run(args []string) int {
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	host.Version = versionString()
 	// Headless: nothing to quit, and an untrusted project config is skipped
-	// instead of asked about.
-	quit, askTrust := func() {}, func(string, string) string { return "once" }
+	// instead of asked about. Say so, or the run looks like it applied the
+	// project's setup.
+	quit := func() {}
+	askTrust := func(dir, _ string) string {
+		fmt.Fprintf(os.Stderr, "zemi: %s is not trusted yet and was skipped; start zemi without -p once to review it\n", dir)
+		return "once"
+	}
 	var app *ui.App
 	if !opts.print && !opts.health {
 		app = ui.NewApp(host, log)
