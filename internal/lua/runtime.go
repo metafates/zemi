@@ -1,0 +1,515 @@
+package lua
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/metafates/zemi/internal/logging"
+	glua "github.com/yuin/gopher-lua"
+)
+
+// Runtime owns the interpreter lifecycle: one live generation at a time, a
+// hot flag, and the actor queue contract (DESIGN §4). Only the dispatcher
+// goroutine of the current generation touches the LState.
+type Runtime struct {
+	log   *logging.Logger
+	paths PathClasses
+	rfs   fs.FS // embedded runtime/lua tree
+
+	hot atomic.Bool
+	cur atomic.Pointer[Generation]
+	seq atomic.Int64
+
+	originMu sync.Mutex
+	frames   []frame
+
+	printHook func(origin, line string)
+
+	stopMu   sync.Mutex
+	stopCh   map[int64]chan struct{}
+	reloadMu sync.Mutex
+}
+
+// frame is one entry of the origin stack: the origin and the file path of
+// the chunk currently running on the interpreter goroutine.
+type frame struct {
+	origin Origin
+	path   string
+}
+
+// RuntimeOptions configures a Runtime.
+type RuntimeOptions struct {
+	Log       *logging.Logger
+	PathClass PathClasses
+	RuntimeFS fs.FS // embedded FS rooted at runtime/ (containing lua/...)
+}
+
+func NewRuntime(opts RuntimeOptions) *Runtime {
+	r := &Runtime{
+		log:    opts.Log,
+		paths:  opts.PathClass,
+		rfs:    opts.RuntimeFS,
+		stopCh: map[int64]chan struct{}{},
+	}
+	if r.log == nil {
+		r.log = logging.New("")
+	}
+	return r
+}
+
+// SetPrintHook routes Lua print() to the host (origin-tagged).
+func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
+	r.printHook = fn
+}
+
+func (r *Runtime) retireCh(id int64) <-chan struct{} {
+	r.stopMu.Lock()
+	defer r.stopMu.Unlock()
+	return r.stopCh[id]
+}
+
+func (r *Runtime) closeStopCh(id int64) {
+	r.stopMu.Lock()
+	defer r.stopMu.Unlock()
+	if ch, ok := r.stopCh[id]; ok {
+		close(ch)
+		delete(r.stopCh, id)
+	}
+}
+
+func (r *Runtime) PushFrame(origin Origin, path string) {
+	r.originMu.Lock()
+	r.frames = append(r.frames, frame{origin: origin, path: path})
+	r.originMu.Unlock()
+}
+
+func (r *Runtime) PopFrame() {
+	r.originMu.Lock()
+	if len(r.frames) > 0 {
+		r.frames = r.frames[:len(r.frames)-1]
+	}
+	r.originMu.Unlock()
+}
+
+// CurrentOrigin returns the origin of the chunk currently running on the
+// interpreter goroutine (host entries push the registration origin).
+func (r *Runtime) CurrentOrigin() Origin {
+	f, ok := r.topFrame()
+	if !ok {
+		return OriginHost
+	}
+	return f.origin
+}
+
+// CurrentPath returns the file path of the currently running chunk, or "".
+func (r *Runtime) CurrentPath() string {
+	f, ok := r.topFrame()
+	if !ok {
+		return ""
+	}
+	return f.path
+}
+
+func (r *Runtime) topFrame() (frame, bool) {
+	r.originMu.Lock()
+	defer r.originMu.Unlock()
+	if len(r.frames) == 0 {
+		return frame{}, false
+	}
+	return r.frames[len(r.frames)-1], true
+}
+
+// goHot marks the runtime wedged: every Lua request fails fast until
+// ForceReload (DESIGN §4).
+func (r *Runtime) goHot(cause error) {
+	if r.hot.Swap(true) {
+		return
+	}
+	r.log.Error("lua", "runtime marked hot: "+cause.Error(), nil)
+}
+
+func (r *Runtime) IsHot() bool { return r.hot.Load() }
+
+// Current returns the live generation, or nil before the first boot.
+func (r *Runtime) current() *Generation { return r.cur.Load() }
+
+// Boot builds the first generation and runs the boot steps through its
+// queue. steps run in order; each sees a fresh generation.
+func (r *Runtime) Boot(ctx context.Context, steps []BootStep) error {
+	_, err := r.boot(ctx, steps)
+	return err
+}
+
+// ForceReload tears down the current generation (wedged or not), purges
+// its registrations via the callback, and boots a fresh one (DESIGN §4).
+// The reload trigger is Go-reserved and never routed through Lua.
+func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func()) error {
+	r.reloadMu.Lock()
+	defer r.reloadMu.Unlock()
+	if old := r.current(); old != nil {
+		old.drain(true)
+		r.closeStopCh(old.ID)
+		r.cur.Store(nil)
+		r.log.Info("lua", "generation retired for reload", map[string]any{"gen": old.ID})
+	}
+	if purge != nil {
+		purge()
+	}
+	r.hot.Store(false)
+	gen, err := r.boot(ctx, steps)
+	if err != nil {
+		return err
+	}
+	r.log.Info("lua", "generation booted", map[string]any{"gen": gen.ID})
+	return nil
+}
+
+func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
+	sb, err := NewSandbox(r.CurrentOrigin)
+	if err != nil {
+		return nil, err
+	}
+	sb.SetPrint(r.PrintHook())
+	id := r.seq.Add(1)
+	gen := &Generation{
+		ID:      id,
+		rt:      r,
+		SB:      sb,
+		L:       sb.L,
+		modules: map[string]glua.LValue{},
+		signal:  make(chan struct{}, 1),
+	}
+	r.installRequire(gen)
+
+	stop := make(chan struct{})
+	r.stopMu.Lock()
+	r.stopCh[id] = stop
+	r.stopMu.Unlock()
+
+	// r.cur is stored before the steps so early callers reach the
+	// generation and wait in do(); the dispatcher starts only after the
+	// steps, so boot chunks and queued requests never run concurrently
+	// on one LState (DESIGN §4 single writer).
+	r.cur.Store(gen)
+
+	for _, step := range steps {
+		if err := step.Run(ctx, r, gen); err != nil {
+			return gen, fmt.Errorf("boot step %s: %w", step.Name, err)
+		}
+	}
+
+	go gen.loop()
+	return gen, nil
+}
+
+// Do enqueues fn on the current generation and waits for the result.
+// ceiling == 0 selects the class default.
+func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Duration, fn Fn) ([]any, error) {
+	if r.hot.Load() {
+		return nil, ErrHot
+	}
+	gen := r.current()
+	if gen == nil {
+		return nil, errors.New("zemi: lua runtime not booted")
+	}
+	return gen.do(ctx, class, ceiling, grace, fn)
+}
+
+func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Duration, fn Fn) ([]any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r := newRequest(class, fn, ctx, ceiling, grace, 0)
+	g.enqueue(r)
+	select {
+	case res := <-r.reply:
+		if res.err != nil {
+			return nil, res.err
+		}
+		return res.vals, nil
+	case <-ctx.Done():
+		if r.cancelFn != nil {
+			r.cancelFn()
+		}
+		// Wait for the watchdog/executor to settle the request so the
+		// reply channel is never leaked; the outcome is canceled.
+		res := <-r.reply
+		if res.err != nil && !errors.Is(res.err, ErrCanceled) && !errors.Is(res.err, ErrAbandoned) {
+			return nil, fmt.Errorf("%w (ctx: %v)", res.err, ctx.Err())
+		}
+		return nil, context.Canceled
+	}
+}
+
+// Call runs a registered Lua callback with Go arguments. It is the standard
+// host -> Lua entry point for UI-class work.
+func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, args ...any) ([]any, error) {
+	return r.Do(ctx, ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		r.PushFrame(origin, "callback")
+		defer r.PopFrame()
+		base := L.GetTop()
+		L.Push(fn)
+		for _, a := range args {
+			L.Push(FromGo(L, a))
+		}
+		n := len(args)
+		if err := L.PCall(n, glua.MultRet, nil); err != nil {
+			L.SetTop(base)
+			return nil, err
+		}
+		nres := L.GetTop() - base
+		out := make([]any, 0, nres)
+		for i := 1; i <= nres; i++ {
+			v, err := ToGo(L.Get(base + i))
+			if err != nil {
+				L.SetTop(base)
+				return nil, err
+			}
+			out = append(out, v)
+		}
+		L.SetTop(base)
+		return out, nil
+	})
+}
+
+// ExecuteChunk compiles and runs src as a chunk of the given origin on the
+// interpreter goroutine.
+func (r *Runtime) ExecuteChunk(ctx context.Context, src, rel string, origin Origin) error {
+	_, err := r.Do(ctx, ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		return nil, r.runChunk(L, src, rel, origin)
+	})
+	return err
+}
+
+func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error {
+	sb := r.current().SB
+	fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
+	if err != nil {
+		return fmt.Errorf("%s: %w", rel, err)
+	}
+	r.PushFrame(origin, rel)
+	defer r.PopFrame()
+	L.Push(fn)
+	if err := L.PCall(0, 0, nil); err != nil {
+		return fmt.Errorf("%s: %w", rel, err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// require over the runtimepath
+
+func (r *Runtime) installRequire(gen *Generation) {
+	L := gen.L
+	gen.SB.SetRequire(L.NewClosure(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		val, err := r.requireModule(gen, name)
+		if err != nil {
+			L.RaiseError("require: %v", err)
+			return 0
+		}
+		L.Push(val)
+		return 1
+	}))
+}
+
+func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, error) {
+	if cached, ok := gen.modules[name]; ok {
+		return cached, nil
+	}
+	// Cycle detection via a loading marker.
+	if _, loading := gen.modules["<loading:"+name+">"]; loading {
+		return glua.LNil, fmt.Errorf("circular require of %q", name)
+	}
+	gen.modules["<loading:"+name+">"] = glua.LTrue
+	defer delete(gen.modules, "<loading:"+name+">")
+
+	if ns, ok := r.goNamespace(gen, name); ok {
+		gen.modules[name] = ns
+		return ns, nil
+	}
+
+	var (
+		src    []byte
+		origin Origin
+		rel    string
+		err    error
+	)
+	if strings.HasPrefix(name, "zemi.") {
+		// zemi.* resolves to the Go preload or the embedded stdlib only;
+		// userland cannot shadow it (DESIGN §5).
+		src, rel, err = r.readEmbedded(name)
+		origin = OriginBuiltin
+	} else {
+		src, rel, origin, err = r.readOverRuntimepath(name)
+	}
+	if err != nil {
+		return glua.LNil, err
+	}
+
+	mod, err := r.evalModule(gen, src, rel, origin)
+	if err != nil {
+		return glua.LNil, err
+	}
+	gen.modules[name] = mod
+	return mod, nil
+}
+
+// goNamespace exposes preloaded zemi.* namespaces from the frozen surface.
+func (r *Runtime) goNamespace(gen *Generation, name string) (glua.LValue, bool) {
+	v := gen.SB.LookupPath(name)
+	if v == glua.LNil {
+		return glua.LNil, false
+	}
+	return v, true
+}
+
+func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
+	if r.rfs == nil {
+		return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
+	}
+	rel := strings.ReplaceAll(name, ".", "/") + ".lua"
+	data, err := fs.ReadFile(r.rfs, "lua/"+rel)
+	if err == nil {
+		return data, rel, nil
+	}
+	relInit := strings.ReplaceAll(name, ".", "/") + "/init.lua"
+	data, err = fs.ReadFile(r.rfs, "lua/"+relInit)
+	if err == nil {
+		return data, relInit, nil
+	}
+	return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
+}
+
+func (r *Runtime) readOverRuntimepath(name string) ([]byte, string, Origin, error) {
+	rel := strings.ReplaceAll(name, ".", "/") + ".lua"
+	relInit := strings.ReplaceAll(name, ".", "/") + "/init.lua"
+	for _, root := range r.runtimepath() {
+		for _, candidate := range []string{rel, relInit} {
+			path := filepath.Join(root, "lua", candidate)
+			if data, err := os.ReadFile(path); err == nil {
+				resolved, rerr := filepath.EvalSymlinks(path)
+				if rerr != nil {
+					resolved = path
+				}
+				origin := r.paths.Classify(resolved)
+				if origin == "" {
+					return nil, "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
+				}
+				return data, filepath.Join(root, candidate), origin, nil
+			}
+		}
+	}
+	return nil, "", "", fmt.Errorf("module %q not found on runtimepath", name)
+}
+
+func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Origin) (glua.LValue, error) {
+	sb := gen.SB
+	fn, cerr := sb.CompileChunk(string(src), origin.ChunkName(rel))
+	if cerr != nil {
+		return glua.LNil, fmt.Errorf("%s: %w", rel, cerr)
+	}
+	L := gen.L
+	r.PushFrame(origin, rel)
+	defer r.PopFrame()
+	L.Push(fn)
+	if perr := L.PCall(0, 1, nil); perr != nil {
+		return glua.LNil, fmt.Errorf("%s: %w", rel, perr)
+	}
+	out := L.Get(-1)
+	if out == glua.LNil {
+		out = glua.LTrue
+	}
+	L.Pop(1)
+	return out, nil
+}
+
+// runtimepath lists require roots in order: config home, plugins (sorted),
+// then the embedded runtime is consulted separately (DESIGN §5).
+func (r *Runtime) runtimepath() []string {
+	var out []string
+	if r.paths != nil {
+		for _, c := range r.paths {
+			if c.Origin == OriginUser || c.Origin == OriginPlugin {
+				out = append(out, c.Prefix)
+			}
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// boot steps
+
+// BootStep is one stage of the boot sequence, executed on the interpreter
+// goroutine of each new generation.
+type BootStep struct {
+	Name string
+	Run  func(ctx context.Context, r *Runtime, g *Generation) error
+}
+
+// CompileAndRun is a BootStep helper: compile + execute a source string.
+func CompileAndRun(name, src string, origin Origin) BootStep {
+	return BootStep{
+		Name: name,
+		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
+			return r.runChunk(g.L, src, name, origin)
+		},
+	}
+}
+
+// LoadFileStep loads a Lua file from disk as the given origin.
+func LoadFileStep(name, path string, origin Origin) BootStep {
+	return BootStep{
+		Name: name,
+		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
+			if path == "" {
+				return nil
+			}
+			if _, err := os.Stat(path); err != nil {
+				return nil
+			}
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				resolved = path
+			}
+			class := r.paths.Classify(resolved)
+			if class == "" {
+				return fmt.Errorf("refusing %s: outside known origins", resolved)
+			}
+			data, err := os.ReadFile(resolved)
+			if err != nil {
+				return err
+			}
+			return r.runChunk(g.L, string(data), name, class)
+		},
+	}
+}
+
+// RequireStep requires a module (e.g. the embedded shipped defaults).
+func RequireStep(module string) BootStep {
+	return BootStep{
+		Name: "require " + module,
+		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
+			_, err := r.requireModule(g, module)
+			return err
+		},
+	}
+}
+
+// PrintHook adapts print() to the runtime's origin tracking.
+func (r *Runtime) PrintHook() func(origin, line string) {
+	return func(origin, line string) {
+		if r.printHook != nil {
+			r.printHook(origin, line)
+		}
+	}
+}
