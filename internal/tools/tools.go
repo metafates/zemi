@@ -436,7 +436,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 				// the real host, so a rule (or an "always allow") matches the
 				// per-hop check runFetch makes later
 				host := "invalid"
-				if u, err := parseNetURL(str(in["url"])); err == nil {
+				if u, err := ParseNetURL(str(in["url"])); err == nil {
 					host = u.Hostname()
 				}
 				return []Request{{Subject: "net." + host, Arg: str(in["url"]), Reason: "fetch url"}}
