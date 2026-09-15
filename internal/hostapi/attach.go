@@ -22,6 +22,8 @@ const (
 
 var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)`)
 
+// expandAttachments also carries output of the user's !commands since the
+// last message, behind the same marker.
 func (h *Host) expandAttachments(text string) string {
 	var b strings.Builder
 	seen := map[string]bool{}
@@ -41,6 +43,7 @@ func (h *Host) expandAttachments(text string) string {
 		}
 		fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)
 	}
+	b.WriteString(h.takeShellNotes())
 	if b.Len() == 0 {
 		return text
 	}

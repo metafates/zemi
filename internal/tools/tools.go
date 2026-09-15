@@ -71,6 +71,10 @@ type Pipeline struct {
 	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
 	Recall   func(query string, limit int) ([]*store.Memory, error)
 
+	// Plan reports plan mode: file writes are denied and allowed commands
+	// ask instead; nil = never.
+	Plan func() bool
+
 	// Checkpoint records a file's content before a write tool changes it,
 	// so the turn can be rewound; nil = no checkpoints.
 	Checkpoint func(path string)
@@ -87,9 +91,17 @@ type Pipeline struct {
 func (p *Pipeline) Check(req Request) Verdict { return p.check(req) }
 
 func (p *Pipeline) check(req Request) Verdict {
+	plan := p.Plan != nil && p.Plan()
+	if plan && req.Subject == "fs.write" {
+		return Verdict{perm.Deny, "plan mode is on: no file changes (tab switches mode)", "mode:plan"}
+	}
 	loosen := func(v Verdict) Verdict {
-		if v.Decision == perm.Allow && p.RewriteLoosened {
+		switch {
+		case v.Decision != perm.Allow:
+		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
+		case plan && req.Subject == "tool.bash":
+			return p.resolveAsk(req, "plan mode: every command asks")
 		}
 		return v
 	}

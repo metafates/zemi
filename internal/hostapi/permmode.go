@@ -12,10 +12,17 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// PermModes are the permission.mode values in shift+tab cycle order. The
-// mode only answers asks: deny rules and the tool.pre/permission.request
-// vetoes still run first.
-var PermModes = []string{"manual", "auto", "yolo"}
+// PermModes are the permission.mode values in tab cycle order. auto and yolo
+// only answer asks (deny rules and the tool.pre/permission.request vetoes
+// still run first); plan also refuses file changes outright.
+var PermModes = []string{"manual", "plan", "auto", "yolo"}
+
+// planPrompt joins the system prompt while plan mode is on; the pipeline
+// enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
+const planPrompt = `
+
+# Plan mode
+The user switched on plan mode: investigate and propose, do not change anything. File writes are refused and every command needs the user's approval, so stick to reading, searching and read-only commands. Finish with a concrete, numbered plan (files to change, what to change, how to verify). The user leaves plan mode with tab when they accept it.`
 
 // PermMode reports the active permission mode (unknown values read as
 // manual, the fail-closed choice).

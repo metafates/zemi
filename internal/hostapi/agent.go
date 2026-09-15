@@ -135,6 +135,9 @@ type agentHost struct {
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).
 	turnMsgID string
+
+	// shellNotes holds !command output waiting for the next message.
+	shellNotes []string
 }
 
 func newAgentHost() *agentHost {
@@ -215,6 +218,9 @@ func (h *Host) buildSystem(p *Profile) string {
 			sys = p.System
 		}
 		files = p.ContextFiles
+	}
+	if h.PermMode() == "plan" {
+		sys += planPrompt
 	}
 	return h.systemWith(sys, files)
 }
@@ -1456,6 +1462,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pre:        h.toolPreHook(),
 		Ask:        h.askHook(),
 		Checkpoint: h.checkpointFile,
+		Plan:       func() bool { return h.PermMode() == "plan" },
 		Post:      h.toolPostHook(),
 		Principal: "model",
 		Jobs:      h.jobs,

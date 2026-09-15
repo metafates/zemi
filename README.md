@@ -11,8 +11,9 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 - Asks before anything risky. Edits show their diff in the permission prompt; `a`
   (always) stores an exact rule, and permanent rules live in a generated
   `permissions.lua` that is versioned with git. `tab` switches the mode shown at the left
-  of the statusline: `manual`, `auto` (a model approves routine actions, you get the
-  rest) or `yolo`.
+  of the statusline: `manual`, `plan` (the agent investigates and proposes; file changes
+  are refused and every command asks), `auto` (a model approves routine actions, you get
+  the rest) or `yolo`.
 - Lets you steer mid-turn: messages typed while the agent works join the running turn at
   the next step. `up` on an empty composer pulls the queue back for editing, `esc`
   interrupts.
@@ -161,6 +162,7 @@ With `-p` nobody can answer a permission ask, so asks are denied unless `--mode`
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
 | `/` | command palette (tab completes names and arguments) |
 | `@` | attach a project file |
+| `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
 `/rewind`, `/agents`, `/workflow`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,

@@ -32,7 +32,7 @@ Flags:
   -c, --continue      continue the most recent session
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
-      --mode mode     permission mode: manual, auto or yolo
+      --mode mode     permission mode: manual, plan, auto or yolo
   -v, --version       print the version and exit
   -h, --help          show this help
 
@@ -84,7 +84,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 		fmt.Fprintln(stdout, "zemi", versionString())
 		return o, 0
 	case o.mode != "" && !slices.Contains(hostapi.PermModes, o.mode):
-		return bad("unknown --mode %q (want manual, auto or yolo)", o.mode)
+		return bad("unknown --mode %q (want manual, plan, auto or yolo)", o.mode)
 	case o.cont && o.resume != "":
 		return bad("--continue and --resume cannot be combined")
 	}

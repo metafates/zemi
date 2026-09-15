@@ -156,6 +156,14 @@ func (a *App) submitComposer() {
 		a.runSlashCommand(text)
 		return
 	}
+	// !command runs in the user's shell; the output joins the next message
+	if cmd, ok := strings.CutPrefix(text, "!"); ok && strings.TrimSpace(cmd) != "" {
+		a.composer.pushHistory(text, a.historySize())
+		a.composer.text, a.composer.cursor = "", 0
+		a.completion.close()
+		a.host.RunShell(cmd)
+		return
+	}
 	a.sendMessage(text)
 }
 

@@ -40,8 +40,10 @@ zemi.ui.theme.register("default", {
     StatusUsageWarn = { fg = "warn" },
     StatusUsageErr = { fg = "err", bold = true },
     ModeManual = { fg = "muted", bg = "panel" },
+    ModePlan = { fg = "bg", bg = "ok", bold = true },
     ModeAuto = { fg = "bg", bg = "accent", bold = true },
     ModeYolo = { fg = "bg", bg = "err", bold = true },
+    PromptPlan = { fg = "ok", bold = true },
     PromptAuto = { fg = "accent", bold = true },
     PromptYolo = { fg = "err", bold = true },
     -- splash wordmark, a top-down blend from accent to violet
@@ -123,7 +125,7 @@ local function splash(ctx)
       { text = "/sessions", hl = "SplashKey" }, { text = " lists them", hl = "Comment" } })
   end
   row({ { text = "" } })
-  local tips = { { "/", "commands" }, { "@", "attach a file" }, { "tab", "permission mode" }, { "/agents", "subagents" } }
+  local tips = { { "/", "commands" }, { "@", "attach a file" }, { "!", "shell" }, { "tab", "permission mode" } }
   local tip = {}
   for i, t in ipairs(tips) do
     if i > 1 then tip[#tip + 1] = { text = "   " } end
@@ -177,7 +179,7 @@ zemi.ui.widget.register({
   priority = 5,
   render = function(ctx)
     local mode = ctx.permission_mode or "manual"
-    local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[mode] or "ModeManual"
+    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[mode] or "ModeManual"
     return { { { text = " " .. mode .. " ", hl = hl } } }
   end,
 })
@@ -378,6 +380,19 @@ zemi.ui.widget.register({
         add_reasoning(label, m.text)
       elseif m.kind == "tool" then
         add_tool(m.tool, m.text, m.status, m.detail)
+      elseif m.kind == "shell" then
+        -- a !command: the command, then its output (long output folds)
+        local hl = m.status == "err" and "AgentToolErr" or "Title"
+        lines[#lines + 1] = { { text = "  $ ", hl = hl }, { text = m.text, hl = "Normal" } }
+        local n = 0
+        for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
+          n = n + 1
+          if n > 12 then
+            lines[#lines + 1] = { { text = "    …", hl = "Comment" } }
+            break
+          end
+          lines[#lines + 1] = { { text = "    " .. ol, hl = "Comment" } }
+        end
       elseif m.kind == "compact" then
         lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then

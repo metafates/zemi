@@ -255,7 +255,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		}
 	}
 	// The prompt takes the permission mode's color.
-	promptHL := map[string]string{"auto": "PromptAuto", "yolo": "PromptYolo"}[a.host.PermMode()]
+	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.host.PermMode()]
 	if promptHL == "" {
 		promptHL = "Comment"
 	}

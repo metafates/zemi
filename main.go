@@ -249,9 +249,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					h.OpenModelPicker()
 					return nil
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "mode", NArgs: "?", Desc: "permission mode: manual, auto or yolo (shift+tab cycles)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "mode", NArgs: "?", Desc: "permission mode: manual, plan, auto or yolo (tab cycles)", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
-						return fmt.Errorf("permission mode is %s (want manual, auto or yolo)", h.PermMode())
+						return fmt.Errorf("permission mode is %s (want manual, plan, auto or yolo)", h.PermMode())
 					}
 					return h.SetPermMode(args)
 				}, GoComplete: func(*hostapi.Host, string, string) []string { return hostapi.PermModes },

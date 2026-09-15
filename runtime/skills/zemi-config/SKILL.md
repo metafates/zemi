@@ -61,9 +61,10 @@ writable; prefer it over guessing. Common keys:
 - `memory.digest_lines`
 - `memory.autonomy`, `config.autonomy` (`ask` or `auto`): settable only while init.lua
   runs at startup, never later and never by project or plugin code
-- `permissions.mode`: `manual` (the user answers asks), `auto` (a model approves routine
-  actions and hands the rest to the user) or `yolo` (every ask is allowed; deny rules
-  still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
+- `permissions.mode`: `manual` (the user answers asks), `plan` (file changes are refused
+  and every command asks, so the agent investigates and proposes a plan), `auto` (a model
+  approves routine actions and hands the rest to the user) or `yolo` (every ask is
+  allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
   `zemi --mode auto`. Widgets read it as `ctx.permission_mode`. Suggest yolo only
   when the user asks for it.
@@ -72,7 +73,7 @@ writable; prefer it over guessing. Common keys:
 
 `zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
-`--mode manual|auto|yolo`. `zemi --help` has the full list. With `-p` nobody answers asks,
+`--mode manual|plan|auto|yolo`. `zemi --help` has the full list. With `-p` nobody answers asks,
 so they are denied unless the mode is auto or yolo.
 
 ## Keymaps, commands, UI
