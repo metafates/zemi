@@ -200,16 +200,21 @@ func TestWidgetRegistry(t *testing.T) {
 		t.Fatal("missing region must be refused")
 	}
 
-	// InRegion orders by priority ascending.
+	// InRegion orders by priority ascending, ties by id, stable across calls.
 	lo := mk("lo", lua.OriginUser)
 	lo.Priority = 2
 	hi := mk("hi", lua.OriginUser)
 	hi.Priority = 9
+	tie := mk("a.tie", lua.OriginUser)
+	tie.Priority = 9
 	r.Add(lo)
 	r.Add(hi)
-	inRegion := r.InRegion("statusline.left")
-	if len(inRegion) != 3 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "hi" {
-		t.Fatalf("InRegion order = %+v", inRegion)
+	r.Add(tie)
+	for range 20 {
+		inRegion := r.InRegion("statusline.left")
+		if len(inRegion) != 4 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "a.tie" || inRegion[3].ID != "hi" {
+			t.Fatalf("InRegion order = %+v", inRegion)
+		}
 	}
 
 	r.Purge()

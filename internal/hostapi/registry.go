@@ -248,7 +248,9 @@ func (r *WidgetRegistry) Get(id string) *Widget {
 	return r.widgets[id]
 }
 
-// InRegion returns the region's widgets ordered by priority ascending.
+// InRegion returns the region's widgets ordered by priority ascending, then
+// id: widgets live in a map, so equal priorities need a total order or the
+// statusline reshuffles between frames.
 func (r *WidgetRegistry) InRegion(region string) []*Widget {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -258,7 +260,12 @@ func (r *WidgetRegistry) InRegion(region string) []*Widget {
 			out = append(out, w)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Priority < out[j].Priority })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority < out[j].Priority
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
