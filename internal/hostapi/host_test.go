@@ -106,6 +106,42 @@ func TestNamespaceVersion(t *testing.T) {
 	`)
 }
 
+// TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a
+// reload must not run its on_select, which belongs to the retired LState;
+// it is closed instead (DESIGN §4).
+func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
+	h, r := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+
+	called := false
+	var onSelect *glua.LFunction
+	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		onSelect = L.NewFunction(func(*glua.LState) int { called = true; return 0 })
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("build callback: %v", err)
+	}
+	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []any{"a"}}
+
+	h.SelectOverlay(context.Background(), o, 0)
+	if !called {
+		t.Fatal("a live overlay did not run on_select")
+	}
+
+	called = false
+	if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	h.SelectOverlay(context.Background(), o, 0)
+	if called {
+		t.Fatal("a stale overlay ran a retired generation's on_select")
+	}
+	if len(ui.closed) == 0 || ui.closed[len(ui.closed)-1] != "x" {
+		t.Fatalf("stale overlay was not closed: %v", ui.closed)
+	}
+}
+
 // TestEventRoundTrip covers the user.* event path end to end: register from
 // Lua, emit from Lua, payload attribution (from = emitting origin), and the
 // host-owned-prefix emit refusal.

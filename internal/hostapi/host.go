@@ -849,8 +849,15 @@ func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
 	h.submitOverlay(ctx, o, text)
 }
 
+// staleOverlay reports an overlay left open across a reload: its callbacks
+// belong to a retired LState, so they are dropped rather than called
+// (DESIGN §4). Go-built overlays carry no generation.
+func (h *Host) staleOverlay(o Overlay) bool {
+	return o.Gen != 0 && o.Gen != h.currentGen()
+}
+
 func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
-	if o.OnSelect == nil {
+	if o.OnSelect == nil || h.staleOverlay(o) {
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(o.ID)
 		}
@@ -881,7 +888,7 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 
 // CancelOverlay closes an overlay and runs on_close if present.
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
-	if o.OnClose != nil {
+	if o.OnClose != nil && !h.staleOverlay(o) {
 		_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 			h.RT.PushFrame(o.Origin, o.Path)
 			defer h.RT.PopFrame()
