@@ -280,10 +280,12 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	err = runner.Send(ctx, prompt)
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
-	if err != nil {
-		return "", err
-	}
+	// history keeps the steps finished before a failure: text is then the
+	// last thing the agent said, for callers that show a partial report
 	text = lastAssistantText(runner.History)
+	if err != nil {
+		return text, err
+	}
 	if text == "" {
 		text = "(the agent finished without a reply)"
 	}
@@ -516,10 +518,14 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	}
 	t.h.setToolDetail(call.ID, summary+" · "+fmtDuration(time.Since(start)))
 	if err != nil {
+		msg := "agent failed: " + friendlyError(err)
 		if errors.Is(err, context.Canceled) {
-			return fantasy.NewTextErrorResponse("agent cancelled"), nil
+			msg = "agent cancelled"
 		}
-		return fantasy.NewTextErrorResponse("agent failed: " + friendlyError(err)), nil
+		if text != "" {
+			msg += "\n\nIts last message before that:\n" + text
+		}
+		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	return fantasy.NewTextResponse(text), nil
 }

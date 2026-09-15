@@ -208,7 +208,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		}
 		report := text
 		if err != nil {
-			report = "the agent failed: " + friendlyError(err)
+			report = strings.TrimSpace("the agent failed: " + friendlyError(err) + "\n\n" + text)
 		}
 		head := fmt.Sprintf("Background agent %s (%s, %q) %s.", run.id, def.Name, description, map[bool]string{true: "finished", false: "failed"}[err == nil])
 		if h.AgentSessionID() != run.parent {
