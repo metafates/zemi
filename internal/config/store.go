@@ -61,6 +61,7 @@ func (s *Store) defineDefaults() {
 		{Path: "agent.effort", Kind: "string", Default: "", UserWritable: true, Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
 		{Path: "session.auto_title", Kind: "bool", Default: true, UserWritable: true, Desc: "name new sessions from their first exchange with a short model call (reflector.model when set)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, UserWritable: true, Desc: "start installed language servers (gopls, pyright, rust-analyzer, typescript-language-server, clangd) for projects with their marker files"},
+		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", UserWritable: true, Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, UserWritable: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
 		{Path: "ui.composer.multiline", Kind: "bool", Default: true, UserWritable: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
 		{Path: "ui.composer.history", Kind: "int", Default: 50, UserWritable: true, Desc: "composer history entries kept (0 disables)"},

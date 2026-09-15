@@ -73,6 +73,8 @@ type App struct {
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	focused    bool             // terminal focus (true until the terminal reports a blur)
+	keySeq     []string         // keys of a bound sequence typed so far
+	keySeqAt   time.Time
 	quitArmed  time.Time        // a second idle ctrl+c before this quits
 
 	bootErr error
@@ -789,6 +791,9 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 
 	if a.now().Before(a.quitArmed) {
 		left = append([]hostapi.Segment{{Text: "ctrl+c again to quit ", HL: "Title"}}, left...)
+	}
+	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})
 	}
 	if a.bootErr != nil {
 		left = append(left, hostapi.Segment{Text: " boot failed ", HL: "ToastError"})

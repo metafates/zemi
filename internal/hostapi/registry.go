@@ -83,6 +83,18 @@ func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
 	return r.bindings[key]
 }
 
+// IsPrefix reports whether seq begins a longer bound key sequence.
+func (r *KeymapRegistry) IsPrefix(seq string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for k := range r.bindings {
+		if strings.HasPrefix(k, seq+" ") {
+			return true
+		}
+	}
+	return false
+}
+
 // List returns all bindings sorted by key.
 func (r *KeymapRegistry) List() []*KeyBinding {
 	r.mu.RLock()

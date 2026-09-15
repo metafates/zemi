@@ -133,3 +133,18 @@ func TestLuaAPIIO(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestKeySequences: <leader> expands to keymap.leader, sequences register
+// as prefixes, and a sequence may not start with a printable key.
+func TestKeySequences(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.keymap.set("<leader>gs", "zemi.ui.help")
+		assert(zemi.keymap.get("ctrl+g g s") ~= nil, "leader expands")
+		assert(zemi.keymap.get("<leader>gs") ~= nil, "get takes the leader form")
+		assert(not pcall(zemi.keymap.set, "g s", "zemi.ui.help"), "printable start refused")
+	`)
+	if !h.Keymaps.IsPrefix("ctrl+g g") || h.Keymaps.IsPrefix("ctrl+g x") {
+		t.Fatal("prefix lookup")
+	}
+}

@@ -148,8 +148,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// combos; printable keys stay with the composer. An open popup keeps
 	// its keys (tab accepts even though tab is bound).
 	if !a.palette.open && !a.completion.open {
-		if b := a.host.Keymaps.Lookup(key); b != nil {
-			return a.runRHS(b)
+		if cmd, used := a.keySequence(key); used {
+			return cmd
 		}
 	}
 
@@ -302,6 +302,36 @@ func moveSel(sel *int, n int, key string) bool {
 		return false
 	}
 	return true
+}
+
+const keySeqTimeout = 1500 * time.Millisecond
+
+// keySequence runs bindings, including multi-key ones ("ctrl+g s"): a key
+// that starts or continues a bound sequence is held until the sequence
+// completes, esc cancels it, and a key that breaks or outlives it is
+// handled on its own.
+func (a *App) keySequence(key string) (tea.Cmd, bool) {
+	seq := key
+	if pending := a.keySeq; len(pending) > 0 {
+		a.keySeq = nil
+		if key == "esc" {
+			return nil, true
+		}
+		if a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+			seq = strings.Join(append(pending, key), " ")
+		}
+	}
+	if b := a.host.Keymaps.Lookup(seq); b != nil {
+		return a.runRHS(b), true
+	}
+	if a.host.Keymaps.IsPrefix(seq) {
+		a.keySeq, a.keySeqAt = strings.Fields(seq), a.now()
+		return nil, true
+	}
+	if seq != key {
+		return a.keySequence(key)
+	}
+	return nil, false
 }
 
 // listMove maps list navigation keys (arrows, k/j, and the nvim-style

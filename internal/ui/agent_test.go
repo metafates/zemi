@@ -503,3 +503,28 @@ func TestLuaInput(t *testing.T) {
 		t.Fatalf("esc gave %q, overlays %d", got, len(app.overlays))
 	}
 }
+
+// TestKeySequence: ctrl+g then t runs a <leader>t binding without typing
+// the t; a key that breaks the sequence reaches the composer.
+func TestKeySequence(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	if err := host.RT.ExecuteChunk(context.Background(), `zemi.keymap.set("<leader>t", function() zemi.notify({ title = "seq", body = "ran" }) end)`, "seq.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	ctrlG := tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
+	app.Update(ctrlG)
+	if len(app.keySeq) != 1 {
+		t.Fatalf("pending = %v", app.keySeq)
+	}
+	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
+	for app.Pump() {
+	}
+	if len(app.toasts) == 0 || app.toasts[len(app.toasts)-1].body != "ran" || app.composer.text != "" {
+		t.Fatalf("toasts=%v composer=%q", app.toasts, app.composer.text)
+	}
+	app.Update(ctrlG)
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if len(app.keySeq) != 0 || app.composer.text != "x" {
+		t.Fatalf("broken sequence: pending=%v composer=%q", app.keySeq, app.composer.text)
+	}
+}

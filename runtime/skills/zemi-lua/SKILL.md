@@ -40,7 +40,7 @@ tree. Each file loads once per runtime (both names share it); `/Reload` loads fr
 | Namespace | Members |
 | --- | --- |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
-| `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()` |
+| `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help` |

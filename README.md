@@ -216,6 +216,7 @@ The `zemi.*` API mirrors `vim.*`: keymaps, commands with completion, events, wid
 themes, overlays and pickers, timers, jobs, http, and the learning namespaces.
 
 ```lua
+zemi.keymap.set("<leader>r", "review")   -- ctrl+g then r (keymap.leader)
 zemi.keymap.set("ctrl+t", function()
   zemi.ui.select({ "fix", "explain" }, { prompt = "Ask the agent to" }, function(choice)
     if choice then zemi.agent.send(choice .. " the failing test") end

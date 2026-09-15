@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -15,6 +17,43 @@ func normalizeKey(key string) string {
 		return strings.ToLower(key)
 	}
 	return key
+}
+
+// keySeq normalizes a binding key: one key, or a space-separated sequence
+// ("ctrl+x ctrl+s"), where a leading "<leader>" expands to keymap.leader
+// ("<leader>gs" is leader, g, s). A sequence cannot start with a printable
+// key: those belong to the composer.
+func (h *Host) keySeq(key string) (string, error) {
+	key = strings.TrimSpace(key)
+	var tokens []string
+	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
+		leader := "ctrl+g"
+		if v, ok := h.Settings.Get("keymap.leader"); ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				leader = s
+			}
+		}
+		tokens = strings.Fields(leader)
+		if rest = strings.TrimSpace(rest); strings.Contains(rest, " ") {
+			tokens = append(tokens, strings.Fields(rest)...)
+		} else {
+			for _, r := range rest {
+				tokens = append(tokens, string(r))
+			}
+		}
+	} else {
+		tokens = strings.Fields(key)
+	}
+	if len(tokens) == 0 {
+		return "", errors.New("key is required")
+	}
+	for i := range tokens {
+		tokens[i] = normalizeKey(tokens[i])
+	}
+	if len(tokens) > 1 && len([]rune(tokens[0])) == 1 {
+		return "", fmt.Errorf("a key sequence must start with a non-printable key such as ctrl+g, not %q", tokens[0])
+	}
+	return strings.Join(tokens, " "), nil
 }
 
 // resolveRHS turns a string right-hand side into a command reference or a
@@ -40,7 +79,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		key := normalizeKey(L.CheckString(1))
+		key, err := h.keySeq(L.CheckString(1))
+		if err != nil {
+			L.RaiseError("zemi.keymap.set: %v", err)
+			return 0
+		}
 		if h.refuseDuringRender(L, "zemi.keymap.set") {
 			return 0
 		}
@@ -82,7 +125,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		key := normalizeKey(L.CheckString(1))
+		key, err := h.keySeq(L.CheckString(1))
+		if err != nil {
+			L.RaiseError("zemi.keymap.del: %v", err)
+			return 0
+		}
 		if h.refuseDuringRender(L, "zemi.keymap.del") {
 			return 0
 		}
@@ -93,7 +140,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		if b := h.Keymaps.Lookup(normalizeKey(L.CheckString(1))); b != nil {
+		key, _ := h.keySeq(L.CheckString(1))
+		if b := h.Keymaps.Lookup(key); b != nil {
 			L.Push(keymapRow(L, b))
 		} else {
 			L.Push(glua.LNil)
