@@ -433,11 +433,8 @@ decodes typed structs. `zemi.config.set` is in-memory for the session and
 accepts only the keys Go's schema marks user-writable; everything else is
 refused with an error (an allowlist, not a denylist). The autonomy knobs
 (§10.8) are not in the user-writable set: `config.set` refuses them from
-every origin after the boot load completes (the window closes when
-`app.ready` is emitted, before its handlers run), and during the
-boot load only user-origin chunks qualify (origin comes from the §5
-directory-class map, so plugin and
-project code never rides the boot pass). Persistent config changes are
+every origin at every time, boot included; only Go writes them
+(`Settings.SetHost`). Persistent config changes are
 commits in the config repo: proposals go through the revision pipeline
 (§10.4); the user's own hand edits go through `:ConfigEdit`, which opens
 the repo for a plain git commit; the one-line permanent-rule commit below
@@ -573,12 +570,15 @@ otherwise return a decision table:
   additionally flips an `allow` decision to `ask` (a `deny` stays `deny`:
   a rewrite never loosens an existing denial), so a rewrite can never
   ride a pre-existing allow glob. An `always` answer (key `a`, §8)
-  for `tool.bash` stores exact patterns, never a prefix glob: for a
-  compound command it stores one rule per normalized segment (so the
-  replayed command, which §9 matches segment-by-segment, is covered),
-  for a simple command the exact normalized string. A call §9
-  gate-forces to `ask` (heredoc/herestring, dangerous assignment)
-  always re-asks even after `a`: no stored rule satisfies the gate.
+  stores session-scope allow rules scoped to the `model` principal, and
+  they are prefix globs, not exact values: for `tool.bash` one rule per
+  normalized segment, each the segment's two-word command prefix plus
+  that prefix with ` *` (a segment with no such prefix stores its exact
+  normalized string); for `fs.read` and `fs.write` the file's directory
+  with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;
+  for anything else the exact argument. A call §9 gate-forces to `ask`
+  (heredoc/herestring, dangerous assignment) offers no `always` option
+  at all, so it re-asks every time.
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.
@@ -966,12 +966,16 @@ configured provider later (`zemi.memory.search` signature does not change).
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls queue: one active overlay at
-  a time, FIFO. Answers: `o`nce allows this call only; `a`lways stores a
-  rule via `zemi.permission.rule` (§6.1), session-scoped (the permanent
-  option arrives with M3's permanent rules; until then `a` is
-  session-only); for an outside-jail `fs.read`, `a`lways stores a rule
-  scoped to that exact resolved path, and every `fs.*` always-answer
-  stores the exact resolved path, never a glob; `n`o denies. The overlay
+  a time, FIFO. The buttons are `Yes`, `Yes, <always label>` (only when
+  the request has an always choice), `No`, and `No, and tell zemi what
+  to do`; `y` and `o` answer once, `a` takes the always option, `n` and
+  `esc` deny, `t` denies and hands the composer back so the user can say
+  what to do instead. The overlay writes session rules only: `always`
+  adds allow rules through `zemi.permission.rule` (§6.1), scoped to the
+  `model` principal, with the prefix-glob patterns §6.2 lists. Permanent
+  rules never come from the overlay; they are written by
+  `zemi.permission.rule{ scope = "permanent" }` in the user's own
+  config. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
   may restyle the frame via theme groups only. The security-relevant
   chrome (answer keys, subject, badge) renders in fixed host colors no
@@ -1106,16 +1110,33 @@ configured provider later (`zemi.memory.search` signature does not change).
   registration) follow their origin rules in §6 and refuse outright, as
   errors, never as asks. Anything unlisted defaults to `ask`; there is no
   fail-open path.
+- Permission modes answer what is left: a mode sees only the asks that
+  survive the rules above and the `permission.request` veto (§6.2), and
+  it can never overrule a `deny`. Four ship: `manual` (every ask reaches
+  the user), `plan` (`fs.write` is denied even under an allow rule, bash
+  and `mcp.*` allows flip to `ask`, and `perm.SafeCommand` commands
+  run), `auto`, and `yolo` (every surviving ask allows). `auto` settles
+  locally first, without a model: reads and writes inside the jail that
+  are not secret-shaped, and `SafeCommand` commands; anything it cannot
+  settle goes to a one-shot screening model whose approvals are cached
+  and whose refusals fall back to the user's ask carrying the reason.
+  Network is never settled locally, because the URL is the model's.
+  Only user config may add modes (`zemi.permission.mode.add`) or set the
+  current one; `tab` cycles them, and an unknown value reads as
+  `manual`.
 - Filesystem: the jail is checked on the `EvalSymlinks`-resolved path; the
   open itself uses per-component verification where the OS allows it
   (dir-relative opens with `O_NOFOLLOW` on the final component), and a
   path component swapped between check and open fails the call. `..`
   segments are resolved before pattern matching; symlinks resolving
-  outside the jail are denied. Write roots are the project roots only
-  (reads may also touch the config repo, read-only there): `site/pack`,
-  both skills dirs, and the state dir are never write roots, so an
-  approved `fs.write` cannot plant plugin code that auto-loads at the
-  next boot. The config repo is read-only to Lua: only
+  outside the jail are denied. Write roots are the project roots plus
+  the per-session scratchpad
+  (`<state>/projects/<hash>/scratch/<session id>`, §5), which is the one
+  path `fs.write` allows by default; the read jail is wider: project
+  roots, the config repo, the project's `.zemi`, both skills dirs, and
+  that scratchpad. `site/pack` and the rest of the state dir are never
+  write roots, so an approved `fs.write` cannot plant plugin code that
+  auto-loads at the next boot. The config repo is read-only to Lua: only
   the revision pipeline and Go itself write there, so `zemi.fs.write`
   cannot author `permissions.lua` (which is Go-generated data anyway,
   §6.1). Residual race: platforms without
@@ -1139,13 +1160,22 @@ configured provider later (`zemi.memory.search` signature does not change).
   deny (the localhost development opt-in); project and learned rules do
   not. Userinfo in URLs is a hard
   error; host rules match the final connected host.
-- Secrets: env denylist; `zemi.env.get` never returns keys matching a
-  case-insensitive deny list (`*_KEY`, `*_TOKEN`, `*_SECRET`, `*PASSWORD`
-  by default) to Lua or to tools unless
-  the provider layer needs them (providers read env in Go, out of Lua reach).
-- The turn-scoped "dangerous" budget: configurable caps (bash commands per
-  turn, files touched, tokens spent, Lua host-API calls) enforced in the
-  pipeline, surfaced in the statusline.
+- Secrets: the env denylist is a case-insensitive substring match on the
+  variable's name (`TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,
+  `API_KEY`, `PRIVATE_KEY`), so `OPENAI_API_KEY` is denied and
+  `OPENAI_KEY` is not. `zemi.env.get` refuses a matching name for every
+  origin but user and builtin; providers read their keys in Go, out of
+  Lua's reach. Every child process runs with `perm.ChildEnv`: zemi's own
+  environment minus the matching names, plus only the extras the caller
+  passed (a secret-shaped or environment-affecting extra name is refused
+  outright). The bash tool, `job_*`, Lua jobs, and the MCP and LSP
+  server processes all start from it.
+- There is no turn-scoped resource budget: per-turn caps on bash
+  commands, files touched, tokens spent, or Lua host-API calls are not
+  implemented. What bounds a turn is the step limit (200 steps) and the
+  doom-loop stop: six identical tool steps in a row (same calls, same
+  results) end the turn with an error the user can continue from, with
+  `job_read` and `job_list` exempt because polling a job is not looping.
 
 ## 10. Learning and self-improvement
 
@@ -1472,13 +1502,10 @@ digest, the skills index, or the untrusted-content framing.
 - Never writes outside its three homes (memory store, skills dir, config
   repo). Anything else is a normal tool call under normal permissions.
 - Autonomy knobs are host-owned: no Lua path can raise `*.autonomy`, edit
-  the env deny-list, or widen the fs jail at runtime; `zemi.config.set`
-  refuses them from every origin after the boot load completes (the
-  window closes when `app.ready` is emitted, before its handlers run),
-  and during the boot load only user-origin chunks qualify (origin comes
-  from the §5 directory-class map; learned marks are DB rows, §10.4, so
-  learned code cannot ride the boot window). The revision pipeline
-  refuses any diff that touches them.
+  the env deny-list, or widen the fs jail; `zemi.config.set` refuses them
+  from every origin at every time, boot included, and only Go writes them
+  (`Settings.SetHost`). The revision pipeline refuses any diff that
+  touches them.
 
 Each line is enforced in code, not by prompt: the intake policy and
 polarity classifier (§10.4), the host-only proposal channel (§10.3), skills
