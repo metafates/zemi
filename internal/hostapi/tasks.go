@@ -216,7 +216,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			h.Notify("info", "background agent "+run.id, head+"\n"+truncRunes(report, 300))
 			return
 		}
-		if err := h.AgentSend(head + attachMarker + "\n<agent-report>\n" + report + "\n</agent-report>\n</attached-files>"); err != nil {
+		if err := h.AgentSend(head + attachMarker + "\n<agent-report>\n" + truncOutput(report) + "\n</agent-report>\n</attached-files>"); err != nil {
 			h.Notify("error", "background agent "+run.id, err.Error())
 		}
 	})

@@ -174,6 +174,26 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	}
 }
 
+// TestSubagentReportTruncated: a runaway report is cut before it lands in
+// the caller's context.
+func TestSubagentReportTruncated(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return textParts(strings.Repeat("x", 40_000))
+		}}, nil
+	}
+	resp, err := h.agentTool().Run(context.Background(), fantasy.ToolCall{
+		ID: "c1", Name: "agent", Input: `{"description":"d","prompt":"look","agent":"explore"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Content) > 31_000 || !strings.HasSuffix(resp.Content, "... (truncated)") {
+		t.Fatalf("report is %d bytes and ends %q", len(resp.Content), truncRunes(resp.Content, 20))
+	}
+}
+
 func TestAgentDefs(t *testing.T) {
 	cfg, proj := t.TempDir(), t.TempDir()
 	write := func(dir, name, body string) {

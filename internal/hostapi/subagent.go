@@ -527,7 +527,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		}
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	return fantasy.NewTextResponse(text), nil
+	return fantasy.NewTextResponse(truncOutput(text)), nil
 }
 
 // preCheck runs the tool.pre events for a host-implemented tool: deny
