@@ -98,40 +98,11 @@ func (a *App) paletteRows(w int) [][]hostapi.Segment {
 	if !p.open || len(p.matches) == 0 {
 		return nil
 	}
-	maxRows := a.cfgInt("ui.palette.max_items", 8, 1, 20)
-	rows := make([][]hostapi.Segment, 0, maxRows)
-	start := 0
-	if len(p.matches) > maxRows {
-		start = p.selected - maxRows/2
-		if start < 0 {
-			start = 0
-		}
-		if start+maxRows > len(p.matches) {
-			start = len(p.matches) - maxRows
-		}
+	items := make([]listItem, 0, len(p.matches))
+	for _, c := range p.matches {
+		items = append(items, listItem{"/" + c.Name, c.Desc})
 	}
-	for i := start; i < len(p.matches) && i < start+maxRows; i++ {
-		c := p.matches[i]
-		mark, nameHL := "  ", ""
-		if i == p.selected {
-			mark, nameHL = "> ", "Title"
-		}
-		name := "/" + c.Name
-		row := []hostapi.Segment{
-			{Text: mark, HL: nameHL},
-			{Text: name, HL: nameHL},
-		}
-		if c.Desc != "" {
-			row = append(row, hostapi.Segment{Text: "  " + c.Desc, HL: "Comment"})
-		}
-		rows = append(rows, truncateSegs(row, w))
-	}
-	if len(p.matches) > maxRows {
-		rows = append(rows, []hostapi.Segment{
-			{Text: "  …", HL: "Comment"},
-		})
-	}
-	return rows
+	return listRows(items, p.selected, a.cfgInt("ui.palette.max_items", 8, 1, 20), "Title")
 }
 
 // submitComposer routes the composer submit: slash lines run commands,

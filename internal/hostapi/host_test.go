@@ -232,10 +232,10 @@ func TestConfigSetGating(t *testing.T) {
 		assert(not ok2, "non-writable key accepted")
 		assert(tostring(err2):find("not writable", 1, true) ~= nil, "err2=" .. tostring(err2))
 
-		zemi.config.set("ui.sidebar.width", 42)
+		zemi.config.set("ui.composer.history", 42)
 	`)
-	if v, ok := h.Settings.Get("ui.sidebar.width"); !ok || v != float64(42) {
-		t.Fatalf("ui.sidebar.width = %v, want 42", v)
+	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != float64(42) {
+		t.Fatalf("ui.composer.history = %v, want 42", v)
 	}
 }
 
@@ -248,34 +248,14 @@ func TestConfigSetGating(t *testing.T) {
 func TestConfigWatchNoDeadlock(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.config.watch("ui.sidebar.open", function(nv, ov)
-			assert(ov == false, "old=" .. tostring(ov))
-			assert(nv == true, "new=" .. tostring(nv))
+		zemi.config.watch("ui.completion.files", function(nv, ov)
+			assert(ov == true, "old=" .. tostring(ov))
+			assert(nv == false, "new=" .. tostring(nv))
 			zemi.config.set("ui.theme", "watched")
 		end)
-		zemi.config.set("ui.sidebar.open", true)
+		zemi.config.set("ui.completion.files", false)
 	`)
 	if v, ok := h.Settings.Get("ui.theme"); !ok || v != "watched" {
 		t.Fatalf("watch callback side effect missing: ui.theme = %v, want watched", v)
-	}
-}
-
-// TestToggleSidebarFromLua exercises the interpreter-side toggle path: the
-// Lua closure passes the LState, so the fired watch is delivered inline on
-// the same goroutine instead of round-tripping the queue.
-func TestToggleSidebarFromLua(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.config.watch("ui.sidebar.open", function(nv, ov)
-			assert(nv == true, "new=" .. tostring(nv))
-			zemi.config.set("ui.theme", "toggled")
-		end)
-		zemi.ui.toggle_sidebar()
-	`)
-	if !h.SidebarOpen() {
-		t.Fatal("sidebar did not open")
-	}
-	if v, _ := h.Settings.Get("ui.theme"); v != "toggled" {
-		t.Fatalf("toggle watch side effect missing: ui.theme = %v", v)
 	}
 }

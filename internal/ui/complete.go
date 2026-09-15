@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -204,18 +203,11 @@ func (a *App) completionRows(w int) [][]hostapi.Segment {
 	if len(f.matches) == 0 {
 		return [][]hostapi.Segment{{{Text: "  no matches", HL: "Comment"}}}
 	}
-	var out [][]hostapi.Segment
-	for i, m := range f.matches {
-		marker, hl := "  ", "Normal"
-		if i == f.selected {
-			marker, hl = "> ", "Title"
-		}
-		out = append(out, []hostapi.Segment{
-			{Text: " " + marker, HL: hl},
-			{Text: ansi.Truncate(m, max0(w-6), "~"), HL: hl},
-		})
+	items := make([]listItem, 0, len(f.matches))
+	for _, m := range f.matches {
+		items = append(items, listItem{label: m})
 	}
-	return out
+	return listRows(items, f.selected, len(items), "Title")
 }
 
 // scanFilesCmd walks the directory tree off the UI goroutine.

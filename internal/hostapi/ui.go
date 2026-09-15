@@ -227,14 +227,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 1
 	}))
 
-	tb.RawSetString("toggle_sidebar", L.NewFunction(func(L *glua.LState) int {
-		if h.refuseDuringRender(L, "zemi.ui.toggle_sidebar") {
-			return 0
-		}
-		h.ToggleSidebar(L)
-		return 0
-	}))
-
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.ui.help") {
 			return 0

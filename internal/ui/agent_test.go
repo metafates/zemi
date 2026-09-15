@@ -49,6 +49,7 @@ func bootAgentApp(t *testing.T, w, h int) (*App, *hostapi.Host) {	t.Helper()
 	}
 	app.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	app.timeStr = "12:34"
+	app.now = func() time.Time { return time.UnixMilli(500) }
 	return app, host
 }
 

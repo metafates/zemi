@@ -1,16 +1,16 @@
-[1;38;2;26;27;38;48;2;122;162;247m zemi [m[38;2;86;95;137m [m
+                                                                      
                                                                       
          ┌[38;2;16;16;20;48;2;247;162;90m Question [m───────────────────────────────────────┐          
          │ Apply the mined rules to this project?          │          
          │ [38;2;86;95;137mTwo proposals came out of the last session[m      │          
          │                                                 │          
-         │ [1m> [m[1mapply[m                                         │          
-         │     [38;2;86;95;137mstore both as project memories[m              │          
-         │ [1m  [mskip                                          │          
-         │     [38;2;86;95;137mleave the proposals unapplied[m               │          
+         │ [1m› apply[m[38;2;86;95;137m  store both as project memories[m         │          
+         │ [38;2;192;202;245m  skip[m[38;2;86;95;137m  leave the proposals unapplied[m           │          
          │                                                 │          
          │ [1m[up/down][m move   [1m[enter][m answer   [1m[esc][m decline │          
          └─────────────────────────────────────────────────┘          
+                                                                      
+                                                                      
 [38;2;86;95;137mno messages yet - type below, or / for commands[m                       
 [38;2;86;95;137m> [m[38;2;86;95;137m▏[m
-                                                                 [38;2;86;95;137m12:34[m
+                                                                      

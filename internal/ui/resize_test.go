@@ -8,15 +8,26 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 )
 
+// TestGoldenHelpOverlay pins the help box; enter on a command row closes
+// it and fills the composer.
 func TestGoldenHelpOverlay(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
+	host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
 	host.OpenHelp()
 	for app.Pump() {
 	}
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
+
+	st := &app.overlays[0]
+	st.selected = len(st.itemText) - 1
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(app.overlays) != 0 || app.composer.text != "/model " {
+		t.Fatalf("enter on a command row: overlays=%d composer=%q", len(app.overlays), app.composer.text)
+	}
 }
 
 // TestResizeSweep resizes one busy frame (markdown reply, multi-line toast,

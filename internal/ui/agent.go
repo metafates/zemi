@@ -5,7 +5,10 @@
 package ui
 
 import (
+	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -118,6 +121,97 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 	return box
 }
 
+type listItem struct{ label, desc string }
+
+// listRows is the one list renderer (palette, completion, pickers,
+// overlays): a window of at most limit rows kept around sel, "› " and
+// selHL on the selected row, dim descriptions, and an "i/n" counter once
+// the list scrolls.
+func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segment {
+	start := max(0, min(sel-limit/2, len(items)-limit))
+	var rows [][]hostapi.Segment
+	for i := start; i < len(items) && i < start+limit; i++ {
+		marker, hl := "  ", "Normal"
+		if i == sel {
+			marker, hl = "› ", selHL
+		}
+		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl}}
+		if items[i].desc != "" {
+			row = append(row, hostapi.Segment{Text: "  " + items[i].desc, HL: "Comment"})
+		}
+		rows = append(rows, row)
+	}
+	if len(items) > limit {
+		rows = append(rows, []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
+	}
+	return rows
+}
+
+// workingRow is the activity line above the composer while a turn runs:
+// a pulsing bullet, a shimmering label naming what the agent is doing,
+// elapsed time, the interrupt key and the queue depth.
+func (a *App) workingRow() []hostapi.Segment {
+	st := a.host.AgentStream()
+	label := "Working"
+	for _, t := range st.Tools {
+		if t.Status == "run" {
+			label = "Running " + t.Name
+		}
+	}
+	if label == "Working" && st.Reasoning != "" && st.Text == "" {
+		label = "Thinking"
+	}
+	now := a.now()
+	animate := a.cfgBool("ui.animations", true)
+	bullet := hostapi.Segment{Text: "• ", HL: "Title"}
+	if animate && now.UnixMilli()/600%2 == 1 {
+		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
+	}
+	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
+	hint := " (" + fmtElapsed(st.Elapsed) + " · ctrl+c to interrupt)"
+	if n := len(st.Steering); n > 0 {
+		hint += fmt.Sprintf(" · %d queued, up to edit", n)
+	}
+	return append(row, hostapi.Segment{Text: hint, HL: "Comment"})
+}
+
+// shimmer sweeps a bright band across text every 2s: each rune blends the
+// Comment color toward Normal by its distance to the band center. Blends
+// are quantized to 8 steps so the sgr style cache stays small.
+func (a *App) shimmer(text string, now time.Time, animate bool) []hostapi.Segment {
+	dim, fg := a.thm.style("Comment").Fg, a.thm.style("Normal").Fg
+	if !animate || dim == nil || fg == nil {
+		return []hostapi.Segment{{Text: text, HL: "Comment"}}
+	}
+	const band = 3.0
+	runes := []rune(text)
+	pos := float64(now.UnixMilli()%2000)/2000*(float64(len(runes))+2*band) - band
+	dr, dg, db, _ := dim.RGBA()
+	fr, fgn, fb, _ := fg.RGBA()
+	out := make([]hostapi.Segment, 0, len(runes))
+	for i, r := range runes {
+		k := 0.0
+		if d := math.Abs(float64(i) - pos); d < band {
+			k = math.Round((1+math.Cos(math.Pi*d/band))/2*8) / 8
+		}
+		mix := func(x, y uint32) int { return int((float64(x)*(1-k) + float64(y)*k) / 257) }
+		hl := fmt.Sprintf("%s38;2;%d;%d;%d", hostapi.SGRPrefix, mix(dr, fr), mix(dg, fgn), mix(db, fb))
+		out = append(out, hostapi.Segment{Text: string(r), HL: hl})
+	}
+	return out
+}
+
+func fmtElapsed(d time.Duration) string {
+	s := int(d.Seconds())
+	switch {
+	case s < 60:
+		return fmt.Sprintf("%ds", s)
+	case s < 3600:
+		return fmt.Sprintf("%dm %02ds", s/60, s%60)
+	}
+	return fmt.Sprintf("%dh %02dm %02ds", s/3600, s/60%60, s%60)
+}
+
 // keyHints lays out a footer of "[key] label" pairs, keys in the fixed
 // host style.
 func keyHints(pairs ...string) []hostapi.Segment {
@@ -158,23 +252,18 @@ func (a *App) splicePick(rows [][]hostapi.Segment, mp *modelPickPrompt, w, heade
 	if len(mp.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "no models registered", HL: "Comment"}})
 	}
-	for i, it := range mp.items {
-		mark, hl := "  ", ""
-		if i == mp.sel {
-			mark, hl = "> ", "Host:Bold"
-		}
-		name := it.ID
+	items := make([]listItem, 0, len(mp.items))
+	for _, it := range mp.items {
+		desc := ""
 		if it.Display != "" && it.Display != it.ID {
-			name = it.ID + "  " + it.Display
+			desc = it.Display
 		}
 		if !it.HasKey {
-			name += "  (no api key)"
+			desc = strings.TrimSpace(desc + "  (no api key)")
 		}
-		body = append(body, []hostapi.Segment{
-			{Text: mark, HL: "Host:Bold"},
-			{Text: name, HL: hl},
-		})
+		items = append(items, listItem{it.ID, desc})
 	}
+	body = append(body, listRows(items, mp.sel, len(items), "Host:Bold")...)
 	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("up/down", "move", "enter", "pick", "esc", "cancel"))
 	box := hostBox(" Select model ", "Host:PickTitle", "", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)

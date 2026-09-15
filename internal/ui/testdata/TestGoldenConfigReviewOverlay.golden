@@ -1,8 +1,7 @@
-[1;38;2;26;27;38;48;2;122;162;247m zemi [m[38;2;86;95;137m [m
                                                                       
                                                                       
       ┌[38;2;16;16;20;48;2;90;247;142m Config review [m─────────────────────────────────────────┐      
-      │ [1m> [m[1mDeny rm -rf in bash (from sess-1) (secrets redacted)[m │      
+      │ [1m› [m[1mDeny rm -rf in bash (from sess-1) (secrets redacted)[m │      
       │     [1m+ deny tool.bash rm -rf *[m                          │      
       │     [1m    except rm -f build[m                             │      
       │ [1m  [mAsk before force push (from sess-1)                  │      
@@ -11,6 +10,7 @@
       │ [1m[y][m accept   [1m[n][m reject   [1m[esc][m leave queued           │      
       └────────────────────────────────────────────────────────┘      
                                                                       
+                                                                      
 [38;2;86;95;137mno messages yet - type below, or / for commands[m                       
 [38;2;86;95;137m> [m[38;2;86;95;137m▏[m
-                                                                 [38;2;86;95;137m12:34[m
+                                                                      

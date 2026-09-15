@@ -725,8 +725,8 @@ zemi.job.out("figlet", { "hi" })                  -- blocking convenience: run,
                                                   -- wait, { stdout, stderr, code }
 local t = zemi.timer.set(1000, function() end)    -- one-shot; also zemi.timer.every
 t:stop()                                          -- cancels a pending timer
-zemi.state.put("ui.sidebar.width", 30)            -- persisted kv, global scope
-zemi.state.get("ui.sidebar.width")
+zemi.state.put("recent.model", "anthropic/x")      -- persisted kv, global scope
+zemi.state.get("recent.model")
 ```
 
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
@@ -764,20 +764,6 @@ zemi.ui.widget.register({
   end,
 })
 
--- A sidebar panel (the chat transcript is a widget too)
-zemi.ui.widget.register({
-  id = "todos", region = "sidebar", priority = 20,
-  render = function(ctx)
-    local lines = {}
-    for _, t in ipairs(ctx.session.todos or {}) do
-      local mark = t.status == "done" and "x" or " "
-      lines[#lines + 1] = { { text = "[" .. mark .. "] ", hl = "Comment" },
-                            { text = t.content } }
-    end
-    return lines
-  end,
-})
-
 -- Overlays (modals/pickers) with their own keymaps
 zemi.ui.overlay.open({
   id = "model-picker", title = "Model",
@@ -798,8 +784,8 @@ zemi.ui.theme.set("tokyonight")
 
 UI extensibility contract:
 
-- The screen is a stack: regions (`header`, `chat`, `composer`, `statusline`,
-  `sidebar`) composed by Go with ultraviolet constraints, plus an overlay
+- The screen is a stack: regions (`header`, `chat`, `composer`, `statusline`)
+  composed by Go with ultraviolet constraints, plus an overlay
   stack. The shipped chat and statusline are default Lua registrations
   under `runtime/lua/zemi/ui/`, replaceable by id. The composer is
   Go-owned (bubbles textarea: IME, paste, history); Lua reacts to
@@ -817,9 +803,6 @@ UI extensibility contract:
 - Themes: palettes map names to colors; `hl` groups reference palette
   names or raw hex; Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed).
-- Sidebar visibility/width persists via `zemi.state.put("ui.sidebar.width",
-  30)` (kv, §6.5) plus widget registration; a widget alone does not force
-  its region open.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks, model
   picker, question/memory/config overlays) -> active Lua overlay ->
@@ -910,13 +893,14 @@ configured provider later (`zemi.memory.search` signature does not change).
 
 ## 8. UI core detail
 
-- **Layout**: header (1 row: session title, profile, model, cwd, token/cost
-  tally), chat (flex), composer (3..8 rows, textarea grows), statusline
+- **Layout**: header (no default widget; the region stays for Lua), chat
+  (flex), a Go-drawn working row while a turn runs (pulsing bullet,
+  shimmering label naming the current activity, elapsed time, interrupt
+  key, queue depth; `ui.animations = false` keeps it static), composer (3..8 rows, textarea grows), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
   shipped `statusline.usage` widget shows the session token tally and
-  the context-window percent, warning colors past 80%/95%),
-  sidebar (optional, fixed width, hidden by default on narrow terminals).
+  the context-window percent, warning colors past 80%/95%).
   Overlays float, centered or anchored.
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message; `View`
@@ -953,10 +937,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
-  Slash commands replace the old cmdline: `/quit`, `/help`, `/sidebar`,
-  `/model`, plus the Lua-registered ones (`/remember`, `/memory`,
-  `/config`, `/skills`, `/reflect`); the old `tab` sidebar and `?` help
-  live as `/sidebar` and `/help`.
+  Slash commands replace the old cmdline: `/quit`, `/help`, `/model`,
+  plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
+  `/skills`, `/reflect`). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume

@@ -56,7 +56,7 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 	for i, it := range mr.items {
 		cur, hl := "  ", ""
 		if i == mr.sel {
-			cur, hl = "> ", "Host:Bold"
+			cur, hl = "› ", "Host:Bold"
 		}
 		mark := "[ ] "
 		if mr.marked[i] {

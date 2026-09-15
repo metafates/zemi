@@ -101,6 +101,14 @@ func (a *App) overlayKey(key string) tea.Cmd {
 		} else {
 			a.closeOverlayByID(o.ID)
 			a.frameGen++
+			// Help's command rows fill the composer, like tab in the palette.
+			if idx < len(o.Items) {
+				if m, ok := o.Items[idx].(map[string]any); ok && m["kind"] == "command" {
+					name, _ := m["name"].(string)
+					a.composer.text = name + " "
+					a.composer.moveEnd()
+				}
+			}
 		}
 	case "esc", "q":
 		a.closeOverlayByID(o.ID)
@@ -119,17 +127,12 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 	if st.o.Path != "" {
 		badge += ":" + st.o.Path
 	}
-	const maxItems = 10
-	start := max(0, min(st.selected-maxItems/2, len(st.itemText)-maxItems))
-	var body [][]hostapi.Segment
-	for i := start; i < len(st.itemText) && i < start+maxItems; i++ {
-		marker, hl := "  ", "Normal"
-		if i == st.selected {
-			marker, hl = "> ", "Title"
-		}
-		body = append(body, []hostapi.Segment{{Text: marker + st.itemText[i], HL: hl}})
+	items := make([]listItem, 0, len(st.itemText))
+	for _, t := range st.itemText {
+		items = append(items, listItem{label: t})
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, []hostapi.Segment{{Text: "enter select · esc close", HL: "Comment"}})
+	body := listRows(items, st.selected, 10, "Title")
+	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("enter", "select", "esc", "close"))
 	box := hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

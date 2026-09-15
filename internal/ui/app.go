@@ -69,6 +69,7 @@ type App struct {
 	frameGen   int64
 	timeStr    string
 	activeBump time.Time
+	now        func() time.Time // animation clock; tests pin it
 
 	bootErr error
 	errFlag bool
@@ -96,6 +97,7 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 		thm:        themeResolver{host: host, sgr: map[string]uv.Style{}},
 		caches:     map[string]*widgetCache{},
 		timeStr:    "--:--",
+		now:        time.Now,
 		chatFollow: true,
 		hooks:      make(chan tea.Msg, hookQueueSize),
 	}
@@ -399,9 +401,6 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	var out []*hostapi.Widget
 	out = append(out, a.host.Widgets.InRegion("header")...)
 	out = append(out, a.host.Widgets.InRegion("chat")...)
-	if a.host.SidebarOpen() {
-		out = append(out, a.host.Widgets.InRegion("sidebar")...)
-	}
 	out = append(out, a.host.Widgets.InRegion("statusline.left")...)
 	out = append(out, a.host.Widgets.InRegion("statusline.right")...)
 	return out
@@ -411,31 +410,7 @@ func (a *App) widgetWidth(w *hostapi.Widget) int {
 	if a.width <= 0 {
 		return 80
 	}
-	switch {
-	case strings.HasPrefix(w.Region, "statusline"):
-		return a.width
-	case w.Region == "sidebar":
-		return a.sidebarCols(a.width)
-	case w.Region == "chat":
-		return a.chatCols(a.width)
-	}
 	return a.width
-}
-
-// sidebarCols is the sidebar width for a w-cell terminal (0 when closed);
-// widget renders and compose share it so they never disagree.
-func (a *App) sidebarCols(w int) int {
-	if !a.host.SidebarOpen() {
-		return 0
-	}
-	return max(min(a.cfgInt("ui.sidebar.width", 30, 1, 1<<16), w/2), 5)
-}
-
-func (a *App) chatCols(w int) int {
-	if sw := a.sidebarCols(w); sw > 0 {
-		return max(w-sw-1, 1)
-	}
-	return w
 }
 
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
@@ -552,32 +527,24 @@ func (a *App) drainHooksCmd() tea.Cmd {
 // compose (pure: reads caches and Go-side state only)
 
 func (a *App) compose(w, h int) string {
-	// Header.
+	// The default UI registers no header; the region stays for Lua.
 	header := a.regionLines("header", w)
-	if len(header) == 0 {
-		header = [][]hostapi.Segment{{
-			{Text: " zemi ", HL: "StatusLineMode"},
-			{Text: " " + a.host.Session().CWD, HL: "Comment"},
-		}}
-	}
 
 	compRows := a.composerRows(w)
 	compPopup := a.completionRows(w)
 	palPopup := a.paletteRows(w)
-	// + statusline + composer (+ its popups)
-	reserved := len(header) + 1 + len(compRows) + len(compPopup) + len(palPopup)
+	var working [][]hostapi.Segment
+	if a.host.AgentActive() {
+		working = [][]hostapi.Segment{a.workingRow()}
+	}
+	// + statusline + composer (+ its popups and the working row)
+	reserved := len(header) + 1 + len(compRows) + len(compPopup) + len(palPopup) + len(working)
 	chatH := h - reserved
 	if chatH < 1 {
 		chatH = 1
 	}
 
-	// Chat area + optional sidebar column.
-	sw, chatW := a.sidebarCols(w), a.chatCols(w)
-	var sidebar [][]hostapi.Segment
-	if sw > 0 {
-		sidebar = a.regionLines("sidebar", sw)
-	}
-	chat := a.regionLines("chat", chatW)
+	chat := a.regionLines("chat", w)
 
 	// Chat scrollback (§8): follow pins the window to the tail (chatTop
 	// may go negative when content is shorter than the viewport, which
@@ -598,18 +565,9 @@ func (a *App) compose(w, h int) string {
 	for i := 0; i < chatH; i++ {
 		var row []hostapi.Segment
 		if j := a.chatTop + i; j >= 0 && j < len(chat) {
-			row = truncateSegs(chat[j], chatW)
+			row = truncateSegs(chat[j], w)
 		}
-		row = padSegs(row, chatW)
-		if sw > 0 {
-			row = append(row, hostapi.Segment{Text: " "})
-			var srow []hostapi.Segment
-			if i < len(sidebar) {
-				srow = sidebar[i]
-			}
-			row = append(row, truncateSegs(srow, sw)...)
-		}
-		rows = append(rows, row)
+		rows = append(rows, padSegs(row, w))
 	}
 
 	// Toasts stack up from the bottom of the chat area, newest lowest,
@@ -625,7 +583,8 @@ func (a *App) compose(w, h int) string {
 		y--
 	}
 
-	// Popups render above the composer, then the composer rows.
+	// The working row and popups render above the composer.
+	rows = append(rows, working...)
 	rows = append(rows, compPopup...)
 	rows = append(rows, palPopup...)
 	rows = append(rows, compRows...)

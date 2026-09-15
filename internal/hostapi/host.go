@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -172,7 +174,6 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		h.DB, h.GlobalDB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.sidebar.toggle": func(h *Host, _ string) error { h.ToggleSidebar(nil); return nil },
 		"zemi.ui.help":           func(h *Host, _ string) error { h.OpenHelp(); return nil },
 		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
 			h.ToggleReasoning()
@@ -232,41 +233,6 @@ func (h *Host) OpenModelPicker() {
 			h.refresh()
 		}
 	}()
-}
-
-// ToggleSidebar flips the sidebar config value. L is the interpreter state
-// when called from a Lua closure (watches are delivered inline on it); nil
-// means a non-interpreter caller and watches go back through the queue.
-func (h *Host) ToggleSidebar(L *glua.LState) {	cur := false
-	if v, ok := h.Settings.Get("ui.sidebar.open"); ok {
-		if b, ok := v.(bool); ok {
-			cur = b
-		}
-	}
-	fired, err := h.Settings.SetQuiet("ui.sidebar.open", !cur)
-	if err != nil {
-		h.Log.Error("config", "sidebar toggle failed", map[string]any{"error": err.Error()})
-		return
-	}
-	for _, f := range fired {
-		if L != nil {
-			h.deliverFired(L, fired)
-			break
-		}
-		if rec, ok := h.watches.rec(f.ID); ok {
-			h.deliverWatch(rec, f.ID, f.Old, f.New)
-		}
-	}
-	h.refresh()
-}
-
-func (h *Host) SidebarOpen() bool {
-	if v, ok := h.Settings.Get("ui.sidebar.open"); ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return false
 }
 
 // Session returns a snapshot of the session state.
@@ -650,7 +616,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb := L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
-	tb.RawSetString("cwd", glua.LString(sess.CWD))
+	cwd := sess.CWD
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(cwd, home+"/") {
+		cwd = "~" + cwd[len(home):]
+	}
+	tb.RawSetString("cwd", glua.LString(cwd))
 	stream := h.AgentStream()
 	if stream.Profile == "" {
 		stream.Profile = "default"

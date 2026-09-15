@@ -79,7 +79,7 @@ func (a *App) spliceCfgReview(rows [][]hostapi.Segment, cr *cfgReviewPrompt, w, 
 	for i, it := range cr.items {
 		cur, hl := "  ", ""
 		if i == cr.sel {
-			cur, hl = "> ", "Host:Bold"
+			cur, hl = "› ", "Host:Bold"
 		}
 		meta := it.Title
 		if it.From != "" {
