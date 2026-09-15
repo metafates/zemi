@@ -75,10 +75,15 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
 		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err"},
+		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
+			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
 		{Role: "assistant", Text: "found"},
 	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || len(rep.Tools) != 2 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
+	if rep.Result != "looking\n\nfound" || rep.IsError || len(rep.Tools) != 3 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
 		t.Fatalf("report = %+v", rep)
+	}
+	if rep.denied != 1 {
+		t.Fatalf("denied = %d, want 1", rep.denied)
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)

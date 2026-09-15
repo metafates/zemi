@@ -250,6 +250,15 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 				fmt.Fprintln(stderr, "  "+detail)
 			}
 		}
+		// The denied calls are in the JSON report but nowhere in the text
+		// reply, so a run that did nothing looks like a lazy model.
+		if n := rep.denied; n > 0 {
+			calls := "calls"
+			if n == 1 {
+				calls = "call"
+			}
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, try --mode auto\n", n, calls)
+		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)
 		}
@@ -273,6 +282,8 @@ type report struct {
 		Output  int64   `json:"output_tokens"`
 		CostUSD float64 `json:"cost_usd"`
 	} `json:"usage"`
+
+	denied int // tool calls the permission gate refused; text mode notes them
 }
 
 type reportTool struct {
@@ -292,6 +303,9 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "":
 			replies = append(replies, strings.TrimSpace(m.Text))
 		case m.Kind == "tool":
+			if m.Status != "ok" && strings.Contains(m.Output, "permission denied") {
+				rep.denied++
+			}
 			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
 		case m.Kind == "error":
 			rep.IsError, rep.Error = true, m.Text
