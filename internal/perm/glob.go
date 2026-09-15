@@ -3,14 +3,24 @@ package perm
 import (
 	"regexp"
 	"strings"
+	"sync"
+	"unicode/utf8"
 )
 
-var globCache = map[string]*regexp.Regexp{}
+// globCache is shared by every goroutine that evaluates rules (turns,
+// subagents, Lua gates), so it is locked.
+var (
+	globMu    sync.Mutex
+	globCache = map[string]*regexp.Regexp{}
+)
 
 // globRegexp compiles a glob (`*`, `?`) into an anchored regexp. Patterns
 // are bounded in number (rules), so the cache cannot grow unboundedly.
 func globRegexp(pattern string) *regexp.Regexp {
-	if re, ok := globCache[pattern]; ok {
+	globMu.Lock()
+	re, ok := globCache[pattern]
+	globMu.Unlock()
+	if ok {
 		return re
 	}
 	var b strings.Builder
@@ -26,10 +36,12 @@ func globRegexp(pattern string) *regexp.Regexp {
 		}
 	}
 	b.WriteString(`$`)
-	re := regexp.MustCompile(b.String())
+	re = regexp.MustCompile(b.String())
+	globMu.Lock()
 	if len(globCache) < 1024 {
 		globCache[pattern] = re
 	}
+	globMu.Unlock()
 	return re
 }
 
@@ -43,11 +55,11 @@ func specificity(pattern string) int {
 	return score
 }
 
-// literalPrefix returns the pattern's run of literal characters before the
-// first wildcard (for tie-breaking).
+// literalPrefix counts the pattern's literal characters before the first
+// wildcard (for tie-breaking).
 func literalPrefix(pattern string) int {
 	if i := strings.IndexAny(pattern, "*?"); i >= 0 {
-		return i
+		pattern = pattern[:i]
 	}
-	return len(pattern)
+	return utf8.RuneCountInString(pattern)
 }

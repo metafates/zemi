@@ -1,6 +1,9 @@
 package perm
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func store(t *testing.T, rules ...Rule) *Store {
 	t.Helper()
@@ -210,5 +213,25 @@ func TestBacktickCutsSegment(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("backtick substitution must cut into its own segment: %q", n.Segments)
+	}
+}
+
+// TestGlobConcurrentAndRunes: rule matching runs on many goroutines at once
+// (go test -race catches an unlocked cache), and the literal-prefix
+// tie-break counts characters, not bytes.
+func TestGlobConcurrentAndRunes(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				globRegexp(string(rune('a'+i)) + "*" + string(rune('a'+j%26)))
+			}
+		}(i)
+	}
+	wg.Wait()
+	if n := literalPrefix("\u00e9*"); n != 1 {
+		t.Fatalf("literalPrefix(\"\u00e9*\") = %d, want 1", n)
 	}
 }
