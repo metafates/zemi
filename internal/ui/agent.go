@@ -183,20 +183,13 @@ type listItem struct{ label, desc string }
 func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segment {
 	// Every row pads to the widest item in the whole list, so a box sized
 	// from the visible window keeps its width while scrolling.
-	itemWidth := func(it listItem) int {
-		n := ansi.StringWidth(it.label)
-		if it.desc != "" {
-			n += 2 + ansi.StringWidth(it.desc)
-		}
-		return n
-	}
 	widest, labelW := 0, 0
 	for _, it := range items {
 		labelW = max(labelW, ansi.StringWidth(it.label))
 	}
 	// descriptions line up in one column unless a long label would push them far out
 	labelW = min(labelW, 24)
-	itemWidth = func(it listItem) int {
+	itemWidth := func(it listItem) int {
 		n := ansi.StringWidth(it.label)
 		if it.desc != "" {
 			n = max(n, labelW) + 2 + ansi.StringWidth(it.desc)

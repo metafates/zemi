@@ -146,8 +146,7 @@ type wfTask struct {
 	fn      *glua.LFunction // set until the first resume
 	parent  *wfTask
 	slot    int
-	pdepth  int // pcall nesting; yielding inside pcall would break the coroutine
-	pending []glua.LValue
+	pdepth  int               // pcall nesting; yielding inside pcall would break the coroutine
 	kids    []*glua.LFunction // set by parallel() before it yields
 	waiting int
 	vals    *glua.LTable

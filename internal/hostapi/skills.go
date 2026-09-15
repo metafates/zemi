@@ -29,29 +29,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// SkillRow is one skill's user-facing state (UI and logs).
-type SkillRow struct {
-	Name        string
-	Description string
-	Source      string // authored | learned
-	Enabled     bool
-	Dir         string
-	Hook        string
-}
-
-// skillRows returns every skill with live enabled state, sorted by name.
-func (h *Host) skillRows() []SkillRow {
-	var out []SkillRow
-	for _, s := range h.skillsReg.list() {
-		out = append(out, SkillRow{
-			Name: s.Name, Description: s.Description,
-			Source: string(s.Source), Enabled: h.skillsReg.isEnabled(s.Name),
-			Dir: s.Dir, Hook: s.Hook,
-		})
-	}
-	return out
-}
-
 // skillsReg caches discovery results between DB syncs. Everything that
 // touches it runs on the interpreter goroutine except the skill tool's
 // index read (agent goroutine), hence the mutex.

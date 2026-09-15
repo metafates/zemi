@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -118,12 +117,4 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	return tb
-}
-
-// CheckEventName validates a host-side emission target.
-func CheckEventName(name string) error {
-	if !knownEvent(name) {
-		return fmt.Errorf("unknown event %q", name)
-	}
-	return nil
 }

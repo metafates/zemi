@@ -87,7 +87,6 @@ type agentHost struct {
 	defProf   string
 	runner    *agent.Runner
 	sessionID string
-	sessionDB *store.DB
 
 	active    bool
 	textBuf   string
@@ -986,10 +985,6 @@ func (h *Host) AgentStream() StreamSnapshot {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	p := ag.defProf
-	if pr, ok := ag.profiles[p]; ok {
-		p = pr.Model
-	}
 	thought := ag.thought
 	if ag.thinking {
 		thought += time.Since(ag.thinkStart)

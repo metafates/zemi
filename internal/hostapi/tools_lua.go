@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -82,11 +83,7 @@ func (r *toolReg) addOverride(o *overrideRec) bool {
 func (r *toolReg) overridesFor(tool string) []*overrideRec {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var out []*overrideRec
-	for _, o := range r.overrides[tool] {
-		out = append(out, o)
-	}
-	return out
+	return slices.Clone(r.overrides[tool])
 }
 
 func (r *toolReg) purge(gen Gen) {

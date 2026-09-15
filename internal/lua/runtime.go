@@ -524,16 +524,6 @@ type BootStep struct {
 	Run  func(ctx context.Context, r *Runtime, g *Generation) error
 }
 
-// CompileAndRun is a BootStep helper: compile + execute a source string.
-func CompileAndRun(name, src string, origin Origin) BootStep {
-	return BootStep{
-		Name: name,
-		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
-			return r.runChunk(g.L, src, name, origin)
-		},
-	}
-}
-
 // LoadFileStep loads a Lua file from disk as the given origin.
 func LoadFileStep(name, path string, origin Origin) BootStep {
 	return BootStep{

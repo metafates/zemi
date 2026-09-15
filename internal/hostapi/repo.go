@@ -68,12 +68,6 @@ func (h *Host) git(dir string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-// repoHasCommits reports whether the repo has at least one commit.
-func (h *Host) repoHasCommits(dir string) bool {
-	_, err := h.git(dir, "rev-parse", "--verify", "-q", "HEAD")
-	return err == nil
-}
-
 // commitConfigPaths stages exactly paths (repo-relative) and commits
 // them with a self-contained identity (machines without git config must
 // still get commits). Unchanged trees are a no-op (git exits non-zero
