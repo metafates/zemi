@@ -93,7 +93,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch key {
 		case "a":
 			a.markMemory(true)
-		case "d", " ":
+		case "d", "space":
 			a.markMemory(false)
 		case "enter":
 			a.answerMemReview(true)
@@ -159,14 +159,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	c := &a.composer
 
+	// Popups take only the ctrl moves: plain k/j are typed text.
+	popupMove := 0
+	if key != "k" && key != "j" {
+		popupMove = listMove(key)
+	}
 	if a.palette.open {
+		if popupMove != 0 {
+			a.palette.move(popupMove)
+			return nil
+		}
 		switch key {
-		case "up":
-			a.palette.move(-1)
-			return nil
-		case "down":
-			a.palette.move(1)
-			return nil
 		case "tab":
 			a.acceptPalette()
 			return nil
@@ -179,17 +182,11 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if a.completion.open {
+		if popupMove != 0 {
+			moveSel(&a.completion.selected, len(a.completion.matches), key)
+			return nil
+		}
 		switch key {
-		case "up":
-			if a.completion.selected > 0 {
-				a.completion.selected--
-			}
-			return nil
-		case "down":
-			if a.completion.selected < len(a.completion.matches)-1 {
-				a.completion.selected++
-			}
-			return nil
 		case "tab", "enter":
 			a.acceptCompletion()
 			return nil
@@ -289,18 +286,30 @@ func (a *App) interrupt() {
 	a.cancelling = true
 }
 
-// moveSel applies up/down (k/j) to a list selection over n items; it
-// reports whether the key was a move.
+// moveSel applies up/down to a list selection over n items; it reports
+// whether the key was a move.
 func moveSel(sel *int, n int, key string) bool {
-	switch key {
-	case "up", "k":
+	switch listMove(key) {
+	case -1:
 		*sel = max(*sel-1, 0)
-	case "down", "j":
+	case 1:
 		*sel = max(min(*sel+1, n-1), 0)
 	default:
 		return false
 	}
 	return true
+}
+
+// listMove maps list navigation keys (arrows, k/j, and the nvim-style
+// ctrl+k/j, ctrl+p/n) to -1 or 1; 0 means the key is not a move.
+func listMove(key string) int {
+	switch key {
+	case "up", "k", "ctrl+k", "ctrl+p":
+		return -1
+	case "down", "j", "ctrl+j", "ctrl+n":
+		return 1
+	}
+	return 0
 }
 
 // runRHS executes a keymap right-hand side on the ui class under the

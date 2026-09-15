@@ -114,7 +114,8 @@ type agentHost struct {
 	// this turn (the working row counts down instead of looking stuck).
 	retryAt    time.Time
 	retries    int
-	compacting bool // summarizing history before the next turn
+	retryWhy   string // friendlyError of the failure being retried
+	compacting bool   // summarizing history before the next turn
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -409,7 +410,7 @@ func (ag *agentHost) beginTurn() {
 	ag.tools = nil
 	ag.turnStart = time.Now()
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
-	ag.retryAt, ag.retries = time.Time{}, 0
+	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
 
 // AgentCancel aborts the active turn (DESIGN §6.3).
@@ -459,6 +460,12 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.mu.Lock()
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
+	// fantasy passes no error when a network failure (DNS, refused, reset)
+	// caused the retry.
+	ag.retryWhy = "network problem"
+	if err != nil {
+		ag.retryWhy = friendlyError(err)
+	}
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
 	s.h.agentEvent(AgentEvent{Kind: "retry"})
@@ -532,9 +539,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
 		// that ended silently looks like zemi ignored the message.
-		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(errString(err)), 300)}
+		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
-			row.Text, row.Status = "interrupted", "cancelled"
+			row.Status = "cancelled"
 		}
 		h.appendChatMessage(row)
 	} else {
@@ -690,6 +697,7 @@ type StreamSnapshot struct {
 	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
 	RetryIn   time.Duration // time until the next provider retry (0 when none waits)
 	Retries   int           // provider retries this turn
+	RetryWhy  string        // what failed, for the retry countdown
 	Compacting bool         // history is being summarized before the turn
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
@@ -736,7 +744,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.SessionCost = ag.retries, ag.compacting, ag.sessCost
 	if d := time.Until(ag.retryAt); d > 0 {
-		out.RetryIn = d
+		out.RetryIn, out.RetryWhy = d, ag.retryWhy
 	}
 	return out
 }
@@ -1273,33 +1281,45 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // permission gate for model tool calls
 
-// askHook is the tools.Pipeline asker: veto event, then the Go-owned
-// overlay, then the "always" rule storage (DESIGN §6.2, §8).
+// askHook is the tools.Pipeline asker: veto event, then the permission
+// mode (yolo allows, auto lets a model approve routine requests), then the
+// Go-owned overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string) {
+		resolved := func(allowed bool, by string) (bool, string) {
+			h.EmitAsync("permission.resolved", map[string]any{
+				"subject": req.Subject, "arg": req.Arg,
+				"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
+				"by":       by,
+			})
+			return allowed, by
+		}
 		res := h.EmitVetoable(context.Background(), "permission.request",
 			map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason},
 			lua.VetoDeadline)
 		if res.Denied {
-			h.EmitAsync("permission.resolved", map[string]any{
-				"subject": req.Subject, "decision": "deny", "by": "event",
-			})
-			return false, "event"
+			return resolved(false, "event")
+		}
+		switch h.PermMode() {
+		case "yolo":
+			return resolved(true, "mode:yolo")
+		case "auto":
+			ok, why := h.autoApprove(req)
+			if ok {
+				return resolved(true, "mode:auto")
+			}
+			h.Log.Info("permissions", "auto mode deferred to the user", map[string]any{"subject": req.Subject, "why": why})
+			req.Reason = why
 		}
 		ui := h.hooks()
 		if ui == nil {
-			return false, "default"
+			return resolved(false, "default")
 		}
 		allowed, by := ui.AskPermission(PermRequest{Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview})
 		if allowed && by == "user:always" {
 			h.storeAlwaysRules(req)
 		}
-		h.EmitAsync("permission.resolved", map[string]any{
-			"subject": req.Subject, "arg": req.Arg,
-			"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
-			"by":       by,
-		})
-		return allowed, by
+		return resolved(allowed, by)
 	}
 }
 

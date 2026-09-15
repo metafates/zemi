@@ -21,6 +21,10 @@ type overlayState struct {
 // openOverlay pushes an overlay, rendering its items up front (render_item
 // runs once per item on the queue; the frame never calls Lua).
 func (a *App) openOverlay(o hostapi.Overlay) {
+	a.overlays = append(a.overlays, a.overlayState(o))
+}
+
+func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Title and rendered items are Lua strings: sanitize like widget text.
 	o.Title = sanitize.String(o.Title)
 	st := overlayState{o: o}
@@ -37,7 +41,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	if len(st.itemText) == 0 {
 		st.itemText = []string{"(empty)"}
 	}
-	a.overlays = append(a.overlays, st)
+	return st
 }
 
 // renderOverlayItem renders one item through the overlay's render_item
@@ -92,31 +96,24 @@ func (a *App) overlayKey(key string) tea.Cmd {
 		return nil
 	}
 	switch key {
-	case "enter":
+	case "enter", "space":
 		idx := st.selected
-		if o.OnSelect != nil {
+		switch {
+		case o.Reload != nil:
+			a.runOverlayRow(o, idx)
+			sel := st.selected
+			o.Items = o.Reload()
+			*st = a.overlayState(o)
+			st.selected = min(sel, len(st.itemText)-1)
+			a.frameGen++
+		case key == "space":
+		case o.OnSelect != nil:
 			// SelectOverlay runs on_select then closes via the hook.
 			a.host.SelectOverlay(a.ctx(), o, idx)
-		} else {
+		default:
 			a.closeOverlayByID(o.ID)
 			a.frameGen++
-			// A row's "fill" goes into the composer, like tab in the palette;
-			// "run" executes a command, honored only for builtin and user
-			// overlays so a plugin row label cannot disguise a command.
-			if idx < len(o.Items) {
-				if m, ok := o.Items[idx].(map[string]any); ok {
-					if fill, _ := m["fill"].(string); fill != "" {
-						a.composer.text = sanitize.String(fill)
-						a.composer.moveEnd()
-					}
-					if run, _ := m["run"].(string); run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
-						name, args := splitCommand(run)
-						if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
-							a.pushToast("error", "/"+name, err.Error())
-						}
-					}
-				}
-			}
+			a.runOverlayRow(o, idx)
 		}
 	case "esc", "q":
 		a.closeOverlayByID(o.ID)
@@ -126,6 +123,29 @@ func (a *App) overlayKey(key string) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// runOverlayRow applies a row's "fill" (into the composer, like tab in the
+// palette) and "run" (a command, honored only for builtin and user
+// overlays so a plugin row label cannot disguise a command).
+func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
+	if idx >= len(o.Items) {
+		return
+	}
+	m, ok := o.Items[idx].(map[string]any)
+	if !ok {
+		return
+	}
+	if fill, _ := m["fill"].(string); fill != "" {
+		a.composer.text = sanitize.String(fill)
+		a.composer.moveEnd()
+	}
+	if run, _ := m["run"].(string); run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
+		name, args := splitCommand(run)
+		if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
+			a.pushToast("error", "/"+name, err.Error())
+		}
+	}
 }
 
 // spliceOverlay composes the overlay box into the frame rows, centered
@@ -140,7 +160,11 @@ func (a *App) spliceOverlay(rows [][]hostapi.Segment, st overlayState, w, header
 		items = append(items, listItem{label: t})
 	}
 	body := listRows(items, st.selected, 10, "Title")
-	body = append(body, []hostapi.Segment{{Text: ""}}, keyHints("enter", "select", "esc", "close"))
+	hints := keyHints("enter", "select", "esc", "close")
+	if st.o.Reload != nil {
+		hints = keyHints("space", "toggle", "esc", "close")
+	}
+	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
 	box := hostBox(" "+st.o.Title+" ", "Title", badge+" ", body, w)
 	return spliceBox(rows, box, w, headerH, chatH)
 }

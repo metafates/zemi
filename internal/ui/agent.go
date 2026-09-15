@@ -189,6 +189,9 @@ func (a *App) workingRow() []hostapi.Segment {
 	if st.RetryIn > 0 {
 		label = fmt.Sprintf("Retrying (attempt %d)", st.Retries+1)
 		timing = "next try in " + fmtElapsed(st.RetryIn.Round(time.Second))
+		if st.RetryWhy != "" {
+			timing = sanitize.String(st.RetryWhy) + ", " + timing
+		}
 	}
 	if st.Compacting {
 		label = "Compacting"

@@ -199,6 +199,10 @@ zemi.ui.widget.register({
         mark, hl = "✗", "AgentToolErr"
       end
       name = name or "?"
+      if name == "skill" then
+        name = ({ ok = "loaded skill", err = "skill failed" })[status] or "loading skill"
+        if status == "ok" then mark, hl = "✦", "Title" end
+      end
       local room, chars = width - #name - 7, {}
       for ch in (input or ""):gsub("%s+", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
         if #chars >= room then
@@ -237,11 +241,15 @@ zemi.ui.widget.register({
       elseif m.kind == "compact" then
         lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then
+        -- Headline, then the raw error dimmed underneath.
         local cancelled = m.status == "cancelled"
-        lines[#lines + 1] = {
-          { text = cancelled and "  ■ " or "  ✗ ", hl = cancelled and "Comment" or "AgentToolErr" },
-          { text = m.text, hl = cancelled and "Comment" or "AgentToolErr" },
-        }
+        local first = true
+        for text in (m.text .. "\n"):gmatch("(.-)\n") do
+          local hl = (cancelled or not first) and "Comment" or "AgentToolErr"
+          local mark = first and (cancelled and "  ■ " or "  ✗ ") or "    "
+          lines[#lines + 1] = { { text = mark, hl = hl }, { text = text, hl = hl } }
+          first = false
+        end
       elseif m.role == "user" then
         local first = true
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
@@ -284,6 +292,7 @@ zemi.ui.widget.register({
 -- composer. The transcript is bottom-anchored, so these keys and the wheel
 -- move the viewport; sending snaps back to the tail.
 zemi.keymap.bind("insert", "ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
+zemi.keymap.bind("insert", "shift+tab", "zemi.permission.mode.cycle", { desc = "cycle permission mode" })
 zemi.keymap.bind("insert", "pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.bind("insert", "pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
 zemi.keymap.bind("insert", "ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })

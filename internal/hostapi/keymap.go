@@ -3,6 +3,7 @@ package hostapi
 import (
 	"strings"
 
+	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -59,6 +60,13 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			}
 			if rhs.Command == "" && rhs.API == "" && rhs.Fn == nil {
 				L.RaiseError("zemi.keymap.bind: %q is neither a command nor a host action", string(v))
+				return 0
+			}
+			// Loosening permissions is the user's call: a plugin or project
+			// key must not flip the mode on an innocent-looking press.
+			if (rhs.API == "zemi.permission.mode.cycle" || rhs.Command == "mode") &&
+				binding.Origin != lua.OriginUser && binding.Origin != lua.OriginBuiltin {
+				L.RaiseError("zemi.keymap.bind: only user config may bind permission mode changes")
 				return 0
 			}
 			binding.RHS = rhs

@@ -402,15 +402,20 @@ func (h *Host) skillsCommand(args string) error {
 	}
 }
 
-// openSkills lists discovered skills with their state; enter toggles the
-// selected one through the same enable/disable path as the command.
+// openSkills lists discovered skills with their state; space or enter
+// toggles the selected one through the same enable/disable path as the
+// command and the list stays open.
 func (h *Host) openSkills() {
 	ui := h.hooks()
-	all := h.skillsReg.list()
-	if ui == nil || len(all) == 0 {
+	if ui == nil || len(h.skillsReg.list()) == 0 {
 		h.memNotify("info", "skills", "no skills found (add them under skills/ in your config)")
 		return
 	}
+	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems})
+}
+
+func (h *Host) skillItems() []any {
+	all := h.skillsReg.list()
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		mark, verb := "○ ", "enable"
@@ -422,7 +427,7 @@ func (h *Host) openSkills() {
 			"run":  "skills " + verb + " " + s.Name,
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills - enter toggles", Origin: lua.OriginBuiltin, Items: items})
+	return items
 }
 
 // SkillsCommandsStep registers the Go-owned /skills command with the
@@ -432,7 +437,7 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 		Name: "skills commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "skills", NArgs: "*", Desc: "browse skills (enter toggles); enable|disable <name>",
+				Name: "skills", NArgs: "*", Desc: "browse skills (space toggles); enable|disable <name>",
 				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
 				GoComplete: subcommandCompleter([]string{"enable", "disable"}, func(h *Host, _ string) []string {
 					var names []string

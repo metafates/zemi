@@ -51,6 +51,10 @@ type Overlay struct {
 	OnSelect   *glua.LFunction
 	OnClose    *glua.LFunction
 	Gen        Gen
+
+	// Reload makes a Go-built list a toggle list: enter and space run the
+	// row's "run" command and rebuild the items, keeping the overlay open.
+	Reload func() []any
 }
 
 // ChatMessage is an M0 transcript entry (composer submissions); assistant
@@ -200,7 +204,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			}
 			return nil
 		},
-		"zemi.reload": nil, // Go-reserved; never dispatched here
+		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode() },
+		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
 	h.refreshPending()
 	return h
