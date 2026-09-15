@@ -293,6 +293,26 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 	}
 }
 
+// TestToolLoopEndsTurn: the same tool call with the same result, step after
+// step, ends the turn on its sixth repeat with ErrToolLoop.
+func TestToolLoopEndsTurn(t *testing.T) {
+	m := &mockModel{parts: []fantasy.StreamPart{
+		{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("same"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
+		t.Fatalf("err = %v, want ErrToolLoop", err)
+	}
+	if n := len(r.History); n != 1+2*(loopRepeats+1) {
+		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopRepeats+1)
+	}
+}
+
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
 // tool result, and an empty Send continues without a second user message.

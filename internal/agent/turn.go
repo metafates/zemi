@@ -161,9 +161,21 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return stop
 		})
 	}
+	// A turn stuck repeating one tool interaction, or out of steps, ends with
+	// stopErr instead of running on unattended.
+	var stopErr error
+	stops = append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop), func(steps []fantasy.StepResult) bool {
+		switch {
+		case len(steps) >= maxSteps:
+			stopErr = ErrStepLimit
+		case repeatsToolCalls(steps):
+			stopErr = ErrToolLoop
+		}
+		return stopErr != nil
+	})
 	call := fantasy.AgentStreamCall{
 		Messages:         history,
-		StopWhen:         append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop)),
+		StopWhen:         stops,
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
@@ -234,6 +246,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
 		err = ErrReplyCut
 	}
+	if err == nil {
+		err = stopErr
+	}
 	// Completed steps (assistant content, tool results, steered user
 	// messages) join history in the order the model saw them, also after an
 	// error; the step that failed is dropped whole, so no call lacks its result.
@@ -249,6 +264,42 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Unlock()
 	hooks.TurnDone(err, usage)
 	return err
+}
+
+const (
+	maxSteps    = 200
+	loopWindow  = 10 // recent steps repeatsToolCalls looks at
+	loopRepeats = 5  // identical tool steps allowed within the window
+)
+
+var (
+	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
+	ErrToolLoop  = fmt.Errorf("stopped: the agent repeated the same tool call with the same result %d times", loopRepeats+1)
+)
+
+// repeatsToolCalls reports whether one step's tool calls and results, as a
+// whole, occur more than loopRepeats times in the last loopWindow steps.
+// Results count, so polling that makes progress is not a loop.
+func repeatsToolCalls(steps []fantasy.StepResult) bool {
+	counts := map[string]int{}
+	for _, s := range steps[max(len(steps)-loopWindow, 0):] {
+		calls := s.Content.ToolCalls()
+		if len(calls) == 0 {
+			continue
+		}
+		sig := ""
+		for _, c := range calls {
+			sig += c.ToolName + "\x00" + c.Input + "\x00"
+		}
+		for _, res := range s.Content.ToolResults() {
+			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
+			sig += txt.Text + "\x00"
+		}
+		if counts[sig]++; counts[sig] > loopRepeats {
+			return true
+		}
+	}
+	return false
 }
 
 // ContextUsed is the context one model call took: providers report cache
