@@ -93,9 +93,9 @@ type agentHost struct {
 	stepText   int
 	stepReason int
 	tools      []StreamTool
-	steering  []string
-	modelSeed string
-	turnModel string // model id the running turn was built with, for its price
+	steering   []string
+	modelSeed  string
+	turnModel  string // model id the running turn was built with, for its price
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
