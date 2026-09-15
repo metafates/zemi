@@ -19,6 +19,13 @@ its own. Only `user` may register providers, add allow rules or decide learning
 proposals. Lua calls to gated APIs never open a prompt: an "ask" decision fails with
 `nil, "permission ask required"` unless an allow rule exists.
 
+## Modules
+
+`require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
+plugin; project code also searches `.zemi/lua/` first. `require("./x")` and
+`require("../x")` resolve next to the calling file and must stay in the same origin's
+tree. Each file loads once per runtime (both names share it); `/Reload` loads fresh.
+
 ## Rules that keep zemi responsive
 
 - Keymap handlers, event handlers and widget `render` must finish in about 10 ms.
@@ -32,7 +39,7 @@ proposals. Lua calls to gated APIs never open a prompt: an "ask" decision fails 
 | Namespace | Members |
 | --- | --- |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
-| `zemi.keymap` | `bind(mode, keys, fn_or_action, opts)`, `del`, `list` |
+| `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()` |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce })`, `emit("user.*", payload)` |
 | `zemi.ui` | `widget.register/list`, `theme.register/set/get`, `overlay.open/close`, `select`, `markdown`, `help` |

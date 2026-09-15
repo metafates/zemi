@@ -10,8 +10,9 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   structured questions, skills and memory.
 - Asks before anything risky. Edits show their diff in the permission prompt; `a`
   (always) stores an exact rule, and permanent rules live in a generated
-  `permissions.lua` that is versioned with git. `shift+tab` switches the mode: `manual`,
-  `auto` (a model approves routine actions, you get the rest) or `yolo`.
+  `permissions.lua` that is versioned with git. `tab` switches the mode shown at the left
+  of the statusline: `manual`, `auto` (a model approves routine actions, you get the
+  rest) or `yolo`.
 - Lets you steer mid-turn: messages typed while the agent works join the running turn at
   the next step. `up` on an empty composer pulls the queue back for editing, `esc`
   interrupts.
@@ -91,7 +92,7 @@ With `-p` nobody can answer a permission ask, so asks are denied unless `--mode`
 | `enter` / `alt+enter` | send / newline |
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
-| `shift+tab` | cycle permission mode |
+| `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
 | `ctrl+o` | expand reasoning |
 | `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
@@ -107,18 +108,22 @@ The `zemi.*` API mirrors `vim.*`: keymaps, commands with completion, events, wid
 themes, overlays and pickers, timers, jobs, http, and the learning namespaces.
 
 ```lua
-zemi.keymap.bind("insert", "ctrl+t", function()
+zemi.keymap.set("ctrl+t", function()
   zemi.ui.select({ "fix", "explain" }, { prompt = "Ask the agent to" }, function(choice)
     if choice then zemi.agent.send(choice .. " the failing test") end
   end)
 end, { desc = "quick request" })
 
 local util = require("zemi.util")   -- split, trim, map, filter, inspect, validate, ...
+local keys = require("./keys")      -- relative to this file
+local myui = require("myui.status") -- ~/.config/zemi/lua/myui/status.lua
 ```
 
-Plugins load from `~/.local/share/zemi/site/pack/*/start/*`; a project's `.zemi/init.lua`
-loads after a one-time trust prompt. Lua runs sandboxed, and every registration carries
-its origin (`user > builtin > plugin > project`), so project code cannot override yours.
+Plugins load from `~/.local/share/zemi/site/pack/*/start/*`. A repository can ship its own
+setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua` plus modules under
+`.zemi/lua/`, found from any subdirectory and loaded after a trust prompt that repeats
+whenever those files change. Lua runs sandboxed, and every registration carries its
+origin (`user > builtin > plugin > project`), so project code cannot override yours.
 [DESIGN.md](DESIGN.md) is the full specification.
 
 ## Files

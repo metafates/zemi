@@ -34,7 +34,7 @@ func TestGoldenM0Frame(t *testing.T) {
 	projectResolved := resolve(project)
 
 	initLua := `
-zemi.keymap.bind("insert", "ctrl+t", function()
+zemi.keymap.set("ctrl+t", function()
   zemi.notify({ title = "rebound", body = "ctrl+t pressed" })
 end, { desc = "notify on rebound ctrl+t" })
 

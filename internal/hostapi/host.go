@@ -204,7 +204,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			}
 			return nil
 		},
-		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode() },
+		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
+		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
 	h.refreshPending()
@@ -310,7 +311,7 @@ func (h *Host) OpenHelp() {
 		if desc == "" {
 			desc = describeRHS(b.RHS)
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Keys, desc)})
+		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %s", b.Key, desc)})
 	}
 	for _, c := range h.Commands.List() {
 		items = append(items, map[string]any{
@@ -552,16 +553,19 @@ type Segment struct {
 // RenderWidget runs a widget's Lua render for the given width and returns
 // sanitized segment lines (DESIGN §6.6, §8).
 func (h *Host) RenderWidget(ctx context.Context, w *Widget, width int, state UIState) ([][]Segment, error) {
-	h.renderMu.Lock()
-	h.renderSize = width
-	h.renderMu.Unlock()
-	defer func() {
-		h.renderMu.Lock()
-		h.renderSize = 0
-		h.renderMu.Unlock()
-	}()
-
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		// The purity guard is raised on the interpreter goroutine, only
+		// while render runs: raised before Do, it also refused Lua that ran
+		// while this render merely waited in the queue (boot code behind
+		// the trust prompt).
+		h.renderMu.Lock()
+		h.renderSize = width
+		h.renderMu.Unlock()
+		defer func() {
+			h.renderMu.Lock()
+			h.renderSize = 0
+			h.renderMu.Unlock()
+		}()
 		h.RT.PushFrame(w.Origin, w.Path)
 		defer h.RT.PopFrame()
 		base := L.GetTop()
@@ -645,6 +649,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
+	tb.RawSetString("permission_mode", glua.LString(h.PermMode()))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
@@ -847,7 +852,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.2.0"))
+	api.RawSetString("version", glua.LString("0.3.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	glua "github.com/yuin/gopher-lua"
 )
 
 // newTestHost boots a fresh runtime with the full host API installed.
@@ -51,10 +52,12 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.2.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.3.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
-		assert(type(zemi.keymap.bind) == "function", "zemi.keymap.bind missing")
+		for _, fn in ipairs({ "set", "del", "get", "list" }) do
+			assert(type(zemi.keymap[fn]) == "function", "zemi.keymap." .. fn .. " missing")
+		end
 		assert(type(zemi.command.add) == "function", "zemi.command.add missing")
 		assert(type(zemi.event.emit) == "function", "zemi.event.emit missing")
 		assert(type(zemi.log) == "table", "zemi.log missing")
@@ -95,33 +98,57 @@ func TestEventRoundTrip(t *testing.T) {
 	`)
 }
 
-// TestKeymapBindFromLua covers bind-time RHS resolution: function RHS lands
-// in the registry with the caller's origin, string RHS must be a known
-// command or host action, the Go-reserved action is refused, and <leader>
-// expands to the space prefix.
-func TestKeymapBindFromLua(t *testing.T) {
+// TestKeymapFromLua covers set/get/del/list: a function action lands with
+// the caller's origin, string actions must be a known command or host
+// action (the Go-reserved one is refused), key names normalize, and user
+// config can remove a shipped default.
+func TestKeymapFromLua(t *testing.T) {
 	h, r := newTestHost(t)
+	if err := h.Keymaps.Set(&KeyBinding{Key: "tab", RHS: RHS{API: "zemi.ui.help"}, Origin: lua.OriginBuiltin}); err != nil {
+		t.Fatal(err)
+	}
 	runUser(t, r, `
-		zemi.keymap.bind("normal", "gm", function() end)
-		zemi.keymap.bind("normal", "<leader>x", function() end)
-		local ok, err = pcall(zemi.keymap.bind, "normal", "r1", "zemi.reload")
-		assert(not ok, "Go-reserved rhs accepted")
-		assert(tostring(err):find("Go-reserved", 1, true) ~= nil, "err=" .. tostring(err))
-		local ok2, err2 = pcall(zemi.keymap.bind, "normal", "r2", "zemi.nope")
-		assert(not ok2, "unknown rhs accepted")
-		assert(tostring(err2):find("neither a command nor a host action", 1, true) ~= nil,
-			"err2=" .. tostring(err2))
+		zemi.keymap.set("Ctrl+G", function() end, { desc = "go" })
+		local b = zemi.keymap.get("ctrl+g")
+		assert(b and b.desc == "go" and b.origin == "user" and b.action == "<function>", "get after set")
+		local ok, err = pcall(zemi.keymap.set, "f1", "zemi.reload")
+		assert(not ok and tostring(err):find("Go-reserved", 1, true), "err=" .. tostring(err))
+		ok, err = pcall(zemi.keymap.set, "f2", "zemi.nope")
+		assert(not ok and tostring(err):find("neither a command nor a host action", 1, true), "err=" .. tostring(err))
+		assert(#zemi.keymap.list() == 2, "list=" .. #zemi.keymap.list())
+		zemi.keymap.del("tab")
+		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
+		assert(not pcall(zemi.keymap.del, "tab"), "deleting an unbound key must raise")
 	`)
-	b := h.Keymaps.Lookup("normal", "gm")
-	if b == nil {
-		t.Fatal("gm binding missing from the registry")
+	if b := h.Keymaps.Lookup("ctrl+g"); b == nil || b.Origin != lua.OriginUser {
+		t.Fatalf("ctrl+g = %+v", b)
 	}
-	if b.Origin != lua.OriginUser {
-		t.Fatalf("gm binding origin = %v, want user", b.Origin)
+}
+
+// TestRenderGuardOnlyWhileRendering: a render queued behind other Lua does
+// not make that Lua look like render code (project config registering a
+// widget during the trust prompt was refused).
+func TestRenderGuardOnlyWhileRendering(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.ui.widget.register({ id = "w", region = "header", render = function() return {} end })`)
+	w := h.Widgets.List()[0]
+	rendered := make(chan struct{})
+	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		go func() {
+			defer close(rendered)
+			h.RenderWidget(context.Background(), w, 40, UIState{})
+		}()
+		time.Sleep(50 * time.Millisecond) // the render is now queued behind this request
+		h.renderMu.Lock()
+		defer h.renderMu.Unlock()
+		if h.renderSize != 0 {
+			t.Error("render guard raised while the render only waited in the queue")
+		}
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if h.Keymaps.Lookup("normal", "spacex") == nil {
-		t.Fatal("<leader>x did not expand to spacex")
-	}
+	<-rendered
 }
 
 // TestRenderRefusesMutations pins the render-purity guard (DESIGN §6.6):
@@ -133,7 +160,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		zemi.ui.widget.register({
 			id = "mutating", region = "header",
 			render = function(ctx)
-				zemi.keymap.bind("normal", "zz", function() end)
+				zemi.keymap.set("zz", function() end)
 				return {}
 			end,
 		})
@@ -161,7 +188,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("mutation during render: err = %v", err)
 	}
-	if h.Keymaps.Lookup("normal", "zz") != nil {
+	if h.Keymaps.Lookup("zz") != nil {
 		t.Fatal("refused bind still landed in the keymap registry")
 	}
 
@@ -218,7 +245,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.2.0", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.3.0", "interpreter wedged after veto timeout")
 	`)
 }
 

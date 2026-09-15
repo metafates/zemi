@@ -481,8 +481,11 @@ tighten).
 ### 6.2 Keys, commands, events
 
 ```lua
-zemi.keymap.bind("insert", "ctrl+t", function() zemi.notify({ body = "hi" }) end)
-zemi.keymap.bind("insert", "ctrl+e", "zemi.ui.help", { desc = "help overlay" })
+zemi.keymap.set("ctrl+t", function() zemi.notify({ body = "hi" }) end)
+zemi.keymap.set("ctrl+e", "zemi.ui.help", { desc = "help overlay" })
+zemi.keymap.del("tab")                 -- unbind (also a shipped default)
+zemi.keymap.get("ctrl+e")              -- { key, action, desc, origin } or nil
+zemi.keymap.list()
 
 zemi.command.add("Todo", function(args)
     zemi.notify({ body = "todo: " .. (args.args or "") })
@@ -496,11 +499,11 @@ zemi.event.on("tool.pre", function(ev)
 zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
-Keymap bindings carry a mode label, but there are no editor modes: the
-composer is always focused and slash commands replace the old cmdline;
-the shipped UI routes `insert` bindings only. Key notation matches bubbletea's
-normalized strings (`ctrl+s`, `alt+enter`, `esc`); a string right-hand side
-in `zemi.keymap.bind` resolves to a registered command name or a dotted
+There are no editor modes, so a binding is just a key: the composer is
+always focused and slash commands replace the old cmdline. Key notation
+matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
+lowercased); a string action in `zemi.keymap.set` resolves to a registered
+command name or a dotted
 host-API call, and executes under the principal of the config that
 bound it (a principal is what an operation is attributed to: `model`,
 `user`, `plugin:<path>`, `project`, `learned`, or `builtin` (§5); §9
@@ -509,7 +512,8 @@ registration origin of the running handler, never the keypress).
 Binding precedence across origins is `user > builtin > plugin > project`;
 last-writer-wins applies only within one origin, so the project config
 loading last cannot shadow a user binding, and `zemi.keymap.del` unmaps
-within the caller's origin only. The actions behind cancel-turn and
+keys set by the caller's origin or a less trusted one (user config can
+remove shipped defaults; a plugin cannot remove user keys). The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
 exact, case-sensitive, non-abbreviable `/Reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed
@@ -814,7 +818,7 @@ UI extensibility contract:
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks, model
   picker, question/memory/config overlays) -> active Lua overlay ->
-  insert-mode keymap (exact single keys; printable keys stay with the
+  open composer popup -> keymap (single keys; printable keys stay with the
   composer; `zemi.ui.widget.register` takes an optional
   `keys = function(key) -> handled?` handler for widget-specific keys) ->
   composer (always focused; there are no modes). Overlays capture first,

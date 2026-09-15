@@ -12,99 +12,55 @@ import (
 // in the host API layer); an empty LFunction satisfies the shape checks.
 var noopFn = &glua.LFunction{}
 
-func bind(mode, keys string, origin lua.Origin) *KeyBinding {
-	return &KeyBinding{Mode: mode, Keys: keys, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
+func bind(key string, origin lua.Origin) *KeyBinding {
+	return &KeyBinding{Key: key, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
 }
 
-func TestKeymapPrecedence(t *testing.T) {
+// TestKeymapRegistry: set rebinds within and above an origin, lower trust is
+// refused for set and del, del removes the same or less trusted, and list is
+// sorted.
+func TestKeymapRegistry(t *testing.T) {
 	r := NewKeymapRegistry()
-
-	// Builtin first (boot order), then user rebinding wins.
-	if _, err := r.Bind(bind("normal", "tab", lua.OriginBuiltin)); err != nil {
-		t.Fatalf("builtin bind: %v", err)
+	for _, s := range []struct {
+		name   string
+		key    string
+		origin lua.Origin
+		ok     bool
+	}{
+		{"builtin default", "tab", lua.OriginBuiltin, true},
+		{"user overrides builtin", "tab", lua.OriginUser, true},
+		{"project cannot override user", "tab", lua.OriginProject, false},
+		{"builtin cannot override user", "tab", lua.OriginBuiltin, false},
+		{"plugin key", "x", lua.OriginPlugin, true},
+		{"plugin rebinds its own", "x", lua.OriginPlugin, true},
+		{"empty key", "", lua.OriginUser, false},
+	} {
+		if err := r.Set(bind(s.key, s.origin)); (err == nil) != s.ok {
+			t.Fatalf("%s: err=%v", s.name, err)
+		}
 	}
-	if _, err := r.Bind(bind("normal", "tab", lua.OriginUser)); err != nil {
-		t.Fatalf("user rebind: %v", err)
+	if got := r.Lookup("tab"); got.Origin != lua.OriginUser {
+		t.Fatalf("tab origin = %v, want user", got.Origin)
 	}
-	if got := r.Lookup("normal", "tab"); got.Origin != lua.OriginUser {
-		t.Fatalf("after user rebind, origin = %v, want user", got.Origin)
-	}
-
-	// Lower trust cannot replace user: project refused, builtin refused.
-	if _, err := r.Bind(bind("normal", "tab", lua.OriginProject)); err == nil {
-		t.Fatal("project rebind of a user binding must be refused")
-	}
-	if _, err := r.Bind(bind("normal", "tab", lua.OriginBuiltin)); err == nil {
-		t.Fatal("builtin rebind of a user binding must be refused")
-	}
-	if got := r.Lookup("normal", "tab"); got.Origin != lua.OriginUser {
-		t.Fatalf("refused binds changed the binding: origin = %v", got.Origin)
-	}
-
-	// LWW within one origin (plugin replaces plugin).
-	if _, err := r.Bind(bind("normal", "x", lua.OriginPlugin)); err != nil {
-		t.Fatalf("plugin bind: %v", err)
-	}
-	second := bind("normal", "x", lua.OriginPlugin)
-	second.RHS.API = "zemi.ui.help"
-	if _, err := r.Bind(second); err != nil {
-		t.Fatalf("plugin rebind (LWW): %v", err)
-	}
-	if got := r.Lookup("normal", "x"); got.RHS.API != "zemi.ui.help" {
-		t.Fatalf("LWW within origin did not apply: %+v", got.RHS)
-	}
-}
-
-func TestKeymapDelOriginScoped(t *testing.T) {
-	r := NewKeymapRegistry()
-	if _, err := r.Bind(bind("normal", "gf", lua.OriginUser)); err != nil {
-		t.Fatalf("bind: %v", err)
-	}
-
-	// A plugin cannot delete a user binding.
-	if r.Del(lua.OriginPlugin, "normal", "gf") {
-		t.Fatal("cross-origin Del must be refused")
-	}
-	if r.Lookup("normal", "gf") == nil {
-		t.Fatal("binding vanished after refused Del")
-	}
-	if !r.Del(lua.OriginUser, "normal", "gf") {
-		t.Fatal("same-origin Del must succeed")
-	}
-	if r.Lookup("normal", "gf") != nil {
-		t.Fatal("binding still present after same-origin Del")
-	}
-	if r.Del(lua.OriginUser, "normal", "gf") {
-		t.Fatal("second Del must be false")
-	}
-}
-
-func TestKeymapPrefixAndList(t *testing.T) {
-	r := NewKeymapRegistry()
-	if _, err := r.Bind(bind("normal", "gm", lua.OriginUser)); err != nil {
-		t.Fatalf("bind: %v", err)
-	}
-	if !r.IsPrefix("normal", "g") {
-		t.Fatal("'g' must be a prefix of 'gm'")
-	}
-	if r.IsPrefix("normal", "gm") {
-		t.Fatal("exact binding is not a prefix of itself")
-	}
-	if r.IsPrefix("insert", "g") {
-		t.Fatal("prefix must be mode-scoped")
-	}
-
-	if _, err := r.Bind(bind("", "x", lua.OriginUser)); err == nil {
-		t.Fatal("empty mode must be refused")
-	}
-	if _, err := r.Bind(bind("normal", "", lua.OriginUser)); err == nil {
-		t.Fatal("empty keys must be refused")
-	}
-
-	all := r.List()
-	if len(all) != 1 || all[0].Keys != "gm" {
+	if all := r.List(); len(all) != 2 || all[0].Key != "tab" || all[1].Key != "x" {
 		t.Fatalf("List = %+v", all)
 	}
+	for _, d := range []struct {
+		name   string
+		key    string
+		origin lua.Origin
+		ok     bool
+	}{
+		{"plugin cannot delete a user key", "tab", lua.OriginPlugin, false},
+		{"user deletes a plugin key", "x", lua.OriginUser, true},
+		{"deleting twice", "x", lua.OriginUser, false},
+		{"user deletes its own", "tab", lua.OriginUser, true},
+	} {
+		if err := r.Del(d.origin, d.key); (err == nil) != d.ok {
+			t.Fatalf("%s: err=%v", d.name, err)
+		}
+	}
+	r.Set(bind("q", lua.OriginUser))
 	r.Purge()
 	if len(r.List()) != 0 {
 		t.Fatal("Purge must clear all bindings")

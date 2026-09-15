@@ -143,10 +143,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return a.overlayKey(key)
 	}
 
-	// 4. Insert-mode keymap bindings: exact single-key bindings, so users
-	// can attach ctrl/alt combos; printable keys stay with the composer.
-	if b := a.host.Keymaps.Lookup("insert", key); b != nil {
-		return a.runRHS(b)
+	// 4. Keymaps (zemi.keymap.set): single keys, so users attach ctrl/alt
+	// combos; printable keys stay with the composer. An open popup keeps
+	// its keys (tab accepts even though tab is bound).
+	if !a.palette.open && !a.completion.open {
+		if b := a.host.Keymaps.Lookup(key); b != nil {
+			return a.runRHS(b)
+		}
 	}
 
 	// 5. Composer (Go-owned multiline editor + popups).
@@ -317,14 +320,14 @@ func listMove(key string) int {
 func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
 	if err := a.host.RunRHS(a.ctx(), b.Origin, b.RHS, ""); err != nil {
 		if err == lua.ErrHot || err == lua.ErrReloaded {
-			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Keys})
+			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Key})
 			return nil
 		}
-		a.host.RecordError("keymap "+b.Keys, err.Error())
+		a.host.RecordError("keymap "+b.Key, err.Error())
 		a.host.Log.Error("ui", "keymap rhs failed", map[string]any{
-			"keys": b.Keys, "error": err.Error(),
+			"keys": b.Key, "error": err.Error(),
 		})
-		a.pushToast("error", "keymap "+b.Keys, err.Error())
+		a.pushToast("error", "keymap "+b.Key, err.Error())
 	}
 	return nil
 }

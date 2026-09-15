@@ -7,13 +7,14 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// expandLeader maps the nvim-style <leader> prefix to the space key
-// (configurable key arrives later).
-func expandLeader(keys string) string {
-	if len(keys) >= 8 && strings.EqualFold(keys[:8], "<leader>") {
-		return "space" + keys[8:]
+// normalizeKey lowercases named keys ("Ctrl+T" is "ctrl+t", as bubbletea
+// reports it); a single character keeps its case.
+func normalizeKey(key string) string {
+	key = strings.TrimSpace(key)
+	if len([]rune(key)) > 1 {
+		return strings.ToLower(key)
 	}
-	return keys
+	return key
 }
 
 // resolveRHS turns a string right-hand side into a command reference or a
@@ -32,96 +33,93 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 	return RHS{API: s}, nil
 }
 
+// keymapNamespace is zemi.keymap: set(key, action, opts?), del(key),
+// get(key) and list(). An action is a function, a command name or a host
+// action; setting a bound key again rebinds it.
 func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("bind", L.NewFunction(func(L *glua.LState) int {
-		mode := L.CheckString(1)
-		keys := expandLeader(L.CheckString(2))
-		if h.refuseDuringRender(L, "zemi.keymap.bind") {
+	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		key := normalizeKey(L.CheckString(1))
+		if h.refuseDuringRender(L, "zemi.keymap.set") {
 			return 0
 		}
-		binding := &KeyBinding{
-			Mode:   mode,
-			Keys:   keys,
-			Origin: h.RT.CurrentOrigin(),
-			Path:   h.RT.CurrentPath(),
-			Gen:    h.currentGen(),
-		}
-		rhsVal := L.Get(3)
-		switch v := rhsVal.(type) {
+		b := &KeyBinding{Key: key, Origin: h.RT.CurrentOrigin(), Path: h.RT.CurrentPath(), Gen: h.currentGen()}
+		switch v := L.Get(2).(type) {
 		case *glua.LFunction:
-			binding.RHS = RHS{Fn: v}
+			b.RHS = RHS{Fn: v}
 		case glua.LString:
 			rhs, err := h.resolveRHS(string(v))
 			if err != nil {
-				L.RaiseError("zemi.keymap.bind: %v", err)
+				L.RaiseError("zemi.keymap.set: %v", err)
 				return 0
 			}
-			if rhs.Command == "" && rhs.API == "" && rhs.Fn == nil {
-				L.RaiseError("zemi.keymap.bind: %q is neither a command nor a host action", string(v))
+			if rhs.Command == "" && rhs.API == "" {
+				L.RaiseError("zemi.keymap.set: %q is neither a command nor a host action", string(v))
 				return 0
 			}
 			// Loosening permissions is the user's call: a plugin or project
 			// key must not flip the mode on an innocent-looking press.
-			if (rhs.API == "zemi.permission.mode.cycle" || rhs.Command == "mode") &&
-				binding.Origin != lua.OriginUser && binding.Origin != lua.OriginBuiltin {
-				L.RaiseError("zemi.keymap.bind: only user config may bind permission mode changes")
+			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode") &&
+				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
+				L.RaiseError("zemi.keymap.set: only user config may bind permission mode changes")
 				return 0
 			}
-			binding.RHS = rhs
+			b.RHS = rhs
 		default:
-			L.RaiseError("zemi.keymap.bind: rhs must be a string or function, got %s", rhsVal.Type().String())
+			L.RaiseError("zemi.keymap.set: action must be a function or a string, got %s", v.Type().String())
 			return 0
 		}
-		if L.GetTop() >= 4 && L.Get(4) != glua.LNil {
-			opts, ok := L.Get(4).(*glua.LTable)
-			if !ok {
-				L.RaiseError("zemi.keymap.bind: opts must be a table")
-				return 0
-			}
+		if opts := L.OptTable(3, nil); opts != nil {
 			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
-				binding.Desc = string(d)
+				b.Desc = string(d)
 			}
 		}
-		if _, err := h.Keymaps.Bind(binding); err != nil {
-			L.RaiseError("zemi.keymap.bind: %v", err)
-			return 0
+		if err := h.Keymaps.Set(b); err != nil {
+			L.RaiseError("zemi.keymap.set: %v", err)
 		}
 		return 0
 	}))
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		mode := L.CheckString(1)
-		keys := expandLeader(L.CheckString(2))
-		if !h.Keymaps.Del(h.RT.CurrentOrigin(), mode, keys) {
-			L.RaiseError("zemi.keymap.del: no %s binding in %s mode owned by this origin", keys, mode)
+		key := normalizeKey(L.CheckString(1))
+		if h.refuseDuringRender(L, "zemi.keymap.del") {
 			return 0
 		}
+		if err := h.Keymaps.Del(h.RT.CurrentOrigin(), key); err != nil {
+			L.RaiseError("zemi.keymap.del: %v", err)
+		}
 		return 0
+	}))
+
+	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
+		if b := h.Keymaps.Lookup(normalizeKey(L.CheckString(1))); b != nil {
+			L.Push(keymapRow(L, b))
+		} else {
+			L.Push(glua.LNil)
+		}
+		return 1
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, b := range h.Keymaps.List() {
-			row := L.NewTable()
-			row.RawSetString("mode", glua.LString(b.Mode))
-			row.RawSetString("keys", glua.LString(b.Keys))
-			row.RawSetString("desc", glua.LString(b.Desc))
-			row.RawSetString("origin", glua.LString(b.Origin))
-			switch {
-			case b.RHS.Fn != nil:
-				row.RawSetString("rhs", glua.LString("<function>"))
-			case b.RHS.Command != "":
-				row.RawSetString("rhs", glua.LString(":"+b.RHS.Command))
-			default:
-				row.RawSetString("rhs", glua.LString(b.RHS.API))
-			}
-			out.Append(row)
+			out.Append(keymapRow(L, b))
 		}
 		L.Push(out)
 		return 1
 	}))
 
 	return tb
+}
+
+// keymapRow is a binding snapshot: key, action ("/cmd", a host action or
+// "<function>"), desc and origin.
+func keymapRow(L *glua.LState, b *KeyBinding) *glua.LTable {
+	row := L.NewTable()
+	row.RawSetString("key", glua.LString(b.Key))
+	row.RawSetString("action", glua.LString(describeRHS(b.RHS)))
+	row.RawSetString("desc", glua.LString(b.Desc))
+	row.RawSetString("origin", glua.LString(b.Origin))
+	return row
 }

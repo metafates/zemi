@@ -121,6 +121,14 @@ and the `permission.request` veto: `yolo` allows, `auto` runs a one-shot screeni
 and falls back to the user ask with its reason. Unknown values read as manual. Only user
 config sets it; binding a key to the mode cycle is refused for other origins.
 
+### require (internal/lua/runtime.go)
+
+Modules are cached per generation by resolved file. Dotted names search `<root>/lua`
+over the runtimepath: user, plugins, and the project's `.zemi` first but only when the
+requirer is project code. `./x` and `../x` resolve against the calling function's chunk
+name, which is why file chunks are compiled with their absolute path, and must classify
+to the caller's own origin. `ProjectConfigDir` walks up to the `.git` root.
+
 ### Origin model (internal/lua/origin.go, registries)
 
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi) >
@@ -219,7 +227,7 @@ next reload, not in-place).
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.2.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.3.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -275,8 +283,9 @@ next reload, not in-place).
   shadow it. Keep them out of any "make everything rebindable" refactor.
 - **No editor modes.** The composer is always focused; commands are slash commands typed in
   the composer (`/quit`, `/help`, `/config`, ...) with the palette popup for completion
-  (`internal/ui/palette.go`). `zemi.keymap.bind` still takes a mode label, but the UI routes
-  `insert` bindings only (exact single keys; printable keys stay with the composer).
+  (`internal/ui/palette.go`). Keymaps are single keys (`zemi.keymap.set(key, action)`,
+  `del`, `get`, `list`); printable keys stay with the composer, and an open palette or
+  completion popup keeps its keys before keymaps are consulted.
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` so the wheel
   scrolls the transcript (the altscreen buffer has no native scrollback); without it wheel
   scrolling silently dies. Selection then needs shift-drag in the terminal. Composer

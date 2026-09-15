@@ -24,10 +24,9 @@ type RHS struct {
 	API      string          // dotted host-API call (zemi.*)
 }
 
-// KeyBinding maps a key sequence in a mode to a right-hand side.
+// KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {
-	Mode   string
-	Keys   string // normalized sequence, e.g. "gM", "ctrl+s"
+	Key    string // bubbletea key string: "ctrl+s", "tab", "alt+enter"
 	RHS    RHS
 	Desc   string
 	Origin lua.Origin
@@ -35,100 +34,71 @@ type KeyBinding struct {
 	Gen    Gen
 }
 
-// KeymapRegistry stores bindings per mode with origin precedence
+// KeymapRegistry stores one binding per key with origin precedence
 // (user > builtin > plugin > project) and last-writer-wins within one
 // origin (DESIGN §6.2).
 type KeymapRegistry struct {
 	mu       sync.RWMutex
-	bindings map[string]map[string]*KeyBinding // mode -> keys -> binding
+	bindings map[string]*KeyBinding
 }
 
 func NewKeymapRegistry() *KeymapRegistry {
-	return &KeymapRegistry{bindings: map[string]map[string]*KeyBinding{}}
+	return &KeymapRegistry{bindings: map[string]*KeyBinding{}}
 }
 
-// Bind registers or replaces a binding. Returns the effective binding and
-// whether an existing higher-trust binding refused this one.
-func (r *KeymapRegistry) Bind(b *KeyBinding) (*KeyBinding, error) {
-	if b.Mode == "" || b.Keys == "" {
-		return nil, fmt.Errorf("keymap: mode and keys are required")
+// Set binds or rebinds a key; a key bound by a more trusted origin is
+// refused.
+func (r *KeymapRegistry) Set(b *KeyBinding) error {
+	if b.Key == "" {
+		return fmt.Errorf("keymap: key is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	mode, ok := r.bindings[b.Mode]
-	if !ok {
-		mode = map[string]*KeyBinding{}
-		r.bindings[b.Mode] = mode
+	if old := r.bindings[b.Key]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
+		return fmt.Errorf("keymap: %s is already bound by a %s registration", b.Key, old.Origin)
 	}
-	if old, exists := mode[b.Keys]; exists {
-		if old.Origin.Rank() > b.Origin.Rank() {
-			return old, fmt.Errorf("keymap: %s in %s mode is already bound by a %s registration",
-				b.Keys, b.Mode, old.Origin)
-		}
-	}
-	mode[b.Keys] = b
-	return b, nil
+	r.bindings[b.Key] = b
+	return nil
 }
 
-// Del removes a binding registered by the same origin only.
-func (r *KeymapRegistry) Del(origin lua.Origin, mode, keys string) bool {
+// Del unbinds a key set by the same or a less trusted origin, so user
+// config can remove shipped defaults but a plugin cannot remove user keys.
+func (r *KeymapRegistry) Del(origin lua.Origin, key string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	modeMap, ok := r.bindings[mode]
-	if !ok {
-		return false
+	switch b := r.bindings[key]; {
+	case b == nil:
+		return fmt.Errorf("keymap: %s is not bound", key)
+	case b.Origin.Rank() > origin.Rank():
+		return fmt.Errorf("keymap: %s is bound by a %s registration", key, b.Origin)
 	}
-	b, ok := modeMap[keys]
-	if !ok || b.Origin != origin {
-		return false
-	}
-	delete(modeMap, keys)
-	return true
+	delete(r.bindings, key)
+	return nil
 }
 
-// Lookup finds the binding for an exact key sequence in a mode.
-func (r *KeymapRegistry) Lookup(mode, keys string) *KeyBinding {
+// Lookup finds the binding for a key.
+func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.bindings[mode][keys]
+	return r.bindings[key]
 }
 
-// IsPrefix reports whether some binding's key sequence starts with the
-// given prefix (for pending multi-key state).
-func (r *KeymapRegistry) IsPrefix(mode, prefix string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	for keys := range r.bindings[mode] {
-		if len(keys) > len(prefix) && strings.HasPrefix(keys, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-// List returns all bindings grouped by mode, sorted.
+// List returns all bindings sorted by key.
 func (r *KeymapRegistry) List() []*KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var out []*KeyBinding
-	for _, m := range r.bindings {
-		for _, b := range m {
-			out = append(out, b)
-		}
+	out := make([]*KeyBinding, 0, len(r.bindings))
+	for _, b := range r.bindings {
+		out = append(out, b)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Mode != out[j].Mode {
-			return out[i].Mode < out[j].Mode
-		}
-		return out[i].Keys < out[j].Keys
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
 }
 
 // Purge drops every binding (replay re-registers on reload).
 func (r *KeymapRegistry) Purge() {
 	r.mu.Lock()
-	r.bindings = map[string]map[string]*KeyBinding{}
+	r.bindings = map[string]*KeyBinding{}
 	r.mu.Unlock()
 }
 

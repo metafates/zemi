@@ -714,12 +714,6 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	if a.bootErr != nil {
 		left = append(left, hostapi.Segment{Text: " boot failed ", HL: "ToastError"})
 	}
-	switch a.host.PermMode() {
-	case "auto":
-		left = append(left, hostapi.Segment{Text: " auto ", HL: "Title"})
-	case "yolo":
-		left = append(left, hostapi.Segment{Text: " yolo ", HL: "ToastError"})
-	}
 	if a.host.RT.IsHot() {
 		left = append(left, hostapi.Segment{Text: " HOT /Reload ", HL: "ToastError"})
 	}

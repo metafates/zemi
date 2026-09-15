@@ -39,6 +39,11 @@ zemi.ui.theme.register("default", {
     StatusUsage = { fg = "muted" },
     StatusUsageWarn = { fg = "warn" },
     StatusUsageErr = { fg = "err", bold = true },
+    ModeManual = { fg = "muted", bg = "panel" },
+    ModeAuto = { fg = "bg", bg = "accent", bold = true },
+    ModeYolo = { fg = "bg", bg = "err", bold = true },
+    PromptAuto = { fg = "accent", bold = true },
+    PromptYolo = { fg = "err", bold = true },
   },
 })
 zemi.ui.theme.set("default")
@@ -58,8 +63,22 @@ end
 
 local function empty() return { { { text = "" } } } end
 
--- Statusline left: working directory (tail kept when long, so the right
--- cluster always fits), then the reflector badge.
+-- Statusline left starts with the permission mode as a pill (tab cycles
+-- it): quiet in manual, filled in auto and yolo, matching the composer
+-- prompt color.
+zemi.ui.widget.register({
+  id = "statusline.mode",
+  region = "statusline.left",
+  priority = 5,
+  render = function(ctx)
+    local mode = ctx.permission_mode or "manual"
+    local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[mode] or "ModeManual"
+    return { { { text = " " .. mode .. " ", hl = hl } } }
+  end,
+})
+
+-- Then the working directory (tail kept when long, so the right cluster
+-- always fits), then the reflector badge.
 zemi.ui.widget.register({
   id = "statusline.cwd",
   region = "statusline.left",
@@ -291,9 +310,10 @@ zemi.ui.widget.register({
 -- exact single keys (ctrl/alt combos); printable keys stay with the
 -- composer. The transcript is bottom-anchored, so these keys and the wheel
 -- move the viewport; sending snaps back to the tail.
-zemi.keymap.bind("insert", "ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
-zemi.keymap.bind("insert", "shift+tab", "zemi.permission.mode.cycle", { desc = "cycle permission mode" })
-zemi.keymap.bind("insert", "pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
-zemi.keymap.bind("insert", "pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
-zemi.keymap.bind("insert", "ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
-zemi.keymap.bind("insert", "ctrl+end", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })
+zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
+zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
+zemi.keymap.set("shift+tab", "zemi.permission.mode.prev", { desc = "previous permission mode" })
+zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
+zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
+zemi.keymap.set("ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
+zemi.keymap.set("ctrl+end", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })

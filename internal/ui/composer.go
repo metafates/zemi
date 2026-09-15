@@ -254,13 +254,18 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 			start = 0
 		}
 	}
+	// The prompt takes the permission mode's color.
+	promptHL := map[string]string{"auto": "PromptAuto", "yolo": "PromptYolo"}[a.host.PermMode()]
+	if promptHL == "" {
+		promptHL = "Comment"
+	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
 		p := cont
 		if i == 0 {
 			p = prefix
 		}
-		segs := []hostapi.Segment{{Text: p, HL: "Comment"}}
+		segs := []hostapi.Segment{{Text: p, HL: promptHL}}
 		text := string(rows[i])
 		marker := "▏"
 		if i == cursorRow {

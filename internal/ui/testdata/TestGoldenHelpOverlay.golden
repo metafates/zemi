@@ -3,22 +3,22 @@
                                                                                 
                                                                                 
                                                                                 
-                   ┌[1;38;2;122;162;247m Help - keys and commands [m─────[38;2;86;95;137m builtin [m┐                   
-                   │ [1;38;2;122;162;247m› ctrl+end     scroll chat to bottom[m   │                   
-                   │ [38;2;192;202;245m  ctrl+home    scroll chat to top[m      │                   
-                   │ [38;2;192;202;245m  ctrl+o       toggle reasoning[m        │                   
-                   │ [38;2;192;202;245m  pgdown       scroll chat down a page[m │                   
-                   │ [38;2;192;202;245m  pgup         scroll chat up a page[m   │                   
-                   │ [38;2;192;202;245m  shift+tab    cycle permission mode[m   │                   
-                   │ [38;2;192;202;245m  /model       choose the model[m        │                   
-                   │                                        │                   
-                   │ [1m[enter][m select   [1m[esc][m close           │                   
-                   └────────────────────────────────────────┘                   
-                                                                                
+                  ┌[1;38;2;122;162;247m Help - keys and commands [m──────[38;2;86;95;137m builtin [m┐                   
+                  │ [1;38;2;122;162;247m› ctrl+end     scroll chat to bottom[m    │                   
+                  │ [38;2;192;202;245m  ctrl+home    scroll chat to top[m       │                   
+                  │ [38;2;192;202;245m  ctrl+o       toggle reasoning[m         │                   
+                  │ [38;2;192;202;245m  pgdown       scroll chat down a page[m  │                   
+                  │ [38;2;192;202;245m  pgup         scroll chat up a page[m    │                   
+                  │ [38;2;192;202;245m  shift+tab    previous permission mode[m │                   
+                  │ [38;2;192;202;245m  tab          next permission mode[m     │                   
+                  │ [38;2;192;202;245m  /model       choose the model[m         │                   
+                  │                                         │                   
+                  │ [1m[enter][m select   [1m[esc][m close            │                   
+                  └─────────────────────────────────────────┘                   
                                                                                 
                                                                                 
                                                                                 
                                                                                 
 [38;2;86;95;137mno messages yet - type below, or / for commands[m                                 
 [38;2;86;95;137m> [m[38;2;86;95;137m▏[m
-                                                                                
+[38;2;86;95;137;48;2;36;40;59m manual [m                                                                        

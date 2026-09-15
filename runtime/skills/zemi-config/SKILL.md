@@ -64,7 +64,8 @@ writable; prefer it over guessing. Common keys:
 - `permissions.mode`: `manual` (the user answers asks), `auto` (a model approves routine
   actions and hands the rest to the user) or `yolo` (every ask is allowed; deny rules
   still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
-  `/mode <name>` or `shift+tab`; for one run: `zemi --mode auto`. Suggest yolo only
+  `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
+  `zemi --mode auto`. Widgets read it as `ctx.permission_mode`. Suggest yolo only
   when the user asks for it.
 
 ## Command line
@@ -77,9 +78,12 @@ so they are denied unless the mode is auto or yolo.
 ## Keymaps, commands, UI
 
 ```lua
-zemi.keymap.bind("insert", "ctrl+t", function() zemi.agent.send("run the tests") end,
-  { desc = "run tests" })
-zemi.keymap.del("insert", "ctrl+t")
+zemi.keymap.set("ctrl+t", function() zemi.agent.send("run the tests") end, { desc = "run tests" })
+zemi.keymap.set("ctrl+r", "compact")   -- a command name or a host action like "zemi.ui.help"
+zemi.keymap.set("ctrl+t", "new")       -- setting a bound key again rebinds it
+zemi.keymap.del("tab")                 -- unbind, also a shipped default
+for _, k in ipairs(zemi.keymap.list()) do print(k.key, k.action, k.origin) end
+local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
 
 zemi.command.add("standup", function(args)
   zemi.agent.send("summarize yesterday's commits " .. args.args)
@@ -108,7 +112,32 @@ and fast: no zemi.* mutations inside it. For the full API see the zemi-lua skill
 
 ## Project config
 
-`<project>/.zemi/init.lua` loads after the user answers the trust prompt (`y` trust,
-`n` not now, `d` never for this version of the files). Project code cannot register
-providers, allow rules, `tool.pre` rewrites or override user registrations; put
-personal settings in `~/.config/zemi/init.lua` instead.
+A repository can carry its own zemi setup in `.zemi/` at its root (found from any
+subdirectory up to the `.git` root), like `.claude/` or `.crush/`:
+
+```
+.zemi/init.lua          entry point: widgets, keymaps, commands, deny/ask rules
+.zemi/lua/<mod>.lua     modules for project code: require("mod")
+```
+
+It loads after the user answers the trust prompt (`y` trust, `n` not now, `d` never for
+this version of the files); any change to files under `.zemi/` asks again. Project code
+cannot register providers, allow rules, `tool.pre` rewrites or override user
+registrations; put personal settings in `~/.config/zemi/init.lua` instead.
+
+## Splitting config into files
+
+`require("name.sub")` searches `lua/` under the config dir (and plugins; project code
+also searches `.zemi/lua/` first). Relative names resolve next to the file that calls
+`require`, also from functions that run later:
+
+```lua
+-- ~/.config/zemi/init.lua
+require("./keys")                 -- ~/.config/zemi/keys.lua
+local ui = require("./lua/myui")  -- ~/.config/zemi/lua/myui/init.lua or myui.lua
+-- inside lua/myui/init.lua
+local util = require("./util")    -- lua/myui/util.lua, same instance as require("myui.util")
+```
+
+A relative path must stay inside its own tree: user files cannot reach project or plugin
+files that way, and project files cannot reach the user config.
