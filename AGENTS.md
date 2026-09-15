@@ -355,9 +355,11 @@ next reload, not in-place).
   (`internal/ui/palette.go`). Keymaps are single keys (`zemi.keymap.set(key, action)`,
   `del`, `get`, `list`); printable keys stay with the composer, and an open palette or
   completion popup keeps its keys before keymaps are consulted.
-- **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` (unless
+- **Mouse capture is load-bearing.** `App.View` sets `MouseModeAllMotion` (unless
   `ui.mouse = false`) so the wheel scrolls the transcript (the altscreen buffer has no
-  native scrollback). Drag selection and clicks are zemi's own (`internal/ui/mouse.go`):
+  native scrollback) and plain pointer motion drives hover. `App.target` is the one hit
+  test for clicks and hover (a highlight always means a click acts); motion redraws only
+  when the target changes, and OSC 22 turns the pointer into a hand where supported. Drag selection and clicks are zemi's own (`internal/ui/mouse.go`):
   compose keeps the last frame's segments, a drag copies their text through OSC 52 plus
   pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
   that list rows, prompt buttons and memory rows set) to act on the topmost chrome.

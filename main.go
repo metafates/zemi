@@ -174,6 +174,7 @@ func run(args []string) int {
 	// closing does not reach them: stop them here. Exit even if some cleanup
 	// hangs.
 	proc.KillAll()
+	fmt.Print("\x1b]22;default\x07") // hand the terminal its normal pointer back (hover sets OSC 22)
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
 		return fail(err)

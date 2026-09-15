@@ -66,6 +66,10 @@ type App struct {
 	memReview *memReviewPrompt
 
 	mouse          mouseSel
+	hovering       bool
+	hoverX, hoverY int
+	hoverKey       string // what the pointer is over, to redraw only on change
+	pointerHand    bool
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	lastChatBottom int
 
@@ -356,6 +360,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.handleMouse(msg)
 	case tea.MouseWheelMsg:
 		a.mouse = mouseSel{}
+		a.hoverKey = "" // the content under the pointer moves
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			a.scrollChatRows(-chatWheelStep)
@@ -385,7 +390,7 @@ func (a *App) View() tea.View {
 	// no native scrollback), drags select and clicks press. ui.mouse = false
 	// leaves the mouse to the terminal.
 	if a.mouseEnabled() {
-		v.MouseMode = tea.MouseModeCellMotion
+		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
 	return v
@@ -706,6 +711,7 @@ func (a *App) compose(w, h int) string {
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
 	a.highlightSelection(rows, w)
+	a.highlightHover(rows)
 
 	var b strings.Builder
 	for i, row := range rows {

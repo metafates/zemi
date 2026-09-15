@@ -70,3 +70,57 @@ func TestMouseClicks(t *testing.T) {
 		t.Fatal("clicking No allowed the command")
 	}
 }
+
+// TestMouseHover: hovering a button lights it, moving off clears it, and
+// hovering a palette row then clicking it fills the composer.
+func TestMouseHover(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan bool)
+	go func() {
+		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"})
+		done <- ok
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	x, y := findCell(t, app, " No ")
+	app.Update(tea.MouseMotionMsg{X: x + 1, Y: y})
+	app.renderSync(t)
+	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: " No ", HL: "Host:BtnHover"}}, 80)) {
+		t.Fatal("hovered button not lit")
+	}
+	app.Update(tea.MouseMotionMsg{X: 0, Y: 0})
+	app.renderSync(t)
+	if strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: " No ", HL: "Host:BtnHover"}}, 80)) {
+		t.Fatal("hover stayed after the pointer left")
+	}
+	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	<-done
+
+	if _, err := app.host.Commands.Add(&hostapi.Command{Name: "help", Desc: "show keys", GoFn: func(*hostapi.Host, string) error { return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	app.renderSync(t)
+	x, y = findCell(t, app, "/help")
+	clickAt(app, x+1, y) // select
+	clickAt(app, x+1, y) // open
+	if app.composer.text != "/help " {
+		t.Fatalf("composer = %q", app.composer.text)
+	}
+}
+
+func TestWordSpan(t *testing.T) {
+	for _, c := range []struct {
+		text     string
+		x        int
+		from, to int
+	}{
+		{" manual  plan ", 3, 1, 7},
+		{" manual  plan ", 7, 0, 0},
+		{"✻ auto", 3, 2, 6},
+	} {
+		if from, to := wordSpan(c.text, c.x); from != c.from || to != c.to {
+			t.Errorf("wordSpan(%q, %d) = %d, %d", c.text, c.x, from, to)
+		}
+	}
+}
