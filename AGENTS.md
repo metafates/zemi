@@ -3,7 +3,7 @@
 zemi is a terminal AI agent harness whose userland (default UI, keymaps, widgets, learning
 machinery) is written in embedded Lua while Go owns the runtime: the agent loop over
 `charm.land/fantasy`, the bubbletea v2 TUI, the sandboxed gopher-lua interpreter, and SQLite
-persistence. `DESIGN.md` (1550 lines) is the authoritative spec; code comments cite its
+persistence. `DESIGN.md` (1703 lines) is the authoritative spec; code comments cite its
 sections (`DESIGN §4`, `§6.2`, ...). **Before changing behavior, read the DESIGN section the
 code cites** — it explains the why (usually a security or concurrency invariant), and a
 change that contradicts it is almost always wrong.
@@ -45,6 +45,26 @@ this — they inject `config.Dirs{...}` with `t.TempDir()` directly.
 The project-config trust prompt and `~/.config/zemi/init.lua` only exist on a real machine;
 tests boot with empty dirs, so code that requires them needs explicit setup in the test.
 
+## CLI (cli.go)
+
+`zemi` opens the TUI; a prompt argument is sent as the first message. Flags: `-p`/`--print`
+(answer on stdout and exit, with `--output text|json`), `-c` (continue the latest session),
+`-r <id>`, `-m <provider/model>`, `--mode manual|plan|auto|yolo`, `--health`, `-v`. Piped
+stdin is appended to the prompt, and is a usage error without `-p` (the TUI needs the
+terminal). Flags apply after boot so they win over `init.lua`. `--health` and `-p` boot the
+same step list and skip only the TUI: `--health` prints `HealthRows()` and exits 1 if a check
+errored; `-p` runs one turn, then reports on stderr how many tool calls the gate denied
+(nobody can answer an ask headless, so it points at `--mode auto`) and warns when an
+untrusted project config was skipped. `/health` and `--health` read the same rows: the Go
+checks (store, model, permissions, git, ripgrep, reflector, learning, skills, lua, errors,
+lsp) plus whatever Lua registered with `zemi.health.register`.
+
+A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
+ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
+files, one per launch. Config reload is not fsnotify: `watchConfig` walks the config trees
+once a second and reloads when the fingerprint (path, size, mtime) moved and no turn is
+active.
+
 ## Architecture and control flow
 
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:93`) — order
@@ -59,8 +79,8 @@ hashes the config tree and refuses symlinks, and trust sets `Host.SetProjectTrus
 markdown commands (`commands/*.md`, user then trusted project) ->
 `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
 its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
-After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
-"Permanent rules" below).
+`EnsureConfigRepo()` runs in `main` before the step list is built, not after it, so the
+config git repo exists before any step can commit a revision (see "Permanent rules" below).
 
 ### The concurrency rules (DESIGN §4) — violate these and things deadlock or corrupt
 
@@ -150,6 +170,12 @@ project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the 
 User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
 Only user config sets it; binding a key to the mode cycle is refused for other origins.
 
+The overlay's "always" answer writes session allow rules scoped to the `model` principal, and
+they are prefix globs rather than the exact request: `alwaysChoice` (agent.go) gives bash
+each normalized segment's two-word command prefix plus `prefix *`, `fs.read`/`fs.write` the
+file's directory with `/*`, and `net.*` both `scheme://host` and `scheme://host/*`. A
+gate-forced ask (heredoc, env assignment) offers no always option at all.
+
 ### require (internal/lua/runtime.go)
 
 Modules are cached per generation by resolved file. Dotted names search `<root>/lua`
@@ -203,6 +229,15 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   last step, never a sum; an unknown window means no auto compaction. The summary row is
   followed by copies of the verbatim tail stored with row role `tail`, which resume reads and
   every transcript-like reader skips.
+- **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
+  `OnStepFinish`, so a cancelled or crashed turn keeps what it already did; the next send
+  runs `closeToolCalls` over the history first, inserting an error result after any tool call
+  left unanswered (providers refuse a dangling call). The stops are `maxSteps` 200
+  (`ErrStepLimit`) and six identical tool steps in a row (`ErrToolLoop`; `job_read` and
+  `job_list` are exempt, polling is not looping), with `maxRetries` 5 per step and
+  `MaxOutputTokens` turning a length-finished reply into `ErrReplyCut`. Cache tokens are
+  priced apart (`CostPer1MInCached`/`CostPer1MOutCached`), and the session tally counts cache
+  reads and creations as input.
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so
   steered messages are re-inserted every step. Leftovers become one follow-up turn, and
@@ -253,8 +288,8 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
   `safeCommandPath` include it.
-- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as user origin on the
-  interpreter (10s ceiling), in a wrapper env whose `print` is captured, after a `tool.lua`
+- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as `learned` origin (the
+  lowest trust) on the interpreter (10s ceiling), in a wrapper env whose `print` is captured, after a `tool.lua`
   check that rules and modes answer; plan mode flips its allows to ask. Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
   which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
@@ -357,12 +392,12 @@ next reload, not in-place).
 
 ## Gotchas and non-obvious conventions
 
-- **DESIGN.md §12 does not match reality** (it predates the code): the actual layout is
-  `internal/tools` (not `internal/agent/tools`) and `internal/perm` (not
-  `internal/permission`); `internal/skills` exists, `internal/agent/templates` does not.
-  Trust the tree, not §12; §13 milestones explain what exists (M0-M3 are in; from M5,
-  subagents, workflows and the MCP client are in; M4 evals, LSP and the plugin manager are
-  not).
+- **DESIGN.md is the spec; the tree is the truth.** §12's layout and §13's milestone status
+  were last squared with the code, so they read correctly today; when they drift again,
+  trust the tree. Shipped: M0-M3, plus subagents, workflows, MCP and LSP out of M5, and a
+  pile of things no milestone named (permission modes, rewind, scratchpads, the `lua` tool,
+  print mode). Not built: M4 evals (no `zemi.eval`, and `config_revisions.eval_ok` is a dead
+  column), the plugin manager, embeddings.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request
   class. Anything that adds a runtime-mutable member to a namespace must go through the
