@@ -82,11 +82,11 @@ func TestOverlayFilter(t *testing.T) {
 func TestModelPickerFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	answer := make(chan modelPick, 1)
-	a.Update(modelPickMsg{items: []hostapi.ModelOption{
+	a.openModelPick([]hostapi.ModelOption{
 		{ID: "anthropic/claude-sonnet", Display: "Sonnet"},
 		{ID: "openai/gpt-5", Display: "GPT-5"},
 		{ID: "deepseek/deepseek-chat", Display: "DeepSeek V3"},
-	}, answer: answer})
+	}, "", answer)
 	for _, r := range "v3" {
 		a.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}

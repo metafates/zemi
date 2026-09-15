@@ -1,5 +1,5 @@
-// agent.go is the Go-owned agent chrome (DESIGN §6.3, §8): the streaming
-// event pump, the interactive permission overlay, and the model picker.
+// agent.go is the Go-owned agent chrome (DESIGN §6.3, §8): permission
+// prompt, model picker, working row, and the shared box and list renderers.
 // Their chrome uses fixed "Host:*" styles no theme group can restyle, and
 // no Lua participates in drawing or answering them.
 package ui
@@ -9,19 +9,16 @@ import (
 	"math"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
 )
-
-// agentEventMsg carries one streaming update from the turn goroutine. The
-// stream state itself lives in the host (agentHost snapshot); the UI only
-// invalidates the frame, and the chat widget re-reads ctx.agent on the
-// queue (DESIGN §4: no Lua state, no rendering inside View).
 
 // permAskPrompt is one open permission overlay; queued asks wait in
 // permQueue and open when the current one is answered (parallel tool runs
@@ -73,7 +70,15 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	ch := make(chan permAnswer, 1)
-	a.dispatch(permAskMsg{req: req, answer: ch})
+	a.dispatch(uiFunc(func() tea.Cmd {
+		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
+		if a.permAsk != nil {
+			a.permQueue = append(a.permQueue, p)
+		} else {
+			a.permAsk = p
+		}
+		return a.notifyIfAway("zemi needs your approval: " + req.Subject)
+	}))
 	ans := <-ch
 	return ans.ok, ans.by
 }
@@ -85,9 +90,8 @@ func (a *App) answerPerm(ok bool, by string) {
 		pa.answer <- permAnswer{ok: ok, by: by}
 	}
 	if len(a.permQueue) > 0 {
-		next := a.permQueue[0]
-		a.permQueue = a.permQueue[1:]
-		a.permAsk = &permAskPrompt{req: next.req, answer: next.answer, opened: a.now()}
+		a.permAsk, a.permQueue = a.permQueue[0], a.permQueue[1:]
+		a.permAsk.opened = a.now()
 	}
 	a.frameGen++
 }
@@ -96,16 +100,19 @@ func (a *App) answerPerm(ok bool, by string) {
 // model or cancels (ok=false on cancel).
 func (a *App) PickModel(items []hostapi.ModelOption, current string) (string, bool) {
 	ch := make(chan modelPick, 1)
-	sel := 0
-	for i, it := range items {
-		if it.ID == current {
-			sel = i
-			break
-		}
-	}
-	a.dispatch(modelPickMsg{items: items, sel: sel, current: current, answer: ch})
+	a.do(func() { a.openModelPick(items, current, ch) })
 	res := <-ch
 	return res.id, res.ok
+}
+
+func (a *App) openModelPick(items []hostapi.ModelOption, current string, answer chan modelPick) {
+	mp := &modelPickPrompt{items: items, answer: answer}
+	mp.selected = max(0, slices.IndexFunc(items, func(it hostapi.ModelOption) bool { return it.ID == current }))
+	for _, it := range items {
+		mp.texts = append(mp.texts, it.ID+" "+it.Display)
+	}
+	mp.apply(mp.texts)
+	a.modelPick = mp
 }
 
 func (a *App) answerPick(id string, ok bool) {

@@ -10,6 +10,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,6 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -55,13 +55,12 @@ type App struct {
 	overlays []overlayState
 	trust    *trustPrompt
 	toasts   []toast
-	toastSeq int
 
 	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
 	// (with a queue for concurrent asks), the model picker and the memory
 	// review overlay.
 	permAsk   *permAskPrompt
-	permQueue []permAskMsg
+	permQueue []*permAskPrompt
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
 
@@ -127,23 +126,26 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 // SetProgram wires the running bubbletea program (for Quit/Send).
 func (a *App) SetProgram(p *tea.Program) { a.program = p }
 
-// SetReload installs the Go-reserved :Reload dispatch (built by main).
+// SetReload installs the Go-reserved /reload dispatch (built by main).
 func (a *App) SetReload(fn func()) { a.reload = fn }
 
 // SignalBoot reports the boot outcome from the boot goroutine (posted
 // through the hook channel; safe from any goroutine).
-func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
+func (a *App) SignalBoot(err error) {
+	a.do(func() {
+		a.bootErr = err
+		if err != nil {
+			a.log.Error("ui", "boot failed", map[string]any{"error": err.Error()})
+		}
+	})
+}
 
-// Quit asks the program to exit (/quit). The send must not happen on the
-// UI goroutine: the bubbletea event loop owns the only receive of the
-// (unbuffered) msgs channel and is currently inside our Update, so a
-// direct Quit() deadlocks.
-// The app.quit veto waits on the interpreter, so it runs off the UI
-// goroutine too.
+// Quit asks the program to exit (/quit). The veto waits on the interpreter
+// and program.Quit must not run inside Update, so both run on a goroutine.
 func (a *App) Quit() {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.dispatch(toastMsg{level: "warn", title: "quit", body: "blocked: " + res.Reason})
+			a.Notify("warn", "quit", "blocked: "+res.Reason)
 			return
 		}
 		if a.program != nil {
@@ -170,24 +172,14 @@ type widgetRenderedMsg struct {
 	err   error
 }
 
-type invalidateMsg struct{}
-
-type chatScrollMsg struct{ kind string }
-
-type bootDoneMsg struct{ err error }
-
-type trustAskMsg struct {
-	path   string
-	hash   string
-	answer chan string
-}
-
 type agentEventMsg struct{ ev hostapi.AgentEvent }
 
-type permAskMsg struct {
-	req    hostapi.PermRequest
-	answer chan permAnswer
-}
+// uiFunc is a state change posted from another goroutine; it runs on the
+// Update goroutine.
+type uiFunc func() tea.Cmd
+
+// do posts fn to run on the Update goroutine.
+func (a *App) do(fn func()) { a.dispatch(uiFunc(func() tea.Cmd { fn(); return nil })) }
 
 type permAnswer struct {
 	ok bool
@@ -198,38 +190,6 @@ type modelPick struct {
 	id string
 	ok bool
 }
-
-type modelPickMsg struct {
-	items   []hostapi.ModelOption
-	sel     int
-	current string
-	answer  chan modelPick
-}
-
-type memReviewMsg struct {
-	items  []hostapi.MemoryRow
-	answer chan map[string]string
-}
-
-type cfgReviewMsg struct {
-	items  []hostapi.ConfigRow
-	answer chan cfgReviewVerdict
-}
-
-type questionMsg struct {
-	q      tools.Question
-	answer chan qAnswer
-}
-
-type toastMsg struct {
-	level string
-	title string
-	body  string
-}
-
-type overlayOpenMsg struct{ o hostapi.Overlay }
-
-type overlayCloseMsg struct{ id string }
 
 // cfgBool reads a bool config key with a fallback.
 func (a *App) cfgBool(key string, def bool) bool {
@@ -280,17 +240,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.onFrame()
 	case widgetRenderedMsg:
 		a.onWidgetRendered(msg)
-	case invalidateMsg:
+	case uiFunc:
 		a.frameGen++
-	case bootDoneMsg:
-		a.bootErr = msg.err
-		if msg.err != nil {
-			a.log.Error("ui", "boot failed", map[string]any{"error": msg.err.Error()})
-		}
-		a.frameGen++
-	case trustAskMsg:
-		a.trust = &trustPrompt{path: msg.path, hash: msg.hash, answer: msg.answer}
-		a.frameGen++
+		return a, msg()
 	case agentEventMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.frameGen++
@@ -301,43 +253,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, a.notifyIfAway(text)
 		}
-	case permAskMsg:
-		if a.permAsk != nil {
-			a.permQueue = append(a.permQueue, msg)
-		} else {
-			a.permAsk = &permAskPrompt{req: msg.req, answer: msg.answer, opened: a.now()}
-		}
-		a.frameGen++
-		return a, a.notifyIfAway("zemi needs your approval: " + msg.req.Subject)
-	case modelPickMsg:
-		mp := &modelPickPrompt{items: msg.items, answer: msg.answer}
-		for _, it := range msg.items {
-			mp.texts = append(mp.texts, it.ID+" "+it.Display)
-		}
-		mp.selected = msg.sel
-		mp.apply(mp.texts)
-		a.modelPick = mp
-		a.frameGen++
-	case memReviewMsg:
-		a.memReview = &memReviewPrompt{items: msg.items, actions: map[string]string{}, answer: msg.answer}
-		a.frameGen++
-	case cfgReviewMsg:
-		a.cfgReview = &cfgReviewPrompt{items: msg.items, sel: 0, answer: msg.answer}
-		a.frameGen++
-	case questionMsg:
-		a.question = &questionPrompt{q: msg.q, sel: 0, answer: msg.answer}
-		a.frameGen++
-	case toastMsg:
-		a.pushToast(msg.level, msg.title, msg.body)
-	case chatScrollMsg:
-		a.applyChatScroll(msg.kind)
-	case composerEditMsg:
-		a.applyComposerEdit(msg)
-	case overlayOpenMsg:
-		a.openOverlay(msg.o)
-	case overlayCloseMsg:
-		a.closeOverlayByID(msg.id)
-		a.frameGen++
 	case hookMsg:
 		_, cmd := a.Update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
@@ -545,49 +460,41 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 // ---------------------------------------------------------------------------
 // toasts
 
+// toast is a transient notification (zemi.notify, DESIGN §6.1).
+type toast struct {
+	level, title, body string
+	expires            time.Time
+}
+
 func (a *App) pushToast(level, title, body string) {
-	a.toastSeq++
-	a.toasts = append(a.toasts, toast{
-		id: a.toastSeq, level: level, title: title, body: body,
-		expires: time.Now().Add(toastTTL),
-	})
+	a.toasts = append(a.toasts, toast{level, title, body, time.Now().Add(toastTTL)})
 	if len(a.toasts) > 3 {
 		a.toasts = a.toasts[len(a.toasts)-3:]
 	}
 }
 
 func (a *App) pruneToasts(now time.Time) {
-	keep := a.toasts[:0]
-	for _, t := range a.toasts {
-		if now.Before(t.expires) {
-			keep = append(keep, t)
-		}
-	}
-	a.toasts = keep
+	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool { return !now.Before(t.expires) })
 }
 
 // ---------------------------------------------------------------------------
 // hook plumbing (drained by a persistent cmd when a program is attached)
 
 func (a *App) dispatch(msg tea.Msg) {
+	q := a.testQueue
 	if a.program != nil {
-		select {
-		case a.hooks <- hookMsg{inner: msg}:
-		default:
-			a.log.Warn("ui", "hook queue full; dropping message", nil)
-		}
+		q = a.hooks
+	}
+	if q == nil {
+		// No program (headless boot): process inline on the caller's goroutine.
+		a.Update(msg)
 		return
 	}
-	if a.testQueue != nil {
-		select {
-		case a.testQueue <- msg:
-		default:
-			a.log.Warn("ui", "hook queue full; dropping message", nil)
-		}
-		return
+	select {
+	case q <- msg:
+	default:
+		a.log.Warn("ui", "hook queue full; dropping message", nil)
 	}
-	// No program (headless boot): process inline on the caller's goroutine.
-	a.Update(msg)
 }
 
 // CaptureHooks redirects hook dispatch into a queue drained by Pump

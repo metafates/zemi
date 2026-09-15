@@ -79,7 +79,7 @@ type trustPrompt struct {
 // answer comes back on a buffered channel.
 func (a *App) AskTrust(path, hash string) string {
 	ch := make(chan string, 1)
-	a.dispatch(trustAskMsg{path: path, hash: hash, answer: ch})
+	a.do(func() { a.trust = &trustPrompt{path: path, hash: hash, answer: ch} })
 	return <-ch
 }
 
@@ -114,14 +114,15 @@ func (a *App) spliceTrust(rows [][]hostapi.Segment, tp *trustPrompt, w, headerH,
 // ---------------------------------------------------------------------------
 // hostapi.UIHooks
 
-// Notify shows a toast (sanitize already applied by the host API boundary;
-// the level is normalized lowercase for the theme mapping).
+// Notify shows a toast from any goroutine. Title and body are sanitized
+// here; the level is lowercased for the theme mapping.
 func (a *App) Notify(level, title, body string) {
-	a.dispatch(toastMsg{level: strings.ToLower(level), title: sanitize.String(title), body: sanitize.String(body)})
+	level, title, body = strings.ToLower(level), sanitize.String(title), sanitize.String(body)
+	a.do(func() { a.pushToast(level, title, body) })
 }
 
 func (a *App) OpenOverlay(o hostapi.Overlay) {
-	a.dispatch(overlayOpenMsg{o: o})
+	a.do(func() { a.openOverlay(o) })
 }
 
 // CloseOverlay pops the overlay synchronously when no program is attached
@@ -135,42 +136,30 @@ func (a *App) CloseOverlay(id string) bool {
 		a.frameGen++
 		return ok
 	}
-	a.dispatch(overlayCloseMsg{id: id})
+	a.do(func() { a.closeOverlayByID(id) })
 	return true
 }
 
 // Refresh invalidates the widget caches (state changed outside Update).
-func (a *App) Refresh() {
-	a.dispatch(invalidateMsg{})
-}
-
-type composerEditMsg struct {
-	op, text string
-	cursor   int
-}
+func (a *App) Refresh() { a.do(func() {}) }
 
 // ComposerEdit posts a zemi.composer edit to the UI goroutine.
 func (a *App) ComposerEdit(op, text string, cursor int) {
-	a.dispatch(composerEditMsg{op: op, text: sanitize.String(text), cursor: cursor})
-}
-
-// applyComposerEdit runs on the UI goroutine.
-func (a *App) applyComposerEdit(m composerEditMsg) {
-	switch m.op {
-	case "set":
-		a.composer.text = m.text
-		if n := len([]rune(m.text)); m.cursor < 0 || m.cursor > n {
-			a.composer.cursor = n
-		} else {
-			a.composer.cursor = m.cursor
+	text = sanitize.String(text)
+	a.do(func() {
+		switch op {
+		case "set":
+			a.composer.text, a.composer.cursor = text, cursor
+			if n := len([]rune(text)); cursor < 0 || cursor > n {
+				a.composer.cursor = n
+			}
+		case "insert":
+			a.composer.insert(text)
+		case "submit":
+			a.submitComposer()
 		}
-	case "insert":
-		a.composer.insert(m.text)
-	case "submit":
-		a.submitComposer()
-	}
-	a.publishComposer()
-	a.frameGen++
+		a.publishComposer()
+	})
 }
 
 // publishComposer hands the draft to the host for zemi.composer.get.
@@ -181,5 +170,5 @@ func (a *App) publishComposer() {
 // ScrollChat moves the transcript viewport (zemi.ui.scroll.* host
 // actions); posted to the UI goroutine like every other hook.
 func (a *App) ScrollChat(kind string) {
-	a.dispatch(chatScrollMsg{kind: kind})
+	a.do(func() { a.applyChatScroll(kind) })
 }

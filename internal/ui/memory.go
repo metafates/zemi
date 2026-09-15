@@ -26,7 +26,7 @@ type memUndo struct {
 // host's review goroutine) until the screen closes.
 func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
 	ch := make(chan map[string]string, 1)
-	a.dispatch(memReviewMsg{items: items, answer: ch})
+	a.do(func() { a.memReview = &memReviewPrompt{items: items, actions: map[string]string{}, answer: ch} })
 	return <-ch
 }
 

@@ -26,7 +26,7 @@ type cfgReviewVerdict struct {
 // review goroutine) until the overlay closes.
 func (a *App) ReviewConfigs(items []hostapi.ConfigRow) ([]string, []string) {
 	ch := make(chan cfgReviewVerdict, 1)
-	a.dispatch(cfgReviewMsg{items: items, answer: ch})
+	a.do(func() { a.cfgReview = &cfgReviewPrompt{items: items, answer: ch} })
 	v := <-ch
 	return v.accepted, v.rejected
 }

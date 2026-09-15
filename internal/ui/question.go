@@ -25,7 +25,7 @@ type qAnswer struct {
 // the user answers; esc/ctrl+c decline (ok=false).
 func (a *App) AskQuestion(q tools.Question) (string, bool) {
 	ch := make(chan qAnswer, 1)
-	a.dispatch(questionMsg{q: q, answer: ch})
+	a.do(func() { a.question = &questionPrompt{q: q, answer: ch} })
 	ans := <-ch
 	return ans.label, ans.ok
 }

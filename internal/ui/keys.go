@@ -403,7 +403,7 @@ func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
 		default:
 			a.host.RecordError("keymap "+b.Key, err.Error())
 			a.host.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			a.notifyUI("error", "keymap "+b.Key, err.Error())
+			a.Notify("error", "keymap "+b.Key, err.Error())
 		}
 	})
 	return nil
@@ -440,22 +440,13 @@ func (a *App) background(fn func()) {
 	}
 }
 
-// notifyUI shows a toast from any goroutine.
-func (a *App) notifyUI(level, title, body string) {
-	if a.program == nil {
-		a.pushToast(level, title, body)
-		return
-	}
-	a.dispatch(toastMsg{level: level, title: title, body: body})
-}
-
 // runCommand runs a slash command: Go commands inline, Lua ones on the
 // background worker.
 func (a *App) runCommand(name, args string) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
 		a.background(func() {
 			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-				a.notifyUI("error", "/"+name, err.Error())
+				a.Notify("error", "/"+name, err.Error())
 			}
 		})
 		return
