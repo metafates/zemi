@@ -207,27 +207,15 @@ func (h *Host) assembleSections() string {
 }
 
 func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, text string) {
-	if hd.Once {
-		h.Events.drop(hd)
-	}
-	h.RT.PushFrame(hd.Origin, hd.Path)
-	defer h.RT.PopFrame()
-	handlerCtx, restore := setHandlerContext(L, lua.VetoDeadline)
-	defer restore()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(hd.Fn)
-	L.Push(lua.FromGo(L, map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}))
-	err := L.PCall(1, 1, nil)
-	if handlerCtx.Err() != nil {
+	ev := map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}
+	ret, timedOut, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
+	switch {
+	case timedOut:
 		h.Log.Warn("events", "agent.assemble handler timed out", map[string]any{"id": hd.ID, "origin": string(hd.Origin)})
-		return "", ""
-	}
-	if err != nil {
+	case err != nil:
 		h.logHandlerError(hd, err)
-		return "", ""
 	}
-	switch v := L.Get(-1).(type) {
+	switch v := ret.(type) {
 	case glua.LString:
 		return "", string(v)
 	case *glua.LTable:

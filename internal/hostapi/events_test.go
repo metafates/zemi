@@ -81,3 +81,14 @@ func TestBuiltinReviewWorkflow(t *testing.T) {
 		t.Fatalf("review run = %q, %v", res.Value, err)
 	}
 }
+
+func TestToolPreOnce(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "deny", reason = "once" } end, { once = true })`)
+	pre := h.toolPreHook()
+	for i, want := range []string{"deny", ""} {
+		if d, _, _, _ := pre("bash", map[string]any{"command": "ls"}); d != want {
+			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
+		}
+	}
+}

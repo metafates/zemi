@@ -419,8 +419,11 @@ func (h *Host) reasoningShown() bool {
 // emitSync runs the handlers synchronously on the given interpreter state;
 // callers are boot steps and the Lua-side emit, already on the interpreter.
 func (h *Host) emitSync(L *glua.LState, handlers []*EventHandler, name string, payload map[string]any, from string) {
+	ev := eventTable(name, from, payload)
 	for _, hd := range handlers {
-		h.callHandler(L, hd, name, payload, from, lua.VetoDeadline)
+		if _, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline); err != nil {
+			h.logHandlerError(hd, err)
+		}
 	}
 }
 
@@ -453,11 +456,21 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 		timed  bool
 	}
 	outcomes := make([]outcome, len(handlers))
+	ev := eventTable(name, "host", payload)
 	_, err := h.RT.Do(ctx, lua.ClassUI, time.Duration(len(handlers))*deadline+2*time.Second, 0,
 		func(L *glua.LState) ([]any, error) {
 			for i, hd := range handlers {
-				denied, reason, timedOut := h.callVetoHandler(L, hd, name, payload, "host", deadline)
-				outcomes[i] = outcome{denied: denied, reason: reason, timed: timedOut}
+				ret, timedOut, err := h.callEvent(L, hd, ev, deadline)
+				switch {
+				case timedOut:
+					outcomes[i].timed = true
+				case err != nil:
+					h.logHandlerError(hd, err)
+				default:
+					if tb, ok := ret.(*glua.LTable); ok && rawString(tb, "decision") == "deny" {
+						outcomes[i] = outcome{denied: true, reason: rawString(tb, "reason")}
+					}
+				}
 			}
 			return nil, nil
 		})
@@ -505,65 +518,32 @@ func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context,
 	}
 }
 
-func (h *Host) callHandler(L *glua.LState, hd *EventHandler, name string, payload map[string]any, from string, deadline time.Duration) {
-	if hd.Once {
-		h.Events.drop(hd)
-	}
-	h.RT.PushFrame(hd.Origin, hd.Path)
-	defer h.RT.PopFrame()
+func eventTable(name, from string, payload map[string]any) map[string]any {
 	ev := map[string]any{"name": name, "from": from}
 	maps.Copy(ev, payload)
-	_, restore := setHandlerContext(L, deadline)
-	defer restore()
-	base := L.GetTop()
-	L.Push(hd.Fn)
-	L.Push(lua.FromGo(L, ev))
-	if err := L.PCall(1, 0, nil); err != nil {
-		h.logHandlerError(hd, err)
-	}
-	L.SetTop(base)
+	return ev
 }
 
-func (h *Host) callVetoHandler(L *glua.LState, hd *EventHandler, name string, payload map[string]any, from string, deadline time.Duration) (denied bool, reason string, timedOut bool) {
+// callEvent runs one handler fn(ev) under its origin with the deadline armed
+// at start and returns its first result. A handler that ran past the
+// deadline reports timedOut and no result, even if it returned.
+func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, deadline time.Duration) (ret glua.LValue, timedOut bool, err error) {
 	if hd.Once {
 		h.Events.drop(hd)
 	}
 	h.RT.PushFrame(hd.Origin, hd.Path)
 	defer h.RT.PopFrame()
-	ev := map[string]any{"name": name, "from": from}
-	maps.Copy(ev, payload)
 	handlerCtx, restore := setHandlerContext(L, deadline)
 	defer restore()
 	base := L.GetTop()
+	defer L.SetTop(base)
 	L.Push(hd.Fn)
 	L.Push(lua.FromGo(L, ev))
-	err := L.PCall(1, 1, nil)
-	if handlerCtx.Err() != nil {
-		L.SetTop(base)
-		return false, "", true
+	err = L.PCall(1, 1, nil)
+	if timedOut = handlerCtx.Err() != nil; timedOut || err != nil {
+		return glua.LNil, timedOut, err
 	}
-	if err != nil {
-		L.SetTop(base)
-		h.logHandlerError(hd, err)
-		return false, "", false
-	}
-	decision := L.Get(-1)
-	L.SetTop(base)
-	if decision == glua.LNil {
-		return false, "", false
-	}
-	tb, ok := decision.(*glua.LTable)
-	if !ok {
-		return false, "", false
-	}
-	if tb.RawGetString("decision") == glua.LString("deny") {
-		r := ""
-		if s, ok := tb.RawGetString("reason").(glua.LString); ok {
-			r = string(s)
-		}
-		return true, r, false
-	}
-	return false, "", false
+	return L.Get(-1), false, nil
 }
 
 func (h *Host) logHandlerError(hd *EventHandler, err error) {
