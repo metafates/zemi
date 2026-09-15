@@ -131,7 +131,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), outText)
 			return nil
 		},
-		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(err, delay) },
+		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
 	}
 	if temp != nil {
 		t := *temp
@@ -182,6 +182,16 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	hooks.TurnDone(nil, usage)
 	return nil
+}
+
+// retryErr converts fantasy's retry cause to an error. fantasy passes a nil
+// *ProviderError for retryable errors of other types (network failures);
+// wrapped as-is it would be a non-nil error whose Error() panics.
+func retryErr(err *fantasy.ProviderError) error {
+	if err == nil {
+		return nil
+	}
+	return err
 }
 
 type steeredMsg struct {
