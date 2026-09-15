@@ -376,6 +376,11 @@ next reload, not in-place).
   order on one worker goroutine (`App.background`); Go commands stay inline. A turn's
   `turnScope` context (host.go) covers compaction, the model, tools and auto-mode
   screening, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
+- **Drag and drop is a paste.** Terminals paste a dropped file's path (escaped, quoted or
+  `file://`); `ui/drop.go` turns a paste made only of existing paths into tokens via
+  `Host.AttachPath`. Files from outside the project are copied to `<data>/drops` and
+  referenced as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that
+  directory, so a forged reference cannot attach other files outside the project.
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables
   with colon methods; everything else is a plain snapshot copy. Marshaling across the Lua
   <-> Go boundary caps string size (16 MB) and depth (64) and refuses cycles.

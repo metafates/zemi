@@ -130,7 +130,7 @@ local function splash(ctx)
       { text = "/sessions", hl = "SplashKey" }, { text = " lists them", hl = "Comment" } })
   end
   row({ { text = "" } })
-  local tips = { { "/", "commands" }, { "@", "attach a file" }, { "!", "shell" }, { "tab", "permission mode" } }
+  local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "tab", "permission mode" } }
   local tip = {}
   for i, t in ipairs(tips) do
     if i > 1 then tip[#tip + 1] = { text = "   " } end

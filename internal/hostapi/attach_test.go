@@ -67,3 +67,33 @@ func TestImageAttachment(t *testing.T) {
 		t.Fatalf("file part = %#v", msg.Content[1])
 	}
 }
+
+// TestAttachPath: a dropped project file becomes @rel, an image from
+// elsewhere a @drop copy that attaches, a directory or secret its path, and
+// @drop cannot climb out of the drops directory.
+func TestAttachPath(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	out := t.TempDir()
+	shot := filepath.Join(out, "Screen Shot 1.png")
+	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
+	os.WriteFile(filepath.Join(out, ".env"), []byte("TOKEN=x"), 0o600)
+
+	for path, want := range map[string]string{
+		filepath.Join(h.Dirs.ProjectDir, "main.go"): "@main.go",
+		shot:                       "@drop:Screen-Shot-1.png",
+		out:                        out,
+		filepath.Join(out, ".env"): filepath.Join(out, ".env"),
+	} {
+		if got := h.AttachPath(path); got != want {
+			t.Errorf("AttachPath(%s) = %q, want %q", path, got, want)
+		}
+	}
+	if again := h.AttachPath(shot); again != "@drop:Screen-Shot-1.png" {
+		t.Errorf("same content must keep its name: %q", again)
+	}
+	msg := h.composeUserMessage("what is this @drop:Screen-Shot-1.png @drop:../attach_test.go")
+	if len(msg.Content) != 2 {
+		t.Fatalf("parts = %d", len(msg.Content))
+	}
+}

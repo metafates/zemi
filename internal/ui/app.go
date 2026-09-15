@@ -368,7 +368,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.scrollChatRows(chatWheelStep)
 		}
 		return a, nil
+	case clipboardMsg:
+		if msg.err != nil {
+			a.pushToast("warn", "paste", msg.err.Error())
+			return a, nil
+		}
+		a.insertToken(msg.token)
+		a.publishComposer()
+		return a, nil
 	case tea.PasteMsg:
+		// a dropped file arrives as a paste of its path
+		if paths, ok := parseDrop(msg.Content); ok {
+			a.insertAttachments(paths)
+			a.publishComposer()
+			return a, nil
+		}
 		s := msg.Content
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")

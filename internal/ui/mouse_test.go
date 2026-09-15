@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -123,4 +125,29 @@ func TestWordSpan(t *testing.T) {
 			t.Errorf("wordSpan(%q, %d) = %d, %d", c.text, c.x, from, to)
 		}
 	}
+}
+
+// TestDropPaste: pasted paths in the forms terminals use for drag and drop
+// become attachments; ordinary text stays text.
+func TestDropPaste(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	dir := t.TempDir()
+	shot := filepath.Join(dir, "My Shot.png")
+	notes := filepath.Join(dir, "notes.txt")
+	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
+	os.WriteFile(notes, []byte("hello"), 0o600)
+	for _, c := range []struct{ paste, want string }{
+		{strings.ReplaceAll(shot, " ", `\ `) + " " + notes, "@drop:My-Shot.png @drop:notes.txt "},
+		{"'" + shot + "'", "@drop:My-Shot.png "},
+		{"file://" + strings.ReplaceAll(shot, " ", "%20") + "\n", "@drop:My-Shot.png "},
+		{"see " + notes, "see " + notes},
+		{"/no/such/file.png", "/no/such/file.png"},
+	} {
+		app.composer.text, app.composer.cursor = "", 0
+		app.Update(tea.PasteMsg{Content: c.paste})
+		if app.composer.text != c.want {
+			t.Errorf("paste %q: composer %q, want %q", c.paste, app.composer.text, c.want)
+		}
+	}
+	_ = host
 }

@@ -110,6 +110,10 @@ zemi.ui.widget.register({
 })
 ```
 
+Attaching: `@path` attaches a project file; dragging files onto the terminal attaches them
+(images from anywhere are copied as `@drop:<name>`), and ctrl+v pastes an image from the
+clipboard. Images reach the model only if it accepts images.
+
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the

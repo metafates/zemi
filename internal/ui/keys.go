@@ -301,6 +301,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		c.delToLineEnd()
 		a.updatePalette()
 		return a.updateCompletion()
+	case "ctrl+v":
+		// terminals paste text themselves; this also reaches images
+		return a.pasteClipboard()
 	case "esc":
 		// Open popups consumed esc above, so a bare esc interrupts.
 		if a.host.AgentActive() {
