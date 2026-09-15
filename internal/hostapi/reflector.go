@@ -44,6 +44,7 @@ Rules:
 - Each memory is one self-contained single line, at most 500 characters.
 - Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets.
+- Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything instruction files and tool descriptions already say.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
