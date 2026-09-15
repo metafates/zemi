@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
@@ -429,12 +430,36 @@ func shortID(id string) string {
 	return id
 }
 
+// staleRevisionAge is how long a revision may stay pending before a boot
+// calls it failed. The git commit it waits on times out in gitTimeout, so
+// nothing still in flight is ever this old.
+const staleRevisionAge = 5 * time.Minute
+
+// sweepPendingRevisions closes out rows left behind by a run that died
+// between the revision row and its commit (§10.4). The file write already
+// happened, so the rule is in force: the log is what says the audit trail
+// has a hole.
+func (h *Host) sweepPendingRevisions() {
+	if h.GlobalDB == nil {
+		return
+	}
+	n, err := h.GlobalDB.FailStalePending(time.Now().Add(-staleRevisionAge).UnixMilli())
+	switch {
+	case err != nil:
+		h.Log.Warn("config-rev", "pending revision sweep failed", map[string]any{"error": err.Error()})
+	case n > 0:
+		h.Log.Warn("config-rev", "revisions left pending by an earlier run marked failed; their commits never landed",
+			map[string]any{"count": n})
+	}
+}
+
 // ConfigCommandsStep registers the Go-owned /config command (builtin
 // origin, user config may rebind it).
 func (h *Host) ConfigCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "config commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			h.sweepPendingRevisions()
 			_, err := h.Commands.Add(&Command{Name: "config", NArgs: "*", Hidden: true,
 				Desc:       "review pending config changes; list, revisions, revert <id>",
 				GoFn:       func(h *Host, args string) error { return h.configCommand(args) },

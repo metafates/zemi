@@ -89,7 +89,11 @@ func (h *Host) OpenSessions() error {
 		return errors.New("no sessions yet")
 	}
 	current := h.AgentSessionID()
-	previews, _ := h.DB.SessionPreviews() // best effort: a bare list still resumes
+	ids := make([]string, 0, len(list))
+	for _, s := range list {
+		ids = append(ids, s.ID)
+	}
+	previews, _ := h.DB.SessionPreviews(ids) // best effort: a bare list still resumes
 	items := make([]any, 0, len(list))
 	for _, s := range list {
 		mark, title := "  ", s.Title

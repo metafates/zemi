@@ -318,35 +318,35 @@ func (h *Host) compactDone(used int64, manual bool) {
 	ag.mu.Unlock()
 }
 
-// storeCompaction stores the summary, points the session at it, then stores
-// copies of the tail, so the rows from the summary on rebuild the history.
-// NOTE: not one transaction; a failed tail write leaves resume short of
-// those messages.
+// storeCompaction stores the summary, copies of the verbatim tail and the
+// session's summary pointer in one transaction, so the rows from the summary
+// on always rebuild the whole history: a crash mid-write would otherwise
+// leave a resumed conversation short of its recent messages.
 func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) error {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
 		return nil
 	}
-	for i, m := range append([]fantasy.Message{summary}, tail...) {
+	row := func(m fantasy.Message, role string) (*store.Message, error) {
 		parts, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		return &store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)}, nil
+	}
+	head, err := row(summary, "user")
+	if err != nil {
+		return err
+	}
+	rows := make([]*store.Message, 0, len(tail))
+	for _, m := range tail {
+		r, err := row(m, compactTailRole)
 		if err != nil {
 			return err
 		}
-		role := compactTailRole
-		if i == 0 {
-			role = "user"
-		}
-		row := &store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)}
-		if err := h.DB.AddMessage(row); err != nil {
-			return err
-		}
-		if i == 0 {
-			if err := h.DB.SetSummary(sid, row.ID); err != nil {
-				return err
-			}
-		}
+		rows = append(rows, r)
 	}
-	return nil
+	return h.DB.AddCompaction(sid, head, rows)
 }
 
 // summarize asks the model for the handoff summary of head. The transcript

@@ -39,6 +39,12 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
+	if err := s.resyncFTS(); err != nil {
+		d.Close()
+		return nil, err
+	}
+	// best effort: a failed sweep must never keep zemi from starting
+	_ = s.sweep()
 	return s, nil
 }
 
@@ -59,6 +65,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 	cost REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
+-- the picker and the splash order by recency on every render
+CREATE INDEX IF NOT EXISTS sessions_updated ON sessions(updated_at);
 
 CREATE TABLE IF NOT EXISTS messages (
 	id TEXT PRIMARY KEY,
@@ -154,6 +162,8 @@ CREATE TABLE IF NOT EXISTS memory (
 	origin TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS memory_scope_hit ON memory(scope, last_hit_at);
+-- listings and keywordless digest assembly order by recency within a scope
+CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 
 -- External-content FTS5 over memory.text; triggers keep it in sync
 -- (DESIGN §7). The TEXT primary key leaves the implicit rowid intact.
@@ -170,9 +180,95 @@ CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE OF text ON memory BEGIN
 END;
 `
 
+// migrations[i] upgrades a database at user_version i to i+1. The schema
+// const only ever creates what is missing, so a column added to an existing
+// table needs its ALTER here as well as its place in schema: fresh databases
+// get it from schema, existing ones from the migration. Append only, never
+// edit or reorder a shipped entry.
+var migrations = [][]string{}
+
 func (s *DB) migrate() error {
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	var version int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("store: read user_version: %w", err)
+	}
+	if version > len(migrations) {
+		return fmt.Errorf("store: database is at schema version %d, this zemi knows %d; upgrade zemi", version, len(migrations))
+	}
+	if version == len(migrations) {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i := version; i < len(migrations); i++ {
+		for _, stmt := range migrations[i] {
+			if _, err := tx.Exec(stmt); err != nil {
+				return fmt.Errorf("store: migration %d: %w", i+1, err)
+			}
+		}
+	}
+	// PRAGMA takes no placeholder
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
+		return fmt.Errorf("store: set user_version: %w", err)
+	}
+	return tx.Commit()
+}
+
+// resyncFTS rebuilds memory_fts when it indexes fewer rows than memory
+// holds. An index created after its rows (or one the triggers missed) stays
+// empty and search silently misses every memory the empty-query listing
+// still shows. memory_fts itself reads through to the content table, so the
+// count has to come from the fts5 docsize shadow table.
+func (s *DB) resyncFTS() error {
+	var rows, indexed int
+	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM memory), (SELECT COUNT(*) FROM memory_fts_docsize)`).Scan(&rows, &indexed); err != nil {
+		return fmt.Errorf("store: count memory index: %w", err)
+	}
+	if rows == indexed {
+		return nil
+	}
+	if _, err := s.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('rebuild')`); err != nil {
+		return fmt.Errorf("store: rebuild memory index: %w", err)
+	}
+	return nil
+}
+
+// Retention windows (DESIGN §7 keeps no archive): checkpoints hold a whole
+// file each, so they go first, and a session takes its messages, tool calls
+// and todos with it. Both windows are generous, and the sweep runs at open,
+// before the live session exists, so it can never cut the conversation in
+// progress.
+const (
+	checkpointTTL = 30 * 24 * time.Hour
+	sessionTTL    = 180 * 24 * time.Hour
+)
+
+// sweep drops aged rows and reclaims their pages when it removed any.
+func (s *DB) sweep() error {
+	cps, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
+		time.Now().Add(-checkpointTTL).UnixMilli())
+	if err != nil {
+		return fmt.Errorf("store: sweep checkpoints: %w", err)
+	}
+	sess, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
+		time.Now().Add(-sessionTTL).UnixMilli())
+	if err != nil {
+		return fmt.Errorf("store: sweep sessions: %w", err)
+	}
+	n, _ := cps.RowsAffected()
+	m, _ := sess.RowsAffected()
+	if n+m == 0 {
+		return nil
+	}
+	// VACUUM rewrites the whole file; only the rare open that deleted pays it
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return fmt.Errorf("store: vacuum: %w", err)
 	}
 	return nil
 }

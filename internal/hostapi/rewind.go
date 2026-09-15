@@ -49,6 +49,9 @@ func (h *Host) checkpointFile(path string) {
 	}
 	if len(data) > maxCheckpointBytes {
 		h.Log.Warn("rewind", "file too large to checkpoint", map[string]any{"path": abs, "bytes": len(data)})
+		// say it now: a later rewind reports only the files it restored, and
+		// this one would quietly stay changed
+		h.Notify("warn", "rewind", filepath.Base(abs)+" is too large to checkpoint; a rewind will not restore it")
 		return
 	}
 	if err := h.DB.AddCheckpoint(sid, mid, abs, existed, data); err != nil {

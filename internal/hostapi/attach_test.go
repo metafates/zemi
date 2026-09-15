@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 )
@@ -43,6 +44,36 @@ func TestExpandAttachments(t *testing.T) {
 	}
 	if plain, _ := h.expandAttachments("no references here"); plain != "no references here" {
 		t.Fatalf("plain text changed: %q", plain)
+	}
+}
+
+// TestDropsSweptAfterTTL: idle drop copies age out, one attached again stays.
+func TestDropsSweptAfterTTL(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	name, err := h.saveDrop("keep.txt", []byte("keep"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := h.dropsDir()
+	stale := filepath.Join(dir, "stale.txt")
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-dropTTL - time.Hour)
+	for _, p := range []string{stale, filepath.Join(dir, name)} {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if again, err := h.saveDrop("keep.txt", []byte("keep")); err != nil || again != name {
+		t.Fatalf("reuse = %q, %v", again, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+		t.Fatalf("a drop attached again was swept: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale drop survived: %v", err)
 	}
 }
 

@@ -88,29 +88,29 @@ func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	return collect(rows, err, scanSession)
 }
 
-// RenameSession sets the session title.
+// RenameSession sets the session title. Unknown ids are ErrNotFound.
 func (s *DB) RenameSession(id, title string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne("rename session", `UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
 		title, now(), id)
-	return err
 }
 
 // SetSummary points a session at the message its history resumes from.
+// Unknown ids are ErrNotFound.
 func (s *DB) SetSummary(id, messageID string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne("set summary", `UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
 		messageID, now(), id)
-	return err
 }
 
-// AddUsage accumulates token counts and cost onto a session.
+// AddUsage accumulates token counts and cost onto a session. Unknown ids are
+// ErrNotFound: silently dropping a turn's tokens and cost is worse than a
+// caller seeing the miss.
 func (s *DB) AddUsage(id string, prompt, completion int64, cost float64) error {
-	_, err := s.db.Exec(`UPDATE sessions SET
+	return s.execOne("add usage", `UPDATE sessions SET
 		prompt_tokens = prompt_tokens + ?,
 		completion_tokens = completion_tokens + ?,
 		cost = cost + ?,
 		updated_at = ?
 		WHERE id = ?`, prompt, completion, cost, now(), id)
-	return err
 }
 
 // Message is one persisted message: role plus fantasy content parts as JSON.
@@ -122,21 +122,50 @@ type Message struct {
 	CreatedAt int64
 }
 
-// AddMessage inserts a message row.
-func (s *DB) AddMessage(m *Message) error {
+// execer is what *sql.DB and *sql.Tx share, so one insert serves both.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func insertMessage(ex execer, m *Message) error {
 	if m.ID == "" {
 		m.ID = NewID()
 	}
 	if m.CreatedAt == 0 {
 		m.CreatedAt = now()
 	}
-	_, err := s.db.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
+	_, err := ex.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		m.ID, m.SessionID, m.Role, m.PartsJSON, m.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("store: add message: %w", err)
 	}
 	return nil
+}
+
+// AddMessage inserts a message row.
+func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
+
+// AddCompaction stores a compaction's summary row, the verbatim tail copies
+// that follow it and the session's summary pointer in one transaction: a
+// crash partway would leave a resumed conversation missing the tail.
+func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, m := range append([]*Message{summary}, tail...) {
+		m.SessionID = sessionID
+		if err := insertMessage(tx, m); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
+		summary.ID, now(), sessionID); err != nil {
+		return fmt.Errorf("store: add compaction: %w", err)
+	}
+	return tx.Commit()
 }
 
 // Messages returns a session's messages in insertion order: rowid, since a
@@ -157,13 +186,20 @@ type SessionPreview struct {
 	FirstJSON string
 }
 
-// SessionPreviews returns one preview per session; tool telemetry and
-// compaction tails have their own roles and stay out of the count.
-func (s *DB) SessionPreviews() (map[string]SessionPreview, error) {
+// SessionPreviews returns one preview per listed session; tool telemetry and
+// compaction tails have their own roles and stay out of the count. The ids
+// bound the scan: the picker shows a page of sessions, not every message
+// ever stored.
+func (s *DB) SessionPreviews(ids []string) (map[string]SessionPreview, error) {
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
 	rows, err := s.db.Query(`SELECT session_id, COUNT(*), COALESCE((
 			SELECT parts_json FROM messages f
 			WHERE f.session_id = m.session_id AND f.role = 'user' ORDER BY rowid LIMIT 1), '')
-		FROM messages m WHERE role IN ('user', 'assistant') GROUP BY session_id`)
+		FROM messages m WHERE role IN ('user', 'assistant')
+		AND session_id IN (`+placeholders(len(ids))+`) GROUP BY session_id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -232,14 +268,27 @@ type ToolCall struct {
 	DecidedBy string
 }
 
-// AddToolCall records a tool invocation.
-func (s *DB) AddToolCall(tc *ToolCall) error {
-	_, err := s.db.Exec(`INSERT INTO tool_calls
+// AddToolCall records a tool invocation together with the message row it
+// points at, in one transaction: a telemetry row that fails to land after
+// its message leaves an orphan and the reflector's counts short.
+func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := insertMessage(tx, m); err != nil {
+		return err
+	}
+	tc.MessageID = m.ID
+	if _, err := tx.Exec(`INSERT INTO tool_calls
 		(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tc.MessageID, tc.Tool, tc.InputJSON, tc.OK, tc.ErrorKind, tc.LatencyMS,
-		tc.Denied, tc.DecidedBy, now())
-	return err
+		tc.Denied, tc.DecidedBy, now()); err != nil {
+		return fmt.Errorf("store: add tool call: %w", err)
+	}
+	return tx.Commit()
 }
 
 // ToolStat is one per-tool aggregate over a session's tool calls.
