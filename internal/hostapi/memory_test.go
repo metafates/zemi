@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -186,6 +187,28 @@ func TestMemorySearchFromLua(t *testing.T) {
 	}
 	if m.HitCount != 1 || m.LastHitAt == 0 {
 		t.Fatalf("hit bump: count=%d last=%d", m.HitCount, m.LastHitAt)
+	}
+
+	// Scores from the two DBs do not compare: results alternate by rank.
+	for i := range 3 {
+		for _, db := range map[string]*store.DB{"project": h.DB, "user": h.GlobalDB} {
+			scope := "project"
+			if db == h.GlobalDB {
+				scope = "user"
+			}
+			if err := db.AddMemory(&store.Memory{Scope: scope, Kind: "fact", Text: fmt.Sprintf("widget note %d", i), ProvenanceSessionID: "p", Origin: learn.OriginUser}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rows, err := h.memorySearch("all", "widget", 4)
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("interleave: %d %v", len(rows), err)
+	}
+	for i, want := range []string{"project", "user", "project", "user"} {
+		if rows[i].Scope != want {
+			t.Fatalf("row %d scope=%s want %s", i, rows[i].Scope, want)
+		}
 	}
 }
 

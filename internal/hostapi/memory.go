@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -400,7 +399,7 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 	if scope == "all" || scope == "" {
 		scopes = []string{"project", "user"}
 	}
-	var out []*store.Memory
+	var per [][]*store.Memory
 	for _, s := range scopes {
 		db := h.memoryDB(s)
 		if db == nil {
@@ -410,11 +409,20 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, rows...)
+		per = append(per, rows)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
-	if len(out) > limit {
-		out = out[:limit]
+	// bm25 scores from two FTS indexes do not compare, so interleave by rank
+	var out []*store.Memory
+	for i := 0; len(out) < limit; i++ {
+		n := len(out)
+		for _, rows := range per {
+			if i < len(rows) && len(out) < limit {
+				out = append(out, rows[i])
+			}
+		}
+		if len(out) == n {
+			break
+		}
 	}
 	return out, nil
 }
