@@ -173,10 +173,10 @@ func (h *Host) memoryCommand(args string) error {
 	switch {
 	case len(fields) == 0:
 		if h.memReview.TryLock() {
-			go func() {
+			h.GoSafe("memory review", func() {
 				defer h.memReview.Unlock()
 				h.openMemoryReview()
-			}()
+			})
 			return nil
 		}
 		return errors.New("memory review already open")

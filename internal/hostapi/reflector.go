@@ -163,7 +163,7 @@ func (h *Host) runReflectDetached(sid string) bool {
 	h.reflecting.Store(true)
 	h.refresh()
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})
-	go func() {
+	h.GoSafe("reflector", func() {
 		defer h.reflectMu.Unlock()
 		defer cancel()
 		defer h.refresh()
@@ -176,7 +176,7 @@ func (h *Host) runReflectDetached(sid string) bool {
 			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
 			h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
 		}
-	}()
+	})
 	return true
 }
 

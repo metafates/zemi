@@ -49,7 +49,8 @@ func (h *Host) CompactNow() error {
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.refresh()
-	go func() {
+	h.GoSafe("compaction", func() {
+		defer h.endTurnAfterPanic()
 		h.compactReporting(runner)
 		ag.mu.Lock()
 		queued := strings.Join(ag.steering, "\n\n")
@@ -61,7 +62,7 @@ func (h *Host) CompactNow() error {
 				h.memNotify("error", "agent", err.Error())
 			}
 		}
-	}()
+	})
 	return nil
 }
 

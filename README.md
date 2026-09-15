@@ -33,6 +33,11 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
 reversible (`/memory`, `/config revert <id>`, `/skills disable <name>`).
 
+zemi also knows itself: builtin skills (`zemi-config`, `zemi-debug`, `zemi-lua`,
+`zemi-learning`) teach the agent where zemi's files live, how to change its config, how
+to read its logs and errors, and how its learning works. Ask it to "set up a provider",
+"why did that fail" or "write a statusline widget".
+
 ## Install
 
 ```sh

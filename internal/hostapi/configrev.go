@@ -290,10 +290,10 @@ func (h *Host) configCommand(args string) error {
 	switch {
 	case len(fields) == 0:
 		if h.cfgReview.TryLock() {
-			go func() {
+			h.GoSafe("config review", func() {
 				defer h.cfgReview.Unlock()
 				h.openConfigReview()
-			}()
+			})
 			return nil
 		}
 		return errors.New("config review already open")

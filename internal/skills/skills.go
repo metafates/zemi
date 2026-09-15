@@ -21,6 +21,7 @@ type Source string
 
 const (
 	Authored Source = "authored"
+	Builtin  Source = "builtin" // shipped with zemi, enabled by default
 	Learned  Source = "learned"
 )
 
@@ -114,11 +115,12 @@ func frontmatter(data []byte) (name, description string, err error) {
 	return fm.Name, fm.Description, nil
 }
 
-// Discover merges authored and learned skill directories; on a name
-// clash the higher-trust source wins (authored over learned, §10.5).
-// Unreadable or invalid directories are skipped with a returned warning
-// per failure, never fatal: a broken skill must not hide the others.
-func Discover(authoredDir, learnedDir string) (skills []Skill, warnings []string) {
+// Discover merges authored, builtin and learned skill directories; on a
+// name clash the higher-trust source wins (authored over builtin over
+// learned, §10.5). Unreadable or invalid directories are skipped with a
+// returned warning per failure, never fatal: a broken skill must not hide
+// the others.
+func Discover(authoredDir, builtinDir, learnedDir string) (skills []Skill, warnings []string) {
 	seen := map[string]bool{}
 	scan := func(dir string, source Source) {
 		entries, err := os.ReadDir(dir)
@@ -139,6 +141,7 @@ func Discover(authoredDir, learnedDir string) (skills []Skill, warnings []string
 		}
 	}
 	scan(authoredDir, Authored)
+	scan(builtinDir, Builtin)
 	scan(learnedDir, Learned)
 	return skills, warnings
 }

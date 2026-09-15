@@ -19,6 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
@@ -142,7 +143,9 @@ const contextBudget = 32 << 10
 func (h *Host) defaultSystemPrompt() string {
 	return "You are zemi, a coding agent working in " + h.Dirs.ProjectDir + "." +
 		" Keep replies concise. Use the provided tools to inspect and edit" +
-		" files; destructive or unusual actions need a clear reason."
+		" files; destructive or unusual actions need a clear reason." +
+		" You run inside zemi: when the user asks about zemi itself (its config," +
+		" Lua API, errors or what it learned), load the matching zemi-* skill first."
 }
 
 // resolveProfile returns the profile to run: explicit name, the default,
@@ -313,13 +316,14 @@ func (h *Host) AgentSend(text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	go h.runTurns(runner, text)
+	h.GoSafe("agent turn", func() { h.runTurns(runner, text) })
 	return nil
 }
 
 // runTurns sends text and every follow-up the queue produces on one
 // runner, compacting first whenever the last prompt filled the context.
 func (h *Host) runTurns(runner *agent.Runner, text string) {
+	defer h.endTurnAfterPanic()
 	for text != "" {
 		if h.compactDue() {
 			h.compactReporting(runner)
@@ -523,15 +527,16 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		Kind: "turn_done", Err: errString(err),
 		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
 	})
-	if err != nil {
-		text = ""
-	}
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
-		if ui := h.hooks(); ui != nil {
-			ui.Notify("error", "agent", errString(err))
+		// The failure stays in the transcript: a toast expires, and a turn
+		// that ended silently looks like zemi ignored the message.
+		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(errString(err)), 300)}
+		if errors.Is(err, context.Canceled) {
+			row.Text, row.Status = "interrupted", "cancelled"
 		}
+		h.appendChatMessage(row)
 	} else {
 		h.EmitAsync("agent.finish", map[string]any{})
 	}

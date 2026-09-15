@@ -296,7 +296,7 @@ func boolField(m map[string]any, key string) bool {
 // queue). Stale-generation deliveries are dropped.
 func (h *Host) EmitAsync(name string, payload map[string]any) {
 	gen := h.currentGen()
-	go func() {
+	h.GoSafe("event "+name, func() {
 		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 			if h.currentGen() != gen {
 				return nil, nil
@@ -307,7 +307,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 		if err != nil {
 			h.Log.Debug("events", "async emit dropped", map[string]any{"event": name, "error": err.Error()})
 		}
-	}()
+	})
 }
 
 // ActiveThemeName returns the configured theme (ui.go helper used by ui).

@@ -91,7 +91,10 @@ func realPath(p string) string {
 }
 
 func (h *Host) readJails() []string {
-	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir()}
+	// Skill bodies (builtin and learned) live under the data dir; reading
+	// them must not ask.
+	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
+		h.builtinSkillsDir(), h.learnedSkillsDir()}
 }
 
 func (h *Host) writeJails() []string {

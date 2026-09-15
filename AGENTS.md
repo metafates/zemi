@@ -83,7 +83,11 @@ After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have
    a 50 ms Lua-handler deadline and then take a logged default (fail-closed for permission
    asks without an overlay leg).
-6. **The store** (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
+6. **No bare goroutines in hostapi.** Start them with `h.GoSafe(where, fn)`: a panic is
+   logged with its stack (source `panic`), shown in `/errors`, and zemi keeps running.
+   Turn goroutines also defer `h.endTurnAfterPanic()` so the agent is not left "active".
+   A panic in a plain `go func()` kills the process with the terminal still in raw mode.
+7. **The store** (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
    `MaxOpenConns(1)`. Two handles: global DB (user-scope memory, kv, skills, config
    revisions) and a
    per-project DB (sessions, messages, todos, tool_calls) at
@@ -125,8 +129,11 @@ follow `internal/hostapi/registry.go`.
 
 ### Skills (internal/skills, internal/hostapi/skills.go)
 
-Skills are file-based units: authored under `<config>/skills/`, learned (reflector drafts,
-body only, no Lua hook, scrubbed, start disabled) under `<data>/skills/`, each a `SKILL.md`
+Skills are file-based units: authored under `<config>/skills/`, builtin (zemi's
+self-knowledge: `runtime/skills/zemi-*`, embedded, rewritten to `<data>/builtin-skills/` on
+every sync, enabled by default; keep them accurate when behavior changes), learned
+(reflector drafts, body only, no Lua hook, scrubbed, start disabled) under
+`<data>/skills/`, each a `SKILL.md`
 with YAML frontmatter (name, description); discovery lives in `internal/skills`, hosting in
 `internal/hostapi/skills.go`, rows in the global DB `skills` table. Invariants:
 

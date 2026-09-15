@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"runtime/debug"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -92,6 +93,14 @@ func run() error {
 	// Boot runs on its own goroutine (it may block on the trust prompt);
 	// the outcome reaches the UI through the hook channel.
 	go func() {
+		// A panic during boot must reach the UI as a boot failure instead
+		// of killing the process with the terminal still in raw mode.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("panic", fmt.Sprintf("boot panicked: %v", r), map[string]any{"stack": string(debug.Stack())})
+				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, dirs.LogDir()))
+			}
+		}()
 		app.SignalBoot(rt.Boot(ctx, steps))
 	}()
 
@@ -326,7 +335,7 @@ func readyStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
 			h.EmitOnState(g.L, "app.ready", nil)
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).
-			go h.ReflectLastSession()
+			h.GoSafe("reflect last session", h.ReflectLastSession)
 			return nil
 		},
 	}

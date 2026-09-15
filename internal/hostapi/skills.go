@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,7 @@ import (
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
+	zemiruntime "github.com/metafates/zemi/runtime"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -107,8 +109,11 @@ func (h *Host) syncSkills() {
 	if h.GlobalDB == nil {
 		return
 	}
+	if err := h.materializeBuiltinSkills(); err != nil {
+		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
+	}
 	found, warns := skills.Discover(
-		h.authoredSkillsDir(), h.learnedSkillsDir())
+		h.authoredSkillsDir(), h.builtinSkillsDir(), h.learnedSkillsDir())
 	for _, w := range warns {
 		h.Log.Warn("skills", w, nil)
 	}
@@ -118,7 +123,7 @@ func (h *Host) syncSkills() {
 			Name:           s.Name,
 			Path:           s.Dir,
 			Source:         string(s.Source),
-			DefaultEnabled: s.Source == skills.Authored,
+			DefaultEnabled: s.Source != skills.Learned,
 		})
 	}
 	if err := h.GlobalDB.SyncSkills(rows); err != nil {
@@ -185,6 +190,38 @@ func (h *Host) authoredSkillsDir() string {
 		return ""
 	}
 	return filepath.Join(h.Dirs.ConfigHome, "skills")
+}
+
+// builtinSkillsDir is where the embedded builtin skills are copied so the
+// skill tool reads them from disk like any other skill.
+func (h *Host) builtinSkillsDir() string {
+	if h.Dirs.DataHome == "" {
+		return ""
+	}
+	return filepath.Join(h.Dirs.DataHome, "builtin-skills")
+}
+
+// materializeBuiltinSkills rewrites the builtin skills on every sync, so an
+// upgraded zemi replaces them.
+func (h *Host) materializeBuiltinSkills() error {
+	dir := h.builtinSkillsDir()
+	if dir == "" {
+		return nil
+	}
+	return fs.WalkDir(zemiruntime.Skills, "skills", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := zemiruntime.Skills.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out := filepath.Join(dir, strings.TrimPrefix(p, "skills/"))
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(out, data, 0o644)
+	})
 }
 
 func (h *Host) learnedSkillsDir() string {

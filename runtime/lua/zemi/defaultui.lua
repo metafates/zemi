@@ -236,6 +236,12 @@ zemi.ui.widget.register({
         add_tool(m.tool, m.text, m.status)
       elseif m.kind == "compact" then
         lines[#lines + 1] = { { text = "  ✻ " .. m.text, hl = "AgentReason" } }
+      elseif m.kind == "error" then
+        local cancelled = m.status == "cancelled"
+        lines[#lines + 1] = {
+          { text = cancelled and "  ■ " or "  ✗ ", hl = cancelled and "Comment" or "AgentToolErr" },
+          { text = m.text, hl = cancelled and "Comment" or "AgentToolErr" },
+        }
       elseif m.role == "user" then
         local first = true
         for text in (m.text .. "\n"):gmatch("(.-)\n") do

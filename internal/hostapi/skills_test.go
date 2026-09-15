@@ -77,20 +77,24 @@ func TestSkillsQuarantineDefaults(t *testing.T) {
 	h.syncSkills()
 
 	runUser(t, r, `
-		local all = zemi.skills.list()
-		assert(#all == 2, "skills=" .. #all)
-		local byName = {}
-		for _, s in ipairs(all) do byName[s.name] = s end
+		local byName, n = {}, 0
+		for _, s in ipairs(zemi.skills.list()) do
+			if s.source ~= "builtin" then
+				byName[s.name], n = s, n + 1
+			end
+		end
+		assert(n == 2, "skills=" .. n)
 		assert(byName["local-run"].enabled == true, "authored must be enabled")
 		assert(byName["local-run"].source == "authored", "source=" .. tostring(byName["local-run"].source))
 		assert(byName["auto-learned"].enabled == false, "learned must start disabled")
 		assert(byName["auto-learned"].source == "learned", "source=" .. tostring(byName["auto-learned"].source))
 	`)
-	if n := len(h.skillIndex()); n != 1 {
-		t.Fatalf("skillIndex=%d, want 1 (enabled only)", n)
+	indexed := map[string]bool{}
+	for _, s := range h.skillIndex() {
+		indexed[s.Name] = true
 	}
-	if h.skillIndex()[0].Name != "local-run" {
-		t.Fatalf("skillIndex=%+v", h.skillIndex()[0])
+	if !indexed["local-run"] || indexed["auto-learned"] {
+		t.Fatalf("skillIndex must list enabled skills only: %v", indexed)
 	}
 }
 

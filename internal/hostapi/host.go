@@ -59,10 +59,10 @@ type Overlay struct {
 // block the chat widget collapses to a one-line summary).
 type ChatMessage struct {
 	Role   string
-	Kind   string // "", "reasoning", "tool" or "compact"
+	Kind   string // "", "reasoning", "tool", "compact" or "error"
 	Text   string // tool rows: the input summary
 	Tool   string
-	Status string // tool rows: "ok" or "err"
+	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Stat   *TurnStat
 }
 
@@ -238,12 +238,12 @@ func (h *Host) scrollChat(kind string) {
 // zemi.model.pick host action (which returns the id to Lua) this is safe to
 // call from the UI goroutine, e.g. the /model slash command.
 func (h *Host) OpenModelPicker() {
-	go func() {
+	h.GoSafe("model picker", func() {
 		if id, ok := h.pickModel(); ok {
 			_, _ = h.Settings.SetQuiet("agent.model", id)
 			h.refresh()
 		}
-	}()
+	})
 }
 
 // Session returns a snapshot of the session state.
@@ -674,10 +674,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("role", glua.LString(m.Role))
 		row.RawSetString("kind", glua.LString(m.Kind))
 		row.RawSetString("text", glua.LString(m.Text))
-		if m.Kind == "tool" {
-			row.RawSetString("tool", glua.LString(m.Tool))
-			row.RawSetString("status", glua.LString(m.Status))
-		}
+		row.RawSetString("tool", glua.LString(m.Tool))
+		row.RawSetString("status", glua.LString(m.Status))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))

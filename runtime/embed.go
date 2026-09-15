@@ -10,3 +10,9 @@ import "embed"
 //
 //go:embed lua
 var FS embed.FS
+
+// Skills holds the builtin skills (skills/<name>/SKILL.md): zemi's
+// knowledge about itself, copied to disk and discovered like any skill.
+//
+//go:embed skills
+var Skills embed.FS
