@@ -88,7 +88,11 @@ type agentHost struct {
 	active    bool
 	textBuf   string
 	reasonBuf string
-	tools     []StreamTool
+	// stepText and stepReason are the buffer lengths when the current step
+	// began; a provider retry streams the step again from there.
+	stepText   int
+	stepReason int
+	tools      []StreamTool
 	steering  []string
 	modelSeed string
 
@@ -682,9 +686,18 @@ func (s *streamAdapter) TextDelta(text string) {
 	}
 }
 
+func (s *streamAdapter) StepStart() {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.stepText, ag.stepReason = len(ag.textBuf), len(ag.reasonBuf)
+	ag.mu.Unlock()
+}
+
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	ag.textBuf = ag.textBuf[:min(ag.stepText, len(ag.textBuf))]
+	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
 	// fantasy passes no error when a network failure (DNS, refused, reset)

@@ -631,6 +631,34 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 }
 
+// TestRetryRestreamsStep: a provider retry streams the step again from its
+// start, so the failed attempt's text is dropped instead of shown twice.
+func TestRetryRestreamsStep(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	type hooks interface {
+		TextDelta(string)
+		StepStart()
+		Retrying(error, time.Duration)
+	}
+	for name, c := range map[string]struct {
+		hooks hooks
+		text  func() string
+	}{
+		"main":     {h.streamHooks().(*streamAdapter), func() string { return h.AgentStream().Text }},
+		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run}, func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text }},
+	} {
+		c.hooks.TextDelta("before ")
+		c.hooks.StepStart()
+		c.hooks.TextDelta("partial")
+		c.hooks.Retrying(nil, 0)
+		c.hooks.TextDelta("full")
+		if got := c.text(); got != "before full" {
+			t.Errorf("%s: text %q, want %q", name, got, "before full")
+		}
+	}
+}
+
 func TestMaxOutput(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `

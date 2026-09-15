@@ -18,6 +18,9 @@ type StreamHooks interface {
 	ReasoningDelta(text string)
 	ToolCallStart(id, name, input string)
 	ToolCallEnd(id, name string, ok bool, output string)
+	// StepStart marks the start of a model call; after Retrying the call
+	// streams again from its first delta.
+	StepStart()
 	// Retrying reports a provider retry (rate limit, overload) before the
 	// backoff delay.
 	Retrying(err error, delay time.Duration)
@@ -176,6 +179,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	call := fantasy.AgentStreamCall{
 		Messages:         history,
 		StopWhen:         stops,
+		OnStepStart:      func(int) error { hooks.StepStart(); return nil },
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolCall: func(tc fantasy.ToolCallContent) error {

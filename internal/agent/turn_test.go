@@ -98,6 +98,8 @@ func (h *recHooks) ReasoningDelta(string) {}
 
 func (h *recHooks) Retrying(error, time.Duration) {}
 
+func (h *recHooks) StepStart() {}
+
 func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "start:"+name)

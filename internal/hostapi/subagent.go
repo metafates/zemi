@@ -317,6 +317,7 @@ type subagentHooks struct {
 	modelID  string
 	progress func(string)
 	sid      string
+	stepText int // len(run.text) when the step began, where a retry restarts
 }
 
 func (s *subagentHooks) report(line string) {
@@ -359,7 +360,16 @@ func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, _ string) {
 	s.h.refreshViewed(run)
 }
 
+func (s *subagentHooks) StepStart() {
+	s.run.mu.Lock()
+	s.stepText = len(s.run.text)
+	s.run.mu.Unlock()
+}
+
 func (s *subagentHooks) Retrying(err error, delay time.Duration) {
+	s.run.mu.Lock()
+	s.run.text = s.run.text[:min(s.stepText, len(s.run.text))]
+	s.run.mu.Unlock()
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, delay.Round(time.Second)))
 }
 
