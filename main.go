@@ -15,7 +15,6 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -109,8 +108,8 @@ func run(args []string) int {
 		softStep(host, host.SkillsAuthoredHooksStep()),
 		softStep(host, projectConfigStep(host, askTrust, dirs)),
 		host.MarkdownCommandsStep(),
-		crushImportStep(host, settings),
-		readyStep(host, settings, !opts.print),
+		crushImportStep(host),
+		readyStep(host, !opts.print),
 		host.SkillsLearnedHooksStep(),
 	}
 
@@ -126,10 +125,7 @@ func run(args []string) int {
 
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
-	var reloadMu sync.Mutex
 	reload := func() {
-		reloadMu.Lock()
-		defer reloadMu.Unlock()
 		if err := rt.ForceReload(ctx, steps, host.PurgeGeneration); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			app.Notify("error", "reload", err.Error())
@@ -224,11 +220,11 @@ func configFingerprint(roots ...string) string {
 // key providers.crush_json, default ~/.config/crush/crush.json) after
 // user config ran, so init.lua can point the knob elsewhere or disable
 // it. Import problems never fail boot; they are logged.
-func crushImportStep(h *hostapi.Host, settings *config.Store) lua.BootStep {
+func crushImportStep(h *hostapi.Host) lua.BootStep {
 	return lua.BootStep{
 		Name: "crush providers import",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			path, _ := settings.Get("providers.crush_json")
+			path, _ := h.Settings.Get("providers.crush_json")
 			p, _ := path.(string)
 			p = expandPath(p)
 			if p == "" {
@@ -260,9 +256,8 @@ func expandPath(p string) string {
 	return p
 }
 
-// builtinCommandsStep registers the Go-owned shell commands (/quit, /help,
-// /model). They carry the builtin origin, so user config can
-// rebind them.
+// builtinCommandsStep registers the Go-owned slash commands; builtin origin
+// lets user config replace them.
 func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 	return lua.BootStep{
 		Name: "builtin commands",
@@ -271,20 +266,20 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
 					quit()
 					return nil
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "help", Desc: "show keys and commands", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenHelp()
 					return nil
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "new", Desc: "start a fresh session", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.NewSession()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "sessions", Desc: "list and resume sessions", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenSessions()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "resume", Hidden: true, Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "rewind", NArgs: "?", Desc: "undo back to an earlier prompt, files included", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenRewind()
@@ -298,7 +293,7 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 						h.Notify("info", "rewind", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 					}
 					return err
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "effort", Hidden: true, NArgs: "?", Desc: "reasoning effort: low, medium, high or default", GoFn: func(h *hostapi.Host, args string) error {
 					switch args = strings.TrimSpace(args); args {
 					case "":
@@ -315,41 +310,40 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					}
 					_, err := h.Settings.SetQuiet("agent.effort", args)
 					return err
-				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} },
-					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
 				{Name: "usage", Desc: "tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenUsage()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.InitProject()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "export", Hidden: true, NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
 					path, err := h.ExportSession(strings.TrimSpace(args))
 					if err == nil {
 						h.Notify("info", "export", "wrote "+path)
 					}
 					return err
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
 					_, err := h.ForkSession()
 					return err
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "reload", Hidden: true, Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
 					return nil // the composer runs /reload before the registry
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "errors", Hidden: true, Desc: "list recent runtime errors", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenErrors()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "compact", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.CompactNow()
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenModelPicker()
 					return nil
-				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 				{Name: "mode", NArgs: "?", Desc: "who approves actions (tab switches)", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenModePicker()
@@ -361,9 +355,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 						names = append(names, m.Name)
 					}
 					return names
-				},
-					Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				}},
 			} {
+				c.Origin, c.Gen = lua.OriginBuiltin, hostapi.Gen(g.ID)
 				if _, err := h.Commands.Add(c); err != nil {
 					return err
 				}
@@ -533,11 +527,11 @@ func writeTrust(path string, m map[string]string) error {
 // readyStep closes the autonomy-knob boot window and emits app.ready; the
 // window closes before the handlers run (DESIGN §10.8). Print mode skips
 // the startup reflection: the process exits before it could finish.
-func readyStep(h *hostapi.Host, settings *config.Store, reflect bool) lua.BootStep {
+func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			settings.CloseBootWindow()
+			h.Settings.CloseBootWindow()
 			h.EmitOnState(g.L, "app.ready", nil)
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).

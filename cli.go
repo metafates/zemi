@@ -196,40 +196,31 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 		proc.KillAll()
 		return 130
 	}
+	rep := turnReport(h.Session().Transcript[start:])
 	if jsonOut {
 		after := h.AgentStream()
-		rep := turnReport(h.Session().Transcript[start:])
 		rep.SessionID, rep.DurationMS = h.AgentSessionID(), time.Since(began).Milliseconds()
 		rep.Usage.Input, rep.Usage.Output = after.SessionIn-before.SessionIn, after.SessionOut-before.SessionOut
 		rep.Usage.CostUSD = after.SessionCost - before.SessionCost
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(rep)
+	} else {
 		if rep.IsError {
-			return 1
-		}
-		return 0
-	}
-	code := 0
-	var replies []string
-	for _, m := range h.Session().Transcript[start:] {
-		switch {
-		case m.Role != "assistant":
-		case m.Kind == "":
-			replies = append(replies, strings.TrimSpace(m.Text))
-		case m.Kind == "error":
-			head, detail, _ := strings.Cut(m.Text, "\n")
+			head, detail, _ := strings.Cut(rep.Error, "\n")
 			fmt.Fprintln(stderr, "zemi:", head)
 			if detail != "" {
 				fmt.Fprintln(stderr, "  "+detail)
 			}
-			code = 1
+		}
+		if rep.Result != "" {
+			fmt.Fprintln(stdout, rep.Result)
 		}
 	}
-	if len(replies) > 0 {
-		fmt.Fprintln(stdout, strings.Join(replies, "\n\n"))
+	if rep.IsError {
+		return 1
 	}
-	return code
+	return 0
 }
 
 // report is the --output json document for one print-mode turn.
