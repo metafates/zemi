@@ -589,6 +589,13 @@ func TestDiffRows(t *testing.T) {
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("rows = %q", got)
 	}
+	got = nil
+	for _, row := range diffRows("@@ -1 +1 @@\n+alpha beta gamma delta", 20) {
+		got = append(got, strings.TrimRight(plainSegs(row), " "))
+	}
+	if want := []string{"   1 + alpha beta", "       gamma delta"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("wrapped rows = %q", got)
+	}
 }
 
 // TestToolRows: finished calls that only look around collapse into one

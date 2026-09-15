@@ -546,11 +546,17 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		}
 		gutter := " " + num(l.old) + " " + num(l.new) + " "
 		room := max(width-ansi.StringWidth(gutter)-2, 1)
-		text := ansi.Truncate(strings.ReplaceAll(l.text, "\t", "    "), room, "…")
-		rows = append(rows, []hostapi.Segment{
-			{Text: gutter, HL: numHL},
-			{Text: sign + text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
-		})
+		// wrapped, never cut: the user approves every character
+		for i, wrapped := range wrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l.text, "\t", "    ")}}, room) {
+			text := plainSegs(wrapped)
+			if i > 0 {
+				gutter, sign = strings.Repeat(" ", len(gutter)), "  "
+			}
+			rows = append(rows, []hostapi.Segment{
+				{Text: gutter, HL: numHL},
+				{Text: sign + text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
+			})
+		}
 	}
 	return rows
 }
