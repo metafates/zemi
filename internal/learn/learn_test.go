@@ -122,8 +122,18 @@ func TestScrubEntropyPass(t *testing.T) {
 	if !scrubbed || strings.Contains(out, tok) {
 		t.Fatalf("entropy token survived: %q", out)
 	}
-	if _, s := ScrubSecrets("plain english sentence with common words"); s {
-		t.Fatal("prose scrubbed")
+	for _, keep := range []string{
+		"plain english sentence with common words",
+		"config lives in internal/hostapi/permissions_generated_dump_reader.go today",
+		"see /Users/someone/Code/github/zemi/internal/learn/scrub.go",
+	} {
+		if out, s := ScrubSecrets(keep); s {
+			t.Fatalf("scrubbed: %q", out)
+		}
+	}
+	b64 := "aGVsbG8/d29ybGQ+Zm9vYmFy/YmF6cXV4K3Rlc3Q9PWxvbmdlcg/QmFzZTY0"
+	if out, s := ScrubSecrets("key " + b64 + " end"); !s || strings.Contains(out, b64[:12]) {
+		t.Fatalf("base64 with slashes survived: %q", out)
 	}
 }
 

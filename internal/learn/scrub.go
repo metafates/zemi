@@ -22,7 +22,8 @@ var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`),
 	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b`),
 	regexp.MustCompile(`\b[0-9a-fA-F]{32,}\b`),
-	regexp.MustCompile(`\b[A-Za-z0-9+/_=-]{40,}\b`),
+	// no '/': long paths match otherwise; base64 with slashes falls to the entropy pass
+	regexp.MustCompile(`\b[A-Za-z0-9+_=-]{40,}\b`),
 }
 
 var keyAssignments = regexp.MustCompile(
