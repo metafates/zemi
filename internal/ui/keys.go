@@ -311,7 +311,7 @@ func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
 			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Keys})
 			return nil
 		}
-		a.errFlag = true
+		a.host.RecordError("keymap "+b.Keys, err.Error())
 		a.host.Log.Error("ui", "keymap rhs failed", map[string]any{
 			"keys": b.Keys, "error": err.Error(),
 		})

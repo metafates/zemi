@@ -137,6 +137,8 @@ type Host struct {
 
 	selectSeq atomic.Int64 // ids for zemi.ui.select overlays
 
+	errs errLog // recent runtime errors for /errors
+
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
 
@@ -530,6 +532,7 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 	h.Log.Error("events", "event handler failed", map[string]any{
 		"event": hd.Event, "id": hd.ID, "origin": string(hd.Origin), "error": err.Error(),
 	})
+	h.RecordError("event "+hd.Event, err.Error())
 }
 
 // ---------------------------------------------------------------------------
@@ -841,7 +844,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.1.0-m4"))
+	api.RawSetString("version", glua.LString("0.2.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -953,7 +953,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   (list; enter resumes), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
   check: store, model key, permissions.lua, git, reflector, pending
-  reviews, skills, Lua runtime), plus the Lua-registered ones (`/remember`, `/memory`, `/config`,
+  reviews, skills, Lua runtime), `/errors` (recent widget, keymap and
+  event-handler errors behind the statusline badge), plus the
+  Lua-registered ones (`/remember`, `/memory`, `/config`,
   `/skills`, `/reflect`). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command

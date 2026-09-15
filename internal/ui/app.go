@@ -74,7 +74,6 @@ type App struct {
 	quitArmed  time.Time        // a second idle ctrl+c before this quits
 
 	bootErr error
-	errFlag bool
 
 	program   *tea.Program
 	reload    func()
@@ -387,7 +386,7 @@ func (a *App) pulse() bool {
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 	if msg.err != nil {
 		if !isTolerableRenderErr(msg.err) {
-			a.errFlag = true
+			a.host.RecordError("widget "+msg.id, msg.err.Error())
 		}
 		a.log.Debug("ui", "widget render failed; keeping last good lines", map[string]any{
 			"widget": msg.id, "error": msg.err.Error(),
@@ -718,8 +717,8 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	if a.host.RT.IsHot() {
 		left = append(left, hostapi.Segment{Text: " HOT /Reload ", HL: "ToastError"})
 	}
-	if a.errFlag {
-		left = append(left, hostapi.Segment{Text: " !errors ", HL: "ToastError"})
+	if a.host.HasUnseenErrors() {
+		left = append(left, hostapi.Segment{Text: " ! errors /errors ", HL: "ToastError"})
 	}
 
 	leftW := segsWidth(left)

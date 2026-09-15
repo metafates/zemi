@@ -51,7 +51,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.1.0-m4", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.2.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		assert(type(zemi.keymap.bind) == "function", "zemi.keymap.bind missing")
@@ -218,7 +218,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.1.0-m4", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.2.0", "interpreter wedged after veto timeout")
 	`)
 }
 
