@@ -256,12 +256,14 @@ func (h *Host) configCommand(args string) error {
 			return nil
 		}
 		return errors.New("config review already open")
+	case fields[0] == "list" && len(fields) == 1:
+		return h.listSettings()
 	case fields[0] == "revisions" && len(fields) == 1:
 		return h.listRevisions()
 	case fields[0] == "revert" && len(fields) == 2:
 		return h.revertRevision(fields[1])
 	default:
-		return errors.New("usage: /config | /config revisions | /config revert <id>")
+		return errors.New("usage: /config | /config list | /config revisions | /config revert <id>")
 	}
 }
 
@@ -311,6 +313,37 @@ func (h *Host) openConfigReview() {
 // listRevisions opens the revisions as a list; enter on a row fills
 // "/config revert <id>" (the audit trail lives in the revisions table and
 // the git log).
+// listSettings shows every setting with its value: the schema is the only
+// place they are written down, and nothing else surfaced it.
+func (h *Host) listSettings() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI attached")
+	}
+	schema := h.Settings.Schema()
+	pad := 0
+	for _, s := range schema {
+		pad = max(pad, len(s.Path))
+	}
+	items := make([]any, 0, len(schema))
+	for _, s := range schema {
+		v, _ := h.Settings.Get(s.Path)
+		val := fmt.Sprint(v)
+		if str, ok := v.(string); ok {
+			val = `"` + str + `"`
+		}
+		desc := s.Desc
+		if !s.UserWritable {
+			desc = "(zemi sets this) " + desc
+		}
+		items = append(items, map[string]any{
+			"text": fmt.Sprintf("%-*s %-10s %s", pad, s.Path, val, truncRunes(desc, 70)),
+		})
+	}
+	ui.OpenOverlay(Overlay{ID: "settings", Title: "Settings", Origin: lua.OriginBuiltin, Items: items})
+	return nil
+}
+
 func (h *Host) listRevisions() error {
 	if h.GlobalDB == nil {
 		return errors.New("revision store unavailable")
@@ -403,9 +436,9 @@ func (h *Host) ConfigCommandsStep() lua.BootStep {
 		Name: "config commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{Name: "config", NArgs: "*", Hidden: true,
-				Desc:       "review pending config changes; revisions, revert <id>",
+				Desc:       "review pending config changes; list, revisions, revert <id>",
 				GoFn:       func(h *Host, args string) error { return h.configCommand(args) },
-				GoComplete: subcommandCompleter([]string{"revisions", "revert"}, nil),
+				GoComplete: subcommandCompleter([]string{"list", "revisions", "revert"}, nil),
 				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
 			return err
 		},
