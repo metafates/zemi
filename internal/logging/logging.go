@@ -60,11 +60,15 @@ type Logger struct {
 	ring []Entry
 }
 
+// keepLogs bounds the log directory: one file per launch, newest kept.
+const keepLogs = 20
+
 // New opens (or creates) the log file under dir.
 func New(dir string) *Logger {
 	l := &Logger{}
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err == nil {
+			prune(dir, keepLogs)
 			path := filepath.Join(dir, time.Now().Format("2006-01-02_150405")+".log")
 			if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 				l.file = f
@@ -72,6 +76,19 @@ func New(dir string) *Logger {
 		}
 	}
 	return l
+}
+
+// prune deletes all but the newest keep log files. The name is a
+// timestamp, so lexical order is age order.
+func prune(dir string, keep int) {
+	names, err := filepath.Glob(filepath.Join(dir, "*.log"))
+	if err != nil || len(names) <= keep {
+		return
+	}
+	slices.Sort(names)
+	for _, p := range names[:len(names)-keep] {
+		_ = os.Remove(p)
+	}
 }
 
 // Close flushes and closes the file sink.
