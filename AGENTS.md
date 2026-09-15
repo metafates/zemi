@@ -20,6 +20,9 @@ patterns from them instead of reinventing or guessing at APIs:
 - `~/Code/github/hermes-agent` — learning-from-user machinery, relevant to `internal/learn`
 - `~/Code/github/codex`, `~/Code/github/opencode` — other coding-agent harnesses for
   cross-checking tool behavior and UX decisions
+- `~/Code/github/neovim` — the model for the Lua userland (`zemi.*` mirrors `vim.*`):
+  `runtime/lua/vim/` for keymap/highlight/ui.select/health/secure/loader patterns,
+  `src/nvim/api/` for autocmd groups and user commands
 
 ## Commands
 
