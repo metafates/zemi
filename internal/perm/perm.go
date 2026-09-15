@@ -8,6 +8,7 @@ package perm
 import (
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Decision is what a rule instructs the caller to do.
@@ -17,6 +18,16 @@ const (
 	Allow Decision = "allow"
 	Ask   Decision = "ask"
 	Deny  Decision = "deny"
+)
+
+// Scope is a rule's lifetime (DESIGN §6.1): session rules live in memory
+// until the session ends; permanent rules survive restarts and are
+// serialized into permissions.lua (Go-generated data, the store's dump).
+type Scope string
+
+const (
+	ScopeSession   Scope = "session"
+	ScopePermanent Scope = "permanent"
 )
 
 // Rule is one permission rule. Pattern is a glob over the operation
@@ -29,6 +40,7 @@ type Rule struct {
 	Decision  Decision `json:"decision"`  // allow | ask | deny
 	NotMatch  string   `json:"not_match"` // optional exclusion glob
 	Principal string   `json:"principal"` // empty = any principal
+	Scope     Scope    `json:"scope"`     // empty = session
 }
 
 // Store holds rules in evaluation order; lookups re-sort by specificity.
@@ -36,6 +48,11 @@ type Rule struct {
 // by the host; config-file rules are loaded into it at boot.
 type Store struct {
 	rules []Rule
+
+	// mu guards rules: rules are added from the Lua actor goroutine, the
+	// permission-ask hook and the review overlay goroutine, and read
+	// concurrently by agent turns.
+	mu sync.Mutex
 
 	// Default applies when no rule matched a subject+arg (DESIGN §9
 	// built-in defaults: fs.read inside the jail allows except secret
@@ -48,12 +65,18 @@ type Store struct {
 func NewStore() *Store { return &Store{} }
 
 // Add appends a rule (least specific first is fine; evaluation re-sorts).
-func (s *Store) Add(r Rule) { s.rules = append(s.rules, r) }
+func (s *Store) Add(r Rule) {
+	s.mu.Lock()
+	s.rules = append(s.rules, r)
+	s.mu.Unlock()
+}
 
 // Rules returns a copy of all rules.
 func (s *Store) Rules() []Rule {
+	s.mu.Lock()
 	out := make([]Rule, len(s.rules))
 	copy(out, s.rules)
+	s.mu.Unlock()
 	return out
 }
 
@@ -94,7 +117,11 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		byDecision = map[Decision][]cand{}
 		fellThru   []string
 	)
-	for _, r := range s.rules {
+	s.mu.Lock()
+	rules := make([]Rule, len(s.rules))
+	copy(rules, s.rules)
+	s.mu.Unlock()
+	for _, r := range rules {
 		if r.Subject != subject {
 			continue
 		}

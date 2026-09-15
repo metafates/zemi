@@ -1,0 +1,223 @@
+package ui
+
+import (
+	"strings"
+
+	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
+)
+
+// cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
+// "/" as the first character lists the registered commands filtered as you
+// type; up/down navigate, tab/enter accept, esc closes. Submitting a
+// "/name args" line runs the command instead of sending a message. The
+// exact, case-sensitive "/Reload" is the Go-reserved force-reload trigger
+// and never reaches the command registry (DESIGN §4).
+type cmdPalette struct {
+	open     bool
+	matches  []*hostapi.Command
+	selected int
+}
+
+// paletteTrigger reads the configured trigger character; a config value
+// that is not exactly one rune falls back to "/".
+func (a *App) paletteTrigger() string {
+	if v, ok := a.host.Settings.Get("ui.palette.trigger"); ok {
+		if s, ok := v.(string); ok && len([]rune(s)) == 1 {
+			return s
+		}
+	}
+	return "/"
+}
+
+// updatePalette recomputes the palette after a composer edit: it opens
+// while the cursor sits in the first word and that word starts with the
+// trigger character.
+func (a *App) updatePalette() {
+	if !a.paletteEnabled() {
+		a.palette.close()
+		return
+	}
+	tr := a.paletteTrigger()
+	r := a.composer.runes()
+	cur := a.composer.cursor
+	end := cur
+	for end < len(r) && r[end] != ' ' && r[end] != '\n' {
+		end++
+	}
+	if cur == 0 || len(r) == 0 || r[0] != rune(tr[0]) {
+		a.palette.close()
+		return
+	}
+	a.palette.open = true
+	a.palette.rematch(string(r[1:end]), a.host.Commands.List())
+}
+
+func (a *App) paletteEnabled() bool { return a.cfgBool("ui.palette.enabled", true) }
+
+func (p *cmdPalette) close() {
+	p.open = false
+	p.selected = 0
+	p.matches = nil
+}
+
+// rematch filters the command registry against the typed prefix. The
+// prefix is the first word with or without the trigger character; an
+// empty prefix (bare "/") lists every command.
+func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
+	p.matches = p.matches[:0]
+	prefix = strings.ToLower(strings.TrimPrefix(prefix, "/"))
+	if i := strings.IndexAny(prefix, " \t"); i >= 0 {
+		prefix = prefix[:i]
+	}
+	for _, c := range cmds {
+		if strings.HasPrefix(strings.ToLower(c.Name), prefix) {
+			p.matches = append(p.matches, c)
+		}
+	}
+	if p.selected >= len(p.matches) {
+		p.selected = len(p.matches) - 1
+	}
+	if p.selected < 0 {
+		p.selected = 0
+	}
+}
+
+// moveSelection nudges the selection with clamping.
+func (p *cmdPalette) move(d int) {
+	p.selected += d
+	if p.selected < 0 {
+		p.selected = 0
+	}
+	if n := len(p.matches); p.selected >= n {
+		p.selected = n - 1
+	}
+	if p.selected < 0 {
+		p.selected = 0
+	}
+}
+
+// accept fills the composer with the selected "/name " and closes.
+func (a *App) acceptPalette() {
+	p := &a.palette
+	if !p.open || p.selected >= len(p.matches) || p.selected < 0 {
+		return
+	}
+	a.composer.text = "/" + p.matches[p.selected].Name + " "
+	a.composer.cursor = len([]rune(a.composer.text))
+	a.composer.moveEnd()
+	p.close()
+}
+
+// paletteRows renders the popup rows shown above the composer.
+func (a *App) paletteRows(w int) [][]hostapi.Segment {
+	p := &a.palette
+	if !p.open || len(p.matches) == 0 {
+		return nil
+	}
+	maxRows := a.cfgInt("ui.palette.max_items", 8, 1, 20)
+	rows := make([][]hostapi.Segment, 0, maxRows)
+	start := 0
+	if len(p.matches) > maxRows {
+		start = p.selected - maxRows/2
+		if start < 0 {
+			start = 0
+		}
+		if start+maxRows > len(p.matches) {
+			start = len(p.matches) - maxRows
+		}
+	}
+	for i := start; i < len(p.matches) && i < start+maxRows; i++ {
+		c := p.matches[i]
+		mark, nameHL := "  ", ""
+		if i == p.selected {
+			mark, nameHL = "> ", "Title"
+		}
+		name := "/" + c.Name
+		row := []hostapi.Segment{
+			{Text: mark, HL: nameHL},
+			{Text: name, HL: nameHL},
+		}
+		if c.Desc != "" {
+			row = append(row, hostapi.Segment{Text: "  " + c.Desc, HL: "Comment"})
+		}
+		rows = append(rows, truncateSegs(row, w))
+	}
+	if len(p.matches) > maxRows {
+		rows = append(rows, []hostapi.Segment{
+			{Text: "  …", HL: "Comment"},
+		})
+	}
+	return rows
+}
+
+// submitComposer routes the composer submit: slash lines run commands,
+// everything else goes through the vetoable composer.submit event and the
+// agent (DESIGN §6.2, §6.3).
+func (a *App) submitComposer() {
+	text := strings.TrimSpace(a.composer.text)
+	if text == "" {
+		return
+	}
+	a.chatFollow = true
+	if a.paletteEnabled() && strings.HasPrefix(text, a.paletteTrigger()) {
+		a.runSlashCommand(text)
+		return
+	}
+	a.sendMessage(text)
+}
+
+// runSlashCommand executes a "/name args" line. Raw "/Reload" (exact, case
+// sensitive, non-abbreviable) is the Go-reserved force-reload trigger and
+// never reaches the Lua-visible command registry (DESIGN §4, §6.2).
+func (a *App) runSlashCommand(text string) {
+	raw := strings.TrimPrefix(text, a.paletteTrigger())
+	if raw == "Reload" {
+		a.composer.text, a.composer.cursor = "", 0
+		a.palette.close()
+		if a.reload != nil {
+			a.reload()
+		}
+		return
+	}
+	name, args := splitCommand(raw)
+	cmd := a.host.Commands.Lookup(name)
+	if cmd == nil {
+		a.pushToast("warn", "command", "not a command: /"+name)
+		return
+	}
+	a.composer.text, a.composer.cursor = "", 0
+	a.palette.close()
+	a.completion.close()
+	if err := a.host.RunCommand(a.ctx(), cmd.Name, args); err != nil {
+		a.pushToast("error", "/"+name, err.Error())
+	}
+}
+
+// sendMessage runs the composer.submit vetoable event, then appends the
+// message to the transcript and drives the agent (M1 data flow).
+func (a *App) sendMessage(text string) {
+	res := a.host.EmitVetoable(a.ctx(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
+	if res.Denied {
+		a.pushToast("warn", "composer", "blocked: "+res.Reason)
+		return
+	}
+	a.composer.pushHistory(text, a.historySize())
+	a.composer.text = ""
+	a.composer.cursor = 0
+	a.completion.close()
+	a.palette.close()
+	a.host.AppendMessage("user", text)
+	if err := a.host.AgentSend(text); err != nil {
+		a.pushToast("error", "agent", err.Error())
+	}
+}
+
+// splitCommand splits "name arg string" into the command name and the raw
+// argument string.
+func splitCommand(raw string) (name, args string) {
+	if i := strings.Index(raw, " "); i >= 0 {
+		return raw[:i], strings.TrimLeft(raw[i:], " ")
+	}
+	return raw, ""
+}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -25,10 +26,10 @@ type crushFile struct {
 }
 
 type crushProvider struct {
-	Type    string        `json:"type"`
-	BaseURL string        `json:"base_url"`
-	APIKey  string        `json:"api_key"`
-	Models  []crushModel  `json:"models"`
+	Type    string       `json:"type"`
+	BaseURL string       `json:"base_url"`
+	APIKey  string       `json:"api_key"`
+	Models  []crushModel `json:"models"`
 }
 
 type crushModel struct {
@@ -109,9 +110,9 @@ func crushKind(t string) string {
 	}
 }
 
-// crushKey resolves a crush api_key value: "${VAR}" and "env:VAR" read
-// the environment, anything else is a literal. Missing env vars yield an
-// empty key plus a reason.
+// crushKey resolves a crush api_key value: "${VAR}", "$VAR" and
+// "env:VAR" read the environment, anything else is a literal. Missing
+// env vars yield an empty key plus a reason.
 func crushKey(v string) (key, problem string) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -123,6 +124,10 @@ func crushKey(v string) (key, problem string) {
 		name = strings.TrimSuffix(strings.TrimPrefix(v, "${"), "}")
 	case strings.HasPrefix(v, "env:"):
 		name = strings.TrimPrefix(v, "env:")
+	default:
+		if m := dollarName.FindStringSubmatch(v); m != nil {
+			name = m[1]
+		}
 	}
 	if name == "" {
 		return v, ""
@@ -133,6 +138,10 @@ func crushKey(v string) (key, problem string) {
 	}
 	return key, ""
 }
+
+// dollarName matches a whole-value "$VAR" environment reference; crush
+// writes plain $VAR (no braces) in api_key.
+var dollarName = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)$`)
 
 // ImportCrushFile reads path and imports its providers. A missing file is
 // not an error (the knob just has nothing to do).

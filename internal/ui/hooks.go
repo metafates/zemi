@@ -149,14 +149,6 @@ func (a *App) Notify(level, title, body string) {
 	a.dispatch(toastMsg{level: strings.ToLower(level), title: sanitize.String(title), body: sanitize.String(body)})
 }
 
-func (a *App) OpenCmdline(init string) {
-	a.dispatch(cmdlineOpenMsg{prefix: init})
-}
-
-func (a *App) CloseCmdline() {
-	a.dispatch(cmdlineCloseMsg{})
-}
-
 func (a *App) OpenOverlay(o hostapi.Overlay) {
 	a.dispatch(overlayOpenMsg{o: o})
 }
@@ -179,4 +171,10 @@ func (a *App) CloseOverlay(id string) bool {
 // Refresh invalidates the widget caches (state changed outside Update).
 func (a *App) Refresh() {
 	a.dispatch(invalidateMsg{})
+}
+
+// ScrollChat moves the transcript viewport (zemi.ui.scroll.* host
+// actions); posted to the UI goroutine like every other hook.
+func (a *App) ScrollChat(kind string) {
+	a.dispatch(chatScrollMsg{kind: kind})
 }

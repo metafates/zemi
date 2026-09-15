@@ -1,6 +1,6 @@
 // Package ui implements the zemi TUI shell (DESIGN §8): the bubbletea
-// program, region layout, widget line cache, theme resolution, cmdline,
-// overlay stack, toasts, and the key router.
+// program, region layout, widget line cache, theme resolution, slash
+// palette, overlay stack, toasts, and the key router.
 //
 // Single-writer rule: all App state mutates on the bubbletea Update
 // goroutine (or, in tests without a program, directly from the caller's
@@ -23,9 +23,9 @@ import (
 
 const (
 	frameInterval = time.Second / 30
-	pendingMaxAge = time.Second // multi-key pending timeout (DESIGN §6.2)
 	toastTTL      = 4 * time.Second
 	hookQueueSize = 64
+	chatWheelStep = 3
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
@@ -36,14 +36,19 @@ type App struct {
 
 	width, height int
 
-	mode     string // "normal" | "insert"; starts insert (composer focused)
-	pending  string // accumulated multi-key sequence
-	pendAt   time.Time
 	composer composerState
 
-	completion fileCompleter
+	// Chat scrollback (DESIGN §8): chatFollow pins the transcript to the
+	// tail; scrolling up freezes chatTop (the absolute first visible row
+	// of the wrapped chat region) until the user scrolls back or submits.
+	chatFollow bool
+	chatTop    int
+	chatRows   int
+	chatViewH  int
 
-	cmdline  cmdlineState
+	completion fileCompleter
+	palette    cmdPalette
+
 	overlays []overlayState
 	trust    *trustPrompt
 	toasts   []toast
@@ -56,11 +61,13 @@ type App struct {
 	permQueue []permAskMsg
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
+	cfgReview *cfgReviewPrompt
 	question  *questionPrompt
 
-	caches   map[string]*widgetCache
-	frameGen int64
-	timeStr  string
+	caches     map[string]*widgetCache
+	frameGen   int64
+	timeStr    string
+	activeBump time.Time
 
 	bootErr error
 	errFlag bool
@@ -83,13 +90,13 @@ type widgetCache struct {
 // host.SetUIHooks(app).
 func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 	return &App{
-		host:    host,
-		log:     log,
-		thm:     themeResolver{host: host},
-		mode:    "insert",
-		caches:  map[string]*widgetCache{},
-		timeStr: "--:--",
-		hooks:   make(chan tea.Msg, hookQueueSize),
+		host:       host,
+		log:        log,
+		thm:        themeResolver{host: host},
+		caches:     map[string]*widgetCache{},
+		timeStr:    "--:--",
+		chatFollow: true,
+		hooks:      make(chan tea.Msg, hookQueueSize),
 	}
 }
 
@@ -103,10 +110,13 @@ func (a *App) SetReload(fn func()) { a.reload = fn }
 // through the hook channel; safe from any goroutine).
 func (a *App) SignalBoot(err error) { a.dispatch(bootDoneMsg{err: err}) }
 
-// Quit asks the program to exit (Go-reserved :q command).
+// Quit asks the program to exit (Go-reserved /q command). The send must
+// not happen on the UI goroutine: the bubbletea event loop owns the only
+// receive of the (unbuffered) msgs channel and is currently inside our
+// Update, so a direct Quit() deadlocks the /q command.
 func (a *App) Quit() {
 	if a.program != nil {
-		a.program.Quit()
+		go a.program.Quit()
 	}
 }
 
@@ -123,9 +133,9 @@ type widgetRenderedMsg struct {
 	err   error
 }
 
-type pendingTimeoutMsg struct{ seq string }
-
 type invalidateMsg struct{}
+
+type chatScrollMsg struct{ kind string }
 
 type bootDoneMsg struct{ err error }
 
@@ -164,6 +174,11 @@ type memReviewMsg struct {
 	answer chan []int
 }
 
+type cfgReviewMsg struct {
+	items  []hostapi.ConfigRow
+	answer chan cfgReviewVerdict
+}
+
 type questionMsg struct {
 	q      tools.Question
 	answer chan qAnswer
@@ -178,10 +193,6 @@ type toastMsg struct {
 type overlayOpenMsg struct{ o hostapi.Overlay }
 
 type overlayCloseMsg struct{ id string }
-
-type cmdlineOpenMsg struct{ prefix string }
-
-type cmdlineCloseMsg struct{}
 
 // cfgBool reads a bool config key with a fallback.
 func (a *App) cfgBool(key string, def bool) bool {
@@ -232,10 +243,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.onFrame()
 	case widgetRenderedMsg:
 		a.onWidgetRendered(msg)
-	case pendingTimeoutMsg:
-		if a.pending == msg.seq && time.Since(a.pendAt) >= pendingMaxAge-time.Millisecond {
-			a.pending = ""
-		}
 	case invalidateMsg:
 		a.frameGen++
 	case bootDoneMsg:
@@ -263,21 +270,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case memReviewMsg:
 		a.memReview = &memReviewPrompt{items: msg.items, marked: map[int]bool{}, answer: msg.answer}
 		a.frameGen++
+	case cfgReviewMsg:
+		a.cfgReview = &cfgReviewPrompt{items: msg.items, sel: 0, answer: msg.answer}
+		a.frameGen++
 	case questionMsg:
 		a.question = &questionPrompt{q: msg.q, sel: 0, answer: msg.answer}
 		a.frameGen++
 	case toastMsg:
 		a.pushToast(msg.level, msg.title, msg.body)
+	case chatScrollMsg:
+		a.applyChatScroll(msg.kind)
 	case overlayOpenMsg:
 		a.openOverlay(msg.o)
 	case overlayCloseMsg:
 		a.closeOverlayByID(msg.id)
-		a.frameGen++
-	case cmdlineOpenMsg:
-		a.openCmdline(msg.prefix)
-		a.frameGen++
-	case cmdlineCloseMsg:
-		a.closeCmdline()
 		a.frameGen++
 	case hookMsg:
 		_, cmd := a.Update(msg.inner)
@@ -291,10 +297,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.frameTickCmd()
 	case tea.KeyPressMsg:
 		return a, a.handleKey(msg)
-	case tea.PasteMsg:
-		if a.mode != "insert" {
-			return a, nil
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			a.scrollChatRows(-chatWheelStep)
+		case tea.MouseWheelDown:
+			a.scrollChatRows(chatWheelStep)
 		}
+		return a, nil
+	case tea.PasteMsg:
 		s := msg.Content
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
@@ -311,6 +322,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *App) View() tea.View {
 	v := tea.NewView(a.Frame())
 	v.AltScreen = true
+	// Cell motion: the wheel scrolls the transcript. The altscreen buffer
+	// has no native scrollback, so without capture the wheel does nothing.
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
@@ -343,12 +357,20 @@ func (a *App) onFrame() tea.Cmd {
 		a.timeStr = ts
 		a.frameGen++
 	}
+	// While a turn runs, the thought/elapsed readouts must tick even when
+	// no stream events arrive (long reasoning pauses, slow tools). The
+	// snapshot already computes the live durations; the widgets just need
+	// re-rendering (one every 4 frames, ~8/s).
+	if a.host.AgentActive() && now.Sub(a.activeBump) >= 125*time.Millisecond {
+		a.activeBump = now
+		a.frameGen++
+	}
 	cmds = append(cmds, a.renderStaleWidgetsCmd())
 	return tea.Batch(cmds...)
 }
 
 func (a *App) uiState() hostapi.UIState {
-	return hostapi.UIState{Mode: a.mode, Pending: a.pending, Time: a.timeStr}
+	return hostapi.UIState{Time: a.timeStr}
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
@@ -533,14 +555,11 @@ func (a *App) compose(w, h int) string {
 		}}
 	}
 
-	cmdlineH := 0
-	if a.cmdline.open {
-		cmdlineH = 1
-	}
 	compRows := a.composerRows(w)
 	compPopup := a.completionRows(w)
-	// + statusline + composer (+ its completion popup)
-	reserved := len(header) + 1 + cmdlineH + len(compRows) + len(compPopup)
+	palPopup := a.paletteRows(w)
+	// + statusline + composer (+ its popups)
+	reserved := len(header) + 1 + len(compRows) + len(compPopup) + len(palPopup)
 	chatH := h - reserved
 	if chatH < 1 {
 		chatH = 1
@@ -566,12 +585,25 @@ func (a *App) compose(w, h int) string {
 	}
 	chat := a.regionLines("chat", chatW)
 
+	// Chat scrollback (§8): follow pins the window to the tail (chatTop
+	// may go negative when content is shorter than the viewport, which
+	// bottom-anchors it); otherwise chatTop is the absolute first visible
+	// row, clamped so content growth or a narrower rewrap never shows
+	// blank rows.
+	a.chatRows = len(chat)
+	a.chatViewH = chatH
+	if a.chatFollow {
+		a.chatTop = a.chatRows - chatH
+	} else if maxTop := max0(a.chatRows - chatH); a.chatTop > maxTop {
+		a.chatTop = maxTop
+	}
+
 	rows := make([][]hostapi.Segment, 0, h)
 	rows = append(rows, header...)
 
 	for i := 0; i < chatH; i++ {
 		var row []hostapi.Segment
-		if j := len(chat) - chatH + i; j >= 0 {
+		if j := a.chatTop + i; j >= 0 && j < len(chat) {
 			row = truncateSegs(chat[j], chatW)
 		}
 		row = padSegs(row, chatW)
@@ -595,15 +627,10 @@ func (a *App) compose(w, h int) string {
 		rows[idx] = a.toastRow(a.toasts[len(a.toasts)-1-i], w)
 	}
 
-	// Cmdline.
-	if a.cmdline.open {
-		rows = append(rows, a.cmdlineRow(w))
-	}
-
-	// Completion popup above the composer, then the composer rows.
+	// Popups render above the composer, then the composer rows.
 	rows = append(rows, compPopup...)
+	rows = append(rows, palPopup...)
 	rows = append(rows, compRows...)
-
 	// Statusline.
 	rows = append(rows, a.statusRow(w))
 
@@ -624,6 +651,9 @@ func (a *App) compose(w, h int) string {
 	if a.memReview != nil {
 		rows = a.spliceMemReview(rows, a.memReview, w, len(header), chatH)
 	}
+	if a.cfgReview != nil {
+		rows = a.spliceCfgReview(rows, a.cfgReview, w, len(header), chatH)
+	}
 	if a.permAsk != nil {
 		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)
 	}
@@ -638,10 +668,68 @@ func (a *App) compose(w, h int) string {
 	return b.String()
 }
 
+// chatStep is one page of transcript scroll with a one-row overlap, from
+// the last composed chat height (compose runs every frame, so the value is
+// at most one frame stale).
+func (a *App) chatStep() int {
+	if step := a.chatViewH - 1; step > 0 {
+		return step
+	}
+	return 1
+}
+
+// scrollChatRows moves the transcript viewport by n rows (negative =
+// older). Scrolling down re-arms tail follow at the bottom; while
+// scrolled up the view stays anchored as new lines arrive.
+func (a *App) scrollChatRows(n int) {
+	if n > 0 && a.chatFollow {
+		return
+	}
+	if n < 0 && a.chatFollow {
+		a.chatFollow = false
+		a.chatTop = max0(a.chatRows - a.chatViewH)
+	}
+	a.chatTop += n
+	if a.chatTop < 0 {
+		a.chatTop = 0
+	}
+	if a.chatTop+a.chatViewH >= a.chatRows {
+		a.chatFollow = true
+	}
+	a.frameGen++
+}
+
+// applyChatScroll maps the zemi.ui.scroll.* host actions onto the
+// viewport (up/down = one page, top/bottom = the ends).
+func (a *App) applyChatScroll(kind string) {
+	switch kind {
+	case "up":
+		a.scrollChatRows(-a.chatStep())
+	case "down":
+		a.scrollChatRows(a.chatStep())
+	case "top":
+		a.chatFollow = false
+		a.chatTop = 0
+		a.frameGen++
+	case "bottom":
+		a.chatFollow = true
+		a.frameGen++
+	}
+}
+
 func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
-		for _, line := range a.widgetLines(wgt.ID) {
+		lines := a.widgetLines(wgt.ID)
+		if wgt.Wrap {
+			// Word-wrap instead of truncating; the transcript shows the
+			// wrapped tail (bottom-anchored).
+			for _, line := range lines {
+				out = append(out, wrapSegs(line, width)...)
+			}
+			continue
+		}
+		for _, line := range lines {
 			out = append(out, truncateSegs(line, width))
 		}
 	}
@@ -704,7 +792,7 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 	var out []hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
 		lines := a.widgetLines(wgt.ID)
-		if len(lines) == 0 || len(lines[0]) == 0 {
+		if len(lines) == 0 || segsWidth(lines[0]) == 0 {
 			continue
 		}
 		if len(out) > 0 {
@@ -713,26 +801,6 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 		out = append(out, lines[0]...)
 	}
 	return out
-}
-
-func (a *App) cmdlineRow(w int) []hostapi.Segment {
-	row := []hostapi.Segment{
-		{Text: a.cmdline.prefix, HL: "Title"},
-		{Text: a.cmdline.text, HL: "Cmdline"},
-		{Text: "▏", HL: "Title"},
-	}
-	switch {
-	case a.cmdline.err != "":
-		row = append(row, hostapi.Segment{Text: " " + a.cmdline.err, HL: "CmdlineError"})
-	case len(a.cmdline.cands) > 0:
-		cands := a.cmdline.cands
-		tail := ""
-		if len(cands) > 8 {
-			cands, tail = cands[:8], " ..."
-		}
-		row = append(row, hostapi.Segment{Text: " " + strings.Join(cands, " ") + tail, HL: "Comment"})
-	}
-	return truncateSegs(row, w)
 }
 
 func (a *App) toastRow(t toast, w int) []hostapi.Segment {
@@ -810,4 +878,60 @@ func segsWidth(segs []hostapi.Segment) int {
 		n += ansi.StringWidth(s.Text)
 	}
 	return n
+}
+
+// wrapSegs word-wraps one logical line into rows of at most w cells,
+// preserving each chunk's style; words longer than w are hard-split. The
+// transcript is bottom-anchored, so callers concatenate the rows and take
+// the tail.
+func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
+	if w < 1 {
+		w = 1
+	}
+	if segsWidth(line) <= w {
+		return [][]hostapi.Segment{line}
+	}
+	var rows [][]hostapi.Segment
+	var row []hostapi.Segment
+	width := 0
+	flush := func() {
+		rows = append(rows, row)
+		row, width = nil, 0
+	}
+	add := func(text, hl string) {
+		for {
+			if width >= w {
+				flush()
+			}
+			tw := ansi.StringWidth(text)
+			if tw <= w-width {
+				row = append(row, hostapi.Segment{Text: text, HL: hl})
+				width += tw
+				return
+			}
+			cut := ansi.Truncate(text, w-width, "")
+			if cut == "" {
+				flush()
+				continue
+			}
+			row = append(row, hostapi.Segment{Text: cut, HL: hl})
+			text = strings.TrimPrefix(text, cut)
+			flush()
+		}
+	}
+	for _, seg := range line {
+		for _, word := range strings.SplitAfter(seg.Text, " ") {
+			if word == "" {
+				continue
+			}
+			if width+ansi.StringWidth(word) > w && width > 0 {
+				flush()
+			}
+			add(word, seg.HL)
+		}
+	}
+	if width > 0 || len(rows) == 0 {
+		flush()
+	}
+	return rows
 }

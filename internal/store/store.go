@@ -96,10 +96,30 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 );
 CREATE INDEX IF NOT EXISTS tool_calls_message ON tool_calls(message_id, created_at);
 
+CREATE TABLE IF NOT EXISTS skills (
+	name TEXT PRIMARY KEY,
+	path TEXT NOT NULL,
+	source TEXT NOT NULL,
+	enabled INTEGER NOT NULL,
+	created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kv (
 	key TEXT PRIMARY KEY,
 	value_json TEXT NOT NULL,
 	updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS config_revisions (
+	id TEXT PRIMARY KEY,
+	created_at INTEGER NOT NULL,
+	title TEXT NOT NULL,
+	changes_json TEXT NOT NULL DEFAULT '',
+	paths_json TEXT NOT NULL DEFAULT '[]',
+	status TEXT NOT NULL DEFAULT 'pending',
+	applied_by TEXT NOT NULL DEFAULT '',
+	eval_ok INTEGER,
+	commit_sha TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS memory (

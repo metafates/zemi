@@ -47,6 +47,7 @@ func run() error {
 		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
 		{Prefix: dirs.PluginsDir(), Origin: lua.OriginPlugin},
 		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
+		{Prefix: dirs.DataHome + string(filepath.Separator) + "skills", Origin: lua.OriginLearned},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
@@ -60,18 +61,24 @@ func run() error {
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
+	host.EnsureConfigRepo()
 
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
+		host.PermissionsLoadStep(),
 		builtinCommandsStep(host, app),
 		host.MemoryCommandsStep(),
 		host.ReflectorCommandsStep(),
+		host.ConfigCommandsStep(),
+		host.SkillsCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		pluginsStep(dirs),
 		lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
+		host.SkillsAuthoredHooksStep(),
 		projectConfigStep(host, app, dirs),
 		crushImportStep(host, settings),
 		readyStep(host, settings),
+		host.SkillsLearnedHooksStep(),
 	}
 
 	p := tea.NewProgram(app)
@@ -89,6 +96,9 @@ func run() error {
 	}()
 
 	_, err := p.Run()
+	if host.ShutdownReflectPending() {
+		fmt.Fprintln(os.Stderr, "zemi: reflecting on this session (up to 15s, ctrl+c skips)...")
+	}
 	host.ShutdownReflect()
 	return err
 }
@@ -132,8 +142,9 @@ func expandPath(p string) string {
 	return p
 }
 
-// builtinCommandsStep registers the Go-owned shell commands (:q, :qa,
-// :help). They carry the builtin origin, so user config can rebind them.
+// builtinCommandsStep registers the Go-owned shell commands (/q, /help,
+// /sidebar, /model). They carry the builtin origin, so user config can
+// rebind them.
 func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 	return lua.BootStep{
 		Name: "builtin commands",
@@ -144,9 +155,16 @@ func builtinCommandsStep(h *hostapi.Host, app *ui.App) lua.BootStep {
 			}
 			for _, c := range []*hostapi.Command{
 				{Name: "q", Desc: "quit zemi", GoFn: quit, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "qa", Desc: "quit zemi", GoFn: quit, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
-				{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "help", Desc: "show keys and commands", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenHelp()
+					return nil
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "sidebar", Desc: "toggle the sidebar", GoFn: func(h *hostapi.Host, args string) error {
+					h.ToggleSidebar(nil)
+					return nil
+				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
+				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
+					h.OpenModelPicker()
 					return nil
 				}, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(g.ID)},
 			} {

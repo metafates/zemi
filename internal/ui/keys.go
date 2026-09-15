@@ -2,7 +2,6 @@ package ui
 
 import (
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -10,8 +9,9 @@ import (
 )
 
 // handleKey is the key router (DESIGN §6.6 order): Go-reserved triggers,
-// trust prompt, cmdline, active overlay, mode keymap (with pending
-// multi-key state in normal mode), composer, builtin fallbacks.
+// trust prompt, Go-owned chrome overlays, active Lua overlay, then the
+// composer. There are no modes: the composer is always focused and slash
+// commands replace the cmdline.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.frameGen++
@@ -26,6 +26,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPick("", false)
 		case a.memReview != nil:
 			a.answerMemReview()
+		case a.cfgReview != nil:
+			a.answerCfgReview()
 		case a.question != nil:
 			a.answerQuestion("", false)
 		case a.host.AgentActive():
@@ -104,6 +106,28 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// 2c-bis. Config review: Go-owned chrome capturing all keys (§8,
+	// §10.4).
+	if a.cfgReview != nil {
+		switch key {
+		case "up", "k":
+			if a.cfgReview.sel > 0 {
+				a.cfgReview.sel--
+			}
+		case "down", "j":
+			if a.cfgReview.sel < len(a.cfgReview.items)-1 {
+				a.cfgReview.sel++
+			}
+		case "y", "a":
+			a.cfgDecide(true)
+		case "n", "x":
+			a.cfgDecide(false)
+		case "esc", "q":
+			a.answerCfgReview()
+		}
+		return nil
+	}
+
 	// 2d. Question overlay: Go-owned chrome capturing all keys (§8).
 	if a.question != nil {
 		switch key {
@@ -127,61 +151,45 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	// 3. Cmdline.
-	if a.cmdline.open {
-		return a.cmdlineKey(key, msg)
-	}
-
-	// 4. Active overlay.
+	// 3. Active overlay.
 	if len(a.overlays) > 0 {
 		return a.overlayKey(key)
 	}
 
-	// 5. Mode keymap. Normal mode arms the pending state for multi-key
-	// sequences (statusline shows it, 1s timeout, §6.2).
-	if a.mode == "normal" {
-		seq := a.pending + key
-		if b := a.host.Keymaps.Lookup("normal", seq); b != nil {
-			a.pending = ""
-			return a.runRHS(b)
-		}
-		if a.host.Keymaps.IsPrefix("normal", seq) {
-			a.pending = seq
-			a.pendAt = time.Now()
-			return a.pendingTimeoutCmd(seq)
-		}
-		a.pending = ""
-	} else if b := a.host.Keymaps.Lookup("insert", key); b != nil {
-		// Insert mode: exact single-key bindings only (no pending state in
-		// the middle of typing).
+	// 4. Insert-mode keymap bindings: exact single-key bindings, so users
+	// can attach ctrl/alt combos; printable keys stay with the composer.
+	if b := a.host.Keymaps.Lookup("insert", key); b != nil {
 		return a.runRHS(b)
 	}
 
-	// 6. Composer (insert mode; Go-owned multiline editor + completion).
-	if a.mode == "insert" {
-		return a.composerKey(key, msg)
-	}
-
-	// 7. Builtin fallbacks after Lua keymaps missed (normal mode).
-	switch key {
-	case "i":
-		a.mode = "insert"
-	}
-	return nil
+	// 5. Composer (Go-owned multiline editor + popups).
+	return a.composerKey(key, msg)
 }
 
-func (a *App) pendingTimeoutCmd(seq string) tea.Cmd {
-	return func() tea.Msg {
-		time.Sleep(pendingMaxAge)
-		return pendingTimeoutMsg{seq: seq}
-	}
-}
-
-// composerKey routes insert-mode keys to the multiline editor; the
-// completion popup captures navigation while open. Returns a cmd when the
+// composerKey routes keys to the multiline editor; the completion popup and
+// the slash palette capture navigation while open. Returns a cmd when the
 // file scan should launch.
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	c := &a.composer
+
+	if a.palette.open {
+		switch key {
+		case "up":
+			a.palette.move(-1)
+			return nil
+		case "down":
+			a.palette.move(1)
+			return nil
+		case "tab":
+			a.acceptPalette()
+			return nil
+		case "esc":
+			a.palette.close()
+			return nil
+		}
+		// enter falls through: it submits the typed "/name args" line
+		// (running the command), tab is what accepts the selection.
+	}
 
 	if a.completion.open {
 		switch key {
@@ -214,21 +222,27 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "backspace":
 		c.backspace()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "delete":
 		c.delete()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "left":
 		c.left()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "right":
 		c.right()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "home", "ctrl+a":
 		c.lineStart()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "end", "ctrl+e":
 		c.lineEnd()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "up":
 		if strings.Contains(c.text, "\n") {
@@ -236,6 +250,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		} else {
 			c.histPrev()
 		}
+		a.updatePalette()
 		return a.updateCompletion()
 	case "down":
 		if strings.Contains(c.text, "\n") {
@@ -243,6 +258,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		} else {
 			c.histNext()
 		}
+		a.updatePalette()
 		return a.updateCompletion()
 	case "ctrl+p":
 		c.histPrev()
@@ -250,18 +266,23 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		c.histNext()
 	case "ctrl+w", "alt+backspace":
 		c.delWord()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "ctrl+u":
 		c.delToLineStart()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "ctrl+k":
 		c.delToLineEnd()
+		a.updatePalette()
 		return a.updateCompletion()
 	case "esc":
-		a.mode = "normal"
+		a.completion.close()
+		a.palette.close()
 	default:
 		if t := keyText(msg); t != "" {
 			c.insert(t)
+			a.updatePalette()
 			return a.updateCompletion()
 		}
 	}
@@ -283,30 +304,6 @@ func (a *App) runRHS(b *hostapi.KeyBinding) tea.Cmd {
 		a.pushToast("error", "keymap "+b.Keys, err.Error())
 	}
 	return nil
-}
-
-// submitComposer runs the composer.submit vetoable event, then appends the
-// message to the transcript (M0 data flow; DESIGN §6.2, §8).
-func (a *App) submitComposer() {
-	text := strings.TrimSpace(a.composer.text)
-	if text == "" {
-		return
-	}
-	res := a.host.EmitVetoable(a.ctx(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
-	if res.Denied {
-		a.pushToast("warn", "composer", "blocked: "+res.Reason)
-		return
-	}
-	a.composer.pushHistory(text, a.historySize())
-	a.composer.text = ""
-	a.composer.cursor = 0
-	a.completion.close()
-	a.host.AppendMessage("user", text)
-	// M1 data flow (DESIGN §6.3): the message drives the agent; during an
-	// active turn it is enqueued as steering.
-	if err := a.host.AgentSend(text); err != nil {
-		a.pushToast("error", "agent", err.Error())
-	}
 }
 
 // keyText extracts the literal text a keypress should insert (printable

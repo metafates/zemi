@@ -52,7 +52,7 @@ func (a *App) completionEnabled() bool { return a.cfgBool("ui.completion.files",
 // cursor; anything else closes the popup. The returned cmd launches the
 // initial file scan when the popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
-	if !a.completionEnabled() || a.mode != "insert" {
+	if !a.completionEnabled() {
 		a.completion.close()
 		return nil
 	}

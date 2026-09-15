@@ -103,7 +103,7 @@ Layers and ownership:
   fantasy agent wiring, built-in tools, tool pipeline (hooks, permissions,
   execution), prompt assembly.
 - **UI core** (`internal/ui`): bubbletea program, region layout, widget
-  registry, theme/highlight resolution, cmdline, overlay stack.
+  registry, theme/highlight resolution, slash palette, overlay stack.
 - **Learn core** (`internal/learn`): memory store, reflector, skill manager,
   config revision pipeline, eval runner.
 - **Store** (`internal/store`): SQLite + migrations (sessions, messages,
@@ -203,7 +203,7 @@ Contracts that make this safe:
   blocks the queue only for its own duration; documented, configurable
   `timeout`, and tools are required to do I/O via async APIs. A stuck handler
   fails the tool call with an error and marks the runtime "hot";
-  force-reload is the Go-reserved `:Reload` command plus the Go-reserved
+  force-reload is the Go-reserved `/Reload` command plus the Go-reserved
   cancel trigger, never routed through Lua (while hot, every Lua keymap is
   dead; the reserved cancel and reload triggers are not, they dispatch
   before any Lua-visible keymap and are fixed in v1). Reloading builds a
@@ -476,8 +476,8 @@ tighten).
 ### 6.2 Keys, commands, events
 
 ```lua
-zemi.keymap.bind("normal", "gM", "zemi.model.pick", { desc = "pick model" })
-zemi.keymap.bind("insert", "ctrl+e", function() zemi.cmdline.open(":") end)
+zemi.keymap.bind("insert", "ctrl+t", function() zemi.notify({ body = "hi" }) end)
+zemi.keymap.bind("insert", "ctrl+e", "zemi.ui.help", { desc = "help overlay" })
 
 zemi.command.add("Todo", function(args)
     zemi.notify({ body = "todo: " .. (args.args or "") })
@@ -491,8 +491,9 @@ zemi.event.on("tool.pre", function(ev)
 zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
-Key modes: `normal`, `insert` (composer), `overlay`, `command`, `select`
-(item selection in overlays and pickers). Key notation matches bubbletea's
+Keymap bindings carry a mode label, but there are no editor modes: the
+composer is always focused and slash commands replace the old cmdline;
+the shipped UI routes `insert` bindings only. Key notation matches bubbletea's
 normalized strings (`ctrl+s`, `alt+enter`, `esc`); a string right-hand side
 in `zemi.keymap.bind` resolves to a registered command name or a dotted
 host-API call, and executes under the principal of the config that
@@ -505,8 +506,8 @@ last-writer-wins applies only within one origin, so the project config
 loading last cannot shadow a user binding, and `zemi.keymap.del` unmaps
 within the caller's origin only. The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
-exact, case-sensitive, non-abbreviable `:Reload` command) dispatch before
-any Lua-visible keymap and are fixed
+exact, case-sensitive, non-abbreviable `/Reload` command, checked on
+composer submit before any Lua-visible command lookup) are fixed
 in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
@@ -812,16 +813,22 @@ UI extensibility contract:
 - Sidebar visibility/width persists via `zemi.state.put("ui.sidebar.width",
   30)` (kv, §6.5) plus widget registration; a widget alone does not force
   its region open.
-- Key routing: bubbletea key -> normalized string -> Go-reserved triggers
-  (cancel, `:Reload`; checked at the head of routing, before overlay
-  capture and pending-state consumption) -> active overlay keymap ->
-  mode keymap -> focused widget (`zemi.ui.widget.register` takes an
-  optional `keys = function(key) -> handled?` handler; v1 uses it for the
-  shipped chat transcript's scroll keys) -> composer (insert) -> builtin
-  defaults. Overlays capture first, user maps override defaults,
-  `zemi.keymap.del` unmaps.
-- Cmdline: `:` opens a cmdline with command completion; `/` is a shipped
-  command (`/` = search transcript), not a special mode.
+- Key routing: bubbletea key -> normalized string -> Go-reserved cancel
+  trigger -> Go-owned chrome (trust prompt, permission asks, model
+  picker, question/memory/config overlays) -> active Lua overlay ->
+  insert-mode keymap (exact single keys; printable keys stay with the
+  composer; `zemi.ui.widget.register` takes an optional
+  `keys = function(key) -> handled?` handler for widget-specific keys) ->
+  composer (always focused; there are no modes). Overlays capture first,
+  user maps override defaults, `zemi.keymap.del` unmaps.
+- Slash palette: typing the trigger character (`/` by default, config
+  `ui.palette.trigger`) in the composer opens a popup listing registered
+  commands, filtered case-insensitively as you type; `up`/`down`
+  navigate, `tab` accepts (fills `/name `), `enter` submits the typed
+  line, so `/name args` runs the command instead of sending to the
+  model; an unknown name toasts and does not send; `esc` closes. The
+  exact, case-sensitive `/Reload` is Go-reserved: it is checked on
+  composer submit before any Lua-visible command lookup (§4).
 - `zemi.ui.invalidate(id)` (or `id = "all"`) is a no-op in v1 (every
   visible widget re-renders on every generation change anyway); the API
   exists so the later dependency-declared invalidation (§4, §8) can turn
@@ -899,7 +906,9 @@ configured provider later (`zemi.memory.search` signature does not change).
 - **Layout**: header (1 row: session title, profile, model, cwd, token/cost
   tally), chat (flex), composer (3..8 rows, textarea grows), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
-  `priority` ascending, overflow truncates the lowest-priority ones),
+  `priority` ascending, overflow truncates the lowest-priority ones; the
+  shipped `statusline.usage` widget shows the session token tally and
+  the context-window percent, warning colors past 80%/95%),
   sidebar (optional, fixed width, hidden by default on narrow terminals).
   Overlays float, centered or anchored.
 - **Rendering loop**: the state generation is bumped at most once per
@@ -915,8 +924,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   call, tool result, reasoning); tool output is sanitized before render
   (see below); the default chat widget maps blocks to
   lines, applies markdown rendering via glamour for assistant text
-  (cached per block id and width; a frame never re-runs glamour), and
-  supports motion keys in normal mode (`ctrl+u/d`, `g`, `G`, mouse wheel).
+  (cached per block id and width; a frame never re-runs glamour). The
+  view word-wraps (the widget sets `wrap`) and is bottom-anchored: long
+  lines stay visible instead of truncating. Scrollback (`pgup`/`pgdown`,
+  `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport off the tail;
+  a scrolled view stays anchored while new lines fill underneath, and
+  sending a message snaps back to the tail. Persisted reasoning blocks
+  collapse to one `✻ thought Xs (ctrl+o to expand)` line unless shown
+  (default keymaps below).
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and a copy-raw action, so no widget can hide what
@@ -928,9 +943,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   at `agent.finish`.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
-  send/newline,
-  `ctrl+c` cancel turn, `ctrl+u`/`ctrl+d`/`g`/`G`/wheel scroll, `:` cmdline,
-  `/` search, `tab` sidebar toggle, `?` help overlay.
+  send/newline, `ctrl+c` cancel turn, `ctrl+o` toggle reasoning,
+  `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
+  wheel too: mouse cell motion is captured because the altscreen has no
+  native scrollback).
+  Slash commands replace the old cmdline: `/q`, `/help`, `/sidebar`,
+  `/model`, plus the Lua-registered ones (`/remember`, `/memory`,
+  `/config`, `/skills`, `/reflect`); the old `tab` sidebar and `?` help
+  live as `/sidebar` and `/help`.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
@@ -1452,8 +1472,8 @@ toolset (§6.3).
   config, loaded last, cannot replace a user safety hook, a user
   profile, a user command, or the shipped chat widget. Command names
   collide case-insensitively: a registration whose name differs from an
-  existing command only by case is refused, so `:reload`/`:RELOAD`
-  cannot shadow the reserved `:Reload`. MCP tool names (M5) register
+  existing command only by case is refused, so `/reload`/`/RELOAD`
+  cannot shadow the reserved `/Reload`. MCP tool names (M5) register
   through the same cross-origin collision path with `mcp:<server>`
   ranked below `project`, so an MCP server cannot shadow a builtin
   tool, a command, or another origin's registration; two `mcp:<server>`
@@ -1472,7 +1492,7 @@ internal/lua/               interpreter thread, sandbox, marshal (table<->Go), p
 internal/hostapi/           zemi.* namespace implementations (thin adapters)
 internal/agent/             coordinator, session runtime, prompts (templates/), pipeline
 internal/agent/tools/       builtin tools + *.md.tpl descriptions (crush pattern)
-internal/ui/                program, regions, widget registry, themes, cmdline, overlays
+internal/ui/                program, regions, widget registry, themes, slash palette, overlays
 internal/learn/             reflector driver, proposals, revision pipeline, evals
 internal/skills/            SKILL.md discovery, validation, enable/disable
 internal/permission/        rules engine, gate, prompt bridge
@@ -1488,9 +1508,9 @@ docs/                       design (this file), API reference, hooks reference
   + plugins loading; the concurrency core starts here (actor queue with
   priority classes, cancellation, watchdog, hot mode, force-reload);
   namespaces `zemi.config`, `zemi.keymap`,
-  `zemi.command`, `zemi.event`, `zemi.notify`, `zemi.log`, `zemi.cmdline`,
-  `zemi.ui` (widget + theme + overlay); default keymaps (`enter`, `tab`,
-  `:`) present and rebindable; the Go-reserved cancel trigger ships too
+  `zemi.command`, `zemi.event`, `zemi.notify`, `zemi.log`,
+  `zemi.ui` (widget + theme + overlay); default keymaps (`enter`,
+  `ctrl+o`) present and rebindable; the Go-reserved cancel trigger ships too
   (§6.2) and nothing rebinds it; one widget in Lua; golden test harness
   (`x/exp/golden`, `-update`). Exit: `init.lua` rebinds a key and adds a
   statusline segment.

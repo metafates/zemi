@@ -58,7 +58,7 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 
 // TestPermissionRuleValidation covers the zemi.permission.rule contract:
 // examples must be provided and must behave exactly as the rule claims
-// (DESIGN §6.2), allow rules are user/project only, and accepted rules
+// (DESIGN §6.2), allow rules are user-config-only, and accepted rules
 // take effect in the permission engine.
 func TestPermissionRuleValidation(t *testing.T) {
 	h, r := newTestHost(t)
@@ -92,7 +92,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`, "plugin.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "user or project") {
+	if err == nil || !strings.Contains(err.Error(), "only come from user config") {
 		t.Fatalf("plugin-origin allow rule: %v", err)
 	}
 
@@ -295,17 +295,19 @@ type fakeUI struct {
 	pickItems    []ModelOption
 	reviewItems  [][]MemoryRow
 	reviewDelete []int
+	cfgItems     [][]ConfigRow
+	cfgAcceptAll bool
+	cfgRejectAll bool
 	qAsked       []tools.Question
 	qAnswer      string
 	qOK          bool
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
-func (f *fakeUI) OpenCmdline(init string)          {}
-func (f *fakeUI) CloseCmdline()                    {}
 func (f *fakeUI) OpenOverlay(o Overlay)            {}
 func (f *fakeUI) CloseOverlay(id string) bool      { return true }
 func (f *fakeUI) Refresh()                         {}
+func (f *fakeUI) ScrollChat(kind string)           {}
 func (f *fakeUI) AgentEvent(ev AgentEvent)         {}
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
@@ -321,6 +323,22 @@ func (f *fakeUI) PickModel(items []ModelOption, current string) (string, bool) {
 func (f *fakeUI) ReviewMemories(items []MemoryRow) []int {
 	f.reviewItems = append(f.reviewItems, items)
 	return f.reviewDelete
+}
+
+func (f *fakeUI) ReviewConfigs(items []ConfigRow) ([]string, []string) {
+	f.cfgItems = append(f.cfgItems, items)
+	var acc, rej []string
+	if f.cfgAcceptAll {
+		for _, r := range items {
+			acc = append(acc, r.ID)
+		}
+	}
+	if f.cfgRejectAll {
+		for _, r := range items {
+			rej = append(rej, r.ID)
+		}
+	}
+	return acc, rej
 }
 
 func (f *fakeUI) AskQuestion(q tools.Question) (string, bool) {
@@ -451,5 +469,38 @@ func TestPipelineTodosAndJobsWiring(t *testing.T) {
 	persisted, err := h.DB.Todos(sid)
 	if err != nil || len(persisted) != 1 || persisted[0].Content != "first" {
 		t.Fatalf("todos must persist for the session: %v %+v", err, persisted)
+	}
+}
+
+// TestTurnDoneRecordsStats covers the turn stat plumbing: the assistant
+// transcript entry carries tokens, thought time and elapsed time; plain
+// appended messages carry none.
+func TestTurnDoneRecordsStats(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sa := h.streamHooks()
+	sa.ReasoningDelta("pondering")
+	sa.TextDelta("answer")
+	sa.ToolCallStart("t1", "bash", "ls")
+	sa.ToolCallEnd("t1", "bash", true, "")
+	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
+
+	last := h.Session().Transcript[len(h.Session().Transcript)-1]
+	if last.Role != "assistant" || last.Stat == nil {
+		t.Fatalf("last = %+v, want assistant with stats", last)
+	}
+	if last.Stat.In != 100 || last.Stat.Out != 20 {
+		t.Fatalf("stat = %+v", last.Stat)
+	}
+	if last.Stat.ThoughtMS < 0 || last.Stat.ElapsedMS < 0 {
+		t.Fatalf("negative timing: %+v", last.Stat)
+	}
+	if last.Stat.ThoughtMS > 10_000 || last.Stat.ElapsedMS > 10_000 {
+		t.Fatalf("implausible timing: %+v", last.Stat)
+	}
+
+	h.AppendMessage("user", "hi")
+	user := h.Session().Transcript[len(h.Session().Transcript)-1]
+	if user.Role != "user" || user.Stat != nil {
+		t.Fatalf("user message must carry no stats: %+v", user)
 	}
 }

@@ -3,6 +3,7 @@ package lua
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Origin is what a chunk of Lua is attributed to (DESIGN §5, §9). Origin is
@@ -48,16 +49,39 @@ type PathClass struct {
 }
 
 // Classify resolves the origin of a path. The path must already be
-// symlink-resolved by the caller. Unknown paths return "" and are refused
-// at load time.
+// symlink-resolved by the caller. Prefixes are symlink-resolved too
+// (memoized), so a class registered under a path containing symlinked
+// segments still matches its files. Unknown paths return "" and are
+// refused at load time.
 func (pc PathClasses) Classify(resolvedPath string) Origin {
 	resolvedPath = filepath.Clean(resolvedPath)
 	for _, c := range pc {
-		if c.Prefix != "" && strings.HasPrefix(resolvedPath, c.Prefix+string(filepath.Separator)) {
+		if c.Prefix == "" {
+			continue
+		}
+		sep := string(filepath.Separator)
+		if strings.HasPrefix(resolvedPath, c.Prefix+sep) ||
+			strings.HasPrefix(resolvedPath, resolvePrefix(c.Prefix)+sep) {
 			return c.Origin
 		}
 	}
 	return ""
+}
+
+// prefixResolution memoizes EvalSymlinks of registered prefixes: Classify
+// runs on every file load and prefix resolution is filesystem work.
+var prefixResolution sync.Map
+
+func resolvePrefix(p string) string {
+	if v, ok := prefixResolution.Load(p); ok {
+		return v.(string)
+	}
+	res, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		res = p
+	}
+	prefixResolution.Store(p, res)
+	return res
 }
 
 // ChunkName renders the debug name for a chunk: origin-tagged so tracebacks

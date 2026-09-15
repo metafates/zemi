@@ -30,6 +30,9 @@ zemi.ui.theme.register("default", {
     AgentToolRun = { fg = "warn" },
     AgentToolOk = { fg = "ok" },
     AgentToolErr = { fg = "err" },
+    StatusUsage = { fg = "muted" },
+    StatusUsageWarn = { fg = "warn" },
+    StatusUsageErr = { fg = "err", bold = true },
   },
 })
 zemi.ui.theme.set("default")
@@ -49,23 +52,17 @@ zemi.ui.widget.register({
   end,
 })
 
--- Mode indicator with the armed multi-key pending sequence (§6.2) and
--- the live-agent badge (§6.3).
+-- Live-agent badge (§6.3). There are no modes: the composer is always
+-- focused and slash commands replace the old cmdline.
 zemi.ui.widget.register({
-  id = "statusline.mode",
+  id = "statusline.agent",
   region = "statusline.left",
   priority = 10,
   render = function(ctx)
-    local mode = (ctx.mode or "insert"):upper()
-    local hl = mode == "NORMAL" and "Title" or "StatusLineMode"
-    local segs = { { text = " " .. mode .. " ", hl = hl } }
-    if ctx.agent_active then
-      segs[#segs + 1] = { text = " ● agent ", hl = "AgentTag" }
+    if not ctx.agent_active then
+      return { { { text = "" } } }
     end
-    if ctx.pending and ctx.pending ~= "" then
-      segs[#segs + 1] = { text = " " .. ctx.pending, hl = "Comment" }
-    end
-    return { segs }
+    return { { { text = " ● agent", hl = "AgentTag" } } }
   end,
 })
 
@@ -80,29 +77,132 @@ zemi.ui.widget.register({
   end,
 })
 
--- Chat transcript: one `role │ text` row per message, wrapped on the
--- message's own newlines; user rows are accented, the rest muted. Under
--- the transcript, the live agent stream (DESIGN §6.3) renders from the
--- host-owned ctx.agent snapshot: tool call lines, dim reasoning, and the
--- streaming reply; nothing here holds Lua state between frames.
+-- Current model on the right edge (empty when nothing is registered).
+zemi.ui.widget.register({
+  id = "statusline.model",
+  region = "statusline.right",
+  priority = 9,
+  render = function(ctx)
+    local model = ctx.model or ""
+    if model == "" then
+      return { { { text = "" } } }
+    end
+    return { { { text = model, hl = "Comment" } } }
+  end,
+})
+
+-- Session token tally and the context-window fill (§8): "12.3k tok · 45%".
+-- The percent colors by threshold: muted, warn at 80%, err at 95%. Both
+-- numbers come from the host-provided ctx.usage / ctx.context tables.
+zemi.ui.widget.register({
+  id = "statusline.usage",
+  region = "statusline.right",
+  priority = 9,
+  render = function(ctx)
+    local function fmt_tokens(n)
+      if not n or n <= 0 then return nil end
+      if n >= 1000000 then return string.format("%.1fM", n / 1000000) end
+      if n >= 1000 then return string.format("%.1fk", n / 1000) end
+      return string.format("%d", n)
+    end
+    local u = ctx.usage or {}
+    local c = ctx.context or {}
+    local total = fmt_tokens(u.total)
+    if not total then
+      return { { { text = "" } } }
+    end
+    local segs = { { text = total .. " tok", hl = "Comment" } }
+    local pct = tonumber(c.pct or 0)
+    if pct and pct > 0 then
+      local hl = "StatusUsage"
+      if pct >= 95 then
+        hl = "StatusUsageErr"
+      elseif pct >= 80 then
+        hl = "StatusUsageWarn"
+      end
+      segs[#segs + 1] = { text = " · " .. string.format("%d%%", pct), hl = hl }
+    end
+    return { segs }
+  end,
+})
+
+-- Chat transcript: no role names, the gutter makes the roles visually
+-- distinctive instead (user rows carry an accent bar, assistant rows are
+-- plain). The widget sets wrap, so long lines word-wrap instead of being
+-- truncated. Assistant replies carry their turn stats (tokens, thought
+-- time, elapsed) as a muted line; persisted reasoning blocks collapse to
+-- one "✻ thought Xs" line unless ctx.show_reasoning is set (ctrl+o
+-- toggles). Under the transcript, the live agent stream (DESIGN §6.3)
+-- renders from the host-owned ctx.agent snapshot: tool call lines, dim
+-- reasoning, the streaming reply, the model and the running thought time;
+-- nothing here holds Lua state between frames.
 zemi.ui.widget.register({
   id = "chat",
   region = "chat",
   priority = 10,
+  wrap = true,
   render = function(ctx)
+    local function fmt_tokens(n)
+      if not n or n <= 0 then return nil end
+      if n >= 1000000 then return string.format("%.1fM", n / 1000000) end
+      if n >= 1000 then return string.format("%.1fk", n / 1000) end
+      return string.format("%d", n)
+    end
+    local function fmt_secs(s)
+      if not s or s <= 0 then return nil end
+      if s >= 60 then return string.format("%dm%02ds", s / 60, s % 60) end
+      return string.format("%.1fs", s)
+    end
     local lines = {}
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
-      return { { { text = "no messages yet - type below and press enter", hl = "Comment" } } }
+      return { { { text = "no messages yet - type below, or / for commands", hl = "Comment" } } }
     end
-    for _, m in ipairs(tr) do
-      local role_hl = m.role == "user" and "UserMsg" or "Comment"
-      local pad = string.rep(" ", #m.role)
-      local first = true
-      for text in (m.text .. "\n"):gmatch("(.-)\n") do
-        local role_seg = { text = first and m.role or pad, hl = role_hl }
-        lines[#lines + 1] = { role_seg, { text = " │ ", hl = "Comment" }, { text = text, hl = "Normal" } }
-        first = false
+    for i, m in ipairs(tr) do
+      local is_reason = m.kind == "reasoning"
+      -- Reasoning blocks stay attached to the reply they belong to: no
+      -- blank line between user -> reasoning -> assistant text.
+      if i > 1 and not is_reason and (tr[i - 1].kind or "") ~= "reasoning" then
+        lines[#lines + 1] = { { text = "" } }
+      end
+      if is_reason then
+        -- Collapsed by default (Claude Code style); ctrl+o expands. The
+        -- effective state is session toggle, else ui.chat.reasoning.
+        if ctx.show_reasoning then
+          for text in (m.text .. "\n"):gmatch("(.-)\n") do
+            lines[#lines + 1] = { { text = "  ⋮ ", hl = "Comment" }, { text = text, hl = "AgentReason" } }
+          end
+        else
+          local tthought = fmt_secs(m.thought)
+          local label = "✻ thought " .. (tthought or "0s")
+          lines[#lines + 1] = { { text = "  " }, { text = label .. " (ctrl+o to expand)", hl = "AgentReason" } }
+        end
+      else
+        local is_user = m.role == "user"
+        local bar, bar_hl, body_hl = "  ", "", "Normal"
+        if is_user then
+          bar, bar_hl, body_hl = "▌ ", "UserMsg", "UserMsg"
+        end
+        local first = true
+        for text in (m.text .. "\n"):gmatch("(.-)\n") do
+          lines[#lines + 1] = {
+            { text = first and bar or "  ", hl = bar_hl },
+            { text = text, hl = body_hl },
+          }
+          first = false
+        end
+        if not is_user then
+          local parts = {}
+          local tin, tout = fmt_tokens(m["in"]), fmt_tokens(m.out)
+          local tthought, telapsed = fmt_secs(m.thought), fmt_secs(m.elapsed)
+          if tin then parts[#parts + 1] = tin .. " in" end
+          if tout then parts[#parts + 1] = tout .. " out" end
+          if tthought then parts[#parts + 1] = "thought " .. tthought end
+          if telapsed then parts[#parts + 1] = telapsed end
+          if #parts > 0 then
+            lines[#lines + 1] = { { text = "  ↳ ", hl = "Comment" }, { text = table.concat(parts, " · "), hl = "Comment" } }
+          end
+        end
       end
     end
     local ag = ctx.agent or {}
@@ -118,6 +218,11 @@ zemi.ui.widget.register({
         if model and model ~= "" then
           head[#head + 1] = { text = " │ ", hl = "Comment" }
           head[#head + 1] = { text = model, hl = "Comment" }
+        end
+        local tthought = fmt_secs(tonumber(ag.thought or 0))
+        if tthought then
+          head[#head + 1] = { text = " │ ", hl = "Comment" }
+          head[#head + 1] = { text = "✻ " .. tthought, hl = "AgentReason" }
         end
         lines[#lines + 1] = head
       end
@@ -156,7 +261,17 @@ zemi.ui.widget.register({
   end,
 })
 
--- Default keymaps (§8): all rebindable by user config.
-zemi.keymap.bind("normal", ":", "zemi.cmdline.open", { desc = "open cmdline" })
-zemi.keymap.bind("normal", "tab", "zemi.ui.sidebar.toggle", { desc = "toggle sidebar" })
-zemi.keymap.bind("normal", "?", "zemi.ui.help", { desc = "help overlay" })
+-- Default keymap (§8): rebindable by user config. There are no modes;
+-- insert-mode bindings are exact single keys (ctrl/alt combos), so
+-- printable keys stay with the composer. /Reload is reserved and never
+-- reaches the command registry.
+zemi.keymap.bind("insert", "ctrl+o", "zemi.ui.reasoning.toggle", { desc = "toggle reasoning" })
+
+-- Chat scrollback: the transcript is bottom-anchored (the altscreen has
+-- no native scrollback), so the wheel and these keys move the viewport.
+-- Sending a message snaps back to the tail; scrolling down to the bottom
+-- re-arms the follow.
+zemi.keymap.bind("insert", "pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
+zemi.keymap.bind("insert", "pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
+zemi.keymap.bind("insert", "ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
+zemi.keymap.bind("insert", "ctrl+end", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })

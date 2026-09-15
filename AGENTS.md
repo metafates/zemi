@@ -43,13 +43,17 @@ tests boot with empty dirs, so code that requires them needs explicit setup in t
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:64`):
-host namespaces (`zemi.*`) -> builtin commands -> memory + reflector commands ->
+`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:66`) — order
+matters and permissions sit early so no userland code runs before the permanent store loads:
+host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
+builtin commands -> memory + reflector commands -> skills commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
-plugins -> user `init.lua` -> project `.zemi/init.lua` (behind a one-time trust prompt that
-hashes the config tree, refuses symlinks) -> crush.json provider import -> `app.ready`.
-Boot runs on its own goroutine and may block on the trust prompt; results reach the UI via
-a hook channel.
+plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/init.lua` (behind a
+one-time trust prompt that hashes the config tree, refuses symlinks) -> crush.json provider
+import -> `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
+its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
+After all steps, `EnsureConfigRepo()` lazily creates the config git repo (see
+"Permanent rules" below).
 
 ### The concurrency rules (DESIGN §4) — violate these and things deadlock or corrupt
 
@@ -66,13 +70,19 @@ a hook channel.
    channel drained by a persistent cmd (`internal/ui/hooks.go`). hostapi never imports
    internal/ui — it defines `UIHooks` (internal/hostapi/host.go:26) and the App implements
    it; keep that dependency direction (ui -> hostapi, never the reverse).
+   Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or anything it
+   calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
+   loop receives, so the loop would wait on itself (the `/q` hang). Wrap such calls in a
+   goroutine, like `App.Quit` and `OpenModelPicker` do. Blocking hooks (`PickModel`,
+   `AskPermission`, `AskTrust`) must only ever run on non-UI goroutines.
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast**
    (~10 ms). Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have
    a 50 ms Lua-handler deadline and then take a logged default (fail-closed for permission
    asks without an overlay leg).
 6. **The store** (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
-   `MaxOpenConns(1)`. Two handles: global DB (user-scope memory, kv, revisions) and a
+   `MaxOpenConns(1)`. Two handles: global DB (user-scope memory, kv, skills, config
+   revisions) and a
    per-project DB (sessions, messages, todos, tool_calls) at
    `<state>/projects/<sha256(projectDir)[:16]>/zemi.db`. Schema is one `schema` const of
    `CREATE TABLE IF NOT EXISTS` + FTS5 triggers executed on open — add tables there, there
@@ -110,6 +120,56 @@ last-writer-wins. Project origin additionally cannot register providers, profile
 catalogued events are emittable, internal/hostapi/event.go). When adding a registry,
 follow `internal/hostapi/registry.go`.
 
+### Skills (internal/skills, internal/hostapi/skills.go)
+
+Skills are file-based Lua units under `<config>/skills/` with YAML frontmatter (name, desc,
+body file); discovery lives in `internal/skills`, hosting in `internal/hostapi/skills.go`,
+rows in the global DB `skills` table. Invariants:
+
+- **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only
+  user or builtin origin may enable/disable (`memoryManageAllowed` gate at the Lua namespace
+  boundary — NOT inside the Go helper; off-interpreter goroutines read `OriginHost`, which
+  would defeat a Go-side gate, see the concurrency rules). Enabling runs `zemi.skill.load:<name>`
+  hooks: inline if already on the interpreter goroutine (hook fns are invoked from Lua, so
+  they may run `runSkillHook` directly), otherwise enqueued via `h.RT.Do` — the
+  inline-vs-Do split in `enableHook` is load-bearing.
+- **Token efficiency**: the agent prompt carries only the index (name + description capped at
+  160 runes); full bodies load on demand via the `skill` tool after a permission check.
+- **Hook registration placement**: authored skill hooks register at `SkillsAuthoredHooksStep`
+  (after user init.lua), learned ones at `SkillsLearnedHooksStep` (after `app.ready`) — the
+  learned step must not re-run on reload replay without its `Gen` tag.
+
+### Permanent rules + permissions.lua (internal/hostapi/permissions.go, repo.go)
+
+DESIGN §6.1: `permissions.lua` at `ConfigHome` is **data, not code** — Go generates it via
+`permDump()` (versioned `return { version = 1, rules = {...} }`) and reads it back with
+`parsePermissionsDump()`, a strict hand-written parser that never evaluates Lua and accepts
+only the exact generated shape (whitelisted string fields, no function calls, no concat,
+bad file = boot error with empty permanent store). Only `user` origin may create allow or
+permanent rules (project may tighten only); the gate lives at the `zemi.permission.rule`
+namespace closure, same off-interpreter-`OriginHost` reasoning as skills. Adding a permanent
+rule: `permRegenerate()` (tmp file + rename, 0600) then `commitConfigRevision()` — a
+one-line commit ("the keypress is the review", §6.1) recorded in the global-DB
+`config_revisions` table (row lands BEFORE the git commit — crash leaves a pending row,
+the fail-closed direction). Git is the audit trail, files + DB are the source of truth;
+missing git degrades to log warnings. Git helpers shell out to the `git` binary (no git
+library in go.mod), run with `GIT_CONFIG_NOSYSTEM=1` and a 15s timeout.
+
+`skills.autonomy` / `config.autonomy` knobs are currently no-ops for
+skills (skill proposals are mandatory-review by design, DESIGN §10.4);
+`config.autonomy = auto` lets session-scope deny/ask patches auto-apply.
+The reflector (§10.3) may propose config patches as rule objects only —
+`intakeConfigPatch` strict-decodes them (unknown fields refuse the patch)
+and scrubs every leaf; pending patches park in the `cfgProposals` queue
+and the Go-owned `/config` command opens the review card overlay (accept
+applies session rules / permanent ones through the review commit with
+message `learn: <title> (from <session id>)`, reject drops, esc leaves
+queued). The review verdict travels as row IDs, never indices. Every
+applied revision records its config-repo commit SHA (`config_revisions.
+commit_sha`); `/config revisions` lists them and `/config revert <id>` does
+`git revert` + a `revert:` revision row (the perm store reloads on the
+next reload, not in-place).
+
 ## Testing patterns
 
 - `internal/hostapi/host_test.go` has the canonical helpers: `newTestHost(t)` boots a
@@ -117,7 +177,7 @@ follow `internal/hostapi/registry.go`.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.1.0-m1") and namespace members. Growing the Lua API means updating that test and the
+  ("0.1.0-m4") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -125,6 +185,11 @@ follow `internal/hostapi/registry.go`.
 - Tests drive behavior through Lua (`zemi.memory.add(...)` etc.) rather than calling Go
   internals where the Lua contract is the thing being pinned; Go-internal units (perm
   normalizer, learn intake, store) get table tests.
+- Skills/permissions tests: `newTestHostSkills(t)` boots namespaces + skills steps;
+  `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting (for testing discovery of
+  files that must exist first) — every `Boot` builds a fresh generation, so steps sharing
+  state must be passed in ONE call. Permanent-rule tests guard git presence with
+  `exec.LookPath("git")` and clean the dump via temp `ConfigHome`.
 - The sandbox, freeze, and origin-classification behavior in `internal/lua/sandbox_test.go`
   is adversarial by design (monkey-patching attempts must raise); don't weaken those
   assertions to make unrelated changes pass.
@@ -132,9 +197,9 @@ follow `internal/hostapi/registry.go`.
 ## Gotchas and non-obvious conventions
 
 - **DESIGN.md §12 does not match reality** (it predates the code): the actual layout is
-  `internal/tools` (not `internal/agent/tools`), `internal/perm` (not `internal/permission`),
-  no `internal/skills` or `internal/agent/templates` yet. Trust the tree, not §12; §13
-  milestones explain what exists (M0-M2 are largely in, M3+ partly).
+  `internal/tools` (not `internal/agent/tools`) and `internal/perm` (not
+  `internal/permission`); `internal/skills` exists, `internal/agent/templates` does not.
+  Trust the tree, not §12; §13 milestones explain what exists (M0-M2 are in, M3 mostly).
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request
   class. Anything that adds a runtime-mutable member to a namespace must go through the
@@ -155,9 +220,19 @@ follow `internal/hostapi/registry.go`.
   user config cannot set host-owned knobs. Providers ship none; they are registered from
   user config (or imported from the user's `~/.config/crush/crush.json`, best-effort,
   never fails boot — `providers.crush_json` key).
-- **The Go-reserved triggers** (`ctrl+c` cancel, `:Reload`) are never routed through Lua
-  keymaps and cannot be rebound — keep them out of any "make everything rebindable"
-  refactor.
+- **The Go-reserved triggers** (`ctrl+c` cancel, `/Reload`) are never routed through Lua
+  keymaps and cannot be rebound — `/Reload` is matched on composer submit (exact,
+  case-sensitive, before the command registry is consulted), so no registered command can
+  shadow it. Keep them out of any "make everything rebindable" refactor.
+- **No editor modes.** The composer is always focused; commands are slash commands typed in
+  the composer (`/q`, `/help`, `/config`, ...) with the palette popup for completion
+  (`internal/ui/palette.go`). `zemi.keymap.bind` still takes a mode label, but the UI routes
+  `insert` bindings only (exact single keys; printable keys stay with the composer).
+- **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` so the wheel
+  scrolls the transcript (the altscreen buffer has no native scrollback); without it wheel
+  scrolling silently dies. Selection then needs shift-drag in the terminal. Composer
+  editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
+  scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables
   with colon methods; everything else is a plain snapshot copy. Marshaling across the Lua
   <-> Go boundary caps string size (16 MB) and depth (64) and refuses cycles.

@@ -2,7 +2,9 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,6 +215,9 @@ func TestGoldenAgentStream(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 
 	host.AppendMessage("user", "why does the build fail?")
+	host.AppendTurnResult("Read the build log and checked the fixture dir.", hostapi.TurnStat{
+		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
+	})
 	host.SeedStream(hostapi.StreamSnapshot{
 		Active:    true,
 		Text:      "The test binary exits 1 because\nthe fixture path moved.",
@@ -221,8 +226,14 @@ func TestGoldenAgentStream(t *testing.T) {
 			{Name: "read", Input: "internal/fixtures/paths.go", Status: "ok"},
 			{Name: "bash", Input: "go test ./... 2>&1 | tail -5", Status: "run"},
 		},
-		Steering: 1,
-		Model:    "anthropic/claude-sonnet-4-5",
+		Steering:   1,
+		Model:      "anthropic/claude-sonnet-4-5",
+		Thought:    4 * time.Second,
+		Elapsed:    12 * time.Second,
+		SessionIn:  41200,
+		SessionOut: 3800,
+		LastIn:     24500,
+		CtxWindow:  200000,
 	})
 	// A stream event lands through the hook path, bumping the frame.
 	app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "..."})
@@ -254,4 +265,51 @@ func TestCtrlCCancelsTurn(t *testing.T) {
 	if !found {
 		t.Fatalf("expected cancel toast, got %+v", app.toasts)
 	}
+}
+
+// TestWrapSegs covers the chat word-wrap: short lines pass through, long
+// lines wrap at word boundaries with styles preserved, overlong words
+// hard-split.
+func TestWrapSegs(t *testing.T) {
+	short := []hostapi.Segment{{Text: "hi"}}
+	rows := wrapSegs(short, 10)
+	if len(rows) != 1 || len(rows[0]) != 1 || rows[0][0].Text != "hi" {
+		t.Fatalf("short line: %+v", rows)
+	}
+
+	rows = wrapSegs([]hostapi.Segment{{Text: "hello world foo", HL: "A"}}, 11)
+	if len(rows) != 2 || segsText(rows[0]) != "hello " || segsText(rows[1]) != "world foo" {
+		t.Fatalf("word wrap: %+v", rows)
+	}
+	for _, r := range rows {
+		if r[0].HL != "A" {
+			t.Fatalf("style lost: %+v", rows)
+		}
+	}
+
+	rows = wrapSegs([]hostapi.Segment{{Text: "abcdefgh"}}, 4)
+	if len(rows) != 2 || rows[0][0].Text != "abcd" || rows[1][0].Text != "efgh" {
+		t.Fatalf("hard split: %+v", rows)
+	}
+
+	line := []hostapi.Segment{{Text: "one two "}, {Text: "three", HL: "B"}}
+	rows = wrapSegs(line, 7)
+	texts := make([]string, len(rows))
+	for i, r := range rows {
+		texts[i] = segsText(r)
+	}
+	if fmt.Sprint(texts) != "[one  two  three]" {
+		t.Fatalf("multi-segment wrap: %v (%+v)", texts, rows)
+	}
+	if rows[2][0].HL != "B" {
+		t.Fatalf("style lost on wrapped segment: %+v", rows)
+	}
+}
+
+func segsText(segs []hostapi.Segment) string {
+	var b strings.Builder
+	for _, s := range segs {
+		b.WriteString(s.Text)
+	}
+	return b.String()
 }

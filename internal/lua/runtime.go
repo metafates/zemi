@@ -304,6 +304,27 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	return nil
 }
 
+// EvalFileInline loads and runs a file on the caller's interpreter turn:
+// for use from inside a namespace call, which already runs on the
+// interpreter goroutine (Do would deadlock there). The path is
+// symlink-resolved and must classify to a known origin; the origin
+// argument must match the classification, so a caller cannot launder a
+// chunk through a higher-trust origin.
+func (r *Runtime) EvalFileInline(L *glua.LState, path string, origin Origin) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	if class := r.paths.Classify(resolved); class != origin {
+		return fmt.Errorf("refusing %s: resolves to %q origin, not %q", resolved, class, origin)
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return err
+	}
+	return r.runChunk(L, string(data), resolved, origin)
+}
+
 // ---------------------------------------------------------------------------
 // require over the runtimepath
 

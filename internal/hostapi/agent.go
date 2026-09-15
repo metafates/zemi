@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
-	"os"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -87,13 +88,37 @@ type agentHost struct {
 	steering  []string
 	modelSeed string
 
+	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
+	// every turn's counts, lastIn pins the most recent prompt size (the
+	// current context estimate), ctxWin overrides the context window when
+	// the model spec or config provides one.
+	sessIn  int64
+	sessOut int64
+	lastIn  int64
+	ctxWin  int64
+
+	// reasoningShown is the session-scoped expansion override for finished
+	// reasoning blocks (nil = follow ui.chat.reasoning config).
+	reasoningShown *bool
+
+	// turn timing: turnStart pins the wall clock at AgentSend, thinking
+	// tracks the open reasoning block, thought accumulates closed ones.
+	turnStart  time.Time
+	thinkStart time.Time
+	thinking   bool
+	thought    time.Duration
+
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memProposals parks model-proposed memories behind the
 	// autonomy gate, memAuto counts auto-applies against the session cap,
-	// reflected counts closed sessions for the reflector every-N gate.
+	// cfgProposals parks validated config patches for review, cfgAuto
+	// counts auto-applied rules against the rules cap, reflected counts
+	// closed sessions for the reflector every-N gate.
 	digest       string
 	memProposals []*learn.Result
 	memAuto      int
+	cfgProposals []*cfgProposal
+	cfgAuto      int
 	reflected    int
 }
 
@@ -177,7 +202,7 @@ func (h *Host) buildSystem(p *Profile) string {
 		budget -= len(b)
 		sections += "\n\n## Project context: " + f + "\n" + string(b)
 	}
-	return h.withDigest(sys + sections)
+	return h.withDigest(sys + sections + h.skillsIndexPrompt())
 }
 
 // withDigest appends the pinned session digest behind the project context
@@ -265,6 +290,10 @@ func (h *Host) AgentSend(text string) error {
 	ag.textBuf, ag.reasonBuf = "", ""
 	ag.tools = nil
 	ag.modelSeed = ""
+	ag.turnStart = time.Now()
+	ag.thinkStart = time.Time{}
+	ag.thinking = false
+	ag.thought = 0
 	ag.mu.Unlock()
 	h.agentEvent(AgentEvent{Kind: "turn_start"})
 	h.EmitAsync("agent.start", map[string]any{"text": text})
@@ -342,6 +371,7 @@ type streamAdapter struct{ h *Host }
 func (s *streamAdapter) TextDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	ag.endThinking()
 	ag.textBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "text", Text: text})
@@ -350,6 +380,7 @@ func (s *streamAdapter) TextDelta(text string) {
 func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	ag.beginThinking()
 	ag.reasonBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "reasoning", Text: text})
@@ -358,6 +389,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	ag.endThinking()
 	ag.tools = append(ag.tools, StreamTool{Name: name, Input: input, Status: "run"})
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id, Tool: name, Input: input})
@@ -381,9 +413,24 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
+	ag.endThinking()
 	ag.active = false
 	ag.usage = usage
+	ag.sessIn += usage.InputTokens
+	ag.sessOut += usage.OutputTokens
+	ag.lastIn = usage.InputTokens
 	text := ag.textBuf
+	reason := ag.reasonBuf
+	stat := TurnStat{
+		In:        usage.InputTokens,
+		Out:       usage.OutputTokens,
+		ThoughtMS: ag.thought.Milliseconds(),
+	}
+	if !ag.turnStart.IsZero() {
+		stat.ElapsedMS = time.Since(ag.turnStart).Milliseconds()
+	}
+	ag.turnStart, ag.thinkStart = time.Time{}, time.Time{}
+	ag.thinking, ag.thought = false, 0
 	ag.textBuf, ag.reasonBuf = "", ""
 	ag.tools = nil
 	sid := ag.sessionID
@@ -393,8 +440,14 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		Kind: "turn_done", Err: errString(err),
 		PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens,
 	})
+	// The thinking block survives the turn as a collapsible transcript
+	// entry (§8): collapsed to a one-line summary by default, expandable
+	// with the reasoning toggle.
+	if strings.TrimSpace(reason) != "" {
+		h.AppendReasoning(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS})
+	}
 	if err == nil && strings.TrimSpace(text) != "" {
-		h.AppendMessage("assistant", text)
+		h.AppendTurnResult(text, stat)
 	}
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
@@ -494,6 +547,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.sessionID = sid
 	ag.digest = h.digestFor()
 	ag.memAuto = 0
+	ag.cfgAuto = 0
 	ag.mu.Unlock()
 	h.reflectOnClose(prev)
 	return nil
@@ -516,6 +570,16 @@ type StreamSnapshot struct {
 	Model     string
 	Profile   string
 	Steering  int
+	Thought   time.Duration // wall time spent in reasoning blocks
+	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
+
+	// usage tally (DESIGN §8 statusline): session totals, the last prompt
+	// size (the current-context estimate), and the context window used for
+	// the percent readout.
+	SessionIn  int64
+	SessionOut int64
+	LastIn     int64
+	CtxWindow  int64
 }
 
 // AgentStream returns the current stream snapshot.
@@ -527,13 +591,27 @@ func (h *Host) AgentStream() StreamSnapshot {
 	if pr, ok := ag.profiles[p]; ok {
 		p = pr.Model
 	}
+	thought := ag.thought
+	if ag.thinking {
+		thought += time.Since(ag.thinkStart)
+	}
+	var elapsed time.Duration
+	if ag.active && !ag.turnStart.IsZero() {
+		elapsed = time.Since(ag.turnStart)
+	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf,
 		Profile: ag.defProf, Steering: len(ag.steering),
+		Thought: thought, Elapsed: elapsed,
+		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
+		CtxWindow: ag.ctxWin,
 	}
 	out.Model = ag.modelSeed
 	if out.Model == "" {
 		out.Model = h.currentModelID(nil)
+	}
+	if out.CtxWindow == 0 {
+		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	out.Tools = append(out.Tools, ag.tools...)
 	return out
@@ -551,9 +629,36 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	ag.reasonBuf = s.Reasoning
 	ag.tools = s.Tools
 	ag.modelSeed = s.Model
+	ag.thought = s.Thought
+	ag.thinking = false
+	ag.sessIn = s.SessionIn
+	ag.sessOut = s.SessionOut
+	ag.lastIn = s.LastIn
+	ag.ctxWin = s.CtxWindow
+	if s.Elapsed > 0 && s.Active {
+		ag.turnStart = time.Now().Add(-s.Elapsed)
+	} else {
+		ag.turnStart = time.Time{}
+	}
 	ag.steering = nil
 	for i := 0; i < s.Steering; i++ {
 		ag.steering = append(ag.steering, "")
+	}
+}
+
+// beginThinking opens a reasoning block (ag.mu held); endThinking closes
+// any open block into the accumulated thought time.
+func (ag *agentHost) beginThinking() {
+	if !ag.thinking {
+		ag.thinking = true
+		ag.thinkStart = time.Now()
+	}
+}
+
+func (ag *agentHost) endThinking() {
+	if ag.thinking {
+		ag.thought += time.Since(ag.thinkStart)
+		ag.thinking = false
 	}
 }
 
@@ -600,19 +705,23 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		return agent.Spec{}, fmt.Errorf("spec must be a table")
 	}
 	spec := agent.Spec{
-		ID:       rawString(tb, "id"),
-		Kind:     rawString(tb, "kind"),
-		BaseURL:  rawString(tb, "base_url"),
+		ID:        rawString(tb, "id"),
+		Kind:      rawString(tb, "kind"),
+		BaseURL:   rawString(tb, "base_url"),
 		APIKeyEnv: rawString(tb, "api_key_env"),
 	}
 	models, ok := tb.RawGetString("models").(*glua.LTable)
 	if ok {
 		models.ForEach(func(_, mv glua.LValue) {
 			if mt, ok := mv.(*glua.LTable); ok {
-				spec.Models = append(spec.Models, agent.Model{
+				m := agent.Model{
 					ID:      rawString(mt, "id"),
 					Display: rawString(mt, "display"),
-				})
+				}
+				if cw, ok := mt.RawGetString("context_window").(glua.LNumber); ok && cw > 0 {
+					m.ContextWindow = int64(cw)
+				}
+				spec.Models = append(spec.Models, m)
 			}
 		})
 	}
@@ -668,6 +777,41 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	return tb
+}
+
+// contextWindow resolves the context window for the model id: the model
+// spec's context_window, then the agent.context_window config knob, then
+// the 200k default.
+func (h *Host) contextWindow(modelID string) int64 {
+	if v, ok := h.Settings.Get("agent.context_window"); ok {
+		switch n := v.(type) {
+		case int:
+			if n > 0 {
+				return int64(n)
+			}
+		case int64:
+			if n > 0 {
+				return n
+			}
+		case float64:
+			if n > 0 {
+				return int64(n)
+			}
+		}
+	}
+	if modelID != "" {
+		prov, model, ok := strings.Cut(modelID, "/")
+		if ok {
+			if spec, ok := h.Providers.Lookup(prov); ok {
+				for _, m := range spec.Models {
+					if m.ID == model && m.ContextWindow > 0 {
+						return m.ContextWindow
+					}
+				}
+			}
+		}
+	}
+	return 200_000
 }
 
 func (h *Host) modelExists(id string) bool {
@@ -796,6 +940,23 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
+	tb.RawSetString("usage", L.NewFunction(func(L *glua.LState) int {
+		s := h.AgentStream()
+		out := L.NewTable()
+		out.RawSetString("in", glua.LNumber(s.SessionIn))
+		out.RawSetString("out", glua.LNumber(s.SessionOut))
+		out.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
+		out.RawSetString("context_tokens", glua.LNumber(s.LastIn))
+		out.RawSetString("context_window", glua.LNumber(s.CtxWindow))
+		pct := 0.0
+		if s.CtxWindow > 0 {
+			pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
+		}
+		out.RawSetString("context_pct", glua.LNumber(pct))
+		L.Push(out)
+		return 1
+	}))
+
 	return tb
 }
 
@@ -817,6 +978,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			Pattern:  rawString(spec, "pattern"),
 			Decision: perm.Decision(rawString(spec, "decision")),
 			NotMatch: rawString(spec, "not_match"),
+			Scope:    perm.Scope(rawString(spec, "scope")),
 		}
 		if r.Subject == "" || r.Pattern == "" {
 			L.RaiseError("zemi.permission.rule: subject and pattern are required")
@@ -828,15 +990,51 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.rule: decision must be allow, ask or deny")
 			return 0
 		}
-		if r.Decision == perm.Allow && !userOrProject(h.RT.CurrentOrigin()) {
-			L.RaiseError("zemi.permission.rule: allow rules may only come from user or project config")
+		if r.Scope == "" {
+			r.Scope = perm.ScopeSession
+		}
+		if r.Scope != perm.ScopeSession && r.Scope != perm.ScopePermanent {
+			L.RaiseError("zemi.permission.rule: scope must be session or permanent")
 			return 0
+		}
+		origin := h.RT.CurrentOrigin()
+		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
+		// user config only; permanent scope survives restarts, so it is
+		// user-only too (learned proposals reach it only through the
+		// review commit); every other origin may only add session-scope
+		// deny/ask rules.
+		if origin != lua.OriginUser {
+			if r.Decision == perm.Allow {
+				L.RaiseError("zemi.permission.rule: allow rules may only come from user config")
+				return 0
+			}
+			if r.Scope == perm.ScopePermanent {
+				L.RaiseError("zemi.permission.rule: permanent rules may only come from user config")
+				return 0
+			}
 		}
 		if err := validateRuleExamples(r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0
 		}
 		h.Perm.Add(r)
+		if r.Scope == perm.ScopePermanent {
+			if err := h.permRegenerate(); err != nil {
+				L.RaiseError("zemi.permission.rule: %v", err)
+				return 0
+			}
+			// The keypress is the review (§6.1): a permanent rule lands
+			// as a one-line commit; a failed commit is logged, the rule
+			// and the dump stay (the revisions table records failure).
+			changes, _ := json.Marshal(r)
+			title := "rules: " + string(r.Decision) + " " + r.Subject + " " + r.Pattern
+			if err := h.commitConfigRevision(title, string(changes),
+				[]string{"permissions.lua"}, "user"); err != nil {
+				h.Log.Warn("config-repo", "permanent-rule commit failed", map[string]any{
+					"error": err.Error(),
+				})
+			}
+		}
 		return 0
 	}))
 
@@ -848,6 +1046,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			row.RawSetString("pattern", glua.LString(r.Pattern))
 			row.RawSetString("decision", glua.LString(r.Decision))
 			row.RawSetString("not_match", glua.LString(r.NotMatch))
+			row.RawSetString("scope", glua.LString(r.Scope))
 			out.Append(row)
 		}
 		L.Push(out)
@@ -1019,39 +1218,3 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	}
 	return p
 }
-
-// skillIndex resolves enabled skills for the skill tool: authored skills
-// under the config repo (enabled by default) plus learned skills under the
-// data dir (M3 adds the enabled-state store; both are listed today).
-func (h *Host) skillIndex() []tools.SkillInfo {
-	var out []tools.SkillInfo
-	dirs := []string{
-		filepath.Join(h.Dirs.ConfigHome, "skills"),
-		filepath.Join(h.Dirs.DataHome, "skills"),
-	}
-	seen := map[string]bool{}
-	for _, dir := range dirs {
-		if dir == "" {
-			continue
-		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !e.IsDir() || seen[e.Name()] {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err != nil {
-				continue
-			}
-			if seen[e.Name()] {
-				continue
-			}
-			seen[e.Name()] = true
-			out = append(out, tools.SkillInfo{Name: e.Name(), Path: filepath.Join(dir, e.Name())})
-		}
-	}
-	return out
-}
-

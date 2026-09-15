@@ -1,0 +1,69 @@
+// learnapi.go is the zemi.learn namespace (DESIGN §6.7, §10): the
+// pending-proposal surface over the shared proposal queue. v1 proposals
+// are memories (§10.3); decide applies or drops one and requires the user
+// principal behind a user-owned registration origin — the model can
+// propose, never decide.
+package hostapi
+
+import (
+	"github.com/metafates/zemi/internal/learn"
+	glua "github.com/yuin/gopher-lua"
+)
+
+func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+
+	tb.RawSetString("proposals", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		ag := h.agents
+		ag.mu.Lock()
+		queued := append([]*learn.Result(nil), ag.memProposals...)
+		ag.mu.Unlock()
+		for _, p := range queued {
+			m := p.Memory
+			row := L.NewTable()
+			row.RawSetString("id", glua.LString(m.ID))
+			row.RawSetString("kind", glua.LString(m.Kind))
+			row.RawSetString("scope", glua.LString(m.Scope))
+			row.RawSetString("origin", glua.LString(m.Origin))
+			row.RawSetString("text", glua.LString(m.Text))
+			tags := L.NewTable()
+			for _, t := range m.Tags {
+				tags.Append(glua.LString(t))
+			}
+			row.RawSetString("tags", tags)
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+
+	tb.RawSetString("decide", L.NewFunction(func(L *glua.LState) int {
+		id := L.CheckString(1)
+		action := L.CheckString(2)
+		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
+			L.RaiseError("zemi.learn.decide: only user or builtin origin may decide proposals")
+			return 0
+		}
+		if action != "accept" && action != "reject" {
+			L.RaiseError("zemi.learn.decide: action must be accept or reject")
+			return 0
+		}
+		res := h.takeProposal(id)
+		if res == nil {
+			L.RaiseError("zemi.learn.decide: no such proposal %q", id)
+			return 0
+		}
+		if action == "reject" {
+			h.memNotify("info", "learn", "proposal rejected")
+			return 0
+		}
+		if err := h.storeProposal(res); err != nil {
+			L.RaiseError("zemi.learn.decide: %v", err)
+			return 0
+		}
+		return 0
+	}))
+
+	return tb
+}

@@ -26,7 +26,7 @@ import (
 
 // reflectShutdownCap bounds the shutdown reflect so quitting never hangs
 // long even with a generous configured timeout.
-const reflectShutdownCap = 30 * time.Second
+const reflectShutdownCap = 15 * time.Second
 
 // Transcript budget for the reflect prompt: at most reflectMsgsMax
 // messages, each truncated to reflectMsgMax runes, tool outputs harder.
@@ -38,20 +38,23 @@ const (
 
 // reflectorSystem is the shipped reflector prompt (task profile in DESIGN
 // §6.3; the profile itself ships with M5 subagents).
-const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable memories worth keeping for future sessions in the same project.
+const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions in the same project.
 
 Rules:
 - Propose only durable, generalizable knowledge: facts, gotchas, preferences, conventions, decisions. Never propose transient details (file contents, session chatter, this conversation).
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it.
 - Each memory is one self-contained single line, at most 512 characters.
+- Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
-{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}]}
-kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories" entirely when nothing is worth keeping.`
+{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"config":[{"action":"patch","title":"...","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","scope":"permanent","match":"rm -rf build","not_match":"rm -f build"}],"risk":"safe"}]}
+kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories" and "config" entirely when nothing is worth keeping.`
 
-// reflectProposal is the schema-validated model output.
+// reflectProposal is the schema-validated model output. Config patches
+// stay raw at decode time: intakeConfigPatch strict-decodes each one so
+// unknown fields refuse the patch (DESIGN §10.3).
 type reflectProposal struct {
 	Memories []struct {
 		Scope      string   `json:"scope"`
@@ -60,6 +63,7 @@ type reflectProposal struct {
 		Tags       []string `json:"tags"`
 		Supersedes string   `json:"supersedes"`
 	} `json:"memories"`
+	Config []json.RawMessage `json:"config"`
 }
 
 // reflectEveryN reads the trigger gate: reflect every N closed sessions,
@@ -133,11 +137,17 @@ func (h *Host) runReflectDetached(sid string) {
 // ShutdownReflect runs the reflector over the live session once, after the
 // UI is gone: hooks are detached first (a review prompt would block
 // forever on a dead program), the run is bounded by the configured timeout
-// capped at reflectShutdownCap, and failures are logged. Under autonomy
-// "ask" the proposals park in memory and die with the process by design.
+// capped at reflectShutdownCap, and failures are logged. Under "ask"
+// autonomy everywhere it is skipped entirely: the proposals would park in
+// memory and die with the process (DESIGN §10.4), so the LLM call would be
+// pure burn and would freeze the quit for seconds.
 func (h *Host) ShutdownReflect() {
 	sid := h.AgentSessionID()
 	if sid == "" {
+		return
+	}
+	if !h.shutdownReflectUseful() {
+		h.Log.Info("reflector", "shutdown reflect skipped: autonomy ask parks proposals that die with the process", map[string]any{"session": sid})
 		return
 	}
 	if !h.reflectMu.TryLock() {
@@ -155,6 +165,26 @@ func (h *Host) ShutdownReflect() {
 	if err := h.reflectSession(ctx, sid); err != nil {
 		h.Log.Warn("reflector", "shutdown reflect failed", map[string]any{"session": sid, "error": err.Error()})
 	}
+}
+
+// ShutdownReflectPending reports whether ShutdownReflect would run: a live
+// session exists and some autonomy knob could persist its proposals.
+// main.go uses it to print a notice before the bounded wait.
+func (h *Host) ShutdownReflectPending() bool {
+	return h.AgentSessionID() != "" && h.shutdownReflectUseful()
+}
+
+// shutdownReflectUseful reports whether any autonomy knob is set to
+// "auto": under "ask" the shutdown reflect's output dies with the process.
+func (h *Host) shutdownReflectUseful() bool {
+	for _, path := range []string{"memory.autonomy", "config.autonomy"} {
+		if v, ok := h.Settings.Get(path); ok {
+			if s, ok := v.(string); ok && s == "auto" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // reflectSession runs one full reflect cycle for a session: prompt, turn,
@@ -177,13 +207,18 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 		return err
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
+	cfgQueued, cfgApplied, cfgSkipped := h.applyConfigProposals(sid, proposal)
 	h.Log.Info("reflector", "run complete", map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
+		"config_queued": cfgQueued, "config_applied": cfgApplied,
+		"config_skipped": cfgSkipped,
 	})
 	h.EmitAsync("reflector.done", map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
+		"config_queued": cfgQueued, "config_applied": cfgApplied,
+		"config_skipped": cfgSkipped,
 	})
 	return nil
 }
@@ -389,6 +424,33 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 	return stored, queued, superseded, skipped
 }
 
+// applyConfigProposals routes each config patch through the strict §10.3
+// intake (rule objects only, scrubbed leaves) and the config.autonomy
+// gate: deny/ask session-scope patches may auto-apply under "auto",
+// everything else queues for review. Returns counters.
+func (h *Host) applyConfigProposals(sid string, p *reflectProposal) (queued, applied, skipped int) {
+	for _, raw := range p.Config {
+		prop, err := h.intakeConfigPatch(sid, raw)
+		if err != nil {
+			skipped++
+			h.Log.Debug("reflector", "config patch skipped", map[string]any{"error": err.Error()})
+			continue
+		}
+		if h.autoApplyCfgOK(prop) {
+			h.applyCfgProposal(prop)
+			ag := h.agents
+			ag.mu.Lock()
+			ag.cfgAuto += len(prop.Entries)
+			ag.mu.Unlock()
+			applied++
+		} else {
+			h.queueCfgProposal(prop)
+			queued++
+		}
+	}
+	return queued, applied, skipped
+}
+
 // linkSupersede marks an existing memory as replaced by one stored in this
 // run; unknown ids and cross-scope links are dropped with a log.
 func (h *Host) linkSupersede(oldID string, fresh store.Memory) bool {
@@ -410,16 +472,16 @@ func (h *Host) linkSupersede(oldID string, fresh store.Memory) bool {
 	return true
 }
 
-// ReflectorCommandsStep registers the Go-owned :reflect command (builtin
+// ReflectorCommandsStep registers the Go-owned /reflect command (builtin
 // origin, user config may rebind it).
 func (h *Host) ReflectorCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "reflector commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "reflect",
-				Desc: "run the reflector over the current session",
-				GoFn: func(h *Host, args string) error { return h.reflectCommand() },
+				Name:   "reflect",
+				Desc:   "distill this session into memories and config",
+				GoFn:   func(h *Host, args string) error { return h.reflectCommand() },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
 			return err

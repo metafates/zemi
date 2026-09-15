@@ -17,10 +17,13 @@ import (
 	openaicompat "charm.land/fantasy/providers/openaicompat"
 )
 
-// Model is one entry of a provider's catalog.
+// Model is one entry of a provider's catalog. ContextWindow is optional:
+// the token budget the statusline percent readout divides by; models
+// without one fall back to agent.context_window config.
 type Model struct {
-	ID      string `json:"id"`
-	Display string `json:"display"`
+	ID            string `json:"id"`
+	Display       string `json:"display"`
+	ContextWindow int64  `json:"context_window,omitempty"`
 }
 
 // Spec describes one provider: kind selects the fantasy implementation,

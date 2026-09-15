@@ -46,11 +46,11 @@ func TestKeymapPrecedence(t *testing.T) {
 		t.Fatalf("plugin bind: %v", err)
 	}
 	second := bind("normal", "x", lua.OriginPlugin)
-	second.RHS.API = "zemi.cmdline.open"
+	second.RHS.API = "zemi.ui.help"
 	if _, err := r.Bind(second); err != nil {
 		t.Fatalf("plugin rebind (LWW): %v", err)
 	}
-	if got := r.Lookup("normal", "x"); got.RHS.API != "zemi.cmdline.open" {
+	if got := r.Lookup("normal", "x"); got.RHS.API != "zemi.ui.help" {
 		t.Fatalf("LWW within origin did not apply: %+v", got.RHS)
 	}
 }

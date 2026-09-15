@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,8 @@ import (
 
 // The M0 exit test (DESIGN §13): user init.lua rebinds a default key and
 // adds a statusline segment; the composed frame is pinned as a golden.
-func TestGoldenM0Frame(t *testing.T) {	ctx := context.Background()
+func TestGoldenM0Frame(t *testing.T) {
+	ctx := context.Background()
 	cfg, data, state, project := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	// Classify on EvalSymlinks-resolved prefixes (DESIGN §5): on macOS
 	// t.TempDir() hands out /var/... while resolved paths are /private/var/...
@@ -32,9 +34,9 @@ func TestGoldenM0Frame(t *testing.T) {	ctx := context.Background()
 	projectResolved := resolve(project)
 
 	initLua := `
-zemi.keymap.bind("normal", "tab", function()
-  zemi.notify({ title = "rebound", body = "tab pressed" })
-end, { desc = "notify on rebound tab" })
+zemi.keymap.bind("insert", "ctrl+t", function()
+  zemi.notify({ title = "rebound", body = "ctrl+t pressed" })
+end, { desc = "notify on rebound ctrl+t" })
 
 zemi.ui.widget.register({
   id = "user.status",
@@ -72,8 +74,7 @@ zemi.ui.widget.register({
 	}
 
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // insert -> normal
-	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})    // rebound key fires the toast
+	app.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}) // rebound insert-mode key fires the toast
 
 	app.timeStr = "12:34" // pin the clock (host-provided UI state, DESIGN §8)
 	app.renderSync(t)
@@ -135,5 +136,70 @@ func TestGoldenComposerCompletion(t *testing.T) {
 	app.timeStr = "09:41"
 	app.renderSync(t)
 
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenReasoningCollapse pins the persisted thinking block (§8): the
+// reasoning survives the turn as a collapsible transcript entry, collapsed
+// by default to a one-line summary between the user message and the reply.
+func TestGoldenReasoningCollapse(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+
+	host.AppendMessage("user", "why does the build fail?")
+	host.AppendReasoning("checked go.mod, then the fixture dir", hostapi.TurnStat{ThoughtMS: 4200, ElapsedMS: 38000})
+	host.AppendTurnResult("The test binary exits 1 because the fixture path moved.", hostapi.TurnStat{
+		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
+	})
+
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenSlashPalette pins the slash-command popup (§6.6): typing "/"
+// as the first character lists the registered commands, filtered as you
+// type, with the first match highlighted.
+func TestGoldenSlashPalette(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	for _, c := range []*hostapi.Command{
+		{Name: "help", Desc: "show keys and commands"},
+		{Name: "model", Desc: "choose the model"},
+		{Name: "memory", Desc: "review, forget, or supersede memories"},
+	} {
+		if _, err := host.Commands.Add(&hostapi.Command{
+			Name: c.Name, Desc: c.Desc, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, k := range []string{"/", "m", "o"} {
+		app.Update(tea.KeyPressMsg{Code: rune(k[0]), Text: k})
+	}
+
+	app.timeStr = "09:41"
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenChatScroll pins the transcript scrollback (§8): pgup moves the
+// viewport off the tail to earlier lines, which stay anchored while the
+// tail keeps filling underneath.
+func TestGoldenChatScroll(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	for i := 1; i <= 30; i++ {
+		host.AppendMessage("user", fmt.Sprintf("message %d", i))
+		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+	}
+	app.renderSync(t)
+	app.Frame() // establish the viewport metrics
+
+	for app.Pump() {
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	for app.Pump() {
+	}
+
+	app.timeStr = "12:34"
+	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 }

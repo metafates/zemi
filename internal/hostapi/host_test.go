@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // newTestHost boots a fresh runtime with the full host API installed.
@@ -45,13 +45,13 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 
 // TestNamespaceVersion pins the frozen API surface: the zemi root and the
 // boot-installed namespaces resolve from user chunks, and zemi.api reports
-// the M0 version.
+// the M3 version.
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.1.0-m1", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.1.0-m4", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		assert(type(zemi.keymap.bind) == "function", "zemi.keymap.bind missing")
@@ -60,6 +60,11 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.log) == "table", "zemi.log missing")
 		assert(type(zemi.notify) == "table", "zemi.notify missing")
 		assert(type(zemi.ui.theme.set) == "function", "zemi.ui.theme.set missing")
+		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
+		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
+		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
+		assert(type(zemi.learn.proposals) == "function", "zemi.learn.proposals missing")
+		assert(type(zemi.learn.decide) == "function", "zemi.learn.decide missing")
 	`)
 }
 
@@ -207,7 +212,7 @@ func TestEmitVetoable(t *testing.T) {
 	}
 
 	runUser(t, r, `
-		assert(zemi.api.version == "0.1.0-m1", "interpreter wedged after veto timeout")
+		assert(zemi.api.version == "0.1.0-m4", "interpreter wedged after veto timeout")
 	`)
 }
 

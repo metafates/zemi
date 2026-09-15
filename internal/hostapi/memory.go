@@ -99,6 +99,19 @@ func (h *Host) queueProposal(res *learn.Result) {
 // applyProposal stores a proposal and spends one unit of the per-session
 // auto-apply budget.
 func (h *Host) applyProposal(res *learn.Result) error {
+	if err := h.storeProposal(res); err != nil {
+		return err
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	ag.memAuto++
+	ag.mu.Unlock()
+	return nil
+}
+
+// storeProposal writes a policy-clean proposal to its scope's DB and
+// notifies. The auto-apply budget is the caller's concern.
+func (h *Host) storeProposal(res *learn.Result) error {
 	db := h.memoryDB(res.Memory.Scope)
 	if db == nil {
 		return errors.New("memory store unavailable")
@@ -106,10 +119,6 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	if err := db.AddMemory(&res.Memory); err != nil {
 		return err
 	}
-	ag := h.agents
-	ag.mu.Lock()
-	ag.memAuto++
-	ag.mu.Unlock()
 	note := ""
 	if res.Scrubbed {
 		note = " (secrets redacted)"
@@ -118,11 +127,11 @@ func (h *Host) applyProposal(res *learn.Result) error {
 	return nil
 }
 
-// Remember stores a user-typed :remember text (origin user, project
+// Remember stores a user-typed /remember text (origin user, project
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4).
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
-		return errors.New("usage: :remember <text>")
+		return errors.New("usage: /remember <text>")
 	}
 	res, err := h.storeMemory("project", learn.OriginUser, "fact", text, nil)
 	if err != nil {
@@ -143,7 +152,7 @@ func (h *Host) Remember(text string) error {
 	return nil
 }
 
-// memoryCommand dispatches :memory; no args opens the review overlay on
+// memoryCommand dispatches /memory; no args opens the review overlay on
 // its own goroutine so the UI goroutine never blocks on the hook.
 func (h *Host) memoryCommand(args string) error {
 	fields := strings.Fields(args)
@@ -170,7 +179,7 @@ func (h *Host) memoryCommand(args string) error {
 		}
 		return db.SupersedeMemory(fields[1], fields[2])
 	default:
-		return errors.New("usage: :memory | :memory supersede <old> <new> | :memory forget <id>")
+		return errors.New("usage: /memory | /memory forget <id> | /memory supersede <old> <new>")
 	}
 }
 
@@ -224,6 +233,20 @@ func (h *Host) dropProposal(id string) {
 			return
 		}
 	}
+}
+
+// takeProposal removes and returns one queued proposal by id, or nil.
+func (h *Host) takeProposal(id string) *learn.Result {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	for i, p := range ag.memProposals {
+		if p.Memory.ID == id {
+			ag.memProposals = append(ag.memProposals[:i], ag.memProposals[i+1:]...)
+			return p
+		}
+	}
+	return nil
 }
 
 // memoryRows merges queued proposals (first) and live memories from both
@@ -358,11 +381,11 @@ func (h *Host) MemoryCommandsStep() lua.BootStep {
 		Name: "memory commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			for _, c := range []*Command{
-				{Name: "remember", NArgs: "+", Desc: "remember a fact for this project",
-					GoFn: func(h *Host, args string) error { return h.Remember(args) },
+				{Name: "remember", NArgs: "+", Desc: "save a memory for this project",
+					GoFn:   func(h *Host, args string) error { return h.Remember(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
-				{Name: "memory", Desc: "review memories (:memory supersede <old> <new> | forget <id>)",
-					GoFn: func(h *Host, args string) error { return h.memoryCommand(args) },
+				{Name: "memory", NArgs: "*", Desc: "review, forget, or supersede memories",
+					GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
 			} {
 				if _, err := h.Commands.Add(c); err != nil {

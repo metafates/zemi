@@ -125,6 +125,10 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if h.refuseDuringRender(L, "zemi.tool.register") {
 			return 0
 		}
+		if h.RT.CurrentOrigin() == lua.OriginLearned {
+			L.RaiseError("zemi.tool.register: learned code may not register tools (DESIGN §10.4, §10.5)")
+			return 0
+		}
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.register: spec must be a table")
@@ -187,6 +191,10 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("override", L.NewFunction(func(L *glua.LState) int {
 		if h.refuseDuringRender(L, "zemi.tool.override") {
+			return 0
+		}
+		if o := h.RT.CurrentOrigin(); o == lua.OriginLearned || o == lua.OriginProject {
+			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
 			return 0
 		}
 		name := L.CheckString(1)
@@ -270,7 +278,7 @@ func (a *luaToolAdapter) Info() fantasy.ToolInfo {
 	}
 }
 
-func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions  { return nil }
+func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (a *luaToolAdapter) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {

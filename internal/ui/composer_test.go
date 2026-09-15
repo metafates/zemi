@@ -163,14 +163,19 @@ func TestCompletionFlow(t *testing.T) {
 	if got := app.composer.text; got != "see internal/ui/app.go " {
 		t.Fatalf("accepted text: %q", got)
 	}
-	// A trigger mid-word does not open; esc still lands in normal mode.
+	// A trigger mid-word does not open; esc closes an open palette.
 	send(k{"a", "a"}, k{"@", "@"})
 	if app.completion.open {
 		t.Fatal("popup opened mid-word")
 	}
+	app.composer.text, app.composer.cursor = "/qui", 4
+	app.updatePalette()
+	if !app.palette.open {
+		t.Fatal("palette not open after trigger")
+	}
 	app.composerKey("esc", tea.KeyPressMsg{})
-	if app.mode != "normal" {
-		t.Fatalf("esc mode: %s", app.mode)
+	if app.palette.open || app.completion.open {
+		t.Fatal("popups open after esc")
 	}
 }
 
@@ -236,40 +241,81 @@ func TestMatchScore(t *testing.T) {
 	}
 }
 
-func TestCmdlineComplete(t *testing.T) {
+func TestPaletteComplete(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	add := func(name string) {
+	ran := false
+	add := func(name string, fn func(h *hostapi.Host, args string) error) {
 		if _, err := app.host.Commands.Add(&hostapi.Command{
-			Name: name, Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+			Name: name, Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1), GoFn: fn,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	add("q")
-	add("qa")
-	add("quitall")
+	add("q", nil)
+	add("qa", nil)
+	add("echo", func(h *hostapi.Host, args string) error { ran = args == "hi"; return nil })
 
-	app.openCmdline(":")
-	app.cmdline.text = "q"
-	app.completeCmdline()
-	if app.cmdline.text != "q" {
-		t.Fatalf("lcp text: %q", app.cmdline.text)
+	type k struct {
+		key  string
+		text string
 	}
-	if len(app.cmdline.cands) != 3 {
-		t.Fatalf("cands: %v", app.cmdline.cands)
+	send := func(ks ...k) {
+		for _, x := range ks {
+			app.composerKey(x.key, tea.KeyPressMsg{Text: x.text})
+		}
 	}
-	app.cmdline.text = "qui"
-	app.completeCmdline()
-	if app.cmdline.text != "quitall " {
-		t.Fatalf("unique complete: %q", app.cmdline.text)
+
+	send(k{"/", "/"})
+	if !app.palette.open || len(app.palette.matches) != 3 {
+		t.Fatalf("palette after /: open=%v matches=%d", app.palette.open, len(app.palette.matches))
 	}
-	if len(app.cmdline.cands) != 0 {
-		t.Fatalf("cands after unique: %v", app.cmdline.cands)
+	send(k{"q", "q"})
+	if len(app.palette.matches) != 2 {
+		t.Fatalf("matches after /q: %d", len(app.palette.matches))
 	}
-	// Typing clears the candidate list.
-	app.cmdline.cands = []string{"q"}
-	app.cmdlineKey("x", tea.KeyPressMsg{Text: "x"})
-	if app.cmdline.cands != nil {
-		t.Fatalf("cands not cleared: %v", app.cmdline.cands)
+	// Down, then up returns to the first match; tab accepts it.
+	send(k{"down", ""}, k{"up", ""}, k{"tab", ""})
+	if app.palette.open {
+		t.Fatal("palette open after accept")
+	}
+	if got := app.composer.text; got != "/q " {
+		t.Fatalf("accepted text: %q", got)
+	}
+	// Args keep the palette open and do not shrink the first-word filter.
+	send(k{"e", "e"})
+	if !app.palette.open || len(app.palette.matches) != 2 || app.palette.matches[0].Name != "q" {
+		t.Fatalf("matches after /q e: %v", app.palette.matches)
+	}
+	// Esc clears the composer line and closes the palette.
+	send(k{"backspace", ""}, k{"backspace", ""})
+	app.composerKey("esc", tea.KeyPressMsg{})
+	if app.palette.open || app.composer.text != "/q" {
+		t.Fatalf("esc: open=%v text=%q", app.palette.open, app.composer.text)
+	}
+
+	// Submitting a unique command runs it with the argument string.
+	app.composer.text, app.composer.cursor = "/echo hi", 8
+	app.updatePalette()
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if !ran || app.composer.text != "" {
+		t.Fatalf("submit: ran=%v text=%q", ran, app.composer.text)
+	}
+
+	// An unknown slash line is not sent and keeps the text for fixing.
+	app.composer.text, app.composer.cursor = "/nope", 5
+	app.updatePalette()
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != "/nope" {
+		t.Fatalf("unknown submit cleared text: %q", got)
+	}
+	if len(app.toasts) == 0 {
+		t.Fatal("no toast for unknown command")
+	}
+
+	// The reserved /Reload never reaches the registry.
+	app.composer.text, app.composer.cursor = "/Reload", 7
+	app.updatePalette()
+	if len(app.palette.matches) != 0 {
+		t.Fatalf("/Reload listed: %d", len(app.palette.matches))
 	}
 }

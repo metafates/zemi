@@ -9,15 +9,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -25,15 +25,15 @@ import (
 // internal/ui; hostapi never imports the UI.
 type UIHooks interface {
 	Notify(level, title, body string)
-	OpenCmdline(init string)
-	CloseCmdline()
 	OpenOverlay(o Overlay)
 	CloseOverlay(id string) bool
 	Refresh()
+	ScrollChat(kind string)
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
 	ReviewMemories(items []MemoryRow) (deleteIdx []int)
+	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
 	AskQuestion(q tools.Question) (answer string, ok bool)
 }
 
@@ -51,10 +51,24 @@ type Overlay struct {
 	Gen        Gen
 }
 
-// ChatMessage is an M0 transcript entry (composer submissions).
+// ChatMessage is an M0 transcript entry (composer submissions); assistant
+// replies carry the turn stats the chat widget renders. Kind marks the
+// entry shape: "" (plain message) or "reasoning" (a finished thinking
+// block the chat widget collapses to a one-line summary).
 type ChatMessage struct {
 	Role string
+	Kind string
 	Text string
+	Stat *TurnStat
+}
+
+// TurnStat summarizes one completed agent turn: token counts and wall
+// time (thought = time spent in reasoning blocks).
+type TurnStat struct {
+	In        int64
+	Out       int64
+	ThoughtMS int64
+	ElapsedMS int64
 }
 
 // Host bundles the core services the zemi.* namespaces adapt.
@@ -92,15 +106,18 @@ type Host struct {
 	tMu     sync.Mutex
 	session *Session
 
-	watches *watchReg
-	agents  *agentHost
+	watches  *watchReg
+	agents   *agentHost
 	luaTools *toolReg
-	timers  *timerReg
+	timers   *timerReg
 
 	// memReviewMu serializes the :memory review overlay: the hook runs on
 	// its own goroutine (cmdline execution sits on the UI goroutine, which
 	// must never block on a hook).
 	memReview sync.Mutex
+
+	// cfgReview serializes the :review overlay the same way.
+	cfgReview sync.Mutex
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// reflectModelFn stubs the reflector model in tests.
@@ -109,6 +126,10 @@ type Host struct {
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
+
+	// skillsReg caches discovery + enabled state (M3, DESIGN §10.5); DB
+	// rows in the global store are the durable state.
+	skillsReg *skillReg
 
 	hostActions map[string]func(h *Host, args string) error
 }
@@ -124,32 +145,40 @@ type Session struct {
 // failures surface at the namespaces boot step).
 func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs config.Dirs) *Host {
 	h := &Host{
-		RT:       rt,
-		Log:      log,
-		Settings: settings,
-		Dirs:     dirs,
-		Keymaps:  NewKeymapRegistry(),
-		Commands: NewCommandRegistry(),
-		Widgets:  NewWidgetRegistry(),
-		Events:   NewEventRegistry(),
-		Themes:   NewThemeRegistry(),
-		session:  &Session{Title: "zemi", CWD: dirs.ProjectDir},
-		watches:  newWatchReg(),
+		RT:        rt,
+		Log:       log,
+		Settings:  settings,
+		Dirs:      dirs,
+		Keymaps:   NewKeymapRegistry(),
+		Commands:  NewCommandRegistry(),
+		Widgets:   NewWidgetRegistry(),
+		Events:    NewEventRegistry(),
+		Themes:    NewThemeRegistry(),
+		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
+		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
 		Perm:      perm.NewStore(),
 		agents:    newAgentHost(),
 		luaTools:  newToolReg(),
 		timers:    newTimerReg(),
 		jobs:      tools.NewJobs(),
+		skillsReg: &skillReg{},
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {
 		h.DB, h.GlobalDB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.cmdline.open":      func(h *Host, args string) error { h.hooks().OpenCmdline(args); return nil },
 		"zemi.ui.sidebar.toggle": func(h *Host, _ string) error { h.ToggleSidebar(nil); return nil },
 		"zemi.ui.help":           func(h *Host, _ string) error { h.OpenHelp(); return nil },
+		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
+			h.ToggleReasoning()
+			return nil
+		},
+		"zemi.ui.scroll.up":     func(h *Host, _ string) error { h.scrollChat("up"); return nil },
+		"zemi.ui.scroll.down":   func(h *Host, _ string) error { h.scrollChat("down"); return nil },
+		"zemi.ui.scroll.top":    func(h *Host, _ string) error { h.scrollChat("top"); return nil },
+		"zemi.ui.scroll.bottom": func(h *Host, _ string) error { h.scrollChat("bottom"); return nil },
 		"zemi.model.pick": func(h *Host, _ string) error {
 			if id, ok := h.pickModel(); ok {
 				_, _ = h.Settings.SetQuiet("agent.model", id)
@@ -157,7 +186,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			}
 			return nil
 		},
-		"zemi.reload":            nil, // Go-reserved; never dispatched here
+		"zemi.reload": nil, // Go-reserved; never dispatched here
 	}
 	return h
 }
@@ -181,11 +210,31 @@ func (h *Host) refresh() {
 	}
 }
 
+// scrollChat routes a transcript scroll request to the UI (no-op before
+// the UI attaches, e.g. headless runs).
+func (h *Host) scrollChat(kind string) {
+	if ui := h.hooks(); ui != nil {
+		ui.ScrollChat(kind)
+	}
+}
+
+// OpenModelPicker opens the Go-owned model picker overlay without blocking
+// the caller; the chosen model is stored when the user answers. Unlike the
+// zemi.model.pick host action (which returns the id to Lua) this is safe to
+// call from the UI goroutine, e.g. the /model slash command.
+func (h *Host) OpenModelPicker() {
+	go func() {
+		if id, ok := h.pickModel(); ok {
+			_, _ = h.Settings.SetQuiet("agent.model", id)
+			h.refresh()
+		}
+	}()
+}
+
 // ToggleSidebar flips the sidebar config value. L is the interpreter state
 // when called from a Lua closure (watches are delivered inline on it); nil
 // means a non-interpreter caller and watches go back through the queue.
-func (h *Host) ToggleSidebar(L *glua.LState) {
-	cur := false
+func (h *Host) ToggleSidebar(L *glua.LState) {	cur := false
 	if v, ok := h.Settings.Get("ui.sidebar.open"); ok {
 		if b, ok := v.(bool); ok {
 			cur = b
@@ -230,8 +279,33 @@ func (h *Host) Session() Session {
 
 // AppendMessage adds a transcript entry and refreshes the UI.
 func (h *Host) AppendMessage(role, text string) {
+	h.appendChatMessage(ChatMessage{Role: role, Text: text})
+}
+
+// appendChatMessage appends a transcript entry with an explicit kind and
+// refreshes the UI.
+func (h *Host) appendChatMessage(m ChatMessage) {
 	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: role, Text: text})
+	h.session.Transcript = append(h.session.Transcript, m)
+	h.tMu.Unlock()
+	h.refresh()
+}
+
+// AppendTurnResult adds the assistant reply with its turn stats (tokens,
+// thought time, elapsed time) for the chat widget to render.
+func (h *Host) AppendTurnResult(text string, stat TurnStat) {
+	h.tMu.Lock()
+	h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: "assistant", Text: text, Stat: &stat})
+	h.tMu.Unlock()
+	h.refresh()
+}
+
+// AppendReasoning adds the persisted thinking block of a finished turn:
+// the chat widget collapses it to a one-line summary unless the reasoning
+// toggle is on (§8). Called by the agent loop's TurnDone.
+func (h *Host) AppendReasoning(text string, stat TurnStat) {
+	h.tMu.Lock()
+	h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 	h.tMu.Unlock()
 	h.refresh()
 }
@@ -239,7 +313,7 @@ func (h *Host) AppendMessage(role, text string) {
 // AppendChatLine appends a transcript line from Lua (via zemi.notify).
 func (h *Host) AppendChatLine(text string) { h.AppendMessage("user", text) }
 
-// OpenHelp opens the help overlay listing keymaps and commands.
+// OpenHelp opens the help overlay listing slash commands and keymaps.
 func (h *Host) OpenHelp() {
 	ui := h.hooks()
 	if ui == nil {
@@ -257,7 +331,7 @@ func (h *Host) OpenHelp() {
 	}
 	for _, c := range h.Commands.List() {
 		items = append(items, map[string]any{
-			"kind": "command", "name": c.Name, "desc": c.Desc,
+			"kind": "command", "name": "/" + c.Name, "desc": c.Desc,
 		})
 	}
 	ui.OpenOverlay(Overlay{
@@ -271,12 +345,50 @@ func (h *Host) OpenHelp() {
 func describeRHS(rhs RHS) string {
 	switch {
 	case rhs.Command != "":
-		return ":" + rhs.Command
+		return "/" + rhs.Command
 	case rhs.API != "":
 		return rhs.API
 	default:
 		return "<function>"
 	}
+}
+
+// ToggleReasoning flips the session-scoped reasoning expansion override
+// (ctrl+o, §8): finished thinking blocks collapse to a one-line summary by
+// default and this shows them in full, or hides them again.
+func (h *Host) ToggleReasoning() {
+	ag := h.agents
+	ag.mu.Lock()
+	v := h.reasoningShown()
+	nv := !v
+	ag.reasoningShown = &nv
+	ag.mu.Unlock()
+	h.refresh()
+}
+
+// ReasoningShown reports whether finished reasoning blocks render expanded:
+// the session toggle wins, then the ui.chat.reasoning config knob.
+func (h *Host) ReasoningShown() bool {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return h.reasoningShown()
+}
+
+// reasoningShown reads the effective expansion state (agents.mu held).
+func (h *Host) reasoningShown() bool {
+	if h.agents.reasoningShown != nil {
+		return *h.agents.reasoningShown
+	}
+	if v, ok := h.Settings.Get("ui.chat.reasoning"); ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+		if f, ok := v.(float64); ok {
+			return f != 0
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -527,17 +639,13 @@ func convertSegments(v any) ([][]Segment, error) {
 
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
-	Mode    string
-	Pending string
-	Time    string
+	Time string
 }
 
 func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LTable {
 	sess := h.Session()
 	tb := L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
-	tb.RawSetString("mode", glua.LString(state.Mode))
-	tb.RawSetString("pending", glua.LString(state.Pending))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("cwd", glua.LString(sess.CWD))
 	stream := h.AgentStream()
@@ -547,12 +655,17 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
+	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
+	tb.RawSetString("usage", usageTable(L, stream))
+	tb.RawSetString("context", contextTable(L, stream))
 	at := L.NewTable()
 	at.RawSetString("active", glua.LBool(stream.Active))
 	at.RawSetString("model", glua.LString(stream.Model))
 	at.RawSetString("text", glua.LString(stream.Text))
 	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
 	at.RawSetString("steering", glua.LNumber(stream.Steering))
+	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
+	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
 	toolsTb := L.NewTable()
 	for _, t := range stream.Tools {
 		row := L.NewTable()
@@ -567,11 +680,42 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	for _, m := range sess.Transcript {
 		row := L.NewTable()
 		row.RawSetString("role", glua.LString(m.Role))
+		row.RawSetString("kind", glua.LString(m.Kind))
 		row.RawSetString("text", glua.LString(m.Text))
+		if m.Stat != nil {
+			row.RawSetString("in", glua.LNumber(m.Stat.In))
+			row.RawSetString("out", glua.LNumber(m.Stat.Out))
+			row.RawSetString("thought", glua.LNumber((time.Duration(m.Stat.ThoughtMS) * time.Millisecond).Seconds()))
+			row.RawSetString("elapsed", glua.LNumber((time.Duration(m.Stat.ElapsedMS) * time.Millisecond).Seconds()))
+		}
 		tr.Append(row)
 	}
 	tb.RawSetString("transcript", tr)
 	return tb
+}
+
+// usageTable is the session token tally for widgets (DESIGN §8): totals
+// across all turns of this session.
+func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
+	u := L.NewTable()
+	u.RawSetString("in", glua.LNumber(s.SessionIn))
+	u.RawSetString("out", glua.LNumber(s.SessionOut))
+	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
+	return u
+}
+
+// contextTable is the current-context estimate: the last prompt size
+// against the model's context window, with the percent for the statusline.
+func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
+	c := L.NewTable()
+	c.RawSetString("tokens", glua.LNumber(s.LastIn))
+	c.RawSetString("window", glua.LNumber(s.CtxWindow))
+	pct := 0.0
+	if s.CtxWindow > 0 {
+		pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
+	}
+	c.RawSetString("pct", glua.LNumber(pct))
+	return c
 }
 
 // ---------------------------------------------------------------------------
@@ -661,6 +805,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	}
 	L := g.L
 	h.gen.Store(g.ID)
+	h.syncSkills()
 
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
 		if call != nil {
@@ -679,7 +824,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.event", h.eventNamespace(L), nil},
 		{"zemi.log", h.logNamespace(L), h.logCall(L)},
 		{"zemi.notify", h.notifyNamespace(L), h.notifyCall(L)},
-		{"zemi.cmdline", h.cmdlineNamespace(L), nil},
 		{"zemi.ui", h.uiNamespace(L, g.SB), nil},
 		{"zemi.env", h.envNamespace(L), nil},
 		{"zemi.state", h.stateNamespace(L), nil},
@@ -694,6 +838,8 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.agent", h.agentNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
 		{"zemi.memory", h.memoryNamespace(L), nil},
+		{"zemi.skills", h.skillsNamespace(L), nil},
+		{"zemi.learn", h.learnNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {
@@ -701,7 +847,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.1.0-m1"))
+	api.RawSetString("version", glua.LString("0.1.0-m4"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
