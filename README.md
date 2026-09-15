@@ -191,7 +191,7 @@ for scripts. `zemi --help` lists every flag.
 
 | Key | Action |
 | --- | --- |
-| `enter` / `alt+enter` | send / newline |
+| `enter` / `alt+enter`, `ctrl+j` | send / newline |
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
 | `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
