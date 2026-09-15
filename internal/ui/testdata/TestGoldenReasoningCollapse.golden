@@ -6,7 +6,7 @@
                                                                                 
 [38;2;122;162;247m▌ [m[38;2;192;202;245mwhy does the build fail?[m                                                      
                                                                                 
-[38;2;122;162;247m  ✻ [m[38;2;86;95;137mThought for 4.2s[m[38;2;86;95;137m  ctrl+o to read[m                                            
+[38;2;122;162;247m  ✻ [m[38;2;86;95;137mThought for 4.2s[m[38;2;86;95;137m  click or ctrl+o to read[m                                   
   [38;2;192;202;245mThe test binary exits 1 because the fixture path moved.[m                       
 [38;2;86;95;137m  38.0s · 1.2k out[m                                                              
                                                                                 

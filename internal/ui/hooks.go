@@ -51,6 +51,7 @@ var hostStyles = map[string]uv.Style{
 	"Host:Btn":         {Fg: rgb(0xa9b1d6), Bg: rgb(0x2b2f45)},
 	"Host:BtnSel":      {Fg: rgb(0x16161e), Bg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
 	"Host:BtnNo":       {Fg: rgb(0x16161e), Bg: rgb(0xf7768e), Attrs: uv.AttrBold},
+	"Host:Selection":   {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c)},
 }
 
 var hostTitleBg = map[string]ansi.RGBColor{

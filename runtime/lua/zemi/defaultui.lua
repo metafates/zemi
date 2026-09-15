@@ -404,7 +404,7 @@ zemi.ui.widget.register({
       if m.kind == "reasoning" then
         local secs = fmt_secs(m.thought)
         local label = secs and ("Thought for " .. secs) or "Thought"
-        local hint = (i == last_reason and not ctx.show_reasoning) and "ctrl+o to read" or nil
+        local hint = (i == last_reason and not ctx.show_reasoning) and "click or ctrl+o to read" or nil
         add_reasoning(label, hint, m.text)
       elseif m.kind == "tool" then
         add_tool(m.tool, m.text, m.status, m.detail, m.diff)

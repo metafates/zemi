@@ -345,9 +345,13 @@ next reload, not in-place).
   (`internal/ui/palette.go`). Keymaps are single keys (`zemi.keymap.set(key, action)`,
   `del`, `get`, `list`); printable keys stay with the composer, and an open palette or
   completion popup keeps its keys before keymaps are consulted.
-- **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` so the wheel
-  scrolls the transcript (the altscreen buffer has no native scrollback); without it wheel
-  scrolling silently dies. Selection then needs shift-drag in the terminal. Composer
+- **Mouse capture is load-bearing.** `App.View` sets `MouseModeCellMotion` (unless
+  `ui.mouse = false`) so the wheel scrolls the transcript (the altscreen buffer has no
+  native scrollback). Drag selection and clicks are zemi's own (`internal/ui/mouse.go`):
+  compose keeps the last frame's segments, a drag copies their text through OSC 52 plus
+  pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
+  that list rows, prompt buttons and memory rows set) to act on the topmost chrome.
+  Helpers that rebuild segments must carry `Hit`. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
   scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables

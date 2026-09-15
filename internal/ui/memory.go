@@ -96,7 +96,7 @@ func (a *App) spliceMemReview(rows [][]hostapi.Segment, mr *memReviewPrompt, w, 
 		if it.Scope == "user" {
 			where = "  everywhere"
 		}
-		body = append(body, []hostapi.Segment{{Text: cur, HL: "Host:HintKey"}, {Text: it.Text, HL: hl}, {Text: where, HL: "Host:Hint"}})
+		body = append(body, []hostapi.Segment{{Text: cur, HL: "Host:HintKey", Hit: i + 1}, {Text: it.Text, HL: hl, Hit: i + 1}, {Text: where, HL: "Host:Hint", Hit: i + 1}})
 	}
 	if len(mr.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})

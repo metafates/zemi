@@ -16,6 +16,7 @@ import (
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.frameGen++
+	a.mouse = mouseSel{}
 
 	// 1. Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running

@@ -610,6 +610,7 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 type Segment struct {
 	Text string
 	HL   string
+	Hit  int // Go chrome only: 1-based index of the clickable item this text belongs to
 }
 
 // RenderWidget runs a widget's Lua render for the given width and returns

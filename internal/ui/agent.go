@@ -168,7 +168,7 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= 12 {
 			last.Text = strings.TrimRight(last.Text[:i], " ,;:-")
 		}
-		out = append(out[:n-1:n-1], last, hostapi.Segment{Text: "…", HL: last.HL})
+		out = append(out[:n-1:n-1], last, hostapi.Segment{Text: "…", HL: last.HL, Hit: last.Hit})
 	}
 	return out
 }
@@ -200,12 +200,12 @@ func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segmen
 		if i == sel {
 			marker, hl = "› ", selHL
 		}
-		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl}}
+		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl, Hit: i + 1}}
 		if items[i].desc != "" {
-			row = append(row, hostapi.Segment{Text: "  " + items[i].desc, HL: "Comment"})
+			row = append(row, hostapi.Segment{Text: "  " + items[i].desc, HL: "Comment", Hit: i + 1})
 		}
 		if pad := widest - itemWidth(items[i]); pad > 0 {
-			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad)})
+			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad), Hit: i + 1})
 		}
 		rows = append(rows, row)
 	}
@@ -443,7 +443,7 @@ func permButtons(pa *permAskPrompt, width int) []hostapi.Segment {
 			if i == pa.sel {
 				hl = map[bool]string{true: "Host:BtnSel", false: "Host:BtnNo"}[c.ok]
 			}
-			row = append(row, hostapi.Segment{Text: " " + labels[i] + " ", HL: hl})
+			row = append(row, hostapi.Segment{Text: " " + labels[i] + " ", HL: hl, Hit: i + 1})
 		}
 		return row
 	}

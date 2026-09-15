@@ -63,8 +63,12 @@ type App struct {
 	permQueue []permAskMsg
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
-	cfgReview *cfgReviewPrompt
-	question  *questionPrompt
+
+	mouse          mouseSel
+	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
+	lastChatBottom int
+	cfgReview      *cfgReviewPrompt
+	question       *questionPrompt
 
 	caches      map[string]*widgetCache
 	frameGen    int64
@@ -343,7 +347,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := a.handleKey(msg)
 		a.publishComposer()
 		return a, cmd
+	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
+		return a, a.handleMouse(msg)
 	case tea.MouseWheelMsg:
+		a.mouse = mouseSel{}
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			a.scrollChatRows(-chatWheelStep)
@@ -369,9 +376,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *App) View() tea.View {
 	v := tea.NewView(a.Frame())
 	v.AltScreen = true
-	// Cell motion: the wheel scrolls the transcript. The altscreen buffer
-	// has no native scrollback, so without capture the wheel does nothing.
-	v.MouseMode = tea.MouseModeCellMotion
+	// Cell motion: the wheel scrolls the transcript (the altscreen buffer has
+	// no native scrollback), drags select and clicks press. ui.mouse = false
+	// leaves the mouse to the terminal.
+	if a.mouseEnabled() {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	v.ReportFocus = true // notifyIfAway needs to know
 	return v
 }
@@ -689,6 +699,9 @@ func (a *App) compose(w, h int) string {
 		rows = a.splicePerm(rows, a.permAsk, w, len(header), chatH)
 	}
 
+	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
+	a.highlightSelection(rows, w)
+
 	var b strings.Builder
 	for i, row := range rows {
 		if i > 0 {
@@ -725,7 +738,7 @@ func (a *App) modeStrip() []hostapi.Segment {
 	}
 	return append(row,
 		hostapi.Segment{Text: " " + hostapi.PermModeInfo[mode], HL: "Normal"},
-		hostapi.Segment{Text: "   tab switches", HL: "Comment"})
+		hostapi.Segment{Text: "   tab or click switches", HL: "Comment"})
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of
@@ -964,7 +977,7 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 		}
 		remaining := w - used
 		if remaining > 0 {
-			out = append(out, hostapi.Segment{Text: ansi.Truncate(s.Text, remaining, ""), HL: s.HL})
+			out = append(out, hostapi.Segment{Text: ansi.Truncate(s.Text, remaining, ""), HL: s.HL, Hit: s.Hit})
 		}
 		break
 	}
