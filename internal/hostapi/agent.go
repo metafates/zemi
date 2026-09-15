@@ -566,7 +566,7 @@ func toolSummary(input string) string {
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
 	}
-	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name"} {
+	for _, k := range []string{"command", "path", "file_path", "pattern", "url", "query", "question", "name", "text"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s
 		}
