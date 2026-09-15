@@ -166,7 +166,7 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	oldID := store.NewID()
 	if err := h.DB.AddMemory(&store.Memory{
 		ID: oldID, Scope: "project", Kind: "gotcha", Text: "deploy manually every time",
-		ProvenanceSessionID: "seed", Origin: learn.OriginUser,
+		ProvenanceSessionID: "seed", Origin: learn.OriginLearned,
 	}); err != nil {
 		t.Fatalf("AddMemory: %v", err)
 	}
@@ -203,6 +203,40 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	}
 	if fresh.ProvenanceSessionID != sid {
 		t.Fatalf("provenance=%q", fresh.ProvenanceSessionID)
+	}
+}
+
+// TestReflectSupersedeThroughReview: a queued supersede links on accept, and
+// replacing a user memory queues even under auto.
+func TestReflectSupersedeThroughReview(t *testing.T) {
+	for _, tc := range []struct{ name, autonomy, oldOrigin string }{
+		{"ask queues and links on accept", "ask", learn.OriginLearned},
+		{"user memory queues under auto", "auto", learn.OriginUser},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Settings.SetHost("memory.autonomy", tc.autonomy)
+			sid := seedSession(t, h)
+			seedTranscript(t, h, sid)
+			oldID := store.NewID()
+			if err := h.DB.AddMemory(&store.Memory{ID: oldID, Scope: "project", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: tc.oldOrigin}); err != nil {
+				t.Fatal(err)
+			}
+			reflectStub(t, h, `{"memories":[{"scope":"project","kind":"fact","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
+			if err := h.reflectSession(context.Background(), sid); err != nil {
+				t.Fatal(err)
+			}
+			props := h.memoryProposals()
+			if len(props) != 1 || len(projectMemories(t, h)) != 1 {
+				t.Fatalf("want one queued proposal and nothing stored: %d", len(props))
+			}
+			if res := h.takeProposal(props[0].ID); res == nil || h.storeProposal(res) != nil {
+				t.Fatal("accept failed")
+			}
+			if old, _ := h.DB.GetMemory(oldID); old.SupersededBy != props[0].ID {
+				t.Fatalf("superseded_by=%q want %q", old.SupersededBy, props[0].ID)
+			}
+		})
 	}
 }
 

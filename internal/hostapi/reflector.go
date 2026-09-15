@@ -342,16 +342,11 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 }
 
 // applyReflectProposal routes every proposal memory through the §10.4
-// intake and the autonomy gate, links supersedes for memories stored in
-// this run, and returns counters. The model's scope/kind/text are intake
+// intake and the autonomy gate and returns counters; supersedes link when
+// the memory is stored, now or on accept. The model's scope/kind/text are intake
 // inputs, re-validated and scrubbed there; a bad entry is skipped, never
 // fatal.
 func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
-	type link struct {
-		fresh store.Memory
-		old   string
-	}
-	var links []link
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
@@ -368,6 +363,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
+		res.Supersedes = pm.Supersedes
 		switch ok, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++
@@ -376,14 +372,9 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			queued++
 		default:
 			stored++
-			if pm.Supersedes != "" {
-				links = append(links, link{fresh: res.Memory, old: pm.Supersedes})
+			if _, old, err := h.locateMemory(pm.Supersedes); pm.Supersedes != "" && err == nil && old.SupersededBy == res.Memory.ID {
+				superseded++
 			}
-		}
-	}
-	for _, l := range links {
-		if h.linkSupersede(l.old, l.fresh) {
-			superseded++
 		}
 	}
 	return stored, queued, superseded, skipped
@@ -429,25 +420,23 @@ func (h *Host) applySkillDrafts(sid string, p *reflectProposal) (drafted int) {
 	return drafted
 }
 
-// linkSupersede marks an existing memory as replaced by one stored in this
-// run; unknown ids and cross-scope links are dropped with a log.
-func (h *Host) linkSupersede(oldID string, fresh store.Memory) bool {
+// linkSupersede marks an existing memory as replaced by a freshly stored
+// one; unknown ids and cross-scope links are dropped with a log.
+func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
 	db, old, err := h.locateMemory(oldID)
 	if err != nil {
 		h.Log.Debug("reflector", "supersede skipped: old memory missing", map[string]any{"id": oldID})
-		return false
+		return
 	}
 	if db != h.memoryDB(fresh.Scope) || old.Scope != fresh.Scope {
 		h.Log.Debug("reflector", "supersede skipped: scope mismatch", map[string]any{
 			"id": oldID, "old_scope": old.Scope, "new_scope": fresh.Scope,
 		})
-		return false
+		return
 	}
-	if err := db.SupersedeMemory(oldID, fresh.ID); err != nil {
+	if err := db.SupersedeMemory(old.ID, fresh.ID); err != nil {
 		h.Log.Warn("reflector", "supersede failed", map[string]any{"id": oldID, "error": err.Error()})
-		return false
 	}
-	return true
 }
 
 // ReflectorCommandsStep registers the Go-owned /reflect command (builtin

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
 )
 
@@ -44,8 +45,8 @@ func TestAgentSelfAccess(t *testing.T) {
 	if msg, err := h.modelEditMemory(id[:8], "the build uses go build"); err != nil || !strings.HasSuffix(msg, "updated") {
 		t.Fatalf("update: %q %v", msg, err)
 	}
-	if _, m, _ := h.locateMemory(id); m.Text != "the build uses go build" {
-		t.Fatalf("text = %q", m.Text)
+	if _, m, _ := h.locateMemory(id); m.Text != "the build uses go build" || m.Origin != learn.OriginLearned {
+		t.Fatalf("text = %q origin = %q", m.Text, m.Origin)
 	}
 	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)

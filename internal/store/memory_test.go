@@ -117,7 +117,7 @@ func TestMemoryTriggersKeepFTSInSync(t *testing.T) {
 
 	// Update text: old words must vanish, new ones must match.
 	m.Text = "mise is the package manager"
-	if err := db.UpdateMemoryText(m.ID, m.Text); err != nil {
+	if err := db.UpdateMemoryText(m.ID, m.Text, m.Origin); err != nil {
 		t.Fatal(err)
 	}
 	hits, _ := db.SearchMemory("project", "brew", 10, false)

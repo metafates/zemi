@@ -70,7 +70,7 @@ func (h *Host) queueProposal(res *learn.Result) {
 		res.Memory.ID = store.NewID()
 	}
 	db := h.memoryDB(res.Memory.Scope)
-	payload, err := json.Marshal(res.Memory)
+	payload, err := json.Marshal(memoryProposal{res.Memory, res.Supersedes})
 	if err == nil && db == nil {
 		err = errors.New("memory store unavailable")
 	}
@@ -142,6 +142,9 @@ func (h *Host) storeProposal(res *learn.Result) error {
 	}
 	if err := db.AddMemory(m); err != nil {
 		return err
+	}
+	if res.Supersedes != "" {
+		h.linkSupersede(res.Supersedes, *m)
 	}
 	h.EmitAsync("memory.written", map[string]any{
 		"id": m.ID, "scope": m.Scope, "kind": m.Kind, "origin": m.Origin, "text": m.Text,
@@ -258,18 +261,24 @@ func (h *Host) takeProposal(id string) *learn.Result {
 			continue
 		}
 		h.refreshPending()
-		var m store.Memory
+		var m memoryProposal
 		if json.Unmarshal([]byte(p.Payload), &m) != nil {
 			return nil
 		}
-		return &learn.Result{Memory: m}
+		return &learn.Result{Memory: m.Memory, Supersedes: m.Supersedes}
 	}
 	return nil
 }
 
+// memoryProposal is a queued proposal's payload.
+type memoryProposal struct {
+	store.Memory
+	Supersedes string `json:",omitempty"`
+}
+
 // memoryProposals lists pending memory proposals from both scopes.
-func (h *Host) memoryProposals() []store.Memory {
-	var out []store.Memory
+func (h *Host) memoryProposals() []memoryProposal {
+	var out []memoryProposal
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
@@ -280,7 +289,7 @@ func (h *Host) memoryProposals() []store.Memory {
 			continue
 		}
 		for _, p := range rows {
-			var m store.Memory
+			var m memoryProposal
 			if json.Unmarshal([]byte(p.Payload), &m) == nil {
 				out = append(out, m)
 			}
@@ -305,9 +314,13 @@ func (h *Host) refreshPending() {
 func (h *Host) memoryRows() []MemoryRow {
 	var rows []MemoryRow
 	for _, m := range h.memoryProposals() {
+		text := m.Text
+		if m.Supersedes != "" {
+			text += " (replaces " + clipRunes(m.Supersedes, 8) + ")"
+		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: m.Text, Tags: m.Tags, Queued: true,
+			Text: text, Tags: m.Tags, Queued: true,
 		})
 	}
 	list, _ := h.memoryList(false)
@@ -627,7 +640,8 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 		if prov == "" {
 			prov = m.ProvenanceSessionID
 		}
-		res, err := learn.Intake(m.Scope, m.Origin, m.Kind, text, m.Tags, prov)
+		// the new text is the model's, whoever wrote the old one
+		res, err := learn.Intake(m.Scope, learn.OriginLearned, m.Kind, text, m.Tags, prov)
 		if err != nil {
 			return "", err
 		}
@@ -643,7 +657,7 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 	if text == "" {
 		err = db.DeleteMemory(m.ID)
 	} else {
-		err = db.UpdateMemoryText(m.ID, text)
+		err = db.UpdateMemoryText(m.ID, text, learn.OriginLearned)
 	}
 	if err != nil {
 		return "", err
@@ -654,11 +668,21 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 // gateMemory is the autonomy gate (DESIGN §10.4): an intake result is
 // stored under auto when policy-clean and within budget, queued otherwise.
 func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
-	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && h.autoApplyBudgetLeft() {
+	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && !h.replacesUserMemory(res.Supersedes) && h.autoApplyBudgetLeft() {
 		return true, h.applyProposal(res)
 	}
 	h.queueProposal(res)
 	return false, nil
+}
+
+// replacesUserMemory reports whether id names a user-attested memory, which
+// a learned one may replace only through review (DESIGN §10.4).
+func (h *Host) replacesUserMemory(id string) bool {
+	if id == "" {
+		return false
+	}
+	_, old, err := h.locateMemory(id)
+	return err == nil && old.Origin == learn.OriginUser
 }
 
 func (h *Host) autoApplyBudgetLeft() bool {
