@@ -125,9 +125,10 @@ follow `internal/hostapi/registry.go`.
 
 ### Skills (internal/skills, internal/hostapi/skills.go)
 
-Skills are file-based Lua units under `<config>/skills/` with YAML frontmatter (name, desc,
-body file); discovery lives in `internal/skills`, hosting in `internal/hostapi/skills.go`,
-rows in the global DB `skills` table. Invariants:
+Skills are file-based units: authored under `<config>/skills/`, learned (reflector drafts,
+body only, no Lua hook, scrubbed, start disabled) under `<data>/skills/`, each a `SKILL.md`
+with YAML frontmatter (name, description); discovery lives in `internal/skills`, hosting in
+`internal/hostapi/skills.go`, rows in the global DB `skills` table. Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only
   user or builtin origin may enable/disable (`memoryManageAllowed` gate at the Lua namespace
@@ -141,6 +142,32 @@ rows in the global DB `skills` table. Invariants:
 - **Hook registration placement**: authored skill hooks register at `SkillsAuthoredHooksStep`
   (after user init.lua), learned ones at `SkillsLearnedHooksStep` (after `app.ready`) — the
   learned step must not re-run on reload replay without its `Gen` tag.
+
+### Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
+
+- **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model,
+  prompt, tools may change); `AgentSend` copies `History` from the previous idle runner.
+  `ResumeSession` installs a bare `&agent.Runner{History: ...}` for that copy. `runTurns`
+  loops the queue's follow-ups on one runner and compacts first when the last prompt passed
+  80% of the window (summary message persisted, `sessions.summary_message_id` points at it).
+- **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
+  boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so
+  steered messages are re-inserted every step. Leftovers become one follow-up turn, and
+  `active` stays held across that handoff (`nextTurn`) so a submit cannot jump the queue.
+- **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
+  millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
+  anything that does not decode as a fantasy message.
+- **Proposals persist.** Memory proposals live in the scope DB's `proposals` table until
+  `/memory` (a/d, decisions by row id) or `zemi.learn.decide`; `refreshPending` caches the
+  statusline counts. Config proposals are still in memory (`cfgProposals`).
+- **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
+  the latest session, never on quit; `reflectDue` compares the message count with kv
+  `reflector.seen.<sid>`, so a session is reflected again only after new messages.
+- **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
+  `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides
+  real-provider bugs (this once made the reflector read empty output everywhere).
+- **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
+  `resolveJailed` and `@file` attachments (`expandAttachments`) all rely on it.
 
 ### Permanent rules + permissions.lua (internal/hostapi/permissions.go, repo.go)
 
@@ -193,6 +220,12 @@ next reload, not in-place).
   files that must exist first) — every `Boot` builds a fresh generation, so steps sharing
   state must be passed in ONE call. Permanent-rule tests guard git presence with
   `exec.LookPath("git")` and clean the dump via temp `ConfigHome`.
+- Agent-turn tests stub the model with `reflectStub` (sets `h.modelFn`; answers Generate and
+  Stream with `TextContent` like real providers) and wait with `waitIdle`.
+- End to end, drive the real binary in tmux against a fake OpenAI-compatible server: point
+  `ZEMI_*` at temp dirs, register it in `init.lua` (`kind = "openai_compat"`, `base_url`),
+  set `providers.crush_json = ""`, then `tmux send-keys` / `tmux capture-pane -p`.
+  Python terminal emulators like pyte garble bubbletea's incremental renderer; tmux does not.
 - The sandbox, freeze, and origin-classification behavior in `internal/lua/sandbox_test.go`
   is adversarial by design (monkey-patching attempts must raise); don't weaken those
   assertions to make unrelated changes pass.
@@ -202,7 +235,8 @@ next reload, not in-place).
 - **DESIGN.md §12 does not match reality** (it predates the code): the actual layout is
   `internal/tools` (not `internal/agent/tools`) and `internal/perm` (not
   `internal/permission`); `internal/skills` exists, `internal/agent/templates` does not.
-  Trust the tree, not §12; §13 milestones explain what exists (M0-M2 are in, M3 mostly).
+  Trust the tree, not §12; §13 milestones explain what exists (M0-M3 are in; M4 evals and
+  M5 subagents are not).
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request
   class. Anything that adds a runtime-mutable member to a namespace must go through the
