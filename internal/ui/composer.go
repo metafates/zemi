@@ -1,11 +1,15 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -410,4 +414,42 @@ func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 		rows = append(rows, r[sp.s:sp.e])
 	}
 	return cursorRow, cursorCol, rows
+}
+
+// editorMsg carries the draft an external editor saved.
+type editorMsg struct {
+	text string
+	err  error
+}
+
+// openEditor edits the draft in $VISUAL or $EDITOR (ctrl+g). It runs through
+// tea.ExecProcess instead of internal/proc because the editor needs the
+// terminal, which bubbletea hands over and takes back.
+func (a *App) openEditor() tea.Cmd {
+	f, err := os.CreateTemp("", "zemi-*.md")
+	if err != nil {
+		a.pushToast("error", "editor", err.Error())
+		return nil
+	}
+	path := f.Name()
+	_, err = f.WriteString(a.composer.expand(a.composer.text))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		a.pushToast("error", "editor", err.Error())
+		return nil
+	}
+	// sh splits an editor with flags ("code --wait") like a shell would
+	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"), "vi")
+	cmd := exec.Command("sh", "-c", editor+` "$1"`, "sh", path)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		defer os.Remove(path)
+		if err != nil {
+			return editorMsg{err: err}
+		}
+		b, err := os.ReadFile(path)
+		return editorMsg{text: strings.TrimRight(string(b), "\n"), err: err}
+	})
 }

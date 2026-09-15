@@ -236,6 +236,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+v":
 		// terminals paste text themselves; this also reaches images
 		return a.pasteClipboard()
+	case "ctrl+g":
+		return a.openEditor()
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
 		// transcript, or else interrupts.

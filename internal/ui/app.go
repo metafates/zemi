@@ -269,6 +269,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.scrollChatRows(step * chatWheelStep)
 		}
 		return a, nil
+	case editorMsg:
+		if msg.err != nil {
+			a.pushToast("error", "editor", msg.err.Error())
+			return a, nil
+		}
+		text := sanitize.String(msg.text)
+		if !a.multiline() {
+			text = strings.ReplaceAll(text, "\n", " ")
+		}
+		prev := composerSnap{a.composer.text, a.composer.cursor}
+		a.composer.text = text
+		a.composer.moveEnd()
+		a.composer.snapshot(prev, false)
+		a.publishComposer()
+		return a, a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
 			a.pushToast("warn", "paste", msg.err.Error())
