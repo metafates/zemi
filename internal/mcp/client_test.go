@@ -2,6 +2,9 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -51,6 +54,107 @@ func TestClient(t *testing.T) {
 				t.Fatalf("unknown tool err = %v", err)
 			}
 		})
+	}
+}
+
+// TestHTTPStreamHeldOpen: a server that keeps its POST stream open after
+// answering must not cost the caller its whole timeout. The stream drains
+// off the request path and the reply reaches the call as soon as it lands.
+func TestHTTPStreamHeldOpen(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		resp := mcptest.Respond(body)
+		if resp == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		var m struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &m)
+		if m.Method == "initialize" {
+			w.Header().Set("Mcp-Session-Id", "fake-session")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(resp)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: message\ndata: " + string(resp) + "\n\n"))
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	defer srv.Close()
+	// close(release) must run first, or srv.Close() waits forever on the
+	// handler parked there; defers run last in, first out.
+	defer close(release)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := Start(ctx, Config{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	start := time.Now()
+	res, err := c.CallTool(ctx, "echo", map[string]any{"text": "hi"})
+	if err != nil || res.Text() != "hi" {
+		t.Fatalf("echo = %+v, %v", res, err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("the call waited %s for a stream the server held open", elapsed)
+	}
+}
+
+// TestCallCancelNotifies: a caller that gives up tells the server to stop,
+// so it does not keep working on an answer nothing is waiting for.
+func TestCallCancelNotifies(t *testing.T) {
+	cancelled := make(chan int64, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var m struct {
+			Method string `json:"method"`
+			Params struct {
+				RequestID int64 `json:"requestId"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(body, &m)
+		switch m.Method {
+		case "notifications/cancelled":
+			select {
+			case cancelled <- m.Params.RequestID:
+			default:
+			}
+			w.WriteHeader(http.StatusAccepted)
+		case "tools/call": // accepted, answered never
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			resp := mcptest.Respond(body)
+			if resp == nil {
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+			w.Header().Set("Mcp-Session-Id", "fake-session")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(resp)
+		}
+	}))
+	defer srv.Close()
+
+	c, err := Start(context.Background(), Config{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := c.CallTool(ctx, "echo", map[string]any{"text": "hi"}); err == nil {
+		t.Fatal("a call against a silent server returned no error")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no notifications/cancelled reached the server")
 	}
 }
 
