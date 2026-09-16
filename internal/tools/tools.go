@@ -728,7 +728,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 
 		mk("lsp", lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
 
-		mk("skill", "Load a skill's full instructions by name when its description matches the task, before acting on it. Do not load one on a keyword alone, and do not load one already in the conversation.",
+		mk("skill", "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill's description covers, even a small task you know how to do; the description is only the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded in this conversation.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},

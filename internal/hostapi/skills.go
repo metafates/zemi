@@ -221,19 +221,16 @@ func (h *Host) skillsIndexPrompt() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n# Skills\nA description only says when a skill applies. When one matches the task, load it with the skill tool before acting, and follow it.\n")
+	b.WriteString("\n\n# Skills\nEach description is a trigger, not a summary: the procedure is in the body. Before the first tool call that does the task, check this list. If one covers the task, load it with the skill tool and follow it, even for a task you know how to do; if you skip an obvious one, say why in one line.\n")
 	for _, s := range enabled {
-		desc := s.Description
-		if runes := []rune(desc); len(runes) > skillIndexDescMax {
-			desc = string(runes[:skillIndexDescMax]) + "..."
-		}
-		b.WriteString("- " + s.Name + ": " + desc + "\n")
+		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
 	}
 	return b.String()
 }
 
-// skillIndexDescMax bounds one skills-index line (prompt budget).
-const skillIndexDescMax = 160
+// skillIndexDescMax bounds a learned draft's description like discovery
+// bounds an authored one, so the index never clips.
+const skillIndexDescMax = skills.MaxDescriptionRunes
 
 // setSkillEnabled flips the stored enabled state and runs the enable
 // hook of a learned skill being enabled (post-ready loading, §10.5);
@@ -332,13 +329,15 @@ func (h *Host) skillHooksStep(name string, src skills.Source) lua.BootStep {
 	}
 }
 
-// skillsCommand dispatches /skills [enable|disable <name>].
+// skillsCommand dispatches /skills [enable|disable <name> | use <name> [request]].
 func (h *Host) skillsCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
 		h.openSkills()
 		return nil
+	case len(fields) >= 2 && fields[0] == "use":
+		return h.useSkill(fields[1], strings.Join(fields[2:], " "))
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
 		if err := h.setSkillEnabled(nil, fields[1], fields[0] == "enable"); err != nil {
 			return err
@@ -346,8 +345,39 @@ func (h *Host) skillsCommand(args string) error {
 		h.Notify("info", "skills", fields[0]+"d "+fields[1])
 		return nil
 	default:
-		return errors.New("usage: /skills | /skills enable <name> | /skills disable <name>")
+		return errors.New("usage: /skills | /skills enable|disable <name> | /skills use <name> [request]")
 	}
+}
+
+// useSkill sends an enabled skill's body as the next user message, the
+// deterministic path when the model did not load it on its own; request
+// is the task that follows it.
+func (h *Host) useSkill(name, request string) error {
+	for _, s := range h.enabledSkills() {
+		if s.Name != name {
+			continue
+		}
+		msg, err := skillMessage(s, request)
+		if err != nil {
+			return err
+		}
+		return h.AgentSend(msg)
+	}
+	return fmt.Errorf("no enabled skill %q", name)
+}
+
+// skillMessage is the user message /skills use sends: the body first, so
+// the model reads the procedure before the task it applies to.
+func skillMessage(s skills.Skill, request string) (string, error) {
+	body, err := skills.Body(s.Dir)
+	if err != nil {
+		return "", err
+	}
+	msg := "Follow this skill for the request below.\n<loaded_skill name=\"" + s.Name + "\">\nSkill directory: " + s.Dir + "\n\n" + body + "\n</loaded_skill>"
+	if request != "" {
+		msg += "\n\n" + request
+	}
+	return msg, nil
 }
 
 // openSkills lists discovered skills with their state; space or enter
@@ -385,9 +415,9 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 		Name: "skills commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "skills", NArgs: "*", Desc: "browse skills and switch them on or off",
+				Name: "skills", NArgs: "*", Desc: "browse skills, switch them on or off, or use one now",
 				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-				GoComplete: subcommandCompleter([]string{"enable", "disable"}, func(h *Host, _ string) []string {
+				GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
 					var names []string
 					for _, s := range h.skillsReg.list() {
 						names = append(names, s.Name)

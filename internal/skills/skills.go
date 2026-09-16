@@ -150,3 +150,19 @@ func fileExists(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && !fi.IsDir()
 }
+
+// Body reads a skill's SKILL.md without its frontmatter: the index already
+// showed name and description, the body is what the model follows.
+func Body(dir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		return "", err
+	}
+	body := strings.ReplaceAll(string(data), "\r\n", "\n")
+	if rest, ok := strings.CutPrefix(body, "---\n"); ok {
+		if _, after, ok := strings.Cut(rest, "\n---"); ok {
+			body = after
+		}
+	}
+	return strings.TrimSpace(body), nil
+}

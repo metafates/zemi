@@ -57,8 +57,8 @@ func TestSkillsCoverSurface(t *testing.T) {
 	}
 }
 
-// TestBuiltinSkillDescriptionsFitIndex: the skills index cuts descriptions
-// at skillIndexDescMax, so a longer builtin one reaches the model clipped.
+// TestBuiltinSkillDescriptionsFitIndex: a builtin description over the cap
+// would fail discovery and vanish from the index.
 func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()

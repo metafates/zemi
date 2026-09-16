@@ -24,6 +24,8 @@ description: How zemi learns - memories, reflector, skill drafts, rule patches. 
    - `/config`: `y` or `a` accepts a rule patch, `n` or `x` rejects, esc leaves the rest
      queued. `/config revisions`, `/config revert <id>`.
    - `/skills`: drafted skills start disabled; enter toggles, or `/skills enable|disable <name>`.
+     `/skills use <name> [request]` sends the skill's body with the request when the model
+     did not load it on its own.
    - Autonomy (`memory.autonomy`, `config.autonomy`) is host-owned. Under `auto`, memories
      and session-scope deny or ask rule patches apply without review.
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at

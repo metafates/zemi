@@ -4,12 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/skills"
 )
 
 // newTestHostSkills boots a host with stores plus skill directories and
@@ -205,5 +207,30 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 		`zemi.learn.decide("whatever", "accept")`, "project.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "user or builtin origin") {
 		t.Fatalf("project-origin decide: %v", err)
+	}
+}
+
+// TestSkillsUse: /skills use sends the body without frontmatter ahead of
+// the request, and only for an enabled skill.
+func TestSkillsUse(t *testing.T) {
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
+	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
+	h.syncSkills()
+	s := h.skillsReg.list()[slices.IndexFunc(h.skillsReg.list(), func(s skills.Skill) bool { return s.Name == "local-run" })]
+	msg, err := skillMessage(s, "make a landing page")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`<loaded_skill name="local-run">`, "Skill directory: " + s.Dir, "\n\nBody.\n</loaded_skill>\n\nmake a landing page"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message lacks %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "description:") {
+		t.Errorf("frontmatter leaked:\n%s", msg)
+	}
+	if err := h.skillsCommand("use auto-learned"); err == nil || !strings.Contains(err.Error(), "no enabled skill") {
+		t.Errorf("disabled skill: err = %v", err)
 	}
 }

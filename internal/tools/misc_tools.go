@@ -8,7 +8,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -197,18 +197,11 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			if v := p.Check(Request{Subject: "fs.read", Arg: path, Reason: "load skill"}); v.Decision != perm.Allow {
 				return fantasy.NewTextErrorResponse("permission denied: " + v.Reason), nil
 			}
-			data, err := os.ReadFile(path)
+			body, err := skills.Body(s.Path)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-			// the index already showed the frontmatter; the directory resolves relative paths in the body
-			body := strings.ReplaceAll(string(data), "\r\n", "\n")
-			if rest, ok := strings.CutPrefix(body, "---\n"); ok {
-				if _, after, ok := strings.Cut(rest, "\n---"); ok {
-					body = after
-				}
-			}
-			return fantasy.NewTextResponse(truncOut("Skill directory: " + s.Path + "\n\n" + strings.TrimSpace(body))), nil
+			return fantasy.NewTextResponse(truncOut("Skill directory: " + s.Path + "\n\n" + body)), nil
 		}
 	}
 	slices.Sort(known)
