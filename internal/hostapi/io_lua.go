@@ -439,7 +439,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 // jail (no escaping the roots, no symlinks out).
 func (h *Host) resolveJailed(path string, roots []string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("empty path")
+		return "", errors.New("empty path")
 	}
 	resolved := path
 	if !filepath.IsAbs(resolved) {

@@ -5,6 +5,7 @@ package hostapi
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -52,7 +53,7 @@ func NewKeymapRegistry() *KeymapRegistry {
 // refused.
 func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	if b.Key == "" {
-		return fmt.Errorf("keymap: key is required")
+		return errors.New("keymap: key is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -144,7 +145,7 @@ func canonical(name string) string { return strings.ToLower(name) }
 
 func (r *CommandRegistry) Add(c *Command) (*Command, error) {
 	if c.Name == "" {
-		return nil, fmt.Errorf("command: name is required")
+		return nil, errors.New("command: name is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -222,7 +223,7 @@ func NewWidgetRegistry() *WidgetRegistry {
 
 func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	if w.ID == "" || w.Region == "" || w.Render == nil {
-		return nil, fmt.Errorf("widget: id, region and render are required")
+		return nil, errors.New("widget: id, region and render are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -296,7 +297,7 @@ func NewEventRegistry() *EventRegistry {
 
 func (r *EventRegistry) Add(h *EventHandler) (*EventHandler, error) {
 	if h.Event == "" || h.Fn == nil {
-		return nil, fmt.Errorf("event: event and handler are required")
+		return nil, errors.New("event: event and handler are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -430,7 +431,7 @@ func NewThemeRegistry() *ThemeRegistry {
 
 func (r *ThemeRegistry) Add(t *Theme) (*Theme, error) {
 	if t.Name == "" {
-		return nil, fmt.Errorf("theme: name is required")
+		return nil, errors.New("theme: name is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

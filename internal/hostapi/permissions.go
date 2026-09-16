@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,7 +63,7 @@ func luaQuote(s string) string {
 		case r == '\r':
 			b.WriteString(`\r`)
 		case r < 0x20 || r == 0x7f:
-			b.WriteString(fmt.Sprintf(`\x%02x`, r))
+			fmt.Fprintf(&b, `\x%02x`, r)
 		default:
 			b.WriteRune(r)
 		}
@@ -179,7 +180,7 @@ func parsePermissionsDump(data []byte) ([]perm.Rule, error) {
 		return nil, err
 	}
 	if !seenVersion || !seenB {
-		return nil, fmt.Errorf("dump missing version or rules")
+		return nil, errors.New("dump missing version or rules")
 	}
 	p.skipSpaceAndComments()
 	if err := p.expectEnd(); err != nil {
@@ -214,7 +215,7 @@ func rowToRule(row map[string]string) (perm.Rule, error) {
 	switch r.Decision {
 	case perm.Allow, perm.Ask, perm.Deny:
 	default:
-		return perm.Rule{}, fmt.Errorf("rule decision must be allow, ask or deny")
+		return perm.Rule{}, errors.New("rule decision must be allow, ask or deny")
 	}
 	if r.Scope != perm.ScopePermanent {
 		return perm.Rule{}, fmt.Errorf("rule scope must be %q, got %q", perm.ScopePermanent, r.Scope)
@@ -288,7 +289,7 @@ func (p *permParser) readInt() (int, error) {
 	}
 	v, err := strconv.Atoi(p.src[start:p.pos])
 	if err != nil {
-		return 0, fmt.Errorf("bad integer: %v", err)
+		return 0, fmt.Errorf("bad integer: %w", err)
 	}
 	return v, nil
 }

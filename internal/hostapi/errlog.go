@@ -56,7 +56,6 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 		l.mu.Unlock()
 		rows := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) { // newest first, like /errors
-
 			rows = append(rows, map[string]any{
 				"index": i, "at": e.at.Format("15:04:05"), "source": e.source, "message": e.msg,
 			})
@@ -96,7 +95,6 @@ func (h *Host) OpenErrors(args string) error {
 	if len(f) == 0 {
 		items := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) {
-
 			items = append(items, map[string]any{
 				"text": fmt.Sprintf("%s  %-16s %s", e.at.Format("15:04:05"), e.source, strings.Join(strings.Fields(e.msg), " ")),
 				"run":  fmt.Sprintf("errors %d", i),

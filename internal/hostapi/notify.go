@@ -21,8 +21,8 @@ func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) notifyCall(L *glua.LState) *glua.LFunction {
 	inner := h.notifyFn(logging.Info)
 	return L.NewFunction(func(L *glua.LState) int {
-		// __call dispatch passes the callable table as the first argument;
-		// shift it so the spec table is at position 1 (like zemi.log does).
+		// __call passes the callable table first; drop it so the spec is
+		// argument 1.
 		L.Remove(1)
 		return inner(L)
 	})

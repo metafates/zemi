@@ -5,6 +5,7 @@ package hostapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func (h *Host) git(dir string, args ...string) (string, error) {
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	// zemi commits must work on machines without a configured identity.
+	// the system gitconfig does not apply; commits pass their own identity
 	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -64,7 +65,7 @@ func (h *Host) git(dir string, args ...string) (string, error) {
 func (h *Host) commitConfigPaths(msg string, paths []string) error {
 	dir := h.Dirs.ConfigHome
 	if dir == "" {
-		return fmt.Errorf("config repo: no config home")
+		return errors.New("config repo: no config home")
 	}
 	h.EnsureConfigRepo()
 	args := []string{"add", "--"}
@@ -111,8 +112,8 @@ func (h *Host) commitConfigRevision(title, changesJSON string, paths []string, a
 		}
 		return err
 	}
-	// Record what /config revert will revert (best effort: a missed SHA
-	// only costs the revert path, the audit trail is the git history).
+	// Record the commit a git revert undoes (best effort: the audit trail is
+	// the git history either way).
 	if out, err := h.git(h.Dirs.ConfigHome, "rev-parse", "HEAD"); err == nil {
 		if sha := strings.TrimSpace(out); sha != "" {
 			if serr := h.GlobalDB.SetRevisionCommit(rev.ID, sha); serr != nil {

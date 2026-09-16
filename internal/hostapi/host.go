@@ -556,7 +556,7 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 			}
 			return nil, nil
 		})
-	if err != nil && errors.Is(err, lua.ErrAbandoned) {
+	if errors.Is(err, lua.ErrAbandoned) {
 		return VetoResult{TimedOut: true}
 	}
 	res := VetoResult{}

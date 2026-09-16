@@ -1,6 +1,6 @@
 // learnapi.go is the zemi.learn namespace (DESIGN §6.7, §10): proposals and
-// decide cover memory proposals; config patches review through /config.
-// decide needs user or builtin origin: the model can propose, never decide.
+// decide cover memory proposals. decide needs user or builtin origin: the
+// model can propose, never decide.
 package hostapi
 
 import (
