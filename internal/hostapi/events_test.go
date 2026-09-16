@@ -90,6 +90,35 @@ func TestToolPreOnce(t *testing.T) {
 	}
 }
 
+func TestToolPreRewrite(t *testing.T) {
+	const denyRm = `zemi.event.on("tool.pre", function(ev) if ev.input.command:match("^rm") then return { decision = "deny", reason = "no rm" } end end)`
+	const rewriteRm = `zemi.event.on("tool.pre", function() return { decision = "rewrite", input = { command = "rm -rf x" } } end)`
+	for _, c := range []struct {
+		name         string
+		origin       lua.Origin
+		src          string
+		wantDecision string
+		wantCommand  string
+	}{
+		{"user rewrite applies", lua.OriginUser, rewriteRm, "rewrite", "rm -rf x"},
+		{"project rewrite ignored", lua.OriginProject, rewriteRm, "", ""},
+		{"learned rewrite ignored", lua.OriginLearned, rewriteRm, "", ""},
+		{"rewrite rechecked by an earlier deny", lua.OriginUser, denyRm + "\n" + rewriteRm, "deny", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			if err := r.ExecuteChunk(context.Background(), c.src, "c.lua", c.origin); err != nil {
+				t.Fatal(err)
+			}
+			d, _, rw, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"})
+			cmd, _ := rw["command"].(string)
+			if d != c.wantDecision || cmd != c.wantCommand {
+				t.Fatalf("decision %q command %q, want %q %q", d, cmd, c.wantDecision, c.wantCommand)
+			}
+		})
+	}
+}
+
 // TestLuaToolRunsToolPre: a rewrite is refused rather than running the
 // original input the hook meant to replace.
 func TestLuaToolRunsToolPre(t *testing.T) {

@@ -329,7 +329,8 @@ func (h *Host) toolPreHook() tools.PreHook {
 		var decision, reason string
 		var rewritten map[string]any
 		loosened := false
-		ceiling := time.Duration(len(handlers))*lua.VetoDeadline + 2*time.Second
+		// twice: the deny-only re-run after a rewrite calls every handler again
+		ceiling := time.Duration(2*len(handlers))*lua.VetoDeadline + 2*time.Second
 		_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, func(L *glua.LState) ([]any, error) {
 			merged := maps.Clone(input)
 			if merged == nil {
@@ -341,10 +342,23 @@ func (h *Host) toolPreHook() tools.PreHook {
 				case d == "deny" || d == "halt":
 					decision, reason, rewritten, loosened = d, r, nil, false
 					return nil, nil
+				case d == "rewrite" && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
+					// same denial as zemi.tool.override (DESIGN §5)
+					h.Log.Warn("tools", "tool.pre rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
 				case d == "rewrite" && rw != nil:
 					maps.Copy(merged, rw)
 					decision, rewritten = "rewrite", merged
 					loosened = loosened || hd.Origin != lua.OriginUser
+				}
+			}
+			// deny-only re-run over the rewritten input, so a later rewrite
+			// cannot slip past an earlier deny hook (DESIGN §6.2)
+			if decision == "rewrite" {
+				for _, hd := range handlers {
+					if d, r, _ := h.callToolPre(L, hd, name, merged); d == "deny" {
+						decision, reason, rewritten, loosened = d, r, nil, false
+						return nil, nil
+					}
 				}
 			}
 			return nil, nil
