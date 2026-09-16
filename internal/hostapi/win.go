@@ -339,13 +339,6 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-func rawInt(t *glua.LTable, key string) int {
-	if n, ok := t.RawGetString(key).(glua.LNumber); ok {
-		return int(n)
-	}
-	return 0
-}
-
 // WindowCommandsStep registers /win: the keyboard's way to list, focus
 // and close windows.
 func (h *Host) WindowCommandsStep() lua.BootStep {

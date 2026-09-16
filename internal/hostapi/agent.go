@@ -1322,27 +1322,21 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	if ok {
 		models.ForEach(func(_, mv glua.LValue) {
 			if mt, ok := mv.(*glua.LTable); ok {
+				positive := func(key string) float64 {
+					if n := rawNumber(mt, key); n > 0 {
+						return n
+					}
+					return 0
+				}
 				m := agent.Model{
-					ID:      rawString(mt, "id"),
-					Display: rawString(mt, "display"),
-				}
-				if cw, ok := mt.RawGetString("context_window").(glua.LNumber); ok && cw > 0 {
-					m.ContextWindow = int64(cw)
-				}
-				if n, ok := mt.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
-					m.MaxOutput = int64(n)
-				}
-				if c, ok := mt.RawGetString("cost_per_1m_in").(glua.LNumber); ok && c > 0 {
-					m.CostPer1MIn = float64(c)
-				}
-				if c, ok := mt.RawGetString("cost_per_1m_out").(glua.LNumber); ok && c > 0 {
-					m.CostPer1MOut = float64(c)
-				}
-				if c, ok := mt.RawGetString("cost_per_1m_in_cached").(glua.LNumber); ok && c > 0 {
-					m.CostPer1MInCached = float64(c)
-				}
-				if c, ok := mt.RawGetString("cost_per_1m_out_cached").(glua.LNumber); ok && c > 0 {
-					m.CostPer1MOutCached = float64(c)
+					ID:                 rawString(mt, "id"),
+					Display:            rawString(mt, "display"),
+					ContextWindow:      int64(positive("context_window")),
+					MaxOutput:          int64(positive("max_output")),
+					CostPer1MIn:        positive("cost_per_1m_in"),
+					CostPer1MOut:       positive("cost_per_1m_out"),
+					CostPer1MInCached:  positive("cost_per_1m_in_cached"),
+					CostPer1MOutCached: positive("cost_per_1m_out_cached"),
 				}
 				m.TextOnly = mt.RawGetString("images") == glua.LFalse
 				spec.Models = append(spec.Models, m)

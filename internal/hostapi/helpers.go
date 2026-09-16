@@ -52,6 +52,17 @@ func rawStrings(tb *glua.LTable, key string) []string {
 	return out
 }
 
+func rawNumber(tb *glua.LTable, key string) float64 {
+	if n, ok := tb.RawGetString(key).(glua.LNumber); ok {
+		return float64(n)
+	}
+	return 0
+}
+
+func rawInt(tb *glua.LTable, key string) int {
+	return int(rawNumber(tb, key))
+}
+
 func rawBool(tb *glua.LTable, key string) bool {
 	if b, ok := tb.RawGetString(key).(glua.LBool); ok {
 		return bool(b)
