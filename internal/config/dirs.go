@@ -129,9 +129,15 @@ func (d Dirs) ProjectConfigDir() string {
 }
 
 // RepoRoot is the nearest directory at or above ProjectDir holding .git,
-// or ProjectDir itself outside a repository.
+// or ProjectDir itself outside a repository. The walk stops below $HOME: a
+// dotfiles repository there is not the project of every directory in home.
 func (d Dirs) RepoRoot() string {
+	home, _ := os.UserHomeDir()
+	realHome, _ := filepath.EvalSymlinks(home)
 	for dir := d.ProjectDir; dir != ""; dir = filepath.Dir(dir) {
+		if dir != d.ProjectDir && home != "" && (dir == home || dir == realHome) {
+			break
+		}
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return dir
 		}

@@ -72,6 +72,32 @@ func TestTrustRoot(t *testing.T) {
 	}
 }
 
+func TestRepoRootStopsAtHome(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, dir := range []string{"home/.git", "home/.zemi", "home/work/sub", "home/repo/.git", "home/repo/sub"} {
+		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	for _, c := range []struct{ name, cwd, root, config string }{
+		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.zemi"},
+		{"repo below home", "home/repo/sub", "home/repo", "home/repo/sub/.zemi"},
+		{"home itself", "home", "home", "home/.zemi"},
+	} {
+		d := Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}
+		if got := d.RepoRoot(); got != filepath.Join(tmp, c.root) {
+			t.Errorf("%s: root %s", c.name, got)
+		}
+		if got := d.TrustRoot(); got != filepath.Join(tmp, c.root) {
+			t.Errorf("%s: trust root %s", c.name, got)
+		}
+		if got := d.ProjectConfigDir(); got != filepath.Join(tmp, c.config) {
+			t.Errorf("%s: config dir %s", c.name, got)
+		}
+	}
+}
+
 func TestProjectConfigDir(t *testing.T) {
 	tmp := t.TempDir()
 	for _, dir := range []string{"repo/.git", "repo/.zemi", "repo/sub/deep", "stray/.zemi", "stray/norepo"} {
