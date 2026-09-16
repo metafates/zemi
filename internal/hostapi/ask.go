@@ -227,7 +227,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			// NOTE: one glob cannot tell .gitignore or .github/ from .git, so of
 			// those only the approved file itself is allowed
 			base := filepath.Base(abs)
-			if strings.Contains(strings.ToLower(abs), string(filepath.Separator)+".git") && !inGitDir(abs) &&
+			if strings.Contains(strings.ToLower(abs), string(filepath.Separator)+".git") && !inDirNamed(abs, ".git") &&
 				!strings.EqualFold(base, ".gitattributes") && !strings.EqualFold(base, ".gitmodules") {
 				return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{r, rule(req.Subject, abs)}
 			}

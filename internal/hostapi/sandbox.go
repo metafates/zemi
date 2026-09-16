@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -62,26 +64,29 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	}
 	zemiDirs := slices.DeleteFunc([]string{d.ConfigHome, d.DataHome, d.StateHome}, func(z string) bool { return z == "" })
 	linked := false
-	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
-		if root == "" {
-			continue
+	protect := func(pr string) {
+		if slices.Contains(p.Protect, pr) {
+			return
 		}
-		git := filepath.Join(root, ".git")
-		for _, pr := range []string{git, filepath.Join(root, ".zemi")} {
-			p.Protect = append(p.Protect, pr)
-			if fi, err := os.Lstat(pr); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-				linked = true
-			}
+		p.Protect = append(p.Protect, pr)
+		if fi, err := os.Lstat(pr); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			linked = true
 		}
 		// a .git file points at the real git dir, which may sit in the project
-		if b, err := os.ReadFile(git); err == nil {
+		if b, err := os.ReadFile(pr); err == nil {
 			if dir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:"); ok {
 				dir = strings.TrimSpace(dir)
 				if !filepath.IsAbs(dir) {
-					dir = filepath.Join(root, dir)
+					dir = filepath.Join(filepath.Dir(pr), dir)
 				}
 				p.Protect = append(p.Protect, dir)
 			}
+		}
+	}
+	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
+		if root != "" {
+			protect(filepath.Join(root, ".git"))
+			protect(filepath.Join(root, ".zemi"))
 		}
 	}
 	p.Protect = append(p.Protect, zemiDirs...)
@@ -99,7 +104,19 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
 		// Landlock rules only add access: a write root opens every hidden path inside it
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
-	if h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested && !linked {
+	writable := h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
+	if writable && backend.Name != "seatbelt" {
+		// seatbelt protects every .git and .zemi by name, the namespace
+		// variant only the paths it binds
+		found, ok := configEntries(d.ProjectDir)
+		writable = ok
+		for path, config := range found {
+			if config {
+				protect(path)
+			}
+		}
+	}
+	if writable && !linked {
 		p.Write = append(p.Write, d.ProjectDir)
 	}
 	if s := h.ScratchDir(); s != "" {
@@ -107,11 +124,11 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	}
 	if d.StateHome != "" {
 		p.Env = map[string]string{}
-		// made here: the sandbox cannot create them inside the protected state dir
 		// one per trust root: Go trusts its cache entries, so a shared one lets
 		// one project's build plant what another's links
 		key := sha256.Sum256([]byte(d.TrustRoot()))
 		cache := filepath.Join(d.StateHome, "sandbox-cache", hex.EncodeToString(key[:8]), "go-build")
+		// made here: the sandbox cannot create them inside the protected state dir
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
 			p.Env["GOCACHE"] = cache
@@ -127,16 +144,25 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 }
 
 // sandboxGuard is one running sandboxed command's protected paths: missing
-// when it started, and created since.
-type sandboxGuard struct{ missing, created []string }
+// when it started, and created since. walk is the writable project on a
+// backend that protects only the paths it binds, and before its
+// configEntries when the command started.
+type sandboxGuard struct {
+	missing, created []string
+	walk             string
+	before           map[string]bool
+}
 
 // guardSandbox is called before a command starts under p. The namespace
 // backend makes a protected path read-only only if it exists, so a command
-// could create .zemi/init.lua or a .git with hooks. The returned func runs
-// once the command exited: if a missing path appeared, trust is held off
+// could create .zemi/init.lua or a .git with hooks, at the project root or
+// in any directory below it. The returned func runs once the command exited:
+// if a missing path or a new .git or .zemi appeared, trust is held off
 // (holdTrust) and the text for the tool result says so.
 // NOTE: anything else creating the path while the command runs (the user's
 // git init) counts too; seatbelt's rules cover missing paths, so it is skipped.
+// Nested entries are checked at exit only: this process loads no .zemi below
+// the project, and Host.git runs no program a nested .git names.
 func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 	g := &sandboxGuard{}
 	for _, pr := range p.Protect {
@@ -147,7 +173,15 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 			g.missing = append(g.missing, pr)
 		}
 	}
-	if s := h.sandbox.Load(); s == nil || s.backend.Name == "seatbelt" || len(g.missing) == 0 {
+	s := h.sandbox.Load()
+	if s == nil || s.backend.Name == "seatbelt" {
+		return func() string { return "" }
+	}
+	if h.Dirs.ProjectDir != "" && slices.Contains(p.Write, h.Dirs.ProjectDir) {
+		g.walk = h.Dirs.ProjectDir
+		g.before, _ = configEntries(g.walk)
+	}
+	if len(g.missing) == 0 && g.walk == "" {
 		return func() string { return "" }
 	}
 	h.guardMu.Lock()
@@ -157,17 +191,70 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 	h.guards[g] = true
 	h.guardMu.Unlock()
 	return func() string {
+		var nested []string
+		complete := true
+		if g.walk != "" {
+			var after map[string]bool
+			after, complete = configEntries(g.walk)
+			for path := range after {
+				if !g.before[path] {
+					nested = append(nested, path)
+				}
+			}
+			slices.Sort(nested)
+		}
 		h.guardMu.Lock()
 		delete(h.guards, g)
-		created := g.appeared()
+		created := append(g.appeared(), nested...)
+		g.created = append(g.created, nested...)
 		all := slices.Clone(g.created)
 		h.guardMu.Unlock()
-		h.holdTrust(created)
-		if len(all) == 0 {
+		msg := ""
+		switch {
+		case !complete:
+			msg = fmt.Sprintf("a sandboxed command ran in a project of over %d entries, too many to check for a created .git or .zemi; project trust is off until /trust", sandboxWalkMax)
+		case len(created) > 0:
+			msg = createdMessage(created)
+		}
+		h.holdTrust(msg)
+		if len(all) == 0 && complete {
 			return ""
 		}
-		return "\nzemi: " + createdMessage(all)
+		return "\nzemi: " + cmp.Or(msg, createdMessage(all))
 	}
+}
+
+// sandboxWalkMax bounds configEntries; a var so tests can lower it.
+// NOTE: a writable project with more entries (node_modules) stays read-only
+// to sandboxed commands on backends other than seatbelt; skipping what git
+// ignores would raise the ceiling.
+var sandboxWalkMax = 100_000
+
+// configEntries lists the .git and .zemi entries under root (true), which
+// it does not descend into, and the directories it cannot read (false),
+// where a command could hide one. ok is false past sandboxWalkMax entries.
+func configEntries(root string) (found map[string]bool, ok bool) {
+	found, n := map[string]bool{}, 0
+	tooMany := errors.New("too many entries")
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if n++; n > sandboxWalkMax {
+			return tooMany
+		}
+		switch {
+		case err != nil:
+			if path == root {
+				return err
+			}
+			found[path] = false
+		case path != root && (strings.EqualFold(d.Name(), ".git") || strings.EqualFold(d.Name(), ".zemi")):
+			found[path] = true
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+		}
+		return nil
+	})
+	return found, err == nil
 }
 
 // CheckSandboxed holds trust off when a sandboxed command still running
@@ -179,7 +266,9 @@ func (h *Host) CheckSandboxed() {
 		created = append(created, g.appeared()...)
 	}
 	h.guardMu.Unlock()
-	h.holdTrust(created)
+	if len(created) > 0 {
+		h.holdTrust(createdMessage(created))
+	}
 }
 
 // appeared moves the missing paths that exist now to created and returns them.
@@ -202,14 +291,15 @@ func createdMessage(created []string) string {
 
 // holdTrust turns project trust off for this process, without saving, until
 // /trust (ReleaseTrust), so config a sandboxed command created never loads.
-func (h *Host) holdTrust(created []string) {
-	if len(created) == 0 {
+// An empty why (the warning) holds nothing.
+func (h *Host) holdTrust(why string) {
+	if why == "" {
 		return
 	}
 	h.trustHeld.Store(true)
 	h.SetProjectTrusted(false)
-	h.Log.Warn("sandbox", createdMessage(created), nil)
-	h.Notify("warn", "trust", createdMessage(created))
+	h.Log.Warn("sandbox", why, nil)
+	h.Notify("warn", "trust", why)
 }
 
 // TrustHeld reports trust held off by holdTrust.

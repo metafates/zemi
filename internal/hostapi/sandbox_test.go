@@ -268,3 +268,70 @@ func TestSandboxGuard(t *testing.T) {
 		t.Errorf("nothing created: note %q trusted %v", note, h.ProjectTrusted())
 	}
 }
+
+// TestSandboxNestedConfig: on a backend that protects only the paths it
+// binds, a .git or .zemi a sandboxed command creates anywhere in the project
+// holds trust off, one already there is protected, and a project too big to
+// walk holds trust off at exit or stays read-only.
+func TestSandboxNestedConfig(t *testing.T) {
+	defer func(n int) { sandboxWalkMax = n }(sandboxWalkMax)
+	for _, c := range []struct {
+		name          string
+		before, after string // files there when the command starts, and created by it
+		exitMax       int    // sandboxWalkMax once the command runs, 0 unchanged
+		held          string // in the note when trust is held
+	}{
+		{"nested .git dir", "", "pkg/.git/config", 0, filepath.Join("pkg", ".git")},
+		{"nested .git file", "", "pkg/.git", 0, filepath.Join("pkg", ".git")},
+		{"nested .zemi", "", "a/b/.zemi/init.lua", 0, filepath.Join("b", ".zemi")},
+		{"plain file", "", "pkg/main.go", 0, ""},
+		{"existing nested repo", "vendor/x/.git/config", "", 0, ""},
+		{"too many entries at exit", "", "pkg/main.go", 1, "too many"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sandboxWalkMax = 100_000
+			h, _ := newTestHost(t)
+			h.Dirs.StateHome = t.TempDir()
+			h.SetProjectTrusted(true)
+			h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
+			touch := func(rel string) {
+				p := filepath.Join(h.Dirs.ProjectDir, rel)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte("gitdir: ../elsewhere"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.before != "" {
+				touch(c.before)
+			}
+			p := h.sandboxPolicy(false)
+			if !slices.Contains(p.Write, h.Dirs.ProjectDir) {
+				t.Fatalf("project not writable: %v", p.Write)
+			}
+			if c.before != "" && !slices.Contains(p.Protect, filepath.Join(h.Dirs.ProjectDir, filepath.Dir(c.before))) {
+				t.Errorf("existing entry not protected: %v", p.Protect)
+			}
+			done := h.guardSandbox(p)
+			if c.after != "" {
+				touch(c.after)
+			}
+			if c.exitMax > 0 {
+				sandboxWalkMax = c.exitMax
+			}
+			note := done()
+			if held := !h.ProjectTrusted(); held != (c.held != "") || !strings.Contains(note, c.held) {
+				t.Errorf("held %v, note %q", held, note)
+			}
+		})
+	}
+	sandboxWalkMax = 1
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), nil, 0o644)
+	if p := h.sandboxPolicy(false); slices.Contains(p.Write, h.Dirs.ProjectDir) {
+		t.Errorf("a project too big to walk is writable: %v", p.Write)
+	}
+}

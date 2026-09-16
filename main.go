@@ -458,6 +458,8 @@ func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
 			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
 				return nil
 			}
+			// the nearest .zemi at or above the project, which may not be the repository root's
+			h.Log.Info("boot", "loading project config", map[string]any{"path": init})
 			return lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g)
 		},
 	}

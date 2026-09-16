@@ -1205,7 +1205,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `perm.ReadCommand`, and `perm.SafeCommand` commands run sandboxed with
   the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped (writes under `.git`, the project's `.zemi` or
+  are not secret-shaped (writes under any `.git` or `.zemi` or
   zemi's own config, data and state dirs excepted), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and `SafeCommand`
   commands (no program named by a path; readers with their per-program
@@ -1223,7 +1223,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   A file request is judged, screened and shown by its resolved path
   (relative to the project when inside it), so a symlink a sandboxed
   command planted cannot dress a write to zemi's config as a project
-  file, and a write under `.git`, the project's `.zemi` or zemi's own dirs,
+  file, and a write under any `.git` or `.zemi` or zemi's own dirs,
   or outside the project and the scratchpad (`~/.gitconfig`, a shell rc
   file: the sandbox cannot confine the write tool), goes to the user
   without screening.
@@ -1294,7 +1294,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   machine's; the namespace variant has a loopback of its own, so servers
   already running on the machine are unreachable (the model is told so),
   and it binds only protected paths that exist, which is why a created one
-  holds trust off (§5). Landlock plus seccomp enforces neither the
+  holds trust off (§5). It cannot protect by name either, so zemi walks the
+  writable project for `.git` and `.zemi` entries at any depth: the ones
+  there are bound read-only, one a command created holds trust off at exit,
+  and past 100,000 entries the project stays read-only (or, when the command
+  grew it past that, trust is held off). Landlock plus seccomp enforces neither the
   read-only paths nor loopback: with it the project is read-only to
   sandboxed runs (a build that writes it gets the hint and escalates) and
   every inet socket is refused. zemi's own temp files (the ctrl+g draft, a pasted image)

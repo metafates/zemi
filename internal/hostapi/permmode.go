@@ -334,10 +334,10 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	return false
 }
 
-// protectedWrite reports a write under .git, the project's .zemi or zemi's
-// own dirs: git runs what .git names, and the rest changes what zemi allows.
+// protectedWrite reports a write under any .git or .zemi or zemi's own dirs:
+// git runs what .git names, and the rest changes what zemi allows.
 func (h *Host) protectedWrite(p string) bool {
-	return inGitDir(p) || h.inJail(p, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
+	return inDirNamed(p, ".git", ".zemi") || h.inJail(p, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
 }
 
 // settledCommand reports a bash command auto and plan mode run without
@@ -351,17 +351,20 @@ func (h *Host) settledCommand(cmd string) bool {
 	return perm.ReadCommand(cmd, h.safeCommandPath)
 }
 
-// inGitDir reports a path under a .git directory (or the .git file itself):
-// git runs programs its config and hooks name, even for read-only commands.
-func inGitDir(p string) bool {
+// inDirNamed reports a path under a directory with one of names (or that
+// entry itself): git runs programs its config and hooks name, even for
+// read-only commands, and zemi loads the nearest .zemi above where it starts.
+func inDirNamed(p string, names ...string) bool {
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return true
 	}
 	// EqualFold also matches .GIT on a case-sensitive volume, which only asks more
-	isGit := func(s string) bool { return strings.EqualFold(s, ".git") }
+	named := func(s string) bool {
+		return slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(s, n) })
+	}
 	for _, q := range []string{abs, perm.RealPath(p)} {
-		if slices.ContainsFunc(strings.Split(filepath.ToSlash(q), "/"), isGit) {
+		if slices.ContainsFunc(strings.Split(filepath.ToSlash(q), "/"), named) {
 			return true
 		}
 	}
@@ -387,7 +390,7 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
 	// a write flag the allowlist misses could still reach .git/config
-	return h.inJail(p, roots...) && !h.secretPath(p) && !inGitDir(p) &&
+	return h.inJail(p, roots...) && !h.secretPath(p) && !inDirNamed(p, ".git") &&
 		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch)) && (use != perm.ArgRepo || h.trackedSecret(p) == "")
 }
 

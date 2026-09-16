@@ -49,6 +49,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".zemi", "init.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "pkg", ".zemi", "init.lua"), false, false},
 		{"fs.read", secret, false, false},
 		{"fs.read", link, false, false},
 		{"fs.read", "/etc/passwd", false, false},

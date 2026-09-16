@@ -194,8 +194,8 @@ be gated with the same `lua.` subject at the Lua boundary.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
-edits **inside the jail** that are not secret-shaped, except writes under `.git`, the
-project's `.zemi` or zemi's own config/data/state dirs (`protectedWrite`, which skip the
+edits **inside the jail** that are not secret-shaped, except writes under any `.git` or `.zemi`
+or zemi's own config/data/state dirs (`protectedWrite`, which skip the
 screener too and ask the user, as do writes outside the project and scratchpad), `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
@@ -232,7 +232,10 @@ services unreachable; Landlock + seccomp blocks every inet socket); home credent
 binds only protected paths that exist, so `Pipeline.Guard` (`h.guardSandbox`) records the
 missing ones before a sandboxed bash, job or window starts and checks them at exit (and
 `CheckSandboxed` from `watchConfig` and the trust step while it runs): a created one holds
-trust off (`holdTrust`, not saved, `decide` honors it) until `/trust`, and the result names it. zemi's
+trust off (`holdTrust`, not saved, `decide` honors it) until `/trust`, and the result names it.
+On backends other than seatbelt `configEntries` walks the writable project (at most
+`sandboxWalkMax` entries, else it stays read-only) for nested `.git` and `.zemi`: the policy
+protects the existing ones and the guard holds trust off for new ones at exit. zemi's
 own temp files go to `Host.TempDir()` (`<state>/tmp`). With no backend,
 auto mode sends `tool.bash` asks it cannot settle straight to the user ("not settled: no
 sandbox"). While a backend is live, bash, `job_start` and `window` take `sandbox: false`
@@ -291,7 +294,7 @@ search `<root>/lua` over the runtimepath: user, plugins, and the project's `.zem
 but only when the requirer is project code. `./x` and `../x` resolve against the calling
 function's chunk name, which is why file chunks are compiled with their absolute path, and
 must stay in that file's origin tree; `load`/`loadstring` tag their chunks with the running
-origin and never keep an absolute name, so neither can be forged. `ProjectConfigDir` walks up to the `.git` root.
+origin and never keep an absolute name, so neither can be forged. `ProjectConfigDir` walks up to the `.git` root and takes the nearest `.zemi` (`projectInitStep` logs which).
 
 ### Origin model (internal/lua/origin.go, registries)
 
