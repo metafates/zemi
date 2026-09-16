@@ -309,6 +309,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 // compaction.
 func (h *Host) compactDone(used int64, manual bool) {
 	digest := h.digestFor()
+	h.forgetInstructions()
 	ag := h.agents
 	ag.mu.Lock()
 	ag.lastIn, ag.digest, ag.compacted = used, digest, true

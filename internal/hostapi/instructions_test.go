@@ -27,6 +27,10 @@ func TestNearestInstructions(t *testing.T) {
 	if got := h.nearestInstructions(file, h.instructionSent); got != "" {
 		t.Fatalf("they must not repeat in the same session: %q", got)
 	}
+	h.compactDone(0, false)
+	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
+		t.Fatalf("compaction clears the read that carried them, so they come back: %q", got)
+	}
 	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go"), h.instructionSent); got != "" {
 		t.Fatalf("the root file is already in the prompt: %q", got)
 	}

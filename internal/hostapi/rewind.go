@@ -140,6 +140,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.runner = &agent.Runner{History: history}
 	ag.lastIn, ag.turnMsgID = 0, ""
 	ag.mu.Unlock()
+	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)
 	if ui := h.hooks(); ui != nil {
 		ui.ComposerEdit("set", text, -1)

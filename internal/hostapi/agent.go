@@ -2022,6 +2022,15 @@ func (h *Host) instructionSent(p string) bool {
 	return false
 }
 
+// forgetInstructions lets instruction files ride reads again once the read
+// results that carried them are cleared, summarized or cut.
+func (h *Host) forgetInstructions() {
+	ag := h.agents
+	ag.readMu.Lock()
+	ag.instr = map[string]bool{}
+	ag.readMu.Unlock()
+}
+
 // PipelineFor builds the tools pipeline for the model's tool calls.
 func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
