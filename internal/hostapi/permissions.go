@@ -427,7 +427,10 @@ func (h *Host) PermissionsLoadStep() lua.BootStep {
 			h.sweepPendingRevisions()
 			rules, err := h.readPermanentRules()
 			for _, rule := range rules {
-				h.Perm.Add(rule)
+				// the file owns a rule Lua added too; the reload must not drop it
+				if !h.Perm.Add(rule) {
+					h.claimStale(rule)
+				}
 			}
 			return err
 		},

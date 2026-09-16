@@ -1664,7 +1664,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0
 		}
-		if h.Perm.Add(r) {
+		if h.Perm.Add(r) || h.claimStale(r) {
 			// only rules this call added: an equal one loaded from
 			// permissions.lua or answered "always" must survive a reload
 			h.luaRulesMu.Lock()
@@ -1795,9 +1795,12 @@ func (h *Host) askHook() tools.Asker {
 			})
 			return allowed, by
 		}
-		res := h.EmitVetoable(context.Background(), "permission.request",
-			map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason},
-			lua.VetoDeadline)
+		var res VetoResult
+		h.outsideReload(func() {
+			res = h.EmitVetoable(context.Background(), "permission.request",
+				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason},
+				lua.VetoDeadline)
+		})
 		if res.Denied {
 			return resolved(false, "event")
 		}

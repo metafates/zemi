@@ -140,7 +140,7 @@ func run(args []string) int {
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
 	reload := func() {
-		if err := rt.ForceReload(ctx, steps, host.PurgeGeneration); err != nil {
+		if err := host.ForceReload(ctx, steps); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			host.RecordError("reload", err.Error())
 			app.Notify("error", "reload", err.Error())

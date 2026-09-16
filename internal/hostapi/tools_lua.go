@@ -310,7 +310,7 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any)
 // shallow rewrite merging (DESIGN §6.2, §6.4). A rewrite by any non-user
 // handler marks the result loosened.
 func (h *Host) toolPreHook() tools.PreHook {
-	return func(name string, input map[string]any) (string, string, map[string]any, bool) {
+	pre := func(name string, input map[string]any) (string, string, map[string]any, bool) {
 		h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
 		handlers := h.Events.Handlers("tool.pre")
 		for _, o := range h.luaTools.overridesFor(name) {
@@ -347,6 +347,10 @@ func (h *Host) toolPreHook() tools.PreHook {
 			return "", "", nil, false
 		}
 		return decision, reason, rewritten, loosened
+	}
+	return func(name string, input map[string]any) (decision, reason string, rewritten map[string]any, loosened bool) {
+		h.outsideReload(func() { decision, reason, rewritten, loosened = pre(name, input) })
+		return
 	}
 }
 

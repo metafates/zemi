@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -236,9 +237,21 @@ type Host struct {
 	modes modeReg // permission modes in tab order
 
 	// luaRules are the rules zemi.permission.rule added: a reload replays
-	// the config that adds them, so PurgeGeneration takes them out of Perm.
+	// the config that adds them. PurgeGeneration moves them to staleRules,
+	// which stay in Perm until the replay is done so no call runs without
+	// them; ForceReload then drops those the replay did not add again.
 	luaRulesMu sync.Mutex
 	luaRules   []perm.Rule
+	staleRules []perm.Rule
+
+	// reloadDone is non-nil and open while reloads run; reloadSeq counts
+	// reloads started (see awaitReload). reloadRun keeps one reload's sweep
+	// of staleRules from racing the next one's replay.
+	reloadMu   sync.Mutex
+	reloadRun  sync.Mutex
+	reloads    int
+	reloadSeq  uint64
+	reloadDone chan struct{}
 
 	// projectTrusted is set once the project config tree passed the trust
 	// prompt; project agents, commands and workflows load only then.
@@ -1058,6 +1071,82 @@ func (h *Host) ReloadConfig() error {
 	return nil
 }
 
+// ForceReload replays the boot steps on a fresh generation (DESIGN §4).
+// Until it returns, tool vetoes wait (awaitReload) and the old Lua rules
+// stay in force, so a running turn is never checked against half a config.
+func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
+	h.reloadMu.Lock()
+	if h.reloads == 0 {
+		h.reloadDone = make(chan struct{})
+	}
+	h.reloads++
+	h.reloadSeq++
+	h.reloadMu.Unlock()
+	defer func() {
+		h.reloadMu.Lock()
+		if h.reloads--; h.reloads == 0 {
+			close(h.reloadDone)
+			h.reloadDone = nil
+		}
+		h.reloadMu.Unlock()
+	}()
+
+	h.reloadRun.Lock()
+	defer h.reloadRun.Unlock()
+	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
+	// a failed replay keeps the old rules: the last whole config beats part of one
+	if err == nil {
+		h.luaRulesMu.Lock()
+		for _, r := range h.staleRules {
+			h.Perm.Remove(r)
+		}
+		h.staleRules = nil
+		h.luaRulesMu.Unlock()
+	}
+	return err
+}
+
+// claimStale reports whether r is a rule the replaced generation added,
+// taking it off the list its reload drops.
+func (h *Host) claimStale(r perm.Rule) bool {
+	h.luaRulesMu.Lock()
+	defer h.luaRulesMu.Unlock()
+	i := slices.Index(h.staleRules, r)
+	if i >= 0 {
+		h.staleRules = slices.Delete(h.staleRules, i, i+1)
+	}
+	return i >= 0
+}
+
+// awaitReload waits out running reloads and returns how many have started.
+func (h *Host) awaitReload() uint64 {
+	for {
+		h.reloadMu.Lock()
+		done, seq := h.reloadDone, h.reloadSeq
+		h.reloadMu.Unlock()
+		if done == nil {
+			return seq
+		}
+		<-done
+	}
+}
+
+// outsideReload runs a tool veto until no reload overlapped it. Mid-reload
+// the handlers are purged or not yet replayed, and a veto with no handler
+// is no objection, so the user's tool.pre and permission.request denials
+// would be skipped.
+func (h *Host) outsideReload(veto func()) {
+	seq := h.awaitReload()
+	for {
+		veto()
+		next := h.awaitReload()
+		if next == seq {
+			return
+		}
+		seq = next
+	}
+}
+
 // PurgeGeneration drops every registration belonging to the live
 // generation plus config watches; the force-reload path calls it before
 // replaying the boot steps so no stale callback fires into a dropped
@@ -1066,11 +1155,8 @@ func (h *Host) PurgeGeneration() {
 	h.modes.mu.Lock()
 	h.modes.list = nil
 	h.modes.mu.Unlock()
-	// Permanent rules come back from permissions.lua in PermissionsLoadStep.
 	h.luaRulesMu.Lock()
-	for _, r := range h.luaRules {
-		h.Perm.Remove(r)
-	}
+	h.staleRules = append(h.staleRules, h.luaRules...)
 	h.luaRules = nil
 	h.luaRulesMu.Unlock()
 	h.Keymaps.Purge()
