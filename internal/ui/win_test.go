@@ -87,3 +87,15 @@ func TestWinTitleRowFits(t *testing.T) {
 		}
 	}
 }
+
+func TestWidgetWidthIsMainColumn(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	a.width = 120
+	if _, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, mainW := a.winColumns(a.width); a.widgetWidth() != mainW || mainW >= 120 {
+		t.Fatalf("widget width %d, main column %d", a.widgetWidth(), mainW)
+	}
+}

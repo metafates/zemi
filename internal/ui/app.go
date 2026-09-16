@@ -505,11 +505,14 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	return out
 }
 
+// widgetWidth is the main column's width: compose draws widgets beside any
+// vsplits, so rendering at the terminal width would wrap every line twice.
 func (a *App) widgetWidth() int {
 	if a.width <= 0 {
 		return 80
 	}
-	return a.width
+	_, _, w := a.winColumns(a.width)
+	return w
 }
 
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
