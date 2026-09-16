@@ -820,9 +820,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	ag.endThinking()
+	// the diff reads the file: outside the lock, which UI readers share
 	diff := ""
 	if name == "write" || name == "edit" || name == "multiedit" {
 		var in map[string]any
@@ -830,6 +828,9 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
 		}
 	}
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.endThinking()
 	// Text streamed before this call belongs above it: move it and the
 	// earlier (finished) tool rows into the transcript, in order, so the
 	// next step's text starts its own block instead of running on.
