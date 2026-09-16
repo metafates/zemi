@@ -30,7 +30,9 @@ func SafeCommand(cmd string, pathOK func(arg string) bool) bool {
 		return false
 	}
 	n := Normalize(cmd)
-	if n.Fail != "" || n.ForceAsk != "" || len(n.WritePaths) > 0 || len(n.Segments) == 0 {
+	// an assignment can steer a program past its checked flags (GOFLAGS,
+	// RIPGREP_CONFIG_PATH), and sh -c passes arguments nothing here sees
+	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || len(n.WritePaths) > 0 || len(n.Segments) == 0 || !safeArgs(n.ReadPaths, pathOK) {
 		return false
 	}
 	for _, seg := range n.Segments {
@@ -43,7 +45,8 @@ func SafeCommand(cmd string, pathOK func(arg string) bool) bool {
 }
 
 // expands reports whether the shell would substitute anything: a backtick,
-// $ or process substitution outside single quotes.
+// $ or process substitution outside single quotes, or a glob or brace list
+// outside any quotes (cat .e* reads .env past the path check).
 func expands(cmd string) bool {
 	inSingle, inDouble := false, false
 	for i := 0; i < len(cmd); i++ {
@@ -56,33 +59,62 @@ func expands(cmd string) bool {
 			return true
 		case c == '"':
 			inDouble = !inDouble
-		case c == '\'' && !inDouble:
+		case inDouble:
+		case c == '\'':
 			inSingle = true
-		case !inDouble && (c == '<' || c == '>') && i+1 < len(cmd) && cmd[i+1] == '(':
+		case (c == '<' || c == '>') && i+1 < len(cmd) && cmd[i+1] == '(':
 			return true
+		case c == '*' || c == '?':
+			return true
+		case c == '[' || c == '{':
+			// a bracket class or {a,b} / {1..3} list closed within the word
+			word := cmd[i+1:]
+			if end := strings.IndexAny(word, " \t\n;&|<>()"); end >= 0 {
+				word = word[:end]
+			}
+			if c == '[' && strings.Contains(word, "]") {
+				return true
+			}
+			if end := strings.IndexByte(word, '}'); c == '{' && end >= 0 && (strings.Contains(word[:end], ",") || strings.Contains(word[:end], "..")) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// safeArgs checks every argument (and every --flag=value) that could name a
-// file.
+// safeArgs checks every argument that could name a file: plain arguments,
+// everything after --, the value of --flag=value, and a value glued to a
+// short flag (-f/etc/passwd).
 func safeArgs(args []string, pathOK func(string) bool) bool {
+	ok := func(a string) bool {
+		switch {
+		case a == "":
+		case pathOK != nil:
+			return pathOK(a)
+		case strings.HasPrefix(a, "/"), strings.HasPrefix(a, "~"), a == "..", strings.HasPrefix(a, "../"), strings.Contains(a, "/../"):
+			return false
+		}
+		return true
+	}
+	flags := true
 	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			_, v, ok := strings.Cut(a, "=")
-			if !ok {
+		if flags && strings.HasPrefix(a, "-") {
+			if a == "--" {
+				flags = false
+				continue
+			}
+			// one glued character is a separator (cut -d/), not a path
+			if !strings.HasPrefix(a, "--") && len(a) > 3 && !ok(a[2:]) {
+				return false
+			}
+			_, v, found := strings.Cut(a, "=")
+			if !found {
 				continue
 			}
 			a = v
 		}
-		switch {
-		case a == "":
-		case pathOK != nil:
-			if !pathOK(a) {
-				return false
-			}
-		case strings.HasPrefix(a, "/"), strings.HasPrefix(a, "~"), a == "..", strings.HasPrefix(a, "../"), strings.Contains(a, "/../"):
+		if !ok(a) {
 			return false
 		}
 	}
@@ -90,7 +122,7 @@ func safeArgs(args []string, pathOK func(string) bool) bool {
 }
 
 var readOnlyPrograms = map[string]bool{
-	"ls": true, "cat": true, "head": true, "tail": true, "wc": true, "uniq": true, "cut": true,
+	"ls": true, "cat": true, "head": true, "tail": true, "wc": true, "cut": true,
 	"tr": true, "pwd": true, "which": true, "whoami": true, "date": true, "echo": true,
 	"printf": true, "true": true, "false": true, "test": true, "[": true, "file": true,
 	"stat": true, "du": true, "df": true, "tree": true, "basename": true, "dirname": true,
@@ -98,7 +130,26 @@ var readOnlyPrograms = map[string]bool{
 	"od": true, "grep": true, "egrep": true, "fgrep": true, "rg": true, "ag": true, "fd": true,
 	"cd": true, "uname": true, "id": true, "hostname": true, "column": true, "comm": true,
 	"paste": true, "fold": true, "sha256sum": true, "shasum": true, "md5sum": true, "type": true,
-	"sleep": true, "seq": true,
+	"sleep": true, "seq": true, "sort": true, "gofmt": true, "find": true,
+}
+
+// refusedFlags make an otherwise read-only program write a file, assign a
+// variable or run a program it names.
+var refusedFlags = map[string][]string{
+	"sort":   {"-o", "--output", "--compress-program"},
+	"gofmt":  {"-w"},
+	"printf": {"-v"},
+	"tree":   {"-o", "-R"},
+	"file":   {"-C", "--compile"},
+	"fd":     {"-x", "-X", "--exec", "--exec-batch"},
+	"rg":     {"--pre"},
+	"ag":     {"--pager"},
+	"find":   {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
+	"sed":    {"-i", "--in-place", "-f", "--file"},
+	"awk":    {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec"},
+	"make":   {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval"},
+	"go":     {"-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool"},
+	"cargo":  {"--config"},
 }
 
 // test and lint tools that only touch the project
@@ -107,11 +158,14 @@ var projectTools = map[string]bool{
 	"tsc": true, "vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
 }
 
-// sedWrite matches sed's w command, which writes a file: `w file`, the
-// no-space `w/tmp/out` GNU accepts, and the s///w flag. The character after
-// w must not be a letter, or every path holding a word like "web" or
-// "workflow" would read as a write.
-var sedWrite = regexp.MustCompile(`(^|[;}\s/])[wW](\s+\S|[/.])`)
+// sedFileCmd matches sed commands that write or read a file or run one: w
+// and r (`w file`, the no-space `w/tmp/out` GNU accepts, after an address
+// like 1w or $r, or as the s///w flag) and e. The character after w or r
+// must not be a letter, or every path holding a word like "web" would read
+// as a write.
+// NOTE: `rsecret.pem` (a letter right after r) still reads a file inside
+// the project; telling it from a path needs a real sed script parser.
+var sedFileCmd = regexp.MustCompile(`(^|[;{}\s/0-9$,!])([wWrR](\s+\S|[/.])|e($|[\s;}]))`)
 
 var awkGetline = regexp.MustCompile(`\bgetline\b`)
 
@@ -128,22 +182,20 @@ func safeSegment(a []string) bool {
 		sub = rest[0]
 	}
 	switch {
-	case name == "sort":
-		return !hasFlag(rest, "-o", "--output")
+	case name == "uniq": // a second operand is the output file
+		return len(slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
+	case hasFlag(rest, refusedFlags[name]...):
+		return false
 	case readOnlyPrograms[name], projectTools[name]:
 		return true
-	case name == "find":
-		return !hasFlag(rest, "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
 	case name == "sed":
 		// quotes are gone by now, so the script and the file names are one
-		// string; sedWrite is written to tell a w command from a path
-		return !hasFlag(rest, "-i", "--in-place") && !sedWrite.MatchString(strings.Join(rest, " "))
+		// string; sedFileCmd is written to tell a w command from a path
+		return !sedFileCmd.MatchString(strings.Join(rest, " "))
 	case name == "awk":
 		// getline reads a file, > and | write one. A bare < is a comparison.
 		s := strings.Join(rest, " ")
 		return !strings.ContainsAny(s, ">|") && !strings.Contains(s, "system") && !awkGetline.MatchString(s)
-	case name == "gofmt":
-		return !hasFlag(rest, "-w")
 	case name == "git":
 		return safeGit(rest)
 	// go run and cargo run execute whatever they are pointed at, so they ask
@@ -160,6 +212,9 @@ func safeSegment(a []string) bool {
 			return true
 		}
 	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
+		if hasFlag(rest, "--script-shell", "--node-options") {
+			return false
+		}
 		switch sub {
 		case "test", "lint", "build", "typecheck", "ls", "list", "outdated", "why":
 			return true
@@ -216,8 +271,10 @@ func safeGit(args []string) bool {
 	}
 	switch sub {
 	// fetch is not here: it talks to the network and runs transport helpers
+	case "grep": // -O names a program to open the matches with
+		return !hasFlag(rest, "-O", "--open-files-in-pager")
 	case "status", "diff", "log", "show", "blame", "describe", "rev-parse", "ls-files", "ls-tree",
-		"grep", "shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
+		"shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
 		"name-rev", "count-objects":
 		return true
 	case "branch":
@@ -231,7 +288,9 @@ func safeGit(args []string) bool {
 		}
 		return true
 	case "tag":
-		return len(rest) == 0 || hasFlag(rest, "-l", "--list", "-n")
+		return len(rest) == 0 || slices.ContainsFunc(rest, func(a string) bool {
+			return a == "--list" || strings.HasPrefix(a, "-l") || strings.HasPrefix(a, "-n")
+		})
 	case "remote":
 		return next == "" || next == "-v" || next == "show" || next == "get-url"
 	case "stash", "worktree":
@@ -239,21 +298,31 @@ func safeGit(args []string) bool {
 	case "reflog":
 		return next == "" || next == "show"
 	case "config":
-		return hasFlag(rest, "--get", "--get-all", "--get-regexp", "--list", "-l")
+		return slices.ContainsFunc(rest, func(a string) bool {
+			return slices.Contains([]string{"--get", "--get-all", "--get-regexp", "--list", "-l"}, a)
+		})
 	case "submodule":
 		return next == "" || next == "status"
 	}
 	return false
 }
 
-// hasFlag reports whether any argument is one of flags, or starts with a
-// flag followed by "=" or (for short flags) an attached value.
+// hasFlag reports whether any argument may set one of flags: the flag with
+// or without =value, a short flag bundled or with a glued value (sed -ni,
+// sort -uo), or an abbreviated long flag, which GNU tools and git accept
+// (--in-pl). It errs toward yes, so it only refuses, never allows.
 func hasFlag(args []string, flags ...string) bool {
 	for _, a := range args {
+		name, _, _ := strings.Cut(a, "=")
 		for _, f := range flags {
-			if a == f || strings.HasPrefix(a, f+"=") || (len(f) == 2 && strings.HasPrefix(a, f) && !strings.HasPrefix(a, "--")) {
-				return true
+			switch {
+			case name == f:
+			case len(f) == 2 && strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a[1:], f[1:]):
+			case len(name) > 2 && strings.HasPrefix(name, "--") && strings.HasPrefix(f, name):
+			default:
+				continue
 			}
+			return true
 		}
 	}
 	return false
