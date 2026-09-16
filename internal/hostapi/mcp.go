@@ -103,8 +103,13 @@ func (h *Host) startMCP(s *mcpServer) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// a stopped server was replaced or reloaded away: its failure is no news
 	fail := func(err error) {
 		s.mu.Lock()
+		if s.stopped {
+			s.mu.Unlock()
+			return
+		}
 		if errors.Is(err, mcp.ErrAuthRequired) {
 			s.status, s.err = "needs sign-in", ""
 			s.mu.Unlock()
@@ -142,12 +147,7 @@ func (h *Host) startMCP(s *mcpServer) {
 	h.refresh()
 	h.GoSafe("mcp watch "+s.name, func() {
 		<-client.Done()
-		s.mu.Lock()
-		stopped := s.stopped
-		s.mu.Unlock()
-		if !stopped {
-			fail(client.Err())
-		}
+		fail(client.Err())
 	})
 }
 
