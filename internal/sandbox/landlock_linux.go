@@ -434,7 +434,8 @@ func addRead(add func(string, uint64) error, dir string, hide []string) error {
 
 var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": unix.AUDIT_ARCH_AARCH64}
 
-// seccomp denies io_uring (whose ops skip the socket check) and socket():
+// seccomp denies io_uring (whose ops skip the socket check), chown and
+// xattrs (ACLs among them), which Landlock does not mediate, and socket():
 // every family without namespaces, and with them all but inet and netlink,
 // which reach only the empty network namespace. Landlock does not mediate
 // connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
@@ -444,6 +445,11 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // with unsaved work included. Requiring v6 (linux 6.12) would turn the
 // sandbox off on the LTS kernels most machines run; a signal cannot read
 // or write a file.
+// NOTE: chmod and utimensat stay allowed, since builds set modes and times
+// and seccomp cannot see the path: a command can change the mode of any of
+// the user's files (chmod 644 ~/.ssh/id_ed25519), though not read or write
+// it. The namespace variant cannot remount home read-only for metadata alone
+// either; the upgrade is a Landlock right for it, which no kernel has yet.
 // NOTE: socketpair stays allowed, so a unix socket still works between the
 // command's own processes; anything that listens on or dials a unix socket
 // path fails, and an AF_UNIX fd the command inherits stays usable.
@@ -476,7 +482,14 @@ func seccomp(ns bool) error {
 		// x32 syscalls share the arch but not the numbers
 		prog = append(prog, jump(unix.BPF_JMP|unix.BPF_JGE|unix.BPF_K, 0x40000000, 0, 1), deny)
 	}
-	prog = append(prog, jump(eq, unix.SYS_IO_URING_SETUP, 0, 1), deny)
+	metadata := []uint32{unix.SYS_FCHOWN, unix.SYS_FCHOWNAT, unix.SYS_SETXATTR, unix.SYS_LSETXATTR, unix.SYS_FSETXATTR,
+		unix.SYS_SETXATTRAT, unix.SYS_REMOVEXATTR, unix.SYS_LREMOVEXATTR, unix.SYS_FREMOVEXATTR, unix.SYS_REMOVEXATTRAT, unix.SYS_FILE_SETATTR}
+	if runtime.GOARCH == "amd64" {
+		metadata = append(metadata, 92, 94) // chown, lchown; arm64 has only the at forms
+	}
+	for _, nr := range append(metadata, unix.SYS_IO_URING_SETUP) {
+		prog = append(prog, jump(eq, nr, 0, 1), deny)
+	}
 	prog = append(prog, jump(eq, unix.SYS_SOCKET, 1, 0), allow)
 	if ns {
 		prog = append(prog, stmt(load, offArg))

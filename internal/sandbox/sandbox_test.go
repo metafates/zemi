@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 )
 
 // The test binary doubles as the sandboxed program (__act) and, on Linux,
@@ -90,6 +91,14 @@ func act(verb, arg string) error {
 			c.Close()
 		}
 		return err
+	case "chmod":
+		return os.Chmod(arg, 0o600)
+	case "chown":
+		return os.Chown(arg, os.Getuid(), os.Getgid())
+	case "setxattr":
+		if err := unix.Setxattr(arg, "user.zemi", []byte("x"), 0); err != nil {
+			return fmt.Errorf("setxattr %s: %w", arg, err)
+		}
 	case "pid":
 		fmt.Println(os.Getpid())
 		time.Sleep(10 * time.Second)
@@ -181,6 +190,10 @@ func TestPolicy(t *testing.T) {
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
+		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},
+		// Landlock has no right for these, see seccomp
+		{"chown a file in a root", "chown", filepath.Join(root, "plain.txt"), false, runtime.GOOS != "linux"},
+		{"set an xattr in a root", "setxattr", filepath.Join(root, "plain.txt"), false, runtime.GOOS != "linux"},
 		// the namespaces that keep Protect read-only also give a loopback
 		{"listen and dial loopback", "loopback", "", true, !b.EnforcesProtect},
 	}
