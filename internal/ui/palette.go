@@ -10,9 +10,9 @@ import (
 // cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
 // "/" as the first character lists the registered commands filtered as you
 // type; up/down navigate, tab accepts, esc closes. Enter runs the typed
-// "/name args" line instead of sending a message. The
-// exact "/reload" is the Go-reserved force-reload trigger
-// and never reaches the command registry (DESIGN §4).
+// "/name args" line instead of sending a message. The exact "/reload" is
+// the Go-reserved force-reload trigger and never reaches the command
+// registry (DESIGN §4).
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
@@ -105,7 +105,7 @@ func (a *App) acceptPalette() {
 }
 
 // paletteRows renders the popup rows shown above the composer.
-func (a *App) paletteRows(w int) [][]hostapi.Segment {
+func (a *App) paletteRows() [][]hostapi.Segment {
 	p := &a.palette
 	if !p.open || p.count() == 0 {
 		return nil
@@ -209,8 +209,6 @@ func (a *App) restoreQueue() bool {
 // splitCommand splits "name arg string" into the command name and the raw
 // argument string.
 func splitCommand(raw string) (name, args string) {
-	if i := strings.Index(raw, " "); i >= 0 {
-		return raw[:i], strings.TrimLeft(raw[i:], " ")
-	}
-	return raw, ""
+	name, args, _ = strings.Cut(raw, " ")
+	return name, strings.TrimLeft(args, " ")
 }

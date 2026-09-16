@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -38,10 +39,8 @@ const scanMaxFiles = 5000
 // completeTrigger reads the configured trigger character; a config value
 // that is not exactly one rune falls back to "@".
 func (a *App) completeTrigger() string {
-	if v, ok := a.host.Settings.Get("ui.completion.trigger"); ok {
-		if s, ok := v.(string); ok && len([]rune(s)) == 1 {
-			return s
-		}
+	if s := a.cfgStr("ui.completion.trigger"); utf8.RuneCountInString(s) == 1 {
+		return s
 	}
 	return "@"
 }
@@ -183,7 +182,7 @@ func (a *App) acceptCompletion() {
 }
 
 // completionRows renders the popup rows shown above the composer.
-func (a *App) completionRows(w int) [][]hostapi.Segment {
+func (a *App) completionRows() [][]hostapi.Segment {
 	f := &a.completion
 	if !f.open {
 		return nil
@@ -210,7 +209,7 @@ func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 				return nil
 			}
 			if d.IsDir() {
-				if p != dir && (scanSkipDirs[d.Name()] || (strings.HasPrefix(d.Name(), ".") && d.Name() != ".")) {
+				if p != dir && (scanSkipDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
 					return filepath.SkipDir
 				}
 				return nil

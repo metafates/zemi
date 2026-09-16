@@ -50,11 +50,7 @@ const (
 // winColumns decides the vsplit columns for a frame of width w: mainW is
 // what the main column keeps.
 func (a *App) winColumns(w int) (vsplits []*win.Window, widths []int, mainW int) {
-	for _, wn := range a.host.Wins.List() {
-		if l := wn.Layout(); l.Kind == win.KindVSplit && !l.Hidden {
-			vsplits = append(vsplits, wn)
-		}
-	}
+	vsplits = a.shownWins(win.KindVSplit)
 	widths = shares(vsplits, w-len(vsplits), minVsplitW, minMainW)
 	mainW = w - len(vsplits)
 	for _, x := range widths {
@@ -102,11 +98,7 @@ func shares(wins []*win.Window, total, minWin, minMain int) []int {
 // winRowsLayout decides the splits inside a chat area chatH rows tall:
 // chatTop is what the chat viewport keeps.
 func (a *App) winRowsLayout(chatH int) (splits []*win.Window, heights []int, chatTop int) {
-	for _, wn := range a.host.Wins.List() {
-		if l := wn.Layout(); l.Kind == win.KindSplit && !l.Hidden {
-			splits = append(splits, wn)
-		}
-	}
+	splits = a.shownWins(win.KindSplit)
 	heights = shares(splits, chatH, minSplitH, minChatH)
 	chatTop = chatH
 	for _, x := range heights {
@@ -115,10 +107,12 @@ func (a *App) winRowsLayout(chatH int) (splits []*win.Window, heights []int, cha
 	return splits, heights, max(chatTop, 1)
 }
 
-func (a *App) winFloats() []*win.Window {
+// shownWins lists the windows of one kind that are not hidden, in opening
+// order.
+func (a *App) shownWins(kind string) []*win.Window {
 	var out []*win.Window
 	for _, wn := range a.host.Wins.List() {
-		if l := wn.Layout(); l.Kind == win.KindFloat && !l.Hidden {
+		if l := wn.Layout(); l.Kind == kind && !l.Hidden {
 			out = append(out, wn)
 		}
 	}
@@ -209,7 +203,7 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	if focused {
 		hl = "Host:BtnSel"
 	}
-	state := ""
+	var state string
 	switch {
 	case wn.Exited():
 		state = fmt.Sprintf("exited %d · any key closes", wn.ExitCode())

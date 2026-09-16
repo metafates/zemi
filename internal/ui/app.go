@@ -24,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/win"
 )
 
 const (
@@ -624,8 +625,8 @@ func (a *App) compose(w, h int) string {
 	header := a.regionLines("header", w)
 
 	compRows := a.composerRows(w)
-	compPopup := a.completionRows(w)
-	palPopup := a.paletteRows(w)
+	compPopup := a.completionRows()
+	palPopup := a.paletteRows()
 	var working [][]hostapi.Segment
 	if !a.host.AgentActive() {
 		a.cancelling = false
@@ -748,7 +749,7 @@ func (a *App) compose(w, h int) string {
 		x += vw + 1
 	}
 	w = full
-	for _, wn := range a.winFloats() {
+	for _, wn := range a.shownWins(win.KindFloat) {
 		box, x0, y0, r := a.floatBox(wn, w, h, len(header), chatH)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
@@ -890,18 +891,13 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 	return out
 }
 
-// expandTabs turns tabs into four spaces: a tab has no cell width, so
-// layout and drawing would both lose it.
+// expandTabs turns tabs into four spaces, in place (every render hands the
+// cache fresh lines): a tab has no cell width, so layout and drawing would
+// both lose it.
 func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
-	for i, line := range lines {
-		for j, s := range line {
-			if strings.Contains(s.Text, "\t") {
-				if j == 0 {
-					line = append([]hostapi.Segment(nil), line...)
-					lines[i] = line
-				}
-				line[j].Text = strings.ReplaceAll(s.Text, "\t", "    ")
-			}
+	for _, line := range lines {
+		for j := range line {
+			line[j].Text = strings.ReplaceAll(line[j].Text, "\t", "    ")
 		}
 	}
 	return lines

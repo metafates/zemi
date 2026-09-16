@@ -154,8 +154,7 @@ func has(name string) bool {
 
 // clipboardImage returns a PNG from the clipboard, or nil.
 func clipboardImage() []byte {
-	switch {
-	case runtime.GOOS == "darwin":
+	if runtime.GOOS == "darwin" {
 		f, err := os.CreateTemp("", "zemi-clip-*.png")
 		if err != nil {
 			return nil

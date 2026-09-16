@@ -326,6 +326,8 @@ func copyCmd(text string) tea.Cmd {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			cmd := proc.CommandContext(ctx, c[0], c[1:]...)
 			cmd.Stdin = strings.NewReader(text)
+			// cmd.Run, not proc.Run: wl-copy and xclip leave a child serving
+			// the selection, and proc.Wait kills the group
 			err := cmd.Run()
 			cancel()
 			if err == nil {

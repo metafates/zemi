@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -105,8 +106,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.input.insert(sanitize.String(o.Default))
 		return st
 	}
-	for i, item := range o.Items {
-		text, err := a.renderOverlayItem(o, i, item)
+	for _, item := range o.Items {
+		text, err := a.renderOverlayItem(o, item)
 		if err != nil {
 			a.log.Debug("ui", "overlay render_item failed", map[string]any{
 				"id": o.ID, "error": err.Error(),
@@ -124,7 +125,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 
 // renderOverlayItem renders one item through the overlay's render_item
 // Lua callback; overlays without one fall back to plain formatting.
-func (a *App) renderOverlayItem(o hostapi.Overlay, idx int, item any) (string, error) {
+func (a *App) renderOverlayItem(o hostapi.Overlay, item any) (string, error) {
 	if o.RenderItem == nil {
 		return formatOverlayItem(item), nil
 	}
@@ -156,13 +157,12 @@ func formatOverlayItem(item any) string {
 }
 
 func (a *App) closeOverlayByID(id string) bool {
-	for i := range a.overlays {
-		if a.overlays[i].o.ID == id {
-			a.overlays = append(a.overlays[:i], a.overlays[i+1:]...)
-			return true
-		}
+	i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id })
+	if i < 0 {
+		return false
 	}
-	return false
+	a.overlays = slices.Delete(a.overlays, i, i+1)
+	return true
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
@@ -199,7 +199,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		if key == "Y" {
 			what = fmt.Sprintf("%d lines", len(lines))
 		}
-		a.Notify("info", "copied", what+" to the clipboard")
+		a.pushToast("info", "copied", what+" to the clipboard")
 		return copyCmd(strings.Join(lines, "\n"))
 	}
 	switch key {
