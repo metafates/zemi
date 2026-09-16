@@ -70,10 +70,15 @@ Help with defensive security, authorized testing, CTFs and security education. R
 // zemiPrompt joins every main-agent prompt, a profile's own included: the
 // zemi skills and the exact config directories config-writing relies on.
 func (h *Host) zemiPrompt() string {
+	pdir := h.Dirs.ProjectConfigDir()
+	if !h.ProjectTrusted() {
+		// so the model does not write config that never loads
+		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
+	}
 	return "\n\n# zemi\nYou run inside zemi. For questions about zemi itself (config, Lua API, keys, errors, what it learned), load the matching zemi-* skill first." +
 		" To change zemi's behavior (UI, keys, commands, subagents, workflows), write Lua or markdown config after loading zemi-customize; never edit zemi's source code." +
 		" To look at zemi's live state or change it now, run Lua with the Lua tool; load zemi-lua for the API first." +
-		" User config directory: " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi). Project config directory: " + h.Dirs.ProjectConfigDir() + "." +
+		" User config directory: " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
 		" The shipped Lua UI (theme, widgets, keymaps) is readable at " + filepath.Join(h.TypesDir(), "zemi", "defaultui.lua") + "; read it before restyling or extending the UI."
 }
 
@@ -115,7 +120,8 @@ func (h *Host) buildSystem(p *Profile) string {
 // digest to a base prompt. files names explicit project files (a profile's
 // context.files); nil means instructionFiles.
 func (h *Host) systemWith(sys string, files []string) string {
-	if len(files) == 0 {
+	// a profile's files are repository content too
+	if len(files) == 0 || !h.ProjectTrusted() {
 		files = h.instructionFiles()
 	} else {
 		// a copy: these are the profile's own paths, and rewriting them in
@@ -157,10 +163,14 @@ func (h *Host) systemWith(sys string, files []string) string {
 // first: the user's <config>/AGENTS.md, then for each directory from the
 // repository root down to the working directory its ZEMI.md and AGENTS.md,
 // or CLAUDE.md when it has neither (repositories set up for Claude Code).
+// An untrusted project's files stay out: they steer the model's commands.
 func (h *Host) instructionFiles() []string {
 	var out []string
 	if h.Dirs.ConfigHome != "" {
 		out = append(out, filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"))
+	}
+	if !h.ProjectTrusted() {
+		return out
 	}
 	var dirs []string
 	root := h.Dirs.RepoRoot()
@@ -199,7 +209,7 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 		inPrompt[p] = true
 	}
 	root := h.Dirs.RepoRoot()
-	if root == "" {
+	if root == "" || !h.ProjectTrusted() {
 		return ""
 	}
 	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {

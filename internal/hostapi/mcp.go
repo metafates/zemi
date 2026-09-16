@@ -88,13 +88,20 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 
 func (h *Host) startMCP(s *mcpServer) {
 	env, _ := perm.ChildEnv(nil)
+	env = append(env, "ZEMI_PROJECT_DIR="+h.Dirs.ProjectDir)
 	for k, v := range s.spec.Env {
 		env = append(env, k+"="+v)
+	}
+	// npx and uv read config from the working directory, so a server starts
+	// outside an untrusted project
+	dir := h.Dirs.DataHome
+	if h.ProjectTrusted() {
+		dir = h.Dirs.ProjectDir
 	}
 	headers := map[string]string{}
 	maps.Copy(headers, s.spec.Headers)
 	cfg := mcp.Config{
-		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.ProjectDir,
+		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: dir,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
 		OnToolsChanged: func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) },

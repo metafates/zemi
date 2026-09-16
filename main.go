@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -114,10 +113,11 @@ func run(args []string) int {
 		host.LSPCommandsStep(),
 		host.WindowCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
+		softStep(host, trust.step()),
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 		softStep(host, host.SkillsAuthoredHooksStep()),
-		softStep(host, trust.step()),
+		softStep(host, projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
 		readyStep(host, !opts.print),
 		host.SkillsLearnedHooksStep(),
@@ -428,22 +428,30 @@ type trustGate struct {
 	session atomic.Pointer[bool]
 }
 
-// step records the decision and loads <project>/.zemi/init.lua when the
-// project is trusted. Agents, commands and workflows read the decision later.
+// step records the decision. It runs before plugins and user init.lua,
+// whose MCP servers start with a working directory that depends on it.
 func (tg *trustGate) step() lua.BootStep {
 	return lua.BootStep{
 		Name: "project trust",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+		Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
-			if !trusted {
-				return err
+			return err
+		},
+	}
+}
+
+// projectInitStep loads <project>/.zemi/init.lua in a trusted project.
+// Agents, commands and workflows read the decision when they are used.
+func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
+	return lua.BootStep{
+		Name: "project config",
+		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			init := filepath.Join(dirs.ProjectConfigDir(), "init.lua")
+			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
+				return nil
 			}
-			init := filepath.Join(tg.dirs.ProjectConfigDir(), "init.lua")
-			if _, serr := os.Stat(init); serr != nil {
-				return err
-			}
-			return errors.Join(err, lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g))
+			return lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g)
 		},
 	}
 }

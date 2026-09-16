@@ -206,6 +206,7 @@ func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
 // conversation's one delivery.
 func TestSubagentInstructions(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.SetProjectTrusted(true)
 	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
 	if err := os.MkdirAll(pkg, 0o755); err != nil {
 		t.Fatal(err)

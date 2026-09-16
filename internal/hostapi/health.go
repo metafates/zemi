@@ -201,14 +201,23 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "errors", "none since start")
 	}
 
+	if h.ProjectTrusted() {
+		add("ok", "trust", "trusted: "+h.Dirs.TrustRoot())
+	} else {
+		add("warn", "trust", "not trusted: project config, instructions and language servers are off; /trust")
+	}
+
 	var servers []string
 	for _, row := range h.lspRows() {
 		servers = append(servers, fmt.Sprintf("%s (%s)", row["name"], row["status"]))
 	}
-	if len(servers) > 0 {
+	switch {
+	case len(servers) > 0:
 		add("ok", "lsp", strings.Join(servers, ", "))
-	} else {
-		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server or clangd, or zemi.lsp.add one (rust-analyzer only starts that way)")
+	case !h.ProjectTrusted():
+		add("ok", "lsp", "off: project not trusted (/trust)")
+	default:
+		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
 	}
 	return append(out, h.luaHealthRows()...)
 }

@@ -729,7 +729,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				return runMemoryEdit(p, str(in["id"]), "")
 			}),
 
-		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, typescript-language-server or clangd when installed, or servers from config such as rust-analyzer). write, edit and multiedit already append errors and warnings for the file they change plus errors that appeared in other files; use this to check a file you did not change.",
+		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, typescript-language-server, clangd or rust-analyzer when installed, or servers from config; none in an untrusted project). write, edit and multiedit already append errors and warnings for the file they change plus errors that appeared in other files; use this to check a file you did not change.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},

@@ -14,7 +14,16 @@ import (
 // still carries the zemi section.
 func TestSystemPromptSections(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("my own rules"), 0o644)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make test"), 0o644)
+	// an untrusted repository's instructions stay out, a profile's files too
+	for _, p := range []*Profile{nil, {ContextFiles: []string{"AGENTS.md"}}} {
+		if sys := h.buildSystem(p); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") {
+			t.Errorf("untrusted prompt: %.300q", sys)
+		}
+	}
+	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
 	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
@@ -29,7 +38,7 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 }
 
-// TestGitRunsNoRepoPrograms: a cloned or unpacked project's .git/config
+// TestGitRunsNoRepoPrograms: an untrusted project's .git/config
 // cannot make zemi's own git calls run a program.
 func TestGitRunsNoRepoPrograms(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -44,6 +53,7 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 		{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"},
 		{"config", "core.fsmonitor", "touch " + marker + "; false"},
 		{"config", "filter.x.clean", "touch " + marker + "; cat"},
+		{"config", "filter.x.required", "true"}, // git lfs install --local
 	} {
 		if out, err := h.runGit(dir, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)

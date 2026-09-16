@@ -23,6 +23,7 @@ import (
 func TestLSPDiagnostics(t *testing.T) {
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
+	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet" } })`, os.Args[0]))
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	byName := map[string]fantasy.AgentTool{}
@@ -67,6 +68,7 @@ func TestLSPDiagnostics(t *testing.T) {
 func TestLSPTool(t *testing.T) {
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
+	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var tool fantasy.AgentTool
@@ -126,6 +128,10 @@ func TestLSPConfig(t *testing.T) {
 		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
 		zemi.lsp.disable("zls")
 	`)
+	if defs := h.lspDefs(""); len(defs) != 0 {
+		t.Fatalf("an untrusted project starts servers the user added: %+v", defs)
+	}
+	h.SetProjectTrusted(true)
 	defs := h.lspDefs("")
 	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
 		t.Fatalf("defs = %+v", defs)
@@ -145,10 +151,10 @@ func TestLSPConfig(t *testing.T) {
 	`)
 }
 
-// TestLSPBuiltinsSkipRepoCode: builtins that would run repository code do
-// not start on their own: rust-analyzer never, typescript only with a
-// tsserver from outside the repository.
-func TestLSPBuiltinsSkipRepoCode(t *testing.T) {
+// TestLSPBuiltins: no builtin starts in an untrusted project; in a trusted
+// one rust-analyzer does, and typescript only with a tsserver from outside
+// the repository.
+func TestLSPBuiltins(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	root := h.Dirs.RepoRoot()
 	global := t.TempDir()
@@ -168,20 +174,26 @@ func TestLSPBuiltinsSkipRepoCode(t *testing.T) {
 	servers := filepath.Join(global, "servers")
 	exe(filepath.Join(servers, "rust-analyzer"))
 	exe(filepath.Join(servers, "typescript-language-server"))
-	for _, c := range []struct{ name, path, want string }{
-		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js")},
-		{"repo tsserver", filepath.Join(root, "bin"), ""},
-		{"no tsserver", "", ""},
+	for _, c := range []struct {
+		name, path, want string
+		trusted          bool
+	}{
+		{"untrusted", filepath.Join(global, "bin"), "", false},
+		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js"), true},
+		{"repo tsserver", filepath.Join(root, "bin"), "", true},
+		{"no tsserver", "", "", true},
 	} {
 		t.Setenv("PATH", servers+string(os.PathListSeparator)+c.path)
-		got := ""
+		h.SetProjectTrusted(c.trusted)
+		got, rust := "", false
 		for _, d := range h.lspDefs("") {
-			if d.Name == "rust-analyzer" {
-				t.Fatalf("%s: rust-analyzer started on its own", c.name)
-			}
+			rust = rust || d.Name == "rust-analyzer"
 			if d.Name == "typescript" {
 				got = d.Init.(map[string]any)["tsserver"].(map[string]any)["path"].(string)
 			}
+		}
+		if rust != c.trusted {
+			t.Fatalf("%s: rust-analyzer listed = %v", c.name, rust)
 		}
 		want := c.want
 		if want != "" {
@@ -202,6 +214,7 @@ func TestLSPSyncFromGit(t *testing.T) {
 	}
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
+	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
 	dir := h.Dirs.ProjectDir
 	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"}} {

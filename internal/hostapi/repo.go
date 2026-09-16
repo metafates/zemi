@@ -42,21 +42,26 @@ func (h *Host) EnsureConfigRepo() {
 }
 
 // git runs one git command in dir with a timeout; stderr is folded into
-// the error. The repository may be untrusted, and its config names programs
-// even status and ls-files run: core.fsmonitor, filter drivers, those of
-// submodules, and hooks (an index refresh runs post-index-change), so those
-// are switched off.
+// the error. Inside a trusted project it runs plainly. Elsewhere the
+// repository's config may name programs even status and ls-files run:
+// core.fsmonitor, filter drivers, those of submodules, and hooks (an index
+// refresh runs post-index-change), so those are switched off.
 // NOTE: with a repo-local filter off, status compares a stat-dirty filtered
 // file's raw bytes with the cleaned blob and lists it as modified (git-crypt,
 // nbstripout). Only the environment prompt's file list shows it; lspSync keys
 // on mtime and size, so it reports at most one extra change.
 func (h *Host) git(dir string, args ...string) (string, error) {
+	if h.ProjectTrusted() && h.inJail(dir, h.Dirs.RepoRoot(), h.Dirs.TrustRoot()) {
+		return h.runGit(dir, args...)
+	}
 	safe := []string{"-c", "core.fsmonitor=false", "-c", "diff.ignoreSubmodules=all", "-c", "core.hooksPath=/dev/null"}
 	out, _ := h.runGit(dir, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|process)$`)
 	for line := range strings.Lines(out) {
 		// the user's own drivers (git-lfs) stay on
 		if scope, key, ok := strings.Cut(strings.TrimSpace(line), "\t"); ok && scope != "global" {
-			safe = append(safe, "-c", key+"=")
+			// a required driver left blank fails status outright (git lfs install --local)
+			name := key[:strings.LastIndexByte(key, '.')]
+			safe = append(safe, "-c", key+"=", "-c", name+".required=false")
 		}
 	}
 	return h.runGit(dir, append(safe, args...)...)

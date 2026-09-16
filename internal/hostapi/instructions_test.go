@@ -21,6 +21,10 @@ func TestNearestInstructions(t *testing.T) {
 	file := filepath.Join(pkg, "x.go")
 	os.WriteFile(file, []byte("package sub\n"), 0o644)
 
+	if got := h.nearestInstructions(file, h.instructionSent); got != "" {
+		t.Fatalf("an untrusted project's instructions must not load: %q", got)
+	}
+	h.SetProjectTrusted(true)
 	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("first read must carry the package instructions: %q", got)
 	}

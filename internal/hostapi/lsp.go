@@ -39,20 +39,16 @@ type lspDef struct {
 	Config  any      // workspace settings
 }
 
-// builtinLSP start in any repository with a marker, before anyone reviewed
-// it, so each must not run the repository's code: gopls runs go list (Go's
-// own rules keep a build free of repo code), pyright runs the python on PATH
-// with the cwd off sys.path, clangd never runs compilers without
-// --query-driver, and typescript gets the tsserver on PATH, not the repo's.
-// NOTE: rust-analyzer is not here: cargo runs build scripts, proc macros and
-// the rustc or wrapper .cargo/config.toml names, and no flag turns all of
-// that off; zemi.lsp.add opts in. Version-manager shims on PATH (pyenv, mise)
-// that read repo files are outside this list's control.
+// builtinLSP start in a trusted repository with a marker. Servers run the
+// repository's code (rust-analyzer runs build scripts and proc macros, and
+// typescript would load node_modules), which is why no server starts in an
+// untrusted one; typescript still gets the tsserver on PATH.
 var builtinLSP = []lspDef{
 	{Name: "gopls", Command: "gopls", Exts: []string{".go"}, Markers: []string{"go.mod", "go.work"}},
 	{Name: "pyright", Command: "pyright-langserver", Args: []string{"--stdio"}, Exts: []string{".py"}, Markers: []string{"pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"}},
 	{Name: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}, Exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, Markers: []string{"package.json", "tsconfig.json"}},
 	{Name: "clangd", Command: "clangd", Exts: []string{".c", ".h", ".cc", ".cpp", ".hpp", ".cxx"}, Markers: []string{"compile_commands.json", "CMakeLists.txt", ".clangd"}},
+	{Name: "rust-analyzer", Command: "rust-analyzer", Exts: []string{".rs"}, Markers: []string{"Cargo.toml"}},
 }
 
 var languageIDs = map[string]string{
@@ -131,8 +127,12 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 // then, unless lsp.auto is off, each installed builtin whose marker exists
 // in path's directory or above it up to the repository root (a module in a
 // subdirectory counts); disabled names are left out of both. path "" means
-// the root alone.
+// the root alone. An untrusted project gets none: a user-added server runs
+// the repository's code as much as a builtin does.
 func (h *Host) lspDefs(path string) []lspDef {
+	if !h.ProjectTrusted() {
+		return nil
+	}
 	h.lsp.mu.Lock()
 	defs := slices.Clone(h.lsp.user)
 	disabled := maps.Clone(h.lsp.disabled)
@@ -443,7 +443,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, error) {
 	def, ok := h.lspFor(path)
 	if !ok {
-		return tools.LSPSession{}, fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
+		return tools.LSPSession{}, h.noLSP(path)
 	}
 	p, err := h.lspClient(ctx, def)
 	if err != nil {
@@ -474,9 +474,20 @@ func (h *Host) lspDiagnostics(path string) (string, error) {
 		return out, nil
 	}
 	if _, ok := h.lspFor(path); !ok {
-		return "", fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
+		return "", h.noLSP(path)
 	}
 	return "", errors.New("the language server did not answer in time")
+}
+
+// noLSP says why path (or, when "", the project) has no language server.
+func (h *Host) noLSP(path string) error {
+	switch {
+	case !h.ProjectTrusted():
+		return errors.New("language servers are off: this project is not trusted (the user runs /trust)")
+	case path == "":
+		return errors.New("no language server for this project: none of gopls, pyright, typescript-language-server, clangd or rust-analyzer is installed with its marker file here; zemi.lsp.add adds one")
+	}
+	return fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
 }
 
 func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
@@ -604,7 +615,7 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 					rows := h.lspRows()
 					ui := h.hooks()
 					if ui == nil || len(rows) == 0 {
-						return errors.New("no language server for this project: none of gopls, pyright, typescript-language-server or clangd is installed with its marker file here; zemi.lsp.add adds one")
+						return h.noLSP("")
 					}
 					items := make([]any, 0, len(rows))
 					for _, row := range rows {
