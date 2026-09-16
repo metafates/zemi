@@ -173,3 +173,25 @@ func TestQuestionBoxShowsTyping(t *testing.T) {
 	}
 	pressKeys(app, "esc", "esc")
 }
+
+// TestQuestionBoxScrolls: options that do not fit scroll with the
+// selection, keeping the typed-answer row and the hints on screen.
+func TestQuestionBoxScrolls(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	var opts []tools.QuestionOption
+	for i := range 20 {
+		opts = append(opts, tools.QuestionOption{Label: fmt.Sprintf("option %d", i)})
+	}
+	askAsync(t, app, tools.Question{Question: "Pick?", Options: opts})
+	for range 20 {
+		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"› Type your own answer", "21/21", "dismiss", "╰"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("%q missing:\n%s", want, frame)
+		}
+	}
+	pressKeys(app, "esc")
+}

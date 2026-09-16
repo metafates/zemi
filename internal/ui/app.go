@@ -713,7 +713,7 @@ func (a *App) compose(w, h int) string {
 		splice(pickBox(a.modelPick, w))
 	}
 	if a.question != nil {
-		splice(questionBox(a.question, w))
+		splice(questionBox(a.question, w, chatH))
 	}
 	if a.memReview != nil {
 		splice(a.memReviewBox(w, chatH))

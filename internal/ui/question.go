@@ -226,7 +226,7 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 	return row
 }
 
-func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
+func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	blank := []hostapi.Segment{{Text: ""}}
 	var body [][]hostapi.Segment
 	title := " Question "
@@ -276,7 +276,15 @@ func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 		other = "Type your own answer"
 	}
 	items = append(items, listItem{other, ""})
-	body = append(body, listRows(items, st.sel, len(items), "Host:Bold")...)
+	// borders, the blank row and the hint take four rows, typing one more
+	limit := chatH - len(body) - 4
+	if st.typing {
+		limit--
+	}
+	if len(items) > limit {
+		limit = max(limit-1, 3) // the i/n counter row
+	}
+	body = append(body, listRows(items, st.sel, min(limit, len(items)), "Host:Bold")...)
 	var hints []string
 	switch {
 	case st.typing:
