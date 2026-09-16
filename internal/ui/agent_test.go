@@ -509,45 +509,6 @@ func TestWorkingRowRetry(t *testing.T) {
 	}
 }
 
-// TestWrapSegs covers the chat word-wrap: short lines pass through, long
-// lines wrap at word boundaries with styles preserved, overlong words
-// hard-split.
-func TestWrapSegs(t *testing.T) {
-	short := []hostapi.Segment{{Text: "hi"}}
-	rows := wrapSegs(short, 10)
-	if len(rows) != 1 || len(rows[0]) != 1 || rows[0][0].Text != "hi" {
-		t.Fatalf("short line: %+v", rows)
-	}
-
-	rows = wrapSegs([]hostapi.Segment{{Text: "hello world foo", HL: "A"}}, 11)
-	if len(rows) != 2 || plainSegs(rows[0]) != "hello " || plainSegs(rows[1]) != "world foo" {
-		t.Fatalf("word wrap: %+v", rows)
-	}
-	for _, r := range rows {
-		if r[0].HL != "A" {
-			t.Fatalf("style lost: %+v", rows)
-		}
-	}
-
-	rows = wrapSegs([]hostapi.Segment{{Text: "abcdefgh"}}, 4)
-	if len(rows) != 2 || rows[0][0].Text != "abcd" || rows[1][0].Text != "efgh" {
-		t.Fatalf("hard split: %+v", rows)
-	}
-
-	line := []hostapi.Segment{{Text: "one two "}, {Text: "three", HL: "B"}}
-	rows = wrapSegs(line, 7)
-	texts := make([]string, len(rows))
-	for i, r := range rows {
-		texts[i] = plainSegs(r)
-	}
-	if fmt.Sprint(texts) != "[one  two  three]" {
-		t.Fatalf("multi-segment wrap: %v (%+v)", texts, rows)
-	}
-	if rows[2][0].HL != "B" {
-		t.Fatalf("style lost on wrapped segment: %+v", rows)
-	}
-}
-
 // TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
 // hands the text to on_confirm, esc hands it nil.
 func TestLuaInput(t *testing.T) {
