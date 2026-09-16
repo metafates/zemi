@@ -117,7 +117,7 @@ func (h *Host) reflectDue(sid string) bool {
 		return false
 	}
 	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
-	return seen != fmt.Sprint(len(msgs))
+	return seen != strconv.Itoa(len(msgs))
 }
 
 func reflectSeenKey(sid string) string { return "reflector.seen." + sid }
@@ -159,7 +159,7 @@ func (h *Host) runReflectDetached(sid string) bool {
 // reflectSession runs one full reflect cycle for a session: prompt, turn,
 // parse, route. Synchronous; the caller owns the timeout.
 func (h *Host) reflectSession(ctx context.Context, sid string) error {
-	prompt, err := h.reflectPrompt(sid)
+	prompt, seen, err := h.reflectPrompt(sid)
 	if err != nil {
 		return err
 	}
@@ -177,9 +177,9 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
 	drafted := h.applySkillDrafts(sid, proposal)
-	if msgs, err := h.DB.Messages(sid); err == nil {
-		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
-	}
+	// what the prompt held, not the count now: the live session may have
+	// grown during the model call
+	_ = h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(seen))
 	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped, "skills_drafted": drafted,
@@ -189,15 +189,18 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	return nil
 }
 
-func (h *Host) reflectPrompt(sid string) (string, error) {
+// reflectPrompt builds the reflect prompt for sid and returns how many of
+// its stored messages that covers.
+func (h *Host) reflectPrompt(sid string) (string, int, error) {
 	if h.DB == nil {
-		return "", errors.New("reflector: session store unavailable")
+		return "", 0, errors.New("reflector: session store unavailable")
 	}
-	msgs, err := h.DB.Messages(sid)
+	all, err := h.DB.Messages(sid)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	// a session reflected before only shows what came after that run
+	msgs := all
 	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
 	if n, err := strconv.Atoi(seen); err == nil && n <= len(msgs) {
 		msgs = msgs[n:]
@@ -209,7 +212,7 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 		}
 	}
 	if len(lines) == 0 {
-		return "", fmt.Errorf("reflector: session %s has no messages", sid)
+		return "", 0, fmt.Errorf("reflector: session %s has no messages", sid)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Project\n%s\n\n", h.Session().CWD)
@@ -264,7 +267,7 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 		}
 	}
 	b.WriteString("\nProduce the proposal JSON now.")
-	return b.String(), nil
+	return b.String(), len(all), nil
 }
 
 func reflectLine(m *store.Message) string {

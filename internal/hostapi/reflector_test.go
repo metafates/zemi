@@ -30,10 +30,14 @@ type reflectStubModel struct {
 	noImages   atomic.Int32 // Stream calls left that fail as a 400 over image input
 	toolStep   atomic.Int64 // context the next Stream call reports along with a tool call; 0 = text
 	cutReply   bool         // Generate stops at the output limit
+	during     func()       // runs inside Generate, while the model "thinks"
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
 	m.calls.Add(1)
+	if m.during != nil {
+		m.during()
+	}
 	if m.block > 0 {
 		select {
 		case <-ctx.Done():
@@ -144,12 +148,16 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, "Sure! Here is my analysis:\n"+proposalDoc+"\nHope that helps.")
+	m.during = func() { addText(t, h, sid, "user", "sent while the reflector ran") }
 
 	if err := h.reflectSession(context.Background(), sid); err != nil {
 		t.Fatalf("reflectSession: %v", err)
 	}
 	if m.calls.Load() != 1 {
 		t.Fatalf("model calls=%d", m.calls.Load())
+	}
+	if !h.reflectDue(sid) {
+		t.Fatal("a message the run never read was marked seen")
 	}
 	props := h.memoryProposals()
 	if len(props) != 1 {
@@ -245,7 +253,7 @@ func TestReflectPromptWindow(t *testing.T) {
 			if err := h.DB.SetKV(reflectSeenKey(sid), tc.seen); err != nil {
 				t.Fatal(err)
 			}
-			prompt, err := h.reflectPrompt(sid)
+			prompt, _, err := h.reflectPrompt(sid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -274,7 +282,7 @@ func TestReflectPromptSkills(t *testing.T) {
 		{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored},
 	}, map[string]bool{"cut-release": true})
 
-	prompt, err := h.reflectPrompt(sid)
+	prompt, _, err := h.reflectPrompt(sid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +310,7 @@ func TestReflectPromptMemoryIndex(t *testing.T) {
 		}
 		ids = append(ids, m.ID)
 	}
-	prompt, err := h.reflectPrompt(sid)
+	prompt, _, err := h.reflectPrompt(sid)
 	if err != nil {
 		t.Fatal(err)
 	}
