@@ -108,7 +108,8 @@ func TestRewind(t *testing.T) {
 }
 
 // TestRewindSnapshotEdges builds the checkpoint rows by hand: a file
-// checkpointed under a symlink and under its target is one file, and a
+// checkpointed under a symlink and under its target is one file (also when
+// the first turn creates it through a linked directory), and a
 // rewind over a turn whose snapshots aged out warns even when later turns
 // left some.
 func TestRewindSnapshotEdges(t *testing.T) {
@@ -116,11 +117,13 @@ func TestRewindSnapshotEdges(t *testing.T) {
 		name      string
 		firstAge  time.Duration
 		viaLink   bool   // the first turn names the file through a symlink
+		create    bool   // the first turn creates the file through a linked directory
 		keepFirst bool   // the sweep left the first turn's snapshot
 		want      string // file content after rewinding to the first turn
 		warn      string // substring of the rewind's warning, "" for none
 	}{
 		{name: "symlink and target", viaLink: true, keepFirst: true, want: "orig"},
+		{name: "created through a linked directory", create: true, keepFirst: true, want: "<missing>"},
 		{name: "partly aged out", firstAge: store.CheckpointTTL + time.Hour, want: "v1", warn: "1 of those turn"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -132,6 +135,12 @@ func TestRewindSnapshotEdges(t *testing.T) {
 			}
 			if err := os.Symlink(real, link); err != nil {
 				t.Fatal(err)
+			}
+			if err := os.Symlink(h.Dirs.ProjectDir, filepath.Join(h.Dirs.ProjectDir, "dir")); err != nil {
+				t.Fatal(err)
+			}
+			if c.create {
+				os.Remove(real)
 			}
 			if err := h.DB.CreateSession("s", "", "s", ""); err != nil {
 				t.Fatal(err)
@@ -156,6 +165,9 @@ func TestRewindSnapshotEdges(t *testing.T) {
 				if i == 0 && c.viaLink {
 					path = link
 				}
+				if i == 0 && c.create {
+					path = filepath.Join(h.Dirs.ProjectDir, "dir", "f.txt")
+				}
 				if i > 0 || c.keepFirst {
 					h.agents.turnMsgID = ids[i]
 					h.checkpointFile(path)
@@ -167,8 +179,12 @@ func TestRewindSnapshotEdges(t *testing.T) {
 			if _, err := h.RewindTo(ids[0]); err != nil {
 				t.Fatal(err)
 			}
-			if b, _ := os.ReadFile(real); string(b) != c.want {
-				t.Fatalf("file = %q, want %q", b, c.want)
+			got := "<missing>"
+			if b, err := os.ReadFile(real); err == nil {
+				got = string(b)
+			}
+			if got != c.want {
+				t.Fatalf("file = %q, want %q", got, c.want)
 			}
 			warned := ""
 			for _, n := range h.evlog.notes {

@@ -20,6 +20,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -43,11 +44,9 @@ func (h *Host) checkpointFile(path string) {
 	if err != nil {
 		return
 	}
-	// the file tools' key: a symlink and its target are one file (the store
-	// folds case where the filesystem does)
-	if real, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = real
-	}
+	// the file tools' key: a symlink and its target are one file, also before
+	// the file exists (the store folds case where the filesystem does)
+	abs = perm.RealPath(abs)
 	data, err := os.ReadFile(abs)
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
