@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
 )
 
 // Normalized is the result of normalizing a bash command (DESIGN §9).
@@ -275,21 +274,21 @@ func (n *Normalized) scan(cmd string) {
 				n.ForceAsk = "ANSI-C quoting with a backslash"
 			}
 		case r == '#' && !any:
-			// a comment ends at the newline, but a quote or backslash in it
-			// would carry the next line into this segment. The comment is
-			// only skipped when the call asks: a # the shell reads as a
-			// word (after a non-ASCII space) must not hide what runs.
 			end := slices.Index(rs[i:], '\n')
 			if end < 0 {
 				end = len(rs) - i
 			}
-			if slices.ContainsFunc(rs[i:i+end], func(c rune) bool { return c == '\'' || c == '"' || c == '\\' }) {
-				n.ForceAsk = "comment with a quote or backslash"
-				i += end - 1
+			// after ) or ` the # may be word text ($(..)#), so it stays a word;
+			// a quote or backslash there would carry the next line into it
+			if i > 0 && (rs[i-1] == ')' || rs[i-1] == '`') {
+				if slices.ContainsFunc(rs[i:i+end], func(c rune) bool { return c == '\'' || c == '"' || c == '\\' }) {
+					n.ForceAsk = "comment with a quote or backslash"
+				}
+				any = true
+				cur.WriteRune(r)
 				continue
 			}
-			any = true
-			cur.WriteRune(r)
+			i += end - 1 // sh passes no comment words
 		case r == '(':
 			flush()
 			sc.depth++
@@ -301,7 +300,7 @@ func (n *Normalized) scan(cmd string) {
 				sc.failed = true
 			}
 			sc.toks = append(sc.toks, token{kind: tokSep})
-		case unicode.IsSpace(r):
+		case r == ' ' || r == '\t' || r == '\n': // sh splits on these only (NBSP, \v, \r are word text)
 			flush()
 			if r == '\n' {
 				sc.toks = append(sc.toks, token{kind: tokSep})

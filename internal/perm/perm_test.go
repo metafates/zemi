@@ -116,6 +116,12 @@ func TestNormalizeSegments(t *testing.T) {
 		{"D=./build/x; D=$HOME; rm -rf $D", "rm -rf $D"},
 		{"D=./build/x; read D; rm -rf $D", "read D|rm -rf $D"},
 		{"D=./a; X=D; eval $X=/; rm -rf $D", "eval $X=/|rm -rf $D"},
+		{"rg KEY # internal", "rg KEY"},
+		{"echo a;#x\necho b", "echo a|echo b"},
+		{"echo a#b '#c' x\\#y", "echo a#b #c x#y"},
+		{"echo $(true)#; echo b", "echo|true|#|echo b"},
+		{"(echo a)# x", "echo a|# x"},
+		{"grep K\u00a0a\vb\rc\fd", "grep K\u00a0a\vb\rc\fd"},
 	} {
 		if got := strings.Join(Normalize(c.cmd).Segments, "|"); got != c.want {
 			t.Errorf("%q: got %q, want %q", c.cmd, got, c.want)
@@ -172,6 +178,7 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		{"git log # plain comment", Allow},
 		{"git log # it's\nrm -rf x\n'", Deny},
 		{"git log # \\\nrm -rf x", Ask},
+		{"git log $(true)# it's\nrm -rf x\n'", Ask},
 		{"git log $'\\''\nrm -rf x\n'", Ask},
 	} {
 		if got := s.CheckCommand(c.cmd, "model").Decision; got != c.want {
