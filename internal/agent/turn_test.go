@@ -481,6 +481,23 @@ func TestRegistryResolve(t *testing.T) {
 	}
 }
 
+// TestRegistryConcurrentReload: a config reload registers while turns read
+// (go test -race catches an unguarded registry).
+func TestRegistryConcurrentReload(t *testing.T) {
+	r := NewRegistry()
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range 100 {
+			_ = r.Register(Spec{ID: fmt.Sprint("p", i%3), Kind: KindOpenAI}, "k")
+		}
+	})
+	for range 100 {
+		r.HasKey("p1")
+		r.EffortOptions("p1/m", "high")
+	}
+	wg.Wait()
+}
+
 func TestStripImages(t *testing.T) {
 	media := fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentMedia{Data: "AAAA", MediaType: "image/png"}}
 	text := fantasy.ToolResultPart{ToolCallID: "c2", Output: fantasy.ToolResultOutputContentText{Text: "kept"}}

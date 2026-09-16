@@ -6,9 +6,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"charm.land/fantasy"
 
@@ -51,6 +53,9 @@ type Spec struct {
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
 type Registry struct {
+	// mu guards both: user config registers on the interpreter goroutine
+	// while turns, subagents and the UI read.
+	mu    sync.RWMutex
 	specs []Spec
 	keys  map[string]string
 }
@@ -70,7 +75,7 @@ func NewRegistry() *Registry {
 // DESIGN §6.3).
 func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
-		return fmt.Errorf("provider needs id and kind")
+		return errors.New("provider needs id and kind")
 	}
 	if spec.Kind == "openaicompat" {
 		spec.Kind = KindOpenAICompat
@@ -78,6 +83,8 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.Kind != KindAnthropic && spec.Kind != KindOpenAI && spec.Kind != KindOpenAICompat {
 		return fmt.Errorf("unknown provider kind %q (want %s, %s or %s)", spec.Kind, KindAnthropic, KindOpenAI, KindOpenAICompat)
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	replaced := false
 	for i, s := range r.specs {
 		if s.ID == spec.ID {
@@ -96,13 +103,15 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 
 // List returns all provider specs.
 func (r *Registry) List() []Spec {
-	out := make([]Spec, len(r.specs))
-	copy(out, r.specs)
-	return out
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return slices.Clone(r.specs)
 }
 
 // Lookup finds a spec by provider id.
 func (r *Registry) Lookup(providerID string) (Spec, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	for _, s := range r.specs {
 		if s.ID == providerID {
 			return s, true
@@ -114,14 +123,15 @@ func (r *Registry) Lookup(providerID string) (Spec, bool) {
 // HasKey reports whether user config gave the provider an API key. Values
 // are never exposed.
 func (r *Registry) HasKey(providerID string) bool {
-	spec, ok := r.Lookup(providerID)
-	if !ok {
-		return false
-	}
-	return r.apiKey(spec) != ""
+	_, ok := r.Lookup(providerID)
+	return ok && r.apiKey(providerID) != ""
 }
 
-func (r *Registry) apiKey(spec Spec) string { return r.keys[spec.ID] }
+func (r *Registry) apiKey(providerID string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.keys[providerID]
+}
 
 // Efforts are the reasoning effort levels zemi offers ("" = provider
 // default).
@@ -153,9 +163,8 @@ func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions
 	return nil
 }
 
-// Resolve turns "provider/model" into a fantasy language model. The api
-// key is read from the named env var here; missing keys surface as an
-// error at send time.
+// Resolve turns "provider/model" into a fantasy language model; a missing
+// key surfaces as an error at send time.
 func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	providerID, model, ok := strings.Cut(modelID, "/")
 	if !ok {
@@ -171,7 +180,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, anthropic.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKey(spec); k != "" {
+		if k := r.apiKey(spec.ID); k != "" {
 			opts = append(opts, anthropic.WithAPIKey(k))
 		}
 		p, err := anthropic.New(opts...)
@@ -184,7 +193,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, openai.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKey(spec); k != "" {
+		if k := r.apiKey(spec.ID); k != "" {
 			opts = append(opts, openai.WithAPIKey(k))
 		}
 		p, err := openai.New(opts...)
@@ -197,7 +206,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		if spec.BaseURL != "" {
 			opts = append(opts, openaicompat.WithBaseURL(spec.BaseURL))
 		}
-		if k := r.apiKey(spec); k != "" {
+		if k := r.apiKey(spec.ID); k != "" {
 			opts = append(opts, openaicompat.WithAPIKey(k))
 		}
 		p, err := openaicompat.New(opts...)
