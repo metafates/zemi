@@ -270,14 +270,17 @@ func TestSessionNamespace(t *testing.T) {
 
 // TestSteeringQueue covers the DESIGN §4 queue: sends during a turn queue
 // in order, taking the queue empties it, leftovers become one follow-up
-// turn with active held across the handoff, and cancel is safe without a
-// runner.
+// turn with active and a cancellable scope held across the handoff, and
+// cancel is safe without a runner.
 func TestSteeringQueue(t *testing.T) {
 	h, _ := newTestHost(t)
-
-	h.agents.mu.Lock()
-	h.agents.active = true
-	h.agents.mu.Unlock()
+	claim := func() *turnScope {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		h.agents.active = true
+		return h.beginScope()
+	}
+	scope := claim()
 
 	send := func(msgs ...string) {
 		for _, m := range msgs {
@@ -295,19 +298,23 @@ func TestSteeringQueue(t *testing.T) {
 	}
 
 	send("a", "b")
-	if text := h.nextTurn(false); text != "a\n\nb" || !h.AgentActive() {
+	next, text := h.nextTurn(scope)
+	if text != "a\n\nb" || !h.AgentActive() {
 		t.Fatalf("follow-up = %q, active = %v", text, h.AgentActive())
 	}
-	if text := h.nextTurn(false); text != "" || h.AgentActive() {
+	h.AgentCancel() // before the follow-up's first step
+	if next.ctx.Err() == nil {
+		t.Fatal("a cancel during the handoff missed the follow-up turn")
+	}
+	if next, text := h.nextTurn(claim()); next != nil || text != "" || h.AgentActive() {
 		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
 	}
 
 	// a cancelled turn starts nothing: the queue waits for the composer
-	h.agents.mu.Lock()
-	h.agents.active = true
-	h.agents.mu.Unlock()
+	scope = claim()
 	send("c")
-	if text := h.nextTurn(true); text != "" || h.AgentActive() {
+	h.AgentCancel()
+	if next, text := h.nextTurn(scope); next != nil || text != "" || h.AgentActive() {
 		t.Fatalf("cancelled handoff = %q, active = %v", text, h.AgentActive())
 	}
 	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "c" {

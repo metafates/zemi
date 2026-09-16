@@ -204,30 +204,13 @@ func (h *Host) CompactNow(focus string) error {
 	}
 	ag.active = true
 	ag.beginTurn()
+	scope := h.beginScope() // esc stops the summary call
 	ag.mu.Unlock()
 	h.refresh()
-	ctx, cancel := context.WithCancel(context.Background())
-	h.turn.Store(&turnScope{ctx: ctx, cancel: cancel}) // esc stops the summary call
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
-		h.compactReporting(ctx, runner, compactManual, strings.TrimSpace(focus))
-		stopped := ctx.Err() != nil
-		h.turn.Store(nil)
-		cancel()
-		ag.mu.Lock()
-		queued := ""
-		if !stopped { // a cancel leaves the queue for the UI to hand back
-			queued = strings.Join(ag.steering, "\n\n")
-			ag.steering = nil
-		}
-		ag.active = false
-		ag.mu.Unlock()
-		h.refresh()
-		if queued != "" {
-			if err := h.AgentSend(queued); err != nil {
-				h.Notify("error", "agent", err.Error())
-			}
-		}
+		h.compactReporting(scope.ctx, runner, compactManual, strings.TrimSpace(focus))
+		h.handOff(scope)
 	})
 	return nil
 }

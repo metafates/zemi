@@ -593,15 +593,22 @@ func (h *Host) AgentSend(text string) error {
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
 	ag.active = true
-	profName := ag.defProf
+	scope := h.beginScope()
 	ag.mu.Unlock()
+	return h.sendClaimed(scope, text)
+}
+
+// sendClaimed starts a turn for text on an agent already claimed with scope.
+func (h *Host) sendClaimed(scope *turnScope, text string) error {
+	ag := h.agents
 	fail := func(err error) error {
-		ag.mu.Lock()
-		ag.active = false
-		ag.mu.Unlock()
+		h.endScope(scope)
 		h.refresh()
 		return err
 	}
+	ag.mu.Lock()
+	profName := ag.defProf
+	ag.mu.Unlock()
 
 	p, err := h.resolveProfile(profName)
 	if err != nil {
@@ -628,27 +635,70 @@ func (h *Host) AgentSend(text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	h.GoSafe("agent turn", func() { h.runTurns(runner, text) })
+	h.GoSafe("agent turn", func() { h.runTurns(runner, scope, text) })
 	return nil
+}
+
+// beginScope starts a turn scope (ag.mu held). It is stored when the agent
+// is claimed, so a cancel arriving before the turn goroutine runs is kept.
+func (h *Host) beginScope() *turnScope {
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &turnScope{ctx: ctx, cancel: cancel}
+	h.turn.Store(t)
+	return t
+}
+
+// endScope releases the agent claimed with scope.
+func (h *Host) endScope(scope *turnScope) {
+	ag := h.agents
+	ag.mu.Lock()
+	ag.active = false
+	h.turn.Store(nil)
+	ag.mu.Unlock()
+	scope.cancel()
+}
+
+// handOff ends a claim that ran no turn (/compact, rewind). Messages queued
+// meanwhile start under the same claim, so a submit cannot jump ahead of
+// them; after a cancel the queue waits for the UI to hand it back.
+func (h *Host) handOff(scope *turnScope) {
+	ag := h.agents
+	ag.mu.Lock()
+	queued := ""
+	if scope.ctx.Err() == nil {
+		queued = strings.Join(ag.steering, "\n\n")
+		ag.steering = nil
+	}
+	if queued == "" {
+		ag.active = false
+		h.turn.Store(nil)
+	}
+	ag.mu.Unlock()
+	if queued == "" {
+		scope.cancel()
+		h.refresh()
+		return
+	}
+	// sending waits on the interpreter, and rewind may be called from Lua
+	h.GoSafe("agent send", func() {
+		if err := h.sendClaimed(scope, queued); err != nil {
+			h.Notify("error", "agent", err.Error())
+		}
+	})
 }
 
 // runTurns sends text and every follow-up the queue produces on one
 // runner, compacting first whenever the last prompt filled the context.
-func (h *Host) runTurns(runner *agent.Runner, text string) {
+func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 	defer h.endTurnAfterPanic()
-	for text != "" {
+	for scope != nil {
 		// one context per turn covers compaction too, which runs before the
 		// runner holds a cancel of its own
-		ctx, cancel := context.WithCancel(context.Background())
-		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
 		if h.compactDue() {
-			h.compactReporting(ctx, runner, compactAuto, "")
+			h.compactReporting(scope.ctx, runner, compactAuto, "")
 		}
-		h.sendCompacting(ctx, runner, text)
-		cancelled := ctx.Err() != nil
-		h.turn.Store(nil)
-		cancel()
-		text = h.nextTurn(cancelled)
+		h.sendCompacting(scope.ctx, runner, text)
+		scope, text = h.nextTurn(scope)
 	}
 }
 
@@ -666,26 +716,30 @@ func (h *Host) startTurn(text string) {
 // active stays held across the handoff, so a submit in between queues
 // instead of starting a turn out of order. After a cancelled turn nothing
 // starts: the queue waits for the UI to hand it back to the composer.
-func (h *Host) nextTurn(cancelled bool) string {
+func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text := ""
-	if !cancelled {
+	if done.ctx.Err() == nil {
 		text = strings.Join(ag.steering, "\n\n")
 		ag.steering = nil
 	}
+	var next *turnScope
 	if text == "" {
 		ag.active = false
+		h.turn.Store(nil)
 	} else {
 		ag.beginTurn()
+		next = h.beginScope()
 	}
 	ag.mu.Unlock()
+	done.cancel()
 	if text == "" {
 		h.refresh()
 	} else {
 		h.startTurn(text)
 	}
-	return text
+	return next, text
 }
 
 // deliverSteering hands the queue to the running turn at a step boundary.

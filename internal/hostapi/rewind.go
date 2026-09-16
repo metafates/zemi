@@ -82,11 +82,15 @@ func userText(row *store.Message) (string, bool) {
 func (h *Host) RewindTo(id string) (int, error) {
 	ag := h.agents
 	ag.mu.Lock()
-	sid, active := ag.sessionID, ag.active
-	ag.mu.Unlock()
-	if active {
+	if ag.active {
+		ag.mu.Unlock()
 		return 0, errors.New("a turn is running; esc interrupts it")
 	}
+	// claimed like a turn, so no send starts on the history being cut
+	ag.active = true
+	sid, scope := ag.sessionID, h.beginScope()
+	ag.mu.Unlock()
+	defer h.handOff(scope)
 	// a detached run writing files would undo the restore right after it
 	if n := h.tasks.running(); n > 0 {
 		return 0, fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
