@@ -49,6 +49,7 @@ Environment:
   ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
   ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
   ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
+  ZEMI_CACHE_HOME     cache dir: language server builds (default ~/.cache/zemi)
 
 Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 `

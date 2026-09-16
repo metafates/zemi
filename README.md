@@ -273,8 +273,9 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 | `~/.config/zemi/` | `init.lua`, `permissions.lua`, `.luarc.json`, authored `skills/`, `agents/`, `commands/`, `workflows/` (a git repo) |
 | `~/.local/share/zemi/` | plugins, learned `skills/`, `types/` (LuaLS annotations for `zemi.*`) |
 | `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
+| `~/.cache/zemi/` | sandboxed language servers' caches and build output |
 
-Override with `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME`.
+Override with `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME`.
 
 ## Development
 

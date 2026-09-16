@@ -435,7 +435,9 @@ type trustGate struct {
 }
 
 // step records the decision. It runs before plugins and user init.lua,
-// whose MCP servers start with a working directory that depends on it.
+// which may already reach what it gates (project agents and workflows,
+// language servers). MCP servers do not depend on it: they always start in
+// DataHome with ZEMI_PROJECT_DIR set.
 func (tg *trustGate) step() lua.BootStep {
 	return lua.BootStep{
 		Name: "project trust",

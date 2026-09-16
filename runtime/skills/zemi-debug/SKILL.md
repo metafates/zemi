@@ -89,7 +89,7 @@ summary_message_id), `messages` (role `tail` rows are copies of messages a compa
 ## Reproduce without touching the user's setup
 
 ```sh
-ZEMI_CONFIG_HOME=$(mktemp -d) ZEMI_DATA_HOME=$(mktemp -d) ZEMI_STATE_HOME=$(mktemp -d) zemi
+ZEMI_CONFIG_HOME=$(mktemp -d) ZEMI_DATA_HOME=$(mktemp -d) ZEMI_STATE_HOME=$(mktemp -d) ZEMI_CACHE_HOME=$(mktemp -d) zemi
 ```
 
 Starts with empty config and stores. Copy only the pieces needed to reproduce.
