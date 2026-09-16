@@ -62,6 +62,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
+| "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window`; add it to the model entry or set `agent.context_window` |
 | project `.zemi/init.lua` ignored | trust refused; `~/.local/state/zemi/project_trust.json` maps the dir to a hash, a `!` prefix means denied; remove the entry to be asked again |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |

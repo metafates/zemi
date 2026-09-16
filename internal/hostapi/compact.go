@@ -130,10 +130,11 @@ func contextTooLarge(err error) bool {
 // refuses as too long is compacted and resent once.
 func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text string) {
 	ag := h.agents
-	retried, capDropped := false, false
+	retried, capDropped, imagesDropped := false, false, false
 	for {
 		ag.mu.Lock()
 		ag.holdOverflow = !retried && ag.compactFails < compactMaxFails
+		ag.holdImages = !imagesDropped && !runner.TextOnly
 		hold := ag.holdOverflow
 		ag.mu.Unlock()
 		err := runner.Send(ctx, text)
@@ -150,6 +151,18 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.beginTurn()
 			ag.mu.Unlock()
 			runner.MaxOutputTokens = 0
+			continue
+		}
+		// a model that refuses image parts: replace them with a note that
+		// says so, remember it, and send again rather than ending the turn
+		if !imagesDropped && !runner.TextOnly && imagesRefused(err) {
+			imagesDropped = true
+			ag.mu.Lock()
+			imagesRejected.Store(ag.turnModel, true)
+			ag.beginTurn()
+			ag.mu.Unlock()
+			runner.TextOnly = true
+			h.Notify("info", "agent", ag.turnModel+" does not take images; going on without them (set images = false on its model entry)")
 			continue
 		}
 		reason := compactAuto

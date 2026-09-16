@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,5 +130,62 @@ func TestAttachPath(t *testing.T) {
 	msg := h.composeUserMessage("what is this @drop:Screen-Shot-1.png @drop:../attach_test.go", true)
 	if len(msg.Content) != 2 {
 		t.Fatalf("parts = %d", len(msg.Content))
+	}
+}
+
+// TestImagesRefusedContinues: a 400 over image input does not end the
+// turn: images become notes, the model is remembered as text-only and the
+// prompt goes out again.
+func TestImagesRefusedContinues(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := reflectStub(t, h, "ok")
+	m.noImages.Store(1)
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("what is in @shot.png")
+	if n := m.streams.Load(); n != 2 {
+		t.Fatalf("model streamed %d times, want 2", n)
+	}
+	for _, row := range h.Session().Transcript {
+		if row.Kind == "error" {
+			t.Fatalf("error row shown: %+v", row)
+		}
+	}
+	model := h.currentModelID(nil)
+	t.Cleanup(func() { imagesRejected.Delete(model) })
+	if h.takesImages(model) {
+		t.Fatal("model not remembered as text-only")
+	}
+	for _, msg := range h.agents.runner.History {
+		for _, part := range msg.Content {
+			if _, ok := part.(fantasy.FilePart); ok {
+				t.Fatal("image part still in history")
+			}
+			if tp, ok := part.(fantasy.TextPart); ok && strings.Contains(tp.Text, "omitted") {
+				return
+			}
+		}
+	}
+	t.Fatal("no omission note in history")
+}
+
+func TestImagesRefused(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{&fantasy.ProviderError{StatusCode: 400, Message: "<path> is not a multimodal model"}, true},
+		{&fantasy.ProviderError{StatusCode: 400, Message: "Invalid content type. image_url is only supported by certain models."}, true},
+		{&fantasy.ProviderError{StatusCode: 400, Message: "max_tokens too large"}, false},
+		{&fantasy.ProviderError{StatusCode: 500, Message: "image service down"}, false},
+		{errors.New("image"), false},
+		{nil, false},
+	} {
+		if got := imagesRefused(c.err); got != c.want {
+			t.Errorf("%v: %v, want %v", c.err, got, c.want)
+		}
 	}
 }

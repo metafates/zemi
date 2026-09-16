@@ -49,8 +49,9 @@ zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```
 
 `images = false` marks a model that refuses image input: `read` on an image then returns a
-text error and `@image` attachments are omitted with a note, instead of the provider
-rejecting the whole request.
+text error and `@image` attachments are omitted with a note. Without it zemi learns the same
+from the provider's 400 over an image: the turn goes on with notes in place of the images and
+the model stays text-only for the process; the flag makes that permanent.
 
 `context_window` (or the `agent.context_window` setting, which overrides it) drives the
 statusline percent and auto compaction. Compaction starts at `max(window - 33k, window/2)`

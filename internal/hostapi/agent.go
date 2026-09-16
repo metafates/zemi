@@ -147,6 +147,7 @@ type agentHost struct {
 	compactFails int
 	compacted    bool
 	holdOverflow bool
+	holdImages   bool // a 400 over image parts is resent without them, not reported
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -561,9 +562,8 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
-	r.Compose = func(text string) fantasy.Message {
-		return h.composeUserMessage(text, h.takesImages(h.currentModelID(p)))
-	}
+	r.TextOnly = !h.takesImages(h.currentModelID(p))
+	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
 	r.Full = h.contextFull
 	return r, nil
 }
@@ -874,8 +874,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	hold := ag.holdOverflow && contextTooLarge(err)
-	ag.holdOverflow = false
+	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err)
+	ag.holdOverflow, ag.holdImages = false, false
 	ag.mu.Unlock()
 	if hold {
 		return // sendCompacting compacts and resends, or reports it
@@ -1350,10 +1350,30 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 }
 
 // takesImages reports whether a model accepts image parts; unknown
-// models are assumed to, the model entry says otherwise with images = false.
+// models are assumed to, until the model entry says images = false or the
+// provider refused a request over them (imagesRejected).
 func (h *Host) takesImages(id string) bool {
+	if _, refused := imagesRejected.Load(id); refused {
+		return false
+	}
 	m, ok := h.modelSpec(id)
 	return !ok || !m.TextOnly
+}
+
+// imagesRejected remembers models whose provider refused a request over
+// its image parts, so the turn resends without them and later ones never
+// carry any (like capRejected, per process).
+var imagesRejected sync.Map
+
+// imagesRefused reports a provider 400 about image input; the wording is
+// the provider's, so this is a text match like maxTokensRefused.
+func imagesRefused(err error) bool {
+	var pe *fantasy.ProviderError
+	if !errors.As(err, &pe) || pe.StatusCode != 400 {
+		return false
+	}
+	s := strings.ToLower(pe.Message)
+	return strings.Contains(s, "multimodal") || strings.Contains(s, "image") || strings.Contains(s, "vision")
 }
 
 // modelSpec finds the catalog entry for a "provider/model" id.

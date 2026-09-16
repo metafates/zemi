@@ -57,6 +57,10 @@ type Runner struct {
 	// expands attachments and images); nil sends the text as is.
 	Compose func(text string) fantasy.Message
 
+	// TextOnly strips image parts from the history before every send: a
+	// user attachment becomes a note, an image tool result a text error.
+	TextOnly bool
+
 	// Full is asked after every step with the context that step used
 	// (ContextUsed). True while the model still has tool results to read
 	// ends the turn there, so the host can compact and send "" to continue.
@@ -147,6 +151,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	r.mu.Lock()
 	r.History = append(closeToolCalls(r.History), userMsg...)
+	if r.TextOnly {
+		r.History = stripImages(r.History)
+	}
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
 	provOpts := r.ProviderOptions
@@ -472,6 +479,27 @@ func closeToolCalls(history []fantasy.Message) []fantasy.Message {
 }
 
 var errNotRun = fmt.Errorf("not run: the reply was cut off")
+
+// stripImages replaces every image in history with text saying so, for a
+// model that refuses image parts.
+func stripImages(history []fantasy.Message) []fantasy.Message {
+	for i, m := range history {
+		for j, part := range m.Content {
+			switch p := part.(type) {
+			case fantasy.FilePart:
+				history[i].Content[j] = fantasy.TextPart{Text: "[image " + p.Filename + " omitted: the current model does not take images]"}
+			case fantasy.ToolResultPart:
+				if p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeMedia {
+					p.Output = fantasy.ToolResultOutputContentError{Error: errNoImages}
+					history[i].Content[j] = p
+				}
+			}
+		}
+	}
+	return history
+}
+
+var errNoImages = fmt.Errorf("image omitted: the current model does not take images; go on without it, or ask the user to describe it or switch model")
 
 func isErrResult(c fantasy.ToolResultContent) bool {
 	if c.Result == nil {

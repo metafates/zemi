@@ -480,3 +480,21 @@ func TestRegistryResolve(t *testing.T) {
 		t.Fatalf("catalog: %v", specs)
 	}
 }
+
+func TestStripImages(t *testing.T) {
+	media := fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentMedia{Data: "AAAA", MediaType: "image/png"}}
+	text := fantasy.ToolResultPart{ToolCallID: "c2", Output: fantasy.ToolResultOutputContentText{Text: "kept"}}
+	history := stripImages([]fantasy.Message{
+		{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}, fantasy.FilePart{Filename: "shot.png", MediaType: "image/png", Data: []byte("x")}}},
+		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{media, text}},
+	})
+	if tp, ok := history[0].Content[1].(fantasy.TextPart); !ok || !strings.Contains(tp.Text, "shot.png omitted") {
+		t.Fatalf("file part = %#v", history[0].Content[1])
+	}
+	if res := history[1].Content[0].(fantasy.ToolResultPart); res.Output.GetType() != fantasy.ToolResultContentTypeError {
+		t.Fatalf("media result = %#v", res.Output)
+	}
+	if res := history[1].Content[1].(fantasy.ToolResultPart); res.Output.GetType() != fantasy.ToolResultContentTypeText {
+		t.Fatalf("text result changed: %#v", res.Output)
+	}
+}
