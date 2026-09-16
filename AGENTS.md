@@ -255,7 +255,7 @@ project unwritable, not because the parser refuses a flag. Readers keep their
 `refusedFlags` (`sort -o`, `find -exec`, `rg --pre`) and sed/awk/jq script checks, since
 `ReadCommand` shares them and settles readers unconfined.
 `perm.ArgUse` tells the check how the argument is used: code may not run from the
-scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`) settles only over a tree
+scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`, `gofmt`) settles only over a tree
 with no secret-shaped file in it. No argument may point into `.git`, and a git command that
 may print file content (`grep`, `show`, `diff`, `cat-file`, `stash show`, `stash list` with
 arguments, `status -v`, `log`/`reflog` with `-p`, `-U`, `--binary` or another patch flag;

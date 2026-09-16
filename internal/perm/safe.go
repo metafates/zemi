@@ -173,7 +173,9 @@ func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
 		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
 		return walkFrom(first, ArgWalk), true
-	case name == "diff":
+	// gofmt descends into a directory operand and prints what it parses;
+	// tree, du, find, fd and ls -R walk too but print names, never content
+	case name == "diff", name == "gofmt":
 		return walkFrom(0, ArgWalk), false
 	case name == "cd", !reader(name):
 		return func(int) ArgUse { return ArgRun }, false
