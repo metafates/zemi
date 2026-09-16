@@ -162,18 +162,21 @@ func TestSafeCommand(t *testing.T) {
 		{"tsc --noEmit --generateTrace t", false},
 		{"tsc --noEmit --incremental", false},
 		{"git remote -v add x ./y", false},
-		{"git remote -v", true},
+		{"git remote", true},
+		{"git remote -v", false},
+		{"git remote get-url origin", false},
 		{"git remote show git@evil.example:x", false},
 		{"git remote show -- -n git@evil.example:x", false},
-		{"git remote show -n origin", true},
+		{"git remote show -n origin", false},
 		{"git config --list --show-origin", false},
 		{"git config --get-regexp url", false},
 		{"git config --get http.extraHeader", false},
 		{"git config --global --get user.name", false},
 		{"git config --local --includes --list", false},
 		{"git config --local --file x --list", false},
-		{"git config --local --list", true},
-		{"git config --local --get remote.origin.url", true},
+		{"git config --local --list", false},
+		{"git config --local --get-regexp http", false},
+		{"git config --local --get remote.origin.url", false},
 		{"git config --local user.name x", false},
 		{"cd internal && ls", true},
 		{"golangci-lint run ./...", true},
@@ -286,8 +289,10 @@ func TestReadCommand(t *testing.T) {
 }
 
 func TestSafeCommandPathCheck(t *testing.T) {
-	// a tree walked past ignore rules holds a .env here
-	notSecret := func(arg string, use ArgUse) bool { return !PathIsSecret(arg) && use != ArgWalk }
+	// the project root walked past ignore rules holds a .env, and repo sub tracks one
+	notSecret := func(arg string, use ArgUse) bool {
+		return !PathIsSecret(arg) && (use != ArgWalk || arg != ".") && (use != ArgRepo || arg != "sub")
+	}
 	for _, c := range []struct {
 		cmd  string
 		safe bool
@@ -307,6 +312,23 @@ func TestSafeCommandPathCheck(t *testing.T) {
 		{"git show HEAD:main.go", true},
 		{"rg KEY", true},
 		{"rg --ignore-file=wl KEY", false},
+		{"grep -r KEY internal", true},
+		{"grep -rE KEY\\|\u00a0internal", false},
+		{"grep -rE KEY\\|\vinternal", false},
+		{"grep -rE KEY\\|\finternal", false},
+		{"grep -rE KEY\\|\rinternal", false},
+		{"grep -rE KEY\\|\u2003internal", false},
+		{"grep -rE KEY\\|\u0085internal", false},
+		{"grep -r KEY #", false},
+		{"grep -r KEY # internal", false},
+		{"grep -r KEY\t# internal", false},
+		{"git -C sub status", true},
+		{"git -C sub stash list", true},
+		{"git -C sub status -v", false},
+		{"git -C sub status -sv", false},
+		{"git -C sub status --verb", false},
+		{"git -C sub stash list -p", false},
+		{"git -C sub stash list --patch", false},
 	} {
 		if got := SafeCommand(c.cmd, notSecret); got != c.safe {
 			t.Errorf("SafeCommand(%q) = %v, want %v", c.cmd, got, c.safe)

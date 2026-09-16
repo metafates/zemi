@@ -690,22 +690,14 @@ func safeGit(args []string) bool {
 		return len(rest) == 0 || slices.ContainsFunc(rest, func(a string) bool {
 			return a == "--list" || strings.HasPrefix(a, "-l") || strings.HasPrefix(a, "-n")
 		})
-	case "remote": // -v may come before add or remove
-		rest = slices.DeleteFunc(rest, func(a string) bool { return a == "-v" || a == "--verbose" })
-		// show queries the remote, which may be a model-chosen host:path, unless -n
-		return len(rest) == 0 || rest[0] == "get-url" ||
-			rest[0] == "show" && slices.Contains(rest, "-n") && !slices.Contains(rest, "--")
+	// config values and remote URLs ask: .git/config may hold tokens
+	// (http.extraheader from actions/checkout, https://user:token@ remotes)
+	case "remote":
+		return len(rest) == 0
 	case "stash", "worktree":
 		return next == "list" || (sub == "stash" && next == "show")
 	case "reflog":
 		return next == "" || next == "show"
-	case "config":
-		// only --local: other scopes and includes read ~/.gitconfig and
-		// friends, which may hold tokens from outside the project
-		return slices.Contains(rest, "--local") && !hasFlag(rest, "--global", "--system", "--file", "-f", "--blob", "--includes") &&
-			slices.ContainsFunc(rest, func(a string) bool {
-				return slices.Contains([]string{"--get", "--get-all", "--get-regexp", "--list", "-l"}, a)
-			})
 	case "submodule":
 		return next == "" || next == "status"
 	}
@@ -730,7 +722,8 @@ func gitContentDir(f []string) (string, bool) {
 	}
 	sub, rest := args[0], args[1:]
 	return dir, slices.Contains([]string{"grep", "show", "diff", "cat-file"}, sub) ||
-		sub == "stash" && slices.Contains(rest, "show") ||
+		sub == "stash" && (slices.Contains(rest, "show") || len(rest) > 1 && rest[0] == "list") ||
+		sub == "status" && hasFlag(rest, "-v", "--verbose") ||
 		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "-U", "--patch", "--unified", "--binary", "-L", "--word-diff",
 			"--color-words", "--cc", "-c", "--dd", "--diff-merges", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
 }
