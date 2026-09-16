@@ -41,12 +41,14 @@ func TestToolDeniedEvent(t *testing.T) {
 	})
 }
 
-// TestLuaAgentsNeedUserConfig: project code cannot act with the user's
-// authority from Lua.
+// TestLuaAgentsNeedUserConfig: project and learned code cannot act with
+// the user's authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
+	h.Commands.Add(&Command{Name: "gocmd", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
+	t.Setenv("ZEMI_TEST_API_KEY", "k")
 	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
 	if err != nil {
 		t.Fatal(err)
@@ -60,11 +62,26 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.memory.add({ kind = "fact", text = "x" })`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
+		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.register({ id = "x", kind = "openai_compat" })`,
+		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
+		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.remove("manual")`,
+		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `assert(zemi.command.run("gocmd"))`,
+		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
-		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
-			t.Errorf("%s from project: %v", src, err)
+		for _, o := range []lua.Origin{lua.OriginProject, lua.OriginLearned} {
+			if err := r.ExecuteChunk(context.Background(), src, "p.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
+				t.Errorf("%s from %s: %v", src, o, err)
+			}
 		}
 	}
+	runUser(t, r, `
+		zemi.config.set("permissions.mode", "manual")
+		zemi.permission.mode.add("x", { base = "manual", rules = { { "tool.bash", "ls *", "allow" } } })
+		zemi.permission.mode.remove("x")
+		zemi.lsp.disable("gopls")
+		zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")
+		assert(zemi.command.run("gocmd"))
+		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
 	own, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "lua", Origin: string(lua.OriginProject)})
 	if err != nil {
 		t.Fatal(err)
