@@ -164,6 +164,11 @@ func (h *Host) RewindTo(id string) (int, error) {
 }
 
 func restoreCheckpoint(cp store.Checkpoint) error {
+	// the key was resolved when saved: a symlink swapped in since for the file
+	// or a parent would send the content somewhere never checked
+	if perm.RealPath(cp.Path) != cp.Path {
+		return errors.New("the path now leads through a symlink")
+	}
 	if !cp.Existed {
 		if err := os.Remove(cp.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err

@@ -198,3 +198,24 @@ func TestRewindSnapshotEdges(t *testing.T) {
 		})
 	}
 }
+
+// TestRestoreRefusesSwappedSymlink: a directory replaced by a symlink after
+// the snapshot must not carry the restored content out of the project.
+func TestRestoreRefusesSwappedSymlink(t *testing.T) {
+	proj, outside := perm.RealPath(t.TempDir()), t.TempDir()
+	sub := filepath.Join(proj, "sub")
+	cp := store.Checkpoint{Path: filepath.Join(sub, "a.sh"), Existed: true, Content: []byte("payload")}
+	if err := restoreCheckpoint(cp); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(sub)
+	if err := os.Symlink(outside, sub); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreCheckpoint(cp); err == nil {
+		t.Fatal("restored through a symlink")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "a.sh")); err == nil {
+		t.Fatal("wrote outside the project")
+	}
+}
