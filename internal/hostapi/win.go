@@ -449,7 +449,7 @@ Actions:
 - hide (id) and show (id): hidden windows keep running off screen; read and keys still work, so you can drive several programs and show the one that matters. focus (id): give the user's keys to it.
 - read (id, expect, wait_ms, scrollback): the screen as text plus the cursor. With expect it returns as soon as that text shows (or after wait_ms, saying so); without, it waits wait_ms (default 300) for the program to draw. scrollback N adds the last N lines that scrolled off the top. Always read after acting before deciding the next step.
 - keys (id, keys): press keys in neovim notation: plain characters type themselves, <esc> <cr> <tab> <bs> <space> <up> <down> <left> <right> <home> <end> <pgup> <pgdn> <del> <f1>..<f12> name keys, <c-x> <a-x> <s-tab> <c-s-left> add modifiers, <lt> is a literal <. "ihello<esc>:wq<cr>" edits and saves in vim.
-- mouse (id, x, y, button, kind, mod): a click at 0-based cell x, y (button left, middle, right; kind click, press, release, move) or a wheel step (button wheel_up or wheel_down).
+- mouse (id, x, y, button, mkind, mod): a click at 0-based cell x, y (button left, middle, right; mkind click, press, release, move) or a wheel step (button wheel_up or wheel_down).
 - send (id, text): raw text, as a paste without bracketing; prefer keys.
 - wait (id, timeout_ms): blocks until the program exits.
 - close (id): ends it. list: every window.
@@ -465,7 +465,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 			"cols":       map[string]any{"type": "number", "description": "open, set: a float's width"},
 			"rows":       map[string]any{"type": "number", "description": "open, set: a float's height"},
 			"focus":      map[string]any{"type": "boolean", "description": "open: give the user's keys to the window right away"},
-			"id":         map[string]any{"type": "number", "description": "read, send, wait, close: the window"},
+			"id":         map[string]any{"type": "number", "description": "every action but open and list: the window"},
 			"text":       map[string]any{"type": "string", "description": "send: raw text to type"},
 			"keys":       map[string]any{"type": "string", "description": "keys: key presses in neovim notation, e.g. \"<c-b>:q<cr>\""},
 			"expect":     map[string]any{"type": "string", "description": "read: return as soon as the screen shows this text"},
@@ -644,18 +644,6 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		mx0, my0 := 0, 0
-		if in.X != nil {
-			mx0 = *in.X
-		}
-		if in.Y != nil {
-			my0 = *in.Y
-		}
-		evs, err := mouseEvent(in.MKind, in.Button, mx0, my0, in.Mod)
-		if err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
-		cols, rows := w.Size()
 		mx, my := 0, 0
 		if in.X != nil {
 			mx = *in.X
@@ -663,6 +651,11 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if in.Y != nil {
 			my = *in.Y
 		}
+		evs, err := mouseEvent(in.MKind, in.Button, mx, my, in.Mod)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		cols, rows := w.Size()
 		if mx < 0 || my < 0 || mx >= cols || my >= rows {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("x, y must be inside the %dx%d window", cols, rows)), nil
 		}
