@@ -42,12 +42,16 @@ const (
 	ArgRepo
 )
 
-// SafeCommand reports whether a bash command only reads, builds or tests:
-// every segment runs an allowlisted program with harmless arguments, nothing
-// is written through a redirect, the shell expands nothing, and every
-// argument passes pathOK, so a read-only program cannot reach secrets or
-// files outside the project. A nil pathOK refuses absolute, home and parent
-// paths. Auto and plan mode run these without asking.
+// SafeCommand reports whether a bash command only reads or runs a project
+// tool (build, test, lint, format): every segment runs an allowlisted program
+// named without a path, nothing is written through a redirect, the shell
+// expands nothing, and every argument passes pathOK, so a reader cannot print
+// secrets or files outside the project. A nil pathOK refuses absolute, home
+// and parent paths. Auto and plan mode run these in the sandbox, which
+// confines what project tools write and run.
+// NOTE: a project tool runs code a flag or target may name (go test -exec,
+// make --eval), and the sandbox lets that code read the secrets the path
+// check keeps from readers.
 func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	cmd = inlineVars(cmd)
 	if expands(cmd) {
@@ -57,8 +61,8 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		pathOK = relativeArg
 	}
 	n := Normalize(cmd)
-	// an assignment can steer a program past its checked flags (GOFLAGS,
-	// RIPGREP_CONFIG_PATH), and sh -c passes arguments nothing here sees
+	// an assignment can steer a reader past its checked flags
+	// (RIPGREP_CONFIG_PATH), and sh -c passes arguments nothing here sees
 	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || len(n.WritePaths) > 0 || len(n.Segments) == 0 {
 		return false
 	}
@@ -84,7 +88,7 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		return true
 	}
 	for _, f := range n.Args {
-		if !safeSegment(f) {
+		if strings.Contains(f[0], "/") || !safeSegment(f) {
 			return false
 		}
 		use, walkCwd := argUses(f)
@@ -98,7 +102,7 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		if repo, ok := gitContentDir(f); ok && !check(repo, ArgRepo) {
 			return false
 		}
-		if filepath.Base(f[0]) == "cd" {
+		if f[0] == "cd" {
 			for _, d := range dirs {
 				dirs = append(dirs, inDir(d, f[1]))
 			}
@@ -117,7 +121,7 @@ func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		return false
 	}
 	for _, f := range Normalize(inlineVars(cmd)).Args {
-		if len(f) > 0 && (!reader(f[0]) || strings.ContainsRune(f[0], '/')) {
+		if !reader(f[0]) {
 			return false
 		}
 	}
@@ -146,7 +150,7 @@ func inDir(dir, a string) string {
 // position among the operands, and whether it searches the working
 // directory when it has no operand after the pattern.
 func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
-	name, rest := filepath.Base(f[0]), f[1:]
+	name, rest := f[0], f[1:]
 	// a pattern glued to -e or -f (-eKEY, --regexp=KEY) is not an operand,
 	// so the first operand is already searched; -ie bundles only refuse more
 	first := 1
@@ -293,54 +297,27 @@ var readOnlyPrograms = map[string]bool{
 // variable, run a program it names, load code from a file or read paths
 // listed in a file the path check never sees.
 var refusedFlags = map[string][]string{
-	"sort":          {"-o", "--output", "--compress-program", "--files0-from"},
-	"printf":        {"-v"},
-	"tree":          {"-o", "-R"},
-	"file":          {"-C", "--compile", "-f", "--files-from"},
-	"du":            {"--files0-from"},
-	"wc":            {"--files0-from"},
-	"diff":          {"--from-file", "--to-file"},
-	"fd":            {"-x", "-X", "--exec", "--exec-batch"},
-	"rg":            {"--pre", "--hostname-bin"},
-	"ag":            {"--pager"},
-	"find":          {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls", "-files0-from"},
-	"sed":           {"-i", "-I", "--in-place", "-f", "--file"},
-	"awk":           {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec", "-W", "-o", "--pretty-print", "-p", "--profile", "-d", "--dump-variables", "-D", "--debug"},
-	"jq":            {"-f", "--from-file", "-L", "--library-path"},
-	"make":          {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval", "-t", "--touch"},
-	"cargo":         {"--config", "--fix", "--out-dir", "--artifact-dir", "--open", "--logfile", "-Z"},
-	"prettier":      {"-w", "--write", "--cache-location"},
-	"eslint":        {"--fix", "-o", "--output-file", "--init", "--inspect-config", "--cache-location"},
-	"ruff":          {"--fix", "--fix-only", "--unsafe-fixes", "--add-noqa", "-o", "--output-file", "--config", "--cache-dir"},
-	"golangci-lint": {"--fix", "--output", "--out-format", "--cpu-profile-path", "--mem-profile-path", "--trace-path"},
-	"jest":          {"-u", "--updateSnapshot", "--outputFile", "--coverageDirectory", "--init"},
-	"vitest":        {"-u", "--update", "--outputFile", "--ui", "--api", "--open", "--inspect", "--inspect-brk"},
-	// --basetemp removes the directory it names
-	"pytest": {"--basetemp", "--junitxml", "--junit-xml", "--pastebin", "-o", "--override-ini", "--debug",
-		"--log-file", "--report-log", "--result-log", "--cov-report", "--pdbcls"},
-	"mypy": {"--python-executable", "--install-types", "--junit-xml", "--html-report", "--txt-report", "--xml-report",
-		"--linecount-report", "--linecoverage-report", "--lineprecision-report", "--memory-xml-report",
-		"--cobertura-xml-report", "--any-exprs-report"},
-	"tox": {"-x", "--override", "--installpkg", "--devenv", "--discover", "--result-json", "--workdir", "--root"},
+	"sort":   {"-o", "--output", "--compress-program", "--files0-from"},
+	"printf": {"-v"},
+	"tree":   {"-o", "-R"},
+	"file":   {"-C", "--compile", "-f", "--files-from"},
+	"du":     {"--files0-from"},
+	"wc":     {"--files0-from"},
+	"diff":   {"--from-file", "--to-file"},
+	"fd":     {"-x", "-X", "--exec", "--exec-batch"},
+	"rg":     {"--pre", "--hostname-bin"},
+	"ag":     {"--pager"},
+	"find":   {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls", "-files0-from"},
+	"sed":    {"-i", "-I", "--in-place", "-f", "--file"},
+	"awk":    {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec", "-W", "-o", "--pretty-print", "-p", "--profile", "-d", "--dump-variables", "-D", "--debug"},
+	"jq":     {"-f", "--from-file", "-L", "--library-path"},
+	"gofmt":  {"-w", "--w", "-cpuprofile", "--cpuprofile"},
 }
 
-// goRefusedFlags run a program, load source from elsewhere or write a file.
-// Go flags never bundle, and -flag and --flag are the same flag.
-var goRefusedFlags = map[string][]string{
-	"go": {"-exec", "-toolexec", "-vettool", "-overlay", "-modfile", "-o", "-coverprofile", "-cpuprofile",
-		"-memprofile", "-blockprofile", "-mutexprofile", "-trace", "-outputdir", "-fuzz", "-update", "-pkgdir",
-		"-testlogfile", "-gocoverdir", "-fuzzcachedir", "-artifacts", "-debug-actiongraph", "-debug-trace",
-		"-debug-runtime-trace", "-http", "-gcflags", "-ldflags", "-asmflags", "-gccgoflags"},
-	"gofmt":       {"-w", "-cpuprofile"},
-	"staticcheck": {"-debug"},
-}
-
-// test and lint tools that only touch the project
-// NOTE: a linter whose own config turns fixes on (ruff fix = true,
-// golangci-lint fix: true) still writes; only the flags are checked.
+// projectTools build, test, lint or format the project with any arguments.
 var projectTools = map[string]bool{
-	"pytest": true, "tox": true, "mypy": true, "eslint": true, "prettier": true,
-	"vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
+	"pytest": true, "tox": true, "mypy": true, "eslint": true, "prettier": true, "vitest": true, "jest": true,
+	"golangci-lint": true, "staticcheck": true, "ruff": true, "tsc": true, "make": true,
 }
 
 // sedSafe reports whether every sed script (the -e values, or else the
@@ -527,21 +504,11 @@ var awkUnsafe = regexp.MustCompile(`[>|@]|getline|system|ENVIRON|ARGV|PROCINFO|S
 // env and $ENV print the environment; import and include load modules.
 var jqUnsafe = regexp.MustCompile(`\$ENV|\b(env|import|include)\b`)
 
-// npm script names routinely carry a colon: test:unit.
-var safeMakeTarget = regexp.MustCompile(`^(all|build[\w.:-]*|test[\w.:-]*|check[\w.:-]*|lint[\w.:-]*|vet|compile|bench[\w.:-]*|cover(age)?)$`)
-
-// fixing and formatting targets rewrite sources (lint:fix)
-var writingTarget = regexp.MustCompile(`fix|fmt|format|write`)
-
-func safeTarget(t string) bool {
-	return safeMakeTarget.MatchString(t) && !writingTarget.MatchString(t)
-}
-
 func safeSegment(a []string) bool {
 	if len(a) == 0 {
 		return true
 	}
-	name, rest := filepath.Base(a[0]), a[1:]
+	name, rest := a[0], a[1:]
 	sub := ""
 	if len(rest) > 0 {
 		sub = rest[0]
@@ -549,102 +516,39 @@ func safeSegment(a []string) bool {
 	switch {
 	case name == "uniq": // a second operand is the output file
 		return len(slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
-	case hasFlag(rest, refusedFlags[name]...), goFlag(rest, goRefusedFlags[name]...):
+	case hasFlag(rest, refusedFlags[name]...):
 		return false
 	case name == "cd": // with no directory or - it leaves the project; from .git/hooks go build writes a hook
 		return len(rest) == 1 && !strings.HasPrefix(sub, "-") &&
 			!slices.ContainsFunc(strings.Split(sub, "/"), func(p string) bool { return strings.EqualFold(p, ".git") })
-	case name == "tox": // exec and devenv run what they are given, and -- reaches the commands
-		return !slices.ContainsFunc(rest, func(a string) bool {
-			return slices.Contains([]string{"--", "exec", "e", "devenv", "d", "quickstart", "q", "legacy", "le", "schema"}, a)
-		})
-	case name == "golangci-lint": // fmt, migrate and custom rewrite files or build code
-		return slices.Contains([]string{"", "run", "linters", "formatters", "config", "version", "help"}, sub)
 	case name == "jq":
 		return !jqUnsafe.MatchString(strings.Join(rest, " "))
-	case name == "jest": // --config, --transform and --haste take inline JSON naming modules to run
-		return !slices.ContainsFunc(rest, func(a string) bool { return strings.Contains(a, "{") })
 	case readOnlyPrograms[name], projectTools[name]:
 		return true
-	case name == "ruff": // format and check --fix rewrite files; after -- a flag is a path
-		opts := rest
-		if i := slices.Index(rest, "--"); i >= 0 {
-			opts = rest[:i]
-		}
-		return sub == "check" || hasFlag(opts, "--check", "--diff")
-	case name == "tsc":
-		// it writes the compiled files next to the sources; options ignore
-		// case and a boolean one takes a following false
-		lower := make([]string, len(rest))
-		for i, a := range rest {
-			lower[i] = strings.ToLower(a)
-		}
-		return hasFlag(lower, "--noemit") && !slices.Contains(rest, "false") && !hasFlag(lower, "--init", "-b", "--build",
-			"-i", "--incremental", "--composite", "--tsbuildinfofile", "--generatetrace", "--generatecpuprofile")
 	case name == "sed":
 		return sedSafe(rest)
 	case name == "awk":
 		return !awkUnsafe.MatchString(strings.Join(rest, " "))
 	case name == "git":
 		return safeGit(rest)
-	// go run and cargo run execute whatever they are pointed at, so they ask
+	// run starts the program instead of building or testing it, and install
+	// and publish go to the screener too
 	case name == "go":
-		switch sub {
-		case "build", "test", "vet", "list", "version", "doc":
-			return true
-		case "mod":
-			return len(rest) > 1 && (rest[1] == "graph" || rest[1] == "why" || rest[1] == "verify")
-		case "env":
-			return !hasFlag(rest, "-w", "-u")
-		}
+		return slices.Contains([]string{"build", "test", "vet", "list", "version", "doc", "env", "fmt", "mod"}, sub)
 	case name == "cargo":
-		switch sub {
-		case "build", "check", "test", "clippy", "doc", "tree", "metadata", "bench":
-			return true
-		case "fmt":
-			return hasFlag(rest, "--check")
-		}
+		return slices.Contains([]string{"build", "check", "test", "clippy", "doc", "tree", "metadata", "bench", "fmt"}, sub)
 	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
-		// flags after the command configure npm (--script-shell) or reach the
-		// program a script runs (-- --fix)
-		if slices.ContainsFunc(rest[min(1, len(rest)):], func(a string) bool { return strings.HasPrefix(a, "-") }) {
-			return false
-		}
-		switch sub {
-		case "test", "lint", "build", "typecheck", "ls", "list", "outdated", "why":
-			return true
-		case "run": // only the usual build and test scripts, like make
-			return len(rest) > 1 && safeTarget(rest[1])
-		}
-	case name == "make":
-		for _, t := range rest {
-			if !strings.HasPrefix(t, "-") && !safeTarget(t) {
-				return false
-			}
-		}
-		return true
+		return slices.Contains([]string{"test", "lint", "build", "typecheck", "ls", "list", "outdated", "why", "run"}, sub)
 	case name == "python" || name == "python3":
-		if sub == "--version" || sub == "-V" {
-			return true
-		}
-		if sub == "-m" && len(rest) > 1 {
-			switch rest[1] {
-			case "pytest", "mypy":
-				return !hasFlag(rest[2:], refusedFlags[rest[1]]...)
-			case "unittest", "py_compile":
-				return true
-			case "json.tool": // a second operand is the output file
-				return len(slices.DeleteFunc(slices.Clone(rest[2:]), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
-			}
-		}
+		return sub == "--version" || sub == "-V" ||
+			sub == "-m" && len(rest) > 1 && slices.Contains([]string{"pytest", "mypy", "unittest", "py_compile", "json.tool"}, rest[1])
 	case name == "node":
 		return len(rest) == 1 && (sub == "--version" || sub == "-v")
 	}
 	return false
 }
 
-// safeGit allows subcommands that read the repository (and fetch, which
-// only updates remote-tracking refs).
+// safeGit allows subcommands that read the repository.
 func safeGit(args []string) bool {
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		switch args[0] {
@@ -655,12 +559,11 @@ func safeGit(args []string) bool {
 				return false
 			}
 			args = args[2:]
-		default: // -c runs configured programs, --exec-path and friends too
+		default: // gitContentDir finds the repository past these only
 			return false
 		}
 	}
-	// --upload-pack and friends name a program for git to run
-	if len(args) == 0 || hasFlag(args, "--output", "--upload-pack", "--receive-pack", "--exec", "--exec-path", "--no-index") {
+	if len(args) == 0 || hasFlag(args, "--no-index") {
 		return false
 	}
 	sub, rest := args[0], args[1:]
@@ -670,8 +573,8 @@ func safeGit(args []string) bool {
 	}
 	switch sub {
 	// fetch is not here: it talks to the network and runs transport helpers
-	case "grep": // -O names a program to open the matches with
-		return !hasFlag(rest, "-O", "--open-files-in-pager", "--untracked")
+	case "grep":
+		return !hasFlag(rest, "--untracked")
 	case "status", "diff", "log", "show", "blame", "describe", "rev-parse", "ls-files", "ls-tree",
 		"shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
 		"name-rev", "count-objects":
@@ -707,7 +610,7 @@ func safeGit(args []string) bool {
 // gitContentDir returns the directory (the -C values) a git segment reads
 // the repository from when it may print file content, and whether it may.
 func gitContentDir(f []string) (string, bool) {
-	if len(f) == 0 || filepath.Base(f[0]) != "git" {
+	if len(f) == 0 || f[0] != "git" {
 		return "", false
 	}
 	dir, args := ".", f[1:]
@@ -726,17 +629,6 @@ func gitContentDir(f []string) (string, bool) {
 		sub == "status" && hasFlag(rest, "-v", "--verbose") ||
 		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "-U", "--patch", "--unified", "--binary", "-L", "--word-diff",
 			"--color-words", "--cc", "-c", "--dd", "--diff-merges", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
-}
-
-// goFlag reports whether args set one of flags the way Go's flag package
-// reads them: -flag and --flag alike, never bundled, and a test binary's
-// -test.flag too. A dotted name (-debug.cpuprofile) sets its first part.
-func goFlag(args []string, flags ...string) bool {
-	return slices.ContainsFunc(args, func(a string) bool {
-		f, _, _ := strings.Cut("-"+strings.TrimPrefix(strings.TrimLeft(a, "-"), "test."), "=")
-		f, _, _ = strings.Cut(f, ".")
-		return strings.HasPrefix(a, "-") && slices.Contains(flags, f)
-	})
 }
 
 // hasFlag reports whether any argument may set one of flags: the flag with
