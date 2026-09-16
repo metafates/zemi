@@ -688,7 +688,15 @@ func (a *App) compose(w, h int) string {
 		y++
 	}
 
-	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
+	// the popup takes the mouse on the whole rows it covers, windows under it included
+	popTop := floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
+	for i := range a.winRects {
+		r := &a.winRects[i]
+		r.h = max(0, min(r.h, popTop-r.y))
+		if r.titleY >= popTop {
+			r.titleY = -1
+		}
+	}
 
 	rows = append(rows, padSegs(nil, w))
 	// The working row renders above the composer.
@@ -787,18 +795,19 @@ func (a *App) Screenshot() string {
 // floatPopup frames a completion popup and lays it over the bottom rows of
 // the chat area, left-aligned with the composer. The rows it covers are
 // blanked to the right of the frame (word fragments beside a dropdown read
-// as garbage); a popup taller than the chat is clipped.
-func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
+// as garbage); a popup taller than the chat is clipped. It returns the
+// first row the popup covers.
+func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) int {
+	bottom := min(headerH+chatH, len(rows))
 	if len(popup) == 0 {
-		return rows
+		return bottom
 	}
 	box := hostBox("", "", "", popup, w)
-	bottom := min(headerH+chatH, len(rows))
 	y0 := max(headerH, bottom-len(box))
 	for i := y0; i < bottom; i++ {
 		rows[i] = padSegs(box[i-y0], w)
 	}
-	return rows
+	return y0
 }
 
 // rowsBelow counts the transcript rows under the viewport while it is off

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // findCell returns the screen cell where text first appears in the frame.
@@ -156,6 +159,26 @@ func TestComposerCursorColumn(t *testing.T) {
 	app.composer.text, app.composer.cursor = "hello world", 2
 	if segs := app.composerRows(60)[0]; segs[1].Text != "he" || segs[2].Text != "l" || segs[2].HL != "Host:Cursor" {
 		t.Fatalf("block cursor not on its column: %+v", segs)
+	}
+}
+
+// TestPopupClickOverWindow: a completion row drawn over a split window
+// takes the click, not the window under it.
+func TestPopupClickOverWindow(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	if err := host.RT.ExecuteChunk(context.Background(), `zemi.win.open({ cmd = "sleep 2", kind = "split" })`, "w.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	// the window exits on its own: closing it races inside vt's Emulator
+	app.completion.files = []string{"a.go", "b.go", "c.go"}
+	app.completion.scanning = true
+	app.Update(tea.KeyPressMsg{Code: '@', Text: "@"})
+	app.renderSync(t)
+	x, y := findCell(t, app, "b.go")
+	clickAt(app, x+1, y)
+	if app.focusWin != 0 || app.composer.text != "b.go " {
+		t.Fatalf("focusWin=%d composer=%q", app.focusWin, app.composer.text)
 	}
 }
 
