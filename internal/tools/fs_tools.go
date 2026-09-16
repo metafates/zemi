@@ -21,6 +21,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -476,7 +477,7 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	if !ripgrep(ctx, root, collect, "--files", "--glob", pattern) {
 		rels = rels[:0]
-		match, err := globMatch(pattern)
+		match, err := glob.Match(pattern)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
@@ -536,7 +537,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		hits = hits[:0]
 		match := func(string) bool { return true }
 		if include != "" {
-			if match, err = globMatch(include); err != nil {
+			if match, err = glob.Match(include); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 		}
@@ -628,53 +629,6 @@ func walk(ctx context.Context, root string, fn func(path, rel string) error) err
 		rel, _ := filepath.Rel(root, path)
 		return fn(path, rel)
 	})
-}
-
-// globMatch compiles a glob with rg's rules for the Go fallback: ** crosses
-// directories, {a,b} alternates, and a pattern without / matches base names.
-func globMatch(pattern string) (func(rel string) bool, error) {
-	var b strings.Builder
-	depth := 0
-	for i := 0; i < len(pattern); i++ {
-		switch c := pattern[i]; {
-		case strings.HasPrefix(pattern[i:], "**/"):
-			b.WriteString("(?:.*/)?")
-			i += 2
-		case strings.HasPrefix(pattern[i:], "**"):
-			b.WriteString(".*")
-			i++
-		case c == '*':
-			b.WriteString("[^/]*")
-		case c == '?':
-			b.WriteString("[^/]")
-		case c == '{':
-			depth++
-			b.WriteString("(?:")
-		case c == '}' && depth > 0:
-			depth--
-			b.WriteString(")")
-		case c == ',' && depth > 0:
-			b.WriteString("|")
-		case c == '[' && strings.IndexByte(pattern[i:], ']') > 1:
-			j := i + strings.IndexByte(pattern[i:], ']')
-			b.WriteString("[" + strings.Replace(pattern[i+1:j], "!", "^", 1) + "]")
-			i = j
-		default:
-			b.WriteString(regexp.QuoteMeta(string(c)))
-		}
-	}
-	re, err := regexp.Compile("^" + b.String() + "$")
-	if err != nil {
-		return nil, fmt.Errorf("bad glob %q", pattern)
-	}
-	base := !strings.Contains(pattern, "/")
-	return func(rel string) bool {
-		rel = filepath.ToSlash(rel)
-		if base {
-			rel = filepath.Base(rel)
-		}
-		return re.MatchString(rel)
-	}, nil
 }
 
 func truncLine(s string) string {

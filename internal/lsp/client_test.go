@@ -211,3 +211,49 @@ func TestRefreshStaleDocuments(t *testing.T) {
 		t.Fatalf("b was not re-sent after changing on disk: %+v", got)
 	}
 }
+
+// TestWatchedFiles: the server registers a watcher at start; a file nobody
+// opened reaches it only through NotifyChanged, filtered by its globs, and
+// a deleted open document is closed on the next touch.
+func TestWatchedFiles(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := start(t, ctx, root)
+	a, b, g := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt"), filepath.Join(root, "c.go")
+	os.WriteFile(a, []byte("func Foo()\nFoo()"), 0o644)
+	if _, err := c.Touch(ctx, a, "plaintext"); err != nil {
+		t.Fatal(err)
+	}
+	refs := func() int {
+		var locs []lsp.Location
+		params := map[string]any{"textDocument": map[string]any{"uri": lsp.DocumentURI(a)}, "position": lsp.Position{Line: 1, Character: 1}, "context": map[string]any{"includeDeclaration": true}}
+		if err := c.Call(ctx, "textDocument/references", params, &locs); err != nil {
+			t.Fatal(err)
+		}
+		return len(locs)
+	}
+	os.WriteFile(b, []byte("Foo()"), 0o644)
+	os.WriteFile(g, []byte("Foo()"), 0o644)
+	if n := refs(); n != 2 {
+		t.Fatalf("before any notification: %d references", n)
+	}
+	c.NotifyChanged([]lsp.FileChange{{Path: b, Type: 1}, {Path: g, Type: 1}})
+	if n := refs(); n != 3 {
+		t.Fatalf("after Created for b.txt (c.go is outside the watcher's glob): %d references", n)
+	}
+	os.Remove(b)
+	c.NotifyChanged([]lsp.FileChange{{Path: b, Type: 3}})
+	if n := refs(); n != 2 {
+		t.Fatalf("after Deleted: %d references", n)
+	}
+	// the open document itself disappears: closed on the next touch
+	os.WriteFile(b, []byte("ok"), 0o644)
+	os.Remove(a)
+	if _, err := c.Touch(ctx, b, "plaintext"); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Diagnostics(a); len(got) != 0 || c.Version(a) != 0 {
+		t.Fatalf("deleted document still open: diags %v version %d", got, c.Version(a))
+	}
+}

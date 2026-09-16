@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"io"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -67,6 +68,10 @@ func Serve(in io.Reader, out io.Writer) {
 					Line, Character int
 				} `json:"position"`
 				NewName string `json:"newName"`
+				Changes []struct {
+					URI  string `json:"uri"`
+					Type int    `json:"type"`
+				} `json:"changes"`
 			} `json:"params"`
 		}
 		if json.Unmarshal(body, &m) != nil {
@@ -75,6 +80,26 @@ func Serve(in io.Reader, out io.Writer) {
 		switch m.Method {
 		case "initialize":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"capabilities": map[string]any{"textDocumentSync": 1}}})
+		case "initialized":
+			// the way gopls does it: ask the client to report .txt changes
+			write(map[string]any{"jsonrpc": "2.0", "id": "reg", "method": "client/registerCapability", "params": map[string]any{"registrations": []any{
+				map[string]any{"id": "w1", "method": "workspace/didChangeWatchedFiles", "registerOptions": map[string]any{"watchers": []any{map[string]any{"globPattern": "**/*.txt"}}}},
+			}}})
+		case "workspace/didChangeWatchedFiles":
+			// a file nobody opened is read from disk only when told it changed
+			for _, ch := range m.Params.Changes {
+				p := strings.TrimPrefix(ch.URI, "file://")
+				if ch.Type == 3 {
+					delete(texts, ch.URI)
+				} else if _, open := seen[ch.URI]; !open {
+					if b, err := os.ReadFile(p); err == nil {
+						texts[ch.URI] = string(b)
+					}
+				}
+			}
+		case "textDocument/didClose":
+			delete(texts, m.Params.TextDocument.URI)
+			delete(seen, m.Params.TextDocument.URI)
 		case "textDocument/definition", "textDocument/references", "textDocument/rename":
 			uri := m.Params.TextDocument.URI
 			text := texts[uri]

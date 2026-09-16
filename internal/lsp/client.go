@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -92,6 +93,22 @@ type Client struct {
 	endOnce  sync.Once
 	endErr   error
 	settings any
+	root     string
+	watchers map[string][]watcher // by registration id
+}
+
+// watcher is one glob a server asked to be told about, with the change
+// kinds it wants (bit 1 create, 2 change, 4 delete).
+type watcher struct {
+	match func(rel string) bool
+	base  string // directory the glob is relative to
+	kind  int
+}
+
+// FileChange is one disk change for NotifyChanged.
+type FileChange struct {
+	Path string
+	Type int // 1 created, 2 changed, 3 deleted
 }
 
 // Start launches the server and runs the initialize handshake; ctx bounds
@@ -115,6 +132,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 		pending: map[int64]chan message{}, diags: map[string][]Diagnostic{},
 		pubs: map[string]int{}, opened: map[string]int{}, docs: map[string]docState{}, pubSeq: map[string]int{}, synced: map[string]int{},
 		wake: make(chan struct{}), done: make(chan struct{}), settings: cfg.Settings,
+		root: cfg.Root, watchers: map[string][]watcher{},
 	}
 	go c.read(bufio.NewReader(stdout))
 
@@ -126,12 +144,23 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			map[string]any{"uri": root, "name": filepath.Base(cfg.Root)},
 		},
 		"capabilities": map[string]any{
+			// one encoding only, so every server answers in the units
+			// Offset and Pos count
+			"general": map[string]any{"positionEncodings": []string{"utf-16"}},
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didSave": true},
-				"publishDiagnostics": map[string]any{},
+				"publishDiagnostics": map[string]any{"versionSupport": true},
 				"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			},
-			"workspace": map[string]any{"configuration": true, "workspaceFolders": true},
+			"workspace": map[string]any{
+				"configuration": true, "workspaceFolders": true,
+				// servers keep their own copy of files nobody opened and
+				// only re-read one when told it changed
+				"didChangeWatchedFiles": map[string]any{"dynamicRegistration": true, "relativePatternSupport": true},
+				// versioned edits, so a rename planned against an older
+				// text can be refused instead of applied
+				"workspaceEdit": map[string]any{"documentChanges": true},
+			},
 		},
 	}
 	if cfg.InitOptions != nil {
@@ -232,12 +261,16 @@ func (c *Client) syncFile(path, languageID string) (int, error) {
 }
 
 // refresh re-sends every open document whose file changed since it was
-// last sent; one that disappeared is left as is.
+// last sent and closes the ones whose file is gone, so the server never
+// answers from text that is no longer on disk.
 func (c *Client) refresh() {
 	c.mu.Lock()
-	stale := map[string]docState{}
+	stale, gone := map[string]docState{}, map[string]docState{}
 	for key, d := range c.docs {
-		if fi, err := os.Stat(key); err == nil && !fi.ModTime().Equal(d.mtime) {
+		switch fi, err := os.Stat(key); {
+		case errors.Is(err, os.ErrNotExist):
+			gone[key] = d
+		case err == nil && !fi.ModTime().Equal(d.mtime):
 			stale[key] = d
 		}
 	}
@@ -253,6 +286,137 @@ func (c *Client) refresh() {
 		c.docs[key] = d
 		c.mu.Unlock()
 		_, _ = c.sync(key, d.uri, d.lang, string(data))
+	}
+	for key, d := range gone {
+		c.closeDoc(key, d.uri)
+	}
+}
+
+// closeDoc tells the server the document is closed and forgets it: its
+// diagnostics, version and text no longer describe anything.
+func (c *Client) closeDoc(key, uri string) {
+	c.smu.Lock()
+	defer c.smu.Unlock()
+	c.mu.Lock()
+	delete(c.docs, key)
+	delete(c.opened, key)
+	delete(c.diags, key)
+	c.mu.Unlock()
+	_ = c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": uri}})
+}
+
+// Version is the document version last sent for path, 0 when it is not
+// open. A server's edit that names another version was planned against
+// text the server no longer has.
+func (c *Client) Version(path string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.opened[normPath(path)]
+}
+
+// NotifyChanged tells the server about files that changed on disk, those
+// it registered a watcher for. An open document is not among them: its
+// text is what the client sent, and refresh keeps that current.
+func (c *Client) NotifyChanged(changes []FileChange) {
+	c.mu.Lock()
+	var events []any
+	for _, ch := range changes {
+		key := normPath(ch.Path)
+		if _, open := c.docs[key]; open && ch.Type != 3 {
+			continue
+		}
+		if c.watched(ch.Path, ch.Type) {
+			events = append(events, map[string]any{"uri": fileURI(ch.Path), "type": ch.Type})
+		}
+	}
+	c.mu.Unlock()
+	if len(events) > 0 {
+		_ = c.notify("workspace/didChangeWatchedFiles", map[string]any{"changes": events})
+	}
+}
+
+// watched reports whether any registered watcher covers path for typ;
+// c.mu held.
+func (c *Client) watched(path string, typ int) bool {
+	path = normPath(path)
+	for _, ws := range c.watchers {
+		for _, w := range ws {
+			rel, err := filepath.Rel(w.base, path)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				continue
+			}
+			if w.kind&(1<<(typ-1)) != 0 && w.match(rel) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// register keeps a server's workspace/didChangeWatchedFiles registration;
+// unregister drops it by id. Other capabilities are accepted and ignored.
+func (c *Client) register(raw json.RawMessage, on bool) {
+	var p struct {
+		Registrations []struct {
+			ID     string `json:"id"`
+			Method string `json:"method"`
+			Opts   struct {
+				Watchers []struct {
+					Pattern json.RawMessage `json:"globPattern"`
+					Kind    *int            `json:"kind"`
+				} `json:"watchers"`
+			} `json:"registerOptions"`
+		} `json:"registrations"`
+		Unregistrations []struct {
+			ID     string `json:"id"`
+			Method string `json:"method"`
+		} `json:"unregisterations"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !on {
+		for _, u := range p.Unregistrations {
+			delete(c.watchers, u.ID)
+		}
+		return
+	}
+	for _, r := range p.Registrations {
+		if r.Method != "workspace/didChangeWatchedFiles" {
+			continue
+		}
+		var ws []watcher
+		for _, w := range r.Opts.Watchers {
+			pattern, base := "", c.root
+			var rp struct {
+				BaseURI json.RawMessage `json:"baseUri"`
+				Pattern string          `json:"pattern"`
+			}
+			if json.Unmarshal(w.Pattern, &pattern) != nil && json.Unmarshal(w.Pattern, &rp) == nil {
+				pattern = rp.Pattern
+				var s string
+				var f struct {
+					URI string `json:"uri"`
+				}
+				if json.Unmarshal(rp.BaseURI, &s) == nil {
+					base = Location{URI: s}.Path()
+				} else if json.Unmarshal(rp.BaseURI, &f) == nil {
+					base = Location{URI: f.URI}.Path()
+				}
+			}
+			match, err := glob.Match(pattern)
+			if err != nil {
+				continue
+			}
+			kind := 7
+			if w.Kind != nil {
+				kind = *w.Kind
+			}
+			ws = append(ws, watcher{match: match, base: normPath(base), kind: kind})
+		}
+		c.watchers[r.ID] = ws
 	}
 }
 
@@ -494,7 +658,12 @@ func (c *Client) read(r *bufio.Reader) {
 			// settings (null without any), the rest (capability registration,
 			// progress) a null result.
 			var result any
-			if m.Method == "workspace/configuration" {
+			switch m.Method {
+			case "client/registerCapability":
+				c.register(m.Params, true)
+			case "client/unregisterCapability":
+				c.register(m.Params, false)
+			case "workspace/configuration":
 				var p struct {
 					Items []struct {
 						Section string `json:"section"`
@@ -593,10 +762,14 @@ func section(settings any, name string) any {
 }
 
 // normPath resolves symlinks so a server that answers with a canonicalized
-// URI (/tmp -> /private/tmp) keys the same file as the path asked about.
+// URI (/tmp -> /private/tmp) keys the same file as the path asked about; a
+// path that no longer exists resolves through its directory.
 func normPath(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+		return filepath.Join(dir, filepath.Base(p))
 	}
 	return p
 }

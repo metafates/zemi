@@ -1,0 +1,58 @@
+// Package glob matches paths against rg-style globs: ** crosses directories,
+// {a,b} alternates, [...] is a class and a pattern without / matches base
+// names. The file tools and the LSP client's watched-file filters share it.
+package glob
+
+import (
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+// Match compiles a glob with rg's rules: ** crosses
+// directories, {a,b} alternates, and a pattern without / matches base names.
+func Match(pattern string) (func(rel string) bool, error) {
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(pattern); i++ {
+		switch c := pattern[i]; {
+		case strings.HasPrefix(pattern[i:], "**/"):
+			b.WriteString("(?:.*/)?")
+			i += 2
+		case strings.HasPrefix(pattern[i:], "**"):
+			b.WriteString(".*")
+			i++
+		case c == '*':
+			b.WriteString("[^/]*")
+		case c == '?':
+			b.WriteString("[^/]")
+		case c == '{':
+			depth++
+			b.WriteString("(?:")
+		case c == '}' && depth > 0:
+			depth--
+			b.WriteString(")")
+		case c == ',' && depth > 0:
+			b.WriteString("|")
+		case c == '[' && strings.IndexByte(pattern[i:], ']') > 1:
+			j := i + strings.IndexByte(pattern[i:], ']')
+			b.WriteString("[" + strings.Replace(pattern[i+1:j], "!", "^", 1) + "]")
+			i = j
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	re, err := regexp.Compile("^" + b.String() + "$")
+	if err != nil {
+		return nil, fmt.Errorf("bad glob %q", pattern)
+	}
+	base := !strings.Contains(pattern, "/")
+	return func(rel string) bool {
+		rel = filepath.ToSlash(rel)
+		if base {
+			rel = filepath.Base(rel)
+		}
+		return re.MatchString(rel)
+	}, nil
+}

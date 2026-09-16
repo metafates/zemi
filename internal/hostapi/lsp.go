@@ -72,6 +72,9 @@ const (
 
 type lspReg struct {
 	mu       sync.Mutex
+	scanMu   sync.Mutex        // one scan at a time, in order
+	scan     map[string]lspSig // last git status listing by path
+	scanned  bool              // the baseline exists
 	user     []lspDef
 	disabled map[string]bool // names zemi.lsp.disable turned off
 	running  map[string]*lspProc
@@ -108,7 +111,7 @@ func (p *lspProc) close() {
 // extension (lspDefs order).
 func (h *Host) lspFor(path string) (lspDef, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
-	for _, d := range h.lspDefs() {
+	for _, d := range h.lspDefs(path) {
 		if slices.Contains(d.Exts, ext) {
 			return d, true
 		}
@@ -118,24 +121,127 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 
 // lspDefs lists the servers this project can use: user definitions first,
 // then, unless lsp.auto is off, each installed builtin whose marker exists
-// at the repository root; disabled names are left out of both.
-func (h *Host) lspDefs() []lspDef {
+// in path's directory or above it up to the repository root (a module in a
+// subdirectory counts); disabled names are left out of both. path "" means
+// the root alone.
+func (h *Host) lspDefs(path string) []lspDef {
 	h.lsp.mu.Lock()
 	defs := slices.Clone(h.lsp.user)
 	disabled := maps.Clone(h.lsp.disabled)
 	h.lsp.mu.Unlock()
 	if v, ok := h.Settings.Get("lsp.auto"); !ok || v != false {
 		root := h.Dirs.RepoRoot()
+		dirs := []string{root}
+		if abs, err := filepath.Abs(path); err == nil && path != "" {
+			for dir := filepath.Dir(abs); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
+				dirs = append(dirs, dir)
+			}
+		}
 		for _, d := range builtinLSP {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
 			}
-			if slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(root, m)); return err == nil }) {
+			found := false
+			for _, dir := range dirs {
+				found = found || slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
+			}
+			if found {
 				defs = append(defs, d)
 			}
 		}
 	}
 	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled[d.Name] })
+}
+
+// lspSig is what a scan remembers about a file git listed.
+type lspSig struct {
+	mtime     time.Time
+	size      int64
+	gone      bool
+	untracked bool
+}
+
+// lspSync tells every running server which files changed on disk since the
+// last call, before a query or touch, so a server does not answer from a
+// copy of a file that bash, a formatter, git or the user's editor rewrote.
+// The listing is one git status: files that differ from the index and
+// untracked files. Diffing two listings catches every change a server could
+// have seen in between: a file that left the listing was restored to the
+// index, so it changed too.
+// NOTE: outside a git repository nothing is detected beyond the files zemi
+// itself writes; a repository too large for git status to answer in a few
+// hundred milliseconds pays that on every touch.
+func (h *Host) lspSync() {
+	root := h.Dirs.RepoRoot()
+	if root == "" {
+		return
+	}
+	h.lsp.mu.Lock()
+	var clients []*lsp.Client
+	for _, p := range h.lsp.running {
+		select {
+		case <-p.ready:
+			if p.err == nil {
+				clients = append(clients, p.client)
+			}
+		default:
+		}
+	}
+	h.lsp.mu.Unlock()
+	h.lsp.scanMu.Lock()
+	defer h.lsp.scanMu.Unlock()
+	out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames")
+	if err != nil {
+		return // not a repository, or git missing: nothing to compare
+	}
+	now := map[string]lspSig{}
+	for _, entry := range strings.Split(out, "\x00") {
+		if len(entry) < 4 {
+			continue
+		}
+		path := filepath.Join(root, entry[3:])
+		sig := lspSig{gone: strings.ContainsRune(entry[:2], 'D'), untracked: entry[:2] == "??"}
+		if fi, err := os.Stat(path); err == nil {
+			sig.mtime, sig.size = fi.ModTime(), fi.Size()
+		} else {
+			sig.gone = true
+		}
+		now[path] = sig
+	}
+	prev, first := h.lsp.scan, !h.lsp.scanned
+	h.lsp.scan, h.lsp.scanned = now, true
+	if first || len(clients) == 0 {
+		return
+	}
+	var changes []lsp.FileChange
+	for path, sig := range now {
+		old, seen := prev[path]
+		switch {
+		case sig == old:
+		case sig.gone:
+			if !old.gone {
+				changes = append(changes, lsp.FileChange{Path: path, Type: 3})
+			}
+		case (!seen || old.gone) && sig.untracked:
+			changes = append(changes, lsp.FileChange{Path: path, Type: 1})
+		default:
+			changes = append(changes, lsp.FileChange{Path: path, Type: 2})
+		}
+	}
+	for path, old := range prev {
+		if _, still := now[path]; still {
+			continue
+		}
+		// back to the index's content, or created and deleted again
+		if _, err := os.Stat(path); err == nil {
+			changes = append(changes, lsp.FileChange{Path: path, Type: 2})
+		} else if !old.gone {
+			changes = append(changes, lsp.FileChange{Path: path, Type: 3})
+		}
+	}
+	for _, c := range clients {
+		c.NotifyChanged(changes)
+	}
 }
 
 // lspClient returns the running server for def, starting it once; a failed
@@ -250,6 +356,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, 
 	if err != nil {
 		return "", false
 	}
+	h.lspSync()
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
 	h.lspAnswered(p, err == nil)
 	if err != nil {
@@ -307,6 +414,7 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 	if err != nil {
 		return tools.LSPSession{}, err
 	}
+	h.lspSync()
 	open := func(path string) error { return p.client.Open(path, languageID(path)) }
 	if err := open(path); err != nil {
 		return tools.LSPSession{}, err
@@ -403,7 +511,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 // lspRows lists the servers this project can use with their state: running
 // ones first, then those that would start on their first file.
 func (h *Host) lspRows() []map[string]any {
-	defs := h.lspDefs()
+	defs := h.lspDefs("")
 	h.lsp.mu.Lock()
 	defer h.lsp.mu.Unlock()
 	var out []map[string]any

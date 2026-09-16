@@ -114,7 +114,8 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			Changes         map[string][]lsp.TextEdit `json:"changes"`
 			DocumentChanges []struct {
 				TextDocument struct {
-					URI string `json:"uri"`
+					URI     string `json:"uri"`
+					Version *int   `json:"version"`
 				} `json:"textDocument"`
 				Edits []lsp.TextEdit `json:"edits"`
 				Kind  string         `json:"kind"`
@@ -131,7 +132,14 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			if dc.Kind != "" {
 				return fantasy.NewTextErrorResponse("the rename would " + dc.Kind + " a file; do that part by hand"), nil
 			}
-			byPath[lsp.Location{URI: dc.TextDocument.URI}.Path()] = append(byPath[lsp.Location{URI: dc.TextDocument.URI}.Path()], dc.Edits...)
+			f := lsp.Location{URI: dc.TextDocument.URI}.Path()
+			// the server planned these edits against the text it holds at
+			// that version; a newer one on our side means the file moved
+			// under it (0 is what some servers send for a file nobody opened)
+			if v := dc.TextDocument.Version; v != nil && *v != 0 && c.Version(f) != *v {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s changed while %s planned the rename (version %d, now %d); nothing was changed, retry", workRel(f), server, *v, c.Version(f))), nil
+			}
+			byPath[f] = append(byPath[f], dc.Edits...)
 		}
 		if len(byPath) == 0 {
 			return fantasy.NewTextResponse("nothing to rename" + note), nil
@@ -338,9 +346,19 @@ func applyTextEdits(p *Pipeline, path string, edits []lsp.TextEdit) (int, error)
 		return 0, err
 	}
 	text := string(data)
-	slices.SortFunc(edits, func(a, b lsp.TextEdit) int {
+	// bottom-up so earlier offsets stay valid; edits at one position keep
+	// the server's order, the later one applied first as the protocol says
+	slices.SortStableFunc(edits, func(a, b lsp.TextEdit) int {
 		return lsp.Offset(text, b.Range.Start) - lsp.Offset(text, a.Range.Start)
 	})
+	for i := 0; i < len(edits); {
+		j := i + 1
+		for j < len(edits) && edits[j].Range.Start == edits[i].Range.Start {
+			j++
+		}
+		slices.Reverse(edits[i:j])
+		i = j
+	}
 	for _, e := range edits {
 		s, t := lsp.Offset(text, e.Range.Start), lsp.Offset(text, e.Range.End)
 		text = text[:s] + e.NewText + text[t:]

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -122,7 +124,7 @@ func TestLSPConfig(t *testing.T) {
 		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
 		zemi.lsp.disable("zls")
 	`)
-	defs := h.lspDefs()
+	defs := h.lspDefs("")
 	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
 		t.Fatalf("defs = %+v", defs)
 	}
@@ -136,4 +138,56 @@ func TestLSPConfig(t *testing.T) {
 		local rows = zemi.lsp.list()
 		assert(#rows == 1 and rows[1].name == "gopls" and rows[1].status == "available" and rows[1].filetypes == ".go", "list: " .. tostring(rows[1] and rows[1].status))
 	`)
+}
+
+// TestLSPSyncFromGit: files that appear, change or vanish on disk between
+// two server interactions reach the server as watched-file events, found
+// by diffing git status listings.
+func TestLSPSyncFromGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	h, r := newTestHostDB(t)
+	defer h.lsp.stopAll()
+	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
+	dir := h.Dirs.ProjectDir
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"}} {
+		if out, err := h.git(dir, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	var tool fantasy.AgentTool
+	for _, tl := range tools.All(h.PipelineFor()) {
+		if tl.Info().Name == "lsp" {
+			tool = tl
+		}
+	}
+	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	os.WriteFile(a, []byte("func Foo()\nFoo()\n"), 0o644)
+	refs := func() string {
+		t.Helper()
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.SplitN(resp.Content, "\n", 2)[0]
+	}
+	if got := refs(); got != "2 references" {
+		t.Fatalf("baseline: %q", got)
+	}
+	// created behind the server's back, as a bash command would
+	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
+	if got := refs(); got != "3 references" {
+		t.Fatalf("after an untracked file appeared: %q", got)
+	}
+	os.WriteFile(b, []byte("Foo()\nFoo()\n"), 0o644)
+	later := time.Now().Add(time.Hour)
+	os.Chtimes(b, later, later)
+	if got := refs(); got != "4 references" {
+		t.Fatalf("after it changed: %q", got)
+	}
+	os.Remove(b)
+	if got := refs(); got != "2 references" {
+		t.Fatalf("after it was deleted: %q", got)
+	}
 }
