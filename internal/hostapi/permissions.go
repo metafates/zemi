@@ -38,10 +38,10 @@ func permanentRules(all []perm.Rule) []perm.Rule {
 			out = append(out, r)
 		}
 	}
-	key := func(r perm.Rule) string {
-		return r.Subject + r.Pattern + string(r.Decision) + r.NotMatch + r.Principal
-	}
-	slices.SortFunc(out, func(a, b perm.Rule) int { return cmp.Compare(key(a), key(b)) })
+	slices.SortFunc(out, func(a, b perm.Rule) int {
+		return cmp.Or(cmp.Compare(a.Subject, b.Subject), cmp.Compare(a.Pattern, b.Pattern),
+			cmp.Compare(a.Decision, b.Decision), cmp.Compare(a.NotMatch, b.NotMatch), cmp.Compare(a.Principal, b.Principal))
+	})
 	return out
 }
 

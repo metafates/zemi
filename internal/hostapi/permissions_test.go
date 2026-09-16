@@ -44,6 +44,12 @@ func TestPermDumpRoundTrip(t *testing.T) {
 	if string(dumped) != string(again) {
 		t.Fatal("dump is not deterministic")
 	}
+	a := perm.Rule{Subject: "fs.read", Pattern: "x", Decision: perm.Deny, NotMatch: "m", Scope: perm.ScopePermanent}
+	b := a
+	b.NotMatch, b.Principal = "", "m"
+	if string(permDump(permanentRules([]perm.Rule{a, b}))) != string(permDump(permanentRules([]perm.Rule{b, a}))) {
+		t.Fatal("dump order depends on the store's order")
+	}
 }
 
 // TestParsePermissionsDumpRefuses covers fail-closed parsing: executable
