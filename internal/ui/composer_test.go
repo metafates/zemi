@@ -406,11 +406,12 @@ func TestPasteToken(t *testing.T) {
 	}
 }
 
-// TestPasteLineEndings: terminals paste line breaks as CR.
+// TestPasteLineEndings: terminals paste line breaks as CR, and a paste's
+// escape sequences never reach the composer.
 func TestPasteLineEndings(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.Update(tea.PasteMsg{Content: "one\rtwo\r\nthree"})
-	if app.composer.text != "one\ntwo\nthree" {
+	app.Update(tea.PasteMsg{Content: "one\rtwo\r\nthree\x1b]0;owned\x07\tend"})
+	if app.composer.text != "one\ntwo\nthree\tend" {
 		t.Fatalf("composer text %q", app.composer.text)
 	}
 }

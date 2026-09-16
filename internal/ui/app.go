@@ -346,7 +346,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, nil
 	case tea.PasteMsg:
-		if a.pasteChrome(msg.Content) {
+		// terminals paste line breaks as CR; escapes in a clipboard would reach
+		// the terminal on every frame, so only a window's program gets them raw
+		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
+		if a.pasteChrome(s) {
 			return a, nil
 		}
 		if wn := a.focusedWin(); wn != nil {
@@ -354,13 +357,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		// a dropped file arrives as a paste of its path
-		if paths, ok := parseDrop(msg.Content); ok {
+		if paths, ok := parseDrop(s); ok {
 			a.insertAttachments(paths)
 			a.publishComposer()
 			return a, nil
 		}
-		// terminals paste line breaks as CR
-		s := strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n")
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
