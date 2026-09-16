@@ -233,6 +233,27 @@ func TestTouch(t *testing.T) {
 	}
 }
 
+// TestTouchSymlinkSpellings: a file touched through a symlink and then by
+// its real path is one document to the server.
+func TestTouchSymlinkSpellings(t *testing.T) {
+	real, link := t.TempDir(), filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := start(t, ctx, real)
+	for _, step := range []struct{ path, text string }{
+		{filepath.Join(link, "a.txt"), "BROKEN"},
+		{filepath.Join(real, "a.txt"), "fixed"},
+	} {
+		os.WriteFile(step.path, []byte(step.text), 0o644)
+		if diags, err := c.Touch(ctx, step.path, "plaintext"); err != nil || len(diags) != strings.Count(step.text, "BROKEN") {
+			t.Fatalf("%s: diags %+v, err %v", step.path, diags, err)
+		}
+	}
+}
+
 // TestOffsetPos: positions count UTF-16 units, so a character outside the
 // BMP is two of them and the round trip holds.
 func TestOffsetPos(t *testing.T) {

@@ -166,6 +166,10 @@ func Serve(in io.Reader, out io.Writer) {
 				continue
 			}
 			uri0 := m.Params.TextDocument.URI
+			// Like gopls, a change to a document never opened is dropped.
+			if _, open := seen[uri0]; !open && m.Method == "textDocument/didChange" {
+				continue
+			}
 			if v := m.Params.TextDocument.Version; v <= seen[uri0] {
 				regressed = true
 			} else {

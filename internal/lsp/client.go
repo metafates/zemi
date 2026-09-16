@@ -259,6 +259,9 @@ func (c *Client) syncFile(key, uri, languageID string) (int, error) {
 		return 0, err
 	}
 	c.mu.Lock()
+	if d, open := c.docs[key]; open {
+		uri = d.uri // the server knows the document only by the URI it was opened with
+	}
 	c.docs[key] = docState{uri: uri, lang: languageID, mtime: fi.ModTime()}
 	before := c.seq
 	version := c.opened[key] + 1
