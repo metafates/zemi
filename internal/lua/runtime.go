@@ -355,7 +355,9 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		for i := base + 1; i <= L.GetTop(); i++ {
 			v, err := ToGo(L.Get(i))
 			if err != nil {
-				v = L.ToStringMeta(L.Get(i)).String()
+				// not ToStringMeta: a raising __tostring would fail the chunk
+				// after it already ran
+				v = L.Get(i).String()
 			}
 			vals = append(vals, v)
 		}

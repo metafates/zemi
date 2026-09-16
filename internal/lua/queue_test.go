@@ -397,10 +397,11 @@ func TestQueueIntegrityGoesHot(t *testing.T) {
 	}
 }
 
-// TestEvalKeepsProtectedGlobalGuard: the lua tool runs through Eval in a
-// wrapper env, which must keep the chunk env's __newindex guard so
-// assigning a protected global raises instead of silently shadowing it.
-func TestEvalKeepsProtectedGlobalGuard(t *testing.T) {
+// TestEval: the lua tool runs through Eval in a wrapper env, which must keep
+// the chunk env's __newindex guard so assigning a protected global raises
+// instead of silently shadowing it, and a result that cannot be marshaled
+// is rendered rather than failing a chunk that already ran.
+func TestEval(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})
 	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
 		tbl := g.L.NewTable()
@@ -417,6 +418,10 @@ func TestEvalKeepsProtectedGlobalGuard(t *testing.T) {
 	vals, err := r.Eval(context.Background(), `x = 5 return x`, "lua-tool", OriginLearned, time.Second, discard)
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("ordinary global in the wrapper env: %v (%v)", err, vals)
+	}
+	cyclic := `local t = {} t.t = t return setmetatable(t, {__tostring = function() error("boom") end})`
+	if vals, err := r.Eval(context.Background(), cyclic, "lua-tool", OriginLearned, time.Second, discard); err != nil || len(vals) != 1 {
+		t.Fatalf("unmarshalable result with a raising __tostring: %v (%v)", err, vals)
 	}
 }
 
