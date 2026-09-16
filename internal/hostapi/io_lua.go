@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -455,10 +456,10 @@ func (h *Host) resolveJailed(path string, roots []string) (string, error) {
 	return resolved, nil
 }
 
-// jailedGlob matches project-relative paths: * and ? stay within one path
-// segment, ** spans directories ("**/*.go" matches at any depth).
+// jailedGlob matches project-relative paths in the glob tool's dialect,
+// anchored at the root so "*.go" stays in the top directory.
 func (h *Host) jailedGlob(pattern string) ([]string, error) {
-	re, err := globPathRegexp(pattern)
+	match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +473,7 @@ func (h *Host) jailedGlob(pattern string) ([]string, error) {
 		if err != nil {
 			return nil
 		}
-		if re.MatchString(filepath.ToSlash(rel)) {
+		if match("/" + rel) {
 			out = append(out, rel)
 		}
 		return nil
@@ -488,29 +489,6 @@ func skipHidden(root, p string, d os.DirEntry, err error) error {
 		return filepath.SkipDir
 	}
 	return nil
-}
-
-func globPathRegexp(pattern string) (*regexp.Regexp, error) {
-	var b strings.Builder
-	b.WriteString("^")
-	for i := 0; i < len(pattern); i++ {
-		switch c := pattern[i]; {
-		case strings.HasPrefix(pattern[i:], "**/"):
-			b.WriteString("(?:.*/)?")
-			i += 2
-		case strings.HasPrefix(pattern[i:], "**"):
-			b.WriteString(".*")
-			i++
-		case c == '*':
-			b.WriteString("[^/]*")
-		case c == '?':
-			b.WriteString("[^/]")
-		default:
-			b.WriteString(regexp.QuoteMeta(string(c)))
-		}
-	}
-	b.WriteString("$")
-	return regexp.Compile(b.String())
 }
 
 type grepHit struct {

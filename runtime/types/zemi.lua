@@ -983,7 +983,7 @@ function zemi.fs.mkdir(path) end
 function zemi.fs.remove(path) end
 
 --- Match project-relative paths. `*` and `?` stay inside one segment,
---- `**` spans directories ("**/*.go").
+--- `**` spans directories ("**/*.go"), `{a,b}` alternates, `[...]` is a class.
 ---@param pattern string
 ---@return string[] paths
 function zemi.fs.glob(pattern) end

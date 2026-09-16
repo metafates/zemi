@@ -146,6 +146,8 @@ func TestLuaAPIIO(t *testing.T) {
 		local found = zemi.fs.glob("**/*.txt")
 		assert(#found == 1 and found[1] == "d/e/f.txt", zemi.json.encode(found))
 		assert(#zemi.fs.glob("*.txt") == 0, "* stays in one segment")
+		found = zemi.fs.glob("d/{e,x}/[a-f].txt")
+		assert(#found == 1 and found[1] == "d/e/f.txt", zemi.json.encode(found))
 		zemi.fs.write(".env", "TOKEN=hunter2")
 		assert(#zemi.fs.grep("hunter2") == 0, "grep never reads secret-shaped files")
 		assert(zemi.fs.remove("d/e/f.txt") == true and not zemi.fs.exists("d/e/f.txt"), "remove")
