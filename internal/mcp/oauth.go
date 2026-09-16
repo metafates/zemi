@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -97,7 +98,7 @@ func (a *Auth) Logout() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.tok, a.loaded = nil, true
-	if err := os.Remove(a.Path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(a.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil

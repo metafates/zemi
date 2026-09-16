@@ -137,8 +137,11 @@ func TestOAuthSignIn(t *testing.T) {
 	if _, err := c.Tools(ctx); err != nil {
 		t.Fatalf("tools: %v", err)
 	}
-	if refreshes != 1 {
-		t.Fatalf("refreshes = %d, want 1", refreshes)
+	mu.Lock()
+	n := refreshes
+	mu.Unlock()
+	if n != 1 {
+		t.Fatalf("refreshes = %d, want 1", n)
 	}
 	if b, _ := os.ReadFile(path); !strings.Contains(string(b), `"t2"`) {
 		t.Fatalf("refreshed token not saved: %s", b)

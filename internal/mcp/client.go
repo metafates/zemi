@@ -528,11 +528,10 @@ func readSSE(r io.Reader, handle func([]byte)) error {
 	}
 	for sc.Scan() {
 		line := sc.Text()
-		switch {
-		case line == "":
+		if line == "" {
 			flush()
-		case strings.HasPrefix(line, "data:"):
-			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		} else if v, ok := strings.CutPrefix(line, "data:"); ok {
+			data = append(data, strings.TrimPrefix(v, " "))
 		}
 	}
 	flush()
