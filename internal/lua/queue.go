@@ -168,14 +168,12 @@ func (g *Generation) pop() *request {
 	return r
 }
 
-func (g *Generation) drain() { g.drainWith(ErrReloaded) }
-
-// drainWith retires the generation, answers everything still queued with
+// drain retires the generation, answers everything still queued with
 // err and cancels the running request. Hot mode only fails fast the Do
 // calls that arrive after the wedge, so without this the requests already
 // in the heap would wait on their reply channel forever. A running request
 // left going would push and read origin frames of the next generation.
-func (g *Generation) drainWith(err error) {
+func (g *Generation) drain(err error) {
 	g.mu.Lock()
 	g.retired = true
 	pending, running := g.heap, g.running

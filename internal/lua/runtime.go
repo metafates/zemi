@@ -124,7 +124,7 @@ func (r *Runtime) goHot(cause error) {
 	}
 	r.log.Error("lua", "runtime marked hot: "+cause.Error(), nil)
 	if g := r.current(); g != nil {
-		g.drainWith(ErrHot)
+		g.drain(ErrHot)
 	}
 }
 
@@ -149,7 +149,7 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	r.reloadMu.Lock()
 	defer r.reloadMu.Unlock()
 	if old := r.current(); old != nil {
-		old.drain()
+		old.drain(ErrReloaded)
 		close(old.stop)
 		r.cur.Store(nil)
 		r.log.Info("lua", "generation retired for reload", map[string]any{"gen": old.ID})
