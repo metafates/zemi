@@ -468,7 +468,7 @@ func (a *App) wheelChrome(step int) bool {
 	case "cfgReview":
 		move(&a.cfgReview.sel, len(a.cfgReview.items))
 	case "question":
-		move(&a.question.sel, len(a.question.qs[a.question.at].Options)+1)
+		move(a.question.sel())
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {

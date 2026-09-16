@@ -551,10 +551,11 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 Put independent questions in one call; ask separately when one answer changes another question. Give 2-4 mutually exclusive options with 1-5 word labels and a description of what each means; put the one you recommend first and end its label with "(Recommended)". The user can always type their own answer, so never add an "Other" option; omit options for an open question.`,
 			false,
 			map[string]any{
-				"questions": map[string]any{"type": "array", "description": "1 to 4 questions, shown one after another", "items": map[string]any{
+				"questions": map[string]any{"type": "array", "description": "1 to 4 questions, shown as tabs the user can move between before submitting", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"question": map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
+						"header":   map[string]any{"type": "string", "description": "a 1-3 word tab label, e.g. Auth method"},
 						"options": map[string]any{"type": "array", "items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{

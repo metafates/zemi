@@ -201,9 +201,11 @@ Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetc
 permissions, add MCP servers or read secret-shaped env names; permission subject `tool.lua`), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
-Asking the user: `question` shows 1-4 questions one after another; the user picks an option
-(space marks several in a multi-select) or types an answer on the last row, and esc dismisses,
-which ends the turn. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
+Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several
+in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.
+Several questions show as tabs (tab/shift+tab, or left/right) ending in a review tab that lists
+every answer; enter on a row there reopens that question, and submit sends them all, unanswered
+ones included. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
 type what to change and the agent revises it. In plan mode each approval names the mode to
 implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
 Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.

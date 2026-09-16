@@ -65,16 +65,16 @@ func pressKeys(app *App, keys ...string) {
 }
 
 // TestGoldenQuestionOverlay pins the Go-owned question overlay (DESIGN
-// §8): a batch shows one question at a time, and the answers come back in
-// order.
+// §8): a batch shows tabs, answering moves on to the review tab, and the
+// answers come back in order.
 func TestGoldenQuestionOverlay(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := askAsync(t, app,
-		tools.Question{Question: "Apply the mined rules to this project?", Options: []tools.QuestionOption{
+		tools.Question{Question: "Apply the mined rules to this project?", Header: "Rules", Options: []tools.QuestionOption{
 			{Label: "apply (Recommended)", Description: "store both as project memories"},
 			{Label: "skip", Description: "leave the proposals unapplied"},
 		}},
-		tools.Question{Question: "Which checks run before commit?", Multi: true, Options: []tools.QuestionOption{
+		tools.Question{Question: "Which checks run before commit?", Header: "Checks", Multi: true, Options: []tools.QuestionOption{
 			{Label: "tests"}, {Label: "vet"}, {Label: "lint"},
 		}},
 	)
@@ -82,6 +82,11 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 
 	pressKeys(app, "j", "enter", "space", "j", "j", "space", "enter")
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Review your answers") || !strings.Contains(frame, "tests, lint") {
+		t.Fatalf("review tab missing:\n%s", frame)
+	}
+	pressKeys(app, "enter")
 	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[skip tests, lint]" {
 		t.Fatalf("answers %q ok=%v", r.answers, r.ok)
 	}
@@ -105,6 +110,44 @@ func TestQuestionAnswers(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 16)
 			done := askAsync(t, app, c.q)
 			pressKeys(app, c.keys...)
+			if r := awaitAnswer(t, app, done); r.ok != c.want.ok || fmt.Sprint(r.answers) != fmt.Sprint(c.want.answers) {
+				t.Fatalf("got %q ok=%v, want %q ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
+			}
+		})
+	}
+}
+
+func TestQuestionBatch(t *testing.T) {
+	pick := func(labels ...string) tools.Question {
+		q := tools.Question{Question: labels[0] + "?"}
+		for _, l := range labels {
+			q.Options = append(q.Options, tools.QuestionOption{Label: l})
+		}
+		return q
+	}
+	qs := []tools.Question{pick("a", "a2"), pick("b", "b2")}
+	tab, back := tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab, Mod: uv.ModShift}
+	for _, c := range []struct {
+		name string
+		keys []any // string key names for pressKeys, or a tea.KeyPressMsg
+		want questionResult
+	}{
+		{"answers lead to review, enter submits", []any{"enter", "j", "enter", "enter"}, questionResult{[]string{"a", "b2"}, true}},
+		{"a question can be changed from review", []any{"enter", "enter", "k", "k", "enter", "j", "enter", "enter"}, questionResult{[]string{"a2", "b"}, true}},
+		{"tab skips a question, it submits unanswered", []any{tab, "enter", "enter"}, questionResult{[]string{"", "b"}, true}},
+		{"going back keeps the typed answer", []any{"j", "j", "hi", "enter", back, " there", "enter", tab, "enter"}, questionResult{[]string{"hi there", ""}, true}},
+		{"esc on review dismisses", []any{"enter", "enter", "esc"}, questionResult{nil, false}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 70, 20)
+			done := askAsync(t, app, qs...)
+			for _, k := range c.keys {
+				if msg, ok := k.(tea.KeyPressMsg); ok {
+					app.Update(msg)
+				} else {
+					pressKeys(app, k.(string))
+				}
+			}
 			if r := awaitAnswer(t, app, done); r.ok != c.want.ok || fmt.Sprint(r.answers) != fmt.Sprint(c.want.answers) {
 				t.Fatalf("got %q ok=%v, want %q ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
 			}

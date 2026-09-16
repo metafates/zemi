@@ -128,6 +128,7 @@ type QuestionOption struct {
 // question.
 type Question struct {
 	Question string
+	Header   string // the tab label in a batch
 	Options  []QuestionOption
 	Multi    bool
 	Other    string
@@ -146,7 +147,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		if str(m["question"]) == "" {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: the question text is required", i+1)), nil
 		}
-		q := Question{Question: str(m["question"]), Multi: m["multi_select"] == true}
+		q := Question{Question: str(m["question"]), Header: str(m["header"]), Multi: m["multi_select"] == true}
 		opts, _ := m["options"].([]any)
 		for j, o := range opts {
 			om, _ := o.(map[string]any)
@@ -167,7 +168,11 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	var b strings.Builder
 	b.WriteString("The user answered:")
 	for i, q := range qs {
-		fmt.Fprintf(&b, "\n- %q: %s", q.Question, strings.ReplaceAll(answers[i], " (Recommended)", ""))
+		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
+		if ans == "" {
+			ans = "(not answered)"
+		}
+		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }
