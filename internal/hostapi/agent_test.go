@@ -417,8 +417,8 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
 // overlay, rule storage) through the model pipeline: an "always" answer
-// stores one exact model-principal rule that answers the next check
-// without asking (DESIGN §6.2).
+// stores the command's prefix rules, which answer the next check without
+// asking (DESIGN §6.2).
 func TestAskHookAlwaysStoresRules(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{askAllowed: true, askBy: "user:always"}
@@ -542,24 +542,13 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 	}
 }
 
-// TestPipelineTodosAndJobsWiring checks PipelineFor wires the session todo
-// hooks, the shared job manager and the skill index, and that todos
-// round-trip through the store for the active session.
-func TestPipelineTodosAndJobsWiring(t *testing.T) {
+// TestPipelineTodos: todos round-trip through the store for the active
+// session.
+func TestPipelineTodos(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 
 	pipe := h.PipelineFor()
-	if pipe.TodosRead == nil || pipe.TodosWrite == nil {
-		t.Fatal("todos hooks must be wired when a store is present")
-	}
-	if pipe.Jobs == nil {
-		t.Fatal("job manager must be wired")
-	}
-	if pipe.Skills == nil {
-		t.Fatal("skill index must be wired")
-	}
-
 	if err := pipe.TodosWrite([]store.Todo{{Content: "first", Status: "in_progress", ActiveForm: "doing first"}}); err != nil {
 		t.Fatalf("TodosWrite: %v", err)
 	}

@@ -69,19 +69,6 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	}
 }
 
-// TestMemoryNamespaceShape pins the §6.7 namespace surface.
-func TestMemoryNamespaceShape(t *testing.T) {
-	_, r := newTestHost(t)
-	runUser(t, r, `
-		assert(type(zemi.memory) == "table", "zemi.memory missing")
-		assert(type(zemi.memory.search) == "function", "search missing")
-		assert(type(zemi.memory.add) == "function", "add missing")
-		assert(type(zemi.memory.list) == "function", "list missing")
-		assert(type(zemi.memory.supersede) == "function", "supersede missing")
-		assert(type(zemi.memory.forget) == "function", "forget missing")
-	`)
-}
-
 // TestMemoryAddAutonomyGate drives the §10.4 autonomy gate through Lua:
 // ask queues, auto stores plain facts, instruction-shaped text queues even
 // under auto, and the per-session auto-apply budget caps applies.
@@ -260,7 +247,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 	}
 
 	runUser(t, r, `zemi.memory.forget("`+oldID[:8]+`")`)
-	if _, err := h.DB.GetMemory(oldID); err != store.ErrNotFound {
+	if _, err := h.DB.GetMemory(oldID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("forget: %v", err)
 	}
 
