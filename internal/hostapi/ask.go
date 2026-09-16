@@ -77,6 +77,11 @@ func (h *Host) askHook() tools.Asker {
 				req.Reason = "not settled: this project is not trusted (/trust)"
 				break
 			}
+			if req.Subject == "tool.bash" && !h.sandboxLive() {
+				// a screened command would run unconfined
+				req.Reason = "not settled: no sandbox"
+				break
+			}
 			if _, ok := h.autoApproved.Load(key); ok {
 				return resolved(true, "mode:"+def.Name)
 			}

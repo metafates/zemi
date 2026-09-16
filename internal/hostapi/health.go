@@ -159,10 +159,10 @@ func (h *Host) healthChecks() []healthCheck {
 	}
 
 	switch s := h.sandbox.Load(); {
-	case s == nil:
-		add("warn", "sandbox", "still probing; settled commands limited to readers")
 	case s.err != nil:
 		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; settled commands limited to readers")
+	case !s.backend.EnforcesProtect:
+		add("ok", "sandbox", s.backend.Name+" confines the commands auto and plan mode run; it cannot keep .git read-only, so the project is read-only to them")
 	default:
 		add("ok", "sandbox", s.backend.Name+" confines the commands auto and plan mode run")
 	}

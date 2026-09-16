@@ -499,7 +499,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 		Required: []string{"action"},
 	}
 	if t.h.sandboxLive() {
-		info.Parameters["sandbox"] = tools.SandboxProp
+		info.Parameters["sandbox"] = tools.SandboxProp()
 	}
 	return info
 }

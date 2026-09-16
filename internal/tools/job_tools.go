@@ -126,8 +126,8 @@ func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cm
 // writes to, the byte count the caller already delivered from it and a
 // channel carrying its Wait: a bash call past its timeout keeps going as a
 // job instead of losing the work done so far.
-func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error) string {
-	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
+func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, sandboxed bool) string {
+	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, sandboxed: sandboxed}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }

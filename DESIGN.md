@@ -292,8 +292,10 @@ saves trusted, `n` saves untrusted, `esc` or `enter` means untrusted until
 the next start (a reload does not ask again). `--trust` or `--trust=false`
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
-asked about or saved. `/trust` reopens the prompt at any time, saves the
-answer and reloads when the decision changed. There is no content hash:
+asked about or saved (their prompt says it applies to this run only).
+`/trust` reopens the prompt at any time, saves the answer, applies it
+before the reload it triggers when the decision changed, so a revoke holds
+even if that reload stops at an earlier failing step. There is no content hash:
 once the user lets auto mode run a repository's build and test commands,
 re-asking about a pulled `.zemi/init.lua` protects nothing, and project
 origin is denylisted anyway (below).
@@ -1221,7 +1223,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   git, which runs programs `.git/config` names) go to the user, and auto
   mode skips the screening model, whose input the repository can steer.
   With no sandbox backend a trusted project also settles only
-  `ReadCommand` commands locally (`settledCommand`), which run unconfined.
+  `ReadCommand` commands locally (`settledCommand`), which run unconfined,
+  and auto mode sends every other command to the user without screening
+  it ("not settled: no sandbox"), since an approved one would run unconfined.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
   project and in plan mode. Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
@@ -1232,24 +1236,35 @@ configured provider later (`zemi.memory.search` signature does not change).
   and user-approved runs, `!command`, `zemi.job`, MCP and LSP servers and
   zemi's own git stay unconfined. The backend (seatbelt through
   `/usr/bin/sandbox-exec` on macOS, Landlock plus seccomp through the
-  `zemi __sandbox` helper on Linux) is probed once at startup off the boot
-  path, and counts as missing until the probe ends; `/health` has a
-  `sandbox` row. `sandboxPolicy`: everything readable but the home secret
-  dirs (`~/.ssh`, `~/.aws`, `~/.config/gh`, ...) and, on macOS, the strict
-  secret file shapes; writable are the project (trusted, not plan mode, and
-  not `$HOME` or above it), the scratchpad and `$TMPDIR`; `.git` (and a
-  `gitdir:` target), `.zemi` and zemi's config, data and state dirs stay
-  read-only (the scratchpad re-allowed); localhost network only. Linux
-  enforces neither the read-only paths nor loopback yet: the trusted
-  project root is writable whole and every inet socket is refused (a
-  NOTE in the package). A wrap that fails is a tool error, never an unconfined run.
+  `zemi __sandbox` helper on Linux) is probed once in `NewHost`, before
+  boot (the probe is fast), so `--health` and the first turn's tool schema
+  see the result; `/health` has a `sandbox` row. `sandboxPolicy`: everything
+  readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
+  `~/.npmrc`, `~/.git-credentials`, shell histories, ...) and, on macOS, the
+  strict secret file shapes; writable are the scratchpad, `$TMPDIR`, a Go
+  build cache only sandboxed runs use (`<state>/sandbox-cache/go-build`, set
+  as `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and
+  the user's own cache written from here could poison a later unconfined
+  build) and the project when it is trusted, not in plan mode, not `$HOME`
+  or above it, holds none of zemi's config, data and state dirs, and the
+  backend keeps protected paths read-only inside it
+  (`Backend.EnforcesProtect`); `.git` (and a `gitdir:` target), `.zemi` and
+  zemi's dirs stay read-only (the scratchpad and cache re-allowed);
+  localhost network only. Landlock enforces neither the read-only paths nor
+  loopback: with it the project is read-only to sandboxed runs (a build
+  that writes it gets the hint and escalates) and every inet socket is
+  refused (a NOTE in the package names the namespace variant as the
+  upgrade path). zemi's own temp files (the ctrl+g draft, a pasted image)
+  live in `<state>/tmp`, since `$TMPDIR` is writable to sandboxed runs. A
+  wrap that fails is a tool error, never an unconfined run.
   While a backend is live, bash, `job_start` and `window` take
   `sandbox: false`, fixed per process so the prompt cache holds: it sets
   `Request.Unsandboxed`, mode rules and bases other than `yolo` no longer
   settle the call, and it goes to the user with the reason "run outside
   the sandbox" (headless it is denied). A confined run that fails with
   output that looks like a denial (`sandbox.LikelyDenied`, a heuristic) gets
-  one line naming the limits and the `sandbox: false` retry. Only a
+  one line naming the live backend's limits and the `sandbox: false`
+  retry; a timed-out bash run adopted as a job keeps it. Only a
   sandboxed run reaches `SafeCommand`, so it has to keep secrets from
   being read (the sandbox allows reads) but not writes or network; the
   per-flag write and exec refusals for project tools are gone, and

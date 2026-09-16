@@ -132,7 +132,9 @@ writable; prefer it over guessing. Common keys:
   the user, and the Lua tool asks. Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
-  localhost (Linux: `.git` and `.zemi` stay writable, no localhost either). Build, test and
+  localhost, credential files in the home dir unreadable; Go builds get a cache of their
+  own. Landlock cannot keep `.git` read-only, so on Linux the project is read-only to these
+  commands and localhost is blocked too; `/health` names the backend. Build, test and
   lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
   `git remote -v` and git commands that print file content in a repository tracking a
   secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a

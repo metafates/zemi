@@ -225,12 +225,30 @@ func SandboxHint(out string, err error) string {
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
 	}
-	return "\nThe sandbox may have blocked this: no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and temp dirs, .git and .zemi read-only, secret files unreadable. If the command needs more, call it again with sandbox: false, which asks the user."
+	return "\nThe sandbox may have blocked this: " + sandboxLimits() + ". If the command needs more, call it again with sandbox: false, which asks the user."
+}
+
+// sandboxLimits names what the live backend enforces. Every wrapped run
+// goes through sandbox.Probe's backend, so that is the one to describe.
+func sandboxLimits() string {
+	b, _ := sandbox.Probe()
+	// a backend that keeps .git read-only also gives loopback (seatbelt, a
+	// namespace variant); Landlock + seccomp blocks every inet socket
+	s := "no network, writes only in the scratchpad and temp dirs (the project stays read-only)"
+	if b.EnforcesProtect {
+		s = "no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and temp dirs, .git and .zemi read-only"
+	}
+	if b.HidesSecretFiles {
+		return s + ", secret files unreadable"
+	}
+	return s + ", credential files in the home dir unreadable"
 }
 
 // SandboxProp is the escape bash, job_start and window take while a
 // backend is live.
-var SandboxProp = map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (writes only in the project, scratchpad and temp dirs; no network beyond localhost); false runs the command outside the sandbox and asks the user first. Use it only after a sandbox denial."}
+func SandboxProp() map[string]any {
+	return map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (" + sandboxLimits() + "); false runs the command outside the sandbox and asks the user first. Use it only after a sandbox denial."}
+}
 
 func decidedBy(o perm.Outcome) string {
 	if o.Rule != nil {
@@ -499,7 +517,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 
 	withSandbox := func(props map[string]any) map[string]any {
 		if p != nil && p.SandboxParam {
-			props["sandbox"] = SandboxProp
+			props["sandbox"] = SandboxProp()
 		}
 		return props
 	}

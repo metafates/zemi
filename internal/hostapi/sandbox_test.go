@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,6 +121,45 @@ func TestSandboxedBash(t *testing.T) {
 			}
 			if asked := len(ui.asked) > 0 && ui.asked[0].Reason == c.asked; asked != (c.asked != "") {
 				t.Errorf("asked %+v, want reason %q", ui.asked, c.asked)
+			}
+		})
+	}
+}
+
+// TestSandboxPolicy: the project is writable only when trusted, outside
+// plan mode, with a backend that keeps .git and .zemi read-only inside it,
+// and when it holds none of zemi's dirs; builds get a Go cache of their own.
+func TestSandboxPolicy(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
+	project := h.Dirs.ProjectDir
+	for _, c := range []struct {
+		name                   string
+		trusted, plan, protect bool
+		configInProject        bool
+		want                   bool
+	}{
+		{"trusted", true, false, true, false, true},
+		{"untrusted", false, false, true, false, false},
+		{"plan", true, true, true, false, false},
+		{"backend without protect", true, false, false, false, false},
+		{"config home inside", true, false, true, true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h.SetProjectTrusted(c.trusted)
+			h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: c.protect}})
+			config := h.Dirs.ConfigHome
+			if c.configInProject {
+				h.Dirs.ConfigHome = filepath.Join(project, ".config", "zemi")
+				defer func() { h.Dirs.ConfigHome = config }()
+			}
+			p := h.sandboxPolicy(c.plan)
+			if got := slices.Contains(p.Write, project); got != c.want {
+				t.Errorf("project writable %v, want %v: %v", got, c.want, p.Write)
+			}
+			cache := p.Env["GOCACHE"]
+			if st, err := os.Stat(cache); err != nil || !st.IsDir() || !slices.Contains(p.Write, cache) || !strings.HasPrefix(cache, h.Dirs.StateHome) {
+				t.Errorf("GOCACHE %q: %v, write %v", cache, err, p.Write)
 			}
 		})
 	}

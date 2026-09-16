@@ -1,11 +1,13 @@
 // sandbox.go confines the commands a permission mode settles (DESIGN §9):
-// the backend is probed once at startup, and bash, job_start and window
+// the backend is probed once in NewHost, and bash, job_start and window
 // runs a mode allowed start under sandboxPolicy.
 package hostapi
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/sandbox"
@@ -16,43 +18,57 @@ type sandboxProbe struct {
 	err     error
 }
 
-// probeSandbox checks the backend off the boot path. A value a test stored
-// first wins.
-func (h *Host) probeSandbox() {
-	h.GoSafe("sandbox probe", func() {
-		b, err := sandbox.Probe()
-		h.sandbox.CompareAndSwap(nil, &sandboxProbe{b, err})
-	})
-}
-
-// sandboxLive reports a working backend; there is none until the probe
-// finishes. Once live it stays live, so a command settled as sandboxed
-// always finds the backend when it starts.
+// sandboxLive reports a working backend. It never changes after NewHost
+// (tests swap it), so a command settled as sandboxed always finds it.
 func (h *Host) sandboxLive() bool {
 	s := h.sandbox.Load()
 	return s != nil && s.err == nil
 }
 
-// secretDirs are home dirs a sandboxed command can neither read nor write.
+// secretDirs are home paths a sandboxed command can neither read nor write:
+// credentials, tokens and shell histories that code a build runs could print.
 var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".config/gh", ".config/gcloud",
-	".password-store", ".netrc", ".pypirc", ".cargo/credentials.toml", "Library/Keychains"}
+	".password-store", ".netrc", ".pypirc", ".cargo/credentials.toml", "Library/Keychains",
+	".git-credentials", ".config/git/credentials", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pgpass", ".my.cnf",
+	".vault-token", ".terraform.d/credentials.tfrc.json", ".config/hub", ".config/op", ".config/rclone",
+	".local/share/keyrings", ".m2/settings.xml", ".gradle/gradle.properties", ".gem/credentials", ".boto", ".oci",
+	".config/doctl", ".config/fly", ".bash_history", ".zsh_history", ".local/share/fish/fish_history",
+	".psql_history", ".mysql_history", ".python_history", ".node_repl_history"}
 
-// sandboxPolicy is what a settled command may touch: the project (trusted,
-// not plan mode, and not $HOME or above it), the scratchpad and the temp
-// dir; never .git, .zemi or zemi's own dirs.
-// NOTE: caches are not writable, so Go loses new build and test cache
-// entries; a writable cache could be poisoned for a later unconfined build.
+// sandboxPolicy is what a settled command may touch: the scratchpad, the
+// temp dir, a Go build cache of its own and, when trusted and not in plan
+// mode, the project; never .git, .zemi or zemi's own dirs. The project is
+// writable only with a backend that keeps those read-only inside it, and
+// never when it is $HOME or above or holds one of zemi's dirs.
+// NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
+// it cannot cache, and the user's cache written from here could poison a
+// later unconfined build. Other tools' caches stay read-only.
 func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
 	p := sandbox.Policy{Loopback: true}
-	if h.ProjectTrusted() && !plan && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) {
+	var backend sandbox.Backend
+	if s := h.sandbox.Load(); s != nil {
+		backend = s.backend
+	}
+	holdsZemi := slices.ContainsFunc([]string{d.ConfigHome, d.DataHome, d.StateHome}, func(z string) bool {
+		return z != "" && h.inJail(z, d.ProjectDir)
+	})
+	if h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !holdsZemi {
 		p.Write = append(p.Write, d.ProjectDir)
 	}
 	if s := h.ScratchDir(); s != "" {
 		p.Write = append(p.Write, s)
 	}
 	p.Write = append(p.Write, os.TempDir())
+	if d.StateHome != "" {
+		cache := filepath.Join(d.StateHome, "sandbox-cache", "go-build")
+		// made here: the sandbox cannot create it inside the protected state dir
+		if os.MkdirAll(cache, 0o700) == nil {
+			p.Write = append(p.Write, cache)
+			p.Env = map[string]string{"GOCACHE": cache}
+		}
+	}
 	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
 		if root == "" {
 			continue
@@ -81,4 +97,14 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 		}
 	}
 	return p
+}
+
+// TempDir is where zemi keeps its own temp files (the ctrl+g draft, a
+// pasted image): the system temp dir is a sandbox write root.
+func (h *Host) TempDir() (string, error) {
+	if h.Dirs.StateHome == "" {
+		return "", errors.New("no state dir for temp files")
+	}
+	dir := filepath.Join(h.Dirs.StateHome, "tmp")
+	return dir, os.MkdirAll(dir, 0o700)
 }

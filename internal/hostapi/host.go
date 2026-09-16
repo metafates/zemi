@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -258,7 +260,7 @@ type Host struct {
 	// and auto and plan mode settle less without it.
 	projectTrusted atomic.Bool
 
-	// sandbox is the startup probe's result (sandbox.go), nil until it ends
+	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
 }
 
@@ -268,6 +270,19 @@ func (h *Host) SetProjectTrusted(ok bool) {
 	if h.projectTrusted.Swap(ok) != ok {
 		h.autoApproved.Clear()
 	}
+}
+
+// TrustUnsaved reports a trust root no decision is saved for: the home
+// directory and the filesystem root hold everything, so they stay untrusted
+// unless /trust or --trust says otherwise for one run.
+func TrustUnsaved(root string) bool {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		if h, err := filepath.EvalSymlinks(home); err == nil {
+			home = h
+		}
+	}
+	return root == "" || filepath.Dir(root) == root || (err == nil && root == home)
 }
 
 // ProjectTrusted reports whether the user trusts this project.
@@ -330,7 +345,9 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.refreshPending()
 	h.recentStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
-	h.probeSandbox()
+	// sync: the first turn's tool schema and --health read it (the probe is fast)
+	b, err := sandbox.Probe()
+	h.sandbox.Store(&sandboxProbe{b, err})
 	return h
 }
 

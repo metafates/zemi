@@ -69,12 +69,12 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	}
 }
 
-// TestUntrustedModes: in an untrusted project auto mode sends what it
-// cannot settle to the user without screening it, and plan mode runs only
-// commands that just read; the Lua tool asks there and in plan mode.
+// TestUntrustedModes: in an untrusted project, or for a command with no
+// sandbox to run in, auto mode sends what it cannot settle to the user
+// without screening it, and plan mode runs only commands that just read;
+// the Lua tool asks there and in plan mode.
 func TestUntrustedModes(t *testing.T) {
 	h, _ := newTestHost(t)
-	fakeSandbox(h, true)
 	screened := 0
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		screened++
@@ -83,31 +83,36 @@ func TestUntrustedModes(t *testing.T) {
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
 	ask := h.askHook() // no UI: whatever reaches the user is denied
 	for _, c := range []struct {
-		mode    string
-		trusted bool
-		subject string
-		arg     string
-		want    bool
+		mode          string
+		trusted, live bool
+		subject       string
+		arg           string
+		want          bool
 	}{
-		{"auto", true, "mcp.gh", "run", true},
-		{"auto", false, "mcp.gh", "run", false},
-		{"auto", false, "tool.bash", "cat main.go", true},
-		{"plan", true, "tool.bash", "go vet ./...", true},
-		{"plan", false, "tool.bash", "go vet ./...", false},
-		{"plan", false, "tool.bash", "wc -l main.go", true},
+		{"auto", true, true, "mcp.gh", "run", true},
+		{"auto", false, true, "mcp.gh", "run", false},
+		{"auto", false, true, "tool.bash", "cat main.go", true},
+		{"auto", true, true, "tool.bash", "make out", true},
+		{"auto", true, false, "tool.bash", "make out", false},
+		{"auto", true, false, "mcp.gh", "run", true},
+		{"plan", true, true, "tool.bash", "go vet ./...", true},
+		{"plan", false, true, "tool.bash", "go vet ./...", false},
+		{"plan", false, true, "tool.bash", "wc -l main.go", true},
 	} {
 		if err := h.SetPermMode(c.mode); err != nil {
 			t.Fatal(err)
 		}
 		h.SetProjectTrusted(c.trusted)
+		fakeSandbox(h, c.live)
 		screened = 0
 		if ok, _ := ask(tools.Request{Subject: c.subject, Arg: c.arg}); ok != c.want {
-			t.Errorf("%s trusted=%v %s %q: got %v", c.mode, c.trusted, c.subject, c.arg, ok)
+			t.Errorf("%s trusted=%v live=%v %s %q: got %v", c.mode, c.trusted, c.live, c.subject, c.arg, ok)
 		}
-		if !c.trusted && screened > 0 {
-			t.Errorf("%s untrusted %q: screened", c.mode, c.arg)
+		if (!c.trusted || !c.live && c.subject == "tool.bash") && screened > 0 {
+			t.Errorf("%s trusted=%v live=%v %q: screened", c.mode, c.trusted, c.live, c.arg)
 		}
 	}
+	fakeSandbox(h, true)
 	lua := h.luaEvalTool()
 	for _, c := range []struct {
 		mode    string

@@ -89,8 +89,10 @@ checkout by reading the `.git` file, the `gitdir` back-pointer and `commondir`, 
 running git) and saved in `<state>/trust.json` as `trusted`/`untrusted`. Order: a decision
 held for this process (`--trust`, an esc answer, `/trust` when saving is impossible), the
 saved one, then the Go-owned prompt (`App.AskTrust`: `y` trust, `n` don't, esc/enter not
-now). `$HOME` and `/` are never asked about or saved. `/trust` reopens the prompt off the
-UI goroutine, saves, and reloads when the decision changed; `Host.SetProjectTrusted` clears
+now). `$HOME` and `/` are never asked about or saved (`hostapi.TrustUnsaved`; `/trust` there
+says the answer applies to this run only). `/trust` reopens the prompt off the UI goroutine,
+saves, sets `Host.SetProjectTrusted` and then reloads when the decision changed (a reload that
+fails before the trust step must not leave the old decision in force); `Host.SetProjectTrusted` clears
 the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project `.zemi`
 (init.lua, agents, commands, workflows), instruction files and profile `context.files`
 (untrusted: only `<config>/AGENTS.md`), every language server,
@@ -205,18 +207,23 @@ only for runs that will be sandboxed.
 verdict a mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor`
 return `h.sandboxPolicy(plan)`; `tool.Run` puts it on the per-run pipeline copy
 (`Sandboxed`, the `RewriteLoosened` pattern), and `runBash`, `Jobs.Start` (a `wrap` argument;
-`Adopt` takes the already wrapped command) and the window tool's `win.Spec.Wrap` call
+`Adopt` takes the already wrapped command and its sandboxed flag) and the window tool's `win.Spec.Wrap` call
 `sandbox.Wrap` before starting. A wrap error is a tool error, never an unconfined run.
 Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP/LSP servers and
-`Host.git` stay unconfined. `NewHost` probes the backend with `GoSafe` (`h.sandbox`, nil
-until done = unavailable; tests set it with `fakeSandbox`). Policy: writes to the project
-(trusted, not plan mode, not `$HOME` or above), the scratchpad and `$TMPDIR`; `.git`,
-`.zemi` and zemi's dirs read-only and loopback only (macOS; Linux enforces neither and
-blocks every inet socket); home secret dirs hidden. While a backend is
-live, bash, `job_start` and `window` take `sandbox: false` (`Request.Unsandboxed`): mode
-rules and non-yolo bases skip it and it asks the user with "run outside the sandbox". A
-confined failure that `sandbox.LikelyDenied` recognizes gets `tools.SandboxHint`.
-`/health` has a `sandbox` row.
+`Host.git` stay unconfined. `NewHost` probes the backend synchronously (`h.sandbox`; tests
+swap it with `fakeSandbox`), so `--health` and the first turn's schema see it. Policy:
+writes to the scratchpad, `$TMPDIR`, `<state>/sandbox-cache/go-build` (`GOCACHE` through
+`Policy.Env`) and the project (trusted, not plan mode, not `$HOME` or above, holding no zemi
+dir, and only with `Backend.EnforcesProtect`: Landlock leaves the project read-only);
+`.git`, `.zemi` and zemi's dirs read-only and loopback only (seatbelt; Landlock enforces
+neither and blocks every inet socket); home credential paths (`secretDirs`) hidden. zemi's
+own temp files go to `Host.TempDir()` (`<state>/tmp`), not `$TMPDIR`. With no backend,
+auto mode sends `tool.bash` asks it cannot settle straight to the user ("not settled: no
+sandbox"). While a backend is live, bash, `job_start` and `window` take `sandbox: false`
+(`Request.Unsandboxed`): mode rules and non-yolo bases skip it and it asks the user with
+"run outside the sandbox". A confined failure that `sandbox.LikelyDenied` recognizes gets
+`tools.SandboxHint`, which, like `tools.SandboxProp()`, describes the backend
+`sandbox.Probe` returns. `/health` has a `sandbox` row.
 
 `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
