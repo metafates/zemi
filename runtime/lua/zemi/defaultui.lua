@@ -85,8 +85,9 @@ end
 
 local function empty() return { { { text = "" } } } end
 
--- Display width of a string: one cell per UTF-8 character (the splash only
--- uses narrow glyphs).
+-- Display width of a string: one cell per UTF-8 character.
+-- NOTE: a wide glyph (CJK, emoji) counts as one, so clipped model text can
+-- overflow into a wrapped row; exact widths need a host width call.
 local function cells(s)
   return select(2, s:gsub("[^\128-\191]", ""))
 end
@@ -108,16 +109,13 @@ end
 -- chunks splits text into pieces of at most room cells (code wraps, never
 -- clips).
 local function chunks(text, room)
-  local out, cur, n = {}, {}, 0
+  local out, cur = {}, {}
   for ch in text:gmatch(UTF8_CHAR) do
-    -- cells, not characters: a wide glyph would otherwise spill past room
-    local w = cells(ch)
-    if n + w > room and #cur > 0 then
+    if #cur >= room and #cur > 0 then
       out[#out + 1] = table.concat(cur)
-      cur, n = {}, 0
+      cur = {}
     end
     cur[#cur + 1] = ch
-    n = n + w
   end
   if #cur > 0 or #out == 0 then out[#out + 1] = table.concat(cur) end
   return out
