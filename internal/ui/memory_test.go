@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -113,4 +114,33 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	if got := reviewAnswer(t, done); len(got) != 0 {
 		t.Fatalf("empty review returned %v", got)
 	}
+}
+
+// TestMemoryReviewLongList: the selected memory reads whole however long it
+// is, and moving down a list taller than the chat scrolls to keep it in view.
+func TestMemoryReviewLongList(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 16)
+	long := strings.Repeat("word ", 40) + "tail-marker"
+	var items []hostapi.MemoryRow
+	for i := range 12 {
+		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Kind: "fact", Origin: "user", Text: "short note"})
+	}
+	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned", Text: long, Tags: []string{"db"}})
+	done := make(chan map[string]string, 1)
+	go func() { done <- app.ReviewMemories(items) }()
+	waitPrompt(t, app, func() bool { return app.memReview != nil })
+
+	for range items {
+		app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"tail-marker", "gotcha · this project · learned · #db", "13 of 13"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("frame lacks %q:\n%s", want, frame)
+		}
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	reviewAnswer(t, done)
 }

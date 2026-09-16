@@ -657,7 +657,7 @@ func (a *App) compose(w, h int) string {
 		splice(questionBox(a.question, w))
 	}
 	if a.memReview != nil {
-		splice(memReviewBox(a.memReview, w))
+		splice(memReviewBox(a.memReview, w, chatH))
 	}
 	if a.cfgReview != nil {
 		splice(cfgReviewBox(a.cfgReview, w))

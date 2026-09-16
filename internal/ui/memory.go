@@ -6,7 +6,11 @@
 package ui
 
 import (
+	"fmt"
 	"slices"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -14,6 +18,7 @@ import (
 type memReviewPrompt struct {
 	items   []hostapi.MemoryRow
 	sel     int
+	top     int               // first line of the scrolled window
 	actions map[string]string // row id -> accept | reject | delete
 	undo    []memUndo
 	answer  chan map[string]string
@@ -105,31 +110,67 @@ func (a *App) undoMemory() {
 	mr.sel = u.at
 }
 
-func memReviewBox(mr *memReviewPrompt, w int) [][]hostapi.Segment {
-	var body [][]hostapi.Segment
+// memReviewBox lists one memory per line and opens the selected one in
+// place: its whole text wrapped, then kind, scope, origin and tags. The
+// window scrolls to keep that card in view inside the chat area.
+func memReviewBox(mr *memReviewPrompt, w, chatH int) [][]hostapi.Segment {
+	inner := max(min(w-4, 100)-4, 12)
+	// one width for every selection: the widest memory on one line, capped
+	fit := 56
+	for _, it := range mr.items {
+		fit = max(fit, 6+ansi.StringWidth(it.Text)+2+ansi.StringWidth(memScope(it)))
+	}
+	fit = min(fit, inner)
+
+	var lines [][]hostapi.Segment
+	selTop, selEnd := 0, 0
 	section := ""
 	for i, it := range mr.items {
 		if s := map[bool]string{true: "Suggested by zemi", false: "Remembered"}[it.Queued]; s != section {
 			if section != "" {
-				body = append(body, nil)
+				lines = append(lines, nil)
 			}
 			section = s
-			body = append(body, []hostapi.Segment{{Text: s, HL: "Host:Hint"}})
+			lines = append(lines, []hostapi.Segment{{Text: s, HL: "Host:Hint"}})
 		}
-		cur, hl := "  ", "Host:Value"
-		if i == mr.sel {
-			cur, hl = "› ", "Host:Bold"
-		}
-		where := "  this project"
-		if it.Scope == "user" {
-			where = "  everywhere"
-		}
-		row := []hostapi.Segment{{Text: cur, HL: "Host:HintKey", Hit: i + 1}}
+		mark := ""
 		if mr.actions[it.ID] == "accept" {
-			row = append(row, hostapi.Segment{Text: "+ ", HL: "Host:Ok", Hit: i + 1})
+			mark = "+ "
 		}
-		body = append(body, append(row, hostapi.Segment{Text: it.Text, HL: hl, Hit: i + 1}, hostapi.Segment{Text: where, HL: "Host:Hint", Hit: i + 1}))
+		if i != mr.sel {
+			scope := memScope(it)
+			text := ellipsizeSegs([]hostapi.Segment{{Text: it.Text, HL: "Host:Value"}}, fit-2-len(mark)-2-ansi.StringWidth(scope))
+			row := []hostapi.Segment{{Text: "  "}, {Text: mark, HL: "Host:Ok"}}
+			row = append(row, text...)
+			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(2, fit-segsWidth(row)-ansi.StringWidth(scope))) + scope, HL: "Host:Hint"})
+			lines = append(lines, hitRow(row, i+1))
+			continue
+		}
+		selTop = len(lines)
+		for j, r := range wrapSegs([]hostapi.Segment{{Text: it.Text, HL: "Host:Bold"}}, fit-2-len(mark)) {
+			pre := strings.Repeat(" ", len(mark))
+			if j == 0 {
+				pre = mark
+			}
+			lines = append(lines, hitRow(append([]hostapi.Segment{{Text: "▌ ", HL: "Host:HintKey"}, {Text: pre, HL: "Host:Ok"}}, r...), i+1))
+		}
+		meta := []string{it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+		for _, t := range it.Tags {
+			meta = append(meta, "#"+t)
+		}
+		lines = append(lines, hitRow([]hostapi.Segment{{Text: "▌ ", HL: "Host:HintKey"}, {Text: strings.Join(slices.DeleteFunc(meta, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"}}, i+1))
+		selEnd = len(lines)
 	}
+
+	badge := ""
+	// borders, the blank row and the hint take four rows
+	if room := max(chatH-4, 3); len(lines) > room {
+		mr.top = min(mr.top, selTop, len(lines)-room)
+		mr.top = max(mr.top, min(selEnd-room, selTop), 0)
+		lines = lines[mr.top : mr.top+room]
+		badge = fmt.Sprintf(" %d of %d ", mr.sel+1, len(mr.items))
+	}
+	body := lines
 	if len(mr.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})
 	}
@@ -148,5 +189,20 @@ func memReviewBox(mr *memReviewPrompt, w int) [][]hostapi.Segment {
 		hints = append(hints, "u", "undo")
 	}
 	body = append(body, nil, hintLine(append(hints, "esc", "done")...))
-	return hostBox(" Memory ", "Host:Title", "", body, w)
+	return hostBox(" Memory ", "Host:Title", badge, body, w)
+}
+
+func memScope(it hostapi.MemoryRow) string {
+	if it.Scope == "user" {
+		return "everywhere"
+	}
+	return "this project"
+}
+
+// hitRow makes every cell of a row click to item hit.
+func hitRow(row []hostapi.Segment, hit int) []hostapi.Segment {
+	for i := range row {
+		row[i].Hit = hit
+	}
+	return row
 }
