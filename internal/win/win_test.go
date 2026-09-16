@@ -82,3 +82,29 @@ func TestWindowKillsOnClose(t *testing.T) {
 		t.Fatal("unknown kind must refuse")
 	}
 }
+
+// TestRepliesAfterExit: emulator replies written after the program is gone
+// (a late cursor report, say) must not block, or mu stays held for good.
+func TestRepliesAfterExit(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: "true", Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-w.Done()
+	done := make(chan struct{})
+	go func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		for range 3 {
+			w.term.SendText("\x1b[1;1R")
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		m.Close(w.ID)
+	case <-time.After(3 * time.Second):
+		t.Fatal("reply write blocked after exit")
+	}
+}

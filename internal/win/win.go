@@ -230,15 +230,15 @@ func (w *Window) readLoop() {
 }
 
 // replyLoop carries the emulator's answers (cursor reports, device
-// attributes) and the keys it encodes back to the program.
+// attributes) and the keys it encodes back to the program. It drains until
+// the emulator closes, even once the program is gone: the emulator writes
+// to an unbuffered pipe under mu, so a loop that stopped would wedge mu.
 func (w *Window) replyLoop() {
 	buf := make([]byte, 4<<10)
 	for {
 		n, err := w.term.Read(buf)
 		if n > 0 {
-			if _, werr := w.ptmx.Write(buf[:n]); werr != nil {
-				return
-			}
+			_, _ = w.ptmx.Write(buf[:n])
 		}
 		if err != nil {
 			return
