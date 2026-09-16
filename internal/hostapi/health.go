@@ -220,8 +220,9 @@ type HealthRow struct{ Level, Name, Detail string }
 
 // HealthRows runs the checks and returns them as plain data.
 func (h *Host) HealthRows() []HealthRow {
-	out := make([]HealthRow, 0, len(h.healthChecks()))
-	for _, c := range h.healthChecks() {
+	checks := h.healthChecks() // once: every check has side effects and file IO
+	out := make([]HealthRow, 0, len(checks))
+	for _, c := range checks {
 		out = append(out, HealthRow{Level: c.level, Name: c.name, Detail: c.detail})
 	}
 	return out

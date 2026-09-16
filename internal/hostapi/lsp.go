@@ -179,6 +179,11 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 		h.RecordError("lsp", err.Error())
 		return nil, err
 	default:
+		// it is answering, so earlier deaths stop counting against the cap:
+		// otherwise three crashes in a long session disable it for good
+		h.lsp.mu.Lock()
+		delete(h.lsp.attempts, def.Name)
+		h.lsp.mu.Unlock()
 	}
 	return p.client, nil
 }

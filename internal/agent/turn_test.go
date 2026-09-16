@@ -310,8 +310,33 @@ func TestToolLoopEndsTurn(t *testing.T) {
 	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
 		t.Fatalf("err = %v, want ErrToolLoop", err)
 	}
-	if n := len(r.History); n != 1+2*(loopRepeats+1) {
-		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopRepeats+1)
+	if n := len(r.History); n != 1+2*loopMinSteps {
+		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopMinSteps)
+	}
+}
+
+// TestToolLoopCatchesTwoStepCycle: a model alternating two calls that never
+// change anything (the same edit, the same failing check) is as stuck as one
+// repeating a single call.
+func TestToolLoopCatchesTwoStepCycle(t *testing.T) {
+	step := func(input string) []fantasy.StreamPart {
+		return []fantasy.StreamPart{
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: input},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+		}
+	}
+	// the text reply is the fallback: without it a missed loop would hang
+	m := &mockModel{parts: textParts("done")}
+	for range 4 {
+		m.steps = append(m.steps, step(`{"a":1}`), step(`{"b":2}`))
+	}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("same"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
+		t.Fatalf("err = %v, want ErrToolLoop", err)
 	}
 }
 

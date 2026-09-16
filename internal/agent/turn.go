@@ -272,12 +272,18 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 }
 
 const (
-	maxSteps    = 200
-	loopRepeats = 5 // identical tool steps in a row allowed
+	maxSteps = 200
+	// A loop is the same block of steps repeated: loopPeriod bounds how
+	// long that block may be, and a run counts once it covers loopMinSteps
+	// steps or loopMinCycles repeats, whichever is more.
+	loopPeriod    = 3
+	loopMinSteps  = 6
+	loopMinCycles = 3
 )
 
 // pollingTools are meant to be called again with the same input: waiting on
-// a job is not a loop, it is how the model watches one.
+// a job is not a loop, it is how the model watches one. Such a step is left
+// out of the comparison entirely, so one poll cannot break a real loop's run.
 var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 
 // maxRetries is the provider retries a step gets; fantasy's default of 3
@@ -286,7 +292,7 @@ var maxRetries = 5
 
 var (
 	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
-	ErrToolLoop  = fmt.Errorf("stopped: the agent made the same tool call with the same result %d times in a row", loopRepeats+1)
+	ErrToolLoop  = fmt.Errorf("stopped: the agent kept repeating the same tool calls with the same results")
 )
 
 // repeatsToolCalls reports whether the last loopRepeats+1 tool steps made
@@ -300,27 +306,42 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		if len(calls) == 0 {
 			continue
 		}
-		sig := ""
+		sig, polling := "", false
 		for _, c := range calls {
 			if pollingTools[c.ToolName] {
-				sig = ""
+				polling = true
 				break
 			}
 			sig += c.ToolName + "\x00" + c.Input + "\x00"
 		}
-		if sig != "" {
-			for _, res := range s.Content.ToolResults() {
-				txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
-				sig += txt.Text + "\x00"
-			}
+		if polling {
+			continue // waiting on a job says nothing about progress
+		}
+		for _, res := range s.Content.ToolResults() {
+			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
+			sig += txt.Text + "\x00"
 		}
 		sigs = append(sigs, sig)
 	}
-	if len(sigs) <= loopRepeats || sigs[len(sigs)-1] == "" {
+	for period := 1; period <= loopPeriod; period++ {
+		if repeatsCycle(sigs, period) {
+			return true
+		}
+	}
+	return false
+}
+
+// repeatsCycle reports whether the end of sigs is one block of period steps
+// repeated: a model stuck on one call, or cycling a short pattern such as
+// the same edit and the same failing test.
+func repeatsCycle(sigs []string, period int) bool {
+	n := period * max(loopMinSteps/period, loopMinCycles)
+	if len(sigs) < n {
 		return false
 	}
-	for _, s := range sigs[len(sigs)-loopRepeats-1:] {
-		if s != sigs[len(sigs)-1] {
+	last := sigs[len(sigs)-n:]
+	for i := period; i < n; i++ {
+		if last[i] != last[i%period] {
 			return false
 		}
 	}

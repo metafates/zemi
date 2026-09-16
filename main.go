@@ -58,6 +58,9 @@ func run(args []string) int {
 	}
 	log := logging.New(dirs.LogDir())
 	defer log.Close()
+	// --health and -p return without reaching the TUI cleanup, and boot may
+	// already have started MCP or language servers
+	defer proc.KillAll()
 
 	settings := config.NewStore()
 
@@ -178,8 +181,10 @@ func run(args []string) int {
 
 	// Closing the terminal sends SIGHUP, which ends the process without
 	// running the cleanup below, and jobs and servers would outlive zemi.
+	// SIGTERM is not here: bubbletea quits on it and p.Run returns, which
+	// restores the terminal and reaches the cleanup anyway.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGHUP, syscall.SIGTERM)
+	signal.Notify(sig, syscall.SIGHUP)
 	go func() {
 		<-sig
 		proc.KillAll()

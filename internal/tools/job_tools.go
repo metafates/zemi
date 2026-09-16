@@ -65,7 +65,7 @@ func (j *Job) since() (out, errOut string, running bool, errText string) {
 	// its middle, so its length stops growing while output keeps arriving.
 	// Whatever is new sits at the end of what the buffer still holds.
 	rest := func(b *proc.Buffer, sent *int64) string {
-		s, written := b.String(), b.Written()
+		s, written := b.Snapshot()
 		n := written - *sent
 		*sent = written
 		switch {
@@ -133,6 +133,9 @@ func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
 // keeps going as a job instead of losing the work done so far.
 func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, wait <-chan error) string {
 	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
+	// the bash result already carried what the buffer holds; job_read
+	// delivers what comes after it
+	j.sent[0] = out.Written()
 	m.mu.Lock()
 	m.seq++
 	j.ID = fmt.Sprintf("job-%d", m.seq)

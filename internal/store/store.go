@@ -18,7 +18,8 @@ import (
 // DB is one SQLite database handle. All methods are safe for concurrent
 // use (database/sql serializes).
 type DB struct {
-	db *sql.DB
+	db   *sql.DB
+	path string // named in errors: there is a global and a per-project one
 }
 
 // Open creates the parent directory if needed and opens the database with
@@ -34,7 +35,7 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	d.SetMaxOpenConns(1)
-	s := &DB{db: d}
+	s := &DB{db: d, path: path}
 	if err := s.migrate(); err != nil {
 		d.Close()
 		return nil, err
@@ -188,15 +189,27 @@ END;
 var migrations = [][]string{}
 
 func (s *DB) migrate() error {
+	// A database this call creates gets every column from schema, so it is
+	// current by construction and must be stamped: otherwise the first
+	// migration ever added would run its ALTER against a table that already
+	// has the column, and no new project could open its store.
+	var any string
+	fresh := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&any) == sql.ErrNoRows
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	if fresh {
+		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
+			return fmt.Errorf("store: stamp user_version: %w", err)
+		}
+		return nil
 	}
 	var version int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("store: read user_version: %w", err)
 	}
 	if version > len(migrations) {
-		return fmt.Errorf("store: database is at schema version %d, this zemi knows %d; upgrade zemi", version, len(migrations))
+		return fmt.Errorf("store: %s is at schema version %d, this zemi knows %d; upgrade zemi", s.path, version, len(migrations))
 	}
 	if version == len(migrations) {
 		return nil

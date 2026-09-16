@@ -90,8 +90,9 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		}
 		if cmd.GoFn != nil {
 			// a Go-owned command acts with the user's authority (/export
-			// writes a file, /reload reloads config): only the user's own
-			// config and zemi's may run one, never model or project code
+			// writes a file, /reload reloads config), so only the user's own
+			// config and zemi's own code may run one: plugin, project and
+			// model code go through their own gated APIs instead
 			if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
 				return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run /%s", o, name))
 			}

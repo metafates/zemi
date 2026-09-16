@@ -149,12 +149,25 @@ func (b *Buffer) Write(p []byte) (int, error) {
 func (b *Buffer) Written() int64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.dropped + int64(len(b.head)+len(b.tail))
+	return b.written()
 }
 
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.str()
+}
+
+// Snapshot returns the contents and the write count together. Read one
+// after the other, a write landing between them counts as delivered
+// without being returned, and those bytes are never read again.
+func (b *Buffer) Snapshot() (string, int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.str(), b.written()
+}
+
+func (b *Buffer) str() string {
 	if b.dropped == 0 {
 		return string(b.head) + string(b.tail)
 	}
@@ -164,3 +177,5 @@ func (b *Buffer) String() string {
 	s.Write(b.tail)
 	return s.String()
 }
+
+func (b *Buffer) written() int64 { return b.dropped + int64(len(b.head)+len(b.tail)) }
