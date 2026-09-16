@@ -34,6 +34,18 @@ func start(t *testing.T, ctx context.Context, root string) *lsp.Client {
 	return c
 }
 
+// TestBadFrameEndsServer: a frame the client refuses ends the connection
+// at once, though the server itself keeps running.
+func TestBadFrameEndsServer(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	began := time.Now()
+	_, err := lsp.Start(ctx, lsp.Config{Command: "sh", Args: []string{"-c", `printf 'Content-Length: 999999999999\r\n\r\n'; sleep 30`}, Root: t.TempDir()})
+	if err == nil || time.Since(began) > 5*time.Second {
+		t.Fatalf("start = %v after %s", err, time.Since(began))
+	}
+}
+
 // TestTouchNoPublishReturnsEarly: a file the server says nothing about
 // ends the wait on the floor timer, not on the caller's whole timeout.
 func TestTouchNoPublishReturnsEarly(t *testing.T) {

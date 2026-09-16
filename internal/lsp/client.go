@@ -634,6 +634,11 @@ func (c *Client) read(r *bufio.Reader) {
 	for {
 		body, err := ReadMessage(r)
 		if err != nil {
+			// A bad frame leaves a live server writing into a pipe nobody
+			// reads, so Wait would never return.
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				proc.Kill(c.cmd)
+			}
 			werr := proc.Wait(c.cmd)
 			if werr == nil {
 				werr = err
