@@ -97,6 +97,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.ProjectDir,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
+		OnToolsChanged: func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) },
 	}
 	if s.spec.URL != "" && !hasHeader(headers, "Authorization") {
 		cfg.Auth = h.mcpAuth(s)
@@ -128,7 +129,6 @@ func (h *Host) startMCP(s *mcpServer) {
 		fail(err)
 		return
 	}
-	client.OnToolsChanged = func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) }
 	list, err := client.Tools(ctx)
 	if err != nil {
 		client.Close()

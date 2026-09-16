@@ -40,6 +40,10 @@ type Config struct {
 	URL     string
 	Headers map[string]string
 	Auth    *Auth // OAuth grant for a server that requires sign-in; nil sends none
+
+	// OnToolsChanged runs on a reader goroutine when the server reports a
+	// new tool list; it must return quickly.
+	OnToolsChanged func()
 }
 
 // Tool is one tool a server lists.
@@ -119,21 +123,17 @@ type Client struct {
 	endOnce sync.Once
 	endErr  error
 
-	// OnToolsChanged runs on the reader goroutine when the server reports
-	// a new tool list; it must return quickly.
-	OnToolsChanged func()
+	onToolsChanged func()
 }
 
 // Start connects and runs the initialize handshake.
 func Start(ctx context.Context, cfg Config) (*Client, error) {
-	c := &Client{pending: map[int64]chan message{}, done: make(chan struct{})}
+	c := &Client{pending: map[int64]chan message{}, done: make(chan struct{}), onToolsChanged: cfg.OnToolsChanged}
 	switch {
 	case cfg.Command != "":
-		t, err := startStdio(cfg, c)
-		if err != nil {
+		if err := startStdio(cfg, c); err != nil {
 			return nil, err
 		}
-		c.t = t
 	case cfg.URL != "":
 		c.t = &httpTransport{cfg: cfg, c: c}
 	default:
@@ -324,8 +324,8 @@ func (c *Client) handle(data []byte) {
 			_ = c.t.send(ctx, b)
 		}()
 	case m.Method == "notifications/tools/list_changed":
-		if c.OnToolsChanged != nil {
-			c.OnToolsChanged()
+		if c.onToolsChanged != nil {
+			c.onToolsChanged()
 		}
 	case m.Method == "":
 		var id int64
@@ -353,20 +353,23 @@ type stdioTransport struct {
 	stdin io.WriteCloser
 }
 
-func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
+// startStdio sets c.t before the reader starts: handle answers server
+// requests through it.
+func startStdio(cfg Config, c *Client) error {
 	cmd := proc.Command(cfg.Command, cfg.Args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Dir, cfg.Stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := proc.Start(cmd); err != nil {
-		return nil, fmt.Errorf("mcp: start %s: %w", cfg.Command, err)
+		return fmt.Errorf("mcp: start %s: %w", cfg.Command, err)
 	}
+	c.t = &stdioTransport{cmd: cmd, stdin: stdin}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -389,7 +392,7 @@ func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
 		}
 		c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
 	}()
-	return &stdioTransport{cmd: cmd, stdin: stdin}, nil
+	return nil
 }
 
 func (t *stdioTransport) send(_ context.Context, msg []byte) error {
