@@ -10,10 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 // The test binary doubles as the sandboxed program (__act) and, on Linux,
@@ -49,6 +52,12 @@ func act(verb, arg string) error {
 		return os.Rename(arg, arg+".moved")
 	case "dial":
 		c, err := net.DialTimeout("tcp", arg, 3*time.Second)
+		if err == nil {
+			c.Close()
+		}
+		return err
+	case "unix":
+		c, err := net.DialTimeout("unix", arg, 3*time.Second)
 		if err == nil {
 			c.Close()
 		}
@@ -91,7 +100,7 @@ func probeOrSkip(t *testing.T) Backend {
 
 func TestPolicy(t *testing.T) {
 	b := probeOrSkip(t)
-	seatbelt := b.Name == "seatbelt"
+	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	scratch := filepath.Join(state, "scratch")
 	for _, d := range []string{filepath.Join(root, ".git"), scratch} {
@@ -112,6 +121,19 @@ func TestPolicy(t *testing.T) {
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
 	_, caseFolds := os.Stat(filepath.Join(root, ".GIT"))
+	// a short dir: socket paths are capped near 100 bytes
+	sockDir, err := os.MkdirTemp("/tmp", "zs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	sock, err := net.Listen("unix", filepath.Join(sockDir, "s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close()
+	shm := fmt.Sprintf("/dev/shm/zemi-sandbox-%d", os.Getpid())
+	t.Cleanup(func() { os.Remove(shm) })
 	cases := []struct {
 		name, verb, arg string
 		allowed, skip   bool
@@ -122,12 +144,15 @@ func TestPolicy(t *testing.T) {
 		{"write in a root under a protected dir", "write", filepath.Join(scratch, "a.txt"), true, false},
 		{"write outside the roots", "write", filepath.Join(outside, "a.txt"), false, false},
 		{"write a protected dir", "write", filepath.Join(state, "a.txt"), false, false},
-		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !seatbelt},
-		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !seatbelt || caseFolds != nil},
-		{"rename .git", "rename", filepath.Join(root, ".git"), false, !seatbelt},
+		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
+		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
+		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},
 		{"read a hidden dir", "read", filepath.Join(hide, "id"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
-		{"listen and dial loopback", "loopback", "", true, !seatbelt},
+		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
+		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
+		// the namespaces that keep Protect read-only also give a loopback
+		{"listen and dial loopback", "loopback", "", true, !b.EnforcesProtect},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -150,8 +175,8 @@ func TestNetworkDenied(t *testing.T) {
 	dial := func(addr string, loopback bool) {
 		t.Helper()
 		out, err := run(t, Policy{Loopback: loopback}, "dial", addr)
-		// EPERM, not a timeout: the connect never left the machine
-		if err == nil || !strings.Contains(strings.ToLower(out), "operation not permitted") {
+		// refused at once, not a timeout: the connect never left the machine
+		if err == nil || !LikelyDenied(out, err) {
 			t.Fatalf("dial %s: %v\n%s", addr, err, out)
 		}
 	}
@@ -217,26 +242,87 @@ func TestLikelyDenied(t *testing.T) {
 	exit := func(code int) error {
 		return exec.Command("sh", "-c", fmt.Sprintf("exit %d", code)).Run()
 	}
+	linux := runtime.GOOS == "linux"
 	for _, c := range []struct {
 		name string
 		out  string
 		err  error
 		want bool
 	}{
-		{"success", "operation not permitted", nil, false},
-		{"write denied", "open x: operation not permitted", exit(1), true},
-		{"read-only fs", "Read-only file system", exit(1), true},
-		{"dns", "curl: (6) Could not resolve host: example.com", exit(6), true},
+		{"success", "open x: operation not permitted", nil, false},
+		{"go write denied", "open x: operation not permitted", exit(1), true},
+		{"go cache write denied", "open /Users/u/Library/Caches/go-build/7f/7fe2-d: operation not permitted\nFAIL\te2e [setup failed]", exit(1), true},
+		{"python denied", "PermissionError: [Errno 1] Operation not permitted: 'out.txt'", exit(1), true},
+		{"make over a denied touch", "touch planmade\ntouch: planmade: Operation not permitted\nmake: *** [w] Error 1", exit(2), true},
+		{"curl dns", "curl: (6) Could not resolve host: example.com", exit(6), true},
+		{"sandbox-exec nested", "sandbox-exec: sandbox_apply: Operation not permitted", exit(71), true},
 		{"helper failure", "zemi sandbox: landlock: landlock unavailable", exit(125), true},
-		{"not found", "sh: foo: Permission denied", exit(127), false},
-		{"usage", "permission denied", exit(2), false},
-		{"plain failure", "FAIL: TestX", exit(1), false},
 		{"start error", "", errors.New("fork/exec /bin/x: operation not permitted"), true},
+		{"landlock write", "sh: can't create /home/u/x: Permission denied", exit(1), linux},
+		{"read-only mount", "touch: .git/config: Read-only file system", exit(1), linux},
+		{"no route", "dial tcp 1.1.1.1:443: connect: network is unreachable", exit(1), linux},
+		{"not found", "sh: foo: Permission denied", exit(127), false},
+		{"denial before the tail", "open x: operation not permitted\n" + strings.Repeat("ok\n", 3<<10), exit(1), false},
+		{"go test assertion", "--- FAIL: TestOpen (0.00s)\n    open_test.go:12: want permission denied, got <nil>\nFAIL\nFAIL\tgithub.com/x/sandbox\t0.01s\nFAIL", exit(1), false},
+		{"go test in a sandbox package", "ok  \tgithub.com/metafates/zemi/internal/sandbox\t0.4s\n--- FAIL: TestParse (0.00s)\n    parse_test.go:9: got 1\nFAIL", exit(1), false},
+		{"pytest assertion", "E       AssertionError: assert 'Operation not permitted' in ''\n=========================== short test summary info ============================\nFAILED tests/test_sandbox.py::test_denied - AssertionError\n1 failed in 0.02s", exit(1), false},
+		{"make test failure", "go test ./...\n--- FAIL: TestX (0.00s)\nFAIL\nmake: *** [Makefile:4: test] Error 1", exit(2), false},
+		{"esbuild unresolved import", "X [ERROR] Could not resolve \"./utils\"\n\n    src/index.ts:1:22:", exit(1), false},
+		{"vitest in a sandbox file", " FAIL  src/sandbox.test.ts > renders\nAssertionError: expected 'seccomp' to be 'landlock'", exit(1), false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := LikelyDenied(c.out, c.err); got != c.want {
 				t.Fatalf("LikelyDenied = %v", got)
 			}
 		})
+	}
+}
+
+// A window program keeps its own terminal; the user's other terminals stay
+// out of reach.
+func TestTerminal(t *testing.T) {
+	probeOrSkip(t)
+	other, otherTTY, err := pty.Open()
+	if err != nil {
+		t.Skip("no pty:", err)
+	}
+	defer other.Close()
+	defer otherTTY.Close()
+	script := `stty -g >/dev/null && stty size && echo mine >/dev/tty && read l && echo got:$l
+if "$0" __act write "$1" 2>/dev/null; then echo escaped; else echo confined; fi`
+	cmd := exec.Command("/bin/sh", "-c", script, os.Args[0], otherTTY.Name())
+	if err := Wrap(cmd, Policy{}); err != nil {
+		t.Fatal(err)
+	}
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait(); ptmx.Close() }()
+	if _, err := ptmx.Write([]byte("hi\n")); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 1024)
+		for {
+			n, err := ptmx.Read(buf)
+			out.Write(buf[:n])
+			if err != nil || strings.Contains(out.String(), "escaped") || strings.Contains(out.String(), "confined") {
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no answer from the program")
+	}
+	for _, want := range []string{"24 80", "mine", "got:hi", "confined"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("no %q in:\n%s", want, out.String())
+		}
 	}
 }

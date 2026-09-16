@@ -10,6 +10,11 @@ import (
 	"runtime"
 )
 
+const (
+	deniedErrnos  = `operation not permitted`
+	deniedLookups = `nodename nor servname`
+)
+
 func probe() (Backend, error) {
 	return Backend{}, fmt.Errorf("no sandbox on %s", runtime.GOOS)
 }

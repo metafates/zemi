@@ -1,10 +1,7 @@
 package sandbox
 
-// NOTE: v1 is Landlock + seccomp, which runs even under Docker's default
-// seccomp profile. The upgrade path is a user+net+mount namespace variant:
-// loopback that works, and Protect as read-only bind mounts.
-
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,15 +11,32 @@ import (
 	"runtime"
 	"slices"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-const helperArg = "__sandbox"
+const (
+	helperArg = "__sandbox"
+	probeArg  = "probe"
+	// probeEnv stops a binary that does not dispatch helperArg (another
+	// package's test binary) from probing again when run as the probe
+	probeEnv = "ZEMI_SANDBOX_PROBE"
+
+	// Landlock denies with EACCES, seccomp with EPERM; the namespaces give
+	// read-only mounts (EBUSY to rename one) and a network with no route
+	deniedErrnos  = `operation not permitted|permission denied|read-only file system|device or resource busy|network is unreachable`
+	deniedLookups = `temporary failure in name resolution`
+)
+
+// namespaces is whether wraps use the user+net+mount namespace variant; set
+// by probe.
+var namespaces bool
 
 func probe() (Backend, error) {
-	if _, err := os.Executable(); err != nil {
+	exe, err := os.Executable()
+	if err != nil {
 		return Backend{}, err
 	}
 	if _, ok := seccompArch[runtime.GOARCH]; !ok {
@@ -32,14 +46,37 @@ func probe() (Backend, error) {
 	if err != nil {
 		return Backend{}, err
 	}
+	if os.Getenv(probeEnv) == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, exe, helperArg, probeArg)
+		cmd.Env = append(os.Environ(), probeEnv+"=1")
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		namespaceAttr(cmd.SysProcAttr)
+		namespaces = cmd.Run() == nil
+	}
+	if namespaces {
+		return Backend{Name: fmt.Sprintf("landlock v%d + namespaces", abi), EnforcesProtect: true}, nil
+	}
 	return Backend{Name: fmt.Sprintf("landlock v%d + seccomp", abi)}, nil
 }
 
-// wrap runs cmd as `zemi __sandbox <policy> -- <path> <argv...>`, which
-// confines itself and then execs the command in place.
-// NOTE: the Policy's Protect and Loopback are not enforced here. Landlock
+// namespaceAttr starts the helper in its own user, network and mount
+// namespaces, as the same uid and with the caps to bring lo up and mount.
+// Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
+// both refuse this, and the probe falls back.
+func namespaceAttr(a *syscall.SysProcAttr) {
+	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS
+	a.UidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getuid(), HostID: os.Getuid(), Size: 1}}
+	a.GidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getgid(), HostID: os.Getgid(), Size: 1}}
+	a.AmbientCaps = []uintptr{unix.CAP_NET_ADMIN, unix.CAP_SYS_ADMIN}
+}
+
+// wrap runs cmd as `zemi __sandbox <mode> <policy> -- <path> <argv...>`,
+// which confines itself and then execs the command in place.
+// NOTE: without namespaces Protect and Loopback are not enforced: Landlock
 // cannot keep .git read-only inside a writable root without splitting the
-// root, which breaks creating top-level files; seccomp blocks every inet socket.
+// root, which breaks creating top-level files, and seccomp blocks every socket.
 func wrap(cmd *exec.Cmd, p Policy) error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -49,7 +86,15 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 	if err != nil {
 		return err
 	}
-	cmd.Args = append([]string{exe, helperArg, string(pol), "--", cmd.Path}, cmd.Args...)
+	mode := "seccomp"
+	if namespaces {
+		mode = "namespaces"
+		if cmd.SysProcAttr == nil {
+			cmd.SysProcAttr = &syscall.SysProcAttr{}
+		}
+		namespaceAttr(cmd.SysProcAttr)
+	}
+	cmd.Args = append([]string{exe, helperArg, mode, string(pol), "--", cmd.Path}, cmd.Args...)
 	cmd.Path = exe
 	return nil
 }
@@ -57,33 +102,123 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 // Helper confines the process to the policy in args and execs the command.
 // It must run before anything else in main: the confinement covers only
 // the calling thread's exec.
+// NOTE: an x86_64 command under Rosetta from an arm64 helper (a mixed-arch
+// container) dies with SIGTRAP, exit 133: Rosetta cannot open /proc/self/exe.
 func Helper(args []string) int {
 	fail := func(step string, err error) int {
 		fmt.Fprintf(os.Stderr, "zemi sandbox: %s: %v\n", step, err)
 		return 125
 	}
-	if len(args) < 4 || args[1] != "--" {
-		return fail("args", errors.New("want <policy> -- <path> <argv...>"))
+	runtime.LockOSThread()
+	if len(args) == 1 && args[0] == probeArg {
+		exe, err := os.Executable()
+		if err != nil {
+			return fail("probe", err)
+		}
+		if err := setupNamespaces(Policy{Write: []string{"/"}, Protect: []string{filepath.Dir(exe)}}); err != nil {
+			return fail("probe", err)
+		}
+		return 0
 	}
+	if len(args) < 5 || args[2] != "--" {
+		return fail("args", errors.New("want <mode> <policy> -- <path> <argv...>"))
+	}
+	ns := args[0] == "namespaces"
 	var p Policy
-	if err := json.Unmarshal([]byte(args[0]), &p); err != nil {
+	if err := json.Unmarshal([]byte(args[1]), &p); err != nil {
 		return fail("policy", err)
 	}
-	path, err := exec.LookPath(args[2])
+	path, err := exec.LookPath(args[3])
 	if err != nil {
 		return fail("lookup", err)
 	}
-	runtime.LockOSThread()
+	if ns {
+		if err := setupNamespaces(p); err != nil {
+			return fail("namespaces", err)
+		}
+	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fail("no_new_privs", err)
 	}
 	if err := landlock(p); err != nil {
 		return fail("landlock", err)
 	}
-	if err := seccomp(); err != nil {
+	if err := seccomp(ns); err != nil {
 		return fail("seccomp", err)
 	}
-	return fail("exec", syscall.Exec(path, args[3:], os.Environ()))
+	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
+}
+
+// setupNamespaces brings lo up, makes each Protect path under a Write root
+// a read-only bind mount (and a Write root inside one writable again), then
+// drops the ambient caps, so the command execs with none.
+// Landlock, applied next, forbids the command to umount them.
+func setupNamespaces(p Policy) error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	ifr, err := unix.NewIfreq("lo")
+	if err != nil {
+		return err
+	}
+	if err := unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("lo: %w", err)
+	}
+	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP)
+	if err := unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("lo up: %w", err)
+	}
+	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+		return fmt.Errorf("private mounts: %w", err)
+	}
+	if _, err := os.Stat("/dev/shm"); err == nil {
+		if err := unix.Mount("tmpfs", "/dev/shm", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, ""); err != nil {
+			return fmt.Errorf("/dev/shm: %w", err)
+		}
+	}
+	type bind struct {
+		path     string
+		readOnly bool
+	}
+	var binds []bind
+	inWrite := func(path string) bool {
+		return slices.ContainsFunc(p.Write, func(w string) bool { return within(path, w) })
+	}
+	for _, pr := range p.Protect {
+		if inWrite(pr) {
+			binds = append(binds, bind{pr, true})
+		}
+	}
+	for _, w := range p.Write {
+		if slices.ContainsFunc(p.Protect, func(pr string) bool { return w != pr && within(w, pr) }) {
+			binds = append(binds, bind{w, false})
+		}
+	}
+	// deeper mounts go on top
+	slices.SortStableFunc(binds, func(a, b bind) int { return len(a.path) - len(b.path) })
+	for _, b := range binds {
+		if _, err := os.Lstat(b.path); err != nil {
+			continue
+		}
+		if err := unix.Mount(b.path, b.path, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+			return fmt.Errorf("bind %s: %w", b.path, err)
+		}
+		// a remount must keep the flags the outer namespace locked
+		var st unix.Statfs_t
+		if err := unix.Statfs(b.path, &st); err != nil {
+			return err
+		}
+		flags := unix.MS_REMOUNT | unix.MS_BIND | uintptr(st.Flags)&(unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC|unix.MS_NOATIME|unix.MS_NODIRATIME|unix.MS_RELATIME)
+		if b.readOnly {
+			flags |= unix.MS_RDONLY
+		}
+		if err := unix.Mount("", b.path, "", flags, ""); err != nil {
+			return fmt.Errorf("remount %s: %w", b.path, err)
+		}
+	}
+	return unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0)
 }
 
 const (
@@ -155,7 +290,11 @@ func landlock(p Policy) error {
 	if err := addRead(add, "/", hide); err != nil {
 		return err
 	}
-	for _, w := range append(p.Write, "/dev/null", "/dev/zero", "/dev/tty", "/dev/pts", "/dev/ptmx") {
+	// not /dev/pts: a window's program inherits its pty, and a path would
+	// reach every other terminal the user has open.
+	// NOTE: without namespaces /dev/shm is the one the user's other programs
+	// share, so their POSIX shared memory is writable too.
+	for _, w := range append(p.Write, "/dev/null", "/dev/zero", "/dev/tty", "/dev/ptmx", "/dev/shm") {
 		if err := add(w, attr.Access_fs); err != nil {
 			return err
 		}
@@ -199,10 +338,15 @@ func addRead(add func(string, uint64) error, dir string, hide []string) error {
 
 var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": unix.AUDIT_ARCH_AARCH64}
 
-// seccomp denies inet sockets and io_uring (whose ops skip the socket check).
-// NOTE: pathname unix sockets (docker.sock, $SSH_AUTH_SOCK) stay reachable;
-// masking them needs the mount namespace variant.
-func seccomp() error {
+// seccomp denies io_uring (whose ops skip the socket check) and socket():
+// every family without namespaces, and with them all but inet and netlink,
+// which reach only the empty network namespace. Landlock does not mediate
+// connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
+// systemd user bus), so AF_UNIX is denied in both.
+// NOTE: socketpair stays allowed, so a unix socket still works between the
+// command's own processes; anything that listens on or dials a unix socket
+// path fails, and an AF_UNIX fd the command inherits stays usable.
+func seccomp(ns bool) error {
 	arch, ok := seccompArch[runtime.GOARCH]
 	if !ok {
 		return fmt.Errorf("no filter for %s", runtime.GOARCH)
@@ -225,18 +369,21 @@ func seccomp() error {
 		stmt(ret, unix.SECCOMP_RET_KILL_PROCESS),
 		stmt(load, offNr),
 	}
+	deny, allow := stmt(ret, unix.SECCOMP_RET_ERRNO|uint32(unix.EPERM)), stmt(ret, unix.SECCOMP_RET_ALLOW)
+	// each test sits right before the return it jumps into or over
 	if runtime.GOARCH == "amd64" {
 		// x32 syscalls share the arch but not the numbers
-		prog = append(prog, jump(unix.BPF_JMP|unix.BPF_JGE|unix.BPF_K, 0x40000000, 4, 0))
+		prog = append(prog, jump(unix.BPF_JMP|unix.BPF_JGE|unix.BPF_K, 0x40000000, 0, 1), deny)
 	}
-	prog = append(prog,
-		jump(eq, unix.SYS_IO_URING_SETUP, 3, 0),
-		jump(eq, unix.SYS_SOCKET, 0, 3),
-		stmt(load, offArg),
-		jump(eq, unix.AF_UNIX, 1, 0),
-		stmt(ret, unix.SECCOMP_RET_ERRNO|uint32(unix.EPERM)),
-		stmt(ret, unix.SECCOMP_RET_ALLOW),
-	)
+	prog = append(prog, jump(eq, unix.SYS_IO_URING_SETUP, 0, 1), deny)
+	prog = append(prog, jump(eq, unix.SYS_SOCKET, 1, 0), allow)
+	if ns {
+		prog = append(prog, stmt(load, offArg))
+		for _, family := range []uint32{unix.AF_INET, unix.AF_INET6, unix.AF_NETLINK} {
+			prog = append(prog, jump(eq, family, 0, 1), allow)
+		}
+	}
+	prog = append(prog, deny)
 	fprog := unix.SockFprog{Len: uint16(len(prog)), Filter: &prog[0]}
 	if _, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER, unix.SECCOMP_FILTER_FLAG_TSYNC, uintptr(unsafe.Pointer(&fprog))); errno != 0 {
 		return errno

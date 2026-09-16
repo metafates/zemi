@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -76,34 +77,29 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 	return wrap(cmd, p)
 }
 
-var deniedWords = []string{
-	"operation not permitted", "permission denied", "read-only file system", "seccomp",
-	"sandbox", "landlock", "failed to write file", "network is unreachable", "could not resolve",
-	"name resolution", "nodename nor servname", "getaddrinfo", "enotfound", "eai_again",
-}
+// denied matches a denial as the backend's errors print it: the errno text
+// after ": " or "] " (C, Go, Node, Python), where a test assertion rarely
+// puts it, a failed DNS lookup, or the Linux helper's own failure.
+var denied = regexp.MustCompile(`(?i)[:\]] (?:` + deniedErrnos + `)|could not resolve host|` + deniedLookups + `|zemi sandbox:`)
+
+// deniedTail is how much of the output end LikelyDenied reads.
+const deniedTail = 8 << 10
 
 // LikelyDenied guesses from a failed command's output whether the sandbox
 // stopped it.
-// NOTE: a heuristic (codex's); a command that prints these words for its own
-// reasons reads as denied.
+// NOTE: a heuristic: a denial earlier than the last 8KB of output is missed,
+// and a program's own EPERM reads as denied.
 func LikelyDenied(out string, err error) bool {
 	if err == nil {
 		return false
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-		// usage error, not executable, not found
 		switch ee.ExitCode() {
-		case 2, 126, 127:
+		case 126, 127: // not executable, not found
 			return false
 		}
 	}
-	text := strings.ToLower(out + "\n" + err.Error())
-	for _, w := range deniedWords {
-		if strings.Contains(text, w) {
-			return true
-		}
-	}
-	return false
+	return denied.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
 // within reports whether p is root or below it.
