@@ -154,6 +154,9 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 	return hostBoxW(title, titleHL, badge, body, w, 100)
 }
 
+// boxInner is the widest row a hostBox on a w-cell screen shows whole.
+func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
+
 // hostBoxW is hostBox with its own width cap.
 func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW int) [][]hostapi.Segment {
 	bw := ansi.StringWidth(title) + ansi.StringWidth(badge) + 4

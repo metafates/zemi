@@ -391,6 +391,17 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	return out
 }
 
+// inputRow is a one-line text field at least 40 cells wide: "> " and the
+// text with its cursor, scrolled so the cursor stays inside width cells
+// (one is left for the ellipsis hostBox puts on a longer row).
+func (c *composerState) inputRow(width int) []hostapi.Segment {
+	segs := cursorSegs([]rune(c.text), c.cursor, "")
+	if over := 2 + segsWidth(segs[:2]) - (width - 1); over > 0 {
+		segs = dropCells(segs, over)
+	}
+	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, segs...), 40)
+}
+
 // cursorSegs draws r with a block cursor on the rune at cursor, or on a
 // blank cell past the end.
 func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {

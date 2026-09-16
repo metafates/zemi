@@ -258,9 +258,9 @@ func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	// wrapped to hostBox's inner width: an ellipsis would hide what is asked
+	// wrapped: an ellipsis would hide what is asked
 	for l := range strings.SplitSeq(q.Question, "\n") {
-		body = append(body, wrapSegs([]hostapi.Segment{{Text: l}}, min(w-4, 100)-4)...)
+		body = append(body, wrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
 	}
 	body = append(body, blank)
 	items := make([]listItem, 0, len(q.Options)+1)
@@ -280,7 +280,7 @@ func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	var hints []string
 	switch {
 	case st.typing:
-		body = append(body, padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, cursorSegs([]rune(st.input.text), st.input.cursor, "")...), 40))
+		body = append(body, st.input.inputRow(boxInner(w)))
 		hints = []string{"enter", "answer", "esc", "back to options"}
 	case q.Multi:
 		hints = []string{"↑↓", "move", "space", "mark", "enter", "answer", "esc", "dismiss"}

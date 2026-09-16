@@ -155,8 +155,8 @@ func TestQuestionBatch(t *testing.T) {
 	}
 }
 
-// TestQuestionBoxShowsTyping: the typed answer shows, and a question
-// wider than the box wraps instead of losing its end.
+// TestQuestionBoxShowsTyping: the typed answer shows with its end in view,
+// and a question wider than the box wraps instead of losing its end.
 func TestQuestionBoxShowsTyping(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	askAsync(t, app, tools.Question{Question: "What should the command be called, now that it replaces both sync and fetch?"})
@@ -164,6 +164,12 @@ func TestQuestionBoxShowsTyping(t *testing.T) {
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "> zem") || !strings.Contains(frame, "fetch?") {
 		t.Fatalf("typed text or question end missing:\n%s", frame)
+	}
+	// a line wider than the box scrolls to keep the latest typing in view
+	pressKeys(app, strings.Repeat("x", 80)+"end")
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "xend") {
+		t.Fatalf("the end of a long answer is hidden:\n%s", frame)
 	}
 	pressKeys(app, "esc", "esc")
 }

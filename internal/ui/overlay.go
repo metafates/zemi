@@ -296,8 +296,7 @@ func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 		badge += " "
 	}
 	if st.o.Input {
-		line := append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, cursorSegs([]rune(st.input.text), st.input.cursor, "")...)
-		body := [][]hostapi.Segment{padSegs(line, 40), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
+		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
 	items := make([]listItem, 0, len(st.visible))
