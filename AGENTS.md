@@ -60,7 +60,7 @@ errored; `-p` runs one turn, then reports on stderr how many tool calls the gate
 (nobody can answer an ask headless, so it points at `--mode auto`, and at `--trust` in an
 untrusted project). A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
-checks (store, model, permissions, git, ripgrep, reflector, learning, skills, lua, errors,
+checks (store, model, permissions, git, ripgrep, sandbox, reflector, learning, skills, lua, errors,
 trust, lsp) plus whatever Lua registered with `zemi.health.register`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
@@ -151,6 +151,8 @@ with `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow gl
 with no overlay available fails closed; errors become tool-error responses, not panics.
 Host-implemented tools (`agent`, `workflow`, `window`, `Lua`, MCP and Lua tools) run
 `tool.pre` through `preCheck`, which refuses a rewrite with an error result.
+A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`, see
+"Sandbox" below).
 Bash is special: `perm.Store.CheckCommand` normalizes the command first (compound
 splitting, redirect gates, env-assignment gate — see internal/perm/bash.go, heavily
 table-tested; extend those tables when touching it).
@@ -194,7 +196,27 @@ that is the intended auto tradeoff, and manual and plan ask. In an untrusted pro
 (`settledCommand`) both modes settle only `perm.ReadCommand` commands (`SafeCommand` whose
 every program only reads, named without a path; no builds, no git), auto settles no
 writes, and auto skips the screening model and its cache, sending the rest to the user with
-reason "not settled: this project is not trusted (/trust)". `h.secretPath` matches the secret shapes on
+reason "not settled: this project is not trusted (/trust)". A trusted project with no
+sandbox backend also settles only `ReadCommand` commands, so `SafeCommand` is reached
+only for runs that will be sandboxed.
+
+**Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash`
+verdict a mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor`
+return `h.sandboxPolicy(plan)`; `tool.Run` puts it on the per-run pipeline copy
+(`Sandboxed`, the `RewriteLoosened` pattern), and `runBash`, `Jobs.Start` (a `wrap` argument;
+`Adopt` takes the already wrapped command) and the window tool's `win.Spec.Wrap` call
+`sandbox.Wrap` before starting. A wrap error is a tool error, never an unconfined run.
+Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP/LSP servers and
+`Host.git` stay unconfined. `NewHost` probes the backend with `GoSafe` (`h.sandbox`, nil
+until done = unavailable; tests set it with `fakeSandbox`). Policy: writes to the project
+(trusted, not plan mode, not `$HOME` or above), the scratchpad and `$TMPDIR`; `.git`,
+`.zemi` and zemi's dirs read-only; home secret dirs hidden; loopback only. While a backend is
+live, bash, `job_start` and `window` take `sandbox: false` (`Request.Unsandboxed`): mode
+rules and non-yolo bases skip it and it asks the user with "run outside the sandbox". A
+confined failure that `sandbox.LikelyDenied` recognizes gets `tools.SandboxHint`.
+`/health` has a `sandbox` row.
+
+`h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
@@ -346,7 +368,8 @@ included, until `ui.window.unfocus`; a press on a title or separator starts a `w
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
 for the mouse), and a paste goes to the program with bracketing when it asked. The model's
-`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `keys`/`mouse`/`send`
+`window` tool gates `open` as `tool.bash` (same rules and modes as bash, and a mode-settled
+open runs sandboxed through `win.Spec.Wrap`) and `keys`/`mouse`/`send`
 as `tool.window`; an exit lands in the next message through `shellNotes`. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
 Input to a program queues and a `writeLoop` goroutine feeds the pty, because the emulator

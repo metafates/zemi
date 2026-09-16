@@ -65,6 +65,8 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window`; add it to the model entry or set `agent.context_window` |
 | project `.zemi/` config, AGENTS.md or language servers ignored; auto mode asks for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` asks again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
+| auto mode asks for builds, tests and git in a trusted project | no sandbox backend (`/health` sandbox row: `sandbox-exec` missing, zemi itself already inside a sandbox, or no Landlock); without one only reading commands settle |
+| "operation not permitted" or "could not resolve host" from a command auto mode ran | the sandbox blocked it (writes outside the project, scratchpad and temp dirs, `.git`, network); the agent retries with `sandbox: false`, which asks |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, enter toggles |
 

@@ -1205,16 +1205,44 @@ configured provider later (`zemi.memory.search` signature does not change).
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and project build and test commands both
   settle locally, so the model can write code and run it with no
-  screening; that is the auto-mode tradeoff, and `manual` and `plan` ask.
+  screening; that is the auto-mode tradeoff, and `manual` and `plan` ask,
+  and such commands run sandboxed (below).
   In a project the user has not trusted (§5) both modes settle less:
   writes and every command but `perm.ReadCommand` (`SafeCommand` limited
   to programs that only read, named without a path; no build tool and no
   git, which runs programs `.git/config` names) go to the user, and auto
   mode skips the screening model, whose input the repository can steer.
+  With no sandbox backend a trusted project also settles only
+  `ReadCommand` commands locally (`settledCommand`), which run unconfined.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
   project and in plan mode. Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
   `manual`.
+- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`,
+  `job_start` or window-open call whose verdict a mode gave
+  (`DecidedBy` `mode:<name>`, any base but `yolo`) runs confined; rule-allowed
+  and user-approved runs, `!command`, `zemi.job`, MCP and LSP servers and
+  zemi's own git stay unconfined. The backend (seatbelt through
+  `/usr/bin/sandbox-exec` on macOS, Landlock plus seccomp through the
+  `zemi __sandbox` helper on Linux) is probed once at startup off the boot
+  path, and counts as missing until the probe ends; `/health` has a
+  `sandbox` row. `sandboxPolicy`: everything readable but the home secret
+  dirs (`~/.ssh`, `~/.aws`, `~/.config/gh`, ...) and, on macOS, the strict
+  secret file shapes; writable are the project (trusted, not plan mode, and
+  not `$HOME` or above it), the scratchpad and `$TMPDIR`; `.git` (and a
+  `gitdir:` target), `.zemi` and zemi's config, data and state dirs stay
+  read-only (the scratchpad re-allowed); localhost network only. Linux
+  enforces neither the read-only paths nor loopback yet (a NOTE in the
+  package). A wrap that fails is a tool error, never an unconfined run.
+  While a backend is live, bash, `job_start` and `window` take
+  `sandbox: false`, fixed per process so the prompt cache holds: it sets
+  `Request.Unsandboxed`, mode rules and bases other than `yolo` no longer
+  settle the call, and it goes to the user with the reason "run outside
+  the sandbox" (headless it is denied). A confined run that fails with
+  output that looks like a denial (`sandbox.LikelyDenied`, a heuristic) gets
+  one line naming the limits and the `sandbox: false` retry. Only a
+  sandboxed run reaches `SafeCommand`, so it has to keep secrets from
+  being read (the sandbox allows reads) but not writes or network.
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
   where the kernel lands, case-folded on darwin and windows. Paths
