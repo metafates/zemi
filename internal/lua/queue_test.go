@@ -211,6 +211,19 @@ func TestQueuePendingDroppedOnReload(t *testing.T) {
 	}
 }
 
+// TestChunkAfterReload: a request still running when ForceReload retires its
+// generation compiles nothing against the fresh sandbox or a nil one.
+func TestChunkAfterReload(t *testing.T) {
+	r := newTestRuntime(t)
+	old := r.current().L
+	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	if err := r.runChunk(old, "return 1", "late.lua", OriginUser); !errors.Is(err, ErrReloaded) {
+		t.Fatalf("late chunk got %v, want ErrReloaded", err)
+	}
+}
+
 // TestQueueForceReloadReplays verifies that a reload boots a fresh
 // generation and replays the boot steps on it.
 func TestQueueForceReloadReplays(t *testing.T) {

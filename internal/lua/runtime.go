@@ -290,8 +290,20 @@ func (r *Runtime) ExecuteChunk(ctx context.Context, src, rel string, origin Orig
 	return err
 }
 
+// sandboxOf is the sandbox of L's generation; a request that outlived its
+// generation (ForceReload retired it mid-run) gets ErrReloaded.
+func (r *Runtime) sandboxOf(L *glua.LState) (*Sandbox, error) {
+	if g := r.current(); g != nil && g.L.G == L.G {
+		return g.SB, nil
+	}
+	return nil, ErrReloaded
+}
+
 func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error {
-	sb := r.current().SB
+	sb, err := r.sandboxOf(L)
+	if err != nil {
+		return err
+	}
 	fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 	if err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
@@ -309,7 +321,11 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 // instead of the print hook; the chunk's globals stay in its own env.
 func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceiling time.Duration, out func(string)) ([]any, error) {
 	return r.Do(ctx, ClassIO, ceiling, time.Second, func(L *glua.LState) ([]any, error) {
-		fn, err := r.current().SB.CompileChunk(src, origin.ChunkName(rel))
+		sb, err := r.sandboxOf(L)
+		if err != nil {
+			return nil, err
+		}
+		fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", rel, err)
 		}
