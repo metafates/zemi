@@ -46,6 +46,11 @@ func probe() (Backend, error) {
 	if err != nil {
 		return Backend{}, err
 	}
+	// before v3 Landlock does not handle truncate(2), so a command could
+	// empty any of the user's files
+	if abi < 3 {
+		return Backend{}, fmt.Errorf("landlock v%d cannot deny truncate; needs linux 6.2 or newer", abi)
+	}
 	if os.Getenv(probeEnv) == "" {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -253,13 +258,7 @@ func landlock(p Policy) error {
 	if err != nil {
 		return err
 	}
-	attr := unix.LandlockRulesetAttr{Access_fs: 1<<13 - 1}
-	if abi >= 2 {
-		attr.Access_fs |= unix.LANDLOCK_ACCESS_FS_REFER
-	}
-	if abi >= 3 {
-		attr.Access_fs |= unix.LANDLOCK_ACCESS_FS_TRUNCATE
-	}
+	attr := unix.LandlockRulesetAttr{Access_fs: 1<<13 - 1 | unix.LANDLOCK_ACCESS_FS_REFER | unix.LANDLOCK_ACCESS_FS_TRUNCATE}
 	if abi >= 5 {
 		attr.Access_fs |= unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
 	}
