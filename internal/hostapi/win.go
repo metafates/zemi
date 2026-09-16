@@ -149,7 +149,7 @@ func mouseEvent(kind, button string, x, y int, mod string) ([]uv.MouseEvent, err
 		return nil, fmt.Errorf("mouse: button %q is not left, middle, right, wheel_up or wheel_down", button)
 	}
 	var km uv.KeyMod
-	for _, m := range strings.Split(mod, "+") {
+	for m := range strings.SplitSeq(mod, "+") {
 		switch strings.TrimSpace(m) {
 		case "":
 		case "ctrl", "c":

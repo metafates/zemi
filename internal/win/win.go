@@ -571,7 +571,7 @@ func (w *Window) Screen() Screen {
 		var row []Span
 		var cur *Span
 		var curStyle uv.Style
-		for x := 0; x < cols; x++ {
+		for x := range cols {
 			c := w.term.CellAt(x, y)
 			if c == nil {
 				continue

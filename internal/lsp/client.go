@@ -748,7 +748,7 @@ func (c *Client) publish(raw json.RawMessage) {
 // "" is the whole table and a missing key is nil.
 func section(settings any, name string) any {
 	cur := settings
-	for _, k := range strings.Split(name, ".") {
+	for k := range strings.SplitSeq(name, ".") {
 		if k == "" {
 			continue
 		}

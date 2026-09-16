@@ -195,7 +195,7 @@ func (h *Host) lspSync() {
 		return // not a repository, or git missing: nothing to compare
 	}
 	now := map[string]lspSig{}
-	for _, entry := range strings.Split(out, "\x00") {
+	for entry := range strings.SplitSeq(out, "\x00") {
 		if len(entry) < 4 {
 			continue
 		}
