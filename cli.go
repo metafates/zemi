@@ -78,8 +78,22 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 		fmt.Fprintf(stderr, "zemi: "+format+"\nRun 'zemi --help' for usage.\n", a...)
 		return o, 2
 	}
-	if err := fs.Parse(args); err != nil {
-		return bad("%v", err)
+	// flag stops at the first word; keep parsing so `zemi "hi" -m x` still
+	// sets the model. "--" ends flags, everything after it is prompt.
+	var words []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return bad("%v", err)
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		if len(args) > len(rest) && args[len(args)-len(rest)-1] == "--" {
+			words = append(words, rest...)
+			break
+		}
+		words, args = append(words, rest[0]), rest[1:]
 	}
 	switch {
 	case help:
@@ -95,7 +109,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	case o.output == "json" && !o.print:
 		return bad("--output json needs -p")
 	}
-	o.prompt = strings.TrimSpace(strings.Join(fs.Args(), " "))
+	o.prompt = strings.TrimSpace(strings.Join(words, " "))
 	return o, -1
 }
 
@@ -119,11 +133,12 @@ func normalizeVersion(v string) string {
 	return v
 }
 
-// readStdin appends piped stdin to the prompt in print mode. The TUI needs
+// readStdin appends piped stdin to the prompt in print mode; --health
+// ignores stdin. The TUI needs
 // the terminal on stdin, so a pipe there is a usage error.
 func (o *options) readStdin(stdin *os.File) error {
 	fi, err := stdin.Stat()
-	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
+	if o.health || err != nil || fi.Mode()&os.ModeCharDevice != 0 {
 		return nil
 	}
 	if !o.print {
