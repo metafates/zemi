@@ -485,7 +485,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runWrite),
 
-		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. A multi-line old_string also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
+		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. An old_string of whole lines also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -680,12 +680,12 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk("memory_add", "Save a durable lesson for future sessions in this project: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
+		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
 				"text":  map[string]any{"type": "string"},
-				"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}},
+				"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: every project"},
 				"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			},
 			[]string{"kind", "text"},
