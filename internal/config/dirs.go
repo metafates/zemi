@@ -152,7 +152,70 @@ func (d Dirs) LogDir() string {
 	return filepath.Join(d.StateHome, "logs")
 }
 
-// TrustFile stores the project-config trust hashes.
+// TrustFile maps trust roots to "trusted" or "untrusted".
 func (d Dirs) TrustFile() string {
-	return filepath.Join(d.StateHome, "project_trust.json")
+	return filepath.Join(d.StateHome, "trust.json")
+}
+
+// TrustRoot is the directory a trust decision belongs to: the repository
+// root with symlinks resolved, and for a linked worktree its main checkout,
+// so every worktree of a repository shares one decision.
+// NOTE: another case spelling of the path on a case-insensitive volume is
+// another key, which asks again.
+func (d Dirs) TrustRoot() string {
+	root := d.RepoRoot()
+	if root == "" {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if main := mainCheckout(root); main != "" {
+		return main
+	}
+	return root
+}
+
+// mainCheckout is the main checkout of the linked worktree at root, or "".
+// It reads the files git keeps and never runs git, which would honor the
+// repository's config: .git names <main>/.git/worktrees/<id>, whose gitdir
+// file must point back at root. That back-pointer lives in the other
+// repository, so a forged .git file cannot claim it.
+func mainCheckout(root string) string {
+	// small reads one short path file, "" when it is not a small regular file
+	small := func(p string) string {
+		fi, err := os.Stat(p)
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > 1<<10 {
+			return ""
+		}
+		b, _ := os.ReadFile(p)
+		return strings.TrimSpace(string(b))
+	}
+	// resolve reads a path relative to dir, symlinks resolved
+	resolve := func(dir, p string) string {
+		if p == "" {
+			return ""
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(dir, p)
+		}
+		p, _ = filepath.EvalSymlinks(p)
+		return p
+	}
+	dotgit := filepath.Join(root, ".git")
+	if fi, err := os.Lstat(dotgit); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	text, ok := strings.CutPrefix(small(dotgit), "gitdir:")
+	gitdir := resolve(root, strings.TrimSpace(text))
+	if !ok || gitdir == "" || filepath.Base(filepath.Dir(gitdir)) != "worktrees" {
+		return ""
+	}
+	common := filepath.Dir(filepath.Dir(gitdir))
+	if filepath.Base(common) != ".git" ||
+		resolve(gitdir, small(filepath.Join(gitdir, "gitdir"))) != dotgit ||
+		resolve(gitdir, small(filepath.Join(gitdir, "commondir"))) != common {
+		return ""
+	}
+	return filepath.Dir(common)
 }

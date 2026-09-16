@@ -31,6 +31,47 @@ func TestEnsureStarterInit(t *testing.T) {
 	}
 }
 
+func TestTrustRoot(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, dir := range []string{"main/.git/worktrees/wt", "main/.git/modules/sub", "main/sub", "main/deep/er", "wt", "forged", "evil/.git/worktrees/x", "norepo"} {
+		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(rel, body string) {
+		if err := os.WriteFile(filepath.Join(tmp, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// a linked worktree as git writes it, with a relative commondir
+	write("wt/.git", "gitdir: "+filepath.Join(tmp, "main/.git/worktrees/wt")+"\n")
+	write("main/.git/worktrees/wt/gitdir", filepath.Join(tmp, "wt/.git")+"\n")
+	write("main/.git/worktrees/wt/commondir", "../..\n")
+	// a checkout claiming main's worktree entry, whose gitdir points at wt
+	write("forged/.git", "gitdir: "+filepath.Join(tmp, "main/.git/worktrees/wt"))
+	write("main/sub/.git", "gitdir: ../.git/modules/sub")
+	// an entry the forger wrote itself cannot name another repository
+	write("evil/.git/worktrees/x/gitdir", filepath.Join(tmp, "norepo/.git"))
+	write("evil/.git/worktrees/x/commondir", filepath.Join(tmp, "main/.git"))
+	write("norepo/.git", "gitdir: "+filepath.Join(tmp, "evil/.git/worktrees/x"))
+	for _, c := range []struct{ name, cwd, want string }{
+		{"repo root", "main", "main"},
+		{"subdirectory", "main/deep/er", "main"},
+		{"linked worktree", "wt", "main"},
+		{"forged gitdir", "forged", "forged"},
+		{"submodule", "main/sub", "main/sub"},
+		{"commondir elsewhere", "norepo", "norepo"},
+	} {
+		if got := (Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}).TrustRoot(); got != filepath.Join(tmp, c.want) {
+			t.Errorf("%s: got %s", c.name, got)
+		}
+	}
+	outside := t.TempDir()
+	if got, _ := filepath.EvalSymlinks(outside); (Dirs{ProjectDir: outside}).TrustRoot() != got {
+		t.Errorf("no repository: got %s", (Dirs{ProjectDir: outside}).TrustRoot())
+	}
+}
+
 func TestProjectConfigDir(t *testing.T) {
 	tmp := t.TempDir()
 	for _, dir := range []string{"repo/.git", "repo/.zemi", "repo/sub/deep", "stray/.zemi", "stray/norepo"} {
