@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -424,7 +425,11 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 	// a write's diff carries the file's current content, which must not reach
 	// the provider unless the model could read that file without asking
 	if req.Preview != "" && (req.Subject != "fs.write" || h.fsDefault("fs.read", req.Arg) == perm.Allow) {
-		prompt += tagged("change", truncRunes(req.Preview, 4000))
+		// an approval covers the whole input, so the screener must see all of it
+		if utf8.RuneCountInString(req.Preview) > 4000 {
+			return false, "auto mode: the change is too long to screen"
+		}
+		prompt += tagged("change", req.Preview)
 	}
 	out, err := generateText(ctx, model, autoPermSystem, prompt)
 	if err != nil {

@@ -1824,7 +1824,7 @@ func (h *Host) askHook() tools.Asker {
 			}
 		case "auto":
 			// everything the screener saw: an MCP or Lua tool's Arg is only its
-			// name, the input it approved is in Reason
+			// name, the input it approved is in Preview
 			key := strings.Join([]string{req.Subject, req.Arg, req.Reason, req.Preview}, "\x00")
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
