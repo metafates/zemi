@@ -37,7 +37,11 @@ func Match(pattern string) (func(rel string) bool, error) {
 			b.WriteString("|")
 		case c == '[' && strings.IndexByte(pattern[i:], ']') > 1:
 			j := i + strings.IndexByte(pattern[i:], ']')
-			b.WriteString("[" + strings.Replace(pattern[i+1:j], "!", "^", 1) + "]")
+			class := pattern[i+1 : j]
+			if rest, ok := strings.CutPrefix(class, "!"); ok {
+				class = "^" + rest
+			}
+			b.WriteString("[" + class + "]")
 			i = j
 		default:
 			b.WriteString(regexp.QuoteMeta(string(c)))
