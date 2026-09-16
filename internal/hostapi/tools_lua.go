@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -276,6 +277,10 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any) (string, error) {
 	res, err := h.RT.Do(ctx, lua.ClassAgent, t.Timeout, 5*time.Second,
 		func(L *glua.LState) ([]any, error) {
+			// a turn keeps the tools it started with: never call into a dropped generation
+			if h.currentGen() != t.Gen {
+				return nil, errors.New("the tool is gone after a config reload")
+			}
 			defer h.RT.PushFrame(t.Origin, t.Path)()
 			base := L.GetTop()
 			defer L.SetTop(base)
