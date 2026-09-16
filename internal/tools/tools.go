@@ -26,6 +26,9 @@ type Request struct {
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
 	Preview string // file tools: the proposed change as "- "/"+ " lines
+	// Description is the model's own summary of a command; the command is
+	// what gets checked and shown, this only helps the user read it
+	Description string
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -430,7 +433,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				return bashRequests(str(in["command"]))
+				return bashRequests(str(in["command"]), str(in["description"]))
 			},
 			runBash),
 
@@ -606,7 +609,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				return bashRequests(strings.Join(append([]string{str(in["command"])}, strList(in["args"])...), " "))
+				return bashRequests(strings.Join(append([]string{str(in["command"])}, strList(in["args"])...), " "), str(in["description"]))
 			},
 			runJobStart),
 
@@ -825,8 +828,8 @@ func ChangePreview(in map[string]any) string {
 
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
-func bashRequests(cmd string) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command"}}
+func bashRequests(cmd, description string) []Request {
+	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command", Description: description}}
 }
 
 func str(v any) string {

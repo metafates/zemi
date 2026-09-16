@@ -55,6 +55,8 @@ type PermRequest struct {
 	Arg     string
 	Reason  string
 	Preview string // file tools: the proposed change as "- "/"+ " lines
+	// Description is the model's summary of a command, not checked against it
+	Description string
 }
 
 // ModelOption is one picker row.
@@ -1755,7 +1757,7 @@ func (h *Host) askHook() tools.Asker {
 			return resolved(false, "default")
 		}
 		label, rules := h.alwaysChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview})
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview, Description: req.Description})
 		if allowed && by == "user:always" {
 			for _, r := range rules {
 				h.Perm.Add(r)

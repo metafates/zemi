@@ -84,6 +84,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				}
 			}
 		}
+		// stacked buttons move with up/down, and the preview scrolls with shift
+		if pa.stacked {
+			if d := listMove(key); d != 0 {
+				pa.sel = (pa.sel + len(choices) + d) % len(choices)
+				return nil
+			}
+		}
 		switch key {
 		case "left", "shift+tab", "h":
 			pa.sel = (pa.sel + len(choices) - 1) % len(choices)

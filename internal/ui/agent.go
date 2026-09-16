@@ -24,11 +24,12 @@ import (
 // permQueue and open when the current one is answered (parallel tool runs
 // may ask concurrently; each must be answered exactly once).
 type permAskPrompt struct {
-	req    hostapi.PermRequest
-	answer chan permAnswer
-	opened time.Time // keys typed just before it appeared must not answer it
-	sel    int       // highlighted choice
-	scroll int       // first preview row shown
+	req     hostapi.PermRequest
+	answer  chan permAnswer
+	opened  time.Time // keys typed just before it appeared must not answer it
+	sel     int       // highlighted choice
+	scroll  int       // first preview row shown
+	stacked bool      // the buttons drew one per row at the last render
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a
@@ -87,6 +88,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	// Every field carries model input: strip escapes before the chrome.
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
+	req.Description = sanitize.String(req.Description)
 	ch := make(chan permAnswer, 1)
 	a.dispatch(uiFunc(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
@@ -365,10 +367,15 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	case req.Preview != "":
 		content = codePanel(req.Preview, inner)
 	}
+	pa.stacked = len(permButtons(pa, inner)) > 1
+	choose, scroll := "←→", "j/k"
+	if pa.stacked {
+		choose, scroll = "↑↓", "shift+↑↓"
+	}
 	// the rest of the box: borders, title rows, blanks, hint and the buttons
 	if room := max(chatH-10-len(permButtons(pa, inner)), 3); len(content) > room {
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
-		more := fmt.Sprintf("  %d of %d lines · j/k scroll", pa.scroll+room, len(content))
+		more := fmt.Sprintf("  %d of %d lines · %s scroll", pa.scroll+room, len(content), scroll)
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
 	}
 	// panels span the box, and the box fits its content (at least 56 wide)
@@ -389,7 +396,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	}
 	body = append(body, blank)
 	body = append(body, permButtons(pa, fit)...)
-	body = append(body, blank, hintLine("←→", "choose", "enter", "confirm", "esc", "deny"))
+	body = append(body, blank, hintLine(choose, "choose", "enter", "confirm", "esc", "deny"))
 
 	badge := ""
 	if n := len(a.permQueue); n > 0 {
@@ -414,7 +421,7 @@ func permTitle(req hostapi.PermRequest, root string) (verb, target string) {
 	verb, target = req.Subject, req.Arg
 	switch {
 	case req.Subject == "tool.bash":
-		return "Run a command", ""
+		return "Run a command", req.Description
 	case req.Tool == "write":
 		verb = "Write"
 	case req.Tool == "edit" || req.Tool == "multiedit":

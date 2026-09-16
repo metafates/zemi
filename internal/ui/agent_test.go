@@ -115,11 +115,12 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 	var by string
 	go func() {
 		allowed, by = app.AskPermission(hostapi.PermRequest{
-			Tool:    "bash",
-			Subject: "tool.bash",
-			Arg:     "git push origin main",
-			Reason:  "publishing the release branch",
-			Always:  "don't ask again for `git push`",
+			Tool:        "bash",
+			Subject:     "tool.bash",
+			Arg:         "git push origin main",
+			Description: "Publish the release branch",
+			Reason:      "publishing the release branch",
+			Always:      "don't ask again for `git push`",
 		})
 		close(done)
 	}()
@@ -192,7 +193,8 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 }
 
 // TestPermissionTellNarrow: at 30 columns the box keeps its right border
-// and stacks its buttons, and "t" denies the open ask and the queued one.
+// and stacks its buttons, down moves between them, and "t" denies the open
+// ask and the queued one.
 func TestPermissionTellNarrow(t *testing.T) {
 	app, _ := bootAgentApp(t, 30, 30)
 	res := make(chan bool, 2)
@@ -207,6 +209,9 @@ func TestPermissionTellNarrow(t *testing.T) {
 	frame := ansi.Strip(app.Frame())
 	if !strings.Contains(frame, "╮") || !strings.Contains(frame, "│  Yes ") || !strings.Contains(frame, "│  No, and say") {
 		t.Fatalf("narrow box:\n%s", frame)
+	}
+	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 1 {
+		t.Fatalf("down on stacked buttons: sel=%d", app.permAsk.sel)
 	}
 	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
 	for range 2 {
