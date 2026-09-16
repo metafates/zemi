@@ -439,6 +439,41 @@ func TestTrustAnswers(t *testing.T) {
 	}
 }
 
+// TestPromptKeyGrace: a key pressed within permGrace of a prompt opening
+// is ignored, so typing cannot answer it; a later key answers.
+func TestPromptKeyGrace(t *testing.T) {
+	for _, c := range []struct {
+		name, want string
+		ask        func(app *App) string
+		open       func(app *App) bool
+	}{
+		{"trust", "trust", func(app *App) string { return app.AskTrust("/proj/.zemi", "abc123") }, func(app *App) bool { return app.trust != nil }},
+		{"perm", "user:once", func(app *App) string {
+			_, by := app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make deploy"})
+			return by
+		}, func(app *App) bool { return app.permAsk != nil }},
+	} {
+		app, _ := bootAgentApp(t, 80, 20)
+		done := make(chan string, 1)
+		go func() { done <- c.ask(app) }()
+		waitPrompt(t, app, func() bool { return c.open(app) })
+		// the grace only applies with a program attached; set it after the
+		// prompt opened so the ask still ran inline
+		app.program = tea.NewProgram(nil)
+		opened := app.now()
+		app.now = func() time.Time { return opened.Add(permGrace / 4) }
+		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+		if !c.open(app) || len(done) != 0 {
+			t.Fatalf("%s: a key inside the grace answered the prompt", c.name)
+		}
+		app.now = func() time.Time { return opened.Add(permGrace + time.Millisecond) }
+		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+		if got := <-done; got != c.want {
+			t.Errorf("%s answered %q after the grace", c.name, got)
+		}
+	}
+}
+
 // TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {
