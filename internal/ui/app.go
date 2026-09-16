@@ -86,6 +86,8 @@ type App struct {
 	editing   string    // the editor handoff in progress, shown in the working row
 	focusWin  int       // window taking keys, 0 = none
 	winRects  []winRect // where windows were drawn on the last frame
+	winDrag   *winDrag  // a drag on window chrome in progress
+	chatAreaH int       // the chat area's height on the last frame (splits resize against it)
 	editEnded time.Time // when the last full-screen editor returned (editGrace)
 
 	caches     map[string]*widgetCache
@@ -594,6 +596,12 @@ func (a *App) drainHooksCmd() tea.Cmd {
 // compose (pure: reads caches and Go-side state only)
 
 func (a *App) compose(w, h int) string {
+	// vsplits are full-height columns beside the main column; everything
+	// below lays the main column out at mainW and the columns join at the
+	// end, floats over all of it.
+	vsplits, vwidths, mainW := a.winColumns(w)
+	full := w
+	w = mainW
 	// The default UI registers no header; the region stays for Lua.
 	header := a.regionLines("header", w)
 
@@ -612,11 +620,11 @@ func (a *App) compose(w, h int) string {
 	// never moves the transcript
 	chatH := max(h-len(header)-1-len(compRows)-len(working)-2, 1)
 
-	// Windows share the area: vsplits take columns, splits take rows, and
-	// the chat keeps the top-left; the viewport is what is left.
-	wl := a.layoutWindows(w, chatH)
-	chatW, chatViewH := wl.chatW, wl.chatTopH
-	chat := a.regionLines("chat", chatW)
+	// Splits take rows at the bottom of the chat area; the viewport is
+	// what is left.
+	splits, sheights, chatViewH := a.winRowsLayout(chatH)
+	a.chatAreaH = chatH
+	chat := a.regionLines("chat", w)
 
 	// Chat scrollback (§8): follow pins the window to the tail (chatTop
 	// may go negative when content is shorter than the viewport, which
@@ -638,36 +646,20 @@ func (a *App) compose(w, h int) string {
 	rows = append(rows, header...)
 
 	a.winRects = a.winRects[:0]
-	vrows := make([][][]hostapi.Segment, len(wl.vsplits))
-	for i, wn := range wl.vsplits {
-		vrows[i] = a.windowRows(wn, wl.vw, chatViewH-1)
-		x := chatW + 1 + i*(wl.vw+1)
-		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x, y: len(header) + 1, w: wl.vw, h: chatViewH - 1, titleY: len(header)})
-	}
 	for i := range chatViewH {
 		var row []hostapi.Segment
 		if j := a.chatTop + i; j >= 0 && j < len(chat) {
-			row = truncateSegs(chat[j], chatW)
+			row = truncateSegs(chat[j], w)
 		}
-		row = padSegs(row, chatW)
-		for v := range wl.vsplits {
-			row = append(row, hostapi.Segment{Text: "│", HL: "Comment"})
-			row = append(row, vrows[v][i]...)
-		}
-		rows = append(rows, padSegs(truncateSegs(row, w), w))
+		rows = append(rows, padSegs(row, w))
 	}
-	for i, wn := range wl.splits {
-		y := len(header) + chatViewH + i*wl.sh
-		a.winRects = append(a.winRects, winRect{id: wn.ID, x: 0, y: y + 1, w: w, h: wl.sh - 1, titleY: y})
-		rows = append(rows, a.windowRows(wn, w, wl.sh-1)...)
-	}
-	for _, wn := range wl.floats {
-		cols, frows := floatSize(wn, w, chatH)
-		box := a.floatBox(wn, cols, frows)
-		bh := min(len(box), chatH)
-		y0, x0 := len(header)+(chatH-bh)/2, max((w-cols-4)/2, 1)
-		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x0 + 2, y: y0 + 2, w: cols, h: frows, titleY: y0 + 1})
-		rows = spliceBox(rows, box, w, len(header), chatH)
+	y := len(header) + chatViewH
+	for i, wn := range splits {
+		sh := sheights[i]
+		wn.Resize(w, sh-1)
+		a.winRects = append(a.winRects, winRect{id: wn.ID, x: 0, y: y + 1, w: w, h: sh - 1, titleY: y, sepX: -1})
+		rows = append(rows, a.windowRows(wn, w, sh-1)...)
+		y += sh
 	}
 
 	// Toasts stack down from the top of the chat area, newest highest,
@@ -719,6 +711,29 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, w, chatH))
+	}
+
+	// join the vsplit columns: a separator, then the window, full height
+	x := w
+	for i, wn := range vsplits {
+		vw := vwidths[i]
+		wn.Resize(vw, h-1)
+		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x + 1, y: 1, w: vw, h: h - 1, titleY: 0, sepX: x})
+		col := a.windowRows(wn, vw, h-1)
+		for j := range rows {
+			line := append(padSegs(rows[j], x), hostapi.Segment{Text: "│", HL: "Comment"})
+			if j < len(col) {
+				line = append(line, col[j]...)
+			}
+			rows[j] = line
+		}
+		x += vw + 1
+	}
+	w = full
+	for _, wn := range a.winFloats() {
+		box, x0, y0, r := a.floatBox(wn, w, h, len(header), chatH)
+		a.winRects = append(a.winRects, r)
+		rows = placeBox(rows, box, x0, y0, w)
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH

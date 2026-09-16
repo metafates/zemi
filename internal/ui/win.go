@@ -1,10 +1,12 @@
-// win.go lays out and draws windows (internal/win) over the chat area:
-// vsplits take columns on the right, splits take rows at the bottom, floats
-// sit centered on top. A focused window gets every key, the unfocus key
-// (ui.window.unfocus) gives them back; a click on a window focuses it, on
-// its × closes it, anywhere else unfocuses.
-// NOTE: the layout is a fixed order (chat, vsplits, splits), not a tree;
-// zellij-style nesting and dragging borders are the upgrade path.
+// win.go lays out and draws windows (internal/win): vsplits are full-height
+// columns beside the main column (header, chat, composer, statusline),
+// splits take rows at the bottom of the chat, floats sit over everything.
+// A focused window gets every key, the unfocus key (ui.window.unfocus)
+// gives them back; a click on a window focuses it, its × closes it, and
+// dragging a float's title moves it, a vsplit's separator or a split's
+// title resizes it.
+// NOTE: the layout is a fixed order (main, vsplits left to right, splits
+// top to bottom), not a tree; zellij-style nesting is the upgrade path.
 package ui
 
 import (
@@ -20,72 +22,158 @@ import (
 	"github.com/metafates/zemi/internal/win"
 )
 
-// winRect is where one window's cells landed on the last frame, plus the
-// title row above them.
+// winRect is where one window's cells landed on the last frame, plus its
+// title row and, for a vsplit, the separator column left of it.
 type winRect struct {
 	id         int
 	x, y, w, h int // the terminal cells
 	titleY     int
+	sepX       int // vsplit: the separator column, -1 otherwise
 }
 
-// winLayout is one frame's window arrangement.
-type winLayout struct {
-	vsplits, splits, floats []*win.Window
-	chatW, chatTopH         int // what the chat keeps
-	vw, sh                  int // one vsplit's width, one split's height (title row included)
+// winDrag is a mouse drag in progress on a window's chrome.
+type winDrag struct {
+	id     int
+	what   string // "move", "vsplit", "split" or "title" (a press that may become a drag)
+	x0, y0 int    // where the press landed
+	fx, fy int    // float: position when the drag began
+	moved  bool
 }
 
 const (
 	minVsplitW = 20
 	minSplitH  = 4
+	minMainW   = 30
+	minChatH   = 3
 )
 
-// layoutWindows decides how the chat area is shared and resizes each window
-// to its cells. chatH is the whole area's height.
-func (a *App) layoutWindows(w, chatH int) winLayout {
-	l := winLayout{chatW: w, chatTopH: chatH}
+// winColumns decides the vsplit columns for a frame of width w: mainW is
+// what the main column keeps.
+func (a *App) winColumns(w int) (vsplits []*win.Window, widths []int, mainW int) {
 	for _, wn := range a.host.Wins.List() {
-		switch wn.Kind {
-		case win.KindVSplit:
-			l.vsplits = append(l.vsplits, wn)
-		case win.KindFloat:
-			l.floats = append(l.floats, wn)
-		default:
-			l.splits = append(l.splits, wn)
+		if l := wn.Layout(); l.Kind == win.KindVSplit && !l.Hidden {
+			vsplits = append(vsplits, wn)
 		}
 	}
-	if nv := len(l.vsplits); nv > 0 {
-		l.vw = max(minVsplitW, (w-nv)/(nv+1))
-		l.chatW = max(minVsplitW, w-nv*(l.vw+1))
+	widths = shares(vsplits, w-len(vsplits), minVsplitW, minMainW)
+	mainW = w - len(vsplits)
+	for _, x := range widths {
+		mainW -= x
 	}
-	if ns := len(l.splits); ns > 0 {
-		l.sh = max(minSplitH, chatH/(ns+1))
-		l.chatTopH = max(1, chatH-ns*l.sh)
-	}
-	for _, wn := range l.vsplits {
-		wn.Resize(l.vw, l.chatTopH-1)
-	}
-	for _, wn := range l.splits {
-		wn.Resize(w, l.sh-1)
-	}
-	for _, wn := range l.floats {
-		cols, rows := floatSize(wn, w, chatH)
-		wn.Resize(cols, rows)
-	}
-	return l
+	return vsplits, widths, mainW
 }
 
-// floatSize is a float's terminal size: what it asked for, capped to the
-// chat area with room for the frame, else four fifths of it.
-func floatSize(wn *win.Window, w, chatH int) (cols, rows int) {
-	cols, rows = wn.Cols, wn.Rows
+// shares divides total cells between the windows and the main area: a
+// window with a Frac gets that share, the rest split what is left with
+// the main area equally, and the main area keeps at least minMain.
+func shares(wins []*win.Window, total, minWin, minMain int) []int {
+	if len(wins) == 0 {
+		return nil
+	}
+	out := make([]int, len(wins))
+	fixed, auto := 0, 0
+	for i, wn := range wins {
+		if f := wn.Layout().Frac; f > 0 {
+			out[i] = max(minWin, int(f*float64(total)))
+			fixed += out[i]
+		} else {
+			auto++
+		}
+	}
+	each := max(minWin, (total-fixed-minMain)/(auto+1))
+	for i := range wins {
+		if out[i] == 0 {
+			out[i] = each
+		}
+	}
+	// squeeze windows, last first, until the main area fits
+	for i := len(out) - 1; i >= 0; i-- {
+		sum := 0
+		for _, x := range out {
+			sum += x
+		}
+		if over := sum - (total - minMain); over > 0 {
+			out[i] = max(minWin, out[i]-over)
+		}
+	}
+	return out
+}
+
+// winRowsLayout decides the splits inside a chat area chatH rows tall:
+// chatTop is what the chat viewport keeps.
+func (a *App) winRowsLayout(chatH int) (splits []*win.Window, heights []int, chatTop int) {
+	for _, wn := range a.host.Wins.List() {
+		if l := wn.Layout(); l.Kind == win.KindSplit && !l.Hidden {
+			splits = append(splits, wn)
+		}
+	}
+	heights = shares(splits, chatH, minSplitH, minChatH)
+	chatTop = chatH
+	for _, x := range heights {
+		chatTop -= x
+	}
+	return splits, heights, max(chatTop, 1)
+}
+
+func (a *App) winFloats() []*win.Window {
+	var out []*win.Window
+	for _, wn := range a.host.Wins.List() {
+		if l := wn.Layout(); l.Kind == win.KindFloat && !l.Hidden {
+			out = append(out, wn)
+		}
+	}
+	return out
+}
+
+// floatBox frames a float and places it: cols and rows are what it asked
+// for, capped to the frame; x, y its top-left, centered over the chat
+// when unset. It reports the frame's origin and the terminal cells' rect.
+func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostapi.Segment, x0, y0 int, r winRect) {
+	l := wn.Layout()
+	cols, rows := l.Cols, l.Rows
 	if cols <= 0 {
 		cols = w * 4 / 5
 	}
 	if rows <= 0 {
 		rows = chatH * 4 / 5
 	}
-	return max(min(cols, w-4), 2), max(min(rows, chatH-2), 1)
+	cols, rows = max(min(cols, w-4), 2), max(min(rows, h-3), 1)
+	wn.Resize(cols, rows)
+	body := a.windowRows(wn, cols, rows)
+	bw := cols + 4
+	box = [][]hostapi.Segment{{{Text: "╭" + strings.Repeat("─", bw-2) + "╮"}}}
+	for _, row := range body {
+		line := []hostapi.Segment{{Text: "│ "}}
+		line = append(line, row...)
+		box = append(box, append(line, hostapi.Segment{Text: " │"}))
+	}
+	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯"}})
+	x0, y0 = l.X, l.Y
+	if x0 < 0 {
+		x0 = max((w-bw)/2, 0)
+	}
+	if y0 < 0 {
+		y0 = headerH + max((chatH-len(box))/2, 0)
+	}
+	x0, y0 = min(x0, max(w-bw, 0)), min(y0, max(h-len(box), 0))
+	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 2, w: cols, h: rows, titleY: y0 + 1, sepX: -1}
+}
+
+// placeBox writes box at x0, y0 over rows, clipped to the frame.
+func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment {
+	for i, line := range box {
+		y := y0 + i
+		if y < 0 || y >= len(rows) {
+			continue
+		}
+		bw := segsWidth(line)
+		under := rows[y]
+		row := padSegs(truncateSegs(under, x0), x0)
+		row = append(row, line...)
+		row = append(row, dropCells(under, x0+bw)...)
+		rows[y] = padSegs(truncateSegs(row, w), w)
+	}
+	return rows
 }
 
 // windowRows draws one window: a title row, then its screen, every row
@@ -114,7 +202,7 @@ func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment 
 	return rows
 }
 
-// windowTitle is the row above a window: id and title on the left, state
+// winTitleRow is the row above a window: id and title on the left, state
 // and the close mark on the right.
 func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Segment {
 	hl := "Host:Panel"
@@ -141,19 +229,6 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	}
 }
 
-// floatBox frames a float window like the host boxes.
-func (a *App) floatBox(wn *win.Window, cols, rows int) [][]hostapi.Segment {
-	body := a.windowRows(wn, cols, rows)
-	bw := cols + 4
-	out := [][]hostapi.Segment{{{Text: "╭" + strings.Repeat("─", bw-2) + "╮"}}}
-	for _, r := range body {
-		row := []hostapi.Segment{{Text: "│ "}}
-		row = append(row, r...)
-		out = append(out, append(row, hostapi.Segment{Text: " │"}))
-	}
-	return append(out, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯"}})
-}
-
 func (a *App) unfocusKey() string {
 	if k := a.cfgStr("ui.window.unfocus"); k != "" {
 		return k
@@ -161,18 +236,32 @@ func (a *App) unfocusKey() string {
 	return `ctrl+\`
 }
 
-// focusedWin is the window taking keys, nil when none (a closed window
-// drops the focus).
+// focusedWin is the window taking keys, nil when none (a closed or hidden
+// window drops the focus).
 func (a *App) focusedWin() *win.Window {
 	if a.focusWin == 0 {
 		return nil
 	}
 	wn, ok := a.host.Wins.Get(a.focusWin)
-	if !ok {
+	if !ok || wn.Hidden() {
 		a.focusWin = 0
 		return nil
 	}
 	return wn
+}
+
+// setFocusWin moves the focus and tells both programs.
+func (a *App) setFocusWin(id int) {
+	if id == a.focusWin {
+		return
+	}
+	if old, ok := a.host.Wins.Get(a.focusWin); ok {
+		old.Focus(false)
+	}
+	a.focusWin = id
+	if wn, ok := a.host.Wins.Get(id); ok {
+		wn.Focus(true)
+	}
 }
 
 // windowKey routes a key to the focused window; it reports whether one
@@ -184,7 +273,7 @@ func (a *App) windowKey(key string, msg uv.KeyPressEvent) bool {
 	}
 	switch {
 	case key == a.unfocusKey():
-		a.focusWin = 0
+		a.setFocusWin(0)
 	case wn.Exited():
 		a.host.CloseWindow(wn.ID)
 		a.focusWin = 0
@@ -194,10 +283,12 @@ func (a *App) windowKey(key string, msg uv.KeyPressEvent) bool {
 	return true
 }
 
-// windowMouse forwards a mouse event landing on a window's cells and
-// reports whether one took it: a click focuses the window first, the
-// wheel goes to whichever window is under the pointer, motion only to
-// the focused one (the others would drown in it).
+// windowMouse handles a mouse event on window chrome or cells and reports
+// whether one took it. Chrome: a press on a title or separator starts a
+// drag (move a float, resize a vsplit or split); a release without motion
+// on a title focuses, on its × closes. Cells: a click focuses and the
+// event is forwarded; the wheel goes to the window under the pointer,
+// motion only to the focused one.
 func (a *App) windowMouse(msg tea.Msg) bool {
 	var m tea.Mouse
 	switch e := msg.(type) {
@@ -212,7 +303,36 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 	default:
 		return false
 	}
+	if d := a.winDrag; d != nil {
+		switch msg.(type) {
+		case tea.MouseMotionMsg:
+			a.dragWindow(d, m.X, m.Y)
+		case tea.MouseReleaseMsg:
+			a.winDrag = nil
+			if !d.moved && d.what == "title" {
+				a.titleClick(d.id, m.X)
+			}
+		}
+		return true
+	}
 	for _, r := range a.winRects {
+		onTitle := m.Y == r.titleY && m.X >= r.x && m.X < r.x+r.w
+		onSep := r.sepX >= 0 && m.X == r.sepX && m.Y >= r.titleY && m.Y < r.y+r.h
+		if _, click := msg.(tea.MouseClickMsg); click && m.Button == tea.MouseLeft && (onTitle || onSep) {
+			d := &winDrag{id: r.id, x0: m.X, y0: m.Y, what: "title"}
+			if onSep {
+				d.what = "vsplit"
+			}
+			if wn, ok := a.host.Wins.Get(r.id); ok {
+				l := wn.Layout()
+				d.fx, d.fy = l.X, l.Y
+				if l.X < 0 || l.Y < 0 { // centered: pin where it is
+					d.fx, d.fy = r.x-2, r.titleY-1
+				}
+			}
+			a.winDrag = d
+			return true
+		}
 		if m.Y < r.y || m.Y >= r.y+r.h || m.X < r.x || m.X >= r.x+r.w {
 			continue
 		}
@@ -223,7 +343,7 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 		local := uv.Mouse{X: m.X - r.x, Y: m.Y - r.y, Button: m.Button, Mod: m.Mod}
 		switch msg.(type) {
 		case tea.MouseClickMsg:
-			a.focusWin = r.id
+			a.setFocusWin(r.id)
 			wn.SendMouse(uv.MouseClickEvent(local))
 		case tea.MouseReleaseMsg:
 			wn.SendMouse(uv.MouseReleaseEvent(local))
@@ -236,34 +356,66 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 		}
 		return true
 	}
+	if _, click := msg.(tea.MouseClickMsg); click && a.focusWin != 0 {
+		a.setFocusWin(0) // a click anywhere else is for zemi
+	}
 	return false
 }
 
-// windowClick handles a click at (x, y) against the last frame's windows:
-// the × closes, the rest of a window focuses it, anywhere else unfocuses.
-// It reports whether a window took the click.
-func (a *App) windowClick(x, y int) bool {
+// titleClick is a click on a window's title row: its × closes, the rest
+// focuses.
+func (a *App) titleClick(id, x int) {
 	for _, r := range a.winRects {
-		inTitle := y == r.titleY && x >= r.x && x < r.x+r.w
-		inCells := y >= r.y && y < r.y+r.h && x >= r.x && x < r.x+r.w
-		if !inTitle && !inCells {
+		if r.id != id {
 			continue
 		}
-		if inTitle && x >= r.x+r.w-3 {
-			a.host.CloseWindow(r.id)
-			if a.focusWin == r.id {
+		if x >= r.x+r.w-3 {
+			a.host.CloseWindow(id)
+			if a.focusWin == id {
 				a.focusWin = 0
 			}
-			return true
+			return
 		}
-		a.focusWin = r.id
-		return true
+		a.setFocusWin(id)
 	}
-	if a.focusWin != 0 {
-		a.focusWin = 0
+}
+
+// dragWindow applies a drag: a float moves by the pointer's travel, a
+// vsplit's width follows the separator, a split's height its title. The
+// × corner never starts a drag, so a slipped click still closes.
+func (a *App) dragWindow(d *winDrag, x, y int) {
+	wn, ok := a.host.Wins.Get(d.id)
+	if !ok {
+		a.winDrag = nil
+		return
 	}
-	return false
+	var r winRect
+	for _, c := range a.winRects {
+		if c.id == d.id {
+			r = c
+		}
+	}
+	if x == d.x0 && y == d.y0 {
+		return
+	}
+	if d.what == "title" {
+		if d.x0 >= r.x+r.w-3 {
+			return
+		}
+		d.what = map[string]string{win.KindFloat: "move", win.KindSplit: "split", win.KindVSplit: "vsplit"}[wn.Layout().Kind]
+	}
+	d.moved = true
+	_ = wn.SetLayout(func(l *win.Layout) {
+		switch d.what {
+		case "move":
+			l.X, l.Y = max(0, d.fx+x-d.x0), max(0, d.fy+y-d.y0)
+		case "vsplit":
+			l.Frac = float64(r.x+r.w-x-1) / float64(max(a.width, 1))
+		case "split":
+			l.Frac = float64(r.y+r.h-y) / float64(max(a.chatAreaH, 1))
+		}
+	})
 }
 
 // FocusWindow implements hostapi.UIHooks.
-func (a *App) FocusWindow(id int) { a.do(func() { a.focusWin = id }) }
+func (a *App) FocusWindow(id int) { a.do(func() { a.setFocusWin(id) }) }

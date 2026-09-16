@@ -69,6 +69,24 @@ func TestWindowTool(t *testing.T) {
 	if resp := run(`{"action":"list"}`); !strings.Contains(resp.Content, `"running":false`) {
 		t.Fatalf("list: %+v", resp)
 	}
+	if resp := run(`{"action":"set","id":1,"kind":"vsplit","frac":0.4,"title":"side"}`); resp.IsError || !strings.Contains(resp.Content, `"kind":"vsplit"`) || !strings.Contains(resp.Content, `"frac":0.4`) || !strings.Contains(resp.Content, `"title":"side"`) {
+		t.Fatalf("set: %+v", resp)
+	}
+	if resp := run(`{"action":"set","id":1,"kind":"tab"}`); !resp.IsError {
+		t.Fatalf("bad kind must be refused: %+v", resp)
+	}
+	if resp := run(`{"action":"hide","id":1}`); !strings.Contains(resp.Content, `"hidden":true`) {
+		t.Fatalf("hide: %+v", resp)
+	}
+	if resp := run(`{"action":"show","id":1}`); !strings.Contains(resp.Content, `"hidden":false`) {
+		t.Fatalf("show: %+v", resp)
+	}
+	sub := h.windowToolFor("explore", nil)
+	resp, _ = sub.Run(context.Background(), fantasy.ToolCall{ID: "s", Name: "window", Input: `{"action":"open","cmd":"sleep 5"}`})
+	if resp.IsError || !strings.Contains(resp.Content, `"hidden":true`) || !strings.Contains(resp.Content, `"owner":"agent:explore"`) {
+		t.Fatalf("subagent windows open hidden: %+v", resp)
+	}
+	h.Wins.Close(2)
 	if resp := run(`{"action":"close","id":1}`); resp.IsError {
 		t.Fatalf("close: %+v", resp)
 	}
@@ -92,6 +110,10 @@ func TestWinNamespace(t *testing.T) {
 		assert(shown, "wait_text")
 		assert(select(2, zemi.win.get(1):keys("<bogus>")) ~= nil, "bad keys")
 		assert(zemi.win.get(1):mouse({ x = 0, y = 0, button = "wheel_down", kind = "wheel" }) == true, "mouse")
+		assert(zemi.win.get(1):set({ kind = "float", cols = 40, rows = 5, x = 2, y = 3 }) == true, "set")
+		local info = zemi.win.get(1):info()
+		assert(info.kind == "float" and info.x == 2 and info.y == 3, "layout readback")
+		assert(zemi.win.get(1):set({ hidden = true }) == true and zemi.win.get(1):info().hidden, "hide")
 		assert(zemi.win.get(1):keys("<c-c>") == true, "keys")
 		assert(zemi.win.close(1) == true and #zemi.win.list() == 0, "close")
 	`)

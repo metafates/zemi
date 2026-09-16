@@ -437,7 +437,18 @@ zemi.win = {}
 ---@field cols? integer Float only: requested width.
 ---@field rows? integer Float only: requested height.
 ---@field focus? boolean Give the user's keys to the window at once.
+---@field hidden? boolean Start off screen (running); show with set({ hidden = false }).
 ---@field on_exit? fun(info: zemi.WinInfo) Runs when the program exits.
+
+---@class zemi.WinLayout
+---@field kind? "split"|"vsplit"|"float"
+---@field hidden? boolean
+---@field frac? number A split or vsplit's share of the screen, 0.1 to 0.9.
+---@field cols? integer A float's width.
+---@field rows? integer A float's height.
+---@field x? integer A float's left column, -1 centers.
+---@field y? integer A float's top row, -1 centers.
+---@field title? string
 
 ---@class zemi.WinInfo
 ---@field id integer
@@ -448,6 +459,10 @@ zemi.win = {}
 ---@field cols integer
 ---@field rows integer
 ---@field running boolean
+---@field hidden boolean
+---@field frac? number
+---@field x? integer
+---@field y? integer
 ---@field code? integer Exit code once it exited.
 ---@field cursor { x: integer, y: integer, visible: boolean }
 
@@ -484,6 +499,11 @@ function Win:wait_text(want, timeout_ms) end
 function Win:info() end
 --- Give the user's keys to this window.
 function Win:focus() end
+--- Change where or how the window shows, or hide and show it; the program
+--- keeps running. Like nvim_win_set_config for a terminal buffer.
+---@param layout zemi.WinLayout
+---@return true|nil, string|nil
+function Win:set(layout) end
 --- End the program (if still running) and remove the window.
 function Win:close() end
 

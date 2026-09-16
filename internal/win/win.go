@@ -43,14 +43,25 @@ type Spec struct {
 	Owner string // who opened it: "model", "user" or "lua"
 }
 
+// Layout is where and how big a window shows; the UI reads it every frame
+// and the user, Lua and the model change it.
+type Layout struct {
+	Kind   string
+	Hidden bool    // keeps running, takes no space
+	Frac   float64 // split, vsplit: share of the axis, 0 = an equal share
+	Cols   int     // float: requested size, 0 = four fifths of the area
+	Rows   int
+	X, Y   int // float: top-left cell of the frame, -1 = centered
+}
+
 // Window is one running program and its screen.
 type Window struct {
 	ID    int
-	Kind  string
 	Cmd   string
 	Owner string
-	Cols  int // requested size (Spec)
-	Rows  int
+
+	lmu    sync.Mutex
+	layout Layout
 
 	title atomic.Pointer[string] // the program may rename itself (OSC 0/2)
 
@@ -131,11 +142,12 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		ID: id, Kind: spec.Kind, Cmd: spec.Cmd, Owner: spec.Owner,
-		Cols: spec.Cols, Rows: spec.Rows,
-		term: vt.NewEmulator(cols, rows), w: cols, h: rows,
+		ID: id, Cmd: spec.Cmd, Owner: spec.Owner,
+		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
+		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), started: time.Now(),
 	}
+	w.term.SetScrollbackSize(2000)
 	w.exit.Store(-1)
 	w.SetTitle(spec.Title)
 	if spec.Title == "" {
@@ -306,6 +318,66 @@ func (w *Window) kill() {
 		_ = w.term.Close()
 		w.mu.Unlock()
 	})
+}
+
+// Layout is a snapshot of where the window shows.
+func (w *Window) Layout() Layout {
+	w.lmu.Lock()
+	defer w.lmu.Unlock()
+	return w.layout
+}
+
+// SetLayout changes the layout under the lock; kind and negative sizes are
+// validated so a bad set never breaks the frame.
+func (w *Window) SetLayout(fn func(*Layout)) error {
+	w.lmu.Lock()
+	defer w.lmu.Unlock()
+	l := w.layout
+	fn(&l)
+	switch l.Kind {
+	case KindSplit, KindVSplit, KindFloat:
+	default:
+		return fmt.Errorf("window: kind %q is not split, vsplit or float", l.Kind)
+	}
+	l.Frac = max(0, min(l.Frac, 0.9))
+	l.Cols, l.Rows = max(0, l.Cols), max(0, l.Rows)
+	l.X, l.Y = max(-1, l.X), max(-1, l.Y)
+	w.layout = l
+	return nil
+}
+
+// Kind is the layout kind.
+func (w *Window) Kind() string { return w.Layout().Kind }
+
+// Hidden reports whether the window is off screen.
+func (w *Window) Hidden() bool { return w.Layout().Hidden }
+
+// Focus tells the program it gained or lost focus, when it asked to know.
+func (w *Window) Focus(on bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if on {
+		w.term.Focus()
+	} else {
+		w.term.Blur()
+	}
+}
+
+// ScrollbackText is the last n lines that scrolled off the top.
+func (w *Window) ScrollbackText(n int) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	sb := w.term.Scrollback()
+	total := sb.Len()
+	var lines []string
+	for i := max(0, total-n); i < total; i++ {
+		var b strings.Builder
+		for _, c := range sb.Line(i) {
+			b.WriteString(c.Content)
+		}
+		lines = append(lines, strings.TrimRight(b.String(), " "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Title is the window title: the spec's, or what the program set.
@@ -559,7 +631,10 @@ func sgrParams(s uv.Style) string {
 		st = st.Strikethrough(true)
 	}
 	if s.Underline != uv.UnderlineNone {
-		st = st.Underline(true)
+		st = st.UnderlineStyle(s.Underline)
+	}
+	if s.UnderlineColor != nil {
+		st = st.UnderlineColor(s.UnderlineColor)
 	}
 	if s.Fg != nil {
 		st = st.ForegroundColor(s.Fg)

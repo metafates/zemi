@@ -41,7 +41,7 @@ func (h *Host) openWindow(spec win.Spec) (*win.Window, error) {
 	if err != nil {
 		return nil, err
 	}
-	h.EmitAsync("win.open", map[string]any{"id": w.ID, "cmd": w.Cmd, "kind": w.Kind, "title": w.Title()})
+	h.EmitAsync("win.open", map[string]any{"id": w.ID, "cmd": w.Cmd, "kind": w.Kind(), "title": w.Title()})
 	h.refresh()
 	return w, nil
 }
@@ -79,15 +79,64 @@ func (h *Host) focusWindow(id int) {
 func windowInfo(w *win.Window) map[string]any {
 	cols, rows := w.Size()
 	scr := w.Screen()
+	l := w.Layout()
 	m := map[string]any{
-		"id": w.ID, "title": w.Title(), "kind": w.Kind, "cmd": w.Cmd, "owner": w.Owner,
+		"id": w.ID, "title": w.Title(), "kind": l.Kind, "hidden": l.Hidden, "cmd": w.Cmd, "owner": w.Owner,
 		"cols": cols, "rows": rows, "running": !w.Exited(),
 		"cursor": map[string]any{"x": scr.CursorX, "y": scr.CursorY, "visible": scr.HasCursor},
+	}
+	if l.Frac > 0 {
+		m["frac"] = l.Frac
+	}
+	if l.Kind == win.KindFloat && l.X >= 0 {
+		m["x"], m["y"] = l.X, l.Y
 	}
 	if w.Exited() {
 		m["code"] = w.ExitCode()
 	}
 	return m
+}
+
+// layoutPatch applies the layout fields a caller may set: kind, hidden,
+// frac (a split's share), cols and rows (a float's size), x and y (a
+// float's top-left, -1 centers). Nil fields keep their value.
+type layoutPatch struct {
+	Kind   *string
+	Hidden *bool
+	Frac   *float64
+	Cols   *int
+	Rows   *int
+	X, Y   *int
+}
+
+func (h *Host) applyLayout(w *win.Window, p layoutPatch) error {
+	err := w.SetLayout(func(l *win.Layout) {
+		if p.Kind != nil {
+			l.Kind = *p.Kind
+		}
+		if p.Hidden != nil {
+			l.Hidden = *p.Hidden
+		}
+		if p.Frac != nil {
+			l.Frac = *p.Frac
+		}
+		if p.Cols != nil {
+			l.Cols = *p.Cols
+		}
+		if p.Rows != nil {
+			l.Rows = *p.Rows
+		}
+		if p.X != nil {
+			l.X = *p.X
+		}
+		if p.Y != nil {
+			l.Y = *p.Y
+		}
+	})
+	if err == nil {
+		h.refresh()
+	}
+	return err
 }
 
 // mouseEvent builds a window mouse event from plain fields: kind is click
@@ -183,6 +232,35 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			h.focusWindow(w.ID)
 			return 0
 		}))
+		// set({ kind, hidden, frac, cols, rows, x, y, title })
+		t.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+			spec := L.CheckTable(2)
+			var p layoutPatch
+			if s, ok := spec.RawGetString("kind").(glua.LString); ok {
+				v := string(s)
+				p.Kind = &v
+			}
+			if b, ok := spec.RawGetString("hidden").(glua.LBool); ok {
+				v := bool(b)
+				p.Hidden = &v
+			}
+			num := func(key string) *int {
+				if n, ok := spec.RawGetString(key).(glua.LNumber); ok {
+					v := int(n)
+					return &v
+				}
+				return nil
+			}
+			if n, ok := spec.RawGetString("frac").(glua.LNumber); ok {
+				v := float64(n)
+				p.Frac = &v
+			}
+			p.Cols, p.Rows, p.X, p.Y = num("cols"), num("rows"), num("x"), num("y")
+			if s, ok := spec.RawGetString("title").(glua.LString); ok {
+				w.SetTitle(sanitize.String(string(s)))
+			}
+			return luaResult(L, h.applyLayout(w, p))
+		}))
 		t.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
 			h.closeWindow(w.ID)
 			return 0
@@ -212,6 +290,9 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		})
 		if err != nil {
 			return luaResult(L, err)
+		}
+		if rawBool(spec, "hidden") {
+			_ = h.applyLayout(w, layoutPatch{Hidden: &[]bool{true}[0]})
 		}
 		if fn, ok := spec.RawGetString("on_exit").(*glua.LFunction); ok {
 			h.GoSafe("win on_exit", func() {
@@ -271,7 +352,7 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 		Name: "window commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "win", NArgs: "*", Desc: "windows: list, focus <id>, close <id|all>", Hidden: true,
+				Name: "win", NArgs: "*", Desc: "windows: list, focus, hide, show <id>, close <id|all>", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					fields := strings.Fields(args)
 					switch {
@@ -287,7 +368,10 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 							if w.Exited() {
 								state = fmt.Sprintf("exited %d", w.ExitCode())
 							}
-							lines = append(lines, fmt.Sprintf("%d %s (%s, %s)", w.ID, w.Title(), w.Kind, state))
+							if w.Hidden() {
+								state += ", hidden"
+							}
+							lines = append(lines, fmt.Sprintf("%d %s (%s, %s, %s)", w.ID, w.Title(), w.Kind(), w.Owner, state))
 						}
 						h.Notify("info", "windows", strings.Join(lines, "\n"))
 						return nil
@@ -296,6 +380,14 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 							h.closeWindow(w.ID)
 						}
 						return nil
+					case (fields[0] == "hide" || fields[0] == "show") && len(fields) == 2:
+						id, err := strconv.Atoi(fields[1])
+						w, ok := h.Wins.Get(id)
+						if err != nil || !ok {
+							return fmt.Errorf("no window %s", fields[1])
+						}
+						hidden := fields[0] == "hide"
+						return h.applyLayout(w, layoutPatch{Hidden: &hidden})
 					case (fields[0] == "close" || fields[0] == "focus") && len(fields) == 2:
 						id, err := strconv.Atoi(fields[1])
 						if err != nil {
@@ -313,9 +405,9 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 						}
 						return nil
 					}
-					return errors.New("usage: /win [list | focus <id> | close <id|all>]")
+					return errors.New("usage: /win [list | focus <id> | hide <id> | show <id> | close <id|all>]")
 				},
-				GoComplete: subcommandCompleter([]string{"list", "focus", "close"}, nil),
+				GoComplete: subcommandCompleter([]string{"list", "focus", "hide", "show", "close"}, nil),
 				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
 			return err
 		},
@@ -325,9 +417,26 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 // ---------------------------------------------------------------------------
 // the window tool
 
-type windowTool struct{ h *Host }
+type windowTool struct {
+	h     *Host
+	owner string          // "model" for the main agent, else the subagent's name
+	pipe  *tools.Pipeline // the run's gate; nil = the main pipeline
+}
 
-func (h *Host) windowTool() fantasy.AgentTool { return &windowTool{h: h} }
+func (h *Host) windowTool() fantasy.AgentTool { return &windowTool{h: h, owner: "model"} }
+
+// windowToolFor is a subagent's window tool: its asks carry the agent's
+// name, and its windows open hidden (its own space) until shown.
+func (h *Host) windowToolFor(name string, pipe *tools.Pipeline) fantasy.AgentTool {
+	return &windowTool{h: h, owner: "agent:" + name, pipe: pipe}
+}
+
+func (t *windowTool) gate() *tools.Pipeline {
+	if t.pipe != nil {
+		return t.pipe
+	}
+	return t.h.PipelineFor()
+}
 
 func (t *windowTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
@@ -335,28 +444,33 @@ func (t *windowTool) Info() fantasy.ToolInfo {
 		Description: `Run a program in a window inside zemi's screen (a split below the chat, a vsplit beside it, or a float over it) and keep working while it runs: show the user a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
 
 Actions:
-- open (cmd, kind, title, cols, rows, focus): returns the window id.
-- read (id, expect, wait_ms): the screen as text plus the cursor. With expect it returns as soon as that text shows (or after wait_ms, saying so); without, it waits wait_ms (default 300) for the program to draw. Always read after acting before deciding the next step.
+- open (cmd, kind, title, cols, rows, focus, hidden): returns the window id. kind split is below the chat, vsplit a full-height sidebar, float over everything.
+- set (id, kind, title, hidden, frac, cols, rows, x, y): change where or how big a window shows, its title, or hide and show it; the program keeps running. frac is a split's share of the screen (0.3), cols and rows a float's size, x and y a float's top-left (-1 centers). To turn a split into a sidebar, set kind vsplit; no need to open a new one.
+- hide (id) and show (id): hidden windows keep running off screen; read and keys still work, so you can drive several programs and show the one that matters. focus (id): give the user's keys to it.
+- read (id, expect, wait_ms, scrollback): the screen as text plus the cursor. With expect it returns as soon as that text shows (or after wait_ms, saying so); without, it waits wait_ms (default 300) for the program to draw. scrollback N adds the last N lines that scrolled off the top. Always read after acting before deciding the next step.
 - keys (id, keys): press keys in neovim notation: plain characters type themselves, <esc> <cr> <tab> <bs> <space> <up> <down> <left> <right> <home> <end> <pgup> <pgdn> <del> <f1>..<f12> name keys, <c-x> <a-x> <s-tab> <c-s-left> add modifiers, <lt> is a literal <. "ihello<esc>:wq<cr>" edits and saves in vim.
 - mouse (id, x, y, button, kind, mod): a click at 0-based cell x, y (button left, middle, right; kind click, press, release, move) or a wheel step (button wheel_up or wheel_down).
 - send (id, text): raw text, as a paste without bracketing; prefer keys.
 - wait (id, timeout_ms): blocks until the program exits.
 - close (id): ends it. list: every window.
-A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you.`,
+A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,
 		Parameters: map[string]any{
-			"action":     map[string]any{"type": "string", "enum": []string{"open", "read", "keys", "mouse", "send", "wait", "close", "list"}},
+			"action":     map[string]any{"type": "string", "enum": []string{"open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
+			"hidden":     map[string]any{"type": "boolean", "description": "open, set: off screen but running"},
+			"frac":       map[string]any{"type": "number", "description": "set: a split or vsplit's share of the screen, 0.1 to 0.9"},
+			"scrollback": map[string]any{"type": "number", "description": "read: lines above the screen to include"},
 			"cmd":        map[string]any{"type": "string", "description": "open: the command, run with sh -c in the project directory"},
 			"kind":       map[string]any{"type": "string", "enum": []string{"split", "vsplit", "float"}, "description": "open: where the window goes (default split)"},
 			"title":      map[string]any{"type": "string", "description": "open: a short title (default: the command)"},
-			"cols":       map[string]any{"type": "number", "description": "open, float only: requested width"},
-			"rows":       map[string]any{"type": "number", "description": "open, float only: requested height"},
+			"cols":       map[string]any{"type": "number", "description": "open, set: a float's width"},
+			"rows":       map[string]any{"type": "number", "description": "open, set: a float's height"},
 			"focus":      map[string]any{"type": "boolean", "description": "open: give the user's keys to the window right away"},
 			"id":         map[string]any{"type": "number", "description": "read, send, wait, close: the window"},
 			"text":       map[string]any{"type": "string", "description": "send: raw text to type"},
 			"keys":       map[string]any{"type": "string", "description": "keys: key presses in neovim notation, e.g. \"<c-b>:q<cr>\""},
 			"expect":     map[string]any{"type": "string", "description": "read: return as soon as the screen shows this text"},
-			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window"},
-			"y":          map[string]any{"type": "number", "description": "mouse: 0-based row inside the window"},
+			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window; set: a float's left column (-1 centers)"},
+			"y":          map[string]any{"type": "number", "description": "mouse: 0-based row inside the window; set: a float's top row (-1 centers)"},
 			"button":     map[string]any{"type": "string", "enum": []string{"left", "middle", "right", "wheel_up", "wheel_down"}, "description": "mouse: default left"},
 			"mkind":      map[string]any{"type": "string", "enum": []string{"click", "press", "release", "move"}, "description": "mouse: default click (press and release)"},
 			"mod":        map[string]any{"type": "string", "description": "mouse: modifiers such as ctrl, shift+alt"},
@@ -373,24 +487,27 @@ func (t *windowTool) SetProviderOptions(fantasy.ProviderOptions) {}
 func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	h := t.h
 	var in struct {
-		Action  string  `json:"action"`
-		Cmd     string  `json:"cmd"`
-		Kind    string  `json:"kind"`
-		Title   string  `json:"title"`
-		Cols    int     `json:"cols"`
-		Rows    int     `json:"rows"`
-		Focus   bool    `json:"focus"`
-		ID      int     `json:"id"`
-		Text    string  `json:"text"`
-		Keys    string  `json:"keys"`
-		Expect  string  `json:"expect"`
-		X       int     `json:"x"`
-		Y       int     `json:"y"`
-		Button  string  `json:"button"`
-		MKind   string  `json:"mkind"`
-		Mod     string  `json:"mod"`
-		WaitMS  float64 `json:"wait_ms"`
-		Timeout float64 `json:"timeout_ms"`
+		Action  string   `json:"action"`
+		Cmd     string   `json:"cmd"`
+		Kind    string   `json:"kind"`
+		Title   string   `json:"title"`
+		Cols    *int     `json:"cols"`
+		Rows    *int     `json:"rows"`
+		Focus   bool     `json:"focus"`
+		Hidden  *bool    `json:"hidden"`
+		Frac    *float64 `json:"frac"`
+		Scroll  int      `json:"scrollback"`
+		X       *int     `json:"x"`
+		Y       *int     `json:"y"`
+		ID      int      `json:"id"`
+		Text    string   `json:"text"`
+		Keys    string   `json:"keys"`
+		Expect  string   `json:"expect"`
+		Button  string   `json:"button"`
+		MKind   string   `json:"mkind"`
+		Mod     string   `json:"mod"`
+		WaitMS  float64  `json:"wait_ms"`
+		Timeout float64  `json:"timeout_ms"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -418,18 +535,59 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 			return fantasy.NewTextErrorResponse("open needs cmd"), nil
 		}
 		// the same gate as bash: rules, modes and the user see the command
-		if v := h.PipelineFor().Check(tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title}); v.Decision != perm.Allow {
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd), nil
 		}
-		w, err := h.openWindow(win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Cols: in.Cols, Rows: in.Rows, Owner: "model"})
+		spec := win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Owner: t.owner}
+		if in.Cols != nil {
+			spec.Cols = *in.Cols
+		}
+		if in.Rows != nil {
+			spec.Rows = *in.Rows
+		}
+		w, err := h.openWindow(spec)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		if in.Focus {
+		hidden := t.owner != "model" // a subagent's windows are its own space until shown
+		if in.Hidden != nil {
+			hidden = *in.Hidden
+		}
+		if hidden {
+			_ = h.applyLayout(w, layoutPatch{Hidden: &hidden})
+		}
+		if in.Focus && !hidden {
 			h.focusWindow(w.ID)
 		}
 		h.setToolDetail(call.ID, fmt.Sprintf("window %d: %s", w.ID, w.Title()))
 		return fantasy.NewTextResponse("opened " + describe(w)), nil
+	case "set", "hide", "show", "focus":
+		w, resp, ok := find()
+		if !ok {
+			return resp, nil
+		}
+		p := layoutPatch{Frac: in.Frac, Cols: in.Cols, Rows: in.Rows, X: in.X, Y: in.Y, Hidden: in.Hidden}
+		if in.Kind != "" {
+			p.Kind = &in.Kind
+		}
+		if in.Title != "" {
+			w.SetTitle(sanitize.String(in.Title))
+		}
+		switch in.Action {
+		case "hide":
+			p = layoutPatch{Hidden: &[]bool{true}[0]}
+		case "show":
+			p = layoutPatch{Hidden: &[]bool{false}[0]}
+		case "focus":
+			p = layoutPatch{Hidden: &[]bool{false}[0]}
+		}
+		if err := h.applyLayout(w, p); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if in.Action == "focus" || (in.Focus && !w.Hidden()) {
+			h.focusWindow(w.ID)
+		}
+		return fantasy.NewTextResponse(describe(w)), nil
 	case "read":
 		w, resp, ok := find()
 		if !ok {
@@ -463,13 +621,18 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if text == "" {
 			text = "(blank screen)"
 		}
+		if in.Scroll > 0 {
+			if sb := w.ScrollbackText(min(in.Scroll, 2000)); sb != "" {
+				text = sb + "\n----- screen -----\n" + text
+			}
+		}
 		return fantasy.NewTextResponse(describe(w) + note + "\n<screen>\n" + sanitize.String(text) + "\n</screen>"), nil
 	case "keys":
 		w, resp, ok := find()
 		if !ok {
 			return resp, nil
 		}
-		if v := h.PipelineFor().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Keys, Reason: "press keys in window " + w.Title()}); v.Decision != perm.Allow {
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Keys, Reason: "press keys in window " + w.Title()}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		if err := w.SendKeys(in.Keys); err != nil {
@@ -481,12 +644,26 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		evs, err := mouseEvent(in.MKind, in.Button, in.X, in.Y, in.Mod)
+		mx0, my0 := 0, 0
+		if in.X != nil {
+			mx0 = *in.X
+		}
+		if in.Y != nil {
+			my0 = *in.Y
+		}
+		evs, err := mouseEvent(in.MKind, in.Button, mx0, my0, in.Mod)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		cols, rows := w.Size()
-		if in.X < 0 || in.Y < 0 || in.X >= cols || in.Y >= rows {
+		mx, my := 0, 0
+		if in.X != nil {
+			mx = *in.X
+		}
+		if in.Y != nil {
+			my = *in.Y
+		}
+		if mx < 0 || my < 0 || mx >= cols || my >= rows {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("x, y must be inside the %dx%d window", cols, rows)), nil
 		}
 		for _, ev := range evs {
@@ -499,7 +676,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 			return resp, nil
 		}
 		// typed text is a command to whatever runs there: the user sees it
-		if v := h.PipelineFor().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Text, Reason: "type into window " + w.Title()}); v.Decision != perm.Allow {
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Text, Reason: "type into window " + w.Title()}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		if err := w.SendText(in.Text); err != nil {
@@ -537,5 +714,5 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		return fantasy.NewTextResponse(strings.TrimRight(b.String(), "\n")), nil
 	}
-	return fantasy.NewTextErrorResponse("action must be open, read, keys, mouse, send, wait, close or list"), nil
+	return fantasy.NewTextErrorResponse("action must be open, set, hide, show, focus, read, keys, mouse, send, wait, close or list"), nil
 }

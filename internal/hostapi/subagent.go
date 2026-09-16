@@ -45,7 +45,7 @@ type AgentDef struct {
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, and the user's attention (questions, plan approval, editor).
-var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true, "window": true}
+var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true}
 
 var builtinAgents = []AgentDef{
 	{
@@ -266,6 +266,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
+	all = append(all, h.windowToolFor(def.Name, pipe))
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(prof), h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(h.currentModelID(prof))
