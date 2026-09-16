@@ -103,6 +103,9 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "app", ".env"), []byte("K=v"), 0o600)
 	os.WriteFile(filepath.Join(root, "app", ".gitignore"), []byte("node_modules/\n"), 0o600)
 	os.WriteFile(filepath.Join(root, "app", "node_modules", "secret.txt"), []byte("K=v"), 0o600)
+	os.MkdirAll(filepath.Join(root, "wl"), 0o700)
+	os.WriteFile(filepath.Join(root, "wl", ".env"), []byte("K=v"), 0o600)
+	os.WriteFile(filepath.Join(root, "wl", ".rgignore"), []byte("!.env\n"), 0o600)
 	if _, err := h.git(root, "init", "-q"); err != nil {
 		t.Skip("needs git:", err)
 	}
@@ -132,6 +135,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"cd internal && cat x.go", true},
 		{"cat .git/config", false},
 		{"rg KEY app", true},
+		{"rg KEY wl", false},
 		{"rg --hidden KEY app", false},
 		{"rg -nuu KEY app", false},
 		{"rg --no-ignore-vcs KEY app", false},
