@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -134,5 +137,34 @@ func TestModelPickerFilter(t *testing.T) {
 	a.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := <-answer; !got.ok || got.id != "deepseek/deepseek-chat" {
 		t.Fatalf("picked %+v", got)
+	}
+}
+
+// TestOverlaySelectOffKeyLoop: enter on a Lua picker returns while the
+// interpreter is busy; on_choice runs on the background worker.
+func TestOverlaySelectOffKeyLoop(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `zemi.ui.select({ "a" }, {}, function() end)`)
+	app.program = tea.NewProgram(nil) // never run: it only switches on the worker
+	busy, hold := make(chan struct{}), make(chan struct{})
+	defer close(hold)
+	go app.host.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
+		close(busy)
+		<-hold
+		return nil, nil
+	})
+	<-busy
+	done := make(chan struct{})
+	go func() {
+		app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("enter waited on the interpreter")
+	}
+	if len(app.overlays) != 0 {
+		t.Fatal("the picker should close at once")
 	}
 }

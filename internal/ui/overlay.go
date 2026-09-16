@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -218,13 +219,14 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			st.refilter()
 			a.frameGen++
 		case key == "space":
-		case o.OnSelect != nil:
-			// SelectOverlay runs on_select then closes via the hook.
-			a.host.SelectOverlay(a.ctx(), o, idx)
 		default:
 			a.closeOverlayByID(o.ID)
 			a.frameGen++
-			a.runOverlayRow(o, idx)
+			if o.OnSelect != nil {
+				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
+			} else {
+				a.runOverlayRow(o, idx)
+			}
 		}
 	case "esc":
 		a.cancelOverlay(o)
@@ -239,7 +241,7 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	case "enter":
 		o, value := st.o, in.text
 		a.closeOverlayByID(o.ID)
-		a.host.SubmitOverlayInput(a.ctx(), o, value)
+		a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
 	case "esc":
 		a.cancelOverlay(st.o)
 	default:
@@ -250,12 +252,13 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	a.frameGen++
 }
 
-// cancelOverlay closes o and runs its on_close.
+// cancelOverlay closes o and runs its on_close. The overlay's Lua
+// callbacks run on the background worker: the key loop never waits on Lua.
 func (a *App) cancelOverlay(o hostapi.Overlay) {
 	a.closeOverlayByID(o.ID)
 	a.frameGen++
 	if o.OnClose != nil {
-		a.host.CancelOverlay(a.ctx(), o)
+		a.background(func() { a.host.CancelOverlay(context.Background(), o) })
 	}
 }
 
