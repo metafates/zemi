@@ -117,9 +117,8 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewLongList: the box keeps its size while the selection
-// moves, the list scrolls to the selection, and the preview renders the
-// selected memory as markdown.
+// TestMemoryReviewLongList: memories read whole and rendered as markdown,
+// the window scrolls to the selection, and the box keeps its place.
 func TestMemoryReviewLongList(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 24)
 	var items []hostapi.MemoryRow

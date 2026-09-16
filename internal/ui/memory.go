@@ -10,18 +10,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
 type memReviewPrompt struct {
 	items   []hostapi.MemoryRow
 	sel     int
-	top     int               // first listed item
-	scroll  int               // first preview line
-	opened  int               // items when the screen opened
-	shown   string            // id of the previewed memory; another one starts unscrolled
+	top     int               // first line of the scrolled window
 	actions map[string]string // row id -> accept | reject | delete
 	undo    []memUndo
 	answer  chan map[string]string
@@ -40,7 +35,7 @@ func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
 	// screen edits a copy
 	rows := slices.Clone(items)
 	a.do(func() {
-		a.memReview = &memReviewPrompt{items: rows, opened: len(rows), actions: map[string]string{}, answer: ch}
+		a.memReview = &memReviewPrompt{items: rows, actions: map[string]string{}, answer: ch}
 	})
 	return <-ch
 }
@@ -115,91 +110,88 @@ func (a *App) undoMemory() {
 	mr.sel = u.at
 }
 
-// memReviewBox is a fixed-size box, so moving the selection never resizes
-// it: one line per memory on top, then the selected memory rendered as
-// markdown under a rule naming its kind, scope, origin and tags.
+// memReviewBox shows every memory whole, rendered as markdown, with its
+// kind, scope, origin and tags under it. The layout does not depend on the
+// selection (a bar marks it), so moving never resizes or reflows the box;
+// the window scrolls to keep the selected memory in view.
 func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	mr := a.memReview
-	if len(mr.items) == 0 {
-		body := [][]hostapi.Segment{{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}}, nil, hintLine("esc", "done")}
-		return hostBox(" Memory ", "Host:Title", "", body, w)
-	}
-	inner := max(min(w-4, 100)-4, 12)
-	// borders, the rule, the blank row and the hint take five rows
-	rows := max(min(chatH, 36)-5, 2)
-	// sized by the count at open, so a forgotten row does not resize the box
-	listH := max(min(mr.opened, rows/2), 1)
-	previewH := max(rows-listH, 1)
-
-	mr.top = max(min(mr.top, mr.sel), mr.sel-listH+1, 0)
-	var body [][]hostapi.Segment
-	for i := mr.top; i < mr.top+listH; i++ {
-		if i >= len(mr.items) {
-			body = append(body, nil)
-			continue
+	width := min(w-4, 100) - 6
+	var lines [][]hostapi.Segment
+	selTop, selEnd := 0, 0
+	section := ""
+	for i, it := range mr.items {
+		if s := map[bool]string{true: "Suggested by zemi", false: "Remembered"}[it.Queued]; s != section {
+			if section != "" {
+				lines = append(lines, nil)
+			}
+			section = s
+			lines = append(lines, []hostapi.Segment{{Text: s, HL: "Host:Title"}})
+		} else {
+			lines = append(lines, nil)
 		}
-		it := mr.items[i]
-		cur, hl := "  ", "Host:Value"
+		bar, hl := hostapi.Segment{Text: "  "}, "Host:Value"
 		if i == mr.sel {
-			cur, hl = "› ", "Host:Bold"
+			bar, hl, selTop = hostapi.Segment{Text: "▌ ", HL: "Host:HintKey"}, "Host:Bold", len(lines)
 		}
-		mark := map[bool]string{true: "● ", false: "  "}[it.Queued]
-		markHL := "Host:Warn"
+		for _, l := range a.host.Markdown(it.Text, width) {
+			row := []hostapi.Segment{bar}
+			for _, s := range l {
+				if s.HL == "" {
+					s.HL = hl
+				}
+				row = append(row, s)
+			}
+			lines = append(lines, hitRow(row, i+1))
+		}
+		meta := []hostapi.Segment{bar}
 		if mr.actions[it.ID] == "accept" {
-			mark, markHL = "+ ", "Host:Ok"
+			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 		}
-		scope := fmt.Sprintf("%12s", memScope(it))
-		row := []hostapi.Segment{{Text: cur, HL: "Host:HintKey"}, {Text: mark, HL: markHL}}
-		// the list reads the rendered text on one line, without markup
-		var plain []string
-		for _, l := range a.host.Markdown(it.Text, inner) {
-			plain = append(plain, plainSegs(l))
+		info := []string{it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+		for _, t := range it.Tags {
+			info = append(info, "#"+t)
 		}
-		text := strings.Join(strings.Fields(strings.Join(plain, " ")), " ")
-		row = append(row, ellipsizeSegs([]hostapi.Segment{{Text: text, HL: hl}}, inner-4-2-len(scope))...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", inner-segsWidth(row)-len(scope)) + scope, HL: "Host:Hint"})
-		body = append(body, hitRow(row, i+1))
+		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
+		lines = append(lines, hitRow(meta, i+1))
+		if i == mr.sel {
+			selEnd = len(lines)
+		}
+	}
+	if len(mr.items) == 0 {
+		lines = append(lines, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})
 	}
 
-	it := mr.items[mr.sel]
-	meta := []string{map[bool]string{true: "suggested", false: "remembered"}[it.Queued], it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
-	for _, t := range it.Tags {
-		meta = append(meta, "#"+t)
+	// the widest line of the whole list sizes the box, so scrolling keeps its width
+	widest := 0
+	for _, l := range lines {
+		widest = max(widest, segsWidth(l))
 	}
-	label := "── " + strings.Join(slices.DeleteFunc(meta, func(s string) bool { return s == "" }), " · ") + " "
-	label = ansi.Truncate(label, inner, "…")
-	body = append(body, []hostapi.Segment{{Text: label + strings.Repeat("─", inner-ansi.StringWidth(label)), HL: "Host:Hint"}})
-
-	if mr.shown != it.ID {
-		mr.shown, mr.scroll = it.ID, 0
-	}
-	preview := a.host.Markdown(it.Text, inner)
-	mr.scroll = max(min(mr.scroll, len(preview)-previewH), 0)
-	for i := mr.scroll; i < mr.scroll+previewH; i++ {
-		switch {
-		case i == mr.scroll+previewH-1 && i < len(preview)-1:
-			body = append(body, []hostapi.Segment{{Text: fmt.Sprintf("%d more lines · shift+↓ scroll", len(preview)-i), HL: "Host:Hint"}})
-		case i < len(preview):
-			body = append(body, preview[i])
-		default:
-			body = append(body, nil)
-		}
+	badge := ""
+	// borders, the blank row and the hint take four rows
+	if room := max(chatH-4, 3); len(lines) > room {
+		mr.top = min(mr.top, selTop, len(lines)-room)
+		mr.top = max(mr.top, min(selEnd-room, selTop), 0)
+		lines = lines[mr.top : mr.top+room]
+		badge = fmt.Sprintf(" %d of %d ", mr.sel+1, len(mr.items))
 	}
 
 	var hints []string
-	switch {
-	case it.Queued:
-		hints = append(hints, "a", "keep", "d", "drop")
-	case mr.actions[it.ID] == "accept":
-		hints = append(hints, "d", "drop")
-	default:
-		hints = append(hints, "d", "forget")
+	if mr.sel < len(mr.items) {
+		switch it := mr.items[mr.sel]; {
+		case it.Queued:
+			hints = append(hints, "a", "keep", "d", "drop")
+		case mr.actions[it.ID] == "accept":
+			hints = append(hints, "d", "drop")
+		default:
+			hints = append(hints, "d", "forget")
+		}
 	}
 	if len(mr.undo) > 0 {
 		hints = append(hints, "u", "undo")
 	}
-	body = append(body, nil, hintLine(append(hints, "esc", "done")...))
-	return hostBox(" Memory ", "Host:Title", fmt.Sprintf(" %d of %d ", mr.sel+1, len(mr.items)), body, w)
+	lines = append(lines, nil, padSegs(hintLine(append(hints, "esc", "done")...), widest))
+	return hostBox(" Memory ", "Host:Title", badge, lines, w)
 }
 
 func memScope(it hostapi.MemoryRow) string {

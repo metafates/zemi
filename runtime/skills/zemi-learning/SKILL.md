@@ -17,9 +17,8 @@ description: How zemi learns - memories, reflector, skill drafts, rule patches. 
    reflector reads it and proposes memories, permission rule patches and skill drafts.
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
-   - `/memory`: one line per memory (`●` marks a suggestion); the pane below renders the
-     selected one (j/k, the wheel or a click) as markdown under its kind, scope, origin and
-     tags, and shift+up/down scrolls it. `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
+   - `/memory`: every memory whole, rendered as markdown, with its kind, scope, origin and
+     tags under it; a bar marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
      forgets a stored memory, `u` undoes the last mark; enter, esc or `q` closes the screen
      and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
    - `/config`: `y` or `a` accepts a rule patch, `n` or `x` rejects, esc leaves the rest
