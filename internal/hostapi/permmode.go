@@ -408,8 +408,9 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 	ignored := map[string]bool{}
 	if skipIgnored && st.IsDir() {
 		// a failed listing (no repo, no git) leaves nothing ignored: rg
-		// outside a repository skips no gitignored path either
-		out, err := h.git(p, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+		// outside a repository skips no gitignored path either; rg matches
+		// ignore rules case-sensitively, whatever core.ignorecase says
+		out, err := h.git(p, "-c", "core.ignorecase=false", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
 		for _, e := range strings.Split(out, "\x00") {
 			if err == nil && e != "" {
 				ignored[strings.TrimSuffix(e, "/")] = true

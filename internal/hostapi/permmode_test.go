@@ -122,9 +122,14 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "wl"), 0o700)
 	os.WriteFile(filepath.Join(root, "wl", ".env"), []byte("K=v"), 0o600)
 	os.WriteFile(filepath.Join(root, "wl", ".rgignore"), []byte("!.env\n"), 0o600)
+	// git on macOS ignores Build/ for build/, rg does not
+	os.MkdirAll(filepath.Join(root, "ic", "Build"), 0o700)
+	os.WriteFile(filepath.Join(root, "ic", ".gitignore"), []byte("build/\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "ic", "Build", "secret.txt"), []byte("K=v"), 0o600)
 	if _, err := h.git(root, "init", "-q"); err != nil {
 		t.Skip("needs git:", err)
 	}
+	h.git(root, "config", "core.ignorecase", "true")
 	for _, c := range []struct {
 		cmd  string
 		want bool
@@ -153,6 +158,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"cat .git/config", false},
 		{"rg KEY app", true},
 		{"rg KEY wl", false},
+		{"rg KEY ic", false},
 		{"rg -eKEY wl internal", false},
 		{"rg --regexp=KEY wl internal", false},
 		{"rg -e KEY internal", true},
