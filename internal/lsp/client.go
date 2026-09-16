@@ -657,7 +657,10 @@ func (c *Client) read(r *bufio.Reader) {
 				}
 				result = answers
 			}
-			_ = c.send(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
+			// Off the reader: a writer holding wmu may be blocked on a server
+			// that stops reading until its own output is drained.
+			reply := map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}
+			go func() { _ = c.send(reply) }()
 		case m.Method == "textDocument/publishDiagnostics":
 			c.publish(m.Params)
 		case m.Method == "":

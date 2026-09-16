@@ -1,12 +1,16 @@
 package lsp_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,11 +20,68 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("ZEMI_LSP_FAKE") == "1" {
+	switch os.Getenv("ZEMI_LSP_FAKE") {
+	case "1":
 		lsptest.Serve(os.Stdin, os.Stdout)
+		os.Exit(0)
+	case "blocking":
+		serveBlocking(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// serveBlocking is a single-threaded server: as the message after
+// initialized starts arriving, it asks for configuration and writes more
+// than a pipe holds before it reads on.
+func serveBlocking(in io.Reader, out io.Writer) {
+	r := bufio.NewReader(in)
+	write := func(s string) { _ = lsp.WriteMessage(out, []byte(s)) }
+	for {
+		body, err := lsp.ReadMessage(r)
+		if err != nil {
+			return
+		}
+		switch {
+		case bytes.Contains(body, []byte(`"initialize"`)):
+			write(`{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}`)
+		case bytes.Contains(body, []byte(`"initialized"`)):
+			header, _ := r.ReadString('\n')
+			write(`{"jsonrpc":"2.0","id":"cfg","method":"workspace/configuration","params":{"items":[{}]}}`)
+			for range 300 {
+				write(`{"jsonrpc":"2.0","method":"window/logMessage","params":{"type":4,"message":"` + strings.Repeat("x", 1000) + `"}}`)
+			}
+			r = bufio.NewReader(io.MultiReader(strings.NewReader(header), r))
+		}
+	}
+}
+
+// TestServerRequestWhileWriting: a server that stops reading until its
+// output drains, and asks for configuration while the client is sending it
+// a large document, must not deadlock the client's reader and writer.
+func TestServerRequestWhileWriting(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := lsp.Start(ctx, lsp.Config{Command: os.Args[0], Env: append(os.Environ(), "ZEMI_LSP_FAKE=blocking"), Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "big.txt")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Open(path, "plaintext") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("client and server deadlocked") // no Close: it would wait on the same lock
+	}
+	c.Close()
 }
 
 // start launches the fake server against root.
