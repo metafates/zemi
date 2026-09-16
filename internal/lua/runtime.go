@@ -416,24 +416,30 @@ func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, erro
 	if strings.HasPrefix(name, "zemi.") {
 		// zemi.* resolves to the Go preload or the embedded stdlib only;
 		// userland cannot shadow it (DESIGN §5).
-		return r.loadModule(gen, "embedded:"+name, name, func() ([]byte, string, Origin, error) {
-			src, rel, err := r.readEmbedded(name)
-			return src, rel, OriginBuiltin, err
+		return r.loadModule(gen, "embedded:"+name, name, OriginBuiltin, func() ([]byte, string, error) {
+			return r.readEmbedded(name)
 		})
 	}
 	path, origin, err := r.findModule(gen.L, name)
 	if err != nil {
 		return glua.LNil, err
 	}
-	return r.loadModule(gen, path, name, func() ([]byte, string, Origin, error) {
+	return r.loadModule(gen, path, name, origin, func() ([]byte, string, error) {
 		data, err := os.ReadFile(path)
-		return data, path, origin, err
+		return data, path, err
 	})
 }
 
-// loadModule runs a module once per generation, keyed by its resolved file,
-// so "app.util" and "./util" naming one file share one instance.
-func (r *Runtime) loadModule(gen *Generation, key, name string, read func() ([]byte, string, Origin, error)) (glua.LValue, error) {
+// loadModule runs a module once per generation and trust class, keyed by
+// its resolved file, so "app.util" and "./util" naming one file share one
+// instance. A requirer below the file's origin gets its own instance run
+// under the requirer's origin: a shared table would let lower code plant
+// functions that higher-origin callbacks later call.
+func (r *Runtime) loadModule(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
+	if req := r.CurrentOrigin(gen.L); req != OriginHost && req.Rank() < origin.Rank() {
+		origin = req
+	}
+	key += "|" + string(origin)
 	if cached, ok := gen.modules[key]; ok {
 		return cached, nil
 	}
@@ -442,7 +448,7 @@ func (r *Runtime) loadModule(gen *Generation, key, name string, read func() ([]b
 	}
 	gen.modules["<loading:"+key+">"] = glua.LTrue
 	defer delete(gen.modules, "<loading:"+key+">")
-	src, rel, origin, err := read()
+	src, rel, err := read()
 	if err != nil {
 		return glua.LNil, err
 	}
@@ -472,9 +478,10 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 // trust class; dotted names search <root>/lua over the runtimepath.
 func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error) {
 	var bases []string
+	var from string
 	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
 	if relative {
-		from := r.callerFile(L)
+		from = r.callerFile(L)
 		if !filepath.IsAbs(from) {
 			return "", "", fmt.Errorf("relative require %q: the caller is not a file", name)
 		}
@@ -495,8 +502,8 @@ func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error
 			switch {
 			case origin == "":
 				return "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
-			case relative && origin != r.CurrentOrigin(L):
-				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.CurrentOrigin(L))
+			case relative && origin != r.paths.Classify(from):
+				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.paths.Classify(from))
 			}
 			return resolved, origin, nil
 		}

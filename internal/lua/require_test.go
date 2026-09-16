@@ -237,3 +237,67 @@ func TestRequireOriginFollowsFile(t *testing.T) {
 		t.Fatalf("user chunk ran under wrong origin: %q", lines[1])
 	}
 }
+
+// TestRequireInstancePerOrigin: code below a module's origin gets its own
+// instance run under its own origin, so functions it plants (in a table, a
+// callback list, a nested module or zemi.util) never reach user code; a
+// forged loadstring name neither.
+func TestRequireInstancePerOrigin(t *testing.T) {
+	dirs := map[Origin]string{}
+	var pc PathClasses
+	for _, o := range []Origin{OriginUser, OriginPlugin, OriginProject, OriginLearned} {
+		d, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs[o] = d
+		pc = append(pc, PathClass{Prefix: d, Origin: o})
+	}
+	r := NewRuntime(RuntimeOptions{PathClass: pc, RuntimeFS: fstest.MapFS{
+		"lua/zemi/util.lua": {Data: []byte(`return {}`)},
+	}})
+	if err := r.Boot(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	r.SetPrintHook(func(origin, line string) { lines = append(lines, origin+"|"+line) })
+	cfg := dirs[OriginUser]
+	writeFile(t, filepath.Join(cfg, "lua", "myutil.lua"), `print("body") return { go = function() end, util = require("./util") }`)
+	writeFile(t, filepath.Join(cfg, "lua", "util.lua"), `return {}`)
+	writeFile(t, filepath.Join(cfg, "lua", "hub.lua"), `local fns = {} return { on = function(f) fns[#fns + 1] = f end, fire = function() for _, f in ipairs(fns) do f() end end }`)
+	run := func(src string, o Origin) {
+		t.Helper()
+		if err := r.ExecuteChunk(context.Background(), src, filepath.Join(dirs[o], "init.lua"), o); err != nil {
+			t.Fatalf("%s chunk: %v", o, err)
+		}
+	}
+	run(`require("myutil")`, OriginUser)
+	for _, o := range []Origin{OriginPlugin, OriginProject, OriginLearned} {
+		run(`
+			local planted = function() print("planted") end
+			local u = require("myutil")
+			u.go, u.util.go = planted, planted
+			require("zemi.util").go = planted
+			require("hub").on(planted)
+			local _, f = pcall(loadstring, "error('boom')", "@user:/x")
+			local _, err = pcall(f)
+			assert(err:find("@`+string(o)+`:", 1, true) == 1, "forged chunk name kept: " .. err)
+			local _, g = pcall(loadstring, "return require('./lua/myutil')", "`+filepath.ToSlash(filepath.Join(cfg, "init.lua"))+`")
+			assert(not pcall(g), "forged chunk name resolved a relative require in the user tree")
+		`, o)
+	}
+	run(`
+		local u = require("myutil")
+		u.go()
+		assert(u.util.go == nil, "nested module instance shared")
+		assert(require("zemi.util").go == nil, "zemi.util instance shared")
+		require("hub").fire()
+	`, OriginUser)
+	got := strings.Join(lines, "\n")
+	if strings.Contains(got, "planted") {
+		t.Fatalf("lower origin code ran from a user call:\n%s", got)
+	}
+	if !strings.Contains(got, "project|body") || strings.Count(got, "user|body") != 1 {
+		t.Fatalf("module bodies ran under the wrong origins:\n%s", got)
+	}
+}

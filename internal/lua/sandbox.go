@@ -2,6 +2,7 @@ package lua
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -620,6 +621,15 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 			src = b.String()
 		}
 		callerEnv, callerOrigin := s.callerChunk(L)
+		if callerOrigin == "" && s.originOf != nil {
+			// pcall(loadstring, src, "@user:/x") has a Go caller; the name
+			// must still carry the running origin, not the forged one.
+			callerOrigin = s.originOf()
+		}
+		if filepath.IsAbs(chunkname) {
+			// an absolute name would pass as a file to relative require
+			chunkname = "=" + chunkname
+		}
 		if callerOrigin != "" {
 			chunkname = callerOrigin.ChunkName(chunkname)
 		}
