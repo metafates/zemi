@@ -37,16 +37,17 @@ func (h *Host) ensureScratch() string {
 	if dir == "" {
 		return ""
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		h.Log.Warn("scratch", "scratchpad not created", map[string]any{"error": err.Error()})
-		return ""
-	}
+	// sweep first: a resumed session's own pad may be idle past the TTL too
 	root := filepath.Dir(dir)
 	entries, _ := os.ReadDir(root)
 	for _, e := range entries {
 		if info, err := e.Info(); err == nil && e.IsDir() && time.Since(info.ModTime()) > scratchTTL {
 			_ = os.RemoveAll(filepath.Join(root, e.Name()))
 		}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		h.Log.Warn("scratch", "scratchpad not created", map[string]any{"error": err.Error()})
+		return ""
 	}
 	return dir
 }
