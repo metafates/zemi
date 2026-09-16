@@ -107,8 +107,15 @@ func (r *toolReg) purge(gen Gen) {
 	}
 }
 
-// builtinToolNames are the names Lua tools may not take.
-var builtinToolNames = []string{"bash", "read", "write", "edit", "multiedit", "glob", "grep"}
+// builtinToolNames are the names Lua tools may not take: the provider would
+// get two tools of one name and fantasy runs the last one.
+func (h *Host) builtinToolNames() []string {
+	var names []string
+	for _, t := range h.builtinTools(nil) {
+		names = append(names, t.Info().Name)
+	}
+	return names
+}
 
 func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -130,7 +137,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if name == "" || !isToolName(name) {
 			L.RaiseError("zemi.tool.register: name must be an identifier")
 		}
-		if slices.Contains(builtinToolNames, name) {
+		if slices.Contains(h.builtinToolNames(), name) {
 			L.RaiseError("zemi.tool.register: %q is a builtin tool name", name)
 		}
 		schema := map[string]any{}
@@ -190,7 +197,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
-		for _, name := range builtinToolNames {
+		for _, name := range h.builtinToolNames() {
 			rows = append(rows, map[string]any{"name": name, "builtin": true})
 		}
 		for _, t := range h.luaTools.list() {

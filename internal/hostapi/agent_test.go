@@ -218,7 +218,9 @@ func TestToolRegisterValidation(t *testing.T) {
 	_, r := newTestHost(t)
 
 	runExpectErr(t, r, `zemi.tool.register({ name = "x" })`, "execute callback is required")
-	runExpectErr(t, r, `zemi.tool.register({ name = "bash", execute = function() end })`, "builtin tool name")
+	for _, name := range []string{"bash", "fetch", "agent", "window"} {
+		runExpectErr(t, r, `zemi.tool.register({ name = "`+name+`", execute = function() end })`, "builtin tool name")
+	}
 	runExpectErr(t, r, `zemi.tool.register({ name = "my tool", execute = function() end })`, "identifier")
 
 	runUser(t, r, `

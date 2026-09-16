@@ -508,13 +508,17 @@ func (h *Host) withDigest(sys string) string {
 
 // profileTools selects the tool set: profile names filter the builtin set;
 // Lua-registered tools are always included (the pipeline gates them).
+func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
+	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool())
+}
+
 func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	var want []string
 	if p != nil && len(p.Tools) > 0 {
 		want = p.Tools
 	}
 	pipe := h.PipelineFor()
-	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool()), want, nil)
+	out := filterTools(h.builtinTools(pipe), want, nil)
 	out = append(out, h.luaFantasyTools(pipe)...)
 	return append(out, h.mcpFantasyTools(pipe)...)
 }
