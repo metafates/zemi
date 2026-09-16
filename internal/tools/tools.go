@@ -763,19 +763,12 @@ func runMemoryAdd(_ context.Context, p *Pipeline, in map[string]any) (fantasy.To
 	if p.Remember == nil {
 		return fantasy.NewTextErrorResponse("memory unavailable"), nil
 	}
-	var tags []string
-	if list, ok := in["tags"].([]any); ok {
-		for _, t := range list {
-			if s, ok := t.(string); ok {
-				tags = append(tags, s)
-			}
-		}
-	}
 	scope := str(in["scope"])
 	if scope == "" {
 		scope = "project"
 	}
-	stored, err := p.Remember(scope, str(in["kind"]), str(in["text"]), tags)
+	// intake drops the empty tag a non-string becomes
+	stored, err := p.Remember(scope, str(in["kind"]), str(in["text"]), strList(in["tags"]))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
