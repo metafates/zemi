@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -166,23 +167,45 @@ func (a *App) closeOverlayByID(id string) bool {
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
 // (printable keys filter the list).
-func (a *App) overlayKey(key, text string) {
+func (a *App) overlayKey(key, text string) tea.Cmd {
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
 	if o.Input {
 		a.inputKey(st, key, text)
-		return
+		return nil
 	}
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
 	if st.edit(key, text, st.itemText) || moveSel(&st.selected, len(st.visible), key) {
-		return
+		return nil
+	}
+	// y copies the row, Y the whole list: an error or a diagnostic is worth
+	// nothing if it cannot leave the terminal.
+	switch key {
+	case "y", "Y":
+		var lines []string
+		if key == "Y" {
+			for _, i := range st.visible {
+				lines = append(lines, st.itemText[i])
+			}
+		} else if len(st.visible) > 0 {
+			lines = append(lines, st.itemText[st.visible[st.selected]])
+		}
+		if len(lines) == 0 {
+			return nil
+		}
+		what := "the row"
+		if key == "Y" {
+			what = fmt.Sprintf("%d lines", len(lines))
+		}
+		a.Notify("info", "copied", what+" to the clipboard")
+		return copyCmd(strings.Join(lines, "\n"))
 	}
 	switch key {
 	case "enter", "space":
 		if len(st.visible) == 0 {
-			return
+			return nil
 		}
 		idx := st.visible[st.selected]
 		switch {
@@ -206,6 +229,7 @@ func (a *App) overlayKey(key, text string) {
 	case "esc":
 		a.cancelOverlay(o)
 	}
+	return nil
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.
@@ -278,9 +302,9 @@ func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
 	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
-	hints := hintLine("enter", "select", "/", "filter", "esc", "close")
+	hints := hintLine("enter", "select", "y", "copy", "/", "filter", "esc", "close")
 	if st.o.Reload != nil {
-		hints = hintLine("space", "toggle", "/", "filter", "esc", "close")
+		hints = hintLine("space", "toggle", "y", "copy", "/", "filter", "esc", "close")
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)

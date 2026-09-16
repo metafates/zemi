@@ -187,7 +187,11 @@ func TestModelNamespace(t *testing.T) {
 			assert(type(m.id) == "string" and m.id ~= "")
 		end
 	`)
-	runExpectErr(t, r, `zemi.provider.register({ id = "myllm", kind = "openai" })`, "already registered")
+	// a reload replays init.lua: the same id replaces, it does not raise
+	runUser(t, r, `
+		zemi.provider.register({ id = "myllm", kind = "openai", api_key = "k2", models = { { id = "main" } } })
+		assert(#zemi.model.list() == 1, "re-register must replace, not add")
+	`)
 	runExpectErr(t, r, `zemi.provider.register({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
 }
 
@@ -370,12 +374,14 @@ type fakeUI struct {
 	qOK             bool
 	closed          []string
 	closedLua       int
+	reloads         int
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
 func (f *fakeUI) OpenOverlay(o Overlay)            {}
 func (f *fakeUI) CloseOverlay(id string) bool      { f.closed = append(f.closed, id); return true }
 func (f *fakeUI) CloseLuaOverlays()                { f.closedLua++ }
+func (f *fakeUI) Reload()                          { f.reloads++ }
 func (f *fakeUI) Refresh()                         {}
 func (f *fakeUI) ScrollChat(kind string)           {}
 func (f *fakeUI) AgentEvent(ev AgentEvent)         {}

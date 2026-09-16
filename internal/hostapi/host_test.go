@@ -52,8 +52,10 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.13.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.14.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.health.register) == "function", "zemi.health.register missing")
+		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
+		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai", "zemi.provider.kind missing")
 		for _, fn in ipairs({ "add", "remove", "list" }) do
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
@@ -310,8 +312,10 @@ func TestEmitVetoable(t *testing.T) {
 		t.Fatal("timed-out handler must not deny")
 	}
 
+	// the point is that the interpreter still answers, not which version it
+	// reports: TestNamespaceVersion pins the string
 	runUser(t, r, `
-		assert(zemi.api.version == "0.13.0", "interpreter wedged after veto timeout")
+		assert(type(zemi.api.version) == "string", "interpreter wedged after veto timeout")
 	`)
 }
 

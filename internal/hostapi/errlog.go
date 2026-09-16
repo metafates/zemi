@@ -13,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
+	glua "github.com/yuin/gopher-lua"
 )
 
 const errLogMax = 50
@@ -40,6 +41,29 @@ func (h *Host) RecordError(source, msg string) {
 	l.unseen = true
 	l.mu.Unlock()
 	h.refresh()
+}
+
+// errorsNamespace is zemi.errors: the same list /errors shows, readable
+// from Lua so the agent can inspect zemi's own failures (boot included)
+// through the lua tool without a permission ask.
+func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		l := &h.errs
+		l.mu.Lock()
+		entries := append([]errEntry(nil), l.entries...)
+		l.mu.Unlock()
+		rows := make([]any, 0, len(entries))
+		for i := len(entries) - 1; i >= 0; i-- { // newest first, like /errors
+			e := entries[i]
+			rows = append(rows, map[string]any{
+				"index": i, "at": e.at.Format("15:04:05"), "source": e.source, "message": e.msg,
+			})
+		}
+		L.Push(lua.FromGo(L, rows))
+		return 1
+	}))
+	return tb
 }
 
 // HasUnseenErrors reports whether errors arrived since /errors last opened.
@@ -100,11 +124,17 @@ func (h *Host) OpenErrors(args string) error {
 		map[string]any{"text": "Back to all errors", "run": "errors"},
 		map[string]any{"text": ""},
 	}
+	// 72 keeps a wrapped row inside the box, so it is not clipped twice;
+	// y and Y copy rows out whole (the box hint says so).
 	for _, line := range strings.Split(e.msg, "\n") {
-		for r := []rune(line); len(r) > 0; {
-			n := min(len(r), 96)
+		r := []rune(line)
+		for len(r) > 0 {
+			n := min(len(r), 72)
 			items = append(items, map[string]any{"text": string(r[:n])})
 			r = r[n:]
+		}
+		if len(line) == 0 {
+			items = append(items, map[string]any{"text": ""})
 		}
 	}
 	ui.OpenOverlay(Overlay{ID: "errors", Title: "Error · " + e.source + " · " + e.at.Format("15:04:05"), Origin: lua.OriginBuiltin, Items: items})

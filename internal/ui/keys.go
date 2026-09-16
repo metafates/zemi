@@ -149,7 +149,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "question":
 		a.questionKey(key, keyText(msg))
 	case "overlay":
-		a.overlayKey(key, keyText(msg))
+		return a.overlayKey(key, keyText(msg))
 	}
 	return nil
 }

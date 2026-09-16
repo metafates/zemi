@@ -62,8 +62,10 @@ func NewRegistry() *Registry {
 	return &Registry{keys: map[string]string{}}
 }
 
-// Register adds a provider spec and its API key; a duplicate id is an
-// error. Only user config may register (the Lua boundary enforces it,
+// Register adds a provider spec and its API key. Registering an id again
+// replaces it: config is declarative and every reload replays the file, so
+// raising here would abort init.lua on the second run and drop everything
+// after it. Only user config may register (the Lua boundary enforces it,
 // DESIGN §6.3).
 func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
@@ -75,12 +77,16 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.Kind != KindAnthropic && spec.Kind != KindOpenAI && spec.Kind != KindOpenAICompat {
 		return fmt.Errorf("unknown provider kind %q (want %s, %s or %s)", spec.Kind, KindAnthropic, KindOpenAI, KindOpenAICompat)
 	}
-	for _, s := range r.specs {
+	replaced := false
+	for i, s := range r.specs {
 		if s.ID == spec.ID {
-			return fmt.Errorf("provider %q already registered", spec.ID)
+			r.specs[i], replaced = spec, true
+			break
 		}
 	}
-	r.specs = append(r.specs, spec)
+	if !replaced {
+		r.specs = append(r.specs, spec)
+	}
 	if apiKey != "" {
 		r.keys[spec.ID] = apiKey
 	}

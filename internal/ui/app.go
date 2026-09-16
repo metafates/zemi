@@ -138,6 +138,17 @@ func (a *App) SetProgram(p *tea.Program) { a.program = p }
 // SetReload installs the Go-reserved /reload dispatch (built by main).
 func (a *App) SetReload(fn func()) { a.reload = fn }
 
+// Reload runs that dispatch for callers outside the key loop (the /reload
+// command, zemi.config.reload). It blocks on the interpreter, so it goes on
+// its own goroutine, like the palette's path.
+func (a *App) Reload() {
+	a.do(func() {
+		if a.reload != nil {
+			go a.reload()
+		}
+	})
+}
+
 // SignalBoot reports the boot outcome from the boot goroutine (posted
 // through the hook channel; safe from any goroutine).
 func (a *App) SignalBoot(err error) {

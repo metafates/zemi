@@ -142,6 +142,7 @@ func run(args []string) int {
 	reload := func() {
 		if err := rt.ForceReload(ctx, steps, host.PurgeGeneration); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
+			host.RecordError("reload", err.Error())
 			app.Notify("error", "reload", err.Error())
 			return
 		}
@@ -163,6 +164,8 @@ func run(args []string) int {
 		err := rt.Boot(ctx, steps)
 		app.SignalBoot(err)
 		if err != nil {
+			// /errors is where both the user and the agent look first
+			host.RecordError("boot", err.Error())
 			return
 		}
 		host.GoSafe("config watch", func() { watchConfig(host, dirs, reload) })
@@ -315,7 +318,9 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 					return err
 				}},
 				{Name: "reload", Hidden: true, Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
-					return nil // the composer runs /reload before the registry
+					// the composer matches /reload before the registry; this
+					// serves the palette, keymaps and zemi.config.reload
+					return h.ReloadConfig()
 				}},
 				{Name: "errors", Hidden: true, NArgs: "*", Desc: "recent runtime errors; enter opens one", GoFn: func(h *hostapi.Host, args string) error {
 					return h.OpenErrors(args)

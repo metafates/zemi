@@ -88,6 +88,13 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	// reload() replays the boot steps, so config the agent just wrote
+	// applies without the user typing /reload.
+	tb.RawSetString("reload", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.config.reload")
+		return luaResult(L, h.ReloadConfig())
+	}))
+
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.config.set")
 		path := L.CheckString(1)

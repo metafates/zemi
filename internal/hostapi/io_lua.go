@@ -96,8 +96,10 @@ func realPath(p string) string {
 func (h *Host) readJails() []string {
 	// Skill bodies (builtin and learned) live under the data dir; reading
 	// them must not ask.
+	// The log dir too: reading its own log is how the agent debugs zemi,
+	// and the records are sanitized and secret-scrubbed on the way in.
 	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir()}
+		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.Dirs.LogDir()}
 }
 
 func (h *Host) writeJails() []string {

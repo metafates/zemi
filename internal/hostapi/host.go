@@ -31,6 +31,8 @@ type UIHooks interface {
 	CloseOverlay(id string) bool
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
+	// Reload replays the boot steps on a fresh generation (/reload).
+	Reload()
 	Refresh()
 	ScrollChat(kind string)
 	AgentEvent(ev AgentEvent)
@@ -974,6 +976,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.skills", h.skillsNamespace(L), nil},
 		{"zemi.learn", h.learnNamespace(L), nil},
 		{"zemi.health", h.healthNamespace(L), nil},
+		{"zemi.errors", h.errorsNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {
@@ -981,11 +984,22 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.13.0"))
+	api.RawSetString("version", glua.LString("0.14.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
 func (h *Host) currentGen() Gen { return Gen(h.gen.Load()) }
+
+// ReloadConfig runs /reload: main owns the closure and the UI dispatches
+// it, so config zemi wrote for itself takes effect without a restart.
+func (h *Host) ReloadConfig() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("reload needs the TUI")
+	}
+	ui.Reload()
+	return nil
+}
 
 // PurgeGeneration drops every registration belonging to the live
 // generation plus config watches; the force-reload path calls it before
