@@ -333,13 +333,10 @@ Runtimepath, in order: `~/.config/zemi`, then
   re-checks namespace integrity per request class (each table still holds
   exactly the registered functions), so monkey-patching fails loudly.
 - Everything else resolves over runtimepath (`lua/?.lua`), nvim-style;
-  `package.path` and the searcher chain are Go-owned (`package.loadlib`
-  is removed, `package.preload` is frozen), and `package` itself
-  carries the same `__metatable` lock and Go integrity re-check as the
-  stdlib: `require` resolves through a Go-side cache and never
-  consults Lua-side `package.preload`/`package.loaded` at resolution
-  time, so a write to `package.loaded` cannot proxy another origin's
-  modules.
+  the `package` library is not opened (`package.loaded` and
+  `package.loaders` would hand out the unfrozen stdlib and run files from
+  `package.path`): `require` is Go-owned and resolves through a Go-side
+  cache, so no Lua-side table can proxy another origin's modules.
 
 Sandbox (what userland gets):
 
@@ -353,7 +350,7 @@ Sandbox (what userland gets):
 - Removed: `io`, `os.execute`, `os.remove`/`rename`/`exit`, `os.getenv`
   (use `zemi.env.get`), `os.setenv` (env mutation subverts the §9 env
   gates),
-  `os.tmpname` (bypasses the jail), `package.loadlib`, `setfenv`/`getfenv`
+  `os.tmpname` (bypasses the jail), the `package` library, `setfenv`/`getfenv`
   (environment swapping is how freezes get dodged), and the `channel`
   library (`channel.receive` would block the interpreter outside the
   watchdog's reach).

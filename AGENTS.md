@@ -367,7 +367,7 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
   goroutine. Completion popups float over the chat (`floatPopup`), they never reserve
   rows.
-- **System prompt** (agent.go): `basePrompt` (task, care, tools, commands that do not exit,
+- **System prompt** (agent.go): `basePrompt` (acting first, tasks, asking, care, tools,
   git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`
   for every profile, plan mode, the per-session pinned `environmentPrompt`, instruction
   files under `# Project instructions`, Lua sections, skills, digest. Anything that varies
