@@ -168,7 +168,6 @@ function zemi.command.list() end
 
 ---@class zemi.EventOpts
 ---@field id? string Name the handler so `zemi.event.off` can drop it.
----@field coalesce? boolean Collapse bursts into the last one.
 ---@field once? boolean Drop the handler after it fires.
 
 ---@class zemi.event

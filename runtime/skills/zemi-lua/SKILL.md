@@ -69,7 +69,7 @@ without asking, the reference for how a widget is written.
 | `zemi.errors` | `list()` -> what `/errors` shows, newest first |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
-| `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
+| `zemi.event` | `on(name, fn, { id, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
 | `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
