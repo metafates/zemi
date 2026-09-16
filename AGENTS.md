@@ -191,8 +191,9 @@ gate-forced ask (heredoc, env assignment) offers no always option at all.
 ### require (internal/lua/runtime.go)
 
 Modules are cached per generation by resolved file and trust class: a requirer below the
-file's origin gets its own instance run under its own origin, so project, plugin or learned
-code cannot plant functions into a table that higher-origin callbacks call. Dotted names
+file's origin gets its own instance run under its own origin (builtin modules are shared
+instead, through a deep read-only view), so project, plugin or learned code cannot plant
+functions into a table that higher-origin callbacks call. Dotted names
 search `<root>/lua` over the runtimepath: user, plugins, and the project's `.zemi` first
 but only when the requirer is project code. `./x` and `../x` resolve against the calling
 function's chunk name, which is why file chunks are compiled with their absolute path, and
