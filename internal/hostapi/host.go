@@ -974,6 +974,14 @@ func (h *Host) refuseDuringRender(L *glua.LState, what string) {
 	}
 }
 
+// refuseBelowUser raises unless user config or shipped code is calling:
+// the call acts with the user's authority, like command.run's Go commands.
+func (h *Host) refuseBelowUser(L *glua.LState, what string) {
+	if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
+		L.RaiseError("zemi.%s: only user config may call this, not %s code", what, o)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // boot step: register all zemi.* namespaces on a fresh generation
 

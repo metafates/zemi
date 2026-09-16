@@ -38,13 +38,19 @@ func TestToolDeniedEvent(t *testing.T) {
 	})
 }
 
-// TestLuaAgentsNeedUserConfig: project code cannot start agents or
-// workflows from Lua.
+// TestLuaAgentsNeedUserConfig: project code cannot act with the user's
+// authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	_, r := newTestHostDB(t)
-	for _, src := range []string{`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`} {
-		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
-			t.Fatalf("%s from project: %v", src, err)
+	for _, src := range []string{
+		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
+		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.agent.set_default("default")`,
+		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
+		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
+		`zemi.memory.add({ kind = "fact", text = "x" })`,
+	} {
+		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
+			t.Errorf("%s from project: %v", src, err)
 		}
 	}
 }

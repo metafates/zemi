@@ -539,6 +539,9 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.memory.add: spec must be a table")
 		}
+		if o := h.RT.CurrentOrigin(L); o.Rank() <= lua.OriginProject.Rank() {
+			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
+		}
 		kind := rawString(spec, "kind")
 		text := rawString(spec, "text")
 		scope := rawString(spec, "scope")

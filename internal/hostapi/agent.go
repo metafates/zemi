@@ -1571,10 +1571,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.agent.profile: spec must be a table")
 			return 0
 		}
-		if !userOrProject(h.RT.CurrentOrigin(L)) {
-			L.RaiseError("zemi.agent.profile: only user or project config may define profiles")
-			return 0
-		}
+		h.refuseBelowUser(L, "agent.profile")
 		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system")}
 		if temp, ok := spec.RawGetString("temperature").(glua.LNumber); ok {
 			t := float64(temp)
@@ -1592,10 +1589,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("set_default", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if !userOrProject(h.RT.CurrentOrigin(L)) {
-			L.RaiseError("zemi.agent.set_default: only user or project config may set the default profile")
-			return 0
-		}
+		h.refuseBelowUser(L, "agent.set_default")
 		h.agents.mu.Lock()
 		_, ok := h.agents.profiles[name]
 		if ok {
@@ -1625,6 +1619,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// runs agent.assemble handlers on this interpreter and must not wait on it.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
+		h.refuseBelowUser(L, "agent.send")
 		h.GoSafe("zemi.agent.send", func() {
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
@@ -1666,10 +1661,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	h.agentRunFns(L, tb)
 	return tb
-}
-
-func userOrProject(o lua.Origin) bool {
-	return o == lua.OriginUser || o == lua.OriginProject
 }
 
 func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {

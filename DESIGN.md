@@ -863,6 +863,7 @@ zemi.session.messages()                -- { id, role, json } per stored message
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.open(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
+                                       -- new/open/rewind: user config only
 zemi.memory.search("flaky", { scope = "project", limit = 10 })
 zemi.memory.add({ kind = "gotcha", text = "...", tags = { "pg" } })
                                        -- same host-side intake policy as §10.4
@@ -874,7 +875,8 @@ zemi.skills.list(); zemi.skills.enable("local-integration")
 The rest of the installed surface (`internal/hostapi/host.go` holds the
 list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
 `insert`, `submit`, over a snapshot the UI publishes and edits it
-applies on its own goroutine), `zemi.health` (`register(name, fn)`,
+applies on its own goroutine; edits from user config only, since a
+submitted line reaches slash commands and `!shell`), `zemi.health` (`register(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi --health`),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.win` (windows), `zemi.errors` (`list`),
