@@ -171,10 +171,7 @@ func expands(cmd string) bool {
 			return true
 		case c == '[' || c == '{':
 			// a bracket class or {a,b} / {1..3} list closed within the word
-			word := cmd[i+1:]
-			if end := strings.IndexAny(word, " \t\n;&|<>()"); end >= 0 {
-				word = word[:end]
-			}
+			word := cmd[i+1 : wordEnd(cmd, i+1)]
 			if c == '[' && strings.Contains(word, "]") {
 				return true
 			}
@@ -184,6 +181,29 @@ func expands(cmd string) bool {
 		}
 	}
 	return false
+}
+
+// wordEnd returns where the shell word running through cmd[i:] ends: at the
+// first blank or operator that is not quoted or escaped (.e["n "]v is one word).
+func wordEnd(cmd string, i int) int {
+	var quote byte
+	for ; i < len(cmd); i++ {
+		switch c := cmd[i]; {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else if c == '\\' && quote == '"' {
+				i++
+			}
+		case c == '\\':
+			i++
+		case c == '\'' || c == '"':
+			quote = c
+		case strings.IndexByte(" \t\n;&|<>()", c) >= 0:
+			return i
+		}
+	}
+	return len(cmd)
 }
 
 // safeArgs checks every argument that could name a file: plain arguments,
