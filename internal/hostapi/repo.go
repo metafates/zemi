@@ -42,8 +42,22 @@ func (h *Host) EnsureConfigRepo() {
 }
 
 // git runs one git command in dir with a timeout; stderr is folded into
-// the error.
+// the error. The repository may be untrusted, and its config names programs
+// even status and ls-files run: core.fsmonitor, filter drivers, and those
+// of submodules, so those are switched off.
 func (h *Host) git(dir string, args ...string) (string, error) {
+	safe := []string{"-c", "core.fsmonitor=false", "-c", "diff.ignoreSubmodules=all"}
+	out, _ := h.runGit(dir, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|process)$`)
+	for line := range strings.Lines(out) {
+		// the user's own drivers (git-lfs) stay on
+		if scope, key, ok := strings.Cut(strings.TrimSpace(line), "\t"); ok && scope != "global" {
+			safe = append(safe, "-c", key+"=")
+		}
+	}
+	return h.runGit(dir, append(safe, args...)...)
+}
+
+func (h *Host) runGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", args...)
