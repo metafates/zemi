@@ -1,6 +1,6 @@
 ---
 name: zemi-learning
-description: How zemi learns - memories, reflector, skill drafts, rule patches. Load when asked what zemi remembers, to remember or forget, or to write a skill.
+description: How zemi learns - memories, reflector, skill drafts. Load when asked what zemi remembers, to remember or forget, or to write a skill.
 ---
 
 # How zemi learns
@@ -14,7 +14,7 @@ description: How zemi learns - memories, reflector, skill drafts, rule patches. 
    rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
    show; the change asks the user unless autonomy is `auto` and the memory is `learned`.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
-   reflector reads it and proposes memories, permission rule patches and skill drafts.
+   reflector reads it and proposes memories and skill drafts.
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
    - `/memory`: every memory whole, rendered as markdown, with its kind, scope, origin and

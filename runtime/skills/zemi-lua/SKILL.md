@@ -64,8 +64,9 @@ without asking, the reference for how a widget is written.
 
 | Namespace | Members |
 | --- | --- |
-| `zemi.api` | `version` (API version string, currently "0.15.0") |
-| `zemi.config` | `get`, `set`, `watch`, `schema` |
+| `zemi.api` | `version` (API version string) |
+| `zemi.config` | `get`, `set`, `watch`, `schema`, `reload()` (same as `/reload`) |
+| `zemi.errors` | `list()` -> what `/errors` shows, newest first |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
@@ -79,7 +80,7 @@ without asking, the reference for how a widget is written.
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
 | `zemi.health` | `register(name, fn)`; `fn` returns `{ level = "ok"/"warn"/"error", detail = "..." }` or a detail string, and shows as a row in `/health`. It runs under the 50 ms handler deadline |
-| `zemi.lsp` | `add(name, { command, args, env, filetypes })` (user config only), `list()` -> `{ name, command, status, error }` (status: starting, running, failed, exited) |
+| `zemi.lsp` | `add(name, { command, args, env, filetypes, settings, init_options })`, `disable(name)` (both user config only), `list()` -> `{ name, command, status, error }` (status: starting, running, failed, exited) |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule({ subject, pattern, decision, match, not_match, not_match_example, scope })` (any origin may add deny and ask rules; allow and permanent rules need user config), `rules()`, `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (modes: user config only; see zemi-config) |

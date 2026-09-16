@@ -91,12 +91,12 @@ writable; prefer it over guessing. Common keys:
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
+  Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort.
 - `ui.window.unfocus` (ctrl+\): the key that takes typing back from a focused window.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
   `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). `editor.window` says
   where it opens inside tmux: `auto` or `popup` over zemi, `split` beside it, `fullscreen`
   (zemi hands over the terminal, as it always does outside tmux).
-  Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
