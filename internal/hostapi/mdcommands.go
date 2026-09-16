@@ -41,7 +41,7 @@ func (h *Host) MarkdownCommandsStep() lua.BootStep {
 			if h.Dirs.ConfigHome != "" {
 				h.addMarkdownCommands(filepath.Join(h.Dirs.ConfigHome, "commands"), lua.OriginUser, Gen(g.ID))
 			}
-			if pdir := h.Dirs.ProjectConfigDir(); h.trustedProject(pdir) {
+			if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 				h.addMarkdownCommands(filepath.Join(pdir, "commands"), lua.OriginProject, Gen(g.ID))
 			}
 			return nil

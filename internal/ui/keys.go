@@ -77,10 +77,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch key {
 		case "y":
 			a.answerTrust("trust")
-		case "n", "esc", "enter":
-			a.answerTrust("once")
-		case "d":
-			a.answerTrust("deny")
+		case "n":
+			a.answerTrust("untrust")
+		case "esc", "enter":
+			a.answerTrust("later")
 		}
 	case "perm":
 		pa := a.permAsk

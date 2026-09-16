@@ -36,12 +36,14 @@ Flags:
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: manual, plan, auto or yolo
       --output fmt    with -p: text (the reply) or json (reply, tools, usage)
+      --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
   -h, --help          show this help
 
 With -p nobody can answer a permission ask, so asks are denied unless
---mode is auto (a model approves routine actions) or yolo.
+--mode is auto (a model approves routine actions) or yolo. A project you
+have not trusted in the TUI runs untrusted with -p unless --trust is given.
 
 Environment:
   ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
@@ -61,6 +63,7 @@ type options struct {
 	resume, model string
 	mode, prompt  string
 	output        string
+	trust         *bool // --trust for this run; nil when not given
 }
 
 // parseArgs parses the command line. code is -1 when zemi should run, or
@@ -68,8 +71,8 @@ type options struct {
 func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	fs := flag.NewFlagSet("zemi", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var help, ver bool
-	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "health": &o.health, "h": &help, "help": &help, "v": &ver, "version": &ver} {
+	var help, ver, trust bool
+	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "health": &o.health, "h": &help, "help": &help, "v": &ver, "version": &ver, "trust": &trust} {
 		fs.BoolVar(p, name, false, "")
 	}
 	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "output": &o.output} {
@@ -110,6 +113,12 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	case o.output == "json" && !o.print:
 		return bad("--output json needs -p")
 	}
+	// Visit sees only flags that were set, so --trust=false forces untrusted
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "trust" {
+			o.trust = &trust
+		}
+	})
 	o.prompt = strings.TrimSpace(strings.Join(words, " "))
 	return o, -1
 }
@@ -170,6 +179,15 @@ func (o *options) readStdin(stdin *os.File) error {
 		o.prompt = strings.TrimSpace(o.prompt + "\n\n" + in)
 	}
 	return nil
+}
+
+// headlessTrust answers the trust prompt when nobody can: not now, with one
+// line saying what that turns off.
+func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
+	return func(root, _, _ string) string {
+		fmt.Fprintf(stderr, "zemi: %s is not trusted: project config, instructions and language servers are off and only read-only commands run without asking; pass --trust or run /trust in the TUI\n", root)
+		return "later"
+	}
 }
 
 // applyOptions applies the flags after boot, so they win over init.lua.
@@ -273,7 +291,11 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 			if n == 1 {
 				calls = "call"
 			}
-			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, try --mode auto\n", n, calls)
+			try := "--mode auto"
+			if !h.ProjectTrusted() {
+				try = "--trust --mode auto (auto mode settles little in an untrusted project)"
+			}
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, try %s\n", n, calls, try)
 		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)

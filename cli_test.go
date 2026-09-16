@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -54,9 +55,13 @@ func TestParseArgs(t *testing.T) {
 		{"health", []string{"--health"}, -1, options{health: true}},
 		{"flags after the prompt", []string{"-p", "hi", "--output", "json", "there"}, -1, options{print: true, output: "json", prompt: "hi there"}},
 		{"dash dash after a word", []string{"hi", "--", "-m", "x"}, -1, options{prompt: "hi -m x"}},
+		{"trust", []string{"--trust", "hi"}, -1, options{prompt: "hi", trust: new(true)}},
+		{"trust false", []string{"--trust=false"}, -1, options{trust: new(false)}},
 	} {
 		got, code := parseArgs(c.args, io.Discard, io.Discard)
-		if code != c.code || (code == -1 && got != c.want) {
+		sameTrust := (got.trust == nil) == (c.want.trust == nil) && (got.trust == nil || *got.trust == *c.want.trust)
+		got.trust, c.want.trust = nil, nil
+		if code != c.code || (code == -1 && (got != c.want || !sameTrust)) {
 			t.Errorf("%s: code=%d opts=%+v", c.name, code, got)
 		}
 	}
@@ -135,31 +140,103 @@ func TestConfigFingerprint(t *testing.T) {
 	}
 }
 
-// TestHashTreeFraming: a file whose content spells out another file does
-// not hash like the tree holding both, or trust would carry over to it.
-func TestHashTreeFraming(t *testing.T) {
-	hash := func(files map[string]string) string {
-		t.Helper()
-		dir := t.TempDir()
-		for name, body := range files {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+// TestTrustGate: --trust or an earlier "not now" wins over the saved
+// decision, which wins over the prompt; only y and n are saved, the prompt
+// opens at most once per process, and only a trusted boot loads project
+// commands.
+func TestTrustGate(t *testing.T) {
+	for _, c := range []struct {
+		name, saved string
+		session     *bool
+		answer      string // "" means the prompt must not open
+		trusted     bool
+		wantSaved   string
+	}{
+		{"saved trusted", "trusted", nil, "", true, "trusted"},
+		{"saved untrusted", "untrusted", nil, "", false, "untrusted"},
+		{"flag over saved", "trusted", new(false), "", false, "trusted"},
+		{"flag trusts", "", new(true), "", true, ""},
+		{"prompt y", "", nil, "trust", true, "trusted"},
+		{"prompt n", "", nil, "untrust", false, "untrusted"},
+		{"prompt esc", "", nil, "later", false, ""},
+	} {
+		tg, h, r := newTrustGate(t)
+		root := tg.dirs.TrustRoot()
+		if c.saved != "" {
+			if err := writeTrust(tg.dirs.TrustFile(), map[string]string{root: c.saved}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		h, err := hostapi.HashTree(dir)
-		if err != nil {
+		tg.session.Store(c.session)
+		asked := 0
+		tg.ask = func(string, string, string) string {
+			asked++
+			return c.answer
+		}
+		if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), tg.step(), h.MarkdownCommandsStep()}); err != nil {
 			t.Fatal(err)
 		}
-		return h
-	}
-	if hash(map[string]string{"a": "x\x00b\x00y"}) == hash(map[string]string{"a": "x", "b": "y"}) {
-		t.Fatal("two trees share a hash")
+		loaded := h.Commands.Lookup("x") != nil
+		again, _ := tg.decide()
+		if h.ProjectTrusted() != c.trusted || loaded != c.trusted || again != c.trusted {
+			t.Errorf("%s: trusted=%v loaded=%v again=%v", c.name, h.ProjectTrusted(), loaded, again)
+		}
+		if want := map[bool]int{true: 1, false: 0}[c.answer != ""]; asked != want {
+			t.Errorf("%s: prompt opened %d times", c.name, asked)
+		}
+		if got := readTrust(tg.dirs.TrustFile())[root]; got != c.wantSaved {
+			t.Errorf("%s: saved %q", c.name, got)
+		}
 	}
 }
 
-// TestProjectTrustResetOnRefusal: a reload whose changed tree is refused
-// loads no project markdown command, even after an earlier trusted boot.
-func TestProjectTrustResetOnRefusal(t *testing.T) {
+// TestTrustCommand: /trust saves the answer and reloads only when the
+// decision changed; not now changes nothing.
+func TestTrustCommand(t *testing.T) {
+	for _, c := range []struct {
+		answer, wantSaved string
+		reloads           bool
+	}{
+		{"trust", "trusted", true},
+		{"untrust", "untrusted", false},
+		{"later", "", false},
+	} {
+		tg, _, _ := newTrustGate(t)
+		tg.ask = func(_, _, state string) string {
+			if state != "not trusted" {
+				t.Errorf("/trust shows state %q", state)
+			}
+			return c.answer
+		}
+		reloaded := make(chan struct{}, 1)
+		tg.command(func() { reloaded <- struct{}{} })()
+		select {
+		case <-reloaded:
+			if !c.reloads {
+				t.Errorf("%s: reloaded", c.answer)
+			}
+		case <-time.After(500 * time.Millisecond):
+			if c.reloads {
+				t.Errorf("%s: no reload", c.answer)
+			}
+		}
+		if got := readTrust(tg.dirs.TrustFile())[tg.dirs.TrustRoot()]; got != c.wantSaved {
+			t.Errorf("%s: saved %q", c.answer, got)
+		}
+	}
+}
+
+// TestHeadlessTrust: a headless run with no decision says what is off and
+// how to turn it on, and never trusts.
+func TestHeadlessTrust(t *testing.T) {
+	var out strings.Builder
+	if got := headlessTrust(&out)("/repo", "/repo", ""); got != "later" || !strings.Contains(out.String(), "/repo is not trusted") || !strings.Contains(out.String(), "--trust") {
+		t.Fatalf("answer %q, stderr %q", got, out.String())
+	}
+}
+
+func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
+	t.Helper()
 	project := t.TempDir()
 	cmds := filepath.Join(project, ".zemi", "commands")
 	if err := os.MkdirAll(cmds, 0o755); err != nil {
@@ -172,18 +249,5 @@ func TestProjectTrustResetOnRefusal(t *testing.T) {
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
-	hash, err := hostapi.HashTree(dirs.ProjectConfigDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.SetProjectTrusted(hash)
-	once := func(string, string) string { return "once" }
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), projectConfigStep(h, once, dirs), h.MarkdownCommandsStep()}); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range h.Commands.List() {
-		if c.Name == "x" {
-			t.Fatal("refused project command loaded")
-		}
-	}
+	return &trustGate{h: h, dirs: dirs}, h, r
 }

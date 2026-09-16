@@ -416,23 +416,29 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	}
 }
 
-// TestTrustAnswers: the project trust prompt maps y, n and d to trust,
-// not now and never for this tree hash; enter is the safe not now.
+// TestTrustAnswers: enter is the safe not now; trusting takes an explicit y.
 func TestTrustAnswers(t *testing.T) {
 	for _, c := range []struct {
 		key        tea.KeyPressMsg
 		want, name string
 	}{
 		{tea.KeyPressMsg{Code: 'y', Text: "y"}, "trust", "y"},
-		{tea.KeyPressMsg{Code: 'n', Text: "n"}, "once", "n"},
-		{tea.KeyPressMsg{Code: 'd', Text: "d"}, "deny", "d"},
-		{tea.KeyPressMsg{Code: tea.KeyEnter}, "once", "enter"},
+		{tea.KeyPressMsg{Code: 'n', Text: "n"}, "untrust", "n"},
+		{tea.KeyPressMsg{Code: tea.KeyEscape}, "later", "esc"},
+		{tea.KeyPressMsg{Code: tea.KeyEnter}, "later", "enter"},
+		{tea.KeyPressMsg{Code: 'd', Text: "d"}, "", "d"},
 	} {
 		app, _ := bootAgentApp(t, 80, 20)
 		done := make(chan string, 1)
-		go func() { done <- app.AskTrust("/proj/.zemi", "abc123") }()
+		go func() { done <- app.AskTrust("/proj", "/proj", "") }()
 		waitPrompt(t, app, func() bool { return app.trust != nil })
 		app.Update(c.key)
+		if c.want == "" {
+			if app.trust == nil || len(done) != 0 {
+				t.Errorf("%s answered the prompt", c.name)
+			}
+			continue
+		}
 		if got := <-done; got != c.want {
 			t.Errorf("%s answered %q, want %q", c.name, got, c.want)
 		}
@@ -447,7 +453,7 @@ func TestPromptKeyGrace(t *testing.T) {
 		ask        func(app *App) string
 		open       func(app *App) bool
 	}{
-		{"trust", "trust", func(app *App) string { return app.AskTrust("/proj/.zemi", "abc123") }, func(app *App) bool { return app.trust != nil }},
+		{"trust", "trust", func(app *App) string { return app.AskTrust("/proj", "/proj", "") }, func(app *App) bool { return app.trust != nil }},
 		{"perm", "user:once", func(app *App) string {
 			_, by := app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make deploy"})
 			return by
@@ -482,7 +488,7 @@ func TestPromptWaitsOnFullQueue(t *testing.T) {
 		app.Refresh()
 	}
 	done := make(chan string, 1)
-	go func() { done <- app.AskTrust("/proj/.zemi", "abc123") }()
+	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
 	time.Sleep(50 * time.Millisecond) // let the ask reach the full queue before it drains
 	waitPrompt(t, app, func() bool { return app.trust != nil })
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})

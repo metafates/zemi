@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -81,26 +83,28 @@ func run(args []string) int {
 
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	host.Version = versionString()
-	// Headless: nothing to quit, and an untrusted project config is skipped
-	// instead of asked about. Say so, or the run looks like it applied the
-	// project's setup.
+	// Headless: nothing to quit, and a project with no saved decision runs
+	// untrusted instead of asking. Say so, or the run looks like it applied
+	// the project's setup.
 	quit := func() {}
-	askTrust := func(dir, _ string) string {
-		fmt.Fprintf(os.Stderr, "zemi: %s is not trusted yet and was skipped; start zemi without -p once to review it\n", dir)
-		return "once"
+	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(os.Stderr)}
+	if opts.trust != nil {
+		trust.session.Store(opts.trust)
 	}
 	var app *ui.App
 	if !opts.print && !opts.health {
 		app = ui.NewApp(host, log)
 		host.SetUIHooks(app)
-		quit, askTrust = app.Quit, app.AskTrust
+		quit, trust.ask = app.Quit, app.AskTrust
 	}
 	host.EnsureConfigRepo()
 
+	// reload is set before boot starts; /trust calls it after boot
+	var reload func()
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
 		host.PermissionsLoadStep(),
-		builtinCommandsStep(host, quit),
+		builtinCommandsStep(host, quit, trust.command(func() { reload() })),
 		host.MemoryCommandsStep(),
 		host.ReflectorCommandsStep(),
 		host.SkillsCommandsStep(),
@@ -113,7 +117,7 @@ func run(args []string) int {
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 		softStep(host, host.SkillsAuthoredHooksStep()),
-		softStep(host, projectConfigStep(host, askTrust, dirs)),
+		softStep(host, trust.step()),
 		host.MarkdownCommandsStep(),
 		readyStep(host, !opts.print),
 		host.SkillsLearnedHooksStep(),
@@ -139,7 +143,7 @@ func run(args []string) int {
 
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
-	reload := func() {
+	reload = func() {
 		if err := host.ForceReload(ctx, steps); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			host.RecordError("reload", err.Error())
@@ -209,12 +213,24 @@ func run(args []string) int {
 	return 0
 }
 
-// watchConfig reloads when files under the user or project config change,
-// once no turn is running (an edit made mid-turn applies after it).
+// watchConfig reloads when files under the user or a trusted project's
+// config change, once no turn is running (an edit made mid-turn applies
+// after it).
 func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
-	last := configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir())
+	fingerprint := func() (string, bool) {
+		if h.ProjectTrusted() {
+			return configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()), true
+		}
+		return configFingerprint(dirs.ConfigHome), false
+	}
+	last, trusted := fingerprint()
 	for range time.Tick(time.Second) {
-		if fp := configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()); fp != last && !h.AgentActive() {
+		fp, t := fingerprint()
+		switch {
+		case t != trusted:
+			// /trust reloaded already; only the watched trees changed
+			last, trusted = fp, t
+		case fp != last && !h.AgentActive():
 			last = fp
 			reload()
 		}
@@ -249,7 +265,7 @@ func configFingerprint(roots ...string) string {
 
 // builtinCommandsStep registers the Go-owned slash commands; builtin origin
 // lets user config replace them.
-func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
+func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 	return lua.BootStep{
 		Name: "builtin commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -327,6 +343,10 @@ func builtinCommandsStep(h *hostapi.Host, quit func()) lua.BootStep {
 				{Name: "errors", Hidden: true, NArgs: "*", Desc: "recent runtime errors; enter opens one", GoFn: func(h *hostapi.Host, args string) error {
 					return h.OpenErrors(args)
 				}},
+				{Name: "trust", Desc: "trust this project or stop trusting it", GoFn: func(*hostapi.Host, string) error {
+					trust()
+					return nil
+				}},
 				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()
 				}},
@@ -397,70 +417,103 @@ func pluginsStep(dirs config.Dirs) lua.BootStep {
 	}
 }
 
-// projectConfigStep loads <project>/.zemi/init.lua behind the one-time
-// trust prompt: the config tree is hashed (symlinks refused), the hash
-// stored in the state dir, and a changed hash re-prompts before load
-// (DESIGN §5).
-func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string, dirs config.Dirs) lua.BootStep {
+// trustGate decides whether the user trusts the project (DESIGN §5): a
+// decision held for this process (--trust, "not now"), then the saved one
+// in the state dir, then the prompt. Trust is keyed by Dirs.TrustRoot.
+type trustGate struct {
+	h    *hostapi.Host
+	dirs config.Dirs
+	ask  func(root, cwd, state string) string
+	// session outranks the saved decision; nil when there is none
+	session atomic.Pointer[bool]
+}
+
+// step records the decision and loads <project>/.zemi/init.lua when the
+// project is trusted. Agents, commands and workflows read the decision later.
+func (tg *trustGate) step() lua.BootStep {
 	return lua.BootStep{
-		Name: "project config",
+		Name: "project trust",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			// Every boot decides again: a reload whose changed tree the user
-			// refuses must not keep the trust given to the tree before it.
-			h.SetProjectTrusted("")
-			pdir := dirs.ProjectConfigDir()
-			if pdir == "" {
-				return nil
-			}
-			// Agents, commands and workflows are project config too: any of
-			// them triggers the same trust prompt as init.lua.
-			initPath := filepath.Join(pdir, "init.lua")
-			present := false
-			for _, name := range []string{"init.lua", "agents", "commands", "workflows"} {
-				if _, err := os.Stat(filepath.Join(pdir, name)); err == nil {
-					present = true
-				}
-			}
-			if !present {
-				return nil
-			}
-			hash, err := hostapi.HashTree(pdir)
-			if err != nil {
+			trusted, err := tg.decide()
+			tg.h.SetProjectTrusted(trusted)
+			if !trusted {
 				return err
 			}
-			// The trust file maps the dir to the approved hash, or to "!"+hash
-			// for a tree the user denied for good; a changed tree asks again.
-			trusted := readTrust(dirs.TrustFile())
-			switch trusted[pdir] {
-			case hash:
-			case "!" + hash:
-				h.Log.Info("trust", "project config denied earlier; not loading", map[string]any{"dir": pdir})
-				return nil
-			default:
-				answer := askTrust(pdir, hash)
-				if answer == "once" {
-					h.Log.Warn("trust", "project config refused; not loading", map[string]any{"dir": pdir})
-					return nil
-				}
-				trusted[pdir] = hash
-				if answer == "deny" {
-					trusted[pdir] = "!" + hash
-				}
-				if err := writeTrust(dirs.TrustFile(), trusted); err != nil {
-					return err
-				}
-				if answer == "deny" {
-					h.Log.Warn("trust", "project config denied; not loading", map[string]any{"dir": pdir})
-					return nil
-				}
+			init := filepath.Join(tg.dirs.ProjectConfigDir(), "init.lua")
+			if _, serr := os.Stat(init); serr != nil {
+				return err
 			}
-			h.SetProjectTrusted(hash)
-			if _, err := os.Stat(initPath); err != nil {
-				return nil
-			}
-			return lua.LoadFileStep("project init", initPath, lua.OriginProject).Run(ctx, r, g)
+			return errors.Join(err, lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g))
 		},
 	}
+}
+
+func (tg *trustGate) decide() (bool, error) {
+	if s := tg.session.Load(); s != nil {
+		return *s, nil
+	}
+	root := tg.dirs.TrustRoot()
+	if v, ok := readTrust(tg.dirs.TrustFile())[root]; ok {
+		return v == "trusted", nil
+	}
+	if unsaved(root) {
+		return false, nil
+	}
+	return tg.record(root, tg.ask(root, tg.dirs.ProjectDir, ""))
+}
+
+// record applies a prompt answer: trust and untrust are saved, "later" holds
+// for this process only (a reload does not ask again, the next start does).
+func (tg *trustGate) record(root, answer string) (bool, error) {
+	ok := answer == "trust"
+	if answer != "later" && !unsaved(root) {
+		saved := readTrust(tg.dirs.TrustFile())
+		saved[root] = map[bool]string{true: "trusted", false: "untrusted"}[ok]
+		err := writeTrust(tg.dirs.TrustFile(), saved)
+		if err == nil {
+			tg.session.Store(nil)
+			return ok, nil
+		}
+		tg.session.Store(&ok)
+		return ok, err
+	}
+	tg.session.Store(&ok)
+	return ok, nil
+}
+
+// command is /trust: it always opens the prompt, so neither Lua nor the
+// model can change trust without the user's keypress.
+func (tg *trustGate) command(reload func()) func() {
+	return func() {
+		// the prompt blocks until answered: off the UI goroutine
+		tg.h.GoSafe("trust", func() {
+			root, was := tg.dirs.TrustRoot(), tg.h.ProjectTrusted()
+			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: "trusted", false: "not trusted"}[was])
+			if answer == "later" {
+				return
+			}
+			ok, err := tg.record(root, answer)
+			if err != nil {
+				tg.h.Notify("error", "trust", err.Error())
+			}
+			if ok != was {
+				reload()
+			}
+		})
+	}
+}
+
+// unsaved reports a root no decision is saved for: the home directory and
+// the filesystem root hold everything, so they stay untrusted unless /trust
+// or --trust says otherwise for one run.
+func unsaved(root string) bool {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		if h, err := filepath.EvalSymlinks(home); err == nil {
+			home = h
+		}
+	}
+	return root == "" || filepath.Dir(root) == root || (err == nil && root == home)
 }
 
 func readTrust(path string) map[string]string {
@@ -478,7 +531,11 @@ func writeTrust(path string, m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // readyStep emits app.ready. Print mode skips the startup reflection: the

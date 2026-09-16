@@ -198,7 +198,7 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
-`/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
+`/usage`, `/trust`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/reflect`,
 `/reload`, `/win` (`list`, `focus`, `hide`, `show <id>`, `close <id|all>` for windows). Arguments:
 
@@ -277,8 +277,10 @@ subdirectory up to the `.git` root), like `.claude/` or `.crush/`:
 The same `agents/`, `commands/` and `workflows/` directories work under
 `~/.config/zemi/` for every project.
 
-It loads after the user answers the trust prompt (`y` trust, `n` not now, `d` never for
-this version of the files); any change to files under `.zemi/` asks again. Project code
+It loads only in a project the user trusts. The first start in a repository asks once
+(`y` trust, `n` don't trust, both saved; esc or enter: not now, asked again next start),
+and `/trust` asks again any time. The decision covers the whole repository, its linked
+worktrees included, and later changes to `.zemi/` do not ask again. Project code
 cannot register providers, MCP or LSP servers, allow or permanent rules, permission modes,
 `tool.pre` rewrites, builtin tool names or `agent.assemble` sections, cannot set settings,
 call `zemi.agent.run`, `zemi.agent.send`, `zemi.agent.profile`, `zemi.workflow.run`,

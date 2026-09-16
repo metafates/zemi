@@ -90,7 +90,7 @@ func (h *Host) workflows() []Workflow {
 		seen[name] = true
 		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: "builtin"})
 	}
-	if pdir := h.Dirs.ProjectConfigDir(); h.trustedProject(pdir) {
+	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 		scan(filepath.Join(pdir, "workflows"), "project")
 	}
 	return out
@@ -120,9 +120,9 @@ func (h *Host) workflowSource(name string) (string, error) {
 		}
 		names = append(names, w.Name)
 	}
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.trustedProject(pdir) {
+	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", fmt.Errorf("workflow %q is in %s, which is not trusted yet: the user runs /reload and trusts it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
+			return "", fmt.Errorf("workflow %q is in %s, and this project is not trusted: the user runs /trust to load it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
 		}
 	}
 	if len(names) == 0 {

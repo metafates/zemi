@@ -50,24 +50,24 @@ var hostStyles = map[string]uv.Style{
 	"Host:BtnHover":    {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c), Attrs: uv.AttrBold},
 }
 
-// trustPrompt is the Go-owned project-config trust overlay (DESIGN §5, §8):
-// first load of <project>/.zemi, or a changed tree hash. Its chrome is host
-// drawn; no Lua participates.
+// trustPrompt is the Go-owned project trust overlay (DESIGN §5, §8): the
+// first start in a project with no saved decision, or /trust. Its chrome is
+// host drawn; no Lua participates.
 type trustPrompt struct {
-	path   string
-	hash   string
-	answer chan string
-	opened time.Time // a reload can open it mid-typing (permGrace)
+	root, cwd string
+	state     string // the current decision, shown by /trust; "" at boot
+	answer    chan string
+	opened    time.Time // a reload can open it mid-typing (permGrace)
 }
 
-// AskTrust blocks the caller (a boot step) until the user answers "trust",
-// "once" (not now) or "deny" (never for this tree hash). It is safe from
-// any goroutine: the prompt travels through the hook channel and the
-// answer comes back on a buffered channel.
-func (a *App) AskTrust(path, hash string) string {
+// AskTrust blocks the caller (a boot step or /trust) until the user answers
+// "trust", "untrust" or "later" (not now). It is safe from any goroutine:
+// the prompt travels through the hook channel and the answer comes back on
+// a buffered channel.
+func (a *App) AskTrust(root, cwd, state string) string {
 	ch := make(chan string, 1)
 	a.await(func() tea.Cmd {
-		a.trust = &trustPrompt{path: path, hash: hash, answer: ch, opened: a.now()}
+		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now()}
 		return nil
 	})
 	return <-ch
@@ -86,17 +86,24 @@ func (a *App) answerTrust(answer string) {
 // answer keys use fixed host styles via the "Host:*" highlight names, so no
 // theme group can forge or restyle them, and no Lua text is rendered inside.
 func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
-	short := tp.hash
-	if len(short) > 12 {
-		short = short[:12]
+	var body [][]hostapi.Segment
+	text := func(s string) {
+		body = append(body, wrapSegs([]hostapi.Segment{{Text: s}}, boxInner(w))...)
 	}
-	body := [][]hostapi.Segment{
-		{{Text: tp.path}},
-		{{Text: "hash: " + short}},
-		{{Text: ""}},
-		hintLine("y", "trust this config", "n", "not now", "d", "never for this version"),
+	text(tp.root)
+	if tp.cwd != "" && tp.cwd != tp.root {
+		text("(started in " + tp.cwd + "; trust covers the whole repository)")
 	}
-	return hostBox(" Trust project config? ", "Host:Title", "", body, w)
+	text("")
+	text("Trusted: zemi loads .zemi config, AGENTS.md/CLAUDE.md and language servers, and auto mode edits files and runs build and test commands without asking. Those can run any code in this repository.")
+	text("Not trusted: none of that loads; only commands that just read run without asking.")
+	text("")
+	body = append(body, hintLine("y", "trust", "n", "don't trust", "esc", "not now"))
+	badge := ""
+	if tp.state != "" {
+		badge = " now " + tp.state + " "
+	}
+	return hostBox(" Trust this project? ", "Host:Title", badge, body, w)
 }
 
 // ---------------------------------------------------------------------------
