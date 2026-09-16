@@ -161,9 +161,7 @@ edits **inside the jail** that are not secret-shaped, `perm.SafeCommand` command
 then runs a one-shot screening model, caching approvals and falling back to the user ask
 with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
 never settled locally: the URL is the model's. `h.secretPath` matches the secret shapes on
-the resolved path too, so a symlink cannot hide one, and the model's `lua` tool runs as
-`learned` origin, the lowest trust, so it cannot widen permissions, add MCP servers or read
-secret-shaped env names. `SafeCommand` is an
+the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
 project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
@@ -326,9 +324,9 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
   the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
   `safeCommandPath` include it.
-- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as `learned` origin (the
-  lowest trust) on the interpreter (10s ceiling), in a wrapper env whose `print` is captured, after a `tool.lua`
-  check that rules and modes answer; plan mode flips its allows to ask. Main agent only.
+- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as `user` origin with
+  every permission and never asks, on the interpreter (10s ceiling), in a wrapper env whose
+  `print` is captured; only `tool.pre` hooks can deny it. Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
   which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
   learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
@@ -408,7 +406,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.13.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.19.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
