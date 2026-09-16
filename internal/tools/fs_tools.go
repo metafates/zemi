@@ -117,7 +117,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		} else {
 			b.WriteString("exit: " + err.Error())
 			if p != nil && p.Sandboxed != nil {
-				b.WriteString(SandboxHint(raw, err))
+				b.WriteString(p.sandboxHint(raw, err))
 			}
 		}
 		b.WriteString(note)

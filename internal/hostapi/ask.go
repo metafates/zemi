@@ -101,6 +101,9 @@ func (h *Host) askHook() tools.Asker {
 		}
 		ui := h.hooks()
 		if ui == nil {
+			if req.Unsandboxed {
+				return resolved(false, "unsandboxed")
+			}
 			return resolved(false, "default")
 		}
 		label, rules := h.alwaysChoice(req)

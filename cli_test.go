@@ -114,6 +114,25 @@ func TestTurnReport(t *testing.T) {
 	}
 }
 
+func TestDeniedHint(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		unsandboxed int
+		trusted     bool
+		base, want  string
+	}{
+		{"manual", 0, true, "manual", "try --mode auto"},
+		{"untrusted", 0, false, "auto", "try --trust --mode auto"},
+		{"already auto", 0, true, "auto", "auto mode left it to the user"},
+		{"outside the sandbox", 1, true, "auto", "outside the sandbox needs the TUI"},
+	} {
+		got := deniedHint(report{denied: 1, unsandboxed: c.unsandboxed}, c.trusted, c.base)
+		if !strings.Contains(got, c.want) || (c.base == "auto" && c.trusted && strings.Contains(got, "--mode auto")) {
+			t.Errorf("%s: %q", c.name, got)
+		}
+	}
+}
+
 // TestConfigFingerprint: edits to config files change the fingerprint,
 // zemi's own permissions.lua and git data do not.
 func TestConfigFingerprint(t *testing.T) {

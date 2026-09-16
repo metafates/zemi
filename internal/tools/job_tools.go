@@ -263,7 +263,10 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		j.mu.Lock()
 		werr, note := j.werr, j.note
 		j.mu.Unlock()
-		b.WriteString(SandboxHint(out+errOut, werr) + note)
+		// the whole retained tail: a denial may have been read while it ran
+		so, _ := j.stdout.Snapshot()
+		se, _ := j.stderr.Snapshot()
+		b.WriteString(p.sandboxHint(so+se, werr) + note)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

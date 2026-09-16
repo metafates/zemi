@@ -291,11 +291,13 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 			if n == 1 {
 				calls = "call"
 			}
-			try := "--mode auto"
-			if !h.ProjectTrusted() {
-				try = "--trust --mode auto (auto mode settles little in an untrusted project)"
+			base := ""
+			for _, d := range h.PermModeList() {
+				if d.Name == h.PermMode() {
+					base = d.Base
+				}
 			}
-			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, try %s\n", n, calls, try)
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted(), base))
 		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)
@@ -305,6 +307,20 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 		return 1
 	}
 	return 0
+}
+
+// deniedHint says what would let print mode's denied calls through.
+func deniedHint(rep report, trusted bool, base string) string {
+	const rule = "an allow rule (zemi.permission.rule in init.lua) settles it"
+	switch {
+	case rep.unsandboxed > 0:
+		return "and running outside the sandbox needs the TUI; " + rule
+	case !trusted:
+		return "try --trust --mode auto (auto mode settles little in an untrusted project)"
+	case base == "auto":
+		return "and auto mode left it to the user; " + rule
+	}
+	return "try --mode auto"
 }
 
 // report is the --output json document for one print-mode turn.
@@ -321,7 +337,8 @@ type report struct {
 		CostUSD float64 `json:"cost_usd"`
 	} `json:"usage"`
 
-	denied int // tool calls the permission gate refused; text mode notes them
+	denied      int // tool calls the permission gate refused; text mode notes them
+	unsandboxed int // of those, asks to run outside the sandbox
 }
 
 type reportTool struct {
@@ -343,6 +360,9 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "tool":
 			if m.Status != "ok" && strings.Contains(m.Output, "permission denied") {
 				rep.denied++
+				if strings.Contains(m.Output, "permission denied (unsandboxed)") {
+					rep.unsandboxed++
+				}
 			}
 			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
 		case m.Kind == "error":

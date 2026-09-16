@@ -1497,7 +1497,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			}
 			return nil
 		},
-		SandboxParam: h.sandboxLive(),
+		SandboxParam: h.sandboxLive() && h.hooks() != nil,
 		Guard:        h.guardSandbox,
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})

@@ -515,7 +515,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 		},
 		Required: []string{"action"},
 	}
-	if t.h.sandboxLive() {
+	if t.h.sandboxLive() && t.h.hooks() != nil {
 		info.Parameters["sandbox"] = tools.SandboxProp()
 	}
 	return info

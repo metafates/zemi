@@ -4,6 +4,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,6 +57,33 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 	}
 	if out, _, _, _ := j.since(); out != "" {
 		t.Fatalf("nothing written since the drop: %q", out)
+	}
+}
+
+// TestJobReadSandboxHint: a sandboxed job's denial read while it ran still
+// gets the hint once it exits, and the sandbox: false retry is offered only
+// where someone can answer the ask.
+func TestJobReadSandboxHint(t *testing.T) {
+	for _, param := range []bool{true, false} {
+		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param}
+		out := &proc.Buffer{Max: 1 << 20}
+		wait := make(chan error, 1)
+		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, func() string { return "\nguard note" })
+		out.Write([]byte("touch: x: Operation not permitted\n"))
+		read := func() string {
+			res, _ := runJobRead(context.Background(), p, map[string]any{"id": id})
+			return res.Content
+		}
+		if got := read(); !strings.Contains(got, "not permitted") {
+			t.Fatalf("while running: %q", got)
+		}
+		wait <- errors.New("exit status 1")
+		j, _ := p.Jobs.Get(id)
+		<-j.done
+		got := read()
+		if !strings.Contains(got, "The sandbox may have blocked this") || strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
+			t.Errorf("param %v: after exit %q", param, got)
+		}
 	}
 }
 

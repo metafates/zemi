@@ -151,7 +151,7 @@ type Pipeline struct {
 	// nil or a nil result = unconfined (no backend, yolo).
 	Sandbox func() *sandbox.Policy
 	// SandboxParam gives bash, job_start and window the sandbox: false
-	// escape; set while a backend is live.
+	// escape; set while a backend is live and someone can answer the ask.
 	SandboxParam bool
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
@@ -235,11 +235,15 @@ func (p *Pipeline) guard() func() string {
 	return p.Guard(*p.Sandboxed)
 }
 
-// SandboxHint is the line a confined command's failure gets when the
-// sandbox may be why; "" otherwise.
-func SandboxHint(out string, err error) string {
+// sandboxHint is the line a confined command's failure gets when the
+// sandbox may be why; "" otherwise. The sandbox: false retry is offered only
+// where someone can answer its ask.
+func (p *Pipeline) sandboxHint(out string, err error) string {
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
+	}
+	if !p.SandboxParam {
+		return "\nThe sandbox may have blocked this: " + sandboxLimits() + "."
 	}
 	return "\nThe sandbox may have blocked this: " + sandboxLimits() + ". If the command needs more, call it again with sandbox: false, which asks the user."
 }
