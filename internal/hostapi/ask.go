@@ -56,8 +56,11 @@ func (h *Host) askHook() tools.Asker {
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
 			// gives its own reason
-			if req.Subject == "tool.bash" {
+			switch req.Subject {
+			case "tool.bash":
 				req.Reason = "run outside the sandbox"
+			case "tool.window":
+				req.Reason += " (not sandboxed)"
 			}
 		case def.Base == "plan":
 			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {

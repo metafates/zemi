@@ -658,7 +658,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Keys, Reason: "press keys in window " + w.Title()}); v.Decision != perm.Allow {
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Keys, Reason: "press keys in window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		if err := w.SendKeys(in.Keys); err != nil {
@@ -687,7 +687,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		// a click acts like a key press, so it asks the same gate as keys
 		arg := fmt.Sprintf("%s %s %d,%d", cmp.Or(in.MKind, "click"), cmp.Or(in.Button, "left"), mx, my)
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: "use the mouse in window " + w.Title()}); v.Decision != perm.Allow {
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: "use the mouse in window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		for _, ev := range evs {
@@ -699,8 +699,9 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		// typed text is a command to whatever runs there: the user sees it
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Text, Reason: "type into window " + w.Title()}); v.Decision != perm.Allow {
+		// typed text is a command to whatever runs there: only a sandboxed
+		// program's input is a mode's to settle
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Text, Reason: "type into window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		if err := w.SendText(in.Text); err != nil {

@@ -64,6 +64,8 @@ type Window struct {
 	Cmd    string
 	Owner  string
 	Origin string
+	// Sandboxed says the program started under Spec.Wrap
+	Sandboxed bool
 
 	lmu    sync.Mutex
 	layout Layout
@@ -146,7 +148,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin,
+		ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin, Sandboxed: spec.Wrap != nil,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),

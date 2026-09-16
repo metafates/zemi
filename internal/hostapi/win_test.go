@@ -2,6 +2,8 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -113,6 +115,45 @@ func TestWindowTool(t *testing.T) {
 	}
 	if resp := run(`{"action":"read","id":1}`); !resp.IsError {
 		t.Fatalf("closed window must be gone: %+v", resp)
+	}
+}
+
+// TestWindowInputSettling: auto mode's screener settles input only for a
+// window that runs sandboxed; typing into an unconfined one asks the user.
+func TestWindowInputSettling(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	reflectStub(t, h, "SAFE")
+	for _, c := range []struct {
+		name  string
+		wrap  func(*exec.Cmd) error
+		asked bool
+	}{
+		{"unconfined", nil, true},
+		{"sandboxed", func(*exec.Cmd) error { return nil }, false},
+	} {
+		w, err := h.openWindow(win.Spec{Cmd: "cat >/dev/null", Owner: "user", Wrap: c.wrap})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ui.asked = nil
+		for _, in := range []string{`"action":"send","text":"x"}`, `"action":"keys","keys":"x"}`, `"action":"mouse","x":0,"y":0}`} {
+			in = fmt.Sprintf(`{"id":%d,`, w.ID) + in
+			resp, err := h.windowTool().Run(context.Background(), fantasy.ToolCall{ID: "w", Name: "window", Input: in})
+			if err != nil || resp.IsError != c.asked {
+				t.Errorf("%s %s: %+v %v", c.name, in, resp, err)
+			}
+		}
+		if asked := len(ui.asked) == 3; asked != c.asked || (asked && !strings.Contains(ui.asked[0].Reason, "not sandboxed")) {
+			t.Errorf("%s: asked %+v", c.name, ui.asked)
+		}
+		h.Wins.Close(w.ID)
 	}
 }
 
