@@ -338,9 +338,9 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	// only a file that is CRLF throughout: one stray \r\n must not rewrite
-	// every other line
-	if n := bytes.Count(data, []byte("\r\n")); n > 0 && n == bytes.Count(data, []byte("\n")) {
+	// a mixed file takes its majority ending, so a stray line of the other
+	// kind never rewrites every line
+	if n := bytes.Count(data, []byte("\r\n")); 2*n > bytes.Count(data, []byte("\n")) {
 		out = strings.ReplaceAll(out, "\n", "\r\n")
 	}
 	p.checkpoint(path)
