@@ -993,6 +993,10 @@ func (h *Host) currentGen() Gen { return Gen(h.gen.Load()) }
 // ReloadConfig runs /reload: main owns the closure and the UI dispatches
 // it, so config zemi wrote for itself takes effect without a restart.
 func (h *Host) ReloadConfig() error {
+	// config that reloads while it is loading would replay itself forever
+	if h.RT.Booting() {
+		return errors.New("config is still loading; a reload from config would repeat forever")
+	}
 	ui := h.hooks()
 	if ui == nil {
 		return errors.New("reload needs the TUI")

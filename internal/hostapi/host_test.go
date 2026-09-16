@@ -109,6 +109,37 @@ func TestNamespaceVersion(t *testing.T) {
 	`)
 }
 
+// TestReloadDuringBootRefused: config calling zemi.config.reload() while it
+// is loading would replay the very steps it runs in, over and over.
+func TestReloadDuringBootRefused(t *testing.T) {
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	// A boot step is where config code runs. It cannot go through the queue
+	// here: boot starts the dispatcher only after the steps, so a chunk run
+	// from inside one would wait on a loop that has not started.
+	cfg := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+		if err := h.ReloadConfig(); err == nil {
+			t.Error("a reload asked for while config loads must be refused")
+		}
+		return nil
+	}}
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), cfg}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if ui.reloads != 0 {
+		t.Fatalf("boot dispatched %d reloads", ui.reloads)
+	}
+	if err := h.ReloadConfig(); err != nil { // once boot is done it works
+		t.Fatalf("reload after boot: %v", err)
+	}
+	if ui.reloads != 1 {
+		t.Fatalf("reloads=%d, want 1", ui.reloads)
+	}
+}
+
 // TestErrorsAndReloadFromLua: the agent reads zemi's own failures and
 // applies config it just wrote, both through namespaces the lua tool can
 // reach, so debugging zemi does not depend on the user reading the screen.

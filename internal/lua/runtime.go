@@ -24,9 +24,10 @@ type Runtime struct {
 	paths PathClasses
 	rfs   fs.FS // embedded runtime/lua tree
 
-	hot atomic.Bool
-	cur atomic.Pointer[Generation]
-	seq atomic.Int64
+	hot     atomic.Bool
+	booting atomic.Bool
+	cur     atomic.Pointer[Generation]
+	seq     atomic.Int64
 
 	originMu sync.Mutex
 	frames   []frame
@@ -171,6 +172,8 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 }
 
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
+	r.booting.Store(true)
+	defer r.booting.Store(false)
 	sb, err := NewSandbox(r.CurrentOrigin)
 	if err != nil {
 		return nil, err
@@ -206,6 +209,11 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	go gen.loop()
 	return gen, nil
 }
+
+// Booting reports whether boot steps are running. Config chunks run inside
+// them, so a reload asked for by one would replay the steps it is running
+// in, over and over.
+func (r *Runtime) Booting() bool { return r.booting.Load() }
 
 // Do enqueues fn on the current generation and waits for the result.
 // ceiling == 0 selects the class default.
