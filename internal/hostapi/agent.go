@@ -870,13 +870,11 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Lock()
 	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err)
 	ag.holdOverflow, ag.holdImages = false, false
+	model := ag.turnModel
 	ag.mu.Unlock()
 	if hold {
 		return // sendCompacting compacts and resends, or reports it
 	}
-	ag.mu.Lock()
-	model := ag.turnModel
-	ag.mu.Unlock()
 	if model == "" {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
@@ -884,9 +882,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.sessCost += cost
-	// cache reads and writes are input the session paid for: leaving them
-	// out would show a token total the cost does not match
-	ag.sessIn += usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
+	ag.sessIn += billedInput(usage)
 	ag.sessOut += usage.OutputTokens
 	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
@@ -929,8 +925,15 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.EmitAsync("agent.finish", map[string]any{})
 	}
 	if sid != "" && h.DB != nil {
-		_ = h.DB.AddUsage(sid, usage.InputTokens, usage.OutputTokens, cost)
+		_ = h.DB.AddUsage(sid, billedInput(usage), usage.OutputTokens, cost)
 	}
+}
+
+// billedInput is a step's input tokens with cache reads and writes: the
+// session paid for them, and leaving them out would show a token total the
+// cost does not match.
+func billedInput(u fantasy.Usage) int64 {
+	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens
 }
 
 // appendTurnOutput moves one stretch of turn output into the transcript in

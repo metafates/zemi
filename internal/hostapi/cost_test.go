@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"context"
 	"testing"
 
 	"charm.land/fantasy"
@@ -27,5 +28,23 @@ func TestTurnCost(t *testing.T) {
 	}
 	if got := h.turnCost("p/free", u); got != 0 {
 		t.Fatalf("unpriced model = %v, want 0", got)
+	}
+}
+
+// TestUsageCountsCache: main and subagent steps add cache reads and writes to
+// the input tally, live and stored alike, so a resumed session shows the
+// same total.
+func TestUsageCountsCache(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	u := fantasy.Usage{InputTokens: 1, CacheReadTokens: 10, CacheCreationTokens: 100, OutputTokens: 5}
+	h.streamHooks().TurnDone(nil, u)
+	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).TurnDone(nil, u)
+	if got := h.AgentStream().SessionIn; got != 222 {
+		t.Errorf("live input tally = %d, want 222", got)
+	}
+	if sess, err := h.DB.GetSession(sid); err != nil || sess.PromptTokens != 222 {
+		t.Errorf("stored input tokens = %+v, %v; want 222", sess, err)
 	}
 }

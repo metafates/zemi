@@ -404,7 +404,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.sessionID == s.run.parent { // a background run may outlive its session
-		ag.sessIn += usage.InputTokens
+		ag.sessIn += billedInput(usage)
 		ag.sessOut += usage.OutputTokens
 		ag.sessCost += cost
 	}
@@ -412,7 +412,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	if h.DB != nil {
 		for _, id := range []string{s.sid, s.run.parent} {
 			if id != "" {
-				_ = h.DB.AddUsage(id, usage.InputTokens, usage.OutputTokens, cost)
+				_ = h.DB.AddUsage(id, billedInput(usage), usage.OutputTokens, cost)
 			}
 		}
 	}
