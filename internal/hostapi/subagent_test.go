@@ -174,6 +174,33 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	}
 }
 
+// TestSubagentLuaToolAsksAsAgent: a subagent's Lua tools check through its
+// own pipeline, so the ask names the agent.
+func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
+	h, r := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `zemi.tool.register({ name = "weather", execute = function() return "sunny" end })`)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts("done")
+			}
+			return toolCallParts("c1", "weather", `{}`)
+		}}, nil
+	}
+	def, err := h.agentDef("general")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
+		t.Fatalf("asked: %+v", ui.asked)
+	}
+}
+
 // TestSubagentInstructions: every run's first read of a file carries its
 // package's instruction file, and none of them uses up the main
 // conversation's one delivery.

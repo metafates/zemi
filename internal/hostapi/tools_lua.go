@@ -219,9 +219,9 @@ func isToolName(s string) bool {
 	return len(s) > 0 && s[0] >= 'a' && s[0] <= 'z'
 }
 
-// luaFantasyTools wraps every registered Lua tool as a fantasy agent tool.
-func (h *Host) luaFantasyTools() []fantasy.AgentTool {
-	pipe := h.PipelineFor()
+// luaFantasyTools wraps every registered Lua tool as a fantasy agent tool,
+// checked through pipe.
+func (h *Host) luaFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var out []fantasy.AgentTool
 	for _, t := range h.luaTools.list() {
 		out = append(out, &luaToolAdapter{h: h, t: t, pipe: pipe})

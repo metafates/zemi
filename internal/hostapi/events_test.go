@@ -99,7 +99,7 @@ func TestLuaToolRunsToolPre(t *testing.T) {
 		zemi.tool.register({ name = "weather", execute = function() return "sunny" end })
 		zemi.event.on("tool.pre", function(ev) if ev.tool == "weather" then return { decision = "deny", reason = "no" } end end)
 	`)
-	resp, err := h.luaFantasyTools()[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+	resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "denied by hook") {
 		t.Fatalf("resp = %+v, %v", resp, err)
 	}

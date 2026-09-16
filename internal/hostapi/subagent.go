@@ -273,7 +273,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			return ask(req)
 		}
 	}
-	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
+	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	all = append(all, h.windowToolFor(def.Name, pipe))
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(modelID, h.Effort())
