@@ -302,10 +302,10 @@ no `zemi.provider.register`, no `zemi.agent.profile` /
 injection, no `zemi.memory.add`, no registration of a builtin tool name
 (builtin ids are reserved; last-writer-wins applies only within one
 origin; cross-origin profile id collisions are refused, §11). The same
-denylist binds learned-origin code: §10.4 applies it to everything a
-revision adds. A one-time trust prompt gates the first project-config load and
-stores a hash of the project config tree; a changed hash (a pull swapped
-the Lua) re-prompts before load. The prompt answers `y` (trust this
+denylist binds learned-origin code (learned skill hooks, §10.5). A
+one-time trust prompt gates the first project-config load and stores a
+hash of the project config tree; a changed hash (a pull swapped the Lua)
+re-prompts before load. The prompt answers `y` (trust this
 hash), `n` (not now: ask again next start) or `d` (never for this hash:
 stored as a deny, so only a changed tree asks again).
 
@@ -382,12 +382,7 @@ Sandbox (what userland gets):
   `~/.config/zemi/**` is user, `~/.local/share/zemi/site/pack/**` is
   plugin, `<project>/.zemi/**` is project,
   `~/.local/share/zemi/skills/**` is learned, embedded `runtime/**` is
-  builtin. A resolved path in no class is refused at load. Paths inside
-  the config repo that a revision committed (the revisions table records
-  every path it wrote, §10.4) override the class
-  with `learned`, and that mark survives reload and reboot (it is a DB
-  row, not a file attribute), so learned code inside the user class
-  cannot ride the boot window. Origin never follows the requirer: a
+  builtin. A resolved path in no class is refused at load. Origin never follows the requirer: a
   module under `site/pack/...` stays plugin origin and a project module
   stays project origin even when `init.lua` requires it, so untrusted
   code cannot ride the boot phase under a user badge.
@@ -914,9 +909,8 @@ kv(key, value_json, updated_at)                                 -- zemi.state
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
 DBs at `~/.local/state/zemi/projects/<hash of project root>/zemi.db`. The
 global DB holds user-scope memory, skills, kv and all `config_revisions`
-(revisions patch the one global config repo, so they are global-scope by
-construction; per-project learning is memory and skills, never config
-patches); a project DB holds its
+(the permanent-rule commits to the one global config repo); a project DB
+holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and
 project-scope memory. Opening a store sweeps checkpoints older than 30
 days; sessions are never swept (the session TTL is 0, and zemi deletes a
@@ -1169,8 +1163,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   roots, the config repo, the project's `.zemi`, both skills dirs, and
   that scratchpad. `site/pack` and the rest of the state dir are never
   write roots, so an approved `fs.write` cannot plant plugin code that
-  auto-loads at the next boot. The config repo is read-only to Lua: only
-  the revision pipeline and Go itself write there, so `zemi.fs.write`
+  auto-loads at the next boot. The config repo is read-only to Lua: of
+  zemi's own code only Go writes there, so `zemi.fs.write`
   cannot author `permissions.lua` (which is Go-generated data anyway,
   §6.1). Residual race: platforms without
   dir-relative opens re-resolve after open, which narrows but does not
@@ -1226,24 +1220,22 @@ configured provider later (`zemi.memory.search` signature does not change).
    repo: the config home is the only tree zemi git-initializes, so a
    learned skill is tracked by its `skills` row and its file, not by a
    commit.
-3. **Structure (config revisions)**: changes to profiles, system prompt
-   sections, tool policies, permission rules, keymaps, widgets. Each lands
-   in the config git repo as a commit. In v1 the reflector proposes
-   permission-rule changes only (structured rule objects, §10.4's
-   classifier); the other structural items are the user's own hand edits
-   (`:ConfigEdit`, a plain git commit in the same repo).
+3. **Structure (config)**: profiles, prompt sections, permission rules,
+   keymaps, widgets. The learning loop proposes none of it: these are
+   edits to files in the config git repo, made by the user or by the agent
+   through the permission-gated file tools, and the only commit zemi makes
+   itself is a permanent permission rule (§6.1).
 
-Config and skills pass the full pipeline: **capture -> distill -> propose
--> validate -> apply -> verify -> rollback**. Memory enters through the
-intake policy below (its review queue is the verify leg; supersede and
-delete via `/memory` are its rollback).
+Skills pass **capture -> distill -> propose -> review -> enable**. Memory
+enters through the intake policy below (its review queue is the verify
+leg; supersede and delete via `/memory` are its rollback).
 
 ### 10.2 Capture
 
 Everything is already captured by the store: transcripts, tool calls with
 outcomes, denials, user edits to the agent's output, permission answers,
 session summaries. Additional signals: explicit user teaching
-(`/remember this project uses make check`), `tool.post` outcomes, and
+(`/memory this project uses make check`), `tool.post` outcomes, and
 "corrections" (user rejects a permission or reverts an edit; both recorded).
 
 ### 10.3 Distillation: the reflector
@@ -1258,75 +1250,44 @@ waits on a model call (configurable: every session, every Nth, or manual
 reflector has not seen (the seen count persists in kv).
 
 Input: the transcript tail (the last 120 user and assistant messages,
-each truncated) + tool-call stats + current memory index (names, kinds,
-tags, not full text) + current skills index.
+each truncated) + tool-call stats + memories awaiting review + current
+memory index (the newest 40, text cut to 160 runes) + skills index
+(enabled and disabled drafts alike).
 
 Output: a JSON proposal document (schema-validated):
 
 ```json
 {
   "memories": [
-    { "action": "add", "scope": "project", "kind": "gotcha",
+    { "scope": "project", "kind": "gotcha",
       "text": "UpsertLabels must stay read-then-insert; ON CONFLICT burns the sequence",
-      "tags": ["labels", "postgres"], "confidence": 0.8,
-      "provenance": "session 2026-09-14" }
+      "tags": ["labels", "postgres"], "supersedes": "" }
   ],
-  "supersedes": [{ "memory_id": "m_123", "because": "migrated to shards" }],
   "skills": [
-    { "action": "extract", "title": "Run local integration harness",
-      "trigger": "when asked to run local integration tests",
-      "body": "SKILL.md body + optional zemi-skill.lua, as strings",
-      "confidence": 0.7 }
-  ],
-  "config": [
-    { "action": "patch", "title": "Deny rm -rf in bash tool",
-      "rules": [{ "subject": "tool.bash", "pattern": "rm -rf *",
-                  "decision": "deny", "scope": "permanent",
-                  "match": "rm -rf build", "not_match": "rm -f build" }],
-      "risk": "safe" }
+    { "name": "run-integration-tests",
+      "description": "when asked to run the local integration tests",
+      "body": "1. docker compose up -d db\n2. go test -tags integration ./..." }
   ]
 }
 ```
 
 The reflector is constrained by prompt and by pipeline: it can only emit
-proposals; application is a separate, reviewed step. Proposals travel
-through a host channel into the store (SQLite), never to files; there is
-no reflector scratch directory in the config repo. The proposal kinds
-differ in what they may carry: a `config` patch is structured rule
-objects only, never Lua, and Go refuses any config patch that contains
-anything else, which is what keeps `permissions.lua` (§6.1) free of
-executable code even against a hostile reflector output; `skills` and
-`evals` proposals carry Lua (the schema above) and are code on the
-mandatory-review path, never auto-apply (v1 skill drafts are body only:
-Go scrubs them, writes them under the data dir's `skills/`, and they stay
-disabled until the user enables them in `/skills`). Every string leaf of a proposal
-(the scan is structural: `title`, rule patterns and examples, eval
-`prompt`/`expect_lua`, skill trigger and body) passes the same
-intake scrubber as memory text, and the concatenation of all leaves is
-scrubbed too (a secret split across leaves reassembles at the commit
-boundary: the composed diff is scrubbed before it is written to git), so
-a secret from the transcript cannot
-hide in a deny-rule pattern and ride into the git history. Proposal
-display fields (`provenance`, `risk`,
-`title`) are display-only: Go stamps the actual session id on intake,
-and the auto-apply decision reads only the classifier's verdict, never
-the proposal's own `risk`. The reflector runs detached with a timeout; a
-run cut off by exit is retried at the next startup, since the session
-still has unseen messages.
+proposals; application is a separate, reviewed step. Memories go through
+the intake policy (§10.4) into the store; there is no reflector scratch
+directory and no path into the config repo. Skill drafts are body only,
+never Lua: Go sanitizes and scrubs the description and body with the
+memory scrubber, writes them under the data dir's `skills/`, and they stay
+disabled until the user enables them in `/skills`. The reflector runs
+detached with a timeout; a run cut off by exit is retried at the next
+startup, since the session still has unseen messages.
 
-### 10.4 Proposal, validation, apply
+### 10.4 Proposal, review, apply
 
-- Proposals render as reviewable cards (memory text, skill draft, config
-  diff). Each is `accept` / `reject` / `accept-always` (policy for future
-  similar proposals: matched by domain + kind, capped per session, pending
-  auto-accepts surfaced in the review UI; the total of auto-applied rules
-  per session is capped too, whichever path added them). Accepting a
-  config patch opens the diff view first.
 - Pending memory proposals persist in their scope's store (`proposals`
   table) until accepted or rejected, so restarts never lose them; the
-  statusline shows how many wait for `/memory` and `/config`. In
-  `/memory`, `a` accepts a proposal, `d` rejects one or deletes a stored
-  memory, enter applies, esc changes nothing.
+  statusline shows how many wait for `/memory`. In `/memory`, `a` accepts
+  a proposal, `d` rejects one or deletes a stored memory, `u` undoes the
+  last mark, and enter, esc or `q` closes the screen and applies the marks.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (500 chars), kind from a fixed enum, provenance required, tags scrubbed
   like text, and
@@ -1337,102 +1298,33 @@ still has unseen messages.
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
-  cost a review click. Auto-applied memories are capped per session like
-  auto-applied rules. The digest (§10.7) sits behind a
+  cost a review click. Auto-applied memories are capped per session. The
+  digest (§10.7) sits behind a
   Go-inserted data boundary the prompt tells the model to treat as
   quoted, untrusted material, with a per-session line budget. Residual
   risk is stated plainly: a fenced quote can still sway a credulous
   model; the cap, the enum, provenance, scrubbing, and the review queue
-  narrow that window. `/memory` opens review (list, edit, supersede,
-  delete). Supersede and delete are first-class review-card actions:
-  model proposals may never silently drop a user-attested (`/remember`)
-  memory.
-- **Validation before display**: a config patch is JSON rule objects,
-  schema-validated, with nothing to load or execute; skill drafts and
-  eval files are parsed (`loadstring`) and smoke-loaded in a throwaway
-  `LState` with a stub `zemi` (records registrations, executes nothing,
-  under the same watchdog budget as any handler; the throwaway state runs
-  the identical §5 sandbox: io/os stripped, frozen stdlib, per-chunk
-  environment, so a hostile proposal cannot execute side effects at
-  validation time), idempotency check
-  (double-load), and optional bundled `tests/*.lua`. This catches parse
-  and registration breakage; it does not catch behavioral changes, which
-  is what the diff review is for (and evals, for auto-apply).
-- **Patch polarity is classified host-side, and the classifier routes
-  rather than loosely refuses**: a `config` patch is an array of rule
-  objects; anything else inside it (event handlers, tool registrations,
-  keymaps, prompt sections, autonomy knobs) is refused at intake. Skill
-  and eval proposals are routed to the mandatory review path (§10.3),
-  whatever their content. The auto-apply allowlist is config patches
-  that only add deny/ask rules, and it is necessary, not sufficient:
-  auto-apply stores them session-scoped, and permanent scope always
-  requires the review commit. Deleting or
-  weakening an existing rule, adding an allow rule, or any change outside
-  the rule store requires explicit approval, even in `auto`; evals run on
-  a mock provider and never test prompt content, so prompt-surface
-  changes never auto-apply. An `accept-always` policy
-  re-runs the classifier on each matched proposal and never overrides the
-  instruction-shaped review queue; a policy bypasses neither.
-  Learned skills may not register `tool.pre` rewrite handlers in v1; their
-  Lua is limited to commands and widgets.
-- **Apply**: commit to the config repo with message `learn: <title>
-  (from <session id>)`; hot-reload if possible (re-run plugin files), else
-  prompt to restart. Every revision records `eval_ok` and the list of
-  paths it wrote (added or modified; `config_revisions.paths_json`,
-  §7); every path a revision wrote is marked. The DB marks land before
-  the git commit and boot re-derives them from the revision history and
-  the config repo's `learn:` commit messages, completing before the
-  first Lua chunk loads, so a crash between the two leaves the
-  fail-closed direction and a fresh clone or restored state DB cannot
-  re-badge learned code as user. Paths compare canonical
-  (NFC-normalized, case-folded the way the host filesystem compares,
-  `EvalSymlinks`-resolved with true-case resolution via the parent
-  directory listing, repo-relative) and boot asserts two things for
-  every `learn:` commit: its diff paths carry marks, and every marked
-  path classifies as `learned` at boot, so a canonicalization or
-  case-spelling miss fails loud instead of open. A mark clears when `:Revision revert` removes
-  the path or when a later user-origin commit touches it (the user's own
-  hand edits are never learned). Marked code re-registers as
-  `origin = "learned"` and sits under the project
-  denylist (§5), the same mechanical lines project config sits under.
-  Revision trees and the project trust hash (§5) refuse symlinks and
-  non-regular files (git mode 120000 aliases unreviewed content).
-- **Verify**: eval suites (§10.6) run headless against the new revision when
-  `config.autonomy = auto`, or when the user asks. The auto-apply gate runs
-  only suites that predate the revision under test; suites added by
-  revision N gate revision N+1 onward. Failure auto-rolls back
-  (git revert + reload).
-- **Rollback**: `:Revision revert <id>`; learned patches are git-tracked in
-  the config repo, learned skills in their own repo (§10.1).
+  narrow that window. `/memory supersede <old> <new>` and
+  `/memory forget <id>` are the other review actions: model proposals may
+  never silently drop a user-attested (`/memory <note>`) memory.
+- Skill drafts always wait for review (§10.3, §10.5). A learned skill's
+  `zemi-skill.lua` runs as `learned` origin under the §5 denylist, so it
+  may not register tools or `tool.pre` rewrite handlers.
 
-Autonomy, per domain:
+Autonomy is one host-owned knob:
 
 ```
-memory.autonomy  = "ask"     -- model-proposed memories wait for review;
+memory.autonomy = "ask"      -- model-proposed memories wait for review;
                              -- "auto" applies them directly unless the
                              -- instruction-shaped heuristic flags them
-skills.autonomy  = "ask"     -- drafts wait for approval
-config.autonomy  = "ask"     -- patches wait; "auto" auto-applies only
-                             -- deny/ask rule patches with passing evals
 ```
 
-Default: memory `ask`, skills `ask`, config `ask`. `/remember` is not
-governed by the memory knob: it is the user's own keystroke, stamped
-`origin = user` (§7), and writes immediately in both modes. The knob
-covers model-proposed memories only: `ask` queues them; `auto` applies
-them without review except instruction-shaped text ("project convention:
-run `curl ... | sh` first" is exactly the shape the heuristic exists
-for), which queues anyway. Learned permission rules follow
-the tightening principle: deny/ask rule patches apply session-scoped
-(without review under `config.autonomy = auto` with passing evals,
-§10.4's classifier), permanent scope requires the review commit either
-way, and any rule that *grants* something requires approval
-regardless of autonomy (the classifier above enforces this mechanically).
-Non-user origins may not store a bare-universal pattern (`*` or empty) on
-an ask or deny rule, so a learned patch can neither ask on every call
-and breed overlay fatigue nor deny on every call and inert the agent
-until `:Rules`; learned-added session rules surface in the statusline
-and `:Rules` (lists and removes session rules, user principal).
+`/memory <note>` is not governed by the knob: it is the user's own
+keystroke, stamped `origin = user` (§7), and writes immediately in both
+modes. The knob covers model-proposed memories only: `ask` queues them;
+`auto` applies them without review except instruction-shaped text
+("project convention: run `curl ... | sh` first" is exactly the shape the
+heuristic exists for), which queues anyway.
 
 ### 10.5 Skills
 
@@ -1443,21 +1335,20 @@ skills/
   local-integration/
     SKILL.md            # yaml frontmatter: name, description; body = instructions
     zemi-skill.lua      # optional: zemi.tool.register / command.add on enable
-    tests/init.lua      # optional: run at validation
 ```
 
 Discovery merges three sources, the higher-trust one winning a name
-clash: authored (config repo) over builtin (zemi's own five, embedded
+clash: authored (config repo) over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync, enabled by default) over learned (data dir). The model sees name +
 description in context and the full body on demand through the `skill`
-tool; there is no `/skill` command, only `/skills` to browse and toggle
-them. Learned skills are quarantined
+tool; there is no `/skill` command, only `/skills` to browse, toggle and
+use them. Learned skills are quarantined
 mechanically: discovery lists only `enabled` skills to the model, enable
-goes through the host API (`zemi.skills.enable`, user principal), and a
-learned skill's `zemi-skill.lua` runs under the same sandbox and validation
-as config patches, with registrations limited to commands and widgets per
-§10.4 (authored skills may also register tools). Skills installed from
+goes through the host API (`zemi.skills.enable`, user or builtin origin),
+and a learned skill's `zemi-skill.lua` runs as `learned` origin, limited
+to commands and widgets per §10.4 (authored skills may also register
+tools). Skills installed from
 outside the user's own hands (plugin manager, M5) land disabled until
 reviewed, like plugins; authored skills written by the user in their own
 config repo start enabled.
@@ -1500,8 +1391,8 @@ built-ins with scripted stubs; `expect` receives a transcript object
 
 ### 10.7 Context assembly (how learning reaches the model)
 
-Per turn, the system prompt is assembled from: profile template + context
-files (ZEMI.md/AGENTS.md, watched, injected verbatim) + **memory digest**
+Per session, the system prompt is assembled from: the base prompt + context
+files (ZEMI.md, AGENTS.md or CLAUDE.md, injected verbatim) + **memory digest**
 (top-N for this project/user by FTS5 score x recency x `log(1 +
 hit_count)` (§7), each line prefixed with kind and provenance) +
 **skills index** (name + description only). The digest is pinned at
@@ -1522,13 +1413,11 @@ what the model was told and which of it the agent wrote itself. Context
 files are injected verbatim and unhashed; that is a stated residual risk
 (a repo pull can swap prompt content under an approved trust hash),
 mitigated only by their being repo-tracked and diffable (the §5
-trust-hash re-prompt does not cover them). `agent.assemble` events let
-Lua add or trim sections under the §6.2 vetoable contract: each entry is
-`{ id = "...", add = "text" }` or `{ id = "...", trim = true }`; `add`
-sections are size-capped (64 KiB each, the boundary-cap style of §5) and
-render below the built-in sections, and a
-`trim` can drop only sections previously added by the same origin, never the
-digest, the skills index, or the untrusted-content framing.
+trust-hash re-prompt does not cover them). `agent.assemble` handlers
+(user, builtin and plugin origin) add sections: each returns a string or
+`{ title, text }`, capped at 16 KiB per section and 64 KiB in all, rendered
+below the built-in sections; no handler can drop the digest, the skills
+index, or the untrusted-content framing.
 
 ### 10.8 What the loop cannot do (hard lines)
 
@@ -1536,25 +1425,22 @@ digest, the skills index, or the untrusted-content framing.
   request, not a self-modification.
 - Never loosens permissions, never widens the sandbox, never disables
   eval/telemetry, never edits its own proposals after review begins.
-- Never writes outside its three homes (memory store, skills dir, config
-  repo). Anything else is a normal tool call under normal permissions.
+- Never writes outside its two homes (memory store, skills dir). Anything else is a normal tool call under normal permissions.
 - Autonomy knobs are host-owned: no Lua path can raise `*.autonomy`, edit
   the env deny-list, or widen the fs jail; `zemi.config.set` refuses them
   from every origin at every time, boot included, and only Go writes them
-  (`Settings.SetHost`). The revision pipeline refuses any diff that
-  touches them.
+  (`Settings.SetHost`).
 
-Each line is enforced in code, not by prompt: the intake policy and
-polarity classifier (§10.4), the host-only proposal channel (§10.3), skills
-quarantine (§10.5), the config.set user-writable allowlist and the
+Each line is enforced in code, not by prompt: the intake policy (§10.4),
+the host-only proposal channel (§10.3), skills quarantine (§10.5), the config.set user-writable allowlist and the
 Go-generated `permissions.lua` (§6.1), and the reflector's tool-less
 model call (§10.3).
 
 ## 11. Error handling and observability
 
-- Every Go->Lua boundary is a `pcall`; errors become `lua.error` events,
-  show as statusline flag + log entry; a `/errors` overlay lists recent
-  handler failures with file:line (from Lua `debug.traceback`).
+- Every Go->Lua boundary is a `pcall`; errors are logged and show as a
+  statusline flag; a `/errors` overlay lists recent handler failures with
+  file:line (from Lua `debug.traceback`).
 - Registration conflicts (duplicate widget id, keymap collision) warn at
   load with origin path, last-writer-wins within one origin, like nvim's
   plugin loading noise but structured. Cross-origin id collisions are
@@ -1583,7 +1469,7 @@ internal/lua/               interpreter thread, sandbox, origins, marshal, requi
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,
                             agent runs, memory, reflector, skills hosting,
-                            permissions + modes + the revision pipeline, mcp and
+                            permissions + modes + permanent-rule commits, mcp and
                             lsp wiring, rewind, scratchpads, health, export
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
@@ -1597,6 +1483,9 @@ internal/store/             sqlite schema and queries (no migration tool)
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)
+internal/win/               windows: a pty per program, drawn by a Go terminal emulator
+internal/editor/            the command that hands a file to the user's editor
+internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors
 runtime/lua/                embedded Lua userland (defaultui, widgets, themes)
@@ -1605,13 +1494,14 @@ runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin o
 
 ## 13. Milestones
 
-Status: M0-M3 shipped. M4 was never built: no eval harness, no mock
+Status: M0-M3 shipped, and M3's config revision pipeline was later dropped
+(the reflector proposes memories and skills only). M4 was never built: no eval harness, no mock
 provider, no eval CI, no `zemi.eval`, and `config_revisions.eval_ok` is
 a dead column. M5 shipped in part: subagents, workflows, the MCP client
 and the LSP client are in; the plugin manager and embeddings-backed
 search are not. Shipped outside every milestone: permission modes (§9),
 workflows, rewind and checkpoints, per-session scratchpads, background
-agents with the `/agents` transcript view, the `lua` tool, markdown
+agents with the `/agents` transcript view, windows, the `Lua` tool, markdown
 commands and `agents/*.md`, headless print mode (`-p`) and `--health`,
 and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
@@ -1669,12 +1559,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   foot-guns.
 - Whether FTS5 ranking (bm25 weights, recency/hit blends) needs
   user-tunable knobs or stays internal.
-- Compaction and token-budget policy (§10.7 is one clause today): a
-  token threshold, the summary prompt, and per-tool-output truncation
-  for model context.
-- Credential storage and auth flow (env names today), plus the
-  session-resume command/flag surface (`session.open` exists as an
-  event only).
+- Credential storage and auth flow (keys read with `zemi.env.get` today).
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.
 - Platform support statement: the doc assumes Unix throughout (XDG
