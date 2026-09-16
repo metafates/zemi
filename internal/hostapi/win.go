@@ -292,7 +292,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		if rawBool(spec, "hidden") {
-			_ = h.applyLayout(w, layoutPatch{Hidden: &[]bool{true}[0]})
+			_ = h.applyLayout(w, layoutPatch{Hidden: new(true)})
 		}
 		if fn, ok := spec.RawGetString("on_exit").(*glua.LFunction); ok {
 			h.GoSafe("win on_exit", func() {
@@ -573,13 +573,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if in.Title != "" {
 			w.SetTitle(sanitize.String(in.Title))
 		}
-		switch in.Action {
-		case "hide":
-			p = layoutPatch{Hidden: &[]bool{true}[0]}
-		case "show":
-			p = layoutPatch{Hidden: &[]bool{false}[0]}
-		case "focus":
-			p = layoutPatch{Hidden: &[]bool{false}[0]}
+		if in.Action != "set" {
+			p = layoutPatch{Hidden: new(in.Action == "hide")}
 		}
 		if err := h.applyLayout(w, p); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
