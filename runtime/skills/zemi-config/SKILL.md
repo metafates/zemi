@@ -129,8 +129,9 @@ writable; prefer it over guessing. Common keys:
   allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model.
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
   that just read (no builds, tests or git), auto edits nothing and screens nothing without
-  the user, and the Lua tool asks. In any project the Lua tool asks before a script adds an
-  allow rule, changes modes or `permissions.*`, starts a job or window, or adds a server. Commands auto and plan mode run without asking run in a
+  the user, and the Lua tool asks. In any project the Lua tool asks before a script calls
+  anything that is not a read (config, providers, permissions, jobs, windows, servers, the
+  composer, ...). Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
   localhost, credential files in the home dir unreadable; Go builds get a cache of their
@@ -238,8 +239,9 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
 `web_search`, `todos`, `question`, `plan`, `open_in_editor`, `window`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
-`agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin, full access: can toggle
-skills, widen permissions, add MCP servers, read secret-shaped env names; asks only in plan mode or an untrusted project), plus
+`agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin; read-only calls run at
+once, a script that calls anything else asks the user once, and plan mode or an untrusted
+project asks for every script), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
 Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several

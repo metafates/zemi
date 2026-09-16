@@ -97,7 +97,7 @@ prompt names the exact path; rewritten on every start) holds the theme, every bu
 and the default keymaps. Read it before changing one: copy the widget you want to alter into
 `init.lua` under the same id and change what you need, or `require("zemi.defaultui")` to
 build on its splash.
-Try a change live with the Lua tool first (it lasts until the next reload), screenshot, then
+Try a change live with the Lua tool first (it asks once and lasts until the next reload), screenshot, then
 write it to config.
 
 ```lua

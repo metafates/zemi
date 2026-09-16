@@ -48,11 +48,14 @@ loads fresh.
 The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
-values (as JSON) come back. It asks the user in plan mode or a project that is not trusted,
-and always before a script adds an allow rule, adds or removes a mode, sets a `permissions.*`
-key, runs `/mode`, starts a job or window or types into one, or adds an MCP or language
-server: those calls must be written out in the script (`zemi.job.start(...)`, not a name
-built from strings), or they raise.
+values (as JSON) come back. A script that only reads (`zemi.config.get`, `zemi.session.messages`,
+`zemi.errors.list`, `zemi.ui.screenshot`, the `list` calls, `zemi.json`, `zemi.log`, ...) runs at
+once in a trusted project. Anything else asks the user once for the whole script: write every
+call out by name (`zemi.job.start(...)`, `w:send(...)`), since a call reached through a name
+built from strings, `_G` or `load` asks too, and one the scan misses raises. Plan mode and a
+project that is not trusted ask for every script. Callbacks a script registers (keymaps,
+timers, event handlers) keep only the read-only calls once the run ends, so put lasting
+behavior in `init.lua`.
 It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
 (its path is in the Environment section; files there are read and written without asking)
 and pass `path`. Globals a chunk sets stay in that chunk.
