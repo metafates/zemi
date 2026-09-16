@@ -53,3 +53,14 @@ func TestMCPBridge(t *testing.T) {
 		t.Fatalf("allowed call = %+v", resp)
 	}
 }
+
+// TestMCPStoppedStartSilent: a server replaced or reloaded while it starts
+// keeps its stopped status and records no error when its start fails.
+func TestMCPStoppedStartSilent(t *testing.T) {
+	h, _ := newTestHost(t)
+	s := &mcpServer{name: "gone", spec: MCPSpec{Command: "/nonexistent/mcp"}, status: "stopped", stopped: true}
+	h.startMCP(s)
+	if s.status != "stopped" || len(h.errs.entries) != 0 {
+		t.Fatalf("status %q, errors %v", s.status, h.errs.entries)
+	}
+}
