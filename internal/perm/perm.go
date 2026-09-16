@@ -7,6 +7,7 @@ package perm
 
 import (
 	"cmp"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -132,6 +133,10 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		byDecision = map[Decision][]cand{}
 		fellThru   []string
 	)
+	// DESIGN §9: .. resolves before matching, so dir/* cannot cover dir/../x
+	if (strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")) && strings.Contains(arg, "..") {
+		arg = filepath.Clean(arg)
+	}
 	s.mu.Lock()
 	rules := make([]Rule, len(s.rules))
 	copy(rules, s.rules)
