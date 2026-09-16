@@ -352,7 +352,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	// no origin: the store refuses the row, after the proposal was taken
-	payload, _ := json.Marshal(memoryProposal{Memory: store.Memory{ID: "p1", Scope: "project", Kind: "fact", Text: "unstorable"}})
+	payload, _ := json.Marshal(memoryProposal{ID: "p1", Scope: "project", Kind: "fact", Text: "unstorable"})
 	if err := h.DB.AddProposal(&store.Proposal{ID: "p1", Kind: "memory", Payload: string(payload)}); err != nil {
 		t.Fatal(err)
 	}

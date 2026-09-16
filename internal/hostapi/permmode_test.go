@@ -59,7 +59,7 @@ func (m *promptStub) Generate(ctx context.Context, call fantasy.Call) (*fantasy.
 // so the screening model sees it only for files the model may read anyway.
 func TestAutoApprovePreview(t *testing.T) {
 	h, _ := newTestHost(t)
-	m := &promptStub{reflectStubModel: reflectStubModel{resp: "SAFE"}}
+	m := &promptStub{resp: "SAFE"}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	for _, c := range []struct {
 		subject, arg string
@@ -134,7 +134,7 @@ func TestAutoApprovalCacheKeysInput(t *testing.T) {
 	if err := h.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}
-	m := &promptStub{reflectStubModel: reflectStubModel{resp: "SAFE"}}
+	m := &promptStub{resp: "SAFE"}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	ask := h.askHook()
 	req := func(input string) tools.Request {
