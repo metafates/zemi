@@ -148,7 +148,7 @@ func clipOut(name string, args ...string) []byte {
 }
 
 func has(name string) bool {
-	_, err := execLookPath(name)
+	_, err := exec.LookPath(name)
 	return err == nil
 }
 
@@ -202,5 +202,3 @@ func clipboardText() string {
 	}
 	return ""
 }
-
-var execLookPath = exec.LookPath // swapped in tests
