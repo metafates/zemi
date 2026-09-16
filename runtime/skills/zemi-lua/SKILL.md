@@ -67,7 +67,7 @@ next start overwrites it.
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
-| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help`, `invalidate()` (redraw) |
+| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
@@ -145,7 +145,7 @@ Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `model`, `prof
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
 `thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `pulse`,
-`reflecting`, `pending_memory`, `pending_config`, `agents_running`, `transcript_epoch`
+`reflecting`, `pending_memory`, `agents_running`, `transcript_epoch`
 (changes when the transcript is replaced, 0 while an agent run is shown: rows are worth
 caching only when it is stable). Transcript rows carry
 `role`, `kind` ("", reasoning, tool, compact, error), `text`, `tool`, `status`, `label`,
@@ -163,8 +163,8 @@ user, builtin and plugin handlers only), `composer.change`, `tool.denied` (tool,
 reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
 (vetoable: deny, halt, rewrite), `tool.post`, `permission.request`, `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
-`memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
-`reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
+`memory.written`, `skill.learned`, `config.reloaded` (after /reload or a config file
+change), `reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
 `diagnostics` after a write or `tool`), and your own `user.*` names.
 
 Every event is recorded whether or not anything listens: `zemi.event.log({ name, limit })`

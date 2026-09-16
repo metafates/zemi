@@ -77,7 +77,6 @@ func (s *Store) defineDefaults() {
 		{Path: "reflector.timeout_ms", Kind: "int", Default: 120000, Desc: "reflector run timeout in milliseconds"},
 		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "memory autonomy mode"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},
-		{Path: "config.autonomy", Kind: "string", Default: "ask", Desc: "config revision autonomy mode"},
 	}
 	for _, def := range defaults {
 		s.schema[def.Path] = def

@@ -73,7 +73,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 
 - `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals,
-  skill enabled state (`skills`), config revisions (`config_revisions`), `kv`.
+  skill enabled state (`skills`), permanent-rule commits (`config_revisions`), `kv`.
 - `~/.local/state/zemi/projects/<hash>/zemi.db` (per project): `sessions`, `messages`,
   project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
   `/rewind` restores).

@@ -19,8 +19,8 @@ description: Configure zemi - init.lua, providers, models, settings, keymaps, co
 | `~/.local/state/zemi/` | logs, databases, trust file (see zemi-debug) |
 
 `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME` and `ZEMI_STATE_HOME` override the three roots.
-`~/.config/zemi` is a git repo: changes zemi applies itself are commits, listed by
-`/config revisions` and undone by `/config revert <id>`.
+`~/.config/zemi` is a git repo: permanent permission rules zemi writes are commits there,
+undone with `git revert`.
 
 Rules when editing:
 
@@ -110,7 +110,7 @@ writable; prefer it over guessing. Common keys:
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.trigger`, `ui.completion.max_items`
 - `memory.digest_lines`
-- `memory.autonomy`, `config.autonomy` (`ask` or `auto`), `reflector.every_n_sessions`
+- `memory.autonomy` (`ask` or `auto`), `reflector.every_n_sessions`
   (1, 0 disables), `reflector.timeout_ms`: host-owned; not settable from Lua
 - `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
   read-only commands run, other commands and MCP calls ask, so the agent investigates and
@@ -187,8 +187,8 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
-palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/config`,
-`/reflect`, `/remember`, `/reload`. Arguments:
+palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/reflect`,
+`/reload`. Arguments:
 
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
   return to their state before it, the conversation is cut there and the prompt comes back
@@ -196,8 +196,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/config`,
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
-- `/config list` shows every setting with its value and what it does; `/config revisions`
-  and `/config revert <id>` cover the changes zemi made to its own config.
+- Settings and their values: `zemi.config.get(path)` with the lua tool; the changes zemi
+  made to its own config are the git log of the config directory.
 - `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),
   `/agents stop [id]` stops a running one (without an id, the one on screen);
   `/lsp restart <name>`;

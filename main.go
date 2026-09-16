@@ -103,7 +103,6 @@ func run(args []string) int {
 		builtinCommandsStep(host, quit),
 		host.MemoryCommandsStep(),
 		host.ReflectorCommandsStep(),
-		host.ConfigCommandsStep(),
 		host.SkillsCommandsStep(),
 		host.AgentsCommandsStep(),
 		host.WorkflowCommandsStep(),
@@ -147,6 +146,7 @@ func run(args []string) int {
 			return
 		}
 		app.Notify("info", "reload", "config reloaded")
+		host.EmitAsync("config.reloaded", nil)
 	}
 	app.SetReload(reload)
 

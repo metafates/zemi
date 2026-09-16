@@ -215,15 +215,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 
-	tb.RawSetString("invalidate", L.NewFunction(func(L *glua.LState) int {
-		id := "all"
-		if L.GetTop() >= 1 && L.Get(1) != glua.LNil {
-			id = L.CheckString(1)
-		}
-		h.Log.Debug("ui", "invalidate requested (no-op in v1: full re-render per frame)", map[string]any{"id": id})
-		return 0
-	}))
-
 	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
 		width := L.CheckInt(2)

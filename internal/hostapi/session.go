@@ -185,7 +185,7 @@ func (h *Host) closeSession() (string, error) {
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.compactFails, ag.compacted = 0, false
-	ag.digest, ag.memAuto, ag.cfgAuto = "", 0, 0
+	ag.digest, ag.memAuto = "", 0
 	ag.mu.Unlock()
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})

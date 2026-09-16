@@ -1,5 +1,5 @@
 // memory.go is the memory host API (DESIGN §6.7, §7, §10.4): the
-// zemi.memory namespace, the Go-owned /remember and /memory commands, the
+// zemi.memory namespace, the Go-owned /memory command, the
 // proposal queue behind the autonomy gate, and the §10.7 digest. Proposals
 // persist in their scope's store until the user accepts or rejects them.
 package hostapi
@@ -155,7 +155,7 @@ func (h *Host) storeProposal(res *learn.Result) error {
 	return nil
 }
 
-// Remember stores a user-typed /remember text (origin user, project
+// Remember stores a user-typed /memory <note> text (origin user, project
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4).
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
@@ -303,12 +303,7 @@ func (h *Host) memoryProposals() []memoryProposal {
 
 // refreshPending recounts what awaits review for the statusline badge.
 func (h *Host) refreshPending() {
-	ag := h.agents
-	ag.mu.Lock()
-	cfg := len(ag.cfgProposals)
-	ag.mu.Unlock()
 	h.pendingMemory.Store(int32(len(h.memoryProposals())))
-	h.pendingConfig.Store(int32(cfg))
 	h.refresh()
 }
 
@@ -462,16 +457,13 @@ func (h *Host) digestFor() string {
 	return learn.Digest(cands, time.Now(), lines)
 }
 
-// MemoryCommandsStep registers the Go-owned /remember and /memory
-// commands with the builtin origin (user config may rebind them).
+// MemoryCommandsStep registers the Go-owned /memory command with the
+// builtin origin (user config may rebind it).
 func (h *Host) MemoryCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "memory commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			for _, c := range []*Command{
-				{Name: "remember", NArgs: "+", Desc: "save a memory for this project", Hidden: true,
-					GoFn:   func(h *Host, args string) error { return h.Remember(args) },
-					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},
 				{Name: "memory", NArgs: "*", Desc: "what zemi remembers; /memory <note> saves one",
 					GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
 					Origin: lua.OriginBuiltin, Gen: Gen(g.ID)},

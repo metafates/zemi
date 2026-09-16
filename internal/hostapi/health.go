@@ -168,8 +168,8 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "reflector", "runs when a session closes")
 	}
 
-	if mem, cfg := h.pendingMemory.Load(), h.pendingConfig.Load(); mem+cfg > 0 {
-		add("warn", "learning", fmt.Sprintf("%d memories wait in /memory, %d config changes in /config", mem, cfg))
+	if mem := h.pendingMemory.Load(); mem > 0 {
+		add("warn", "learning", fmt.Sprintf("%d memories wait in /memory", mem))
 		out[len(out)-1].run = "memory"
 	} else {
 		add("ok", "learning", "nothing waiting for review")

@@ -14,11 +14,7 @@ import (
 )
 
 // undocumented lists names the builtin skills leave out on purpose.
-var undocumented = map[string]string{
-	"config.reloaded": "catalogued but never emitted",
-	"timer.fire":      "catalogued but never emitted",
-	"fs.changed":      "catalogued but never emitted",
-}
+var undocumented = map[string]string{}
 
 // TestSkillsCoverSurface fails when a setting, model tool, event, host
 // action or slash command is missing from every builtin skill, so zemi's
@@ -27,7 +23,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 	text := skillsText(t)
 	h, r := newTestHost(t)
 	if err := r.Boot(context.Background(), []lua.BootStep{
-		h.NamespacesStep(), h.MemoryCommandsStep(), h.ReflectorCommandsStep(), h.ConfigCommandsStep(),
+		h.NamespacesStep(), h.MemoryCommandsStep(), h.ReflectorCommandsStep(),
 		h.SkillsCommandsStep(), h.AgentsCommandsStep(), h.WorkflowCommandsStep(), h.MCPCommandsStep(), h.LSPCommandsStep(),
 	}); err != nil {
 		t.Fatal(err)

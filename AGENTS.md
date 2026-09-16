@@ -266,7 +266,7 @@ what the screen says.
   anything that does not decode as a fantasy message.
 - **Proposals persist.** Memory proposals live in the scope DB's `proposals` table until
   `/memory` (a/d, decisions by row id) or `zemi.learn.decide`; `refreshPending` caches the
-  statusline counts. Config proposals are still in memory (`cfgProposals`).
+  statusline counts.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
   the latest session, never on quit; `reflectDue` compares the message count with kv
   `reflector.seen.<sid>`, so a session is reflected again only after new messages.
@@ -374,19 +374,13 @@ the fail-closed direction). Git is the audit trail, files + DB are the source of
 missing git degrades to log warnings. Git helpers shell out to the `git` binary (no git
 library in go.mod), run with `GIT_CONFIG_NOSYSTEM=1` and a 15s timeout.
 
-Skill proposals always wait for review (DESIGN §10.4);
-`config.autonomy = auto` lets session-scope deny/ask patches auto-apply.
-The reflector (§10.3) may propose config patches as rule objects only —
-`intakeConfigPatch` strict-decodes them (unknown fields refuse the patch)
-and scrubs every leaf; pending patches park in the `cfgProposals` queue
-and the Go-owned `/config` command opens the review card overlay (accept
-applies session rules / permanent ones through the review commit with
-message `learn: <title> (from <session id>)`, reject drops, esc leaves
-queued). The review verdict travels as row IDs, never indices. Every
-applied revision records its config-repo commit SHA (`config_revisions.
-commit_sha`); `/config revisions` lists them and `/config revert <id>` does
-`git revert` + a `revert:` revision row (the perm store reloads on the
-next reload, not in-place).
+Skill proposals always wait for review (DESIGN §10.4). The reflector
+proposes memories and skills only; there is no config-patch pipeline and
+no `/config` command (the agent edits config files directly, and the
+overlay's "always" answer is the one path that writes permanent rules).
+Every applied revision records its config-repo commit SHA
+(`config_revisions.commit_sha`); undoing one is `git revert` in the
+config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
 
 ## Testing patterns
 
@@ -450,7 +444,7 @@ next reload, not in-place).
   case-sensitive, before the command registry is consulted), so no registered command can
   shadow it. Keep them out of any "make everything rebindable" refactor.
 - **No editor modes.** The composer is always focused; commands are slash commands typed in
-  the composer (`/quit`, `/help`, `/config`, ...) with the palette popup for completion
+  the composer (`/quit`, `/help`, `/memory`, ...) with the palette popup for completion
   (`internal/ui/palette.go`). Keymaps are keys or key sequences
   (`zemi.keymap.set("<leader>m", action)`, `del`, `get`, `list`; `<leader>` is the
   `keymap.leader` setting); printable keys stay with the composer, and an open palette or

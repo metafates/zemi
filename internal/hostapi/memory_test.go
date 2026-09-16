@@ -358,7 +358,7 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if err := h.MemoryCommandsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
 		t.Fatalf("step: %v", err)
 	}
-	if h.Commands.Lookup("remember") == nil || h.Commands.Lookup("memory") == nil {
+	if h.Commands.Lookup("memory") == nil {
 		t.Fatal("memory commands not registered")
 	}
 	if err := h.memoryCommand("forget"); err == nil {

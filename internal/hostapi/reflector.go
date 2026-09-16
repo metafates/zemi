@@ -43,18 +43,15 @@ Rules:
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - Each memory is one self-contained single line, at most 500 characters.
-- Config patches may only add permission rules: an array of rule objects with subject, pattern, decision (deny|ask|allow), optional scope ("permanent" or "session"), optional not_match, and match / not_match_example strings (example commands the pattern must / must not match). Never put Lua, event handlers, tool registrations, keymaps or autonomy knobs inside a config patch.
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything instruction files and tool descriptions already say.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
-{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"config":[{"action":"patch","title":"...","rules":[{"subject":"tool.bash","pattern":"rm -rf *","decision":"deny","scope":"permanent","match":"rm -rf build","not_match":"rm -f build"}],"risk":"safe"}],"skills":[{"name":"run-integration-tests","description":"when asked to run the local integration tests","body":"1. docker compose up -d db\n2. go test -tags integration ./..."}]}
-kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories", "config" and "skills" entirely when nothing is worth keeping.`
+{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"skills":[{"name":"run-integration-tests","description":"when asked to run the local integration tests","body":"1. docker compose up -d db\n2. go test -tags integration ./..."}]}
+kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories" and "skills" entirely when nothing is worth keeping.`
 
-// reflectProposal is the schema-validated model output. Config patches
-// stay raw at decode time: intakeConfigPatch strict-decodes each one so
-// unknown fields refuse the patch (DESIGN §10.3).
+// reflectProposal is the schema-validated model output.
 type reflectProposal struct {
 	Memories []struct {
 		Scope      string   `json:"scope"`
@@ -63,7 +60,6 @@ type reflectProposal struct {
 		Tags       []string `json:"tags"`
 		Supersedes string   `json:"supersedes"`
 	} `json:"memories"`
-	Config []json.RawMessage `json:"config"`
 	Skills []struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -180,16 +176,13 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 		return err
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
-	cfgQueued, cfgApplied, cfgSkipped := h.applyConfigProposals(sid, proposal)
 	drafted := h.applySkillDrafts(sid, proposal)
 	if msgs, err := h.DB.Messages(sid); err == nil {
 		_ = h.DB.SetKV(reflectSeenKey(sid), fmt.Sprint(len(msgs)))
 	}
 	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
-		"superseded": superseded, "skipped": skipped,
-		"config_queued": cfgQueued, "config_applied": cfgApplied,
-		"config_skipped": cfgSkipped, "skills_drafted": drafted,
+		"superseded": superseded, "skipped": skipped, "skills_drafted": drafted,
 	}
 	h.Log.Info("reflector", "run complete", result)
 	h.EmitAsync("reflector.done", result)
@@ -393,29 +386,6 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		}
 	}
 	return stored, queued, superseded, skipped
-}
-
-// applyConfigProposals routes each config patch through the strict §10.3
-// intake (rule objects only, scrubbed leaves) and the config.autonomy
-// gate: deny/ask session-scope patches may auto-apply under "auto",
-// everything else queues for review. Returns counters.
-func (h *Host) applyConfigProposals(sid string, p *reflectProposal) (queued, applied, skipped int) {
-	for _, raw := range p.Config {
-		prop, err := h.intakeConfigPatch(sid, raw)
-		if err != nil {
-			skipped++
-			h.Log.Debug("reflector", "config patch skipped", map[string]any{"error": err.Error()})
-			continue
-		}
-		if h.autoApplyCfgOK(prop) {
-			h.applyCfgProposal(prop)
-			applied++
-		} else {
-			h.queueCfgProposal(prop)
-			queued++
-		}
-	}
-	return queued, applied, skipped
 }
 
 // applySkillDrafts writes each proposed skill as a disabled learned draft;

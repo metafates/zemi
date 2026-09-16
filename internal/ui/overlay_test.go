@@ -113,12 +113,6 @@ func TestTopChromeTakesInput(t *testing.T) {
 	if a.memReview.sel != 1 || a.modelPick.selected != 0 {
 		t.Fatalf("wheel: memory sel=%d picker sel=%d", a.memReview.sel, a.modelPick.selected)
 	}
-
-	a.cfgReview = &cfgReviewPrompt{items: make([]hostapi.ConfigRow, 1)}
-	a.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	if a.cfgReview != nil || a.memReview == nil {
-		t.Fatal("ctrl+c should close the config review drawn over the memory screen")
-	}
 }
 
 // TestModelPickerFilter: typing narrows the picker by id or display name

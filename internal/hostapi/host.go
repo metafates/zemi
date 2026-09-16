@@ -42,7 +42,6 @@ type UIHooks interface {
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string
-	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert" or "submit".
@@ -157,10 +156,9 @@ type Host struct {
 	luaTools *toolReg
 	timers   *timerReg
 
-	// memReview/cfgReview serialize the /memory and /config review overlays;
-	// the hook runs off the UI goroutine.
+	// memReview serializes the /memory review overlay; the hook runs off
+	// the UI goroutine.
 	memReview sync.Mutex
-	cfgReview sync.Mutex
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// modelFn stubs the agent and reflector model in tests.
@@ -170,9 +168,9 @@ type Host struct {
 
 	md markdownCache
 
-	// pendingMemory/pendingConfig count proposals awaiting review for the
-	// statusline badge (refreshPending).
-	pendingMemory, pendingConfig atomic.Int32
+	// pendingMemory counts proposals awaiting review for the statusline
+	// badge (refreshPending).
+	pendingMemory atomic.Int32
 
 	selectSeq atomic.Int64 // ids for zemi.ui.select overlays
 
@@ -723,7 +721,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
-	tb.RawSetString("pending_config", glua.LNumber(h.pendingConfig.Load()))
 	tb.RawSetString("agents_running", glua.LNumber(h.tasks.running()))
 	// Showing an agent run, the chat renders its transcript alone: the
 	// session's live turn and todos stay out of it.
@@ -1003,7 +1000,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.17.0"))
+	api.RawSetString("version", glua.LString("0.18.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

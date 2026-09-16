@@ -423,6 +423,7 @@ func (h *Host) PermissionsLoadStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "permissions load",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			h.sweepPendingRevisions()
 			rules, err := h.readPermanentRules()
 			for _, rule := range rules {
 				h.Perm.Add(rule)

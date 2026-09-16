@@ -38,8 +38,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case top == "perm":
 			a.answerPerm(false, "user")
-		case top == "cfgReview":
-			a.answerCfgReview()
 		case top == "memReview":
 			a.answerMemReview()
 		case top == "question":
@@ -141,18 +139,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.undoMemory()
 		case "esc", "q", "enter":
 			a.answerMemReview()
-		}
-	case "cfgReview":
-		if moveSel(&a.cfgReview.sel, len(a.cfgReview.items), key) {
-			return nil
-		}
-		switch key {
-		case "y", "a":
-			a.cfgDecide(true)
-		case "n", "x":
-			a.cfgDecide(false)
-		case "esc", "q":
-			a.answerCfgReview()
 		}
 	case "question":
 		a.questionKey(key, keyText(msg))
@@ -439,13 +425,11 @@ func (a *App) modeBase() string {
 
 // topChrome names the prompt drawn on top, which takes keys, the wheel,
 // pastes and clicks. It mirrors the splice order in compose: perm over
-// cfgReview, memReview, question, modelPick, trust, then Lua overlays.
+// memReview, question, modelPick, trust, then Lua overlays.
 func (a *App) topChrome() string {
 	switch {
 	case a.permAsk != nil:
 		return "perm"
-	case a.cfgReview != nil:
-		return "cfgReview"
 	case a.memReview != nil:
 		return "memReview"
 	case a.question != nil:
@@ -472,8 +456,6 @@ func (a *App) wheelChrome(step int) bool {
 		move(&a.modelPick.selected, len(a.modelPick.visible))
 	case "memReview":
 		move(&a.memReview.sel, len(a.memReview.items))
-	case "cfgReview":
-		move(&a.cfgReview.sel, len(a.cfgReview.items))
 	case "question":
 		move(a.question.sel())
 	case "overlay":

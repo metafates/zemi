@@ -20,9 +20,8 @@ var eventCatalogue = map[string]bool{
 	"ui.resize": true, "ui.theme": true, "overlay.open": true,
 	"overlay.close": true, "composer.change": true, "composer.submit": true,
 	"memory.written": true, "skill.learned": true,
-	"config.proposed": true, "config.applied": true,
 	"reflector.start": true, "reflector.done": true,
-	"job.exit": true, "timer.fire": true, "fs.changed": true,
+	"job.exit":    true,
 	"lsp.request": true,
 }
 

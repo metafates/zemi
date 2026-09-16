@@ -366,9 +366,6 @@ type fakeUI struct {
 	pickItems       []ModelOption
 	reviewItems     [][]MemoryRow
 	reviewDecisions map[string]string
-	cfgItems        [][]ConfigRow
-	cfgAcceptAll    bool
-	cfgRejectAll    bool
 	qAsked          []tools.Question
 	qAnswer         string
 	qOK             bool
@@ -404,22 +401,6 @@ func (f *fakeUI) ReviewMemories(items []MemoryRow) map[string]string {
 }
 
 func (f *fakeUI) Screenshot() string { return f.screenshot }
-
-func (f *fakeUI) ReviewConfigs(items []ConfigRow) ([]string, []string) {
-	f.cfgItems = append(f.cfgItems, items)
-	var acc, rej []string
-	if f.cfgAcceptAll {
-		for _, r := range items {
-			acc = append(acc, r.ID)
-		}
-	}
-	if f.cfgRejectAll {
-		for _, r := range items {
-			rej = append(rej, r.ID)
-		}
-	}
-	return acc, rej
-}
 
 func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
 	f.qAsked = append(f.qAsked, qs...)

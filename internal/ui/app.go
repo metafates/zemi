@@ -80,10 +80,9 @@ type App struct {
 	lastChatBottom int
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
-	work      chan func()
-	workOnce  sync.Once
-	cfgReview *cfgReviewPrompt
-	question  *questionPrompt
+	work     chan func()
+	workOnce sync.Once
+	question *questionPrompt
 
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
@@ -671,9 +670,6 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.memReview != nil {
 		splice(a.memReviewBox(w, chatH))
-	}
-	if a.cfgReview != nil {
-		splice(cfgReviewBox(a.cfgReview, w))
 	}
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, w, chatH))

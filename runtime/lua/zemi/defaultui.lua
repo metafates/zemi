@@ -299,7 +299,6 @@ zemi.ui.widget.register({
       segs[#segs + 1] = { text = " " .. cmd, hl = "Comment" }
     end
     add(ctx.pending_memory, "learned", "/memory")
-    add(ctx.pending_config, "config", "/config")
     if #segs == 0 then return empty() end
     return { segs }
   end,
@@ -317,8 +316,6 @@ zemi.event.on("reflector.done", function(ev)
   add(ev.stored, "memory stored", "memories stored")
   add(ev.queued, "memory to review in /memory", "memories to review in /memory")
   add(ev.superseded, "memory superseded", "memories superseded")
-  add(ev.config_applied, "config rule applied", "config rules applied")
-  add(ev.config_queued, "config change to review in /config", "config changes to review in /config")
   add(ev.skills_drafted, "skill drafted, enable it in /skills", "skills drafted, enable them in /skills")
   -- a session with nothing worth keeping ends quietly
   if #parts == 0 then return end

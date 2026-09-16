@@ -124,19 +124,19 @@ and `args` plus Lua's string, table and math libraries, with no file or network 
 
 ## How it learns
 
-1. **Capture.** `/remember <text>` stores a fact right away. The model can save lessons
+1. **Capture.** `/memory <text>` stores a fact right away. The model can save lessons
    with its `memory_add` tool.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start), a reflector
-   reads it and proposes memories, permission rule patches and skill drafts. Quitting
-   never waits on it.
+   reads it and proposes memories and skill drafts. Quitting never waits on it.
 3. **Review.** Proposals persist until you decide. The statusline shows how many wait:
-   `/memory` accepts (`a`) or rejects (`d`) memories, `/config` reviews rule patches,
-   `/skills` enables drafted skills (they start disabled).
+   `/memory` accepts (`a`) or rejects (`d`) memories, `/skills` enables drafted skills
+   (they start disabled).
 4. **Use.** Accepted memories reach the model as a labeled digest in the system prompt;
    enabled skills appear as an index the model loads on demand.
 
 Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
-reversible (`/memory`, `/config revert <id>`, `/skills disable <name>`).
+reversible (`/memory`, `/skills disable <name>`; permanent permission rules are
+commits in the config directory, `git revert` undoes one).
 
 zemi also knows itself: builtin skills (`zemi-config`, `zemi-customize`, `zemi-debug`,
 `zemi-lua`, `zemi-learning`, `zemi-worktrees`) teach the agent where zemi's files live, how
@@ -217,7 +217,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/usage`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/remember`, `/memory`, `/config`, `/skills`, `/reflect`,
+`/effort`, `/usage`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/memory`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

@@ -295,7 +295,6 @@ function zemi.event.stats() end
 ---@field pulse boolean The shared 600 ms blink phase; always false with animations off.
 ---@field reflecting boolean
 ---@field pending_memory integer
----@field pending_config integer
 ---@field agents_running integer
 
 ---@class zemi.WidgetSpec
@@ -410,11 +409,6 @@ function zemi.ui.screenshot() end
 
 --- Open the /help overlay.
 function zemi.ui.help() end
-
---- Ask for a redraw. Every frame re-renders anyway, so this is a no-op
---- kept for callers that want to say so.
----@param id? string
-function zemi.ui.invalidate(id) end
 
 -- ---------------------------------------------------------------------------
 -- zemi.notify and zemi.log
