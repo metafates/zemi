@@ -19,9 +19,11 @@
 (allow mach-lookup (global-name "com.apple.cfprefsd.daemon" "com.apple.cfprefsd.agent") (local-name "com.apple.cfprefsd.agent"))
 (allow user-preference-read)
 ; /dev/tty is the process's own terminal. A window's program inherits its pty;
-; ioctl needs an open fd, and no other terminal can be opened by path.
+; ioctl needs an open fd, and no other terminal can be opened by path, or a
+; read would take what the user types there.
 ; NOTE: so programs that allocate a pty (script, expect) fail
 (allow file-read* file-write* file-ioctl (literal "/dev/tty"))
 (allow file-ioctl (regex #"^/dev/ttys[0-9]+$"))
 (allow file-read*)
+(deny file-read* (regex #"^/dev/ttys[0-9]+$"))
 (allow file-write-data (literal "/dev/null") (literal "/dev/zero") (subpath "/dev/fd"))

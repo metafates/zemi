@@ -293,8 +293,17 @@ func landlock(p Policy) error {
 		}
 		return nil
 	}
+	// other terminals and input devices: reading one reads what the user
+	// types there. /dev/tty and a pty fd the command inherits still work,
+	// since Landlock checks at open.
+	// NOTE: so /dev/stdin in a window, which reopens its pty, fails too
+	devices := []string{"/dev/pts", "/dev/console", "/dev/input"}
+	for _, g := range []string{"/dev/tty?*", "/dev/vcs*", "/dev/hidraw*"} {
+		m, _ := filepath.Glob(g)
+		devices = append(devices, m...)
+	}
 	var hide []string
-	for _, h := range p.Hide {
+	for _, h := range append(p.Hide, devices...) {
 		if _, err := os.Lstat(h); err == nil {
 			hide = append(hide, h)
 		}
@@ -302,8 +311,6 @@ func landlock(p Policy) error {
 	if err := addRead(add, "/", hide); err != nil {
 		return err
 	}
-	// not /dev/pts: a window's program inherits its pty, and a path would
-	// reach every other terminal the user has open.
 	// NOTE: without namespaces /dev/shm is the one the user's other programs
 	// share, so their POSIX shared memory is writable too.
 	for _, w := range append(p.Write, "/dev/null", "/dev/zero", "/dev/tty", "/dev/ptmx", "/dev/shm") {

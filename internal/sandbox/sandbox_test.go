@@ -48,6 +48,12 @@ func act(verb, arg string) error {
 		if v := os.Getenv("ZEMI_SANDBOX_TEST"); v != arg {
 			return fmt.Errorf("env %q", v)
 		}
+	case "open":
+		f, err := os.Open(arg)
+		if err == nil {
+			f.Close()
+		}
+		return err
 	case "rename":
 		return os.Rename(arg, arg+".moved")
 	case "dial":
@@ -303,7 +309,7 @@ func TestTerminal(t *testing.T) {
 	defer other.Close()
 	defer otherTTY.Close()
 	script := `stty -g >/dev/null && stty size && echo mine >/dev/tty && read l && echo got:$l
-if "$0" __act write "$1" 2>/dev/null; then echo escaped; else echo confined; fi`
+if "$0" __act write "$1" 2>/dev/null || "$0" __act open "$1" 2>/dev/null; then echo escaped; else echo confined; fi`
 	cmd := exec.Command("/bin/sh", "-c", script, os.Args[0], otherTTY.Name())
 	if err := Wrap(cmd, Policy{}); err != nil {
 		t.Fatal(err)
