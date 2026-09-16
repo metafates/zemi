@@ -35,16 +35,13 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		action := L.CheckString(2)
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.learn.decide: only user or builtin origin may decide proposals")
-			return 0
 		}
 		if action != "accept" && action != "reject" {
 			L.RaiseError("zemi.learn.decide: action must be accept or reject")
-			return 0
 		}
 		res := h.takeProposal(id)
 		if res == nil {
 			L.RaiseError("zemi.learn.decide: no such proposal %q", id)
-			return 0
 		}
 		if action == "reject" {
 			h.Notify("info", "learn", "proposal rejected")
@@ -52,7 +49,6 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		}
 		if err := h.storeProposal(res); err != nil {
 			L.RaiseError("zemi.learn.decide: %v", err)
-			return 0
 		}
 		h.Notify("info", "learn", "stored: "+res.Memory.Text)
 		return 0

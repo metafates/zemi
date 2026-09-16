@@ -320,7 +320,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 // lua.fs.read gate and changes lua.fs.write; runtime failures return nil, err.
 func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	resolve := func(L *glua.LState, api string, write bool) (string, bool) {
+	resolve := func(L *glua.LState, api string, write bool) string {
 		roots, subject := h.readJails(), "lua.fs.read"
 		if write {
 			roots, subject = h.writeJails(), "lua.fs.write"
@@ -330,7 +330,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
 		h.luaGate(L, subject, resolved)
-		return resolved, true
+		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
 		switch {
@@ -343,10 +343,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	tb.RawSetString("read", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "read", false)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "read", false)
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return luaResult(L, err)
@@ -356,10 +353,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "write", true)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "write", true)
 		content := L.CheckString(2)
 		err := os.MkdirAll(filepath.Dir(path), 0o755)
 		if err == nil {
@@ -369,10 +363,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		dir, ok := resolve(L, "list", false)
-		if !ok {
-			return 0
-		}
+		dir := resolve(L, "list", false)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return luaResult(L, err)
@@ -388,10 +379,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("stat", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "stat", false)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "stat", false)
 		fi, err := os.Lstat(path)
 		if err != nil {
 			return luaResult(L, err)
@@ -401,29 +389,20 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("exists", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "exists", false)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "exists", false)
 		_, err := os.Lstat(path)
 		L.Push(glua.LBool(err == nil))
 		return 1
 	}))
 
 	tb.RawSetString("mkdir", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "mkdir", true)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "mkdir", true)
 		return luaResult(L, os.MkdirAll(path, 0o755))
 	}))
 
 	// remove deletes one file or empty directory (never a tree).
 	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
-		path, ok := resolve(L, "remove", true)
-		if !ok {
-			return 0
-		}
+		path := resolve(L, "remove", true)
 		return luaResult(L, os.Remove(path))
 	}))
 
@@ -970,9 +949,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
 		jh := start(L)
-		if jh == nil {
-			return 0
-		}
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LNumber(jh.id))
 		// wait([timeout_ms]) blocks the interpreter: keep it for tools and
@@ -1009,9 +985,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	// it); it blocks the interpreter, so it belongs in tools.
 	tb.RawSetString("out", L.NewFunction(func(L *glua.LState) int {
 		jh := start(L)
-		if jh == nil {
-			return 0
-		}
 		timeout := 60 * time.Second
 		if spec, ok := L.Get(1).(*glua.LTable); ok {
 			if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {

@@ -205,12 +205,11 @@ func TestEventRegistry(t *testing.T) {
 
 	// Equal-rank same id replaces in place (order preserved).
 	replacement := mk("user.ping", "handler.2", lua.OriginPlugin)
-	replacement.Coalesce = true
 	if _, err := r.Add(replacement); err != nil {
 		t.Fatalf("same-origin replace: %v", err)
 	}
 	got := r.Handlers("user.ping")
-	if len(got) != 2 || got[1] != replacement || !got[1].Coalesce {
+	if len(got) != 2 || got[1] != replacement {
 		t.Fatalf("in-place replace failed: %+v", got)
 	}
 

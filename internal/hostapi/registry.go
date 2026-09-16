@@ -203,7 +203,6 @@ type Widget struct {
 	Region   string
 	Priority int
 	Render   *glua.LFunction
-	Keys     *glua.LFunction // stored but never invoked
 	Wrap     bool
 	Origin   lua.Origin
 	Path     string
@@ -274,14 +273,13 @@ func (r *WidgetRegistry) Purge() {
 
 // EventHandler is a Lua callback subscribed to an event.
 type EventHandler struct {
-	ID       string
-	Event    string
-	Fn       *glua.LFunction
-	Origin   lua.Origin
-	Path     string
-	Gen      Gen
-	Coalesce bool // parsed from zemi.event.on opts; delivery does not coalesce
-	Once     bool // removed before its first call
+	ID     string
+	Event  string
+	Fn     *glua.LFunction
+	Origin lua.Origin
+	Path   string
+	Gen    Gen
+	Once   bool // removed before its first call
 }
 
 // EventRegistry stores event subscriptions. Handler ids collide across

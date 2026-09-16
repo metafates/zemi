@@ -48,7 +48,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			Gen:    h.currentGen(),
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
-			hd.ID, hd.Coalesce, hd.Once = rawString(opts, "id"), rawBool(opts, "coalesce"), rawBool(opts, "once")
+			hd.ID, hd.Once = rawString(opts, "id"), rawBool(opts, "once")
 		}
 		added, err := h.Events.Add(hd)
 		if err != nil {

@@ -219,27 +219,21 @@ var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 // user config (a mode answers permission asks, so no other origin may).
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	gate := func(L *glua.LState, fn string) bool {
+	gate := func(L *glua.LState, fn string) {
 		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.permission.mode.%s: only user config may change permission modes", fn)
-			return false
 		}
-		return true
 	}
 	// add(name, { base, description, prompt, rules = { { subject, pattern, decision }, ... } })
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, spec := L.CheckString(1), L.CheckTable(2)
-		if !gate(L, "add") {
-			return 0
-		}
+		gate(L, "add")
 		def := PermModeDef{Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt")}
 		if !modeName.MatchString(name) {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
-			return 0
 		}
 		if modeIndex(builtinModes, def.Base) < 0 {
 			L.RaiseError("zemi.permission.mode.add: base must be manual, plan, auto or yolo")
-			return 0
 		}
 		if rules, ok := spec.RawGetString("rules").(*glua.LTable); ok {
 			def.Rules = perm.NewStore()
@@ -266,7 +260,6 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			})
 			if bad != "" {
 				L.RaiseError("zemi.permission.mode.add: %s", bad)
-				return 0
 			}
 		}
 		if def.Description == "" {
@@ -284,9 +277,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if !gate(L, "remove") {
-			return 0
-		}
+		gate(L, "remove")
 		err := h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
 			i := modeIndex(list, name)
 			switch {
@@ -326,14 +317,14 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 // checked one by one). Network requests are not on this list: a URL carries
 // whatever the model puts in it, so the screening model sees them.
 func (h *Host) autoLocal(req tools.Request) bool {
-	switch {
-	case req.Subject == "fs.read":
+	switch req.Subject {
+	case "fs.read":
 		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
-	case req.Subject == "fs.write":
+	case "fs.write":
 		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg)
-	case req.Subject == "tool.bash":
+	case "tool.bash":
 		return perm.SafeCommand(req.Arg, h.safeCommandPath)
-	case req.Subject == "tool.workflow":
+	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
 	return false

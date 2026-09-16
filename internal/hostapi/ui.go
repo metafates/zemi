@@ -35,9 +35,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if fn, ok := tb.RawGetString("render").(*glua.LFunction); ok {
 			w.Render = fn
 		}
-		if fn, ok := tb.RawGetString("keys").(*glua.LFunction); ok {
-			w.Keys = fn
-		}
 		if _, err := h.Widgets.Add(w); err != nil {
 			L.RaiseError("zemi.ui.widget.register: %v", err)
 		}

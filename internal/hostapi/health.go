@@ -52,7 +52,6 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		name, fn := L.CheckString(1), L.CheckFunction(2)
 		if strings.TrimSpace(name) == "" {
 			L.RaiseError("zemi.health.register: name is required")
-			return 0
 		}
 		h.healthReg.mu.Lock()
 		h.healthReg.list = append(h.healthReg.list, luaHealthCheck{

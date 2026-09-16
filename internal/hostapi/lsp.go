@@ -453,12 +453,10 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		name, opts := L.CheckString(1), L.CheckTable(2)
 		if h.RT.CurrentOrigin() != lua.OriginUser {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
-			return 0
 		}
 		def := lspDef{Name: name, Command: rawString(opts, "command"), Env: map[string]string{}}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")
-			return 0
 		}
 		each := func(key string, fn func(k, v glua.LValue)) {
 			if t, ok := opts.RawGetString(key).(*glua.LTable); ok {
@@ -470,14 +468,12 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		each("filetypes", func(_, v glua.LValue) { def.Exts = append(def.Exts, "."+strings.TrimPrefix(v.String(), ".")) })
 		if len(def.Exts) == 0 {
 			L.RaiseError("zemi.lsp.add: filetypes is required")
-			return 0
 		}
 		for key, dst := range map[string]*any{"settings": &def.Config, "init_options": &def.Init} {
 			if v := opts.RawGetString(key); v != glua.LNil {
 				g, err := lua.ToGo(v)
 				if err != nil {
 					L.RaiseError("zemi.lsp.add: %s: %v", key, err)
-					return 0
 				}
 				*dst = g
 			}
@@ -493,7 +489,6 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		if h.RT.CurrentOrigin() != lua.OriginUser {
 			L.RaiseError("zemi.lsp.disable: only user config may disable language servers")
-			return 0
 		}
 		h.lsp.mu.Lock()
 		h.lsp.disabled[name] = true
