@@ -1783,25 +1783,34 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var names []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
+		unnamed := 0 // segments allowed exactly as written, with no prefix to name
 		for _, seg := range n.Segments {
 			p := commandPrefix(seg)
 			if p == "" {
 				rules = append(rules, rule("tool.bash", seg))
+				unnamed++
 				continue
 			}
 			rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
 			if !seen[p] {
 				seen[p] = true
-				names = append(names, "`"+p+"`")
+				names = append(names, "`"+truncRunes(p, 24)+"`")
 			}
 		}
-		switch {
-		case len(names) == 0:
+		// The label is a button: long enough and the row stacks, which turns
+		// the prompt into a wall. It still has to say how much it covers, so
+		// what is not named is counted.
+		if len(names) == 0 {
 			return "don't ask again for this exact command", rules
-		case len(rules) > 2*len(names):
-			return "don't ask again for " + strings.Join(names, ", ") + " and the rest as written", rules
 		}
-		return "don't ask again for " + strings.Join(names, ", "), rules
+		shown := names
+		if len(shown) > 2 {
+			shown = names[:2]
+		}
+		if hidden := len(names) - len(shown) + unnamed; hidden > 0 {
+			return fmt.Sprintf("don't ask again for %s and %d more", strings.Join(shown, ", "), hidden), rules
+		}
+		return "don't ask again for " + strings.Join(shown, ", "), rules
 	case req.Subject == "fs.write" || req.Subject == "fs.read":
 		dir := filepath.Dir(req.Arg)
 		shown := dir

@@ -48,7 +48,9 @@ func (pa *permAskPrompt) choices() []permChoice {
 	if pa.req.Always != "" {
 		out = append(out, permChoice{"Yes, " + pa.req.Always, "user:always", true, false})
 	}
-	return append(out, permChoice{"No", "user", false, false}, permChoice{"No, and tell zemi what to do", "user", false, true})
+	// short labels keep the four buttons on one row: a stacked row turns the
+	// prompt into a wall of text (the hint line explains the keys)
+	return append(out, permChoice{"No", "user", false, false}, permChoice{"No, and say why", "user", false, true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
