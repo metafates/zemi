@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -651,7 +653,8 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				return bashRequests(jobLine(str(in["command"]), strList(in["args"])), str(in["description"]))
+				env, _ := in["env"].(map[string]any)
+				return bashRequests(jobLine(str(in["command"]), strList(in["args"]), env), str(in["description"]))
 			},
 			runJobStart),
 
@@ -879,11 +882,16 @@ func bashRequests(cmd, description string) []Request {
 // jobLine is what job_start runs, as the shell line the gate checks. With
 // args the program is exec'd, so every word is quoted where sh would split
 // or expand it: sh -c 'cat ~/.ssh/id_rsa' must not check as a bare cat.
-func jobLine(command string, args []string) string {
-	if len(args) == 0 {
-		return command
+// Env extras lead as assignments, so GOFLAGS=-toolexec=x is seen too.
+func jobLine(command string, args []string, env map[string]any) string {
+	var words []string
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		words = append(words, k+"="+shellQuote(fmt.Sprint(env[k])))
 	}
-	words := []string{shellQuote(command)}
+	if len(args) == 0 {
+		return strings.Join(append(words, command), " ")
+	}
+	words = append(words, shellQuote(command))
 	for _, a := range args {
 		words = append(words, shellQuote(a))
 	}

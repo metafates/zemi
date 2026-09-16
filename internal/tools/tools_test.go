@@ -149,16 +149,21 @@ func TestJobLineChecksWhatRuns(t *testing.T) {
 	for _, c := range []struct {
 		command string
 		args    []string
+		env     map[string]any
 		segs    []string
 	}{
-		{"echo ready && sleep 30", nil, []string{"echo ready", "sleep 30"}},
-		{"sh", []string{"-c", "cat ~/.ssh/id_rsa"}, []string{"cat ~/.ssh/id_rsa"}},
-		{"echo", []string{"a;b", "it's"}, []string{"echo a;b it's"}},
+		{"echo ready && sleep 30", nil, nil, []string{"echo ready", "sleep 30"}},
+		{"sh", []string{"-c", "cat ~/.ssh/id_rsa"}, nil, []string{"cat ~/.ssh/id_rsa"}},
+		{"echo", []string{"a;b", "it's"}, nil, []string{"echo a;b it's"}},
+		{"go test ./...", nil, map[string]any{"GOFLAGS": "-toolexec=./x.sh"}, []string{"go test ./..."}},
 	} {
-		line := jobLine(c.command, c.args)
+		line := jobLine(c.command, c.args, c.env)
 		if got := perm.Normalize(line).Segments; !slices.Equal(got, c.segs) {
-			t.Errorf("%q %q: %q checks as %q, want %q", c.command, c.args, line, got, c.segs)
+			t.Errorf("%q %q %v: %q checks as %q, want %q", c.command, c.args, c.env, line, got, c.segs)
 		}
+	}
+	if perm.SafeCommand(jobLine("go test ./...", nil, map[string]any{"GOFLAGS": "-toolexec=./x.sh"}), nil) {
+		t.Error("an env extra must keep job_start from settling as a safe command")
 	}
 }
 
