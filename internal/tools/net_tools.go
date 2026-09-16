@@ -250,8 +250,8 @@ func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 		return fantasy.NewTextErrorResponse("empty query"), nil
 	}
 	limit := 10
-	if v, ok := input["max_results"].(float64); ok && v >= 1 && v <= 20 {
-		limit = int(v)
+	if v, ok := input["max_results"].(float64); ok && v >= 1 {
+		limit = int(min(v, 20))
 	}
 	u, searx, err := searchURL(p, query)
 	if err != nil {
