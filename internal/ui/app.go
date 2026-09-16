@@ -358,7 +358,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.publishComposer()
 			return a, nil
 		}
-		s := msg.Content
+		// terminals paste line breaks as CR
+		s := strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n")
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}

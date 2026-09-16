@@ -391,3 +391,12 @@ func TestPasteToken(t *testing.T) {
 		t.Fatalf("after backspace %q", c.text)
 	}
 }
+
+// TestPasteLineEndings: terminals paste line breaks as CR.
+func TestPasteLineEndings(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.Update(tea.PasteMsg{Content: "one\rtwo\r\nthree"})
+	if app.composer.text != "one\ntwo\nthree" {
+		t.Fatalf("composer text %q", app.composer.text)
+	}
+}
