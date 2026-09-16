@@ -196,7 +196,7 @@ be gated with the same `lua.` subject at the Lua boundary.
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
 edits **inside the jail** that are not secret-shaped, except writes under `.git`, the
 project's `.zemi` or zemi's own config/data/state dirs (`protectedWrite`, which skip the
-screener too and ask the user), `tool.workflow` scripts,
+screener too and ask the user, as do writes outside the project and scratchpad), `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
 escaped tagged data like the action) and falling back to the user ask with its reason

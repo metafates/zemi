@@ -93,6 +93,12 @@ func (h *Host) askHook() tools.Asker {
 				req.Reason = "not settled: this changes .git, .zemi or zemi's own files"
 				break
 			}
+			if req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...) {
+				// the sandbox cannot confine the write tool, and a file outside the
+				// project (~/.gitconfig, a shell rc) can name what runs next
+				req.Reason = "not settled: this changes a file outside the project"
+				break
+			}
 			if !h.ProjectTrusted() {
 				// the screener reads text the repository can steer; the user decides
 				req.Reason = "not settled: this project is not trusted (/trust)"

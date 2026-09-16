@@ -1223,8 +1223,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   A file request is judged, screened and shown by its resolved path
   (relative to the project when inside it), so a symlink a sandboxed
   command planted cannot dress a write to zemi's config as a project
-  file, and a write under `.git`, the project's `.zemi` or zemi's own dirs
-  goes to the user without screening.
+  file, and a write under `.git`, the project's `.zemi` or zemi's own dirs,
+  or outside the project and the scratchpad (`~/.gitconfig`, a shell rc
+  file: the sandbox cannot confine the write tool), goes to the user
+  without screening.
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and project build and test commands both
   settle locally, so the model can write code and run it with no

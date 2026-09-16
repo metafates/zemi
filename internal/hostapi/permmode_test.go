@@ -70,8 +70,8 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	}
 }
 
-// TestUntrustedModes: in an untrusted project, or for a command with no
-// sandbox to run in, auto mode sends what it cannot settle to the user
+// TestUntrustedModes: in an untrusted project, for a command with no
+// sandbox to run in, or for a write outside the project, auto mode sends what it cannot settle to the user
 // without screening it, and plan mode runs only commands that just read;
 // the Lua tool asks there and in plan mode.
 func TestUntrustedModes(t *testing.T) {
@@ -96,6 +96,7 @@ func TestUntrustedModes(t *testing.T) {
 		{"auto", true, true, "tool.bash", "make out", true},
 		{"auto", true, false, "tool.bash", "make out", false},
 		{"auto", true, false, "mcp.gh", "run", true},
+		{"auto", true, true, "fs.write", filepath.Join(os.Getenv("HOME"), ".gitconfig"), false},
 		{"plan", true, true, "tool.bash", "go vet ./...", true},
 		{"plan", false, true, "tool.bash", "go vet ./...", false},
 		{"plan", false, true, "tool.bash", "wc -l main.go", true},
@@ -113,7 +114,7 @@ func TestUntrustedModes(t *testing.T) {
 		if untrusted := "not settled: this project is not trusted (/trust)"; c.mode == "auto" && !c.trusted && !ok && why != untrusted {
 			t.Errorf("%s %q: ask reason %q", c.subject, c.arg, why)
 		}
-		if (!c.trusted || !c.live && c.subject == "tool.bash") && screened > 0 {
+		if (!c.trusted || !c.live && c.subject == "tool.bash" || c.subject == "fs.write") && screened > 0 {
 			t.Errorf("%s trusted=%v live=%v %q: screened", c.mode, c.trusted, c.live, c.arg)
 		}
 	}
@@ -312,9 +313,8 @@ func TestAutoApprovalCacheKeysInput(t *testing.T) {
 }
 
 // TestAutoResolvesPaths: auto mode judges a file request where it lands. A
-// project symlink into zemi's config or into the repository's git dir goes to
-// the user unscreened, and the overlay names the real path; a write through
-// a symlink out of the project reaches the screener as its real path.
+// project symlink into zemi's config, into the repository's git dir or out of
+// the project goes to the user unscreened, and the overlay names the real path.
 func TestAutoResolvesPaths(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.ConfigHome = t.TempDir()
@@ -339,7 +339,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 	}{
 		{"cfg/permissions.lua", filepath.Join(perm.RealPath(h.Dirs.ConfigHome), "permissions.lua"), false},
 		{"gl/hooks/post-checkout", filepath.Join(".git", "hooks", "post-checkout"), false},
-		{"out/x.go", filepath.Join(outside, "x.go"), true},
+		{"out/x.go", filepath.Join(outside, "x.go"), false},
 	} {
 		screened, ui.asked, m.prompt = 0, nil, ""
 		ok, _, _ := ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, c.arg)})
