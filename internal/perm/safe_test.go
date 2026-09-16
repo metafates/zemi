@@ -273,6 +273,8 @@ func TestSafeCommandPathCheck(t *testing.T) {
 		{"git show HEAD:.env", false},
 		{"git show HEAD~1:config/id_rsa", false},
 		{"git cat-file -p HEAD:.env", false},
+		{"git show :0:.env", false},
+		{"git show HEAD:sub:dir/.env", false},
 		{"git show HEAD:main.go", true},
 		{"rg KEY", true},
 		{"rg --ignore-file=wl KEY", false},

@@ -7,15 +7,15 @@ import (
 	"strings"
 )
 
-// secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
+// SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
+var SecretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
 	"*credential*", "*secret*", ".netrc"}
 
 // PathIsSecret folds on every OS: a shape that asks one file too many is
 // cheaper than a darwin spelling that slips past.
 func PathIsSecret(p string) bool {
 	base := fold(filepath.Base(p))
-	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
+	return slices.ContainsFunc(SecretPathShape, func(pat string) bool {
 		ok, _ := filepath.Match(pat, base)
 		// an ssh public key is meant to be shared
 		return ok && !(strings.HasPrefix(pat, "id_") && strings.HasSuffix(base, ".pub"))
@@ -37,6 +37,9 @@ const (
 	// ArgSearch is ArgWalk minus hidden and gitignored entries below the
 	// argument, which rg skips unless told otherwise.
 	ArgSearch
+	// ArgRepo is the directory of a repository whose tracked files a git
+	// command may print without naming them (git grep, git show HEAD).
+	ArgRepo
 )
 
 // SafeCommand reports whether a bash command only reads, builds or tests:
@@ -63,11 +66,19 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	// every directory the shell may be in
 	dirs := []string{"."}
 	check := func(a string, use ArgUse) bool {
-		// git reads rev:path from the tree, so the path after the colon counts too
-		_, sub, rev := strings.Cut(a, ":")
+		// git reads rev:path from the tree and :0:path from the index, so the
+		// text after every colon counts too
+		paths := []string{a}
+		for rest, ok := a, true; ok; {
+			if _, rest, ok = strings.Cut(rest, ":"); ok && rest != "" {
+				paths = append(paths, rest)
+			}
+		}
 		for _, d := range dirs {
-			if !pathOK(inDir(d, a), use) || (rev && sub != "" && !pathOK(inDir(d, sub), use)) {
-				return false
+			for _, p := range paths {
+				if !pathOK(inDir(d, p), use) {
+					return false
+				}
 			}
 		}
 		return true
@@ -82,6 +93,9 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 			positional = max(positional, pos+1)
 			return check(a, use(pos))
 		}) || (walkCwd && positional < 2 && !check(".", use(1))) {
+			return false
+		}
+		if repo, ok := gitContentDir(f); ok && !check(repo, ArgRepo) {
 			return false
 		}
 		if filepath.Base(f[0]) == "cd" {
@@ -673,6 +687,29 @@ func safeGit(args []string) bool {
 		return next == "" || next == "status"
 	}
 	return false
+}
+
+// gitContentDir returns the directory (the -C values) a git segment reads
+// the repository from when it may print file content, and whether it may.
+func gitContentDir(f []string) (string, bool) {
+	if len(f) == 0 || filepath.Base(f[0]) != "git" {
+		return "", false
+	}
+	dir, args := ".", f[1:]
+	for len(args) > 1 && strings.HasPrefix(args[0], "-") {
+		if args[0] == "-C" {
+			dir, args = inDir(dir, args[1]), args[1:]
+		}
+		args = args[1:]
+	}
+	if len(args) == 0 {
+		return "", false
+	}
+	sub, rest := args[0], args[1:]
+	return dir, slices.Contains([]string{"grep", "show", "diff", "cat-file"}, sub) ||
+		sub == "stash" && slices.Contains(rest, "show") ||
+		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "--patch", "-L", "--word-diff", "--color-words",
+			"--cc", "-c", "--dd", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
 }
 
 // goFlag reports whether args set one of flags the way Go's flag package

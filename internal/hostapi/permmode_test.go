@@ -157,9 +157,20 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"rg -g x KEY app", false},
 		{"grep -r KEY app", false},
 		{"ag KEY app", false},
+		{"git grep KEY", true},
 	} {
 		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
+		}
+	}
+	// a tracked secret is printed by git commands that never name it
+	if _, err := h.git(root, "add", ".env"); err != nil {
+		t.Fatal(err)
+	}
+	for cmd, want := range map[string]bool{"git grep KEY": false, "git -C internal show HEAD": false, "git log -p": false,
+		"cd internal && git diff": false, "git log --oneline": true} {
+		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: cmd}); got != want {
+			t.Errorf("tracked .env, %s: got %v, want %v", cmd, got, want)
 		}
 	}
 }

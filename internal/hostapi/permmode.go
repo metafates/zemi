@@ -367,7 +367,22 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
 	// a write flag the allowlist misses could still reach .git/config
-	return h.inJail(p, roots...) && !h.secretPath(p) && !inGitDir(p) && (!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
+	return h.inJail(p, roots...) && !h.secretPath(p) && !inGitDir(p) &&
+		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch)) && (use != perm.ArgRepo || h.tracksNoSecrets(p))
+}
+
+// tracksNoSecrets reports whether the repository around dir tracks no
+// secret-shaped file; failing to list, like no repository, counts as tracking one.
+// NOTE: a secret committed and later deleted is not seen, and git log -p
+// still prints it; a history scan per command would be too slow.
+func (h *Host) tracksNoSecrets(dir string) bool {
+	// the pathspecs keep the listing short in a big repository
+	args := []string{"ls-files", "-z", "--recurse-submodules", "--"}
+	for _, s := range perm.SecretPathShape {
+		args = append(args, ":(top,icase,glob)**/"+s)
+	}
+	out, err := h.git(dir, args...)
+	return err == nil && !slices.ContainsFunc(strings.Split(out, "\x00"), perm.PathIsSecret)
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
