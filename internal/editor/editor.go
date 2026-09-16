@@ -80,6 +80,3 @@ func (e Env) Cmd(mode, path, dir, title, chanName string, line int) *exec.Cmd {
 	}
 	return exec.Command("sh", "-c", sh, "sh", path)
 }
-
-// Wait is the command a split path blocks on until its pane signals.
-func Wait(chanName string) *exec.Cmd { return exec.Command("tmux", "wait-for", chanName) }
