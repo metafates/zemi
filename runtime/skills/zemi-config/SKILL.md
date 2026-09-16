@@ -122,7 +122,8 @@ writable; prefer it over guessing. Common keys:
 - `memory.autonomy` (`ask` or `auto`), `reflector.every_n_sessions`
   (1, 0 disables), `reflector.timeout_ms`: host-owned; not settable from Lua
 - `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
-  read-only commands run, other commands and MCP calls ask, so the agent investigates and
+  reading commands and builds and tests run, the latter sandboxed with the project read-only,
+  other commands and MCP calls ask, so the agent investigates and
   proposes a plan), `auto` (a model
   approves routine actions and hands the rest to the user) or `yolo` (every ask is
   allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model.
@@ -131,7 +132,11 @@ writable; prefer it over guessing. Common keys:
   the user, and the Lua tool asks. Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
-  localhost. A command that needs more is retried with `sandbox: false`, which asks the
+  localhost (Linux: `.git` and `.zemi` stay writable, no localhost either). Build, test and
+  lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
+  `git remote -v` and git commands that print file content in a repository tracking a
+  secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a
+  build or test flag that runs code can read it in a trusted project. A command that needs more is retried with `sandbox: false`, which asks the
   user. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:

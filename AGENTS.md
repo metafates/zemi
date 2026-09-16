@@ -189,7 +189,7 @@ edits **inside the jail** that are not secret-shaped, except writes under `.git`
 project's `.zemi` or zemi's own config/data/state dirs, `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
-escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
+escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands (sandboxed, the project unwritable). Network requests are
 never settled locally: the URL is the model's. Known ceiling: auto settles in-jail writes and
 project build/test commands locally, so the model can write code and run it with no screening;
 that is the intended auto tradeoff, and manual and plan ask. In an untrusted project
@@ -210,7 +210,8 @@ Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP/LSP servers and
 `Host.git` stay unconfined. `NewHost` probes the backend with `GoSafe` (`h.sandbox`, nil
 until done = unavailable; tests set it with `fakeSandbox`). Policy: writes to the project
 (trusted, not plan mode, not `$HOME` or above), the scratchpad and `$TMPDIR`; `.git`,
-`.zemi` and zemi's dirs read-only; home secret dirs hidden; loopback only. While a backend is
+`.zemi` and zemi's dirs read-only and loopback only (macOS; Linux enforces neither and
+blocks every inet socket); home secret dirs hidden. While a backend is
 live, bash, `job_start` and `window` take `sandbox: false` (`Request.Unsandboxed`): mode
 rules and non-yolo bases skip it and it asks the user with "run outside the sandbox". A
 confined failure that `sandbox.LikelyDenied` recognizes gets `tools.SandboxHint`.
@@ -219,16 +220,28 @@ confined failure that `sandbox.LikelyDenied` recognizes gets `tools.SandboxHint`
 `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
-no write redirects, and every argument must pass the host's path check (inside the
-project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
+no write redirects, no program named by a path (`./x`, `/bin/cat`), and every argument must
+pass the host's path check (inside the project, not secret-shaped), so a reader cannot leak
+`~/.ssh` to the model. Project tools (`make`, `pytest`, `ruff`, `tsc`, the listed `go`,
+`cargo` and `npm` subcommands, ...) settle with any arguments: what they write and run is
+the sandbox's to confine, and plan mode stays read-only because its policy leaves the
+project unwritable, not because the parser refuses a flag. Readers keep their
+`refusedFlags` (`sort -o`, `find -exec`, `rg --pre`) and sed/awk/jq script checks, since
+`ReadCommand` shares them and settles readers unconfined.
 `perm.ArgUse` tells the check how the argument is used: code may not run from the
 scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`) settles only over a tree
 with no secret-shaped file in it. No argument may point into `.git`, and a git command that
-prints file content (`grep`, `show`, `diff`, `cat-file`, `log -p`) settles only in a repository
+may print file content (`grep`, `show`, `diff`, `cat-file`, `stash show`, `stash list` with
+arguments, `status -v`, `log`/`reflog` with `-p`, `-U`, `--binary` or another patch flag;
+`gitContentDir`) settles only in a repository
 that tracks no secret-shaped file (`trackedSecret`; `repoNote` names the file in the ask
-reason when it is the only reason the command did not settle). Arguments after a `cd` are judged from every directory the
-shell may be in, and commands that rewrite project files (formatters, `--fix`, `go build -o`)
-are left out so plan mode stays read-only.
+reason when it is the only reason the command did not settle). `git config` never settles
+and `git remote` only bare, since `.git/config` may hold tokens. Arguments after a `cd` are
+judged from every directory the shell may be in.
+Known ceiling: a project tool runs code a flag or target names (`go test -exec`,
+`make --eval`), and that code reads whatever the sandbox lets it. Seatbelt hides the strict
+secret shapes (`.env`, `.env.*`, `.envrc`, `.netrc`, `*.pem`, `*.key`, `id_rsa` and
+friends); Landlock cannot, so on Linux such a flag in a trusted project can read `.env`.
 User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
 Only user config sets it; binding a key to the mode cycle is refused for other origins.
 
@@ -450,7 +463,8 @@ writes under the screen lock and a program that does not read stdin must not wed
   truncates messages (checkpoints cascade), so a failed restore leaves the conversation
   intact. Bash changes are not tracked.
 - **Plan mode** is a permission mode enforced in `tools.Pipeline.Check` (`Plan` hook):
-  `fs.write` denied even under allow rules, bash and `mcp.*` allows flip to ask. The
+  `fs.write` denied even under allow rules, `mcp.*` allows and bash allows other than
+  `perm.ReadCommand` flip to ask (a rule-allowed run is unconfined). The
   prompt section only saves wasted attempts.
 - **Composer bridge**: Lua reads a snapshot the UI publishes (`SetComposerSnapshot` after
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI

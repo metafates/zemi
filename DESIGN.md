@@ -301,8 +301,8 @@ origin is denylisted anyway (below).
 Trusted, zemi loads the project's `.zemi` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
 user-added), runs its own git calls plainly, starts stdio MCP servers in
-the project, and auto and plan mode settle builds, tests and in-project
-edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
+the project, auto and plan mode settle builds and tests in the sandbox, and
+auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no language server starts, zemi's git calls
 switch off `core.fsmonitor`, hooks and repository filter drivers, MCP
 servers start in the data dir with `ZEMI_PROJECT_DIR` in their
@@ -1189,17 +1189,23 @@ configured provider later (`zemi.memory.search` signature does not change).
   survive the rules above and the `permission.request` veto (§6.2), and
   it can never overrule a `deny`. Four ship: `manual` (every ask reaches
   the user), `plan` (`fs.write` is denied even under an allow rule, bash
-  and `mcp.*` allows flip to `ask`, and `perm.SafeCommand` commands
-  run), `auto`, and `yolo` (every surviving ask allows). `auto` settles
+  and `mcp.*` allows flip to `ask` unless the bash command is a
+  `perm.ReadCommand`, and `perm.SafeCommand` commands run sandboxed with
+  the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
   are not secret-shaped (writes under `.git`, the project's `.zemi` or
   zemi's own config, data and state dirs excepted), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and `SafeCommand`
-  commands, whose arguments may not run code from the scratchpad and
+  commands (no program named by a path; readers with their per-program
+  flag and script checks, project tools such as `make`, `pytest` or
+  `go test` with any arguments), whose arguments may not run code from the scratchpad and
   whose recursive searches settle only over trees with no secret-shaped
   file, whose arguments may not point into `.git`, and whose git commands
-  that print file content settle only in a repository tracking no
-  secret-shaped file; anything it cannot settle goes to a one-shot screening model
+  that may print file content (`grep`, `show`, `diff`, `cat-file`,
+  `stash show`, `stash list` with arguments, `status -v`, `log`/`reflog`
+  with `-p`, `-U`, `--binary` or another patch flag) settle only in a
+  repository tracking no secret-shaped file (`git config` never settles
+  and `git remote` only bare: `.git/config` may hold tokens); anything it cannot settle goes to a one-shot screening model
   whose approvals are cached per subject, argument, reason and preview,
   and whose refusals fall back to the user's ask carrying the reason.
   Network is never settled locally, because the URL is the model's.
@@ -1232,8 +1238,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   not `$HOME` or above it), the scratchpad and `$TMPDIR`; `.git` (and a
   `gitdir:` target), `.zemi` and zemi's config, data and state dirs stay
   read-only (the scratchpad re-allowed); localhost network only. Linux
-  enforces neither the read-only paths nor loopback yet (a NOTE in the
-  package). A wrap that fails is a tool error, never an unconfined run.
+  enforces neither the read-only paths nor loopback yet: the trusted
+  project root is writable whole and every inet socket is refused (a
+  NOTE in the package). A wrap that fails is a tool error, never an unconfined run.
   While a backend is live, bash, `job_start` and `window` take
   `sandbox: false`, fixed per process so the prompt cache holds: it sets
   `Request.Unsandboxed`, mode rules and bases other than `yolo` no longer
@@ -1242,7 +1249,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   output that looks like a denial (`sandbox.LikelyDenied`, a heuristic) gets
   one line naming the limits and the `sandbox: false` retry. Only a
   sandboxed run reaches `SafeCommand`, so it has to keep secrets from
-  being read (the sandbox allows reads) but not writes or network.
+  being read (the sandbox allows reads) but not writes or network; the
+  per-flag write and exec refusals for project tools are gone, and
+  readers keep theirs because `ReadCommand` shares them and runs
+  unconfined. Known ceiling: a project tool runs code a flag or target
+  names (`go test -exec`, `make --eval`), and on Linux, where Landlock
+  cannot hide `.env`, that code can read it in a trusted project.
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
   where the kernel lands, case-folded on darwin and windows. Paths
