@@ -19,6 +19,7 @@ import (
 func TestAutoModeLocalApprovals(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.ConfigHome = filepath.Join(h.Dirs.ProjectDir, ".config", "zemi") // zemi run in $HOME
+	h.Dirs.StateHome = t.TempDir()
 	inside := filepath.Join(h.Dirs.ProjectDir, "main.go")
 	secret := filepath.Join(h.Dirs.ProjectDir, ".env")
 	link := filepath.Join(h.Dirs.ProjectDir, "notes.md")
@@ -45,6 +46,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.read", secret, false},
 		{"fs.read", link, false},
 		{"fs.read", "/etc/passwd", false},
+		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false}, // server stderr may hold tokens
 		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false},
 		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false},
 		{"tool.bash", "cat out/../loot.txt", false},

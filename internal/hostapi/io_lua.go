@@ -67,12 +67,11 @@ func (h *Host) inJail(path string, roots ...string) bool {
 func (h *Host) readJails() []string {
 	// Skill bodies (builtin and learned) live under the data dir; reading
 	// them must not ask.
-	// The log dir too: reading its own log is how the agent debugs zemi,
-	// and the records are sanitized and secret-scrubbed on the way in.
-	// The types dir holds the API annotations and the shipped Lua UI, which
-	// the agent reads before restyling or extending it.
+	// The log dir is not: MCP and LSP server stderr is logged as written and
+	// may carry tokens. The types dir holds the API annotations and the
+	// shipped Lua UI, which the agent reads before restyling or extending it.
 	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.Dirs.LogDir(), h.TypesDir()}
+		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.TypesDir()}
 }
 
 func (h *Host) writeJails() []string {

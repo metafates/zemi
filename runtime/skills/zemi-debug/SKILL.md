@@ -38,8 +38,8 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    attributes do not survive it, so for a highlight question read the theme with
    `zemi.ui.theme.get()` instead.
 
-5. Read the log of the run (the log directory is readable without asking). One file per
-   start:
+5. Read the log of the run (reading the log directory asks: MCP and LSP server output is
+   logged as written and may hold tokens). One file per start:
 
    ```sh
    ls -t ~/.local/state/zemi/logs/ | head -1
@@ -93,5 +93,5 @@ Starts with empty config and stores. Copy only the pieces needed to reproduce.
 ## Reporting a bug
 
 Collect the `/errors` line, the matching log lines (with the `panic` stack if any), the
-`/health` output and the steps. Never paste API keys or `.env` contents; the logs do not
-contain keys.
+`/health` output and the steps. Never paste API keys or `.env` contents, and check the log
+lines for tokens first: server output is logged as written.
