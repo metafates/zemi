@@ -889,22 +889,24 @@ function zemi.permission.mode.list() end
 ---@class zemi.ToolSpec
 ---@field name string
 ---@field description string What the model reads to decide when to call it.
----@field input table A JSON Schema object with `type`, `properties` and `required`.
----@field execute fun(args: table): string
----@field timeout_ms? integer
+---@field input? table A JSON Schema object with `type`, `properties` and `required`.
+---@field execute fun(args: table, tool: { name: string, origin: zemi.Origin }): any A string, a table whose `output` is the string, or anything else sent as JSON.
+---@field timeout_ms? integer 30000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.
 
 ---@class zemi.ToolPreEvent
+---@field name "tool.pre"
+---@field from string
 ---@field tool string
 ---@field input table
 
 ---@class zemi.ToolOverride
----@field pre fun(ev: zemi.ToolPreEvent): table|nil Return `{ decision = "deny"|"halt", reason = ... }` or `{ input = ... }` to rewrite. Not available to project or learned code.
+---@field pre fun(ev: zemi.ToolPreEvent): table|nil Return `{ decision = "deny"|"halt", reason = ... }`, or `{ decision = "rewrite", input = ... }` to merge fields into the input. Not available to project or learned code.
 
 ---@class zemi.ToolInfo
 ---@field name string
----@field description string
----@field origin string
+---@field builtin boolean
+---@field origin? zemi.Origin Lua tools only.
 
 ---@class zemi.tool
 zemi.tool = {}
@@ -1000,16 +1002,24 @@ function zemi.fs.grep(pattern) end
 ---@field method? string GET by default.
 ---@field headers? table<string, string>
 ---@field body? string
----@field timeout_ms? integer
----@field on_done? fun(res: zemi.HTTPResponse|nil, err: string|nil)
+---@field timeout_ms? integer 30000 by default.
+---@field on_done? fun(res: zemi.HTTPDone)
 
 ---@class zemi.HTTPResponse
 ---@field status integer
----@field body string
+---@field body string At most 1 MiB.
 ---@field headers table<string, string>
 
+--- What `on_done` gets: the response fields, or `error` when the request failed.
+---@class zemi.HTTPDone
+---@field url string
+---@field status? integer
+---@field body? string
+---@field headers? table<string, string>
+---@field error? string
+
 ---@class zemi.HTTPHandle
----@field wait fun(self: zemi.HTTPHandle, ms?: integer): zemi.HTTPResponse|nil, string|nil
+---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Gives up after 120 seconds.
 
 --- http and https only, no userinfo. Loopback, RFC1918 and metadata
 --- addresses are refused at connect time, on every redirect hop; an
@@ -1022,7 +1032,7 @@ zemi.http = {}
 function zemi.http.request(spec) end
 
 ---@param url string
----@param opts? { on_done: fun(res: zemi.HTTPResponse|nil, err: string|nil) }
+---@param opts? { on_done: fun(res: zemi.HTTPDone) }
 ---@return zemi.HTTPHandle
 function zemi.http.get(url, opts) end
 
@@ -1048,9 +1058,9 @@ function zemi.http.get(url, opts) end
 
 ---@class zemi.JobHandle
 ---@field id integer
----@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil
+---@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil 30000 ms by default; err is "timeout".
 ---@field kill fun(self: zemi.JobHandle)
----@field write fun(self: zemi.JobHandle, s: string)
+---@field write fun(self: zemi.JobHandle, s: string): true|nil, string|nil
 ---@field close_stdin fun(self: zemi.JobHandle)
 
 --- Child processes run in their own session and process group, with the
