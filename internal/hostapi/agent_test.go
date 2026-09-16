@@ -393,6 +393,9 @@ func TestSteeringQueue(t *testing.T) {
 	report := "Background agent x finished." + attachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
 	scope = claim()
 	send(report, "d")
+	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0] != "Background agent x finished." || st.Reports != 1 {
+		t.Fatalf("shown queue with a report = %q, reports = %d", st.Steering, st.Reports)
+	}
 	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "d" {
 		t.Fatalf("queue with a report = %q", q)
 	}

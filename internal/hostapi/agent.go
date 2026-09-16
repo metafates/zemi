@@ -919,7 +919,8 @@ type StreamSnapshot struct {
 	Tools      []StreamTool
 	Model      string
 	Profile    string
-	Steering   []string      // queued messages, oldest first
+	Steering   []string      // queued messages as shown (cut at attachMarker), oldest first
+	Reports    int           // background reports in Steering, which AgentTakeQueue leaves queued
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
 	RetryIn    time.Duration // time until the next provider retry (0 when none waits)
@@ -951,7 +952,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf,
-		Profile: ag.defProf, Steering: append([]string(nil), ag.steering...),
+		Profile: ag.defProf,
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CtxWindow: ag.ctxWin,
@@ -962,6 +963,13 @@ func (h *Host) AgentStream() StreamSnapshot {
 	}
 	if out.CtxWindow == 0 {
 		out.CtxWindow = h.contextWindow(out.Model)
+	}
+	for _, m := range ag.steering {
+		shown, _, report := strings.Cut(m, attachMarker)
+		out.Steering = append(out.Steering, shown)
+		if report {
+			out.Reports++
+		}
 	}
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.SessionCost = ag.retries, ag.compacting, ag.sessCost

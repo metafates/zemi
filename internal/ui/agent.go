@@ -307,7 +307,7 @@ func (a *App) workingRow() []hostapi.Segment {
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
 	parts = append(parts, map[bool]string{false: "esc to interrupt", true: "ctrl+c quits"}[a.cancelling])
-	if n := len(st.Steering); n > 0 {
+	if n := len(st.Steering) - st.Reports; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d queued, up to edit", n))
 	}
 	return append(row, hostapi.Segment{Text: "  " + strings.Join(parts, " · "), HL: "Comment"})
