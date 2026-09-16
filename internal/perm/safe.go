@@ -97,7 +97,8 @@ func inDir(dir, a string) string {
 	if dir == "." || filepath.IsAbs(a) || strings.HasPrefix(a, "~") {
 		return a
 	}
-	return filepath.Join(dir, a)
+	// not Join: in cd L && cat ../x the .. resolves from L's target
+	return dir + string(filepath.Separator) + a
 }
 
 // argUses says how a checked segment's program uses its arguments by
