@@ -108,7 +108,7 @@ func TestPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id")} {
+	for _, f := range []string{filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db")} {
 		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +116,7 @@ func TestPolicy(t *testing.T) {
 	p := Policy{
 		Write:    []string{root, scratch},
 		Protect:  []string{filepath.Join(root, ".git"), state},
-		Hide:     []string{hide},
+		Hide:     []string{hide, state},
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
@@ -143,7 +143,9 @@ func TestPolicy(t *testing.T) {
 		{"policy env reaches the command", "env", "on", true, false},
 		{"write in a root under a protected dir", "write", filepath.Join(scratch, "a.txt"), true, false},
 		{"write outside the roots", "write", filepath.Join(outside, "a.txt"), false, false},
+		{"read back in a root under a hidden dir", "read", filepath.Join(scratch, "a.txt"), true, false},
 		{"write a protected dir", "write", filepath.Join(state, "a.txt"), false, false},
+		{"read a hidden dir holding a root", "read", filepath.Join(state, "zemi.db"), false, false},
 		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
 		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},

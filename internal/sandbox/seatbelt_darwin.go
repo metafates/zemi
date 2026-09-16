@@ -68,20 +68,24 @@ func profile(p Policy) (string, []string) {
 		b.WriteString("(allow network-bind network-inbound (local ip \"localhost:*\"))\n")
 		b.WriteString("(allow network-outbound (remote ip \"localhost:*\"))\n")
 	}
-	write := make([]string, len(p.Write))
+	// the last matching rule wins, so rules go shallow to deep (a nested path
+	// is longer): a root inside a protected or hidden dir, like the scratchpad
+	// under the state dir, is open again, and a protected or hidden path inside
+	// a root stays shut. At the same path Hide beats Protect beats Write.
+	type rule struct{ path, text string }
+	var rules []rule
 	for i, w := range p.Write {
-		write[i] = param("WRITE", i, w)
-		fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", write[i])
+		rules = append(rules, rule{w, "(allow file-read* file-write* (subpath " + param("WRITE", i, w) + "))"})
 	}
-	// denies after allows: the last matching rule wins
 	for i, pr := range p.Protect {
-		fmt.Fprintf(&b, "(deny file-write* (subpath %s))\n", param("PROTECT", i, pr))
+		rules = append(rules, rule{pr, "(deny file-write* (subpath " + param("PROTECT", i, pr) + "))"})
 	}
-	// a root inside a protected dir, like the scratchpad under the state dir
-	for i, w := range p.Write {
-		if slices.ContainsFunc(p.Protect, func(pr string) bool { return w != pr && within(w, pr) }) {
-			fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", write[i])
-		}
+	for i, h := range p.Hide {
+		rules = append(rules, rule{h, "(deny file-read* file-write* (subpath " + param("HIDE", i, h) + "))"})
+	}
+	slices.SortStableFunc(rules, func(a, b rule) int { return len(a.path) - len(b.path) })
+	for _, r := range rules {
+		b.WriteString(r.text + "\n")
 	}
 	// renaming a root or a protected path's parent would move the protection away
 	keep := slices.Clone(p.Write)
@@ -96,9 +100,6 @@ func profile(p Policy) (string, []string) {
 	slices.Sort(keep)
 	for i, d := range slices.Compact(keep) {
 		fmt.Fprintf(&b, "(deny file-write-unlink (require-all (literal %s) (vnode-type DIRECTORY)))\n", param("KEEP", i, d))
-	}
-	for i, h := range p.Hide {
-		fmt.Fprintf(&b, "(deny file-read* file-write* (subpath %s))\n", param("HIDE", i, h))
 	}
 	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
 	return b.String(), defs
