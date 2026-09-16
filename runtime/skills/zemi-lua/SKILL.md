@@ -166,7 +166,8 @@ reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `to
 (vetoable: deny, halt, rewrite), `tool.post`, `permission.request`, `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
 `memory.written`, `skill.learned`, `config.reloaded` (after /reload or a config file
-change), `reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
+change), `reflector.start`, `reflector.done`, `job.exit`, `win.open`, `win.exit`, `win.close` (windows
+opened with `zemi.win` or the window tool), `lsp.request` (server, path, kind
 `diagnostics` after a write or `tool`), and your own `user.*` names.
 
 Every event is recorded whether or not anything listens: `zemi.event.log({ name, limit })`

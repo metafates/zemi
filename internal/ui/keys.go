@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -23,6 +24,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	a.mouse = mouseSel{}
 	top := a.topChrome()
+
+	// A focused window takes every key, ctrl+c included: the program in it
+	// decides what they mean.
+	if top == "" && a.windowKey(key, uv.KeyPressEvent(msg)) {
+		return nil
+	}
 
 	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
 	// printable keys stay with the composer, and an open popup keeps its

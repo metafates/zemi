@@ -20,6 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
+	"github.com/metafates/zemi/internal/win"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -50,6 +51,8 @@ type UIHooks interface {
 	// it returns where the editor ran (fullscreen, popup, split). Never
 	// call it on the UI goroutine.
 	EditFile(ctx context.Context, req EditRequest) (mode string, err error)
+	// FocusWindow gives the user's keys to a window (0 = back to zemi).
+	FocusWindow(id int)
 }
 
 // EditRequest is one editor handoff: an absolute path, a 1-based line to
@@ -215,6 +218,7 @@ type Host struct {
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
 	lsp   *lspReg  // language servers
+	Wins  *win.Manager
 
 	todoMu     sync.Mutex
 	todoSID    string
@@ -270,8 +274,10 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		mcp:       newMCPReg(),
 		tasks:     newTaskReg(),
 		lsp:       newLSPReg(),
+		Wins:      &win.Manager{},
 	}
 	h.Perm.Default = h.fsDefault
+	h.Wins.OnExit = h.windowExited
 	if dirs.StateHome != "" {
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
@@ -989,6 +995,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.fs", h.fsNamespace(L), nil},
 		{"zemi.http", h.httpNamespace(L), nil},
 		{"zemi.job", h.jobNamespace(L), nil},
+		{"zemi.win", h.winNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
 		{"zemi.permission", h.permissionNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
@@ -1012,7 +1019,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.18.0"))
+	api.RawSetString("version", glua.LString("0.19.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

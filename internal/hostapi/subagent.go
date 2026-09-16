@@ -45,7 +45,7 @@ type AgentDef struct {
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, and the user's attention (questions, plan approval, editor).
-var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true}
+var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true, "window": true}
 
 var builtinAgents = []AgentDef{
 	{

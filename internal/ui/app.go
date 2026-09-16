@@ -84,6 +84,8 @@ type App struct {
 	workOnce  sync.Once
 	question  *questionPrompt
 	editing   string    // the editor handoff in progress, shown in the working row
+	focusWin  int       // window taking keys, 0 = none
+	winRects  []winRect // where windows were drawn on the last frame
 	editEnded time.Time // when the last full-screen editor returned (editGrace)
 
 	caches     map[string]*widgetCache
@@ -291,8 +293,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
+		if a.topChrome() == "" && a.windowMouse(msg) {
+			return a, nil
+		}
 		return a, a.handleMouse(msg)
 	case tea.MouseWheelMsg:
+		if a.topChrome() == "" && a.windowMouse(msg) {
+			return a, nil
+		}
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
@@ -328,6 +336,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case tea.PasteMsg:
 		if a.pasteChrome(msg.Content) {
+			return a, nil
+		}
+		if wn := a.focusedWin(); wn != nil {
+			wn.Paste(msg.Content)
 			return a, nil
 		}
 		// a dropped file arrives as a paste of its path
@@ -600,7 +612,11 @@ func (a *App) compose(w, h int) string {
 	// never moves the transcript
 	chatH := max(h-len(header)-1-len(compRows)-len(working)-2, 1)
 
-	chat := a.regionLines("chat", w)
+	// Windows share the area: vsplits take columns, splits take rows, and
+	// the chat keeps the top-left; the viewport is what is left.
+	wl := a.layoutWindows(w, chatH)
+	chatW, chatViewH := wl.chatW, wl.chatTopH
+	chat := a.regionLines("chat", chatW)
 
 	// Chat scrollback (§8): follow pins the window to the tail (chatTop
 	// may go negative when content is shorter than the viewport, which
@@ -608,25 +624,50 @@ func (a *App) compose(w, h int) string {
 	// row, clamped so content growth or a narrower rewrap never shows
 	// blank rows.
 	a.chatRows = len(chat)
-	if a.chatViewH != chatH {
+	if a.chatViewH != chatViewH {
 		a.frameGen++ // widgets read the height (the splash centers on it)
 	}
-	a.chatViewH = chatH
+	a.chatViewH = chatViewH
 	if a.chatFollow {
-		a.chatTop = a.chatRows - chatH
+		a.chatTop = a.chatRows - chatViewH
 	} else {
-		a.chatTop = min(a.chatTop, max(0, a.chatRows-chatH))
+		a.chatTop = min(a.chatTop, max(0, a.chatRows-chatViewH))
 	}
 
 	rows := make([][]hostapi.Segment, 0, h)
 	rows = append(rows, header...)
 
-	for i := range chatH {
+	a.winRects = a.winRects[:0]
+	vrows := make([][][]hostapi.Segment, len(wl.vsplits))
+	for i, wn := range wl.vsplits {
+		vrows[i] = a.windowRows(wn, wl.vw, chatViewH-1)
+		x := chatW + 1 + i*(wl.vw+1)
+		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x, y: len(header) + 1, w: wl.vw, h: chatViewH - 1, titleY: len(header)})
+	}
+	for i := range chatViewH {
 		var row []hostapi.Segment
 		if j := a.chatTop + i; j >= 0 && j < len(chat) {
-			row = truncateSegs(chat[j], w)
+			row = truncateSegs(chat[j], chatW)
 		}
-		rows = append(rows, padSegs(row, w))
+		row = padSegs(row, chatW)
+		for v := range wl.vsplits {
+			row = append(row, hostapi.Segment{Text: "│", HL: "Comment"})
+			row = append(row, vrows[v][i]...)
+		}
+		rows = append(rows, padSegs(truncateSegs(row, w), w))
+	}
+	for i, wn := range wl.splits {
+		y := len(header) + chatViewH + i*wl.sh
+		a.winRects = append(a.winRects, winRect{id: wn.ID, x: 0, y: y + 1, w: w, h: wl.sh - 1, titleY: y})
+		rows = append(rows, a.windowRows(wn, w, wl.sh-1)...)
+	}
+	for _, wn := range wl.floats {
+		cols, frows := floatSize(wn, w, chatH)
+		box := a.floatBox(wn, cols, frows)
+		bh := min(len(box), chatH)
+		y0, x0 := len(header)+(chatH-bh)/2, max((w-cols-4)/2, 1)
+		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x0 + 2, y: y0 + 2, w: cols, h: frows, titleY: y0 + 1})
+		rows = spliceBox(rows, box, w, len(header), chatH)
 	}
 
 	// Toasts stack down from the top of the chat area, newest highest,
@@ -841,6 +882,9 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 
 	if a.now().Before(a.quitArmed) {
 		left = append([]hostapi.Segment{{Text: "ctrl+c again to quit ", HL: "Title"}}, left...)
+	}
+	if wn := a.focusedWin(); wn != nil {
+		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s back ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})

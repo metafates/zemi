@@ -21,7 +21,8 @@ var eventCatalogue = map[string]bool{
 	"overlay.close": true, "composer.change": true, "composer.submit": true,
 	"memory.written": true, "skill.learned": true,
 	"reflector.start": true, "reflector.done": true,
-	"job.exit":    true,
+	"job.exit": true,
+	"win.open": true, "win.exit": true, "win.close": true,
 	"lsp.request": true,
 }
 

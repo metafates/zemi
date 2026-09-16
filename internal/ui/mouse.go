@@ -163,6 +163,10 @@ func pointerShape(hand bool) string {
 
 // click acts on the topmost thing under (x, y).
 func (a *App) click(x, y int) {
+	if a.topChrome() == "" && a.windowClick(x, y) {
+		a.frameGen++
+		return
+	}
 	if _, _, act, ok := a.target(x, y); ok {
 		act()
 		a.publishComposer()

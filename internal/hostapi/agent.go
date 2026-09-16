@@ -514,7 +514,7 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 		want = p.Tools
 	}
 	pipe := h.PipelineFor()
-	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool()), want, nil)
+	out := filterTools(append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool()), want, nil)
 	out = append(out, h.luaFantasyTools()...)
 	return append(out, h.mcpFantasyTools(pipe)...)
 }

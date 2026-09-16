@@ -1,0 +1,81 @@
+package hostapi
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/perm"
+)
+
+// TestWindowTool drives open, read, send, wait and close through the
+// model's tool: the open goes through the bash gate, typing through
+// tool.window, and an exit reaches the next message as a note.
+func TestWindowTool(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	tool := h.windowTool()
+	run := func(input string) fantasy.ToolResponse {
+		t.Helper()
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "w", Name: "window", Input: input})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		return resp
+	}
+	if resp := run(`{"action":"open","cmd":"read x; echo got:$x; exit 4"}`); !resp.IsError || !strings.Contains(resp.Content, "permission denied") {
+		t.Fatalf("open must ask the bash gate: %+v", resp)
+	}
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
+	resp := run(`{"action":"open","cmd":"read x; echo got:$x; exit 4","kind":"float","title":"t","focus":true}`)
+	if resp.IsError || !strings.Contains(resp.Content, `"id":1`) {
+		t.Fatalf("open: %+v", resp)
+	}
+	if resp := run(`{"action":"send","id":1,"text":"hi\r"}`); !resp.IsError {
+		t.Fatalf("send must ask tool.window: %+v", resp)
+	}
+	h.Perm.Add(perm.Rule{Subject: "tool.window", Pattern: "*", Decision: perm.Allow})
+	if resp := run(`{"action":"send","id":1,"text":"hi\r"}`); resp.IsError {
+		t.Fatalf("send: %+v", resp)
+	}
+	if resp := run(`{"action":"wait","id":1,"timeout_ms":3000}`); !strings.Contains(resp.Content, "exited") || !strings.Contains(resp.Content, `"code":4`) {
+		t.Fatalf("wait: %+v", resp)
+	}
+	if resp := run(`{"action":"read","id":1,"wait_ms":10}`); !strings.Contains(resp.Content, "got:hi") {
+		t.Fatalf("read: %+v", resp)
+	}
+	if notes := h.takeShellNotes(); !strings.Contains(notes, `<window id=1 title="t" exited code=4/>`) {
+		t.Fatalf("exit note: %q", notes)
+	}
+	if resp := run(`{"action":"list"}`); !strings.Contains(resp.Content, `"running":false`) {
+		t.Fatalf("list: %+v", resp)
+	}
+	if resp := run(`{"action":"close","id":1}`); resp.IsError {
+		t.Fatalf("close: %+v", resp)
+	}
+	if resp := run(`{"action":"read","id":1}`); !resp.IsError {
+		t.Fatalf("closed window must be gone: %+v", resp)
+	}
+}
+
+// TestWinNamespace: zemi.win from user Lua, gated as a job.
+func TestWinNamespace(t *testing.T) {
+	h, r := newTestHost(t)
+	h.SetUIHooks(&fakeUI{})
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `
+		local w, err = zemi.win.open({ cmd = "echo lua-window; sleep 5", kind = "vsplit", title = "x" })
+		assert(w, err)
+		assert(w.id == 1, "id")
+		assert(#zemi.win.list() == 1, "list")
+		assert(zemi.win.get(1):info().kind == "vsplit", "kind")
+		assert(zemi.win.close(1) == true and #zemi.win.list() == 0, "close")
+	`)
+	if got := fmt.Sprint(len(h.Wins.List())); got != "0" {
+		t.Fatalf("windows left: %s", got)
+	}
+}

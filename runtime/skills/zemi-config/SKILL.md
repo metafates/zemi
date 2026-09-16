@@ -91,6 +91,7 @@ writable; prefer it over guessing. Common keys:
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
+- `ui.window.unfocus` (ctrl+\): the key that takes typing back from a focused window.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
   `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). `editor.window` says
   where it opens inside tmux: `auto` or `popup` over zemi, `split` beside it, `fullscreen`
@@ -214,7 +215,7 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 ## Tools and permission rules
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
-`web_search`, `todos`, `question`, `plan`, `open_in_editor`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`web_search`, `todos`, `question`, `plan`, `open_in_editor`, `window`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `lua` (runs Lua inside zemi as user origin, full access: can toggle
 skills, widen permissions, add MCP servers, read secret-shaped env names; never asks), plus
@@ -227,6 +228,11 @@ every answer; enter on a row there reopens that question, and submit sends them 
 ones included. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
 type what to change and the agent revises it. In plan mode each approval names the mode to
 implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
+`window` runs a program in a real terminal drawn inside zemi (a split below the chat, a vsplit
+beside it, or a float over it; `zemi.win` is the same from Lua): open, read the screen as text,
+send keys, wait for exit, close. The user clicks a window to type into it and presses
+`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it. Use it to show a TUI
+you built, a log, a REPL, then read it back to see what the user sees.
 `open_in_editor` opens a file in the user's editor (`editor.command`, `editor.window`) and waits
 until they close it; the result is a diff of what they changed. It is for changes only the user
 can make, or when they ask to edit something themselves; subagents never get it.

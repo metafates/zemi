@@ -65,6 +65,17 @@ func Start(cmd *exec.Cmd) error {
 	return nil
 }
 
+// Track remembers an already started cmd for KillAll: a child started by
+// another starter (a pty) that still leads its own session.
+func Track(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	mu.Lock()
+	live[cmd.Process.Pid] = true
+	mu.Unlock()
+}
+
 // Wait waits for cmd, then kills whatever its group left running.
 // NOTE: the group id is the leader's pid; were it reused by an unrelated
 // new session leader in the moment between exit and kill, that session
@@ -93,6 +104,14 @@ func Run(cmd *exec.Cmd) error {
 func Kill(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		killGroup(cmd.Process.Pid)
+	}
+}
+
+// Hangup tells cmd's group its terminal went away (SIGHUP), the polite
+// end a window gets before Kill.
+func Hangup(cmd *exec.Cmd) {
+	if cmd != nil && cmd.Process != nil {
+		hangupGroup(cmd.Process.Pid)
 	}
 }
 

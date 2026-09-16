@@ -425,6 +425,71 @@ function zemi.ui.screenshot() end
 function zemi.ui.help() end
 
 -- ---------------------------------------------------------------------------
+-- zemi.win: programs running in windows over the chat
+
+---@class zemi.win
+zemi.win = {}
+
+---@class zemi.WinSpec
+---@field cmd string Run with sh -c in the project directory.
+---@field kind? "split"|"vsplit"|"float" Below the chat (default), beside it, or over it.
+---@field title? string Default: the command; the program's own title replaces it.
+---@field cols? integer Float only: requested width.
+---@field rows? integer Float only: requested height.
+---@field focus? boolean Give the user's keys to the window at once.
+---@field on_exit? fun(info: zemi.WinInfo) Runs when the program exits.
+
+---@class zemi.WinInfo
+---@field id integer
+---@field title string
+---@field kind string
+---@field cmd string
+---@field owner "model"|"lua"
+---@field cols integer
+---@field rows integer
+---@field running boolean
+---@field code? integer Exit code once it exited.
+
+---@class zemi.Win
+---@field id integer
+local Win = {}
+--- Type text into the program (control characters included).
+---@param text string
+---@return true|nil, string|nil
+function Win:send(text) end
+--- The screen as plain text.
+---@return string
+function Win:text() end
+---@return zemi.WinInfo
+function Win:info() end
+--- Give the user's keys to this window.
+function Win:focus() end
+--- End the program (if still running) and remove the window.
+function Win:close() end
+
+--- Open a window: a real terminal (TERM=xterm-256color) drawn inside zemi
+--- that keeps running while zemi works. Needs `lua.job.start` allowed for
+--- the command. Returns nil, err when it cannot start.
+---@param spec zemi.WinSpec
+---@return zemi.Win|nil, string|nil
+function zemi.win.open(spec) end
+
+---@param id integer
+---@return zemi.Win|nil
+function zemi.win.get(id) end
+
+---@return zemi.WinInfo[]
+function zemi.win.list() end
+
+---@param id integer
+---@return boolean
+function zemi.win.close(id) end
+
+--- Focus a window by id; 0 or nothing gives the keys back to zemi.
+---@param id? integer
+function zemi.win.focus(id) end
+
+-- ---------------------------------------------------------------------------
 -- zemi.notify and zemi.log
 
 ---@class zemi.NotifySpec

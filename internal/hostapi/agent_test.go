@@ -387,6 +387,7 @@ func (f *fakeUI) ComposerEdit(string, string, int) {}
 func (f *fakeUI) EditFile(context.Context, EditRequest) (string, error) {
 	return "fullscreen", nil
 }
+func (f *fakeUI) FocusWindow(int) {}
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)

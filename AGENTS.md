@@ -276,6 +276,21 @@ what the screen says.
 - **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
   `resolveJailed` and `@file` attachments (`expandAttachments`) all rely on it.
 
+### Windows (internal/win, internal/hostapi/win.go, internal/ui/win.go)
+
+A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go
+emulator (charmbracelet/x/vt). `win.Manager` on the host owns them; they outlive turns and
+reloads (only Lua `on_exit` callbacks are generation-tagged). The UI lays them out per
+frame in a fixed order (vsplits take columns on the right, splits rows at the bottom,
+floats sit centered) and resizes each to its cells; `Screen()` turns cells into `sgr:`
+segments so colors reach the renderer untouched. A focused window (`App.focusWin`) takes
+every key, ctrl+c included, until `ui.window.unfocus`; clicks focus, the title's × closes,
+mouse events inside are forwarded (wheel becomes arrows for programs that never asked for
+the mouse), and a paste goes to the program with bracketing when it asked. The model's
+`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `send` as
+`tool.window`, and an exit lands in the next message through `shellNotes`. Subagents
+never get the tool.
+
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 
 - **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
