@@ -23,7 +23,7 @@ import (
 
 // NewSession closes the live session; the next send creates a fresh one.
 func (h *Host) NewSession() error {
-	if err := h.closeSession(); err != nil {
+	if err := h.closeSession(nil); err != nil {
 		return err
 	}
 	h.setTranscript("zemi", nil)
@@ -56,20 +56,20 @@ func (h *Host) ResumeSession(id string) error {
 	if err != nil {
 		return err
 	}
-	if err := h.closeSession(); err != nil {
+	history, tr := resumeHistory(rows)
+	digest := h.digestFor()
+	ag := h.agents
+	err = h.closeSession(func() {
+		ag.sessionID, ag.titled = id, true
+		// A bare runner carries the history; AgentSend copies it into the
+		// runner it builds for the next turn.
+		ag.runner = &agent.Runner{History: history}
+		ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
+		ag.digest, ag.env = digest, ""
+	})
+	if err != nil {
 		return err
 	}
-	history, tr := resumeHistory(rows)
-	ag := h.agents
-	ag.mu.Lock()
-	ag.sessionID, ag.titled = id, true
-	// A bare runner carries the history; AgentSend copies it into the
-	// runner it builds for the next turn.
-	ag.runner = &agent.Runner{History: history}
-	ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
-	ag.digest = h.digestFor()
-	ag.env = ""
-	ag.mu.Unlock()
 	h.setTranscript(sess.Title, tr)
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
 	return nil
@@ -168,8 +168,9 @@ func firstUserLine(partsJSON string) string {
 }
 
 // closeSession detaches the live session (refused mid-turn) and fires its
-// close trigger.
-func (h *Host) closeSession() error {
+// close trigger. open runs under the same lock, so the next session is in
+// place before a send (a background agent's report) can start a fresh one.
+func (h *Host) closeSession(open func()) error {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
@@ -185,6 +186,9 @@ func (h *Host) closeSession() error {
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.compactFails, ag.compacted = 0, false
 	ag.digest, ag.memAuto = "", 0
+	if open != nil {
+		open()
+	}
 	ag.mu.Unlock()
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})
