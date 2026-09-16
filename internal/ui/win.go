@@ -11,6 +11,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -309,7 +310,8 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 		}
 		return true
 	}
-	for _, r := range a.winRects {
+	// last drawn is on top: floats cover splits and vsplits
+	for _, r := range slices.Backward(a.winRects) {
 		onTitle := m.Y == r.titleY && m.X >= r.x && m.X < r.x+r.w
 		onSep := r.sepX >= 0 && m.X == r.sepX && m.Y >= r.titleY && m.Y < r.y+r.h
 		if _, click := msg.(tea.MouseClickMsg); click && m.Button == tea.MouseLeft && (onTitle || onSep) {

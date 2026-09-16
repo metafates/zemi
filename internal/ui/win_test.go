@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/metafates/zemi/internal/win"
 )
 
@@ -29,5 +31,40 @@ func TestShares(t *testing.T) {
 	}
 	if shares(nil, 100, 20, 30) != nil {
 		t.Fatal("no windows, no shares")
+	}
+}
+
+// TestWindowClickHitsTopmost: a click where a float covers a split goes to
+// the float, which is drawn over it.
+func TestWindowClickHitsTopmost(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	var ids []int
+	for _, kind := range []string{win.KindSplit, win.KindFloat} {
+		w, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, w.ID)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	a.Frame()
+	rect := func(id int) winRect {
+		for _, r := range a.winRects {
+			if r.id == id {
+				return r
+			}
+		}
+		t.Fatalf("window %d not drawn", id)
+		return winRect{}
+	}
+	split, float := rect(ids[0]), rect(ids[1])
+	x, y := float.x, split.y
+	if x >= split.x+split.w || y < float.y || y >= float.y+float.h {
+		t.Fatalf("float %+v does not cover split %+v", float, split)
+	}
+	a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	if a.focusWin != ids[1] {
+		t.Fatalf("click focused window %d, want the float %d", a.focusWin, ids[1])
 	}
 }
