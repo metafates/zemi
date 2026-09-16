@@ -514,9 +514,8 @@ matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
 lowercased); a string action in `zemi.keymap.set` resolves to a registered
 command name or a dotted
 host-API call, and executes under the principal of the config that
-bound it (a principal is what an operation is attributed to: `model`,
-`user`, `plugin:<path>`, `project`, `learned`, or `builtin` (§5); §9
-has the full list including `mcp:<server>` (M5) and attributes by the
+bound it (a principal is what an operation is attributed to: `model` or
+the origin of the running Lua, see §9; attribution follows the
 registration origin of the running handler, never the keypress).
 Binding precedence across origins is `user > builtin > plugin > project`;
 last-writer-wins applies only within one origin, so the project config
@@ -655,7 +654,7 @@ Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
 tool-call telemetry.
 
-System prompts are Go string constants in `internal/hostapi/agent.go`;
+System prompts are Go string constants in `internal/hostapi/prompt.go`;
 there are no template files. They are assembled per session and pinned
 there, because anything that varies per turn busts the provider's prompt
 cache. Lua injects sections via the `agent.assemble` event (memory
@@ -1130,12 +1129,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   auditable end to end. `match` / `not_match`
   values use the same whole-string glob semantics as the pattern.
 - Principals: every operation carries the principal that originated it:
-  `model` (tool call), `user` (keymap or command), `plugin:<path>` (Lua
-  registration), `project` (project-config Lua, §5), `learned`, `builtin`
-  (the shipped runtime Lua, §5), `mcp:<server>` (MCP tools, M5).
+  `model` (every tool call, MCP tools included) or, for Lua, the running
+  origin: `user`, `builtin`, `plugin`, `project`, `learned` (§5).
   Attribution follows the registration origin of
   the running handler, never the trigger: an operation inside a
-  plugin-registered keymap acts as `plugin:<path>`, not `user`, no matter
+  plugin-registered keymap acts as `plugin`, not `user`, no matter
   whose finger pressed the key; only bindings registered by the user's own
   config act as `user`. Rules may be scoped per principal, so a
   prompt-injected tool call (`model`) cannot ride rules meant for the
@@ -1178,15 +1176,16 @@ configured provider later (`zemi.memory.search` signature does not change).
   whose approvals are cached per subject, argument, reason and preview,
   and whose refusals fall back to the user's ask carrying the reason.
   Network is never settled locally, because the URL is the model's.
+  Known ceiling: in-jail writes and project build and test commands both
+  settle locally, so the model can write code and run it with no
+  screening; that is the auto-mode tradeoff, and `manual` and `plan` ask.
   Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
   `manual`.
-- Filesystem: the jail is checked on the `EvalSymlinks`-resolved path; the
-  open itself uses per-component verification where the OS allows it
-  (dir-relative opens with `O_NOFOLLOW` on the final component), and a
-  path component swapped between check and open fails the call. `..`
-  segments are resolved before pattern matching; symlinks resolving
-  outside the jail are denied. Write roots are the project roots plus
+- Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
+  path resolved one component at a time, so `..` after a symlink lands
+  where the kernel lands, case-folded on darwin and windows. Paths
+  outside the jail ask (model tools) or are refused (`zemi.fs`). Write roots are the project roots plus
   the per-session scratchpad
   (`<state>/projects/<hash>/scratch/<session id>`, §5), which is the one
   path `fs.write` allows by default; the read jail is wider: project
@@ -1197,10 +1196,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   auto-loads at the next boot. The config repo is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write`
   cannot author `permissions.lua` (which is Go-generated data anyway,
-  §6.1). Residual race: platforms without
-  dir-relative opens re-resolve after open, which narrows but does not
-  close the window (the Linux endgame is `openat2` with
-  `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
+  §6.1). Residual race: the open is a plain open of the checked path, so
+  a component swapped between check and open is not caught (the Linux
+  endgame is `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
   of paths, not of filesystem topology: a mount point inside a project
   root or a hardlink to an outside file is out of scope (both need
   privileges or a pre-planted link the threat model cannot create).

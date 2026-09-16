@@ -18,8 +18,9 @@ registration with the same id from a lower origin is refused; the same origin re
 its own, and a binding may not be a prefix or an extension of a more trusted key. Only
 `user` may register providers, add allow rules or decide learning proposals. Below
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, run a more trusted
-origin's command with `zemi.command.run`, close, focus or `set` a window another origin
-opened, or deny `app.quit` (project and learned denials are ignored). Lua calls to gated APIs never open a prompt: an "ask" decision raises
+origin's command with `zemi.command.run`, or close, focus or `set` a window another origin
+opened. Project and learned handlers cannot deny `app.quit` (a plugin denial holds once per
+session). Lua calls to gated APIs never open a prompt: an "ask" decision raises
 `permission ask required` unless an allow rule exists.
 
 ## Modules
@@ -28,7 +29,8 @@ opened, or deny `app.quit` (project and learned denials are ignored). Lua calls 
 plugin; project code also searches `.zemi/lua/` first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
 tree. Builtin modules load once, and plugin, project and learned code get them read-only;
-any other file loads once per requiring origin (both names share that instance). `/reload`
+any other file loads once, except that code below the file's origin gets its own instance
+(both names share an instance). `/reload`
 loads fresh.
 
 ## Rules that keep zemi responsive
@@ -75,7 +77,7 @@ without asking, the reference for how a widget is written.
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
 | `zemi.ui` | `widget.register({ id, region, priority, render, wrap })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
-| `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
+| `zemi.notify` | callable `zemi.notify({ title, body, level })` or `zemi.notify(body [, title])`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`send`, `profile`, `set_default` and `run` from user config only) |
 | `zemi.workflow` | `list()` -> `{ name, description, source, path }`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` or nil, err (user config only) |

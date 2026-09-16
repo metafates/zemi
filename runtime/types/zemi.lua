@@ -102,7 +102,8 @@ zemi.keymap = {}
 --- command name, or a host action ("zemi.ui.scroll.up"). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
 --- (`<leader>` is the `keymap.leader` setting, ctrl+g by default). Setting
---- the same key again rebinds it.
+--- the same key again from the same origin rebinds it; a key (or a prefix
+--- or extension of a key sequence) a more trusted origin bound raises.
 ---@param key string
 ---@param action string|fun()
 ---@param opts? zemi.KeymapOpts
@@ -552,6 +553,7 @@ function zemi.win.focus(id) end
 --- A toast. Callable: `zemi.notify({ title = "done", body = "..." })`.
 ---@class zemi.notify
 ---@overload fun(spec: zemi.NotifySpec)
+---@overload fun(body: string, title?: string)
 zemi.notify = {}
 
 ---@param body string

@@ -169,7 +169,9 @@ project's `.zemi` or zemi's own config/data/state dirs, `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
 escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
-never settled locally: the URL is the model's. `h.secretPath` matches the secret shapes on
+never settled locally: the URL is the model's. Known ceiling: auto settles in-jail writes and
+project build/test commands locally, so the model can write code and run it with no screening;
+that is the intended auto tradeoff, and manual and plan ask. `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
@@ -183,7 +185,7 @@ User config adds modes with `zemi.permission.mode.add`; unknown values read as m
 Only user config sets it; binding a key to the mode cycle is refused for other origins.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, and
-they are prefix globs rather than the exact request: `alwaysChoice` (agent.go) gives bash
+they are prefix globs rather than the exact request: `alwaysChoice` (ask.go) gives bash
 each normalized segment's two-word command prefix plus `prefix *`, `fs.read`/`fs.write` the
 file's directory with `/*`, and `net.*` both `scheme://host` and `scheme://host/*`. A
 gate-forced ask (heredoc, env assignment) offers no always option at all.
@@ -327,7 +329,7 @@ writes under the screen lock and a program that does not read stdin must not wed
   (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
   `agent`, `workflow`, `todos`, `question`, `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
-  context estimate. The delegation guidance lives in `delegationPrompt` (agent.go):
+  context estimate. The delegation guidance lives in `delegationPrompt` (prompt.go):
   without it models rarely delegate.
 - **Workflows** are Lua scripts (model-written via the `workflow` tool, saved under
   `workflows/`, builtin in `runtime/workflows/`). They run in their **own** gopher-lua
@@ -396,7 +398,7 @@ writes under the screen lock and a program that does not read stdin must not wed
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
   goroutine. Completion popups float over the chat (`floatPopup`), they never reserve
   rows.
-- **System prompt** (agent.go): `basePrompt` (acting first, tasks, asking, care, tools,
+- **System prompt** (prompt.go): `basePrompt` (acting first, tasks, asking, care, tools,
   git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`
   for every profile, plan mode, the per-session pinned `environmentPrompt`, instruction
   files under `# Project instructions`, Lua sections, skills, digest. Anything that varies
