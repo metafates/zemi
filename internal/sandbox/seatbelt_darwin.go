@@ -91,6 +91,25 @@ func profile(p Policy) (string, []string) {
 	for _, r := range rules {
 		b.WriteString(r.text + "\n")
 	}
+	// realpath and cargo stat every parent of a root, so the hidden parents of
+	// a root (the state dir over the sandbox cache) give back their metadata
+	// only: listing them and reading what else they hold stays denied.
+	// Landlock has no right for stat or path walks, so Linux needs none of this.
+	var parents []string
+	for _, w := range p.Write {
+		for d := filepath.Dir(w); ; d = filepath.Dir(d) {
+			if slices.ContainsFunc(p.Hide, func(h string) bool { return within(d, h) }) {
+				parents = append(parents, d)
+			}
+			if d == "/" || d == "." {
+				break
+			}
+		}
+	}
+	slices.Sort(parents)
+	for i, d := range slices.Compact(parents) {
+		fmt.Fprintf(&b, "(allow file-read-metadata (literal %s))\n", param("PARENT", i, d))
+	}
 	// renaming a root or a protected path's parent would move the protection away
 	keep := slices.Clone(p.Write)
 	for _, pr := range p.Protect {

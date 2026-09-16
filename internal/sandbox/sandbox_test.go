@@ -58,6 +58,20 @@ func act(verb, arg string) error {
 	case "read":
 		_, err := os.ReadFile(arg)
 		return err
+	case "stat":
+		_, err := os.Stat(arg)
+		return err
+	case "ls":
+		_, err := os.ReadDir(arg)
+		return err
+	case "realpath":
+		if _, err := filepath.EvalSymlinks(arg); err != nil {
+			return err
+		}
+		// realpath(3), which cargo's canonicalize calls
+		if out, err := exec.Command("realpath", arg).CombinedOutput(); err != nil {
+			return fmt.Errorf("realpath: %w: %s", err, out)
+		}
 	case "env":
 		if v := os.Getenv("ZEMI_SANDBOX_TEST"); v != arg {
 			return fmt.Errorf("env %q", v)
@@ -142,8 +156,8 @@ func TestPolicy(t *testing.T) {
 	b := probeOrSkip(t)
 	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	scratch := filepath.Join(state, "scratch")
-	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "zemi-real"), scratch} {
+	scratch, cache := filepath.Join(state, "scratch"), filepath.Join(state, "sandbox-cache", "k", "go-build")
+	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "zemi-real"), scratch, cache} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +171,7 @@ func TestPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := Policy{
-		Write:    []string{root, scratch},
+		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".zemi"), state},
 		Hide:     []string{hide, state},
 		Loopback: true,
@@ -189,6 +203,11 @@ func TestPolicy(t *testing.T) {
 		{"read back in a root under a hidden dir", "read", filepath.Join(scratch, "a.txt"), true, false},
 		{"write a protected dir", "write", filepath.Join(state, "a.txt"), false, false},
 		{"read a hidden dir holding a root", "read", filepath.Join(state, "zemi.db"), false, false},
+		{"stat a hidden dir holding a root", "stat", state, true, false},
+		{"list a hidden dir holding a root", "ls", state, false, false},
+		{"list a hidden parent of a deep root", "ls", filepath.Join(state, "sandbox-cache"), false, false},
+		{"realpath a root deep in a hidden dir", "realpath", cache, true, false},
+		{"write in a root deep in a hidden dir", "write", filepath.Join(cache, "a"), true, false},
 		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
 		{"create a nested .git", "mkwrite", filepath.Join(root, "pkg", ".git", "config"), false, runtime.GOOS == "linux"},

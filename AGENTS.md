@@ -483,7 +483,6 @@ writes under the screen lock and a program that does not read stdin must not wed
   `serverPolicy`: the project read-only, writes only to `<cache>/lsp/<trust key>/<server>`
   (`Dirs.CacheHome`, `ZEMI_CACHE_HOME`; `XDG_CACHE_HOME`, `GOCACHE`, `GOPLSCACHE`,
   `CARGO_TARGET_DIR` and `TMPDIR` point there), hidden paths and loopback as for commands.
-  Not under the state dir: seatbelt hides that dir's own metadata, which cargo stats.
   A confined cargo cannot write a missing `Cargo.lock`, so rust-analyzer reports nothing
   until one exists. Without a backend rust-analyzer (`RunsCode`) does not start;
   the other builtins and user-added servers run unconfined. typescript still gets the tsserver on PATH (skipped when that is inside

@@ -158,8 +158,7 @@ func (h *Host) trustKey() string {
 // (build.rs, proc macros) the model may have written: it reads what a
 // sandboxed command reads and writes only <cache>/lsp/<trust key>/<name>,
 // which the cache, build and temp variables point at.
-// NOTE: not under the state dir: seatbelt hides that dir's own metadata,
-// which cargo stats. Nothing sweeps it; a rust target dir there can be large.
+// NOTE: nothing sweeps it; a rust target dir there can be large.
 func (h *Host) serverPolicy(name string) sandbox.Policy {
 	p := h.sandboxPolicy(true)
 	p.Write, p.Env = nil, map[string]string{}
