@@ -449,6 +449,7 @@ zemi.win = {}
 ---@field rows integer
 ---@field running boolean
 ---@field code? integer Exit code once it exited.
+---@field cursor { x: integer, y: integer, visible: boolean }
 
 ---@class zemi.Win
 ---@field id integer
@@ -457,9 +458,28 @@ local Win = {}
 ---@param text string
 ---@return true|nil, string|nil
 function Win:send(text) end
+--- Press keys in neovim notation: plain characters type themselves,
+--- <esc> <cr> <tab> <bs> <up> <f1> name keys, <c-x> <a-x> <s-tab> add
+--- modifiers, <lt> is a literal <. Raises nothing; returns nil, err for a
+--- name it does not know.
+---@param keys string
+---@return true|nil, string|nil
+function Win:keys(keys) end
+--- A mouse event at 0-based cell x, y: kind click (default: press and
+--- release), press, release, move or wheel; button left (default), middle,
+--- right, wheel_up, wheel_down; mod such as "ctrl" or "shift+alt".
+---@param spec { x: integer, y: integer, kind?: string, button?: string, mod?: string }
+---@return true|nil, string|nil
+function Win:mouse(spec) end
 --- The screen as plain text.
 ---@return string
 function Win:text() end
+--- Block until the screen shows want (default 5000 ms). Blocks the
+--- interpreter: keep it short, prefer zemi.timer for long waits.
+---@param want string
+---@param timeout_ms? integer
+---@return boolean shown, string text
+function Win:wait_text(want, timeout_ms) end
 ---@return zemi.WinInfo
 function Win:info() end
 --- Give the user's keys to this window.

@@ -229,8 +229,9 @@ ones included. `plan` puts a plan in the chat and asks "Implement this plan?": a
 type what to change and the agent revises it. In plan mode each approval names the mode to
 implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
 `window` runs a program in a real terminal drawn inside zemi (a split below the chat, a vsplit
-beside it, or a float over it; `zemi.win` is the same from Lua): open, read the screen as text,
-send keys, wait for exit, close. The user clicks a window to type into it and presses
+beside it, or a float over it; `zemi.win` is the same from Lua): open, read the screen as text
+(`expect` waits for text to appear), press keys in neovim notation (`ihello<esc>:wq<cr>`,
+`<c-x>`, `<s-tab>`), click or scroll at a cell, wait for exit, close. The user clicks a window to type into it and presses
 `ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it. Use it to show a TUI
 you built, a log, a REPL, then read it back to see what the user sees.
 `open_in_editor` opens a file in the user's editor (`editor.command`, `editor.window`) and waits

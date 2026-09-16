@@ -47,11 +47,12 @@ type Spec struct {
 type Window struct {
 	ID    int
 	Kind  string
-	Title string
 	Cmd   string
 	Owner string
 	Cols  int // requested size (Spec)
 	Rows  int
+
+	title atomic.Pointer[string] // the program may rename itself (OSC 0/2)
 
 	mu   sync.Mutex // guards term, w, h
 	term *vt.Emulator
@@ -130,15 +131,17 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		ID: id, Kind: spec.Kind, Title: spec.Title, Cmd: spec.Cmd, Owner: spec.Owner,
+		ID: id, Kind: spec.Kind, Cmd: spec.Cmd, Owner: spec.Owner,
 		Cols: spec.Cols, Rows: spec.Rows,
 		term: vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), started: time.Now(),
 	}
 	w.exit.Store(-1)
-	if w.Title == "" {
-		w.Title = spec.Cmd
+	w.SetTitle(spec.Title)
+	if spec.Title == "" {
+		w.SetTitle(spec.Cmd)
 	}
+	// callbacks run inside term.Write, under mu: they must not take it
 	w.term.SetCallbacks(vt.Callbacks{
 		CursorVisibility: func(visible bool) { w.cursorHidden.Store(!visible) },
 		EnableMode: func(m ansi.Mode) {
@@ -153,10 +156,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		},
 		Title: func(t string) {
 			if strings.TrimSpace(t) != "" {
-				w.mu.Lock()
-				w.Title = t
-				w.mu.Unlock()
-				w.dirty.Store(true)
+				w.SetTitle(t)
 			}
 		},
 	})
@@ -308,6 +308,17 @@ func (w *Window) kill() {
 	})
 }
 
+// Title is the window title: the spec's, or what the program set.
+func (w *Window) Title() string {
+	if t := w.title.Load(); t != nil {
+		return *t
+	}
+	return ""
+}
+
+// SetTitle renames the window.
+func (w *Window) SetTitle(t string) { w.title.Store(&t) }
+
 // Exited reports whether the program ended.
 func (w *Window) Exited() bool { return w.exit.Load() != -1 }
 
@@ -377,18 +388,61 @@ func (w *Window) SendText(text string) error {
 
 // SendKey types one key, encoded the way the program asked for (cursor
 // key mode and the like). Printable keys go as their text so shifted and
-// composed characters survive.
+// composed characters survive; modified special keys go in xterm form.
 func (w *Window) SendKey(k uv.KeyPressEvent) {
 	if w.Exited() {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if k.Text != "" && k.Mod&(uv.ModCtrl|uv.ModAlt|uv.ModMeta) == 0 {
+	w.sendKey(k)
+}
+
+func (w *Window) sendKey(k uv.KeyPressEvent) {
+	switch {
+	case k.Text != "" && k.Mod&(uv.ModCtrl|uv.ModAlt|uv.ModMeta) == 0:
 		w.term.SendText(k.Text)
-		return
+	case modifiedSpecial(k) != "":
+		w.term.SendText(modifiedSpecial(k))
+	default:
+		w.term.SendKey(k)
 	}
-	w.term.SendKey(k)
+}
+
+// SendKeys types keys written in neovim notation (ParseKeys).
+func (w *Window) SendKeys(notation string) error {
+	keys, err := ParseKeys(notation)
+	if err != nil {
+		return err
+	}
+	if w.Exited() {
+		return errors.New("window: the program has exited")
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, k := range keys {
+		w.sendKey(k)
+	}
+	return nil
+}
+
+// WaitText polls until the screen contains want or ctx ends; it returns
+// the screen text either way and whether want appeared.
+func (w *Window) WaitText(ctx context.Context, want string) (string, bool) {
+	for {
+		text := w.Text()
+		if strings.Contains(text, want) {
+			return text, true
+		}
+		select {
+		case <-ctx.Done():
+			return w.Text(), false
+		case <-w.done:
+			text = w.Text()
+			return text, strings.Contains(text, want)
+		case <-time.After(40 * time.Millisecond):
+		}
+	}
 }
 
 func isMouseMode(m ansi.Mode) bool {

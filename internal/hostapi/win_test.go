@@ -39,8 +39,23 @@ func TestWindowTool(t *testing.T) {
 		t.Fatalf("send must ask tool.window: %+v", resp)
 	}
 	h.Perm.Add(perm.Rule{Subject: "tool.window", Pattern: "*", Decision: perm.Allow})
-	if resp := run(`{"action":"send","id":1,"text":"hi\r"}`); resp.IsError {
-		t.Fatalf("send: %+v", resp)
+	if resp := run(`{"action":"keys","id":1,"keys":"h<nope>"}`); !resp.IsError || !strings.Contains(resp.Content, "unknown key") {
+		t.Fatalf("bad key name must be refused: %+v", resp)
+	}
+	if resp := run(`{"action":"mouse","id":1,"x":500,"y":0}`); !resp.IsError {
+		t.Fatalf("mouse outside the window must be refused: %+v", resp)
+	}
+	if resp := run(`{"action":"mouse","id":1,"x":1,"y":0}`); resp.IsError {
+		t.Fatalf("mouse: %+v", resp)
+	}
+	if resp := run(`{"action":"keys","id":1,"keys":"hi<cr>"}`); resp.IsError {
+		t.Fatalf("keys: %+v", resp)
+	}
+	if resp := run(`{"action":"read","id":1,"expect":"got:hi"}`); !strings.Contains(resp.Content, "got:hi") || strings.Contains(resp.Content, "did not show") {
+		t.Fatalf("read with expect: %+v", resp)
+	}
+	if resp := run(`{"action":"read","id":1,"expect":"never","wait_ms":50}`); !strings.Contains(resp.Content, "did not show") {
+		t.Fatalf("read with a missing expect must say so: %+v", resp)
 	}
 	if resp := run(`{"action":"wait","id":1,"timeout_ms":3000}`); !strings.Contains(resp.Content, "exited") || !strings.Contains(resp.Content, `"code":4`) {
 		t.Fatalf("wait: %+v", resp)
@@ -73,6 +88,11 @@ func TestWinNamespace(t *testing.T) {
 		assert(w.id == 1, "id")
 		assert(#zemi.win.list() == 1, "list")
 		assert(zemi.win.get(1):info().kind == "vsplit", "kind")
+		local shown = zemi.win.get(1):wait_text("lua-window", 3000)
+		assert(shown, "wait_text")
+		assert(select(2, zemi.win.get(1):keys("<bogus>")) ~= nil, "bad keys")
+		assert(zemi.win.get(1):mouse({ x = 0, y = 0, button = "wheel_down", kind = "wheel" }) == true, "mouse")
+		assert(zemi.win.get(1):keys("<c-c>") == true, "keys")
 		assert(zemi.win.close(1) == true and #zemi.win.list() == 0, "close")
 	`)
 	if got := fmt.Sprint(len(h.Wins.List())); got != "0" {

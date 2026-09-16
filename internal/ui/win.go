@@ -130,7 +130,7 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	default:
 		state = "click to type"
 	}
-	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title))
+	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
 	right := " " + state + " × "
 	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
 	fill := max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))
