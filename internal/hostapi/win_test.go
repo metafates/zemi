@@ -94,18 +94,20 @@ func TestWindowTool(t *testing.T) {
 	}
 }
 
-// TestWinNamespace: zemi.win from user Lua, gated as a job.
+// TestWinNamespace: zemi.win from user Lua, gated as a job, with secret-shaped
+// env names kept from the program like any child.
 func TestWinNamespace(t *testing.T) {
+	t.Setenv("ZEMI_TEST_API_KEY", "leaked")
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `
-		local w, err = zemi.win.open({ cmd = "echo lua-window; sleep 5", kind = "vsplit", title = "x" })
+		local w, err = zemi.win.open({ cmd = "echo lua-window ${ZEMI_TEST_API_KEY:-clean}; sleep 5", kind = "vsplit", title = "x" })
 		assert(w, err)
 		assert(w.id == 1, "id")
 		assert(#zemi.win.list() == 1, "list")
 		assert(zemi.win.get(1):info().kind == "vsplit", "kind")
-		local shown = zemi.win.get(1):wait_text("lua-window", 3000)
+		local shown = zemi.win.get(1):wait_text("lua-window clean", 3000)
 		assert(shown, "wait_text")
 		assert(select(2, zemi.win.get(1):keys("<bogus>")) ~= nil, "bad keys")
 		assert(zemi.win.get(1):mouse({ x = 0, y = 0, button = "wheel_down", kind = "wheel" }) == true, "mouse")

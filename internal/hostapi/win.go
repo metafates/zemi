@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +34,8 @@ func (h *Host) openWindow(spec win.Spec) (*win.Window, error) {
 		spec.Dir = h.Dirs.ProjectDir
 	}
 	if spec.Env == nil {
-		spec.Env = os.Environ()
+		// secret-shaped names stay out, as for bash and jobs: the screen is read back
+		spec.Env, _ = perm.ChildEnv(nil)
 	}
 	w, err := h.Wins.Open(spec)
 	if err != nil {
