@@ -302,7 +302,6 @@ function zemi.event.stats() end
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[]
 ---@field priority? integer Higher draws first within a region.
 ---@field wrap? boolean Word-wrap instead of truncating.
----@field keys? fun(key: string): boolean Handle a key before the composer; return true when handled.
 
 ---@class zemi.WidgetInfo
 ---@field id string
