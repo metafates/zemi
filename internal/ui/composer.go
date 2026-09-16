@@ -358,7 +358,7 @@ const composerMaxRows = 8
 
 // composerRows renders the composer as visual rows wrapped to width w:
 // "> " on the first row, "  " on continuations, the cursor cell placed in
-// the cursor row. At most maxRows rows are shown, scrolled to keep the
+// the cursor row. At most composerMaxRows rows are shown, scrolled to keep the
 // cursor row visible.
 func (a *App) composerRows(w int) [][]hostapi.Segment {
 	prefix := "> "
