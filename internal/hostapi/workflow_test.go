@@ -183,3 +183,13 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatalf("missing workflow err = %v", err)
 	}
 }
+
+func TestAgentsOverlayConfigDir(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.Dirs.ConfigHome = t.TempDir()
+	if err := h.openAgents(); err != nil || len(ui.opened) != 1 || !strings.Contains(ui.opened[0].Title, filepath.Join(h.Dirs.ConfigHome, "agents")) {
+		t.Fatalf("agents overlay = %v %+v", err, ui.opened)
+	}
+}

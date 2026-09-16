@@ -724,7 +724,7 @@ func (h *Host) openWorkflows() error {
 	}
 	list := h.workflows()
 	if len(list) == 0 {
-		return errors.New("no saved workflows yet: add workflows/<name>.lua to ~/.config/zemi or .zemi")
+		return errors.New("no saved workflows yet: add workflows/<name>.lua to " + tildePath(h.Dirs.ConfigHome) + " or .zemi")
 	}
 	items := make([]any, 0, len(list))
 	for _, w := range list {

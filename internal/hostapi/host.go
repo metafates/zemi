@@ -751,6 +751,14 @@ type UIState struct {
 	Height int  // chat viewport rows at the last frame (0 before the first)
 }
 
+// tildePath shortens a path under the home directory to ~/...
+func tildePath(p string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+"/") {
+		return "~" + p[len(home):]
+	}
+	return p
+}
+
 func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LTable {
 	sess := h.Session()
 	tb := L.NewTable()
@@ -759,11 +767,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("pulse", glua.LBool(state.Pulse))
 	tb.RawSetString("height", glua.LNumber(state.Height))
 	tb.RawSetString("version", glua.LString(h.Version))
-	cwd := sess.CWD
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(cwd, home+"/") {
-		cwd = "~" + cwd[len(home):]
-	}
-	tb.RawSetString("cwd", glua.LString(cwd))
+	tb.RawSetString("cwd", glua.LString(tildePath(sess.CWD)))
 	stream := h.AgentStream()
 	if stream.Profile == "" {
 		stream.Profile = "default"

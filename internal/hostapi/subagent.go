@@ -676,7 +676,7 @@ func (h *Host) openAgents() error {
 	for _, d := range defs {
 		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %-8s %s", d.Name, d.Source, truncRunes(d.Description, 80))})
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents (" + filepath.Join("~/.config/zemi", "agents") + ", .zemi/agents)", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents (" + tildePath(filepath.Join(h.Dirs.ConfigHome, "agents")) + ", .zemi/agents)", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 
