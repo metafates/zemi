@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -336,6 +337,21 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 	if rows := projectMemories(t, h); len(rows) != 1 || rows[0].Text != "queued proposal text" {
 		t.Fatalf("after accept+delete: %+v", rows)
+	}
+}
+
+func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	// no origin: the store refuses the row, after the proposal was taken
+	payload, _ := json.Marshal(memoryProposal{Memory: store.Memory{ID: "p1", Scope: "project", Kind: "fact", Text: "unstorable"}})
+	if err := h.DB.AddProposal(&store.Proposal{ID: "p1", Kind: "memory", Payload: string(payload)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.acceptProposal("p1"); err == nil {
+		t.Fatal("accept stored a memory without origin")
+	}
+	if props := h.memoryProposals(); len(props) != 1 || props[0].ID != "p1" {
+		t.Fatalf("proposal lost: %+v", props)
 	}
 }
 

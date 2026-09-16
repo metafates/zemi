@@ -39,15 +39,15 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		if action != "accept" && action != "reject" {
 			L.RaiseError("zemi.learn.decide: action must be accept or reject")
 		}
-		res := h.takeProposal(id)
-		if res == nil {
-			L.RaiseError("zemi.learn.decide: no such proposal %q", id)
-		}
 		if action == "reject" {
+			if h.takeProposal(id) == nil {
+				L.RaiseError("zemi.learn.decide: no such proposal %q", id)
+			}
 			h.Notify("info", "learn", "proposal rejected")
 			return 0
 		}
-		if err := h.storeProposal(res); err != nil {
+		res, err := h.acceptProposal(id)
+		if err != nil {
 			L.RaiseError("zemi.learn.decide: %v", err)
 		}
 		h.Notify("info", "learn", "stored: "+res.Memory.Text)

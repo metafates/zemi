@@ -221,13 +221,11 @@ func (h *Host) openMemoryReview() {
 	for _, r := range rows {
 		switch decisions[r.ID] {
 		case "accept":
-			if res := h.takeProposal(r.ID); res != nil {
-				if err := h.storeProposal(res); err != nil {
-					h.Log.Warn("memory", "accept failed", map[string]any{"id": r.ID, "error": err.Error()})
-					continue
-				}
-				accepted++
+			if _, err := h.acceptProposal(r.ID); err != nil {
+				h.Log.Warn("memory", "accept failed", map[string]any{"id": r.ID, "error": err.Error()})
+				continue
 			}
+			accepted++
 		case "reject":
 			if h.takeProposal(r.ID) != nil {
 				rejected++
@@ -271,6 +269,22 @@ func (h *Host) takeProposal(id string) *learn.Result {
 		return &learn.Result{Memory: m.Memory, Supersedes: m.Supersedes}
 	}
 	return nil
+}
+
+// acceptProposal stores a pending proposal. A store failure other than a
+// duplicate puts it back in the queue, so the decision can be made again.
+func (h *Host) acceptProposal(id string) (*learn.Result, error) {
+	res := h.takeProposal(id)
+	if res == nil {
+		return nil, fmt.Errorf("no such proposal %q", id)
+	}
+	if err := h.storeProposal(res); err != nil {
+		if !errors.Is(err, errDuplicateMemory) {
+			h.queueProposal(res)
+		}
+		return nil, err
+	}
+	return res, nil
 }
 
 // memoryProposal is a queued proposal's payload.
