@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,7 +63,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		var abs string
 		if name, ok := strings.CutPrefix(rel, "drop:"); ok {
 			// only copies of what the user dropped live there (AttachPath)
-			if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
+			if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") || h.dropsDir() == "" {
 				continue
 			}
 			abs = filepath.Join(h.dropsDir(), name)
@@ -98,7 +99,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 // dropsDir holds copies of files the user dropped or pasted from outside the
 // project. @drop:name reaches only this directory, so a reference typed in
 // (or smuggled into) a message cannot attach anything else from outside.
-func (h *Host) dropsDir() string { return filepath.Join(h.Dirs.DataHome, "drops") }
+func (h *Host) dropsDir() string { return joinIf(h.Dirs.DataHome, "drops") }
 
 // AttachPath turns a path the user dropped or pasted into a composer token:
 // @rel for a file in the project, @drop:name for a copy of an image or text
@@ -148,6 +149,9 @@ var dropUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // keeps its name) and returns that name.
 func (h *Host) saveDrop(base string, data []byte) (string, error) {
 	dir := h.dropsDir()
+	if dir == "" {
+		return "", errors.New("no data directory for drops")
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

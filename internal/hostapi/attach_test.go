@@ -108,6 +108,7 @@ func TestImageAttachment(t *testing.T) {
 // @drop cannot climb out of the drops directory.
 func TestAttachPath(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
 	out := t.TempDir()
 	shot := filepath.Join(out, "Screen Shot 1.png")
 	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
