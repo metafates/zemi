@@ -254,6 +254,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	pipe := h.PipelineFor()
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	pipe.Images = func() bool { return h.takesImages(h.currentModelID(prof)) }
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	if def.ReadOnly {
 		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do

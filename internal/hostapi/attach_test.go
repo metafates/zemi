@@ -85,7 +85,10 @@ func TestImageAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	msg := h.composeUserMessage("what is wrong in @shot.png")
+	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, `<image path="shot.png">omitted`) {
+		t.Fatalf("text-only model: %#v", msg.Content)
+	}
+	msg := h.composeUserMessage("what is wrong in @shot.png", true)
 	if len(msg.Content) != 2 {
 		t.Fatalf("parts = %d", len(msg.Content))
 	}
@@ -123,7 +126,7 @@ func TestAttachPath(t *testing.T) {
 	if again := h.AttachPath(shot); again != "@drop:Screen-Shot-1.png" {
 		t.Errorf("same content must keep its name: %q", again)
 	}
-	msg := h.composeUserMessage("what is this @drop:Screen-Shot-1.png @drop:../attach_test.go")
+	msg := h.composeUserMessage("what is this @drop:Screen-Shot-1.png @drop:../attach_test.go", true)
 	if len(msg.Content) != 2 {
 		t.Fatalf("parts = %d", len(msg.Content))
 	}

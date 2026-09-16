@@ -753,12 +753,17 @@ func TestRetryRestreamsStep(t *testing.T) {
 func TestMaxOutput(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096 } } })
+		zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, images = false } } })
 		zemi.provider.register({ id = "o", kind = "openai", models = { { id = "gpt" } } })
 	`)
 	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
 		if got := h.maxOutput(model); got != want {
 			t.Errorf("%s: max output %d, want %d", model, got, want)
+		}
+	}
+	for model, want := range map[string]bool{"a/big": true, "a/old": false, "x/unknown": true} {
+		if got := h.takesImages(model); got != want {
+			t.Errorf("%s: takes images %v, want %v", model, got, want)
 		}
 	}
 }

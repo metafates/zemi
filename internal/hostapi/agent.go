@@ -561,7 +561,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
-	r.Compose = h.composeUserMessage
+	r.Compose = func(text string) fantasy.Message {
+		return h.composeUserMessage(text, h.takesImages(h.currentModelID(p)))
+	}
 	r.Full = h.contextFull
 	return r, nil
 }
@@ -1290,6 +1292,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				if c, ok := mt.RawGetString("cost_per_1m_out_cached").(glua.LNumber); ok && c > 0 {
 					m.CostPer1MOutCached = float64(c)
 				}
+				m.TextOnly = mt.RawGetString("images") == glua.LFalse
 				spec.Models = append(spec.Models, m)
 			}
 		})
@@ -1344,6 +1347,13 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	return tb
+}
+
+// takesImages reports whether a model accepts image parts; unknown
+// models are assumed to, the model entry says otherwise with images = false.
+func (h *Host) takesImages(id string) bool {
+	m, ok := h.modelSpec(id)
+	return !ok || !m.TextOnly
 }
 
 // modelSpec finds the catalog entry for a "provider/model" id.
@@ -1922,6 +1932,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Principal: "model",
 		Jobs:      h.jobs,
 		Skills:    h.skillIndex,
+		Images:    func() bool { return h.takesImages(h.currentModelID(nil)) },
 		Remember: func(scope, kind, text string, tags []string) (bool, error) {
 			stored, _, err := h.proposeMemory(scope, kind, text, tags)
 			return stored, err

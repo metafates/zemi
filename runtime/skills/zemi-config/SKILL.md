@@ -48,6 +48,10 @@ zemi.provider.register({
 zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 ```
 
+`images = false` marks a model that refuses image input: `read` on an image then returns a
+text error and `@image` attachments are omitted with a note, instead of the provider
+rejecting the whole request.
+
 `context_window` (or the `agent.context_window` setting, which overrides it) drives the
 statusline percent and auto compaction. Compaction starts at `max(window - 33k, window/2)`
 tokens, before a turn or between steps of one: old tool output is cleared first, then older

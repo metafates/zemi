@@ -162,6 +162,9 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		if len(data) > readMaxImage {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", path, len(data), readMaxImage)), nil
 		}
+		if p.Images != nil && !p.Images() {
+			return fantasy.NewTextErrorResponse(path + " is an image and the current model does not take images; go on without it, or ask the user to describe it or switch model"), nil
+		}
 		return fantasy.NewImageResponse(data, mt), nil
 	case bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0:
 		return fantasy.NewTextErrorResponse(path + " is a binary file"), nil

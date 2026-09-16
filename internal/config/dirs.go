@@ -89,7 +89,7 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 --   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
 --   models = {
 --     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
---       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional
+--       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional; images = false for a text-only model
 --   },
 -- })
 -- zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")

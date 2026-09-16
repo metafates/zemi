@@ -30,11 +30,16 @@ const (
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
 // composeUserMessage is the runner's Compose hook: the typed text with its
-// attachments, then any images as file parts.
-func (h *Host) composeUserMessage(text string) fantasy.Message {
-	expanded, images := h.expandAttachments(text)
+// attachments, then any images as file parts. A text-only model gets a
+// note in their place instead of a refused request.
+func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
+	expanded, imgs := h.expandAttachments(text)
+	if !images && len(imgs) > 0 {
+		expanded = strings.ReplaceAll(expanded, "attached below</image>", "omitted: the current model does not take images</image>")
+		imgs = nil
+	}
 	parts := []fantasy.MessagePart{fantasy.TextPart{Text: expanded}}
-	for _, img := range images {
+	for _, img := range imgs {
 		parts = append(parts, img)
 	}
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}

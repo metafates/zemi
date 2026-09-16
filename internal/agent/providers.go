@@ -30,6 +30,7 @@ type Model struct {
 	// prompt cache prices, billed apart from the prompt tokens
 	CostPer1MInCached  float64 `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
 	CostPer1MOutCached float64 `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
+	TextOnly           bool    `json:"text_only,omitempty"`              // the model refuses image parts
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.

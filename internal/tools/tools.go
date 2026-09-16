@@ -75,6 +75,10 @@ type Pipeline struct {
 
 	// Skills resolves enabled skills for the skill tool; nil = skills error.
 	Skills func() []SkillInfo
+	// Images reports whether the model takes image parts; nil = yes. A
+	// text-only model gets a text error from read instead of a refused
+	// request that ends the turn.
+	Images func() bool
 
 	// Remember proposes a memory through the host's intake and autonomy
 	// gate (stored reports auto-apply vs queued for review); Recall

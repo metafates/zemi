@@ -455,6 +455,7 @@ function zemi.log.error(message, fields) end
 ---@field cost_per_1m_in_cached? number
 ---@field cost_per_1m_out_cached? number
 ---@field max_output_tokens? integer
+---@field images? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
 
 ---@class zemi.ProviderSpec
 ---@field id string
