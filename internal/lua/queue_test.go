@@ -420,6 +420,28 @@ func TestEvalKeepsProtectedGlobalGuard(t *testing.T) {
 	}
 }
 
+// TestRaiseEscapingRequestUnwinds: a Lua error that escapes a request
+// through an unprotected Call leaves no frames or values behind for the
+// next request.
+func TestRaiseEscapingRequestUnwinds(t *testing.T) {
+	r := newTestRuntime(t)
+	raise := func(L *glua.LState) ([]any, error) {
+		fn, _ := L.LoadString(`error("escaped")`)
+		L.Push(fn)
+		L.Call(0, 0)
+		return nil, nil
+	}
+	if _, err := r.Do(context.Background(), ClassIO, 0, 0, raise); err == nil || !strings.Contains(err.Error(), "escaped") {
+		t.Fatalf("escaping raise: %v", err)
+	}
+	_, _ = r.Do(context.Background(), ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		if _, deeper := L.GetStack(1); deeper || L.GetTop() != 0 {
+			t.Errorf("next request starts on a dirty state: frames below %v, top %d", deeper, L.GetTop())
+		}
+		return nil, nil
+	})
+}
+
 // TestQueueDoBeforeBoot fails fast instead of panicking.
 func TestQueueDoBeforeBoot(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})

@@ -317,12 +317,17 @@ func (g *Generation) finish(r *request) bool {
 	return true
 }
 
+// safeRun runs fn inside PCall: a raise or Go panic escaping fn (an
+// unprotected Call, a bad FromGo) then unwinds the LState's call and value
+// stacks instead of leaving its frames there for every later request.
 func (g *Generation) safeRun(r *request) (vals []any, err error) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			err = fmt.Errorf("zemi bug: lua host function panicked: %v", rec)
-			g.rt.log.Error("lua", err.Error(), nil)
-		}
-	}()
-	return r.fn(g.L)
+	g.L.Push(g.L.NewFunction(func(L *glua.LState) int {
+		vals, err = r.fn(L)
+		return 0
+	}))
+	if perr := g.L.PCall(0, 0, nil); perr != nil {
+		err = fmt.Errorf("zemi bug: lua host function panicked: %w", perr)
+		g.rt.log.Error("lua", err.Error(), nil)
+	}
+	return vals, err
 }
