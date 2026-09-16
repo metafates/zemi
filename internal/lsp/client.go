@@ -271,6 +271,9 @@ func (c *Client) refresh() {
 		case errors.Is(err, os.ErrNotExist):
 			gone[key] = d
 		case err == nil && !fi.ModTime().Equal(d.mtime):
+			// the mtime is taken before the read, so a write between the
+			// two only makes the next refresh send the file again
+			d.mtime = fi.ModTime()
 			stale[key] = d
 		}
 	}
@@ -280,9 +283,7 @@ func (c *Client) refresh() {
 		if err != nil {
 			continue
 		}
-		fi, _ := os.Stat(key)
 		c.mu.Lock()
-		d.mtime = fi.ModTime()
 		c.docs[key] = d
 		c.mu.Unlock()
 		_, _ = c.sync(key, d.uri, d.lang, string(data))
