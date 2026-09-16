@@ -54,7 +54,8 @@ rejects a prompt as too long, and stops for the session after 3 failed tries (`/
 `/new` then). Without a window zemi compacts only on that rejection or on
 `/compact <what to keep>` (refused while a turn runs).
 
-`cost_per_1m_in_cached` and `cost_per_1m_out_cached` price prompt cache writes and reads,
+`cost_per_1m_in_cached` prices tokens written to the prompt cache and
+`cost_per_1m_out_cached` prices tokens read back from it (not cached output),
 which providers bill apart from prompt tokens; without them cached turns read as cheaper
 than they were.
 

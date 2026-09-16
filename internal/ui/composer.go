@@ -310,11 +310,14 @@ func (a *App) seedHistory() {
 	}
 	a.histLoaded, a.histSID = true, sid
 	stored := a.host.InputHistory(sid)
-	if len(stored) == 0 {
-		return
-	}
 	c := &a.composer
-	c.history = append(slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) }), stored...)
+	// the previous session's messages leave with it; what the user typed in
+	// this run stays recallable
+	c.history = slices.DeleteFunc(c.history, func(s string) bool {
+		return slices.Contains(a.histSeed, s) || slices.Contains(stored, s)
+	})
+	a.histSeed = stored
+	c.history = append(c.history, stored...)
 	if n := a.historySize(); n > 0 && len(c.history) > n {
 		c.history = c.history[len(c.history)-n:]
 	}

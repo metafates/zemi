@@ -234,15 +234,19 @@ func (h *Host) OpenHealth() error {
 	if ui == nil {
 		return errors.New("no UI attached")
 	}
-	marks := map[string]string{"ok": "✓", "warn": "!", "error": "✗"}
-	var items []any
-	for _, c := range h.healthChecks() {
-		item := map[string]any{"text": fmt.Sprintf("%s %-12s %s", marks[c.level], c.name, c.detail)}
-		if c.run != "" {
-			item["run"] = c.run
+	// A Go command runs on the key loop, and the checks do file IO and call
+	// Lua under the veto deadline: collect them off it, then open.
+	h.GoSafe("health", func() {
+		marks := map[string]string{"ok": "✓", "warn": "!", "error": "✗"}
+		var items []any
+		for _, c := range h.healthChecks() {
+			item := map[string]any{"text": fmt.Sprintf("%s %-12s %s", marks[c.level], c.name, c.detail)}
+			if c.run != "" {
+				item["run"] = c.run
+			}
+			items = append(items, item)
 		}
-		items = append(items, item)
-	}
-	ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: items})
+		ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: items})
+	})
 	return nil
 }

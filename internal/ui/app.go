@@ -44,6 +44,7 @@ type App struct {
 	// the session whose stored messages seeded the composer history
 	histSID    string
 	histLoaded bool
+	histSeed   []string // the session's own messages, dropped when it changes
 
 	// Chat scrollback (DESIGN §8): chatFollow pins the transcript to the
 	// tail; scrolling up freezes chatTop (the absolute first visible row

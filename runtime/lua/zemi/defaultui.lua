@@ -108,12 +108,14 @@ end
 local function chunks(text, room)
   local out, cur, n = {}, {}, 0
   for ch in text:gmatch(UTF8_CHAR) do
-    cur[#cur + 1] = ch
-    n = n + 1
-    if n == room then
+    -- cells, not characters: a wide glyph would otherwise spill past room
+    local w = cells(ch)
+    if n + w > room and #cur > 0 then
       out[#out + 1] = table.concat(cur)
       cur, n = {}, 0
     end
+    cur[#cur + 1] = ch
+    n = n + w
   end
   if #cur > 0 or #out == 0 then out[#out + 1] = table.concat(cur) end
   return out
