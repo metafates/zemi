@@ -190,7 +190,7 @@ var ErrNoFresh = errors.New("lsp: no diagnostics for the current text")
 func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnostic, error) {
 	c.refresh()
 	key := normPath(path)
-	before, err := c.syncFile(path, languageID)
+	before, err := c.syncFile(key, DocumentURI(path), languageID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 // diagnostics, so a query that follows sees the text on disk.
 func (c *Client) Open(path, languageID string) error {
 	c.refresh()
-	_, err := c.syncFile(path, languageID)
+	_, err := c.syncFile(normPath(path), DocumentURI(path), languageID)
 	return err
 }
 
@@ -242,21 +242,44 @@ type docState struct {
 	mtime     time.Time
 }
 
-// syncFile sends path's text from disk and records its modification time.
-func (c *Client) syncFile(path, languageID string) (int, error) {
-	fi, err := os.Stat(path)
+// syncFile sends the text on disk at key (a normPath) and reports the
+// publish seq it started from. Read, version bump and notify share smu, so a
+// later version never carries older text; c.mu, which the reader also takes,
+// is never held across the write. The mtime is taken before the read, so a
+// write between the two only makes the next refresh send the file again.
+func (c *Client) syncFile(key, uri, languageID string) (int, error) {
+	c.smu.Lock()
+	defer c.smu.Unlock()
+	fi, err := os.Stat(key)
 	if err != nil {
 		return 0, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(key)
 	if err != nil {
 		return 0, err
 	}
-	key := normPath(path)
 	c.mu.Lock()
-	c.docs[key] = docState{uri: DocumentURI(path), lang: languageID, mtime: fi.ModTime()}
+	c.docs[key] = docState{uri: uri, lang: languageID, mtime: fi.ModTime()}
+	before := c.seq
+	version := c.opened[key] + 1
+	c.opened[key] = version
+	c.synced[key] = c.seq
 	c.mu.Unlock()
-	return c.sync(key, DocumentURI(path), languageID, string(data))
+	if version == 1 {
+		err = c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
+			"uri": uri, "languageId": languageID, "version": version, "text": string(data),
+		}})
+	} else {
+		err = c.notify("textDocument/didChange", map[string]any{
+			"textDocument":   map[string]any{"uri": uri, "version": version},
+			"contentChanges": []any{map[string]any{"text": string(data)}},
+		})
+	}
+	if err != nil {
+		return before, err
+	}
+	_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
+	return before, nil
 }
 
 // refresh re-sends every open document whose file changed since it was
@@ -270,22 +293,12 @@ func (c *Client) refresh() {
 		case errors.Is(err, os.ErrNotExist):
 			gone[key] = d
 		case err == nil && !fi.ModTime().Equal(d.mtime):
-			// the mtime is taken before the read, so a write between the
-			// two only makes the next refresh send the file again
-			d.mtime = fi.ModTime()
 			stale[key] = d
 		}
 	}
 	c.mu.Unlock()
 	for key, d := range stale {
-		data, err := os.ReadFile(key)
-		if err != nil {
-			continue
-		}
-		c.mu.Lock()
-		c.docs[key] = d
-		c.mu.Unlock()
-		_, _ = c.sync(key, d.uri, d.lang, string(data))
+		_, _ = c.syncFile(key, d.uri, d.lang)
 	}
 	for key, d := range gone {
 		c.closeDoc(key, d.uri)
@@ -509,37 +522,6 @@ func (c *Client) Others(path string) map[string][]Diagnostic {
 		}
 	}
 	return out
-}
-
-// sync sends the document's current text and reports the publish seq it
-// started from. The version bump and the notify share one lock so a later
-// version can never reach the server first; c.mu, which the reader also
-// takes, is never held across the write.
-func (c *Client) sync(key, uri, languageID, text string) (int, error) {
-	c.smu.Lock()
-	defer c.smu.Unlock()
-	c.mu.Lock()
-	before := c.seq
-	version := c.opened[key] + 1
-	c.opened[key] = version
-	c.synced[key] = c.seq
-	c.mu.Unlock()
-	var err error
-	if version == 1 {
-		err = c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
-			"uri": uri, "languageId": languageID, "version": version, "text": text,
-		}})
-	} else {
-		err = c.notify("textDocument/didChange", map[string]any{
-			"textDocument":   map[string]any{"uri": uri, "version": version},
-			"contentChanges": []any{map[string]any{"text": text}},
-		})
-	}
-	if err != nil {
-		return before, err
-	}
-	_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
-	return before, nil
 }
 
 // Diagnostics returns the last published diagnostics for path.
