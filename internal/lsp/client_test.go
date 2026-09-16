@@ -136,11 +136,7 @@ func TestTouch(t *testing.T) {
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, err := lsp.Start(ctx, lsp.Config{Command: os.Args[0], Env: append(os.Environ(), "ZEMI_LSP_FAKE=1"), Root: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
+	c := start(t, ctx, root)
 	path := filepath.Join(root, "a.txt")
 	for _, step := range []struct {
 		text string

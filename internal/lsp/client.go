@@ -81,7 +81,6 @@ type Client struct {
 	mu      sync.Mutex
 	pending map[int64]chan message
 	diags   map[string][]Diagnostic // by absolute path
-	pubs    map[string]int          // publish count by path
 	opened  map[string]int          // document version by path
 	docs    map[string]docState     // what was last sent, by path
 	seq     int                     // publishes so far
@@ -130,13 +129,13 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	c := &Client{
 		cmd: cmd, stdin: stdin,
 		pending: map[int64]chan message{}, diags: map[string][]Diagnostic{},
-		pubs: map[string]int{}, opened: map[string]int{}, docs: map[string]docState{}, pubSeq: map[string]int{}, synced: map[string]int{},
+		opened: map[string]int{}, docs: map[string]docState{}, pubSeq: map[string]int{}, synced: map[string]int{},
 		wake: make(chan struct{}), done: make(chan struct{}), settings: cfg.Settings,
 		root: cfg.Root, watchers: map[string][]watcher{},
 	}
 	go c.read(bufio.NewReader(stdout))
 
-	root := fileURI(cfg.Root)
+	root := DocumentURI(cfg.Root)
 	params := map[string]any{
 		"processId": os.Getpid(),
 		"rootUri":   root,
@@ -166,7 +165,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.InitOptions != nil {
 		params["initializationOptions"] = cfg.InitOptions
 	}
-	if err := c.call(ctx, "initialize", params, nil); err != nil {
+	if err := c.Call(ctx, "initialize", params, nil); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("lsp: initialize %s: %w", cfg.Command, err)
 	}
@@ -202,7 +201,7 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 	floor := time.After(800 * time.Millisecond)
 	for {
 		c.mu.Lock()
-		fresh, wake := c.pubs[key] > before, c.wake
+		fresh, wake := c.pubSeq[key] > before, c.wake
 		c.mu.Unlock()
 		if fresh {
 			floor = nil
@@ -255,9 +254,9 @@ func (c *Client) syncFile(path, languageID string) (int, error) {
 	}
 	key := normPath(path)
 	c.mu.Lock()
-	c.docs[key] = docState{uri: fileURI(path), lang: languageID, mtime: fi.ModTime()}
+	c.docs[key] = docState{uri: DocumentURI(path), lang: languageID, mtime: fi.ModTime()}
 	c.mu.Unlock()
-	return c.sync(key, fileURI(path), languageID, string(data))
+	return c.sync(key, DocumentURI(path), languageID, string(data))
 }
 
 // refresh re-sends every open document whose file changed since it was
@@ -327,7 +326,7 @@ func (c *Client) NotifyChanged(changes []FileChange) {
 			continue
 		}
 		if c.watched(ch.Path, ch.Type) {
-			events = append(events, map[string]any{"uri": fileURI(ch.Path), "type": ch.Type})
+			events = append(events, map[string]any{"uri": DocumentURI(ch.Path), "type": ch.Type})
 		}
 	}
 	c.mu.Unlock()
@@ -421,11 +420,6 @@ func (c *Client) register(raw json.RawMessage, on bool) {
 	}
 }
 
-// Call sends a request and decodes its result into out (nil to ignore).
-func (c *Client) Call(ctx context.Context, method string, params, out any) error {
-	return c.call(ctx, method, params, out)
-}
-
 // Position is an LSP position: 0-based line and UTF-16 character.
 type Position struct {
 	Line      int `json:"line"`
@@ -462,7 +456,7 @@ type TextEdit struct {
 // Offset converts a position to a byte offset in text, clamped to its end.
 func Offset(text string, pos Position) int {
 	off := 0
-	for l := 0; l < pos.Line; l++ {
+	for range pos.Line {
 		i := strings.IndexByte(text[off:], '\n')
 		if i < 0 {
 			return len(text)
@@ -497,9 +491,6 @@ func Pos(text string, off int) Position {
 	return Position{Line: line, Character: units}
 }
 
-// DocumentURI is the URI for a path, as Open sends it.
-func DocumentURI(path string) string { return fileURI(path) }
-
 // Others returns the errors published for files other than path since path
 // was last synced: a change there that broke code elsewhere.
 func (c *Client) Others(path string) map[string][]Diagnostic {
@@ -520,7 +511,7 @@ func (c *Client) Others(path string) map[string][]Diagnostic {
 	return out
 }
 
-// sync sends the document's current text and reports the publish count it
+// sync sends the document's current text and reports the publish seq it
 // started from. The version bump and the notify share one lock so a later
 // version can never reach the server first; c.mu, which the reader also
 // takes, is never held across the write.
@@ -528,7 +519,7 @@ func (c *Client) sync(key, uri, languageID, text string) (int, error) {
 	c.smu.Lock()
 	defer c.smu.Unlock()
 	c.mu.Lock()
-	before := c.pubs[key]
+	before := c.seq
 	version := c.opened[key] + 1
 	c.opened[key] = version
 	c.synced[key] = c.seq
@@ -565,7 +556,7 @@ func (c *Client) Done() <-chan struct{} { return c.done }
 func (c *Client) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_ = c.call(ctx, "shutdown", nil, nil)
+	_ = c.Call(ctx, "shutdown", nil, nil)
 	_ = c.notify("exit", nil)
 	c.wmu.Lock()
 	err := c.stdin.Close()
@@ -599,7 +590,8 @@ func (c *Client) notify(method string, params any) error {
 	return c.send(msg)
 }
 
-func (c *Client) call(ctx context.Context, method string, params, out any) error {
+// Call sends a request and decodes its result into out (nil to ignore).
+func (c *Client) Call(ctx context.Context, method string, params, out any) error {
 	id := c.nextID.Add(1)
 	ch := make(chan message, 1)
 	c.mu.Lock()
@@ -704,12 +696,7 @@ func (c *Client) publish(raw json.RawMessage) {
 		URI         string `json:"uri"`
 		Version     *int   `json:"version"`
 		Diagnostics []struct {
-			Range struct {
-				Start struct {
-					Line      int `json:"line"`
-					Character int `json:"character"`
-				} `json:"start"`
-			} `json:"range"`
+			Range    Range  `json:"range"`
 			Severity int    `json:"severity"`
 			Message  string `json:"message"`
 			Source   string `json:"source"`
@@ -718,11 +705,7 @@ func (c *Client) publish(raw json.RawMessage) {
 	if json.Unmarshal(raw, &p) != nil {
 		return
 	}
-	u, err := url.Parse(p.URI)
-	if err != nil {
-		return
-	}
-	path := normPath(filepath.FromSlash(u.Path))
+	path := normPath(Location{URI: p.URI}.Path())
 	var out []Diagnostic
 	for _, d := range p.Diagnostics {
 		sev := d.Severity
@@ -738,7 +721,6 @@ func (c *Client) publish(raw json.RawMessage) {
 		return
 	}
 	c.diags[path] = out
-	c.pubs[path]++
 	c.seq++
 	c.pubSeq[path] = c.seq
 	close(c.wake)
@@ -775,7 +757,8 @@ func normPath(p string) string {
 	return p
 }
 
-func fileURI(path string) string {
+// DocumentURI is the file URI for a path, as the client sends it.
+func DocumentURI(path string) string {
 	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }
 
