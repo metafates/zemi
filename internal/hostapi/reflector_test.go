@@ -461,12 +461,12 @@ func TestReflectGate(t *testing.T) {
 		t.Fatal("reflected on a non-multiple of 2")
 	}
 	h.reflectOnClose(closed)
-	for i := 0; i < 100 && m.calls.Load() == 0; i++ {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if m.calls.Load() != 1 {
-		t.Fatal("reflector did not run on the 2nd close")
-	}
+	waitFor(t, func() error {
+		if m.calls.Load() != 1 {
+			return errors.New("reflector did not run on the 2nd close")
+		}
+		return nil
+	})
 }
 
 // TestReflectSerializesRuns pins the one-run-at-a-time rule: a second
@@ -499,10 +499,10 @@ func TestReflectCommand(t *testing.T) {
 	if err := h.reflectCommand(); err != nil {
 		t.Fatalf("reflectCommand: %v", err)
 	}
-	for i := 0; i < 100 && m.calls.Load() == 0; i++ {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if m.calls.Load() != 1 {
-		t.Fatal("detached run never started")
-	}
+	waitFor(t, func() error {
+		if m.calls.Load() != 1 {
+			return errors.New("detached run never started")
+		}
+		return nil
+	})
 }

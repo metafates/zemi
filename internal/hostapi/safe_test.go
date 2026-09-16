@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
@@ -24,11 +23,13 @@ func TestPanicsDoNotKillZemi(t *testing.T) {
 		panic("boom")
 	})
 	<-done
-	deadline := time.Now().Add(2 * time.Second)
-	for !h.HasUnseenErrors() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "boom") {
+	waitFor(t, func() error {
+		if !h.HasUnseenErrors() {
+			return errors.New("panic not recorded")
+		}
+		return nil
+	})
+	if !strings.Contains(h.errs.entries[0].msg, "boom") {
 		t.Fatalf("panic not recorded: %+v", h.errs.entries)
 	}
 

@@ -49,17 +49,12 @@ func TestBackgroundAgent(t *testing.T) {
 	if n := h.tasks.running(); n != 1 {
 		t.Fatalf("background agents running = %d, want 1", n)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		tr := h.Session().Transcript
-		if last := tr[len(tr)-1]; last.Text == "the agent reported: found the thing" && !h.AgentActive() {
-			break
+	waitFor(t, func() error {
+		if tr := h.Session().Transcript; tr[len(tr)-1].Text != "the agent reported: found the thing" || h.AgentActive() {
+			return fmt.Errorf("report never arrived: %+v", tr)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("report never arrived: %+v", tr)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return nil
+	})
 	notice := false
 	for _, m := range h.Session().Transcript {
 		if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {

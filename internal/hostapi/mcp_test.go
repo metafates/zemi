@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
@@ -28,13 +27,12 @@ func TestMCPBridge(t *testing.T) {
 	}
 
 	var tools []fantasy.AgentTool
-	for deadline := time.Now().Add(3 * time.Second); len(tools) == 0; {
-		if time.Now().After(deadline) {
-			t.Fatalf("server never became ready: %+v", h.mcp.list())
+	waitFor(t, func() error {
+		if tools = h.mcpFantasyTools(h.PipelineFor()); len(tools) == 0 {
+			return fmt.Errorf("server never became ready: %+v", h.mcp.list())
 		}
-		time.Sleep(10 * time.Millisecond)
-		tools = h.mcpFantasyTools(h.PipelineFor())
-	}
+		return nil
+	})
 	if len(tools) != 1 || tools[0].Info().Name != "mcp_fake_echo" {
 		t.Fatalf("tools = %v", tools)
 	}

@@ -2,9 +2,9 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
@@ -31,17 +31,12 @@ func TestToolDeniedEvent(t *testing.T) {
 			t.Fatalf("denied read = %+v, %v", resp, err)
 		}
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if v, _ := h.GlobalDB.GetKV("denied"); v == `"read fs.read rule"` {
-			return
+	waitFor(t, func() error {
+		if v, _ := h.GlobalDB.GetKV("denied"); v != `"read fs.read rule"` {
+			return fmt.Errorf("tool.denied payload = %s", v)
 		}
-		if time.Now().After(deadline) {
-			v, _ := h.GlobalDB.GetKV("denied")
-			t.Fatalf("tool.denied payload = %s", v)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return nil
+	})
 }
 
 // TestLuaAgentsNeedUserConfig: project code cannot start agents or

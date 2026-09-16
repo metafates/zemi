@@ -1,8 +1,8 @@
 package hostapi
 
 import (
+	"fmt"
 	"testing"
-	"time"
 )
 
 // TestAutoTitle: the first finished exchange renames the session with the
@@ -16,13 +16,12 @@ func TestAutoTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-	deadline := time.Now().Add(3 * time.Second)
-	for h.Session().Title != "Parser Fix" {
-		if time.Now().After(deadline) {
-			t.Fatalf("title = %q", h.Session().Title)
+	waitFor(t, func() error {
+		if title := h.Session().Title; title != "Parser Fix" {
+			return fmt.Errorf("title = %q", title)
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return nil
+	})
 	if s, err := h.DB.GetSession(h.AgentSessionID()); err != nil || s.Title != "Parser Fix" {
 		t.Fatalf("stored title = %+v, %v", s, err)
 	}

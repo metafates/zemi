@@ -2,13 +2,13 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -50,19 +50,15 @@ func TestLuaAPIAdditions(t *testing.T) {
 
 		zemi.timer.set(0, function() zemi.state.put("scheduled", "ran") end)
 	`)
-	deadline := time.Now().Add(2 * time.Second)
-	for {
+	waitFor(t, func() error {
 		h.stops.mu.Lock()
 		pending := len(h.stops.m)
 		h.stops.mu.Unlock()
-		if v, _ := h.GlobalDB.GetKV("scheduled"); v == `"ran"` && pending == 0 {
-			break
+		if v, _ := h.GlobalDB.GetKV("scheduled"); v != `"ran"` || pending != 0 {
+			return fmt.Errorf("timer.set(0) callback never ran or its handle stayed registered (%d)", pending)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timer.set(0) callback never ran or its handle stayed registered (%d)", pending)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return nil
+	})
 }
 
 // TestAgentAssemble: user handlers add labeled prompt sections, project
@@ -162,20 +158,15 @@ func TestLuaAPIIO(t *testing.T) {
 			on_stdout = function(lines) for _, l in ipairs(lines) do got[#got + 1] = l end end,
 			on_exit = function(res) zemi.state.put("job", { lines = got, code = res.code }) end })
 	`, srv.URL))
-	deadline := time.Now().Add(3 * time.Second)
-	for {
+	waitFor(t, func() error {
 		v, _ := h.GlobalDB.GetKV("job")
 		c, _ := h.GlobalDB.GetKV("cat")
 		bg, _ := h.GlobalDB.GetKV("bg")
-		if v == `{"code":3,"lines":["one","two"]}` && c == "0" && bg == `"hi\n"` {
-			break
+		if v != `{"code":3,"lines":["one","two"]}` || c != "0" || bg != `"hi\n"` {
+			return fmt.Errorf("job callbacks: %s, cat %s, bg %s", v, c, bg)
 		}
-		if time.Now().After(deadline) {
-			v, _ := h.GlobalDB.GetKV("job")
-			t.Fatalf("job callbacks: %s", v)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return nil
+	})
 }
 
 // TestKeySequences: <leader> expands to keymap.leader, sequences register
@@ -220,12 +211,10 @@ func TestPurgeStopsLuaJobs(t *testing.T) {
 		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.put("sleep", "stopped") end })
 	`)
 	h.PurgeGeneration()
-	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if v, _ := h.GlobalDB.GetKV("sleep"); v == `"stopped"` {
-			return
+	waitFor(t, func() error {
+		if v, _ := h.GlobalDB.GetKV("sleep"); v != `"stopped"` {
+			return errors.New("the job outlived the purge")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("the job outlived the purge")
-		}
-	}
+		return nil
+	})
 }

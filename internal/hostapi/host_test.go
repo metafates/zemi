@@ -45,6 +45,23 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 	}
 }
 
+// waitFor polls cond until it returns nil and fails the test with its last
+// error after 3s.
+func waitFor(t *testing.T, cond func() error) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		err := cond()
+		if err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestNamespaceVersion pins the frozen API surface: the zemi root and the
 // boot-installed namespaces resolve from user chunks, and zemi.api reports
 // the M3 version.

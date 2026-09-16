@@ -1,19 +1,18 @@
 package hostapi
 
 import (
+	"errors"
 	"testing"
-	"time"
 )
 
 func waitIdle(t *testing.T, h *Host) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for h.AgentActive() {
-		if time.Now().After(deadline) {
-			t.Fatal("turn did not finish within 3s")
+	waitFor(t, func() error {
+		if h.AgentActive() {
+			return errors.New("turn did not finish within 3s")
 		}
-		time.Sleep(5 * time.Millisecond)
-	}
+		return nil
+	})
 }
 
 // TestSessionLifecycle: /new starts clean, /resume rebuilds the transcript

@@ -1,10 +1,10 @@
 package hostapi
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
@@ -53,17 +53,12 @@ func TestShellNotes(t *testing.T) {
 		}}, nil
 	}
 	h.RunShell("echo shell-output")
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		tr := h.Session().Transcript
-		if len(tr) == 1 && tr[0].Kind == "shell" && tr[0].Detail == "shell-output" {
-			break
+	waitFor(t, func() error {
+		if tr := h.Session().Transcript; len(tr) != 1 || tr[0].Kind != "shell" || tr[0].Detail != "shell-output" {
+			return fmt.Errorf("shell row missing: %+v", tr)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("shell row missing: %+v", tr)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+		return nil
+	})
 	if err := h.AgentSend("what did it print?"); err != nil {
 		t.Fatal(err)
 	}
