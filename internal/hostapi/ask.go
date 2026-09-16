@@ -57,6 +57,11 @@ func (h *Host) askHook() tools.Asker {
 			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, h.safeCommandPath) {
 				return resolved(true, "mode:"+def.Name)
 			}
+			if req.Subject == "tool.bash" {
+				if note := h.repoNote(req.Arg); note != "" {
+					req.Reason = "not settled in plan mode: " + note
+				}
+			}
 		case "auto":
 			// everything the screener saw: an MCP or Lua tool's Arg is only its
 			// name, the input it approved is in Preview
