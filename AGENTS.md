@@ -226,7 +226,7 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 `internal/hostapi/skills.go`, rows in the global DB `skills` table. Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only
-  user or builtin origin may enable/disable (`memoryManageAllowed` gate at the Lua namespace
+  user or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace
   boundary — NOT inside the Go helper; off-interpreter goroutines read `OriginHost`, which
   would defeat a Go-side gate, see the concurrency rules). Enabling a learned skill runs its
   `zemi-skill.lua` (`runSkillHook`): inline when `zemi.skills.enable` calls it (already on
