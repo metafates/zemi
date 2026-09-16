@@ -176,7 +176,7 @@ func TestPopupClickOverWindow(t *testing.T) {
 	app.renderSync(t)
 	x, y := findCell(t, app, "b.go")
 	clickAt(app, x+1, y)
-	if app.focusWin != 0 || app.composer.text != "b.go " {
+	if app.focusWin != 0 || app.composer.text != "@b.go " {
 		t.Fatalf("focusWin=%d composer=%q", app.focusWin, app.composer.text)
 	}
 }

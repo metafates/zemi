@@ -216,7 +216,7 @@ func TestCompletionFlow(t *testing.T) {
 	if app.completion.open {
 		t.Fatal("popup open after accept")
 	}
-	if got := app.composer.text; got != "see internal/ui/app.go " {
+	if got := app.composer.text; got != "see @internal/ui/app.go " {
 		t.Fatalf("accepted text: %q", got)
 	}
 	// A trigger mid-word does not open; esc closes an open palette.

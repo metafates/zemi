@@ -163,14 +163,15 @@ func subseq(s, q string) bool {
 	return true
 }
 
-// accept replaces the trigger+token range with the selected match (plus a
-// trailing space) and closes the popup.
+// accept replaces the token after the trigger with the selected match (plus
+// a trailing space) and closes the popup. The trigger stays: "@path" is what
+// attaches the file.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= len(f.matches) {
 		return
 	}
-	a.composer.replace(f.start, f.matches[f.selected]+" ")
+	a.composer.replace(f.start+1, f.matches[f.selected]+" ")
 	f.close()
 }
 
