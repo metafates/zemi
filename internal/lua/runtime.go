@@ -135,6 +135,9 @@ func (r *Runtime) current() *Generation { return r.cur.Load() }
 // Boot builds the first generation and runs the boot steps through its
 // queue. steps run in order; each sees a fresh generation.
 func (r *Runtime) Boot(ctx context.Context, steps []BootStep) error {
+	// a reload during boot would run a second boot on the shared frames
+	r.reloadMu.Lock()
+	defer r.reloadMu.Unlock()
 	_, err := r.boot(ctx, steps)
 	return err
 }

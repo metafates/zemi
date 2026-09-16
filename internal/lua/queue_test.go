@@ -430,6 +430,35 @@ func TestQueueDoBeforeBoot(t *testing.T) {
 	}
 }
 
+// TestReloadWaitsForBoot: a reload asked for while the first boot runs
+// (a slow plugin, the trust prompt) waits for it, so two boots never push
+// origin frames onto the one shared stack at once.
+func TestReloadWaitsForBoot(t *testing.T) {
+	r := NewRuntime(RuntimeOptions{})
+	release := make(chan struct{})
+	booted := make(chan error, 1)
+	slow := BootStep{Name: "slow", Run: func(context.Context, *Runtime, *Generation) error {
+		<-release
+		return nil
+	}}
+	go func() { booted <- r.Boot(context.Background(), []BootStep{slow}) }()
+	time.Sleep(50 * time.Millisecond)
+	reloaded := make(chan error, 1)
+	go func() { reloaded <- r.ForceReload(context.Background(), nil, nil) }()
+	select {
+	case <-reloaded:
+		t.Fatal("reload ran while the first boot was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-booted; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-reloaded; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestQueueDoAfterFailedBoot: a boot step that fails leaves a generation
 // with no dispatcher, so requests fail fast until a reload succeeds.
 func TestQueueDoAfterFailedBoot(t *testing.T) {
