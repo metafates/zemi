@@ -168,9 +168,10 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		fmt.Fprintf(&b, "Content-Type: %s\n", v)
 	}
 	b.WriteString("\n")
-	b.WriteString(truncOut(text))
-	if len(text) > len(truncOut(text)) {
-		b.WriteString(p.spill("fetch", text))
+	if cut := truncOut(text); cut != text {
+		b.WriteString(cut + p.spill("fetch", text))
+	} else {
+		b.WriteString(text)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

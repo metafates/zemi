@@ -70,9 +70,11 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	out := strings.TrimRight(ansi.Strip(buf.String()), "\n")
 	var b strings.Builder
-	b.WriteString(truncMiddle(out))
-	if b.Len() < len(out) {
-		b.WriteString(p.spill("bash", out))
+	// compare the text, not lengths: the cut marker can outgrow a small cut
+	if cut := truncMiddle(out); cut != out {
+		b.WriteString(cut + p.spill("bash", out))
+	} else {
+		b.WriteString(out)
 	}
 	if timedOut {
 		if b.Len() > 0 {

@@ -394,9 +394,10 @@ func TestReadAndBashShapes(t *testing.T) {
 	if res, _ := runBash(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
 		t.Fatalf("merged output: %q", res.Content)
 	}
-	res, _ := runBash(ctx, p, map[string]any{"command": `head -c 30000 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
+	// just over the cap: the cut marker is longer than what it cuts
+	res, _ := runBash(ctx, p, map[string]any{"command": `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
 	_, name, _ := strings.Cut(res.Content, "END\n(full output: ")
-	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 30000 {
+	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 10002 {
 		t.Fatalf("cut output not saved (%v): %q", err, res.Content[len(res.Content)-100:])
 	}
 }
