@@ -325,11 +325,13 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	for i := range bh {
 		bw := segsWidth(box[i])
 		x0 := max((w-bw)/2, 1)
-		// composite: what the box does not cover stays visible
+		// composite: what the box does not cover stays visible, held one
+		// cell off each border so it does not read as part of the box
 		under := rows[y0+i]
-		row := padSegs(truncateSegs(under, x0), x0)
+		row := padSegs(truncateSegs(under, max(0, x0-1)), x0)
 		row = append(row, box[i]...)
-		row = append(row, dropCells(under, x0+bw)...)
+		row = append(row, hostapi.Segment{Text: " "})
+		row = append(row, dropCells(under, x0+bw+1)...)
 		rows[y0+i] = padSegs(truncateSegs(row, w), w)
 	}
 	return rows
@@ -344,7 +346,8 @@ func anchorBottom(rows, box [][]hostapi.Segment, w, headerH, chatH int) [][]host
 	for i := y0; i < bottom; i++ {
 		b := box[i-y0]
 		row := append([]hostapi.Segment{{Text: " "}}, b...)
-		rows[i] = padSegs(truncateSegs(append(row, dropCells(rows[i], segsWidth(b)+1)...), w), w)
+		row = append(row, hostapi.Segment{Text: " "})
+		rows[i] = padSegs(truncateSegs(append(row, dropCells(rows[i], segsWidth(b)+2)...), w), w)
 	}
 	return rows
 }

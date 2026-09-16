@@ -135,10 +135,14 @@ Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
 reversible (`/memory`, `/config revert <id>`, `/skills disable <name>`).
 
 zemi also knows itself: builtin skills (`zemi-config`, `zemi-customize`, `zemi-debug`,
-`zemi-lua`, `zemi-learning`) teach the agent where zemi's files live, how to change its
-config, how to restyle the UI and add workflows, how to read its logs and errors, and how
-its learning works. Ask it to "set up a provider",
-"why did that fail" or "write a statusline widget".
+`zemi-lua`, `zemi-learning`, `zemi-worktrees`) teach the agent where zemi's files live, how
+to change its config, how to restyle the UI and add workflows, how to read its logs and
+errors, how its learning works, and how to run parallel work in git worktrees. Ask it to
+"set up a provider", "why did that fail" or "write a statusline widget".
+
+It can also see its own screen: `zemi.ui.screenshot()` returns the drawn frame as plain
+text, so the agent debugs a widget or a theme by looking instead of asking you what
+changed.
 
 ## Install
 
@@ -241,8 +245,8 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 
 | Path | Contents |
 | --- | --- |
-| `~/.config/zemi/` | `init.lua`, `permissions.lua`, authored `skills/`, `agents/`, `commands/`, `workflows/` (a git repo) |
-| `~/.local/share/zemi/` | plugins, learned `skills/` |
+| `~/.config/zemi/` | `init.lua`, `permissions.lua`, `.luarc.json`, authored `skills/`, `agents/`, `commands/`, `workflows/` (a git repo) |
+| `~/.local/share/zemi/` | plugins, learned `skills/`, `types/` (LuaLS annotations for `zemi.*`) |
 | `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
 
 Override with `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME`.

@@ -119,9 +119,19 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	if app.chatFollow {
 		t.Fatalf("new lines must not yank a scrolled view")
 	}
-	if app.chatTop != top || after != before {
+	// the chat window must not move; the statusline may, its scroll
+	// indicator counts what is now below
+	if app.chatTop != top || withoutStatus(after) != withoutStatus(before) {
 		t.Fatalf("scrolled frame should stay anchored as content grows")
 	}
+	if !strings.Contains(after, "ctrl+end") {
+		t.Fatalf("a scrolled view should say how to get back:\n%s", after)
+	}
+}
+
+func withoutStatus(frame string) string {
+	rows := strings.Split(frame, "\r\n")
+	return strings.Join(rows[:len(rows)-1], "\r\n")
 }
 
 // TestChatScrollSubmitFollows pins the snap-back: sending a message returns

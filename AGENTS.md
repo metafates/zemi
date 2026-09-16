@@ -218,6 +218,25 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
   (after user init.lua), learned ones at `SkillsLearnedHooksStep` (after `app.ready`) — the
   learned step must not re-run on reload replay without its `Gen` tag.
 
+### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
+
+`runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API;
+`syncTypes` (called from `installNamespaces`, next to `syncSkills`) rewrites it plus a copy
+of `runtime/lua/` to `<data>/types/` on every start, and writes `<config>/.luarc.json` only
+when there is none. It is never loaded by the interpreter — a description, not code. Three
+tests keep it honest: `TestTypesCoverAPI` (every member `Sandbox.NamespaceMembers` reports
+is annotated), `TestTypesDeclareNothingExtra` (no annotation for a member zemi dropped) and
+`TestTypesParse`. Growing the Lua API means updating it, `TestNamespaceVersion` and the
+version string together.
+
+### UI screenshots
+
+`compose` publishes each finished frame under `App.frameMu`; `UIHooks.Screenshot` strips the
+styling and the trailing padding and hands it back, so `zemi.ui.screenshot()` works from the
+interpreter goroutine without either side waiting on the other. It is how the agent debugs
+its own widgets, themes and layout (see the zemi-debug skill) instead of asking the user
+what the screen says.
+
 ### Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model,

@@ -52,7 +52,9 @@ zemi.ui.theme.register("default", {
     ModeManual = { fg = "muted" },
     ModePlan = { fg = "ok", bold = true },
     ModeAuto = { fg = "accent", bold = true },
-    ModeYolo = { fg = "err", bold = true },
+    -- yolo answers every ask by itself, so nothing else on screen shows it
+    -- is on: it gets a filled pill, the other modes plain text
+    ModeYolo = { fg = "bg", bg = "err", bold = true },
     PromptPlan = { fg = "ok", bold = true },
     PromptAuto = { fg = "accent", bold = true },
     PromptYolo = { fg = "err", bold = true },
@@ -220,6 +222,9 @@ zemi.ui.widget.register({
     local mode = ctx.permission_mode or "manual"
     local base = ctx.permission_mode_base or mode
     local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeManual"
+    if base == "yolo" then
+      mode = " " .. mode .. " "
+    end
     return { { { text = mode, hl = hl } } }
   end,
 })

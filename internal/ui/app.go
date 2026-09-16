@@ -11,6 +11,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -621,7 +622,9 @@ func (a *App) compose(w, h int) string {
 		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
 			y--
 			x0 := max(0, w-segsWidth(box[j])-1)
-			rows[y] = append(padSegs(truncateSegs(rows[y], x0), x0), box[j]...)
+			// cut one cell short of the toast so the text it covers never
+			// touches the bar and reads as part of it
+			rows[y] = append(padSegs(truncateSegs(rows[y], max(0, x0-1)), x0), box[j]...)
 		}
 		y--
 	}
@@ -717,6 +720,16 @@ func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) [][]host
 		rows[i] = padSegs(box[i-y0], w)
 	}
 	return rows
+}
+
+// rowsBelow counts the transcript rows under the viewport while it is off
+// the tail. The altscreen has no scrollbar, so without it nothing says how
+// far up the reader is, or that a running turn is still filling the bottom.
+func (a *App) rowsBelow() int {
+	if a.chatFollow {
+		return 0
+	}
+	return max(0, a.chatRows-a.chatTop-a.chatViewH)
 }
 
 // chatStep is one page of transcript scroll with a one-row overlap, from
@@ -831,13 +844,19 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 		pill(" ! errors /errors ")
 	}
 
+	if n := a.rowsBelow(); n > 0 {
+		left = append(left, hostapi.Segment{Text: "  "},
+			hostapi.Segment{Text: fmt.Sprintf(" ↓ %d · ctrl+end ", n), HL: "Host:Btn"})
+	}
+
 	leftW := segsWidth(left)
 	rightW := segsWidth(right)
-	if leftW+rightW > w {
+	// The clusters need a blank cell between them or they read as one word.
+	if leftW+rightW >= w {
 		// Overflow truncates the right cluster first (lowest priority of
 		// the row's real estate goes last, §8).
-		if w-leftW > 0 {
-			right = truncateSegs(right, w-leftW)
+		if room := w - leftW - 1; room > 0 {
+			right = truncateSegs(right, room)
 			rightW = segsWidth(right)
 		} else {
 			left = truncateSegs(left, w)
