@@ -1288,10 +1288,13 @@ configured provider later (`zemi.memory.search` signature does not change).
   or above it, neither holds nor sits in one of zemi's config, data and
   state dirs, holds no hidden path unless the backend is seatbelt (a
   Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.zemi` (the backend protects the
-  resolved target, not the link), and the backend keeps protected paths
+  resolved target, not the link), no relative `PATH` entry makes every
+  directory a `PATH` dir, and the backend keeps protected paths
   read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
-  target), `.zemi` and zemi's dirs stay read-only (the scratchpad and cache
-  re-allowed); localhost network only. Seatbelt's localhost is the
+  target), `.zemi`, zemi's dirs and every `PATH` dir inside a write root
+  (an activated `.venv/bin`: zemi runs git, sh, language servers and
+  clipboard helpers unconfined by name) stay read-only (the scratchpad and
+  cache re-allowed); localhost network only. Seatbelt's localhost is the
   machine's; the namespace variant has a loopback of its own, so servers
   already running on the machine are unreachable (the model is told so),
   and it binds only protected paths that exist, which is why a created one

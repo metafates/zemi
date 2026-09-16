@@ -224,8 +224,9 @@ swap it with `fakeSandbox`), so `--health` and the first turn's schema see it. P
 writes to the scratchpad, `<state>/sandbox-tmp/<session id>` (`TMPDIR`, `TMP`, `TEMP` through
 `Policy.Env`; never the shared system temp dir, where macOS keeps the `xcrun_db` that picks
 what `/usr/bin/make` and `git` run; swept with the scratchpads), `<state>/sandbox-cache/<hash of the trust root>/go-build` (`GOCACHE`, one per trust root: Go trusts cache entries, so a shared one lets one project poison another's build) and the project (trusted, not plan mode, not `$HOME` or above, neither holding
-nor inside a zemi dir, holding no hidden path unless on seatbelt, no symlinked `.git`/`.zemi`, and only with `Backend.EnforcesProtect`:
-Landlock + seccomp leaves the project read-only); `.git`, `.zemi` and zemi's dirs read-only
+nor inside a zemi dir, holding no hidden path unless on seatbelt, no symlinked `.git`/`.zemi`, no relative `PATH` entry, and only with `Backend.EnforcesProtect`:
+Landlock + seccomp leaves the project read-only); `.git`, `.zemi`, zemi's dirs and every `PATH` dir inside a write root read-only
+(zemi runs git, sh, servers and clipboard helpers unconfined by name)
 and loopback only (seatbelt: the machine's; the Linux namespace variant: its own, host
 services unreachable; Landlock + seccomp blocks every inet socket); home credential paths
 (`secretDirs`) and zemi's dirs (unless they hold the project) hidden. The namespace variant

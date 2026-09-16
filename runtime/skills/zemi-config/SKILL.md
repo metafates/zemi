@@ -139,8 +139,9 @@ writable; prefer it over guessing. Common keys:
   `/health`) localhost is the sandbox's own, so servers already running on the machine are
   unreachable; if such a command creates `.zemi` or `.git`, project trust turns off until
   `/trust`. Without namespaces (`landlock + seccomp`) the project is read-only to these
-  commands and there is no network at all. A project inside zemi's own dirs, or with a
-  symlinked `.git` or `.zemi`, is read-only to them too. Build, test and
+  commands and there is no network at all. A project inside zemi's own dirs, with a
+  symlinked `.git` or `.zemi`, or started with a relative entry (`.`, `bin`) in `PATH`, is
+  read-only to them too, and a `PATH` dir inside the project (an activated `.venv/bin`) always is. Build, test and
   lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
   `git remote -v` and git commands that print file content in a repository tracking a
   secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a

@@ -82,6 +82,9 @@ func TestSandboxedBash(t *testing.T) {
 		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
 		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
 	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
+	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
+	os.MkdirAll(venv, 0o755)
+	t.Setenv("PATH", venv+string(filepath.ListSeparator)+os.Getenv("PATH"))
 	private := filepath.Join(h.sandboxPolicy(false).Env["TMPDIR"], "made.txt")
 	run := func(in map[string]any) fantasy.ToolResponse {
 		input, _ := json.Marshal(in)
@@ -108,6 +111,7 @@ func TestSandboxedBash(t *testing.T) {
 	}{
 		{"project write", "sbx", project, false, true, false, ""},
 		{"private temp write", "sbx", private, false, true, false, ""},
+		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, true, ""},
 		{"system temp write", "sbx", shared, false, false, true, ""},
 		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, true, ""},
 		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, "run outside the sandbox"},
@@ -224,6 +228,23 @@ func TestSandboxPolicy(t *testing.T) {
 				t.Errorf("the shared temp dir is writable: %v", p.Write)
 			}
 		})
+	}
+	venv := filepath.Join(project, ".venv", "bin")
+	for _, c := range []struct {
+		name, path        string
+		writable, protect bool
+	}{
+		{"PATH dir inside the project", venv + string(filepath.ListSeparator) + "/usr/bin", true, true},
+		{"relative PATH dir", "bin" + string(filepath.ListSeparator) + "/usr/bin", false, false},
+	} {
+		t.Setenv("PATH", c.path)
+		p := h.sandboxPolicy(false)
+		if got := slices.Contains(p.Write, project); got != c.writable {
+			t.Errorf("%s: project writable %v: %v", c.name, got, p.Write)
+		}
+		if got := slices.Contains(p.Protect, venv); got != c.protect {
+			t.Errorf("%s: %s protected %v: %v", c.name, venv, got, p.Protect)
+		}
 	}
 	a := h.sandboxPolicy(false).Env["GOCACHE"]
 	h.Dirs.ProjectDir = t.TempDir()

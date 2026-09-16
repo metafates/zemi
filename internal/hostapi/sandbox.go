@@ -110,7 +110,12 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 			}
 		}
 	}
-	if writable && !linked {
+	path := filepath.SplitList(os.Getenv("PATH"))
+	// NOTE: a relative PATH entry (".", "bin", empty) makes every directory
+	// zemi runs git or a server in a PATH dir, so the project stays read-only;
+	// resolving zemi's helpers against a PATH without them would lift that.
+	relative := slices.ContainsFunc(path, func(e string) bool { return !filepath.IsAbs(e) })
+	if writable && !linked && !relative {
 		p.Write = append(p.Write, d.ProjectDir)
 	}
 	if s := h.ScratchDir(); s != "" {
@@ -132,6 +137,13 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 		if os.MkdirAll(tmp, 0o700) == nil {
 			p.Write = append(p.Write, tmp)
 			p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = tmp, tmp, tmp
+		}
+	}
+	// zemi runs git, sh, language servers and clipboard helpers unconfined by
+	// name, so a PATH dir inside a write root (.venv/bin) must not take a binary
+	for _, e := range path {
+		if filepath.IsAbs(e) && h.inJail(e, p.Write...) {
+			p.Protect = append(p.Protect, e)
 		}
 	}
 	return p
