@@ -77,6 +77,9 @@ interactively.
 writable; prefer it over guessing. Common keys:
 
 - `agent.model`, `reflector.model` (empty: use the agent model)
+- `agent.subagent_model`: default model for subagents whose definition sets none (empty: the
+  session model); a cheaper model here keeps searches cheap. The agent may still pick another
+  configured model per run.
 - `agent.small_model`: a fast, cheap model for small jobs (session titles, and auto-mode
   screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
   `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.

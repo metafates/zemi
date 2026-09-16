@@ -93,6 +93,7 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 --   },
 -- })
 -- zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
+-- zemi.config.set("agent.subagent_model", "anthropic/claude-haiku-4-5") -- subagents default to a cheaper model
 
 -- Settings: /config list shows every one with its default.
 -- zemi.config.set("ui.theme", "default")

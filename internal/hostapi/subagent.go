@@ -237,7 +237,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		h.refresh()
 	}()
 	h.refresh()
-	prof := &Profile{Model: def.Model}
+	prof := &Profile{Model: h.subagentModelID(def)}
 	model, err := h.resolveModel(prof)
 	if err != nil {
 		return "", err
@@ -446,6 +446,33 @@ func (h *Host) setToolDetail(callID, detail string) {
 	h.agentEvent(AgentEvent{Kind: "tool_progress", CallID: callID})
 }
 
+// subagentModelID picks a subagent's model: the definition's (a tool call
+// or a workflow may set it per run), then the agent.subagent_model
+// setting, then "" for the session model.
+func (h *Host) subagentModelID(def AgentDef) string {
+	return cmp.Or(def.Model, h.setStr("agent.subagent_model"))
+}
+
+// modelIDs lists every provider/model the config registered.
+func (h *Host) modelIDs() []string {
+	var out []string
+	for _, spec := range h.Providers.List() {
+		for _, m := range spec.Models {
+			out = append(out, spec.ID+"/"+m.ID)
+		}
+	}
+	return out
+}
+
+// checkModelID refuses a model id the config does not know, naming the
+// ones it does.
+func (h *Host) checkModelID(id string) error {
+	if id == "" || slices.Contains(h.modelIDs(), id) {
+		return nil
+	}
+	return fmt.Errorf("unknown model %q; configured models: %s", id, strings.Join(h.modelIDs(), ", "))
+}
+
 // ---------------------------------------------------------------------------
 // the agent tool
 
@@ -469,7 +496,14 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	names := make([]string, 0, len(t.defs))
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
+		if d.Model != "" {
+			fmt.Fprintf(&b, " (model %s)", d.Model)
+		}
 		names = append(names, d.Name)
+	}
+	models := t.h.modelIDs()
+	if len(models) > 1 {
+		b.WriteString("\n\nA subagent runs on your model unless the agent or the model field says otherwise. Configured models: " + strings.Join(models, ", ") + ". Pick a cheaper one for simple searches and a stronger one for hard reasoning.")
 	}
 	return fantasy.ToolInfo{
 		Name:        "agent",
@@ -479,6 +513,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 			"prompt":      map[string]any{"type": "string", "description": "the full task"},
 			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run: explore for reading and searching, general only when it must run commands or edit"},
 			"background":  map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"},
+			"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
 		},
 		Required: []string{"description", "prompt", "agent"},
 		Parallel: true,
@@ -494,6 +529,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		Prompt      string `json:"prompt"`
 		Agent       string `json:"agent"`
 		Background  bool   `json:"background"`
+		Model       string `json:"model"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -507,6 +543,12 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	def, err := t.h.agentDef(in.Agent)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if err := t.h.checkModelID(in.Model); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if in.Model != "" {
+		def.Model = in.Model
 	}
 	if in.Background {
 		id, err := t.h.startBackgroundAgent(def, in.Description, in.Prompt)

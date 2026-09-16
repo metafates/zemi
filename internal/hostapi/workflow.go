@@ -382,7 +382,7 @@ func (r *wfRun) install(args any) {
 	L.SetGlobal("json", js)
 }
 
-// agent(prompt [, opts]) or agent({prompt=, agent=, description=}):
+// agent(prompt [, opts]) or agent({prompt=, agent=, description=, model=}):
 // returns the agent's report, or nil and an error.
 func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
@@ -394,15 +394,15 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		L.RaiseError("agent() cannot run inside pcall; it returns nil, err on failure instead")
 		return 0
 	}
-	var prompt, name, desc string
+	var prompt, name, desc, model string
 	switch v := L.Get(1).(type) {
 	case glua.LString:
 		prompt = string(v)
 		if opts, ok := L.Get(2).(*glua.LTable); ok {
-			name, desc = rawString(opts, "agent"), rawString(opts, "description")
+			name, desc, model = rawString(opts, "agent"), rawString(opts, "description"), rawString(opts, "model")
 		}
 	case *glua.LTable:
-		prompt, name, desc = rawString(v, "prompt"), rawString(v, "agent"), rawString(v, "description")
+		prompt, name, desc, model = rawString(v, "prompt"), rawString(v, "agent"), rawString(v, "description"), rawString(v, "model")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		L.RaiseError("agent: prompt is required")
@@ -412,6 +412,13 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	if err != nil {
 		L.RaiseError("agent: %v", err)
 		return 0
+	}
+	if err := r.h.checkModelID(model); err != nil {
+		L.RaiseError("agent: %v", err)
+		return 0
+	}
+	if model != "" {
+		def.Model = model
 	}
 	if r.started >= workflowMaxAgents {
 		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
@@ -575,7 +582,7 @@ func (h *Host) workflowTool() fantasy.AgentTool { return &workflowTool{h: h, sav
 const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. Prefer a single agent call for one task; use a workflow when the shape is several agents with logic between them.
 
 The script runs in a sandbox with Lua's base, string, table and math libraries and:
-- agent(prompt [, {agent = "explore", description = "..."}]) -> report or nil, err. Blocks this branch until the subagent finishes. Agents cannot see this conversation: prompts must be self-contained.
+- agent(prompt [, {agent = "explore", description = "...", model = "provider/model"}]) -> report or nil, err. Blocks this branch until the subagent finishes. Agents cannot see this conversation: prompts must be self-contained. model is optional and must be a configured model.
 - parallel({fn, fn, ...}) -> results, errs. Runs each function as a concurrent branch (up to 5 agents at once); results[i] is fn i's return value, errs[i] its error (errs is nil when none failed).
 - phase(name) labels progress for the user; log(...) records a line returned with the result.
 - json.encode(v), json.decode(s) (decode tolerates prose around the JSON); args holds the tool's args.
