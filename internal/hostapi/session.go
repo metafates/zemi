@@ -152,19 +152,9 @@ func (h *Host) InputHistory(sid string) []string {
 // firstUserLine is the first typed line of a stored user message, for the
 // session picker; attachments and later lines stay out.
 func firstUserLine(partsJSON string) string {
-	var m fantasy.Message
-	if partsJSON == "" || json.Unmarshal([]byte(partsJSON), &m) != nil {
-		return ""
-	}
-	var text strings.Builder
-	for _, part := range m.Content {
-		if p, ok := part.(fantasy.TextPart); ok {
-			text.WriteString(p.Text)
-		}
-	}
-	s, _, _ := strings.Cut(text.String(), attachMarker)
-	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	return truncRunes(sanitize.String(s), 60)
+	text, _ := userText(&store.Message{Role: "user", PartsJSON: partsJSON})
+	line, _, _ := strings.Cut(text, "\n")
+	return truncRunes(sanitize.String(line), 60)
 }
 
 // closeSession detaches the live session (refused mid-turn) and fires its
