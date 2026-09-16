@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -53,18 +54,30 @@ func probe() (Backend, error) {
 	if abi < 3 {
 		return Backend{}, fmt.Errorf("landlock v%d cannot deny truncate; needs linux 6.2 or newer", abi)
 	}
+	// each try confines a helper the way a wrap would, so an environment
+	// that refuses landlock_restrict_self or seccomp() reports no backend
 	if os.Getenv(probeEnv) == "" {
-		try := func(pid bool) bool {
+		try := func(mode string, pid bool) error {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, exe, helperArg, probeArg)
+			cmd := exec.CommandContext(ctx, exe, helperArg, probeArg, mode)
 			cmd.Env = append(os.Environ(), probeEnv+"=1")
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
-			namespaceAttr(cmd.SysProcAttr, pid)
-			return cmd.Run() == nil
+			if mode == "namespaces" {
+				namespaceAttr(cmd.SysProcAttr, pid)
+			}
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("%w: %s", err, bytes.TrimSpace(out))
+			}
+			return nil
 		}
-		pidns = try(true)
-		namespaces = pidns || try(false)
+		pidns = try("namespaces", true) == nil
+		namespaces = pidns || try("namespaces", false) == nil
+		if !namespaces {
+			if err := try("seccomp", false); err != nil {
+				return Backend{}, fmt.Errorf("sandbox helper: %w", err)
+			}
+		}
 	}
 	if namespaces {
 		return Backend{Name: fmt.Sprintf("landlock v%d + namespaces", abi), EnforcesProtect: true}, nil
@@ -129,13 +142,18 @@ func Helper(args []string) int {
 		return 125
 	}
 	runtime.LockOSThread()
-	if len(args) == 1 && args[0] == probeArg {
+	if len(args) == 2 && args[0] == probeArg {
 		exe, err := os.Executable()
 		if err != nil {
 			return fail("probe", err)
 		}
-		if err := setupNamespaces(Policy{Write: []string{"/"}, Protect: []string{filepath.Dir(exe)}, Loopback: true}); err != nil {
-			return fail("probe", err)
+		ns := args[1] == "namespaces"
+		p := Policy{Write: []string{"/"}}
+		if ns {
+			p.Protect, p.Loopback = []string{filepath.Dir(exe)}, true
+		}
+		if step, err := confine(p, ns); err != nil {
+			return fail(step, err)
 		}
 		return 0
 	}
@@ -151,13 +169,24 @@ func Helper(args []string) int {
 	if err != nil {
 		return fail("lookup", err)
 	}
+	if step, err := confine(p, ns); err != nil {
+		return fail(step, err)
+	}
+	if ns && os.Getpid() == 1 {
+		return runInit(path, args[4:], fail)
+	}
+	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
+}
+
+// confine applies p to the calling thread and names the step that failed.
+func confine(p Policy, ns bool) (string, error) {
 	if ns {
 		if err := setupNamespaces(p); err != nil {
-			return fail("namespaces", err)
+			return "namespaces", err
 		}
 	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
-		return fail("no_new_privs", err)
+		return "no_new_privs", err
 	}
 	// root often builds a tree another uid owns (a bind-mounted checkout),
 	// and Landlock still decides every path; in the user namespace such
@@ -167,18 +196,15 @@ func Helper(args []string) int {
 		keep = 0
 	}
 	if err := dropCaps(keep); err != nil {
-		return fail("capabilities", err)
+		return "capabilities", err
 	}
 	if err := landlock(p); err != nil {
-		return fail("landlock", err)
+		return "landlock", err
 	}
 	if err := seccomp(ns); err != nil {
-		return fail("seccomp", err)
+		return "seccomp", err
 	}
-	if ns && os.Getpid() == 1 {
-		return runInit(path, args[4:], fail)
-	}
-	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
+	return "", nil
 }
 
 // dropCaps empties every capability set but keep, the bounding set too
