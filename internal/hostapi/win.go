@@ -6,6 +6,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -653,6 +654,11 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		cols, rows := w.Size()
 		if mx < 0 || my < 0 || mx >= cols || my >= rows {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("x, y must be inside the %dx%d window", cols, rows)), nil
+		}
+		// a click acts like a key press, so it asks the same gate as keys
+		arg := fmt.Sprintf("%s %s %d,%d", cmp.Or(in.MKind, "click"), cmp.Or(in.Button, "left"), mx, my)
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: "use the mouse in window " + w.Title()}); v.Decision != perm.Allow {
+			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
 		}
 		for _, ev := range evs {
 			w.SendMouse(ev)

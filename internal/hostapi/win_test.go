@@ -11,7 +11,7 @@ import (
 )
 
 // TestWindowTool drives open, read, send, wait and close through the
-// model's tool: the open goes through the bash gate, typing through
+// model's tool: the open goes through the bash gate, typing and clicks through
 // tool.window, and an exit reaches the next message as a note.
 func TestWindowTool(t *testing.T) {
 	h, _ := newTestHost(t)
@@ -36,6 +36,9 @@ func TestWindowTool(t *testing.T) {
 	}
 	if resp := run(`{"action":"send","id":1,"text":"hi\r"}`); !resp.IsError {
 		t.Fatalf("send must ask tool.window: %+v", resp)
+	}
+	if resp := run(`{"action":"mouse","id":1,"x":1,"y":0}`); !resp.IsError {
+		t.Fatalf("mouse must ask tool.window: %+v", resp)
 	}
 	h.Perm.Add(perm.Rule{Subject: "tool.window", Pattern: "*", Decision: perm.Allow})
 	if resp := run(`{"action":"keys","id":1,"keys":"h<nope>"}`); !resp.IsError || !strings.Contains(resp.Content, "unknown key") {

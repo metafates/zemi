@@ -289,7 +289,7 @@ included, until `ui.window.unfocus`; a press on a title or separator starts a `w
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
 for the mouse), and a paste goes to the program with bracketing when it asked. The model's
-`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `keys`/`send`
+`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `keys`/`mouse`/`send`
 as `tool.window`; an exit lands in the next message through `shellNotes`. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
 
