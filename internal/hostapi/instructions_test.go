@@ -21,13 +21,13 @@ func TestNearestInstructions(t *testing.T) {
 	file := filepath.Join(pkg, "x.go")
 	os.WriteFile(file, []byte("package sub\n"), 0o644)
 
-	if got := h.nearestInstructions(file); !strings.Contains(got, "use tabs here") {
+	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("first read must carry the package instructions: %q", got)
 	}
-	if got := h.nearestInstructions(file); got != "" {
+	if got := h.nearestInstructions(file, h.instructionSent); got != "" {
 		t.Fatalf("they must not repeat in the same session: %q", got)
 	}
-	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go")); got != "" {
+	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go"), h.instructionSent); got != "" {
 		t.Fatalf("the root file is already in the prompt: %q", got)
 	}
 
@@ -39,7 +39,7 @@ func TestNearestInstructions(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(sibling) })
 	os.WriteFile(filepath.Join(sibling, "AGENTS.md"), []byte("not ours"), 0o644)
-	if got := h.nearestInstructions(filepath.Join(sibling, "x.go")); got != "" {
+	if got := h.nearestInstructions(filepath.Join(sibling, "x.go"), h.instructionSent); got != "" {
 		t.Fatalf("nothing outside the repo may be read: %q", got)
 	}
 }

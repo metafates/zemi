@@ -256,6 +256,13 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
 	pipe.Images = func() bool { return h.takesImages(h.currentModelID(prof)) }
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
+	var sent sync.Map       // likewise the instruction files its reads carried
+	pipe.Instructions = func(path string) string {
+		return h.nearestInstructions(path, func(p string) bool {
+			_, dup := sent.LoadOrStore(p, true)
+			return dup
+		})
+	}
 	if def.ReadOnly {
 		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
 	}

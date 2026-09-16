@@ -416,8 +416,9 @@ func (h *Host) instructionFiles() []string {
 // nearestInstructions returns the instruction file that governs path and is
 // not already in the prompt: in a monorepo opened at the root, a package's
 // own AGENTS.md sits below the files instructionFiles collects. Each one is
-// sent once per session, with the read that first reaches it.
-func (h *Host) nearestInstructions(path string) string {
+// sent once per conversation, with the read that first reaches it: sent
+// reports whether it went out already and records it otherwise.
+func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ""
@@ -440,7 +441,7 @@ func (h *Host) nearestInstructions(path string) string {
 			if !fileExists(p) || inPrompt[p] {
 				continue
 			}
-			if h.instructionSent(p) {
+			if sent(p) {
 				return ""
 			}
 			data, err := os.ReadFile(p)
@@ -1959,7 +1960,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		ScratchDir:   h.ScratchDir,
 		SearchURL:    func() string { return h.setStr("web.search_url") },
 		Seen:         h.readLog(),
-		Instructions: h.nearestInstructions,
+		Instructions: func(path string) string { return h.nearestInstructions(path, h.instructionSent) },
 	}
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion

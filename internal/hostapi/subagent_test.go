@@ -174,6 +174,40 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	}
 }
 
+// TestSubagentInstructions: every run's first read of a file carries its
+// package's instruction file, and none of them uses up the main
+// conversation's one delivery.
+func TestSubagentInstructions(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(pkg, "AGENTS.md"), []byte("use tabs here"), 0o644)
+	file := filepath.Join(pkg, "x.go")
+	os.WriteFile(file, []byte("package sub\n"), 0o644)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts(last)
+			}
+			return toolCallParts("c1", "read", fmt.Sprintf(`{"path":%q}`, file))
+		}}, nil
+	}
+	def, err := h.agentDef("explore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		if text, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil || !strings.Contains(text, "use tabs here") {
+			t.Fatalf("run %d: read result %q, %v", i, text, err)
+		}
+	}
+	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
+		t.Fatalf("the main conversation lost its delivery: %q", got)
+	}
+}
+
 // TestSubagentReportTruncated: a runaway report is cut before it lands in
 // the caller's context.
 func TestSubagentReportTruncated(t *testing.T) {
