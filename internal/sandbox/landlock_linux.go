@@ -115,7 +115,7 @@ func Helper(args []string) int {
 		if err != nil {
 			return fail("probe", err)
 		}
-		if err := setupNamespaces(Policy{Write: []string{"/"}, Protect: []string{filepath.Dir(exe)}}); err != nil {
+		if err := setupNamespaces(Policy{Write: []string{"/"}, Protect: []string{filepath.Dir(exe)}, Loopback: true}); err != nil {
 			return fail("probe", err)
 		}
 		return 0
@@ -149,26 +149,15 @@ func Helper(args []string) int {
 	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
 }
 
-// setupNamespaces brings lo up, makes each Protect path under a Write root
-// a read-only bind mount (and a Write root inside one writable again), then
-// drops the ambient caps, so the command execs with none.
+// setupNamespaces brings lo up for Loopback, makes each Protect path under a
+// Write root a read-only bind mount (and a Write root inside one writable
+// again), then drops the ambient caps, so the command execs with none.
 // Landlock, applied next, forbids the command to umount them.
 func setupNamespaces(p Policy) error {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	defer unix.Close(fd)
-	ifr, err := unix.NewIfreq("lo")
-	if err != nil {
-		return err
-	}
-	if err := unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
-		return fmt.Errorf("lo: %w", err)
-	}
-	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP)
-	if err := unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
-		return fmt.Errorf("lo up: %w", err)
+	if p.Loopback {
+		if err := loUp(); err != nil {
+			return err
+		}
 	}
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("private mounts: %w", err)
@@ -219,6 +208,26 @@ func setupNamespaces(p Policy) error {
 		}
 	}
 	return unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0)
+}
+
+func loUp() error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	ifr, err := unix.NewIfreq("lo")
+	if err != nil {
+		return err
+	}
+	if err := unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("lo: %w", err)
+	}
+	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP)
+	if err := unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("lo up: %w", err)
+	}
+	return nil
 }
 
 const (

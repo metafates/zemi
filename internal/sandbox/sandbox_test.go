@@ -183,6 +183,12 @@ func TestNetworkDenied(t *testing.T) {
 		}
 	}
 	dial("192.0.2.1:9", true)
+	lo, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lo.Close()
+	dial(lo.Addr().String(), false)
 	ip := nonLoopbackIP()
 	if ip == nil {
 		return
