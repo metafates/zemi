@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// alive polls for a pid to disappear (orphans are reaped by init).
+// gone polls for a pid to disappear (orphans are reaped by init).
 func gone(pid int) bool {
 	for range 50 {
 		if syscall.Kill(pid, 0) != nil {
@@ -35,10 +35,7 @@ func TestStoppable(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			pidFile := filepath.Join(t.TempDir(), "pid")
-			script := c.script
-			if strings.Contains(script, "%s") {
-				script = strings.ReplaceAll(script, "%s", pidFile)
-			}
+			script := strings.ReplaceAll(c.script, "%s", pidFile)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			cmd := CommandContext(ctx, "sh", "-c", script)

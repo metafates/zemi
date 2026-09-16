@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -75,13 +76,6 @@ func TestSpecificityOrder(t *testing.T) {
 	}
 }
 
-func TestNormalizeSimple(t *testing.T) {
-	n := Normalize("ls -la")
-	if len(n.Segments) != 1 || n.Segments[0] != "ls -la" {
-		t.Fatalf("segments: %q", n.Segments)
-	}
-}
-
 func TestNormalizeInlinesLiteralVars(t *testing.T) {
 	for _, c := range []struct{ cmd, want string }{
 		{"D=/a/b; ls $D; cat ${D}/x.go", "ls /a/b|cat /a/b/x.go"},
@@ -111,16 +105,11 @@ func TestNormalizeCompound(t *testing.T) {
 	}
 }
 
-func TestNormalizeSubshellIsSegment(t *testing.T) {
-	n := Normalize("echo $(rm -rf x)")
-	found := false
-	for _, s := range n.Segments {
-		if s == "rm -rf x" {
-			found = true
+func TestSubstitutionIsSegment(t *testing.T) {
+	for _, cmd := range []string{"echo $(rm -rf x)", "echo `rm -rf x`"} {
+		if n := Normalize(cmd); !slices.Contains(n.Segments, "rm -rf x") {
+			t.Errorf("%s: substitution must cut into its own segment: %q", cmd, n.Segments)
 		}
-	}
-	if !found {
-		t.Fatalf("subshell must cut into its own segment: %q", n.Segments)
 	}
 }
 
@@ -264,19 +253,6 @@ func TestUnbalancedFails(t *testing.T) {
 func TestDequotedAssignment(t *testing.T) {
 	if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommand(`PA'TH'=/tmp/x ls`, ""); o.Decision != Ask {
 		t.Fatalf("embedded quotes must not hide assignment, got %v", o.Decision)
-	}
-}
-
-func TestBacktickCutsSegment(t *testing.T) {
-	n := Normalize("echo `rm -rf x`")
-	found := false
-	for _, s := range n.Segments {
-		if s == "rm -rf x" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("backtick substitution must cut into its own segment: %q", n.Segments)
 	}
 }
 
