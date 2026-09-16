@@ -72,7 +72,8 @@ func TestParsePermissionsDumpRefuses(t *testing.T) {
 }
 
 // TestPermissionsLoadStep covers the boot-window load: a valid dump loads
-// into the store, an invalid dump fails the boot with the store empty.
+// into the store once however often it replays, an invalid dump fails the
+// boot with the store empty.
 func TestPermissionsLoadStep(t *testing.T) {
 	h, r := newTestHostSkillsNoBoot(t)
 	path := h.permanentRulesPath()
@@ -86,8 +87,10 @@ func TestPermissionsLoadStep(t *testing.T) {
 	if err := os.WriteFile(path, dump, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.PermissionsLoadStep()}); err != nil {
-		t.Fatalf("load step: %v", err)
+	for range 2 { // a reload replays the step
+		if err := r.Boot(context.Background(), []lua.BootStep{h.PermissionsLoadStep()}); err != nil {
+			t.Fatalf("load step: %v", err)
+		}
 	}
 	rules := h.Perm.Rules()
 	if len(rules) != 1 || rules[0].Pattern != "git status" || rules[0].Scope != perm.ScopePermanent {

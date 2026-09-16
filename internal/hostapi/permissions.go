@@ -425,8 +425,12 @@ func (h *Host) PermissionsLoadStep() lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			h.sweepPendingRevisions()
 			rules, err := h.readPermanentRules()
+			// a reload replays this step onto the same store; copies would
+			// also land in the next dump
 			for _, rule := range rules {
-				h.Perm.Add(rule)
+				if !slices.Contains(h.Perm.Rules(), rule) {
+					h.Perm.Add(rule)
+				}
 			}
 			return err
 		},
