@@ -19,8 +19,8 @@ its own, and a binding may not be a prefix or an extension of a more trusted key
 `user` may register providers, add allow rules or decide learning proposals. Below
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, run a more trusted
 origin's command with `zemi.command.run`, or close, focus or `set` a window another origin
-opened. Project and learned handlers cannot deny `app.quit` (a plugin denial holds once per
-session). Lua calls to gated APIs never open a prompt: an "ask" decision raises
+opened. Project and learned handlers cannot deny `app.quit` (a plugin denial holds every
+time). Lua calls to gated APIs never open a prompt: an "ask" decision raises
 `permission ask required` unless an allow rule exists.
 
 ## Modules
@@ -48,7 +48,7 @@ loads fresh.
 The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
-values (as JSON) come back. It never asks.
+values (as JSON) come back. It asks the user only in plan mode or a project that is not trusted.
 It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
 (its path is in the Environment section; files there are read and written without asking)
 and pass `path`. Globals a chunk sets stay in that chunk.

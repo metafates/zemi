@@ -42,28 +42,32 @@ For testing against a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOM
 `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` (see `internal/config/dirs.go`). Most tests don't need
 this — they inject `config.Dirs{...}` with `t.TempDir()` directly.
 
-The project-config trust prompt and `~/.config/zemi/init.lua` only exist on a real machine;
+The project trust prompt and `~/.config/zemi/init.lua` only exist on a real machine;
 tests boot with empty dirs, so code that requires them needs explicit setup in the test.
+A test host is untrusted: call `h.SetProjectTrusted(true)` when the test needs project
+instructions, language servers or settled builds.
 
 ## CLI (cli.go)
 
 `zemi` opens the TUI; a prompt argument is sent as the first message. Flags: `-p`/`--print`
 (answer on stdout and exit, with `--output text|json`), `-c` (continue the latest session),
-`-r <id>`, `-m <provider/model>`, `--mode manual|plan|auto|yolo`, `--health`, `-v`. Piped
+`-r <id>`, `-m <provider/model>`, `--mode manual|plan|auto|yolo`, `--trust[=false]`, `--health`, `-v`. Piped
 stdin is appended to the prompt, and is a usage error without `-p` (the TUI needs the
-terminal). Flags apply after boot so they win over `init.lua`. `--health` and `-p` boot the
+terminal). Flags apply after boot so they win over `init.lua`, except `--trust`, which the
+trust boot step reads (`options.trust` is nil unless given, found with `fs.Visit`). `--health` and `-p` boot the
 same step list and skip only the TUI: `--health` prints `HealthRows()` and exits 1 if a check
 errored; `-p` runs one turn, then reports on stderr how many tool calls the gate denied
-(nobody can answer an ask headless, so it points at `--mode auto`) and warns when an
-untrusted project config was skipped. `/health` and `--health` read the same rows: the Go
+(nobody can answer an ask headless, so it points at `--mode auto`, and at `--trust` in an
+untrusted project). A headless run in a project with no saved trust decision runs untrusted
+and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
 checks (store, model, permissions, git, ripgrep, reflector, learning, skills, lua, errors,
-lsp) plus whatever Lua registered with `zemi.health.register`.
+trust, lsp) plus whatever Lua registered with `zemi.health.register`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
 files, one per launch. Config reload is not fsnotify: `watchConfig` walks the config trees
 once a second and reloads when the fingerprint (path, size, mtime) moved and no turn is
-active.
+active; an untrusted project's `.zemi` is not watched.
 
 ## Architecture and control flow
 
@@ -73,12 +77,26 @@ host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fa
 builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
 workflow (+ `/review`), mcp, lsp and window commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
-plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/` (`init.lua`,
-`agents/`, `commands/`, `workflows/`; any of them triggers the one-time trust prompt that
-hashes the config tree and refuses symlinks, and trust sets `Host.SetProjectTrusted`) ->
-markdown commands (`commands/*.md`, user then trusted project) ->
+project trust (`trustGate.step`, before any config that can start an MCP server) ->
+plugins -> user `init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua`
+(`projectInitStep`) -> markdown commands (`commands/*.md`, user then trusted project) ->
 `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
 its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
+
+**Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
+`Dirs.TrustRoot()` (the symlink-resolved repo root; a linked worktree maps to its main
+checkout by reading the `.git` file, the `gitdir` back-pointer and `commondir`, never by
+running git) and saved in `<state>/trust.json` as `trusted`/`untrusted`. Order: a decision
+held for this process (`--trust`, an esc answer, `/trust` when saving is impossible), the
+saved one, then the Go-owned prompt (`App.AskTrust`: `y` trust, `n` don't, esc/enter not
+now). `$HOME` and `/` are never asked about or saved. `/trust` reopens the prompt off the
+UI goroutine, saves, and reloads when the decision changed; `Host.SetProjectTrusted` clears
+the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project `.zemi`
+(init.lua, agents, commands, workflows), instruction files and profile `context.files`
+(untrusted: only `<config>/AGENTS.md`), every language server, plain `Host.git` (untrusted
+or outside the trust root it switches off fsmonitor, hooks and repo-local filter drivers),
+the stdio MCP working directory (untrusted: `DataHome`, with `ZEMI_PROJECT_DIR` set),
+the Lua tool's ask, and what auto and plan mode settle (see below).
 `EnsureConfigRepo()` runs in `main` before the step list is built, not after it, so the
 config git repo exists before any step can commit a revision (see "Permanent rules" below).
 
@@ -172,7 +190,11 @@ approvals keyed on everything it saw (subject, arg, reason, preview; the reason 
 escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
 never settled locally: the URL is the model's. Known ceiling: auto settles in-jail writes and
 project build/test commands locally, so the model can write code and run it with no screening;
-that is the intended auto tradeoff, and manual and plan ask. `h.secretPath` matches the secret shapes on
+that is the intended auto tradeoff, and manual and plan ask. In an untrusted project
+(`settledCommand`) both modes settle only `perm.ReadCommand` commands (`SafeCommand` whose
+every program only reads, named without a path; no builds, no git), auto settles no
+writes, and auto skips the screening model and its cache, sending the rest to the user with
+reason "not settled: this project is not trusted (/trust)". `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
@@ -181,7 +203,8 @@ project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the 
 scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`) settles only over a tree
 with no secret-shaped file in it. No argument may point into `.git`, and a git command that
 prints file content (`grep`, `show`, `diff`, `cat-file`, `log -p`) settles only in a repository
-that tracks no secret-shaped file (`tracksNoSecrets`). Arguments after a `cd` are judged from every directory the
+that tracks no secret-shaped file (`trackedSecret`; `repoNote` names the file in the ask
+reason when it is the only reason the command did not settle). Arguments after a `cd` are judged from every directory the
 shell may be in, and commands that rewrite project files (formatters, `--fix`, `go build -o`)
 are left out so plan mode stays read-only.
 User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
@@ -361,22 +384,27 @@ writes under the screen lock and a program that does not read stdin must not wed
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
   `safeCommandPath` include it for plain reads (never for programs that may run code).
 - **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
-  origin and the tool never asks (only `tool.pre` hooks can deny it; gated `zemi.fs`,
-  `zemi.http` and `zemi.job` calls inside still raise on an ask), on the interpreter (10s
-  ceiling), in a wrapper env whose `print` is captured. Main agent only.
+  origin; in a trusted project outside plan mode the tool never asks (only `tool.pre` hooks
+  can deny it; gated `zemi.fs`, `zemi.http` and `zemi.job` calls inside still raise on an
+  ask), and otherwise it asks `tool.lua` with the script as preview and no always option.
+  It runs on the interpreter (10s ceiling), in a wrapper env whose `print` is captured.
+  Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
   which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
   learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
-  with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`. Tools are
+  with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`,
+  in the project directory when it is trusted and in `DataHome` otherwise (`npx` and `uv`
+  read config from the working directory). Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
   argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
   server).
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file (user
   `zemi.lsp.add` first, then an installed builtin whose marker is in the file's directory
-  or above it). Builtins start in unreviewed repos, so none may run repo code: typescript
-  gets the tsserver on PATH (skipped when that is inside the repo) and rust-analyzer is
-  user-added only (see the NOTE on `builtinLSP`). The pipeline's `AfterWrite` appends errors and warnings to
+  or above it), and only in a trusted project: servers run repo code (rust-analyzer build
+  scripts), so `lspDefs` returns nothing untrusted, user-added servers included, and
+  `noLSP` says why. typescript still gets the tsserver on PATH (skipped when that is inside
+  the repo). The pipeline's `AfterWrite` appends errors and warnings to
   write/edit/multiedit results plus errors in other files, the `diagnostics` tool reads
   any file and the `lsp` tool does definition, references, rename and symbols by name.
   A server answers from the text the client sent for an open document and from its own

@@ -76,7 +76,7 @@ so an abandoned worktree is reused instead of piling up.
 | search results appear twice | `.worktrees/` is missing from `.git/info/exclude` |
 | the worktree has no `node_modules`, `.env`, build cache | untracked and ignored files are not copied; install or symlink them |
 | `git worktree remove` fails | uncommitted changes, or the directory was already deleted (`git worktree prune`) |
-| project config not loaded in the worktree | `.zemi/` is a separate path there, so zemi asks to trust it again |
+| project config not loaded in the worktree | the main checkout is not trusted: a worktree shares its trust decision; `/trust` there |
 | submodules missing | run `git submodule update --init` in the new worktree |
 
 ## Reporting back

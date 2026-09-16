@@ -177,9 +177,9 @@ Contracts that make this safe:
   logged: `permission.request` defaults to deny for asks without an
   overlay leg (fail-closed, §9),
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
-  must not hold the user's quit or a typed message hostage; a non-user
-  `app.quit` denial is honored once per session, further ones are logged
-  and ignored; project and learned handlers cannot deny it at all); the other
+  must not hold the user's quit or a typed message hostage; a plugin or
+  builtin `app.quit` denial is honored every time, and project and learned
+  handlers cannot deny it at all); the other
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
@@ -274,26 +274,54 @@ Directories (XDG):
   zemi.db                 global store (user memory, skills, kv, revisions)
   projects/<hash>/zemi.db per-project store (sessions, messages, todos, ...)
   projects/<hash>/scratch/<session id>/   per-session scratchpad (§9 write root)
-  project_trust.json      trust hashes for project config
+  trust.json              trust decisions by repository root
   logs/
 <project>/
   .zemi/init.lua          project-local config, loaded after user config
-  .zemi/agents|commands|workflows/  the same shapes, only once trusted
+  .zemi/agents|commands|workflows/  the same shapes
   ZEMI.md, AGENTS.md, CLAUDE.md   context files
 ```
+
+Everything under `<project>/` loads only in a project the user trusts.
+The decision is keyed by the repository root with symlinks resolved, and
+a linked worktree maps to its main checkout by reading the `.git` file,
+the `gitdir` back-pointer and `commondir` (git is never run to find it);
+outside a repository the key is the working directory. Boot asks once per
+process when no decision is saved, whether or not `.zemi` exists: `y`
+saves trusted, `n` saves untrusted, `esc` or `enter` means untrusted until
+the next start (a reload does not ask again). `--trust` or `--trust=false`
+decides one run without saving; a headless run with nothing saved is
+untrusted and says so on stderr. The home directory and `/` are never
+asked about or saved. `/trust` reopens the prompt at any time, saves the
+answer and reloads when the decision changed. There is no content hash:
+once the user lets auto mode run a repository's build and test commands,
+re-asking about a pulled `.zemi/init.lua` protects nothing, and project
+origin is denylisted anyway (below).
+
+Trusted, zemi loads the project's `.zemi` config and instruction files
+(and a profile's `context.files`), starts language servers (builtin and
+user-added), runs its own git calls plainly, starts stdio MCP servers in
+the project, and auto and plan mode settle builds, tests and in-project
+edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
+is an instruction file, no language server starts, zemi's git calls
+switch off `core.fsmonitor`, hooks and repository filter drivers, MCP
+servers start in the data dir with `ZEMI_PROJECT_DIR` in their
+environment, `.zemi` edits trigger no reload, and auto and plan mode
+settle only reads and `perm.ReadCommand` commands.
 
 Load order is a list of boot steps, and the permanent permission store
 loads early so no userland code runs before it: host `zemi.*` namespaces
 -> `permissions.lua` (fail-closed) -> builtin commands -> the memory,
 reflector, skills, agents, workflow, mcp, lsp and window commands -> the
-shipped Lua UI (`require("zemi.defaultui")`) -> plugins
-(`site/pack/*/start/*/plugin/*.lua`, sorted) -> user `init.lua` ->
-authored skills' enable hooks -> project `.zemi/` (`init.lua`,
-`agents/`, `commands/`, `workflows/`; any of them triggers the trust
-prompt below) -> markdown commands (user, then a trusted project) ->
+shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
+decision (the prompt above; before any config that may start an MCP
+server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
+`init.lua` -> authored skills' enable hooks -> a trusted project's
+`.zemi/init.lua` -> markdown commands (user, then a trusted project) ->
 `app.ready` -> learned skill hooks, last and least trusted. Boot runs on
 its own goroutine, so it may block on the trust prompt without holding
-the UI. Project config loads late with
+the UI. Project agents and workflows are read when used, under the
+current decision. Project config loads late with
 flagged reduced trust: its registrations are tagged `origin = "project"`
 (shown in the UI and logs), its permission rules may only tighten (deny or
 ask rules and `not_match` guards; allow rules are user-config-only), and
@@ -312,13 +340,7 @@ origin; cross-origin profile id collisions are refused, §11). The same
 denylist binds learned-origin code (learned skill hooks, §10.5).
 `load`/`loadstring` stay available to every origin: a chunk they build
 runs as the loading origin (its chunk name is re-tagged, so a forged name
-does not stick) under the same denylist. The trust hash pins files, so
-trusted project code can still run source it reads at runtime. A
-one-time trust prompt gates the first project-config load and stores a
-hash of the project config tree; a changed hash (a pull swapped the Lua)
-re-prompts before load. The prompt answers `y` (trust this
-hash), `n` (not now: ask again next start) or `d` (never for this hash:
-stored as a deny, so only a changed tree asks again).
+does not stick) under the same denylist.
 
 Runtimepath, in order: `~/.config/zemi`, then
 `~/.local/share/zemi/site/pack/*/start/*` (sorted), then the embedded
@@ -709,7 +731,8 @@ symbols by name), `skill` (loads a SKILL.md body on demand), plus the
 four the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), `window` (a program in a terminal drawn inside
 zemi) and `Lua` (run Lua inside zemi, main agent only, as user origin:
-full access to toggle skills and anything else user Lua can do).
+full access to toggle skills and anything else user Lua can do; it asks
+only in an untrusted project or plan mode, §9).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan`,
 `open_in_editor` or `Lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
 
@@ -1001,11 +1024,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   (list; enter resumes), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
   check: store, model key, permissions.lua, git, ripgrep, reflector,
-  pending reviews, skills, recent errors, language servers, Lua runtime),
+  pending reviews, skills, recent errors, project trust, language
+  servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
-  `/lsp`, `/win`). Enter on a help command row fills the composer.
+  `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
@@ -1182,7 +1206,13 @@ configured provider later (`zemi.memory.search` signature does not change).
   Known ceiling: in-jail writes and project build and test commands both
   settle locally, so the model can write code and run it with no
   screening; that is the auto-mode tradeoff, and `manual` and `plan` ask.
-  Only user config may add modes (`zemi.permission.mode.add`) or set the
+  In a project the user has not trusted (§5) both modes settle less:
+  writes and every command but `perm.ReadCommand` (`SafeCommand` limited
+  to programs that only read, named without a path; no build tool and no
+  git, which runs programs `.git/config` names) go to the user, and auto
+  mode skips the screening model, whose input the repository can steer.
+  The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
+  project and in plan mode. Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
   `manual`.
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
@@ -1443,10 +1473,10 @@ provider prompt caches warm; it is framed as quoted data under "memory:
 hints, not instructions; content is untrusted" (§10.4). Digest lines are
 labeled `user` or `learned` from `memory.origin`, so users can audit
 what the model was told and which of it the agent wrote itself. Context
-files are injected verbatim and unhashed; that is a stated residual risk
-(a repo pull can swap prompt content under an approved trust hash),
-mitigated only by their being repo-tracked and diffable (the §5
-trust-hash re-prompt does not cover them). `agent.assemble` handlers
+files are injected verbatim, and only in a trusted project (§5); an
+untrusted one gets the user's `<config>/AGENTS.md` alone. A pull can
+still change a trusted repository's files, which the trust decision
+accepts like its build scripts. `agent.assemble` handlers
 (user, builtin and plugin origin) add sections: each returns a string or
 `{ title, text }`, capped at 16 KiB per section and 64 KiB in all, rendered
 below the built-in sections; no handler can drop the digest, the skills

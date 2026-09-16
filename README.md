@@ -34,7 +34,8 @@ warnings for it are appended to the result, so the model sees a broken build rig
 the `diagnostics` tool checks any other file, and the `lsp` tool asks the server for a
 symbol's definition, its references, a semantic rename or a file's outline. gopls, pyright, rust-analyzer,
 typescript-language-server and clangd start on their own when installed and the project
-has their marker file (`go.mod`, `pyproject.toml`, `Cargo.toml`, `package.json`, ...).
+has their marker file (`go.mod`, `pyproject.toml`, `Cargo.toml`, `package.json`, ...), in
+projects you trust (servers run the project's build scripts).
 Add others in `init.lua`, configure a builtin by adding its name, or disable one; `/lsp`
 shows what the project can use:
 
@@ -206,12 +207,13 @@ zemi "fix the failing test"       # TUI with a first message
 zemi -c                           # continue the last session (-r <id> for another)
 zemi -p "explain main.go"         # answer on stdout, no TUI
 git diff | zemi -p "review this"  # piped stdin joins the prompt
-zemi -p --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
+zemi -p --trust --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
 zemi --health                     # run the /health checks, exit 1 if any failed
 ```
 
 With `-p` nobody can answer a permission ask, so asks are denied unless `--mode` is
-`auto` or `yolo`. Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
+`auto` or `yolo`; a project you have not trusted in the TUI needs `--trust` for auto mode
+to run builds and tests. Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 `--output json` prints the reply, the tool calls, token usage and cost as one JSON object
 for scripts. `zemi --help` lists every flag.
 
@@ -257,8 +259,10 @@ local myui = require("myui.status") -- ~/.config/zemi/lua/myui/status.lua
 
 Plugins load from `~/.local/share/zemi/site/pack/*/start/*`. A repository can ship its own
 setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua`, modules under
-`.zemi/lua/`, `agents/`, `commands/` and `workflows/`, found from any subdirectory and loaded after a trust prompt that repeats
-whenever those files change. Lua runs sandboxed, and every registration carries its
+`.zemi/lua/`, `agents/`, `commands/` and `workflows/`, found from any subdirectory and loaded
+only in a project you trust. zemi asks once per repository (`/trust` asks again, `--trust`
+decides one run); an untrusted one also gets no AGENTS.md or language servers, and auto
+mode runs only commands that just read there. Lua runs sandboxed, and every registration carries its
 origin (`user > builtin > plugin > project`), so project code cannot override yours.
 [DESIGN.md](DESIGN.md) is the full specification.
 

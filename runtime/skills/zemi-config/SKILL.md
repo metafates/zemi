@@ -14,7 +14,7 @@ description: Configure zemi - init.lua, providers, models, settings, keymaps, co
 | `~/.config/zemi/skills/<name>/SKILL.md` | skills the user wrote |
 | `~/.config/zemi/.luarc.json` | lua-language-server settings, written once on a first start |
 | `~/.local/share/zemi/types/zemi.lua` | LuaLS annotations for the whole `zemi.*` API, rewritten on every start |
-| `<project>/.zemi/init.lua` | project config: loads after a trust prompt, low-trust `project` origin |
+| `<project>/.zemi/init.lua` | project config: loads only in a project the user trusts, low-trust `project` origin |
 | `~/.local/share/zemi/site/pack/*/start/*/plugin/*.lua` | plugins |
 | `~/.local/state/zemi/` | logs, databases, trust file (see zemi-debug) |
 
@@ -101,13 +101,11 @@ writable; prefer it over guessing. Common keys:
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
-- `lsp.auto` (true): start installed gopls, pyright, typescript-language-server or clangd
-  when their marker file (go.mod, package.json, ...) is next to a file zemi touches or
-  above it, up to the repo root. Builtins must not run the repo's code before anyone
-  reviewed it: typescript starts only with a `tsserver` on PATH outside the repo (never
-  the repo's node_modules), and rust-analyzer (build scripts, proc macros, cargo config)
-  starts only when user config adds it:
-  `zemi.lsp.add("rust-analyzer", { command = "rust-analyzer", filetypes = { "rs" } })`.
+- `lsp.auto` (true): start installed gopls, pyright, typescript-language-server, clangd or
+  rust-analyzer when their marker file (go.mod, package.json, Cargo.toml, ...) is next to a
+  file zemi touches or above it, up to the repo root. typescript starts only with a
+  `tsserver` on PATH outside the repo (never the repo's node_modules). No server starts,
+  builtin or added, in a project the user has not trusted: servers run the repo's code.
   `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a
   server (user config only); adding a builtin's name replaces it, so
   `zemi.lsp.add("gopls", { command = "gopls", filetypes = { "go" }, settings = { gopls = { staticcheck = true } } })`
@@ -127,7 +125,10 @@ writable; prefer it over guessing. Common keys:
   read-only commands run, other commands and MCP calls ask, so the agent investigates and
   proposes a plan), `auto` (a model
   approves routine actions and hands the rest to the user) or `yolo` (every ask is
-  allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model. At runtime:
+  allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model.
+  In a project the user has not trusted (`/trust`), auto and plan mode run only commands
+  that just read (no builds, tests or git), auto edits nothing and screens nothing without
+  the user, and the Lua tool asks. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
   `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
@@ -225,7 +226,7 @@ Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetc
 `web_search`, `todos`, `question`, `plan`, `open_in_editor`, `window`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin, full access: can toggle
-skills, widen permissions, add MCP servers, read secret-shaped env names; never asks), plus
+skills, widen permissions, add MCP servers, read secret-shaped env names; asks only in plan mode or an untrusted project), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
 Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several

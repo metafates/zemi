@@ -11,7 +11,7 @@ below is a file you write with your file tools; show the user what you wrote and
 | Scope | Directory | Loads |
 | --- | --- | --- |
 | every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, when the files change for Lua and commands |
-| this repository | `<repo>/.zemi/` | after the user trusts the project config: a prompt at start or on `/reload` |
+| this repository | `<repo>/.zemi/` | only in a project the user trusts: a prompt at the first start there, or `/trust` |
 
 Always use the exact directories from the system prompt: `ZEMI_CONFIG_HOME` can move the
 user directory, and writing to a guessed `~/.config/zemi` changes the wrong config.
@@ -43,8 +43,8 @@ return agent("Write a PR description (motivation, changes, how to test) from:\n"
 - Do not call `agent` or `parallel` inside `pcall`, `table.sort` or `string.gsub` callbacks.
 - Workflow files are read when they run: no reload needed.
 - Keep one the user wants again in `~/.config/zemi/workflows/<name>.lua` (every project) or
-  `<project>/.zemi/workflows/<name>.lua` (shared through git, once the user has trusted the
-  project config). It then runs as `/workflow <name>`, or by name from the workflow tool.
+  `<project>/.zemi/workflows/<name>.lua` (shared through git, run only once the user
+  trusts the project). It then runs as `/workflow <name>`, or by name from the workflow tool.
 
 ## Subagents (`agents/<name>.md`)
 
