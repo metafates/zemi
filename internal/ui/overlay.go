@@ -130,7 +130,7 @@ func (a *App) renderOverlayItem(o hostapi.Overlay, item any) (string, error) {
 	if o.RenderItem == nil {
 		return formatOverlayItem(item), nil
 	}
-	res, err := a.host.RT.Call(a.ctx(), o.Origin, o.RenderItem, item)
+	res, err := a.host.RT.Call(context.Background(), o.Origin, o.RenderItem, item)
 	if err != nil {
 		return "", err
 	}

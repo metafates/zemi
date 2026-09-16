@@ -396,7 +396,7 @@ func (a *App) runCommand(name, args string) {
 		})
 		return
 	}
-	if err := a.host.RunCommand(a.ctx(), name, args); err != nil {
+	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
 		a.pushToast("error", "/"+name, err.Error())
 	}
 }

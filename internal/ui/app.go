@@ -507,14 +507,12 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 		}
 		a.pending[w.ID] = gen
 		cmds = append(cmds, func() tea.Msg {
-			lines, err := a.host.RenderWidget(a.ctx(), w, width, st)
+			lines, err := a.host.RenderWidget(context.Background(), w, width, st)
 			return widgetRenderedMsg{id: w.ID, lines: lines, width: width, gen: gen, err: err}
 		})
 	}
 	return tea.Batch(cmds...)
 }
-
-func (a *App) ctx() context.Context { return context.Background() }
 
 // widgetLines returns the last-good cached lines of a widget (the render
 // itself happens on the queue, never inside View, DESIGN §4).

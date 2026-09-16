@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"strings"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -53,7 +54,7 @@ func (a *App) updatePalette() {
 	}
 	lead := strings.ToLower(string(r[start:cur]))
 	args := []string{}
-	for _, c := range a.host.CompleteCommand(a.ctx(), string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])) {
+	for _, c := range a.host.CompleteCommand(context.Background(), string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])) {
 		if strings.HasPrefix(strings.ToLower(c), lead) {
 			args = append(args, c)
 		}
@@ -176,7 +177,7 @@ func (a *App) runSlashCommand(text string) {
 // sendMessage runs the composer.submit vetoable event, then appends the
 // message to the transcript and drives the agent.
 func (a *App) sendMessage(text string) {
-	res := a.host.EmitVetoable(a.ctx(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
+	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
 	if res.Denied {
 		a.pushToast("warn", "composer", "blocked: "+res.Reason)
 		return
