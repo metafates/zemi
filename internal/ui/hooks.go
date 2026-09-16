@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -119,14 +120,7 @@ func (a *App) CloseOverlay(id string) bool {
 // on reload; Go-built ones (Gen 0) keep working and stay.
 func (a *App) CloseLuaOverlays() {
 	a.do(func() {
-		kept := a.overlays[:0]
-		for _, st := range a.overlays {
-			if st.o.Gen == 0 {
-				kept = append(kept, st)
-			}
-		}
-		a.overlays = kept
-		a.frameGen++
+		a.overlays = slices.DeleteFunc(a.overlays, func(st overlayState) bool { return st.o.Gen != 0 })
 	})
 }
 
