@@ -382,7 +382,7 @@ func schemaPointer(root any, ref string) (any, error) {
 		return nil, fmt.Errorf("unsupported $ref %q", ref)
 	}
 	cur := root
-	for _, seg := range strings.Split(rest, "/") {
+	for seg := range strings.SplitSeq(rest, "/") {
 		seg = strings.ReplaceAll(strings.ReplaceAll(seg, "~1", "/"), "~0", "~")
 		m, ok := cur.(map[string]any)
 		if !ok {
@@ -804,7 +804,7 @@ func ChangePreview(in map[string]any) string {
 		if text == "" {
 			return
 		}
-		for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+		for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
 			lines = append(lines, prefix+l)
 		}
 	}

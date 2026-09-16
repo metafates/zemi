@@ -262,11 +262,11 @@ func TestBacktickCutsSegment(t *testing.T) {
 // tie-break counts characters, not bytes.
 func TestGlobConcurrentAndRunes(t *testing.T) {
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < 50; j++ {
+			for j := range 50 {
 				globRegexp(string(rune('a'+i)) + "*" + string(rune('a'+j%26)))
 			}
 		}(i)

@@ -259,8 +259,8 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		}
 	default:
 		text := plainSegs(row)
-		if i := strings.Index(text, "✻ Th"); i >= 0 && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
-			return ansi.StringWidth(text[:i]), ansi.StringWidth(strings.TrimRight(text, " ")), a.host.ToggleReasoning, true
+		if before, _, ok := strings.Cut(text, "✻ Th"); ok && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
+			return ansi.StringWidth(before), ansi.StringWidth(strings.TrimRight(text, " ")), a.host.ToggleReasoning, true
 		}
 		// an agent tool row ("● Agent <description> · 4s") opens that run's transcript
 		for _, mark := range []string{"● Agent ", "◦ Agent "} {

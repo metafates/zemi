@@ -251,7 +251,7 @@ func ansiLines(s string) []uv.Line {
 
 func plainLines(text string) [][]Segment {
 	var out [][]Segment
-	for _, l := range strings.Split(sanitize.String(strings.ReplaceAll(text, "\t", "    ")), "\n") {
+	for l := range strings.SplitSeq(sanitize.String(strings.ReplaceAll(text, "\t", "    ")), "\n") {
 		out = append(out, []Segment{{Text: l}})
 	}
 	return out

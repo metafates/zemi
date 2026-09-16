@@ -216,7 +216,7 @@ func TestDigestRanksAndFrames(t *testing.T) {
 func TestDigestLineBudget(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
 	var cands []*store.Memory
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		cands = append(cands, &store.Memory{Kind: "fact", Text: "fact " + string(rune('a'+i)), Origin: "user", ProvenanceSessionID: "p", UpdatedAt: at.UnixMilli(), Score: float64(12 - i)})
 	}
 	out := Digest(cands, at, 3)

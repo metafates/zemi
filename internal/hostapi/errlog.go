@@ -6,6 +6,7 @@ package hostapi
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,8 +55,8 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 		entries := append([]errEntry(nil), l.entries...)
 		l.mu.Unlock()
 		rows := make([]any, 0, len(entries))
-		for i := len(entries) - 1; i >= 0; i-- { // newest first, like /errors
-			e := entries[i]
+		for i, e := range slices.Backward(entries) { // newest first, like /errors
+
 			rows = append(rows, map[string]any{
 				"index": i, "at": e.at.Format("15:04:05"), "source": e.source, "message": e.msg,
 			})
@@ -94,8 +95,8 @@ func (h *Host) OpenErrors(args string) error {
 	f := strings.Fields(args)
 	if len(f) == 0 {
 		items := make([]any, 0, len(entries))
-		for i := len(entries) - 1; i >= 0; i-- {
-			e := entries[i]
+		for i, e := range slices.Backward(entries) {
+
 			items = append(items, map[string]any{
 				"text": fmt.Sprintf("%s  %-16s %s", e.at.Format("15:04:05"), e.source, strings.Join(strings.Fields(e.msg), " ")),
 				"run":  fmt.Sprintf("errors %d", i),
@@ -126,7 +127,7 @@ func (h *Host) OpenErrors(args string) error {
 	}
 	// 72 keeps a wrapped row inside the box, so it is not clipped twice;
 	// y and Y copy rows out whole (the box hint says so).
-	for _, line := range strings.Split(e.msg, "\n") {
+	for line := range strings.SplitSeq(e.msg, "\n") {
 		r := []rune(line)
 		for len(r) > 0 {
 			n := min(len(r), 72)

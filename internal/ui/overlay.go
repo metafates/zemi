@@ -322,7 +322,7 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 		return rows
 	}
 	y0 := headerH + (chatBottom-headerH-bh)/2
-	for i := 0; i < bh; i++ {
+	for i := range bh {
 		bw := segsWidth(box[i])
 		x0 := max((w-bw)/2, 1)
 		// composite: what the box does not cover stays visible

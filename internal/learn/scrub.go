@@ -47,7 +47,7 @@ func ScrubSecrets(text string) (string, bool) {
 		out, scrubbed = scrubMatches(out, re, scrubbed)
 	}
 	out, scrubbed = scrubMatches(out, keyAssignments, scrubbed)
-	for _, tok := range strings.Fields(out) {
+	for tok := range strings.FieldsSeq(out) {
 		if len(tok) < entropyFloorLen || shannon(tok) < entropyThreshold {
 			continue
 		}

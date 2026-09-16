@@ -107,7 +107,7 @@ func TestToGoDepthCap(t *testing.T) {
 	L := newTestSandbox(t).L
 	deep := L.NewTable()
 	cursor := deep
-	for i := 0; i < MaxTableDepth+2; i++ {
+	for range MaxTableDepth + 2 {
 		next := L.NewTable()
 		cursor.RawSetInt(1, next)
 		cursor = next
@@ -118,7 +118,7 @@ func TestToGoDepthCap(t *testing.T) {
 
 	okDepth := L.NewTable()
 	cursor = okDepth
-	for i := 0; i < MaxTableDepth-1; i++ {
+	for range MaxTableDepth - 1 {
 		next := L.NewTable()
 		cursor.RawSetInt(1, next)
 		cursor = next
@@ -269,7 +269,7 @@ func TestFromGoDepthCap(t *testing.T) {
 	L := newTestSandbox(t).L
 	deep := any(map[string]any{})
 	cursor := deep.(map[string]any)
-	for i := 0; i < MaxTableDepth+2; i++ {
+	for range MaxTableDepth + 2 {
 		next := map[string]any{}
 		cursor["n"] = next
 		cursor = next

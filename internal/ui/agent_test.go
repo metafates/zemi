@@ -687,7 +687,7 @@ func TestToolRows(t *testing.T) {
 	}
 	// an expanded long input wraps instead of ending in an ellipsis
 	var words int
-	for _, row := range strings.Split(frame, "\r\n") {
+	for row := range strings.SplitSeq(frame, "\r\n") {
 		words += strings.Count(row, "pattern")
 	}
 	if words != 30 {
@@ -708,7 +708,7 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 	host.ToggleReasoning()
 	app.renderSync(t)
 	var got []string
-	for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+	for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
 		if _, body, ok := strings.Cut(row, "│ "); ok {
 			got = append(got, strings.Fields(body)...)
 		}

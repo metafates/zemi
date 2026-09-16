@@ -51,8 +51,7 @@ func friendlyError(err error) string {
 
 // hostOf names the host of a failed request, when the error carries one.
 func hostOf(err error) string {
-	var ue *url.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
 		if u, perr := url.Parse(ue.URL); perr == nil && u.Host != "" {
 			return " by " + u.Host
 		}

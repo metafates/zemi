@@ -598,7 +598,7 @@ func (a *App) compose(w, h int) string {
 	rows := make([][]hostapi.Segment, 0, h)
 	rows = append(rows, header...)
 
-	for i := 0; i < chatH; i++ {
+	for i := range chatH {
 		var row []hostapi.Segment
 		if j := a.chatTop + i; j >= 0 && j < len(chat) {
 			row = truncateSegs(chat[j], w)
@@ -609,8 +609,8 @@ func (a *App) compose(w, h int) string {
 	// Toasts stack up from the bottom of the chat area, newest lowest,
 	// right-aligned over the chat rows they cover, one blank row apart.
 	y := len(rows)
-	for i := len(a.toasts) - 1; i >= 0; i-- {
-		box := toastBox(a.toasts[i], w)
+	for _, v := range slices.Backward(a.toasts) {
+		box := toastBox(v, w)
 		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
 			y--
 			x0 := max(0, w-segsWidth(box[j])-1)
@@ -848,7 +848,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		body = append(body, truncateSegs([]hostapi.Segment{{Text: t.title, HL: "ToastTitle"}}, inner))
 	}
 	if t.body != "" {
-		for _, l := range strings.Split(t.body, "\n") {
+		for l := range strings.SplitSeq(t.body, "\n") {
 			body = append(body, wrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
 		}
 	}

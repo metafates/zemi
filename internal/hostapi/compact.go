@@ -428,11 +428,11 @@ func summaryOf(m fantasy.Message) (string, bool) {
 func tailStart(history []fantasy.Message, keep int64) int {
 	start := len(history)
 	var n int64
-	for i := len(history) - 1; i >= 0; i-- {
-		if n += estTokens(history[i]); n > keep {
+	for i, h := range slices.Backward(history) {
+		if n += estTokens(h); n > keep {
 			break
 		}
-		if history[i].Role != fantasy.MessageRoleTool {
+		if h.Role != fantasy.MessageRoleTool {
 			start = i
 		}
 	}
@@ -456,8 +456,8 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 	// step Full cut continues from it): it counts against the kept budget
 	// but is never cleared.
 	live := len(history)
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == fantasy.MessageRoleUser {
+	for i, h := range slices.Backward(history) {
+		if h.Role == fantasy.MessageRoleUser {
 			live = i
 			break
 		}
@@ -465,8 +465,8 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 	type loc struct{ msg, part int }
 	var old []loc
 	var seen, freed int64
-	for i := len(history) - 1; i >= 0; i-- {
-		for j, part := range history[i].Content {
+	for i, h := range slices.Backward(history) {
+		for j, part := range h.Content {
 			p, ok := part.(fantasy.ToolResultPart)
 			text := toolText(p)
 			if !ok || skill[p.ToolCallID] || text == "" || text == clearedOutput {

@@ -98,7 +98,7 @@ func (h *Host) workflows() []Workflow {
 
 func leadingComment(src string) string {
 	var lines []string
-	for _, l := range strings.Split(src, "\n") {
+	for l := range strings.SplitSeq(src, "\n") {
 		c, ok := strings.CutPrefix(strings.TrimSpace(l), "--")
 		if !ok {
 			break
@@ -594,16 +594,17 @@ Example:
   return agent("Check each finding against the code and keep only real ones:\n" .. table.concat(reports, "\n\n"))`
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
-	desc := workflowToolDesc
+	var desc strings.Builder
+	desc.WriteString(workflowToolDesc)
 	if len(t.saved) > 0 {
-		desc += "\n\nSaved workflows (pass name instead of script):"
+		desc.WriteString("\n\nSaved workflows (pass name instead of script):")
 		for _, w := range t.saved {
-			desc += "\n- " + w.Name + ": " + truncRunes(w.Description, 160)
+			desc.WriteString("\n- " + w.Name + ": " + truncRunes(w.Description, 160))
 		}
 	}
 	return fantasy.ToolInfo{
 		Name:        "workflow",
-		Description: desc,
+		Description: desc.String(),
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},
 			"script":      map[string]any{"type": "string", "description": "Lua source"},

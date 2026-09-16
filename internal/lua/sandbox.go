@@ -409,7 +409,7 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 // __index is the frozen surface) resolve `zemi.ui` as ordinary table reads.
 func (s *Sandbox) LookupPath(name string) glua.LValue {
 	var v glua.LValue = s.frozen
-	for _, p := range strings.Split(name, ".") {
+	for p := range strings.SplitSeq(name, ".") {
 		tb, ok := v.(*glua.LTable)
 		if !ok {
 			return glua.LNil
@@ -669,8 +669,8 @@ func frameInfo(L *glua.LState, dbg *glua.Debug) (Origin, string) {
 
 func splitChunkName(source string) (Origin, string) {
 	s := strings.TrimPrefix(source, "@")
-	if i := strings.Index(s, ":"); i >= 0 {
-		return Origin(s[:i]), s[i+1:]
+	if before, after, ok := strings.Cut(s, ":"); ok {
+		return Origin(before), after
 	}
 	return "", s
 }

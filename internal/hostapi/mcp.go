@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -91,9 +92,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		env = append(env, k+"="+v)
 	}
 	headers := map[string]string{}
-	for k, v := range s.spec.Headers {
-		headers[k] = v
-	}
+	maps.Copy(headers, s.spec.Headers)
 	cfg := mcp.Config{
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.ProjectDir,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},

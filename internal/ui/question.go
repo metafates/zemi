@@ -130,7 +130,7 @@ func (a *App) nextQuestion(answer string) {
 func questionBox(qp *questionPrompt, w int) [][]hostapi.Segment {
 	q := qp.qs[qp.at]
 	var body [][]hostapi.Segment
-	for _, l := range strings.Split(q.Question, "\n") {
+	for l := range strings.SplitSeq(q.Question, "\n") {
 		body = append(body, []hostapi.Segment{{Text: l}})
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}})

@@ -246,9 +246,9 @@ func parseSGStream(r io.Reader, count int) string {
 	data, _ := io.ReadAll(io.LimitReader(r, 4<<20))
 	var b strings.Builder
 	shown := 0
-	for _, ev := range strings.Split(string(data), "\n\n") {
+	for ev := range strings.SplitSeq(string(data), "\n\n") {
 		var payload []string
-		for _, line := range strings.Split(ev, "\n") {
+		for line := range strings.SplitSeq(ev, "\n") {
 			if s, ok := strings.CutPrefix(line, "data: "); ok {
 				payload = append(payload, s)
 			}

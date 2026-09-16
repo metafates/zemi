@@ -89,7 +89,7 @@ func TestChatScrollWheel(t *testing.T) {
 	if app.chatFollow {
 		t.Fatalf("wheel up should scroll off the tail")
 	}
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	}
 	if !app.chatFollow {

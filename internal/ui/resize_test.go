@@ -46,7 +46,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 	}
 	boxWidth := func() int {
 		app.renderSync(t)
-		for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
 			if strings.Contains(row, "╭") {
 				return ansi.StringWidth(strings.TrimSpace(row))
 			}
@@ -78,7 +78,7 @@ func TestResizeSweep(t *testing.T) {
 	// by character with "…".
 	app.renderSync(t)
 	var toolRows []string
-	for _, row := range strings.Split(ansi.Strip(app.Frame()), "\r\n") {
+	for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
 		if strings.Contains(row, "ёж") {
 			toolRows = append(toolRows, row)
 		}

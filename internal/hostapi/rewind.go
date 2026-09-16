@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -174,19 +175,19 @@ func (h *Host) OpenRewind() error {
 	}
 	counts, _ := h.DB.CheckpointCounts(sid)
 	var items []any
-	for i := len(rows) - 1; i >= 0; i-- {
-		text, ok := userText(rows[i])
+	for _, row := range slices.Backward(rows) {
+		text, ok := userText(row)
 		if !ok {
 			continue
 		}
 		files := ""
-		if n := counts[rows[i].ID]; n > 0 {
+		if n := counts[row.ID]; n > 0 {
 			files = fmt.Sprintf("  (%d %s)", n, plural(n, "file", "files"))
 		}
-		first := strings.SplitN(text, "\n", 2)[0]
+		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-8s %s%s", ago(rows[i].CreatedAt), truncRunes(first, 60), files),
-			"run":  "rewind " + rows[i].ID,
+			"text": fmt.Sprintf("%-8s %s%s", ago(row.CreatedAt), truncRunes(first, 60), files),
+			"run":  "rewind " + row.ID,
 		})
 	}
 	if len(items) == 0 {

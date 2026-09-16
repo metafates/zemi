@@ -495,7 +495,7 @@ func hintLine(pairs ...string) []hostapi.Segment {
 // codePanel shows text on a panel background, wrapped to width.
 func codePanel(text string, width int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
-	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
 		l = strings.ReplaceAll(l, "\t", "    ")
 		for _, wrapped := range wrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
 			line := plainSegs(wrapped)
@@ -518,7 +518,7 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 	}
 	var lines []line
 	o, n := 0, 0
-	for _, l := range strings.Split(d, "\n") {
+	for l := range strings.SplitSeq(d, "\n") {
 		switch {
 		case l == "", strings.HasPrefix(l, "--- "), strings.HasPrefix(l, "+++ "), strings.HasPrefix(l, "\\ "):
 		case strings.HasPrefix(l, "@@"):

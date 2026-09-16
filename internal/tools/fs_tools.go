@@ -34,10 +34,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	timeout := 60 * time.Second
 	if v, ok := input["timeout_ms"].(float64); ok && v > 0 {
-		timeout = time.Duration(v) * time.Millisecond
-		if timeout > 10*time.Minute {
-			timeout = 10 * time.Minute
-		}
+		timeout = min(time.Duration(v)*time.Millisecond, 10*time.Minute)
 	}
 	// its own session and process group: cancelling or the timeout stops
 	// pipelines and backgrounded children too, and nothing reads the TUI's tty.

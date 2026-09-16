@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -165,7 +166,7 @@ func parseAgentFile(path, source string) (AgentDef, error) {
 	// tools: "read, grep" or a yaml list
 	switch t := fm.Tools.(type) {
 	case string:
-		for _, n := range strings.Split(t, ",") {
+		for n := range strings.SplitSeq(t, ",") {
 			if n = strings.TrimSpace(n); n != "" {
 				d.Tools = append(d.Tools, n)
 			}
@@ -303,9 +304,9 @@ func (h *Host) subagentSystem(def AgentDef) string {
 }
 
 func lastAssistantText(history []fantasy.Message) string {
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == fantasy.MessageRoleAssistant {
-			if s := strings.TrimSpace(concatText(history[i].Content)); s != "" {
+	for _, h := range slices.Backward(history) {
+		if h.Role == fantasy.MessageRoleAssistant {
+			if s := strings.TrimSpace(concatText(h.Content)); s != "" {
 				return s
 			}
 		}

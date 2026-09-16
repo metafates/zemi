@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -207,9 +208,9 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 // cut the summary from resuming a summary it no longer has.
 func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	history, tr := historyFrom(rows)
-	for i := len(rows) - 1; i >= 0; i-- {
+	for i, row := range slices.Backward(rows) {
 		var m fantasy.Message
-		if rows[i].Role != "user" || json.Unmarshal([]byte(rows[i].PartsJSON), &m) != nil {
+		if row.Role != "user" || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
 			continue
 		}
 		if _, ok := summaryOf(m); ok {

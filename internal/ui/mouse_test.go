@@ -15,8 +15,8 @@ import (
 func findCell(t *testing.T, app *App, text string) (x, y int) {
 	t.Helper()
 	for i, l := range strings.Split(ansi.Strip(app.Frame()), "\n") {
-		if at := strings.Index(l, text); at >= 0 {
-			return ansi.StringWidth(l[:at]), i
+		if before, _, ok := strings.Cut(l, text); ok {
+			return ansi.StringWidth(before), i
 		}
 	}
 	t.Fatalf("%q not on screen:\n%s", text, ansi.Strip(app.Frame()))

@@ -89,11 +89,9 @@ func TestTouchConcurrentVersions(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	for range 12 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, _ = c.Touch(ctx, path, "plaintext")
-		}()
+		})
 	}
 	wg.Wait()
 	for _, d := range c.Diagnostics(path) {

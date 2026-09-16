@@ -27,10 +27,7 @@ func DigestScore(m *store.Memory, at time.Time) float64 {
 	if score <= 0 {
 		score = 1
 	}
-	age := at.Sub(time.UnixMilli(m.UpdatedAt))
-	if age < 0 {
-		age = 0
-	}
+	age := max(at.Sub(time.UnixMilli(m.UpdatedAt)), 0)
 	recency := 1 / (1 + age.Hours()/24)
 	return score * recency * (1 + math.Log1p(float64(m.HitCount)))
 }
