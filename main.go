@@ -26,11 +26,15 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/ui"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "__sandbox" {
+		os.Exit(sandbox.Helper(os.Args[2:]))
+	}
 	os.Exit(run(os.Args[1:]))
 }
 
