@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,11 +55,16 @@ type lspProc struct {
 	ready  chan struct{} // closed when the start attempt ends
 	client *lsp.Client
 	err    error
+	stalls int // touches in a row the server answered nothing to
 }
 
-// lspMaxStarts caps the restarts of a server that keeps dying, so a
-// crash loop cannot respawn it on every edit.
-const lspMaxStarts = 3
+// lspMaxStarts caps the restarts of a server that keeps dying or going
+// quiet, so a crash loop cannot respawn it on every edit; lspMaxStalls
+// silent touches in a row count as one death.
+const (
+	lspMaxStarts = 3
+	lspMaxStalls = 3
+)
 
 type lspReg struct {
 	mu       sync.Mutex
@@ -125,15 +131,15 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 	return lspDef{}, false
 }
 
-// lspClient returns the running client for def, starting it once; a failed
+// lspClient returns the running server for def, starting it once; a failed
 // start is remembered until /lsp restart.
-func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
+func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 	h.lsp.mu.Lock()
 	p, ok := h.lsp.running[def.Name]
 	if !ok {
 		if h.lsp.attempts[def.Name] >= lspMaxStarts {
 			h.lsp.mu.Unlock()
-			return nil, fmt.Errorf("%s died %d times; /lsp restart %s to try again", def.Name, lspMaxStarts, def.Name)
+			return nil, fmt.Errorf("%s failed %d times; /lsp restart %s to try again", def.Name, lspMaxStarts, def.Name)
 		}
 		h.lsp.attempts[def.Name]++
 		p = &lspProc{h: h, def: def, ready: make(chan struct{})}
@@ -179,13 +185,29 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lsp.Client, error) {
 		h.RecordError("lsp", err.Error())
 		return nil, err
 	default:
-		// it is answering, so earlier deaths stop counting against the cap:
-		// otherwise three crashes in a long session disable it for good
-		h.lsp.mu.Lock()
-		delete(h.lsp.attempts, def.Name)
-		h.lsp.mu.Unlock()
 	}
-	return p.client, nil
+	return p, nil
+}
+
+// lspAnswered records whether a touch got fresh diagnostics. Answers clear
+// the start counter, so three crashes over a long session do not disable
+// the server for good; lspMaxStalls silences in a row stop it, so the next
+// file starts a fresh one instead of waiting on a wedged process forever.
+func (h *Host) lspAnswered(p *lspProc, fresh bool) {
+	h.lsp.mu.Lock()
+	defer h.lsp.mu.Unlock()
+	if fresh {
+		p.stalls = 0
+		delete(h.lsp.attempts, p.def.Name)
+		return
+	}
+	p.stalls++
+	if p.stalls < lspMaxStalls || h.lsp.running[p.def.Name] != p {
+		return
+	}
+	delete(h.lsp.running, p.def.Name)
+	h.Log.Warn("lsp", "server stopped answering, restarting", map[string]any{"server": p.def.Name})
+	p.close()
 }
 
 // languageID is the LSP language id for a file: the known name, else the
@@ -200,9 +222,10 @@ func languageID(path string) string {
 }
 
 // lspCheck syncs path to its server and formats diagnostics with severity
-// <= maxSeverity (1 errors ... 4 all); ok is false when no server covers the
+// <= maxSeverity (1 errors ... 4 all), plus, when others is set, the errors
+// the sync surfaced in other files; ok is false when no server covers the
 // file or it did not answer.
-func (h *Host) lspCheck(path string, maxSeverity int) (out string, ok bool) {
+func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, ok bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", false
@@ -215,31 +238,53 @@ func (h *Host) lspCheck(path string, maxSeverity int) (out string, ok bool) {
 	// big workspace; the edit then returns without diagnostics.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c, err := h.lspClient(ctx, def)
+	p, err := h.lspClient(ctx, def)
 	if err != nil {
 		return "", false
 	}
-	diags, err := c.Touch(ctx, abs, languageID(abs))
-	if err != nil && len(diags) == 0 {
+	diags, err := p.client.Touch(ctx, abs, languageID(abs))
+	h.lspAnswered(p, err == nil)
+	if err != nil {
 		return "", false
 	}
-	rel := abs
-	if r, err := filepath.Rel(h.Dirs.ProjectDir, abs); err == nil && !strings.HasPrefix(r, "..") {
-		rel = r
+	// servers answer with canonical paths (/tmp -> /private/tmp)
+	root := h.Dirs.ProjectDir
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	rel := func(abs string) string {
+		if r, err := filepath.EvalSymlinks(abs); err == nil {
+			abs = r
+		}
+		if r, err := filepath.Rel(root, abs); err == nil && !strings.HasPrefix(r, "..") {
+			return r
+		}
+		return abs
 	}
 	var lines []string
-	for _, d := range diags {
-		if d.Severity > maxSeverity {
-			continue
+	add := func(abs string, ds []lsp.Diagnostic, maxSeverity int) {
+		for _, d := range ds {
+			if d.Severity > maxSeverity || len(lines) > 30 {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("%s %s:%d:%d: %s", lsp.SeverityName(d.Severity), rel(abs), d.Line, d.Col, strings.TrimSpace(d.Message)))
 		}
-		if len(lines) == 30 {
-			lines = append(lines, "...")
-			break
+	}
+	add(abs, diags, maxSeverity)
+	if others {
+		other := p.client.Others(abs)
+		for _, o := range slices.Sorted(maps.Keys(other)) {
+			if len(lines) == 0 {
+				lines = append(lines, "errors in other files (a caller this change broke, or already broken):")
+			}
+			add(o, other[o], 1)
 		}
-		lines = append(lines, fmt.Sprintf("%s %s:%d:%d: %s", lsp.SeverityName(d.Severity), rel, d.Line, d.Col, strings.TrimSpace(d.Message)))
+	}
+	if len(lines) > 30 {
+		lines = append(lines[:30], "...")
 	}
 	if len(lines) == 0 {
-		return fmt.Sprintf("%s reports no problems in %s", def.Name, rel), true
+		return fmt.Sprintf("%s reports no problems in %s", def.Name, rel(abs)), true
 	}
 	return fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
 }
@@ -247,7 +292,7 @@ func (h *Host) lspCheck(path string, maxSeverity int) (out string, ok bool) {
 // lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for
 // the file just changed.
 func (h *Host) lspAfterWrite(path string) string {
-	if out, ok := h.lspCheck(path, 2); ok {
+	if out, ok := h.lspCheck(path, 2, true); ok {
 		return "\n\n" + out
 	}
 	return ""
@@ -255,7 +300,7 @@ func (h *Host) lspAfterWrite(path string) string {
 
 // lspDiagnostics backs the diagnostics tool.
 func (h *Host) lspDiagnostics(path string) (string, error) {
-	if out, ok := h.lspCheck(path, 3); ok {
+	if out, ok := h.lspCheck(path, 3, false); ok {
 		return out, nil
 	}
 	if _, ok := h.lspFor(path); !ok {

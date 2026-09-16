@@ -77,6 +77,9 @@ type Client struct {
 	diags   map[string][]Diagnostic // by absolute path
 	pubs    map[string]int          // publish count by path
 	opened  map[string]int          // document version by path
+	seq     int                     // publishes so far
+	pubSeq  map[string]int          // seq of the last publish by path
+	synced  map[string]int          // seq when the path was last synced
 	wake    chan struct{}           // closed and replaced on every publish
 
 	done    chan struct{}
@@ -103,7 +106,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	c := &Client{
 		cmd: cmd, stdin: stdin,
 		pending: map[int64]chan message{}, diags: map[string][]Diagnostic{},
-		pubs: map[string]int{}, opened: map[string]int{},
+		pubs: map[string]int{}, opened: map[string]int{}, pubSeq: map[string]int{}, synced: map[string]int{},
 		wake: make(chan struct{}), done: make(chan struct{}),
 	}
 	go c.read(bufio.NewReader(stdout))
@@ -134,10 +137,14 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	return c, nil
 }
 
+// ErrNoFresh is Touch's error when the server published nothing for the
+// text it was sent: what it holds describes an older version, so nothing
+// is returned rather than something stale.
+var ErrNoFresh = errors.New("lsp: no diagnostics for the current text")
+
 // Touch syncs path's current content to the server and waits for the
 // diagnostics that follow (servers often publish twice, a quick pass then
-// the full check, so a short quiet period ends the wait). On timeout it
-// returns what it has with ctx's error.
+// the full check, so a short quiet period ends the wait).
 func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnostic, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -171,13 +178,33 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 		case <-quiet:
 			return c.Diagnostics(path), nil
 		case <-floor:
-			return c.Diagnostics(path), nil
+			return nil, ErrNoFresh
 		case <-ctx.Done():
-			return c.Diagnostics(path), ctx.Err()
+			return nil, ErrNoFresh
 		case <-c.done:
-			return c.Diagnostics(path), c.endErr
+			return nil, c.endErr
 		}
 	}
+}
+
+// Others returns the errors published for files other than path since path
+// was last synced: a change there that broke code elsewhere.
+func (c *Client) Others(path string) map[string][]Diagnostic {
+	key := normPath(path)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := map[string][]Diagnostic{}
+	for p, ds := range c.diags {
+		if p == key || c.pubSeq[p] <= c.synced[key] {
+			continue
+		}
+		for _, d := range ds {
+			if d.Severity == 1 {
+				out[p] = append(out[p], d)
+			}
+		}
+	}
+	return out
 }
 
 // sync sends the document's current text and reports the publish count it
@@ -191,6 +218,7 @@ func (c *Client) sync(key, uri, languageID, text string) (int, error) {
 	before := c.pubs[key]
 	version := c.opened[key] + 1
 	c.opened[key] = version
+	c.synced[key] = c.seq
 	c.mu.Unlock()
 	var err error
 	if version == 1 {
@@ -349,6 +377,7 @@ func (c *Client) read(r *bufio.Reader) {
 func (c *Client) publish(raw json.RawMessage) {
 	var p struct {
 		URI         string `json:"uri"`
+		Version     *int   `json:"version"`
 		Diagnostics []struct {
 			Range struct {
 				Start struct {
@@ -378,11 +407,17 @@ func (c *Client) publish(raw json.RawMessage) {
 		out = append(out, Diagnostic{Line: d.Range.Start.Line + 1, Col: d.Range.Start.Character + 1, Severity: sev, Message: d.Message, Source: d.Source})
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	// a publish for text older than what was sent is stale, not fresh
+	if p.Version != nil && *p.Version < c.opened[path] {
+		return
+	}
 	c.diags[path] = out
 	c.pubs[path]++
+	c.seq++
+	c.pubSeq[path] = c.seq
 	close(c.wake)
 	c.wake = make(chan struct{})
-	c.mu.Unlock()
 }
 
 // normPath resolves symlinks so a server that answers with a canonicalized

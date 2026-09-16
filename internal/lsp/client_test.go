@@ -2,8 +2,11 @@ package lsp_test
 
 import (
 	"context"
+	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -44,7 +47,7 @@ func TestTouchNoPublishReturnsEarly(t *testing.T) {
 	}
 	began := time.Now()
 	diags, err := c.Touch(ctx, path, "plaintext")
-	if err != nil || len(diags) != 0 {
+	if !errors.Is(err, lsp.ErrNoFresh) || len(diags) != 0 {
 		t.Fatalf("diags %+v, err %v", diags, err)
 	}
 	if elapsed := time.Since(began); elapsed > 5*time.Second {
@@ -98,6 +101,33 @@ func TestTouchConcurrentVersions(t *testing.T) {
 		if d.Message == "version regression" {
 			t.Fatal("document versions reached the server out of order")
 		}
+	}
+}
+
+// TestOthers: errors in other files the server published since this one's
+// sync are reported for it, and go away once they are fixed.
+func TestOthers(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := start(t, ctx, root)
+	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
+	os.WriteFile(a, []byte("ok"), 0o644)
+	os.WriteFile(b, []byte("BROKEN"), 0o644)
+	for _, p := range []string{a, b} {
+		if _, err := c.Touch(ctx, p, "plaintext"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := c.Others(a); len(got) != 1 || len(slices.Collect(maps.Values(got))[0]) != 1 {
+		t.Fatalf("others after b broke: %+v", got)
+	}
+	os.WriteFile(b, []byte("fixed"), 0o644)
+	if _, err := c.Touch(ctx, b, "plaintext"); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Others(a); len(got) != 0 {
+		t.Fatalf("others after b was fixed: %+v", got)
 	}
 }
 

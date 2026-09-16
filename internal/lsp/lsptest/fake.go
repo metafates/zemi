@@ -1,6 +1,8 @@
 // Package lsptest is a fake language server for tests: every opened or
-// changed document gets one "broken" error per line containing BROKEN, and
-// before publishing the server asks the client for its configuration.
+// changed document gets one "broken" error per line containing BROKEN,
+// every known document is republished on each change (as servers do for a
+// package), and before publishing the server asks the client for its
+// configuration.
 package lsptest
 
 import (
@@ -23,6 +25,7 @@ func Serve(in io.Reader, out io.Writer) {
 	// Document versions must arrive in order; once they do not, every later
 	// publish carries the regression so the client's last read sees it.
 	seen := map[string]int{}
+	texts := map[string]string{}
 	regressed := false
 	for {
 		body, err := lsp.ReadMessage(r)
@@ -68,30 +71,33 @@ func Serve(in io.Reader, out io.Writer) {
 			if n := len(m.Params.ContentChanges); n > 0 {
 				text = m.Params.ContentChanges[n-1].Text
 			}
+			texts[uri0] = text
 			write(map[string]any{"jsonrpc": "2.0", "id": "cfg", "method": "workspace/configuration", "params": map[string]any{"items": []any{map[string]any{}}}})
-			diags := []any{}
-			for i, line := range strings.Split(text, "\n") {
-				if strings.Contains(line, "BROKEN") {
+			for uri, text := range texts {
+				version := seen[uri]
+				diags := []any{}
+				for i, line := range strings.Split(text, "\n") {
+					if strings.Contains(line, "BROKEN") {
+						diags = append(diags, map[string]any{
+							"range":    map[string]any{"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i, "character": 6}},
+							"severity": 1, "message": "broken", "source": "fake",
+						})
+					}
+				}
+				if regressed {
 					diags = append(diags, map[string]any{
-						"range":    map[string]any{"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i, "character": 6}},
-						"severity": 1, "message": "broken", "source": "fake",
+						"range":    map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 0, "character": 1}},
+						"severity": 1, "message": "version regression", "source": "fake",
 					})
 				}
+				// Publish the symlink-resolved path, the way servers that
+				// canonicalize their URIs do.
+				if p, err := filepath.EvalSymlinks(strings.TrimPrefix(uri, "file://")); err == nil {
+					uri = "file://" + p
+				}
+				write(map[string]any{"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
+					"params": map[string]any{"uri": uri, "version": version, "diagnostics": diags}})
 			}
-			if regressed {
-				diags = append(diags, map[string]any{
-					"range":    map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 0, "character": 1}},
-					"severity": 1, "message": "version regression", "source": "fake",
-				})
-			}
-			// Publish the symlink-resolved path, the way servers that
-			// canonicalize their URIs do.
-			uri := m.Params.TextDocument.URI
-			if p, err := filepath.EvalSymlinks(strings.TrimPrefix(uri, "file://")); err == nil {
-				uri = "file://" + p
-			}
-			write(map[string]any{"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
-				"params": map[string]any{"uri": uri, "diagnostics": diags}})
 		}
 	}
 }
