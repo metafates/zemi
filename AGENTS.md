@@ -362,7 +362,9 @@ writes under the screen lock and a program that does not read stdin must not wed
   server).
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file (user
   `zemi.lsp.add` first, then an installed builtin whose marker is in the file's directory
-  or above it); the pipeline's `AfterWrite` appends errors and warnings to
+  or above it). Builtins start in unreviewed repos, so none may run repo code: typescript
+  gets the tsserver on PATH (skipped when that is inside the repo) and rust-analyzer is
+  user-added only (see the NOTE on `builtinLSP`). The pipeline's `AfterWrite` appends errors and warnings to
   write/edit/multiedit results plus errors in other files, the `diagnostics` tool reads
   any file and the `lsp` tool does definition, references, rename and symbols by name.
   A server answers from the text the client sent for an open document and from its own

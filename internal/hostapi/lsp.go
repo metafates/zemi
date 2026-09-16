@@ -39,10 +39,18 @@ type lspDef struct {
 	Config  any      // workspace settings
 }
 
+// builtinLSP start in any repository with a marker, before anyone reviewed
+// it, so each must not run the repository's code: gopls runs go list (Go's
+// own rules keep a build free of repo code), pyright runs the python on PATH
+// with the cwd off sys.path, clangd never runs compilers without
+// --query-driver, and typescript gets the tsserver on PATH, not the repo's.
+// NOTE: rust-analyzer is not here: cargo runs build scripts, proc macros and
+// the rustc or wrapper .cargo/config.toml names, and no flag turns all of
+// that off; zemi.lsp.add opts in. Version-manager shims on PATH (pyenv, mise)
+// that read repo files are outside this list's control.
 var builtinLSP = []lspDef{
 	{Name: "gopls", Command: "gopls", Exts: []string{".go"}, Markers: []string{"go.mod", "go.work"}},
 	{Name: "pyright", Command: "pyright-langserver", Args: []string{"--stdio"}, Exts: []string{".py"}, Markers: []string{"pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"}},
-	{Name: "rust-analyzer", Command: "rust-analyzer", Exts: []string{".rs"}, Markers: []string{"Cargo.toml"}},
 	{Name: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}, Exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, Markers: []string{"package.json", "tsconfig.json"}},
 	{Name: "clangd", Command: "clangd", Exts: []string{".c", ".h", ".cc", ".cpp", ".hpp", ".cxx"}, Markers: []string{"compile_commands.json", "CMakeLists.txt", ".clangd"}},
 }
@@ -141,6 +149,14 @@ func (h *Host) lspDefs(path string) []lspDef {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
 			}
+			if d.Name == "typescript" {
+				// without tsserver.path the server prefers node_modules/typescript
+				ts := globalTSServer(root)
+				if ts == "" {
+					continue
+				}
+				d.Init = map[string]any{"tsserver": map[string]any{"path": ts}}
+			}
 			if slices.ContainsFunc(dirs, func(dir string) bool {
 				return slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
 			}) {
@@ -149,6 +165,26 @@ func (h *Host) lspDefs(path string) []lspDef {
 		}
 	}
 	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled[d.Name] })
+}
+
+// globalTSServer is the tsserver.js of the typescript whose tsserver is on
+// PATH, or "" when there is none or it lives inside root.
+func globalTSServer(root string) string {
+	bin, err := exec.LookPath("tsserver")
+	if err != nil {
+		return ""
+	}
+	if bin, err = filepath.EvalSymlinks(bin); err != nil {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	js := filepath.Join(filepath.Dir(filepath.Dir(bin)), "lib", "tsserver.js")
+	if _, err := os.Stat(js); err != nil || strings.HasPrefix(js, root+string(filepath.Separator)) {
+		return ""
+	}
+	return js
 }
 
 // lspSig is what a scan remembers about a file git listed.
@@ -346,7 +382,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 	if !ok {
 		return "", false
 	}
-	// NOTE: a cold gopls or rust-analyzer can take longer than this on a
+	// NOTE: a cold gopls or tsserver can take longer than this on a
 	// big workspace; the edit then returns without diagnostics.
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
@@ -573,7 +609,7 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 					rows := h.lspRows()
 					ui := h.hooks()
 					if ui == nil || len(rows) == 0 {
-						return errors.New("no language server for this project: none of gopls, pyright, rust-analyzer, typescript-language-server or clangd is installed with its marker file here; zemi.lsp.add adds one")
+						return errors.New("no language server for this project: none of gopls, pyright, typescript-language-server or clangd is installed with its marker file here; zemi.lsp.add adds one")
 					}
 					items := make([]any, 0, len(rows))
 					for _, row := range rows {

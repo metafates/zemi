@@ -140,6 +140,54 @@ func TestLSPConfig(t *testing.T) {
 	`)
 }
 
+// TestLSPBuiltinsSkipRepoCode: builtins that would run repository code do
+// not start on their own: rust-analyzer never, typescript only with a
+// tsserver from outside the repository.
+func TestLSPBuiltinsSkipRepoCode(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	root := h.Dirs.RepoRoot()
+	global := t.TempDir()
+	exe := func(path string) {
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755)
+	}
+	for _, f := range []string{"Cargo.toml", "package.json"} {
+		os.WriteFile(filepath.Join(root, f), nil, 0o644)
+	}
+	for _, dir := range []string{global, root} {
+		exe(filepath.Join(dir, "node_modules/typescript/bin/tsserver"))
+		exe(filepath.Join(dir, "node_modules/typescript/lib/tsserver.js"))
+		os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
+		os.Symlink(filepath.Join(dir, "node_modules/typescript/bin/tsserver"), filepath.Join(dir, "bin/tsserver"))
+	}
+	servers := filepath.Join(global, "servers")
+	exe(filepath.Join(servers, "rust-analyzer"))
+	exe(filepath.Join(servers, "typescript-language-server"))
+	for _, c := range []struct{ name, path, want string }{
+		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js")},
+		{"repo tsserver", filepath.Join(root, "bin"), ""},
+		{"no tsserver", "", ""},
+	} {
+		t.Setenv("PATH", servers+string(os.PathListSeparator)+c.path)
+		got := ""
+		for _, d := range h.lspDefs("") {
+			if d.Name == "rust-analyzer" {
+				t.Fatalf("%s: rust-analyzer started on its own", c.name)
+			}
+			if d.Name == "typescript" {
+				got = d.Init.(map[string]any)["tsserver"].(map[string]any)["path"].(string)
+			}
+		}
+		want := c.want
+		if want != "" {
+			want, _ = filepath.EvalSymlinks(want)
+		}
+		if got != want {
+			t.Fatalf("%s: tsserver = %q, want %q", c.name, got, want)
+		}
+	}
+}
+
 // TestLSPSyncFromGit: files that appear, change or vanish on disk between
 // two server interactions reach the server as watched-file events, found
 // by diffing git status listings.

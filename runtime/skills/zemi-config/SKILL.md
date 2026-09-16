@@ -101,9 +101,13 @@ writable; prefer it over guessing. Common keys:
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
-- `lsp.auto` (true): start installed gopls, pyright, rust-analyzer,
-  typescript-language-server or clangd when their marker file (go.mod, package.json, ...)
-  is next to a file zemi touches or above it, up to the repo root.
+- `lsp.auto` (true): start installed gopls, pyright, typescript-language-server or clangd
+  when their marker file (go.mod, package.json, ...) is next to a file zemi touches or
+  above it, up to the repo root. Builtins must not run the repo's code before anyone
+  reviewed it: typescript starts only with a `tsserver` on PATH outside the repo (never
+  the repo's node_modules), and rust-analyzer (build scripts, proc macros, cargo config)
+  starts only when user config adds it:
+  `zemi.lsp.add("rust-analyzer", { command = "rust-analyzer", filetypes = { "rs" } })`.
   `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a
   server (user config only); adding a builtin's name replaces it, so
   `zemi.lsp.add("gopls", { command = "gopls", filetypes = { "go" }, settings = { gopls = { staticcheck = true } } })`
