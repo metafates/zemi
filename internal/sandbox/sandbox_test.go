@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -53,6 +54,10 @@ func act(verb, arg string) error {
 		if err == nil {
 			f.Close()
 		}
+		return err
+	case "status":
+		b, err := os.ReadFile("/proc/self/status")
+		fmt.Print(string(b))
 		return err
 	case "rename":
 		return os.Rename(arg, arg+".moved")
@@ -255,6 +260,31 @@ func TestPidKept(t *testing.T) {
 	}
 	if pgid, err := syscall.Getpgid(pid); err != nil || pgid != pid {
 		t.Fatalf("pgid %d, %v; want %d", pgid, err, pid)
+	}
+}
+
+func TestCaps(t *testing.T) {
+	b := probeOrSkip(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("capabilities are linux only")
+	}
+	out, err := run(t, Policy{}, "status", "")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		k, v, _ := strings.Cut(l, ":")
+		n, _ := strconv.ParseUint(strings.TrimSpace(v), 16, 64)
+		switch {
+		case !strings.HasPrefix(k, "Cap"), n == 0:
+		// without CAP_SETPCAP a non-root helper cannot shrink the bounding
+		// set, and no_new_privs keeps exec from raising caps to it
+		case k == "CapBnd" && !b.EnforcesProtect && os.Getuid() != 0:
+		// the seccomp variant keeps CAP_DAC_OVERRIDE (bit 1), see Helper
+		case n == 1<<1 && !b.EnforcesProtect:
+		default:
+			t.Errorf("%s %016x", k, n)
+		}
 	}
 }
 

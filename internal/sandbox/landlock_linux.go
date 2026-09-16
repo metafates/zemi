@@ -74,7 +74,7 @@ func namespaceAttr(a *syscall.SysProcAttr) {
 	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS
 	a.UidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getuid(), HostID: os.Getuid(), Size: 1}}
 	a.GidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getgid(), HostID: os.Getgid(), Size: 1}}
-	a.AmbientCaps = []uintptr{unix.CAP_NET_ADMIN, unix.CAP_SYS_ADMIN}
+	a.AmbientCaps = []uintptr{unix.CAP_NET_ADMIN, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP}
 }
 
 // wrap runs cmd as `zemi __sandbox <mode> <policy> -- <path> <argv...>`,
@@ -145,6 +145,16 @@ func Helper(args []string) int {
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fail("no_new_privs", err)
 	}
+	// root often builds a tree another uid owns (a bind-mounted checkout),
+	// and Landlock still decides every path; in the user namespace such
+	// files are unmapped, so the override would not apply there
+	keep := uint64(1) << unix.CAP_DAC_OVERRIDE
+	if ns {
+		keep = 0
+	}
+	if err := dropCaps(keep); err != nil {
+		return fail("capabilities", err)
+	}
 	if err := landlock(p); err != nil {
 		return fail("landlock", err)
 	}
@@ -154,10 +164,43 @@ func Helper(args []string) int {
 	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
 }
 
-// setupNamespaces brings lo up for Loopback, makes each Protect path under a
-// Write root a read-only bind mount (and a Write root inside one writable
-// again), then drops the ambient caps, so the command execs with none.
-// Landlock, applied next, forbids the command to umount them.
+// dropCaps empties every capability set but keep, the bounding set too
+// when it may: root execs with its bounding set, which in the user
+// namespace holds CAP_SYS_ADMIN, enough for mount_setattr to make a
+// protected bind mount writable again. Clearing inheritable clears ambient.
+func dropCaps(keep uint64) error {
+	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var data [2]unix.CapUserData
+	if err := unix.Capget(&hdr, &data[0]); err != nil {
+		return err
+	}
+	// a non-root helper has no CAP_SETPCAP to shrink the bounding set, and
+	// under no_new_privs its exec gains nothing from it
+	if data[0].Effective&(1<<unix.CAP_SETPCAP) != 0 {
+		for c := uintptr(0); ; c++ {
+			if keep&(1<<c) != 0 {
+				continue
+			}
+			err := unix.Prctl(unix.PR_CAPBSET_DROP, c, 0, 0, 0)
+			if errors.Is(err, unix.EINVAL) { // past the last cap
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("bounding set: %w", err)
+			}
+		}
+	}
+	for i := range data {
+		k := uint32(keep >> (32 * i))
+		data[i] = unix.CapUserData{Effective: data[i].Effective & k, Permitted: data[i].Permitted & k}
+	}
+	return unix.Capset(&hdr, &data[0])
+}
+
+// setupNamespaces brings lo up for Loopback and makes each Protect path
+// under a Write root a read-only bind mount (and a Write root inside one
+// writable again). Landlock forbids the command to umount them, and with
+// no caps left it cannot remount them.
 func setupNamespaces(p Policy) error {
 	if p.Loopback {
 		if err := loUp(); err != nil {
@@ -215,7 +258,7 @@ func setupNamespaces(p Policy) error {
 			return fmt.Errorf("remount %s: %w", b.path, err)
 		}
 	}
-	return unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0)
+	return nil
 }
 
 func loUp() error {
