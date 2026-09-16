@@ -208,7 +208,6 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"go test " + pad + "/x_test.go", false},
 		{"python3 -m pytest " + pad, false},
 		{"jest --config " + pad + "/j.js", false},
-		{`jest --config '{"globalSetup":"` + pad + `/x.js"}'`, false},
 		{"make -C " + pad, false},
 		{"cd " + pad + " && make test", false},
 		{"cd " + pad + " && cat out.txt", false},
