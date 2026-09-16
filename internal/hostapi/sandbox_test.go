@@ -187,3 +187,41 @@ func TestSandboxPolicy(t *testing.T) {
 		})
 	}
 }
+
+// TestSandboxGuard: a protected path missing when a sandboxed command
+// started and there once it ran (the namespace backend binds only existing
+// ones) holds trust off without saving, noticed at exit or while it runs,
+// and the result names it.
+func TestSandboxGuard(t *testing.T) {
+	for _, running := range []bool{false, true} {
+		h, _ := newTestHost(t)
+		h.Dirs.StateHome = t.TempDir()
+		h.SetProjectTrusted(true)
+		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
+		done := h.guardSandbox(h.sandboxPolicy(false))
+		// what `mkdir .zemi && echo 'print(1)' > .zemi/init.lua` leaves behind
+		zemiDir := filepath.Join(h.Dirs.ProjectDir, ".zemi")
+		if err := os.MkdirAll(zemiDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(zemiDir, "init.lua"), []byte("print(1)"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if running {
+			h.CheckSandboxed()
+			if h.ProjectTrusted() {
+				t.Error("running: still trusted")
+			}
+		}
+		note := done()
+		if h.ProjectTrusted() || !h.TrustHeld() || !strings.Contains(note, zemiDir) || !strings.Contains(note, "/trust") {
+			t.Errorf("running %v: trusted %v held %v note %q", running, h.ProjectTrusted(), h.TrustHeld(), note)
+		}
+	}
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
+	if note := h.guardSandbox(h.sandboxPolicy(false))(); note != "" || !h.ProjectTrusted() {
+		t.Errorf("nothing created: note %q trusted %v", note, h.ProjectTrusted())
+	}
+}

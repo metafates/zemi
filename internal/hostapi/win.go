@@ -58,7 +58,23 @@ func (h *Host) windowExited(w *win.Window) {
 		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<window id=%d title=%q exited code=%d/>", w.ID, w.Title(), w.ExitCode()))
 		ag.mu.Unlock()
 	}
+	h.finishWinGuard(w)
 	h.refresh()
+}
+
+// finishWinGuard runs a sandboxed window's guardSandbox check once, and its
+// warning reaches the next message.
+func (h *Host) finishWinGuard(w *win.Window) {
+	f, ok := h.winGuards.LoadAndDelete(w.ID)
+	if !ok {
+		return
+	}
+	if note := f.(func() string)(); note != "" {
+		ag := h.agents
+		ag.mu.Lock()
+		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<window id=%d>%s</window>", w.ID, note))
+		ag.mu.Unlock()
+	}
 }
 
 // CloseWindow ends a window from the UI.
@@ -567,8 +583,10 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd), nil
 		}
 		spec := win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Owner: t.owner}
+		var after func() string
 		if pol := gate.SandboxFor(req, v); pol != nil {
 			spec.Wrap = func(c *exec.Cmd) error { return sandbox.Wrap(c, *pol) }
+			after = h.guardSandbox(*pol)
 		}
 		if in.Cols != nil {
 			spec.Cols = *in.Cols
@@ -578,7 +596,17 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		w, err := h.openWindow(spec)
 		if err != nil {
+			if after != nil {
+				after()
+			}
 			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if after != nil {
+			h.winGuards.Store(w.ID, after)
+			// the program may have exited before the guard was stored
+			if w.Exited() {
+				h.finishWinGuard(w)
+			}
 		}
 		hidden := t.owner != "model" // a subagent's windows are its own space until shown
 		if in.Hidden != nil {

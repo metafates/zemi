@@ -222,6 +222,8 @@ func run(args []string) int {
 // after it).
 func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 	fingerprint := func() (string, bool) {
+		// a sandboxed command that created project config turns trust off first
+		h.CheckSandboxed()
 		if h.ProjectTrusted() {
 			return configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()), true
 		}
@@ -438,6 +440,7 @@ func (tg *trustGate) step() lua.BootStep {
 	return lua.BootStep{
 		Name: "project trust",
 		Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+			tg.h.CheckSandboxed()
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
 			return err
@@ -461,6 +464,9 @@ func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
 }
 
 func (tg *trustGate) decide() (bool, error) {
+	if tg.h.TrustHeld() {
+		return false, nil
+	}
 	if s := tg.session.Load(); s != nil {
 		return *s, nil
 	}
@@ -504,6 +510,7 @@ func (tg *trustGate) command(reload func()) func() {
 			if answer == "later" {
 				return
 			}
+			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
 				tg.h.Notify("error", "trust", err.Error())

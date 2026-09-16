@@ -267,6 +267,15 @@ type Host struct {
 
 	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
+	// guards holds, per running sandboxed command, the protected paths that
+	// were missing when it started (guardSandbox)
+	guardMu sync.Mutex
+	guards  map[*sandboxGuard]bool
+	// winGuards maps a sandboxed window's id to its guardSandbox check
+	winGuards sync.Map
+	// trustHeld keeps the project untrusted until /trust, after a sandboxed
+	// command created a protected path
+	trustHeld atomic.Bool
 }
 
 // SetProjectTrusted records the trust decision. A change drops the auto-mode

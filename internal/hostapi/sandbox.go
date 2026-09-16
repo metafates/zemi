@@ -109,6 +109,98 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	return p
 }
 
+// sandboxGuard is one running sandboxed command's protected paths: missing
+// when it started, and created since.
+type sandboxGuard struct{ missing, created []string }
+
+// guardSandbox is called before a command starts under p. The namespace
+// backend makes a protected path read-only only if it exists, so a command
+// could create .zemi/init.lua or a .git with hooks. The returned func runs
+// once the command exited: if a missing path appeared, trust is held off
+// (holdTrust) and the text for the tool result says so.
+// NOTE: anything else creating the path while the command runs (the user's
+// git init) counts too; seatbelt's rules cover missing paths, so it is skipped.
+func (h *Host) guardSandbox(p sandbox.Policy) func() string {
+	g := &sandboxGuard{}
+	for _, pr := range p.Protect {
+		writable := slices.ContainsFunc(p.Write, func(w string) bool {
+			return pr == w || strings.HasPrefix(pr, strings.TrimSuffix(w, string(filepath.Separator))+string(filepath.Separator))
+		})
+		if _, err := os.Lstat(pr); err != nil && writable && !slices.Contains(g.missing, pr) {
+			g.missing = append(g.missing, pr)
+		}
+	}
+	if s := h.sandbox.Load(); s == nil || s.backend.Name == "seatbelt" || len(g.missing) == 0 {
+		return func() string { return "" }
+	}
+	h.guardMu.Lock()
+	if h.guards == nil {
+		h.guards = map[*sandboxGuard]bool{}
+	}
+	h.guards[g] = true
+	h.guardMu.Unlock()
+	return func() string {
+		h.guardMu.Lock()
+		delete(h.guards, g)
+		created := g.appeared()
+		all := slices.Clone(g.created)
+		h.guardMu.Unlock()
+		h.holdTrust(created)
+		if len(all) == 0 {
+			return ""
+		}
+		return "\nzemi: " + createdMessage(all)
+	}
+}
+
+// CheckSandboxed holds trust off when a sandboxed command still running
+// created a protected path; call it before reading project config.
+func (h *Host) CheckSandboxed() {
+	h.guardMu.Lock()
+	var created []string
+	for g := range h.guards {
+		created = append(created, g.appeared()...)
+	}
+	h.guardMu.Unlock()
+	h.holdTrust(created)
+}
+
+// appeared moves the missing paths that exist now to created and returns them.
+func (g *sandboxGuard) appeared() []string {
+	var now []string
+	g.missing = slices.DeleteFunc(g.missing, func(p string) bool {
+		_, err := os.Lstat(p)
+		if err == nil {
+			now = append(now, p)
+		}
+		return err == nil
+	})
+	g.created = append(g.created, now...)
+	return now
+}
+
+func createdMessage(created []string) string {
+	return "a sandboxed command created " + strings.Join(created, ", ") + "; project trust is off until /trust"
+}
+
+// holdTrust turns project trust off for this process, without saving, until
+// /trust (ReleaseTrust), so config a sandboxed command created never loads.
+func (h *Host) holdTrust(created []string) {
+	if len(created) == 0 {
+		return
+	}
+	h.trustHeld.Store(true)
+	h.SetProjectTrusted(false)
+	h.Log.Warn("sandbox", createdMessage(created), nil)
+	h.Notify("warn", "trust", createdMessage(created))
+}
+
+// TrustHeld reports trust held off by holdTrust.
+func (h *Host) TrustHeld() bool { return h.trustHeld.Load() }
+
+// ReleaseTrust ends holdTrust: the user answered /trust.
+func (h *Host) ReleaseTrust() { h.trustHeld.Store(false) }
+
 // TempDir is where zemi keeps its own temp files (the ctrl+g draft, a
 // pasted image): the system temp dir is a sandbox write root.
 func (h *Host) TempDir() (string, error) {

@@ -32,7 +32,9 @@ type Job struct {
 	werr   error // what Wait returned
 	// sandboxed marks a confined job, whose failure may need the sandbox hint
 	sandboxed bool
-	sent      [2]int64 // bytes of stdout/stderr already read, see since
+	after     func() string // runs at exit for a confined job (Pipeline.Guard)
+	note      string        // what after returned
+	sent      [2]int64      // bytes of stdout/stderr already read, see since
 	mu        sync.Mutex
 }
 
@@ -93,10 +95,10 @@ func NewJobs() *Jobs {
 	return &Jobs{jobs: map[string]*Job{}}
 }
 
-// Start launches argv in dir with env, confined by wrap unless it is nil;
-// returns the job id. Output is captured as it arrives, so job_read shows a
-// server's lines while it runs.
-func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cmd) error) (string, error) {
+// Start launches argv in dir with env, confined by wrap unless it is nil,
+// and runs after (if not nil) once it exits; returns the job id. Output is
+// captured as it arrives, so job_read shows a server's lines while it runs.
+func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cmd) error, after func() string) (string, error) {
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return "", errors.New("command is required")
 	}
@@ -106,16 +108,22 @@ func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cm
 		cmd.Env = env
 	}
 	j := &Job{Name: strings.Join(argv, " "), cmd: cmd, done: make(chan struct{}),
-		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}}
+		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}, after: after}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
+	fail := func(err error) (string, error) {
+		if after != nil {
+			after()
+		}
+		return "", err
+	}
 	if wrap != nil {
 		if err := wrap(cmd); err != nil {
-			return "", fmt.Errorf("the sandbox failed, so the command did not run: %w", err)
+			return fail(fmt.Errorf("the sandbox failed, so the command did not run: %w", err))
 		}
 		j.sandboxed = true
 	}
 	if err := proc.Start(cmd); err != nil {
-		return "", err
+		return fail(err)
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(cmd) }()
@@ -123,11 +131,12 @@ func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cm
 }
 
 // Adopt registers a command that is already running, with the buffer it
-// writes to, the byte count the caller already delivered from it and a
-// channel carrying its Wait: a bash call past its timeout keeps going as a
-// job instead of losing the work done so far.
-func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, sandboxed bool) string {
-	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, sandboxed: sandboxed}
+// writes to, the byte count the caller already delivered from it, a channel
+// carrying its Wait and, for a sandboxed one, what runs at exit (nil when
+// unconfined): a bash call past its timeout keeps going as a job instead of
+// losing the work done so far.
+func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, after func() string) string {
+	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, sandboxed: after != nil, after: after}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }
@@ -141,8 +150,12 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	m.mu.Unlock()
 	go func() {
 		err := <-wait
+		note := ""
+		if j.after != nil {
+			note = j.after()
+		}
 		j.mu.Lock()
-		j.werr = err
+		j.werr, j.note = err, note
 		var exit *exec.ExitError
 		switch {
 		case errors.As(err, &exit):
@@ -216,7 +229,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	env = append(env, proc.NonInteractiveEnv...)
-	id, err := p.Jobs.Start(workdir(), argv, env, p.wrap())
+	id, err := p.Jobs.Start(workdir(), argv, env, p.wrap(), p.guard())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -248,9 +261,9 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	}
 	if !running && j.sandboxed {
 		j.mu.Lock()
-		werr := j.werr
+		werr, note := j.werr, j.note
 		j.mu.Unlock()
-		b.WriteString(SandboxHint(out+errOut, werr))
+		b.WriteString(SandboxHint(out+errOut, werr) + note)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

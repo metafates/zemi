@@ -58,7 +58,15 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse("the sandbox failed, so the command did not run: " + err.Error()), nil
 		}
 	}
+	after := p.guard()
+	finish := func() string {
+		if after == nil {
+			return ""
+		}
+		return after()
+	}
 	if err = proc.Start(c); err != nil {
+		finish()
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	wait := make(chan error, 1)
@@ -89,15 +97,17 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
-			id := p.Jobs.Adopt(cmd, c, buf, written, wait, p.Sandboxed != nil)
+			id := p.Jobs.Adopt(cmd, c, buf, written, wait, after)
 			fmt.Fprintf(&b, "still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id)
 			return fantasy.NewTextResponse(b.String()), nil
 		}
 		proc.Kill(c)
 		<-wait
 		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
+		b.WriteString(finish())
 		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
 	}
+	note := finish()
 	if err != nil {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -110,11 +120,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 				b.WriteString(SandboxHint(raw, err))
 			}
 		}
+		b.WriteString(note)
 		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
 	}
 	if b.Len() == 0 {
-		return fantasy.NewTextResponse("(no output)"), nil
+		b.WriteString("(no output)")
 	}
+	b.WriteString(note)
 	return fantasy.NewTextResponse(b.String()), nil
 }
 

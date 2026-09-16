@@ -156,6 +156,9 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
+	// Guard runs before a sandboxed command starts; the func it returns runs
+	// once the command exited, and its text ends the result. nil = none.
+	Guard func(sandbox.Policy) func() string
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -218,6 +221,18 @@ func (p *Pipeline) wrap() func(*exec.Cmd) error {
 	}
 	pol := *p.Sandboxed
 	return func(c *exec.Cmd) error { return sandbox.Wrap(c, pol) }
+}
+
+// guard starts Guard for a sandboxed run: nil when the run is unconfined,
+// never nil otherwise.
+func (p *Pipeline) guard() func() string {
+	switch {
+	case p == nil || p.Sandboxed == nil:
+		return nil
+	case p.Guard == nil:
+		return func() string { return "" }
+	}
+	return p.Guard(*p.Sandboxed)
 }
 
 // SandboxHint is the line a confined command's failure gets when the
