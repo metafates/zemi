@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -224,5 +225,22 @@ func TestStdioReaderPanic(t *testing.T) {
 	}
 	if state := c.t.(*stdioTransport).cmd.ProcessState; state == nil || !strings.Contains(c.Err().Error(), "reader panic") {
 		t.Fatalf("err %v, server state %v", c.Err(), state)
+	}
+}
+
+func TestTransportErrorRedactsURL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := func(u string) error { _, err := Start(ctx, Config{URL: u}); return err }
+	token := func(u string) error { _, err := tokenRequest(ctx, &Token{TokenURL: u}, url.Values{}); return err }
+	for name, err := range map[string]error{
+		"post":    start("http://u:pw123@127.0.0.1:1/mcp?exaApiKey=SECRET123"),
+		"badURL":  start("http://127.0.0.1:1/mcp?key=SECRET123\x7f"),
+		"getJSON": getJSON(ctx, "http://127.0.0.1:1/meta?key=SECRET123", &struct{}{}),
+		"token":   token("http://127.0.0.1:1/t?key=SECRET123"),
+	} {
+		if err == nil || strings.Contains(err.Error(), "SECRET123") || strings.Contains(err.Error(), "pw123") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

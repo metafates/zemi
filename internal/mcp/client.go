@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"sync"
@@ -490,7 +491,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.cfg.URL, bytes.NewReader(msg))
 	if err != nil {
-		return nil, "", err
+		return nil, "", redactURL(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -515,7 +516,22 @@ func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, s
 	}
 	t.mu.Unlock()
 	resp, err := httpClient.Do(req)
-	return resp, bearer, err
+	return resp, bearer, redactURL(err)
+}
+
+// redactURL cuts a *url.Error's URL to scheme://host/path: servers take API
+// keys in the query, and the text reaches the model, logs and Lua.
+func redactURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		u, perr := url.Parse(ue.URL)
+		if perr != nil {
+			ue.URL = "(unparsable url)"
+		} else {
+			ue.URL = u.Scheme + "://" + u.Host + u.EscapedPath()
+		}
+	}
+	return err
 }
 
 func (t *httpTransport) close() error { return nil }

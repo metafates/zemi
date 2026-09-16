@@ -252,7 +252,7 @@ var challengeParam = regexp.MustCompile(`([a-zA-Z_]+)="([^"]*)"`)
 func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 	u, err := url.Parse(serverURL)
 	if err != nil {
-		return nil, err
+		return nil, redactURL(err)
 	}
 	origin := u.Scheme + "://" + u.Host
 	m := &authMeta{}
@@ -358,12 +358,12 @@ func checkEndpoint(raw string) error {
 func getJSON(ctx context.Context, u string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return err
+		return redactURL(err)
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := oauthHTTP.Do(req)
 	if err != nil {
-		return err
+		return redactURL(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -391,7 +391,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 	req.Header.Set("Accept", "application/json")
 	resp, err := oauthHTTP.Do(req)
 	if err != nil {
-		return "", "", err
+		return "", "", redactURL(err)
 	}
 	defer resp.Body.Close()
 	var r struct {
@@ -415,7 +415,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, err
+		return nil, redactURL(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -424,7 +424,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	}
 	resp, err := oauthHTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, redactURL(err)
 	}
 	defer resp.Body.Close()
 	var r struct {
