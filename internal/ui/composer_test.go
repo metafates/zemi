@@ -150,6 +150,7 @@ func TestWrapComposer(t *testing.T) {
 		{"splits long word", "abcdefghij", 4, 4, "abcd|efgh|ij", 1, 0},
 		{"cursor before newline", "a\nb", 8, 1, "a|b", 0, 1},
 		{"wide runes by cell", "你好世界", 5, 4, "你好|世界", 1, 2},
+		{"tab takes a cell", "a\tbc", 3, 3, "a |bc", 1, 1},
 	} {
 		app.composer.text, app.composer.cursor = c.text, c.cursor
 		row, col, rows := app.wrapComposer(c.w)

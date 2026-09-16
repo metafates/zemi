@@ -418,6 +418,11 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 	w = max(w, 1)
 	r := []rune(a.composer.text)
+	for i, x := range r {
+		if x == '\t' { // a tab has no cell width; one cell keeps runes and cells aligned
+			r[i] = ' '
+		}
+	}
 	type span struct{ s, e int }
 	var spans []span
 	start, width, brk := 0, 0, 0 // brk: the rune after the row's last space
