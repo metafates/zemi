@@ -1,6 +1,3 @@
-// Package config: runtime settings with a Go-owned schema. Only keys the
-// schema marks user-writable can be set from Lua; the rest (autonomy knobs
-// among them) only from Go.
 package config
 
 import (
@@ -18,7 +15,9 @@ type Setting struct {
 	Desc         string
 }
 
-// Store holds the merged config values and user watches.
+// Store holds the merged config values and user watches. The schema is
+// Go-owned: only keys it marks user-writable can be set from Lua, the rest
+// (autonomy knobs among them) only from Go.
 type Store struct {
 	mu       sync.RWMutex
 	values   map[string]any

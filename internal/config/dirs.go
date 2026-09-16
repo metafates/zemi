@@ -59,8 +59,8 @@ func (d Dirs) Ensure() error {
 	for _, dir := range []string{
 		d.ConfigHome,
 		filepath.Join(d.ConfigHome, "lua"),
-		filepath.Join(d.DataHome, "site", "pack"),
-		filepath.Join(d.StateHome, "logs"),
+		d.PluginsDir(),
+		d.LogDir(),
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
@@ -95,7 +95,7 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 -- zemi.config.set("agent.subagent_model", "anthropic/claude-haiku-4-5") -- subagents default to a cheaper model
 
--- Settings: /config list shows every one with its default.
+-- Settings: zemi.config.schema() lists every one with its default.
 -- zemi.config.set("ui.theme", "default")
 
 -- Keys: <leader> is keymap.leader, ctrl+g unless you change it.
