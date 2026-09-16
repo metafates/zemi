@@ -109,6 +109,26 @@ func TestNamespaceVersion(t *testing.T) {
 	`)
 }
 
+// TestErrorsAndReloadFromLua: the agent reads zemi's own failures and
+// applies config it just wrote, both through namespaces the lua tool can
+// reach, so debugging zemi does not depend on the user reading the screen.
+func TestErrorsAndReloadFromLua(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.RecordError("boot", `init.lua:1: zemi.provider.register: provider "x" already registered`)
+	runUser(t, r, `
+		local rows = zemi.errors.list()
+		assert(#rows == 1, "rows=" .. #rows)
+		assert(rows[1].source == "boot", "source=" .. tostring(rows[1].source))
+		assert(rows[1].message:find("already registered", 1, true) ~= nil, "message=" .. tostring(rows[1].message))
+		zemi.config.reload()
+	`)
+	if ui.reloads != 1 {
+		t.Fatalf("reload dispatched %d times, want 1", ui.reloads)
+	}
+}
+
 // TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a
 // reload must not run its on_select, which belongs to the retired LState;
 // it is closed instead (DESIGN §4).
