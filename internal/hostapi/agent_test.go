@@ -731,6 +731,11 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
 		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && ls ?"}, "", nil},
+		{tools.Request{Subject: "tool.window", Arg: "*"}, "", nil},
+		{tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "*", "notes.md")}, "", nil},
+		{tools.Request{Subject: "net.*", Arg: "https://*/"}, "", nil},
 	} {
 		label, rules := h.alwaysChoice(c.req)
 		var pats []string

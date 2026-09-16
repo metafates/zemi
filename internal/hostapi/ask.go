@@ -94,7 +94,8 @@ func (h *Host) askHook() tools.Asker {
 // prompt shows and the session rules (model principal) accepting it adds.
 // Commands allow their two-word prefix ("go test"), file access its
 // directory, fetches their host; the rest the exact request. Gate-forced
-// asks (environment assignments, heredocs) offer no choice.
+// asks (environment assignments, heredocs) and text with a glob wildcard,
+// which the rule would widen, offer no choice.
 func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	rule := func(subject, pattern string) perm.Rule {
 		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: "model"}
@@ -112,6 +113,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		for _, seg := range n.Segments {
 			p := commandPrefix(seg)
 			if p == "" {
+				if strings.ContainsAny(seg, globMeta) {
+					return "", nil
+				}
 				rules = append(rules, rule("tool.bash", seg))
 				unnamed++
 				continue
@@ -140,7 +144,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
 		// the rule would be "*", which matches every path on disk
 		abs := perm.RealPath(req.Arg)
-		if abs == "" {
+		if abs == "" || strings.ContainsAny(abs, globMeta) {
 			return "", nil
 		}
 		dir := filepath.Dir(abs)
@@ -163,13 +167,19 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	case req.Subject == "tool.workflow" && req.Arg == "script":
 		return "", nil // a pattern for "script" would allow every future inline script
 	case strings.HasPrefix(req.Subject, "net."):
-		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" {
+		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" && !strings.ContainsAny(u.Host, globMeta) {
 			base := u.Scheme + "://" + u.Host
 			return "allow " + u.Host, []perm.Rule{rule(req.Subject, base), rule(req.Subject, base+"/*")}
 		}
 	}
+	if strings.ContainsAny(req.Arg, globMeta) {
+		return "", nil
+	}
 	return "don't ask again for this", []perm.Rule{rule(req.Subject, req.Arg)}
 }
+
+// globMeta are perm's glob wildcards; its patterns have no escape
+const globMeta = "*?"
 
 var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
