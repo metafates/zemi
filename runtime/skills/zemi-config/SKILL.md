@@ -253,7 +253,8 @@ Subagents cannot ask.
 
 Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command),
 `fs.read`, `fs.write` (path patterns), `net.<host>`, `mcp.<server>` (tool name as
-pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start`. A subject ending in
+pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start` (its patterns match the
+program and its args as a normalized command line, like `tool.bash`). A subject ending in
 `.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
 beats allow; within one decision the most specific pattern wins.
 

@@ -1062,6 +1062,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   prefixes unwrapped from the matched form) and a `sh -c`/`bash -c`/`zsh -c`
   unwrap recurses into the inner string with the same split, re-applying
   the collapse and the assignment gate below to the inner segments).
+  Before the split, leading literal assignments (`D=/long/path; ls $D`)
+  are inlined into the command so gates and rules see the real path; an
+  assignment to a name already in the environment or to a variable the
+  shell itself reads (`CDPATH`, `HOME`, `PWD`, `OLDPWD`, `GLOBIGNORE`,
+  `TMPDIR`, ...) or on the assignment gate's list is never inlined, and
+  inlining stops at it.
   Every segment is matched on its own: the call is allowed only if each
   segment matches an allow rule, so a compound payload (including
   `cmd1\nrm -rf x` and `cmd1 & cmd2`) cannot ride a broad allow. The
