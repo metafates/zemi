@@ -23,6 +23,7 @@ func TestSafeCommand(t *testing.T) {
 		{"D=internal/web && wc -l ${D}/main.go", true},
 		{"D=$(pwd); ls $D", false},
 		{"D=/x; ls $E", false},
+		{"HOME=./x; git status", false},
 
 		{"sed -n 1,50p internal/web/main.go", true},
 		{"awk '$3 < 100 {print $1}' data.txt", true},

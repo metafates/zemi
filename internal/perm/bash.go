@@ -80,6 +80,11 @@ func inlineVars(cmd string) string {
 		if m == nil || EnvAssignmentGate(m[1]) {
 			break
 		}
+		// An exported name (HOME, GOFLAGS) reaches every child process, so
+		// its assignment stays in the text and keeps the command opaque.
+		if _, exported := os.LookupEnv(m[1]); exported {
+			break
+		}
 		v := substVars(m[2], vars)
 		if strings.ContainsRune(v, '$') {
 			break
@@ -90,7 +95,15 @@ func inlineVars(cmd string) string {
 	if len(vars) == 0 {
 		return cmd
 	}
-	return substVars(rest, vars)
+	out := substVars(rest, vars)
+	// A name written other than as $NAME or ${NAME} may be reassigned
+	// (D=, for D, read D, eval $X=), so its references are not the value.
+	for name := range vars {
+		if regexp.MustCompile(`(^|[^$\w{])` + name + `\b`).MatchString(out) {
+			return cmd
+		}
+	}
+	return out
 }
 
 // substVars replaces $NAME and ${NAME} outside single quotes with the

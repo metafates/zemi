@@ -87,6 +87,9 @@ func TestNormalizeSegments(t *testing.T) {
 		{"D='a b'; ls $D", "ls $D"},
 		{"PATH=/evil; ls $PATH", "ls $PATH"},
 		{"ls $D", "ls $D"},
+		{"D=./build/x; D=$HOME; rm -rf $D", "rm -rf $D"},
+		{"D=./build/x; read D; rm -rf $D", "read D|rm -rf $D"},
+		{"D=./a; X=D; eval $X=/; rm -rf $D", "eval $X=/|rm -rf $D"},
 	} {
 		if got := strings.Join(Normalize(c.cmd).Segments, "|"); got != c.want {
 			t.Errorf("%q: got %q, want %q", c.cmd, got, c.want)
