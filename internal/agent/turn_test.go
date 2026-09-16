@@ -440,12 +440,12 @@ func TestCancelAbortsTurn(t *testing.T) {
 	for !r.Active() {
 	}
 	r.Cancel()
-	hooks.mu.Lock()
-	err := hooks.doneErr
-	hooks.mu.Unlock()
-	if err == nil {
-		// TurnDone reports the context error
-		t.Log("no error surfaced; acceptable if stream closed cleanly")
+	// the model call blocks until its context ends, so the turn only
+	// finishes if Cancel reached it
+	select {
+	case <-hooks.doneWait:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Cancel did not reach the model call")
 	}
 }
 

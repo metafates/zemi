@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -80,10 +81,10 @@ func (r *Runner) CutShort() bool {
 }
 
 // ErrTurnActive is returned when a turn is already running.
-var ErrTurnActive = fmt.Errorf("agent: a turn is already active")
+var ErrTurnActive = errors.New("agent: a turn is already active")
 
 // ErrReplyCut ends a turn whose last reply hit the output token limit.
-var ErrReplyCut = fmt.Errorf("the reply hit the output token limit (the model's max_output) and was cut off")
+var ErrReplyCut = errors.New("the reply hit the output token limit (the model's max_output) and was cut off")
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
@@ -299,13 +300,13 @@ var maxRetries = 5
 
 var (
 	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
-	ErrToolLoop  = fmt.Errorf("stopped: the agent kept repeating the same tool calls with the same results")
+	ErrToolLoop  = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
 )
 
-// repeatsToolCalls reports whether the last loopRepeats+1 tool steps made
-// the same calls and got the same results. Stuck models repeat themselves
-// immediately; an edit-build-edit cycle whose build keeps printing nothing
-// does not, which is why the repeats must be consecutive.
+// repeatsToolCalls reports whether the latest tool steps repeat one block of
+// calls with the same results (see repeatsCycle). Stuck models repeat
+// themselves immediately; an edit-build-edit cycle whose build keeps printing
+// nothing does not, which is why the repeats must be consecutive.
 func repeatsToolCalls(steps []fantasy.StepResult) bool {
 	var sigs []string
 	for _, s := range steps {
@@ -478,7 +479,7 @@ func closeToolCalls(history []fantasy.Message) []fantasy.Message {
 	return out
 }
 
-var errNotRun = fmt.Errorf("not run: the reply was cut off")
+var errNotRun = errors.New("not run: the reply was cut off")
 
 // stripImages replaces every image in history with text saying so, for a
 // model that refuses image parts.
@@ -499,7 +500,7 @@ func stripImages(history []fantasy.Message) []fantasy.Message {
 	return history
 }
 
-var errNoImages = fmt.Errorf("image omitted: the current model does not take images; go on without it, or ask the user to describe it or switch model")
+var errNoImages = errors.New("image omitted: the current model does not take images; go on without it, or ask the user to describe it or switch model")
 
 func isErrResult(c fantasy.ToolResultContent) bool {
 	if c.Result == nil {
