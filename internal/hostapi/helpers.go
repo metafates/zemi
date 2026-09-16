@@ -36,8 +36,18 @@ func rawString(tb *glua.LTable, key string) string {
 	return ""
 }
 
-// rawStrings reads the strings of a list field off a raw spec table; nil
-// when the field is not a table, so a caller can tell absent from empty.
+// rawScalar reads a string, number or boolean as text (env PORT = 8080).
+func rawScalar(v glua.LValue) (string, bool) {
+	switch v.(type) {
+	case glua.LString, glua.LNumber, glua.LBool:
+		return v.String(), true
+	}
+	return "", false
+}
+
+// rawStrings reads the scalars of a list field off a raw spec table as
+// strings; nil when the field is not a table, so a caller can tell absent
+// from empty.
 func rawStrings(tb *glua.LTable, key string) []string {
 	list, ok := tb.RawGetString(key).(*glua.LTable)
 	if !ok {
@@ -45,15 +55,15 @@ func rawStrings(tb *glua.LTable, key string) []string {
 	}
 	out := []string{}
 	list.ForEach(func(_, v glua.LValue) {
-		if s, ok := v.(glua.LString); ok {
-			out = append(out, string(s))
+		if s, ok := rawScalar(v); ok {
+			out = append(out, s)
 		}
 	})
 	return out
 }
 
-// rawStringMap reads the string keys and values of a map field off a raw
-// spec table, skipping other entries like rawStrings; nil when absent.
+// rawStringMap reads the string keys and scalar values of a map field off a
+// raw spec table, skipping other entries; nil when absent.
 func rawStringMap(tb *glua.LTable, key string) map[string]string {
 	m, ok := tb.RawGetString(key).(*glua.LTable)
 	if !ok {
@@ -62,9 +72,9 @@ func rawStringMap(tb *glua.LTable, key string) map[string]string {
 	out := map[string]string{}
 	m.ForEach(func(k, v glua.LValue) {
 		ks, kok := k.(glua.LString)
-		vs, vok := v.(glua.LString)
+		vs, vok := rawScalar(v)
 		if kok && vok {
-			out[string(ks)] = string(vs)
+			out[string(ks)] = vs
 		}
 	})
 	return out
