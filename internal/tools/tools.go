@@ -34,8 +34,8 @@ type Request struct {
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string
-	// Unsandboxed is the model's sandbox: false: no mode settles the
-	// request, the user answers it
+	// Unsandboxed is the model's sandbox: false, or a Lua tool script that
+	// widens what zemi allows: no mode settles the request, the user answers it
 	Unsandboxed bool
 }
 

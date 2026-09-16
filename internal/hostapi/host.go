@@ -232,6 +232,11 @@ type Host struct {
 	// same command does not cost a second check.
 	autoApproved sync.Map
 
+	// luaApproved holds the chunk names of Lua tool runs the user approved
+	// (refuseModelLua); luaRuns numbers them.
+	luaApproved sync.Map
+	luaRuns     atomic.Int64
+
 	// turn is the scope of the turn runTurns is on: cancelling it stops
 	// compaction, the model, tools and auto-mode screening.
 	turn atomic.Pointer[turnScope]

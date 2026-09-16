@@ -736,7 +736,8 @@ four the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), `window` (a program in a terminal drawn inside
 zemi) and `Lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
-only in an untrusted project or plan mode, §9).
+in an untrusted project or plan mode, and before a call that widens what
+zemi allows or starts a program outside the sandbox, §9).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan`,
 `open_in_editor` or `Lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
 
@@ -1227,7 +1228,16 @@ configured provider later (`zemi.memory.search` signature does not change).
   and auto mode sends every other command to the user without screening
   it ("not settled: no sandbox"), since an approved one would run unconfined.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
-  project and in plan mode. Only user config may add modes (`zemi.permission.mode.add`) or set the
+  project and in plan mode. Everywhere, a script that adds an allow rule,
+  adds or removes a mode, sets a `permissions.*` key, runs `/mode`, starts
+  a job or window or types into one, or adds an MCP or language server
+  asks the user first with no mode settling it (`Request.Unsandboxed`;
+  headless it is denied), since what it allows or starts runs unconfined.
+  The script is scanned for those calls (`luaWidens`) and an approved run
+  gets a chunk name of its own; at run time `refuseModelLua` raises for
+  such a call from the tool's code (its chunk, functions it defined,
+  callbacks it registered, found by frame path and call stack) unless the
+  innermost tool code on the stack is that approved run. Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
   `manual`.
 - Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`,

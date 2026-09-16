@@ -48,7 +48,11 @@ loads fresh.
 The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
-values (as JSON) come back. It asks the user only in plan mode or a project that is not trusted.
+values (as JSON) come back. It asks the user in plan mode or a project that is not trusted,
+and always before a script adds an allow rule, adds or removes a mode, sets a `permissions.*`
+key, runs `/mode`, starts a job or window or types into one, or adds an MCP or language
+server: those calls must be written out in the script (`zemi.job.start(...)`, not a name
+built from strings), or they raise.
 It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
 (its path is in the Environment section; files there are read and written without asking)
 and pass `path`. Globals a chunk sets stay in that chunk.

@@ -106,6 +106,8 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // never open the interactive overlay, so the asker is stripped from the
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
 func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
+	// a program the Lua tool starts runs unconfined, so the user approves it
+	approved := subject == "lua.job.start" && h.refuseModelLua(L, subject+" "+arg)
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	// rules are attributed to the calling code's origin, not to the model
@@ -122,9 +124,11 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	} else {
 		v = pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	}
-	switch v.Decision {
-	case perm.Allow:
-	case perm.Ask:
+	switch {
+	case v.Decision == perm.Allow:
+	case v.Decision == perm.Ask && approved:
+		v = tools.Verdict{Decision: perm.Allow, DecidedBy: "user"}
+	case v.Decision == perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
 		})

@@ -428,9 +428,16 @@ writes under the screen lock and a program that does not read stdin must not wed
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
   `safeCommandPath` include it for plain reads (never for programs that may run code).
 - **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
-  origin; in a trusted project outside plan mode the tool never asks (only `tool.pre` hooks
+  origin; in a trusted project outside plan mode the tool asks nothing (only `tool.pre` hooks
   can deny it; gated `zemi.fs`, `zemi.http` and `zemi.job` calls inside still raise on an
   ask), and otherwise it asks `tool.lua` with the script as preview and no always option.
+  A script that widens what zemi allows or starts programs (an allow rule, mode add/remove,
+  a `permissions.*` config key, `/mode`, `zemi.job`, `zemi.win.open` and handle input,
+  `zemi.mcp.add`, `zemi.lsp.add`) always asks, as `Request.Unsandboxed` so no mode settles
+  it: `luaWidens` scans the source, an approved run evaluates as chunk `lua-tool#<n>`
+  (`h.luaApproved`), and `refuseModelLua` at those call sites raises for tool code (frame
+  path `lua-tool*` or a `@user:lua-tool*` function on the stack) unless the innermost tool
+  code is an approved run. Not a new origin: the gate is a flag on the chunk name.
   It runs on the interpreter (10s ceiling), in a wrapper env whose `print` is captured.
   Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,

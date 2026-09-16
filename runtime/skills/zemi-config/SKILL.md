@@ -129,7 +129,8 @@ writable; prefer it over guessing. Common keys:
   allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model.
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
   that just read (no builds, tests or git), auto edits nothing and screens nothing without
-  the user, and the Lua tool asks. Commands auto and plan mode run without asking run in a
+  the user, and the Lua tool asks. In any project the Lua tool asks before a script adds an
+  allow rule, changes modes or `permissions.*`, starts a job or window, or adds a server. Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
   localhost, credential files in the home dir unreadable; Go builds get a cache of their

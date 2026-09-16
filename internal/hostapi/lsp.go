@@ -499,6 +499,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
 		}
+		h.refuseModelLua(L, "zemi.lsp.add")
 		def := lspDef{Name: name, Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: rawStringMap(opts, "env")}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")

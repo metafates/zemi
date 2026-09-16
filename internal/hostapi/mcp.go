@@ -351,6 +351,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
 		}
+		h.refuseModelLua(L, "zemi.mcp.add")
 		spec := MCPSpec{
 			Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: rawStringMap(opts, "env"),
 			URL: rawString(opts, "url"), Headers: rawStringMap(opts, "headers"),
