@@ -68,6 +68,13 @@ func TestSyncSkillsAndEnabledState(t *testing.T) {
 		t.Fatal("resync must keep the enabled choice")
 	}
 
+	if err := db.SyncSkills([]*Skill{{Name: "authored-one", Path: "/c/authored-one", Source: "learned"}}); err != nil {
+		t.Fatal(err)
+	}
+	if sk, _ := db.GetSkill("authored-one"); sk.Enabled {
+		t.Fatal("a source change must reset enabled to the new default")
+	}
+
 	// Syncing with an empty set wipes the table.
 	if err := db.SyncSkills(nil); err != nil {
 		t.Fatalf("empty sync: %v", err)

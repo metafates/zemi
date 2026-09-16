@@ -55,7 +55,8 @@ func (s *DB) SetSkillEnabled(name string, enabled bool) error {
 
 // SyncSkills reconciles the skills table with filesystem discovery:
 // discovered skills are inserted (with their default enabled state) or
-// have their path/source refreshed, keeping the stored enabled choice;
+// have their path/source refreshed, keeping the stored enabled choice unless
+// the source changed (a learned draft must not inherit an enabled row);
 // rows for skills no longer on disk are deleted.
 func (s *DB) SyncSkills(discovered []*Skill) error {
 	tx, err := s.db.Begin()
@@ -68,7 +69,8 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 		names[i] = sk.Name
 		if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
 			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
+			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source,
+				enabled = CASE WHEN skills.source = excluded.source THEN skills.enabled ELSE excluded.enabled END`,
 			sk.Name, sk.Path, sk.Source, sk.DefaultEnabled, now()); err != nil {
 			return fmt.Errorf("store: sync skills: %w", err)
 		}
