@@ -1205,8 +1205,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   `perm.ReadCommand`, and `perm.SafeCommand` commands run sandboxed with
   the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped (writes under any `.git` or `.zemi` or
-  zemi's own config, data and state dirs excepted), workflow scripts (the
+  are not secret-shaped (writes under any `.git` or `.zemi`, the git dir
+  a project `.git` file names, or zemi's own config, data and state dirs
+  excepted), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and `SafeCommand`
   commands (no program named by a path; readers with their per-program
   flag and script checks, project tools such as `make`, `pytest` or

@@ -194,8 +194,8 @@ be gated with the same `lua.` subject at the Lua boundary.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
-edits **inside the jail** that are not secret-shaped, except writes under any `.git` or `.zemi`
-or zemi's own config/data/state dirs (`protectedWrite`, which skip the
+edits **inside the jail** that are not secret-shaped, except writes under any `.git` or `.zemi`,
+the git dir a project `.git` file names (`gitdirTarget`) or zemi's own config/data/state dirs (`protectedWrite`, which skip the
 screener too and ask the user, as do writes outside the project and scratchpad), `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as

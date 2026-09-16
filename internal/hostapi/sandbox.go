@@ -73,14 +73,8 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 			linked = true
 		}
 		// a .git file points at the real git dir, which may sit in the project
-		if b, err := os.ReadFile(pr); err == nil {
-			if dir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:"); ok {
-				dir = strings.TrimSpace(dir)
-				if !filepath.IsAbs(dir) {
-					dir = filepath.Join(filepath.Dir(pr), dir)
-				}
-				p.Protect = append(p.Protect, dir)
-			}
+		if dir := gitdirTarget(pr); dir != "" {
+			p.Protect = append(p.Protect, dir)
 		}
 	}
 	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
@@ -141,6 +135,22 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 		}
 	}
 	return p
+}
+
+// gitdirTarget is the git dir a .git file at dotgit names, or "".
+func gitdirTarget(dotgit string) string {
+	b, err := os.ReadFile(dotgit)
+	if err != nil {
+		return ""
+	}
+	dir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+	if !ok {
+		return ""
+	}
+	if dir = strings.TrimSpace(dir); !filepath.IsAbs(dir) {
+		dir = filepath.Join(filepath.Dir(dotgit), dir)
+	}
+	return dir
 }
 
 // sandboxGuard is one running sandboxed command's protected paths: missing

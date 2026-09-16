@@ -334,10 +334,13 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	return false
 }
 
-// protectedWrite reports a write under any .git or .zemi or zemi's own dirs:
+// protectedWrite reports a write under any .git or .zemi, the git dir a
+// project .git file names (git init --separate-git-dir) or zemi's own dirs:
 // git runs what .git names, and the rest changes what zemi allows.
 func (h *Host) protectedWrite(p string) bool {
-	return inDirNamed(p, ".git", ".zemi") || h.inJail(p, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
+	d := h.Dirs
+	return inDirNamed(p, ".git", ".zemi") || h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir(),
+		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
 // settledCommand reports a bash command auto and plan mode run without
