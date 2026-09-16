@@ -20,19 +20,23 @@ import (
 // mode (yolo allows, auto lets a model approve routine requests), then the
 // Go-owned overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
-	return func(req tools.Request) (bool, string) {
+	return func(req tools.Request) (bool, string, string) {
+		askedFor := req.Reason
 		if isPathSubject(req.Subject) {
 			// judged and shown where it lands: a symlink a sandboxed command
 			// planted must not dress a write to zemi's config as a project file
 			req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
 		}
-		resolved := func(allowed bool, by string) (bool, string) {
+		resolved := func(allowed bool, by string) (bool, string, string) {
 			h.EmitAsync("permission.resolved", map[string]any{
 				"subject": req.Subject, "arg": req.Arg,
 				"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
 				"by":       by,
 			})
-			return allowed, by
+			if req.Reason == askedFor {
+				return allowed, by, ""
+			}
+			return allowed, by, req.Reason
 		}
 		var res VetoResult
 		h.outsideReload(func() {

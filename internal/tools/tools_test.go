@@ -81,9 +81,9 @@ func testPipeline(t *testing.T, overlayAllows bool, rules ...perm.Rule) (*Pipeli
 	var asked []Request
 	p := &Pipeline{
 		Store: s,
-		Ask: func(req Request) (bool, string) {
+		Ask: func(req Request) (bool, string, string) {
 			asked = append(asked, req)
-			return overlayAllows, "overlay"
+			return overlayAllows, "overlay", ""
 		},
 	}
 	return p, &asked
@@ -142,6 +142,23 @@ func TestBashGate(t *testing.T) {
 				t.Fatalf("asks = %q, want %q", args, c.wantAsks)
 			}
 		})
+	}
+}
+
+// TestAskDenialText: a denied ask tells the model who decided and why it
+// asked, not how the rules failed to match.
+func TestAskDenialText(t *testing.T) {
+	for _, c := range []struct{ by, why, want string }{
+		{"user", "run outside the sandbox", "denied by the user: run outside the sandbox"},
+		{"default", "not settled: this project is not trusted (/trust)", "nobody could answer the ask: not settled: this project is not trusted (/trust)"},
+		{"mode:plan", "", "denied by permission mode plan"},
+	} {
+		p, _ := testPipeline(t, false)
+		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
+		resp := call(t, All(p)[0], `{"command":"echo j > out.txt"}`)
+		if !resp.IsError || !strings.HasSuffix(resp.Content, "echo j > out.txt: "+c.want) {
+			t.Errorf("%s: %q", c.by, resp.Content)
+		}
 	}
 }
 

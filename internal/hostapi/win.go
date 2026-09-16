@@ -580,7 +580,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title, Unsandboxed: in.Sandbox != nil && !*in.Sandbox}
 		v := gate.Check(req)
 		if v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd), nil
+			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd + ": " + v.Reason), nil
 		}
 		spec := win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Owner: t.owner}
 		var after func() string

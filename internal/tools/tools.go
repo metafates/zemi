@@ -58,7 +58,9 @@ type PreHook func(tool string, input map[string]any) (decision, reason string, r
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side).
-type Asker func(req Request) (allowed bool, decidedBy string)
+// reason is why it asked when that is not the request's own reason ("not
+// settled: this project is not trusted (/trust)"), "" otherwise.
+type Asker func(req Request) (allowed bool, decidedBy, reason string)
 
 // Pipeline wires tools to the permission store and the host hooks.
 type Pipeline struct {
@@ -288,11 +290,26 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	if p.Ask == nil {
 		return Verdict{perm.Ask, reason + "; no overlay available, failing closed", "default"}
 	}
-	allowed, by := p.Ask(req)
+	allowed, by, why := p.Ask(req)
 	if allowed {
 		return Verdict{perm.Allow, "", by}
 	}
-	return Verdict{perm.Deny, reason, by}
+	// who said no and why it asked; the rule text ("no rule matched") says neither
+	who := "denied (" + by + ")"
+	switch {
+	case strings.HasPrefix(by, "user"):
+		who = "denied by the user"
+	case by == "default" || by == "unsandboxed":
+		who = "nobody could answer the ask"
+	case by == "event":
+		who = "denied by a permission.request handler"
+	case strings.HasPrefix(by, "mode:"):
+		who = "denied by permission mode " + strings.TrimPrefix(by, "mode:")
+	}
+	if why != "" {
+		who += ": " + why
+	}
+	return Verdict{perm.Deny, who, by}
 }
 
 // tool implements fantasy.AgentTool over a plain run function.

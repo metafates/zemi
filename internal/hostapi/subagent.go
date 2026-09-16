@@ -268,7 +268,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
 	}
 	if ask := pipe.Ask; ask != nil {
-		pipe.Ask = func(req tools.Request) (bool, string) {
+		pipe.Ask = func(req tools.Request) (bool, string, string) {
 			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)
 			return ask(req)
 		}
