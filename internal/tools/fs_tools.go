@@ -672,22 +672,11 @@ func skipDir(name string) bool {
 	return false
 }
 
-// workdir is the bash execution root; tests override it.
-var workdir = osWorkdir
-
-func osWorkdir() string {
+// workdir is the bash execution root.
+func workdir() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."
 	}
 	return wd
-}
-
-// SetWorkdir pins the session working directory for bash calls; an empty
-// string restores the process working directory.
-func SetWorkdir(dir string) {
-	workdir = osWorkdir
-	if dir != "" {
-		workdir = func() string { return dir }
-	}
 }

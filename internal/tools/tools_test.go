@@ -86,7 +86,6 @@ func testPipeline(t *testing.T, overlayAllows bool, rules ...perm.Rule) (*Pipeli
 			return overlayAllows, "overlay"
 		},
 	}
-	t.Cleanup(func() { SetWorkdir("") })
 	return p, &asked
 }
 

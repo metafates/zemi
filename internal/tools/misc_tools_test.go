@@ -198,7 +198,7 @@ func waitJobDone(t *testing.T, j *Job) {
 func TestJobToolsLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	p, _ := testPipeline(t, true)
-	SetWorkdir(dir)
+	t.Chdir(dir)
 	p.Jobs = NewJobs()
 	start := toolNamed(t, "job_start", p)
 	read := toolNamed(t, "job_read", p)
