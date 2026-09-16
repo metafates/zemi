@@ -81,6 +81,10 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 			t.Errorf("stale run: %v", err)
 		}
 	}
+	h.Commands.Add(&Command{Name: "stale", Complete: fn, Origin: lua.OriginUser, Gen: cmd.Gen})
+	if got := h.CompleteCommand(context.Background(), "stale", "", "/stale "); got != nil {
+		t.Errorf("stale complete = %q", got)
+	}
 	if called != 2 {
 		t.Fatalf("stale function ran: called=%d", called)
 	}

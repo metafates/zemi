@@ -137,8 +137,24 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []s
 	case cmd.GoComplete != nil:
 		out = cmd.GoComplete(h, lead, line)
 	case cmd.Complete != nil:
-		res, err := h.RT.Call(ctx, cmd.Origin, cmd.Complete, lead, line)
-		if err != nil || len(res) == 0 {
+		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			// looked up before a reload, the function belongs to a dropped LState
+			if h.currentGen() != cmd.Gen {
+				return nil, lua.ErrReloaded
+			}
+			defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
+			base := L.GetTop()
+			defer L.SetTop(base)
+			L.Push(cmd.Complete)
+			L.Push(glua.LString(lead))
+			L.Push(glua.LString(line))
+			if err := L.PCall(2, 1, nil); err != nil {
+				return nil, err
+			}
+			v, err := lua.ToGo(L.Get(-1))
+			return []any{v}, err
+		})
+		if err != nil {
 			return nil
 		}
 		list, _ := res[0].([]any)
