@@ -9,6 +9,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -437,4 +438,24 @@ func TestEventLogFromLua(t *testing.T) {
 		local notes = zemi.notify.list()
 		assert(#notes == 2 and notes[1].title == "second" and notes[2].level == "info", "notes=" .. #notes)
 	`)
+}
+
+// Sessions belong to the per-project store and user memories to the
+// global one (DESIGN §7); the two open together and are easy to swap.
+func TestStoresByScope(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if h.memoryDB("user") != h.GlobalDB || h.memoryDB("project") != h.DB {
+		t.Fatal("memory scope maps to the wrong store")
+	}
+	if err := h.DB.CreateSession("s1", "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	pdb, err := store.Open(store.ProjectDBPath(h.Dirs.StateHome, h.Dirs.ProjectDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pdb.Close()
+	if _, err := pdb.GetSession("s1"); err != nil {
+		t.Fatalf("session not in the project store: %v", err)
+	}
 }

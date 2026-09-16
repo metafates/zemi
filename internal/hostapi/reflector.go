@@ -35,10 +35,11 @@ const (
 )
 
 // reflectorSystem is the reflector prompt.
-const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions in the same project.
+const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions.
 
 Rules:
 - Propose only durable, generalizable knowledge: facts, gotchas, preferences, conventions, decisions. Never propose transient details (file contents, session chatter, this conversation).
+- Scope every memory by where it holds. "project" is for this repository only (its layout, commands, conventions, decisions) and is shown in no other project. "user" is for what holds in every project: the user's own preferences and habits, their machine, tools and accounts, and models or providers. A fact about a repository is never "user" scope; a fact about the user or their setup is never "project" scope.
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - Each memory is one self-contained single line, at most 500 characters.
@@ -218,6 +219,7 @@ func (h *Host) reflectPrompt(sid string) (string, error) {
 		return "", fmt.Errorf("reflector: session %s has no messages", sid)
 	}
 	var b strings.Builder
+	fmt.Fprintf(&b, "# Project\n%s\n\n", h.Session().CWD)
 	b.WriteString("# Session transcript\n")
 	if len(lines) > reflectMsgsMax {
 		fmt.Fprintf(&b, "... (%d earlier messages omitted)\n", len(lines)-reflectMsgsMax)

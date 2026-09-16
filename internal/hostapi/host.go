@@ -263,7 +263,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.Perm.Default = h.fsDefault
 	if dirs.StateHome != "" {
-		h.DB, h.GlobalDB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
+		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help": func(h *Host, _ string) error { h.OpenHelp(); return nil },
