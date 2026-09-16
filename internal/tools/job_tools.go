@@ -94,7 +94,7 @@ func NewJobs() *Jobs {
 // captured as it arrives, so job_read shows a server's lines while it runs.
 func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
-		return "", fmt.Errorf("command is required")
+		return "", errors.New("command is required")
 	}
 	cmd := proc.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
@@ -107,25 +107,9 @@ func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
 	if err := proc.Start(cmd); err != nil {
 		return "", err
 	}
-	m.mu.Lock()
-	m.seq++
-	j.ID = fmt.Sprintf("job-%d", m.seq)
-	m.jobs[j.ID] = j
-	m.mu.Unlock()
-	go func() {
-		err := proc.Wait(cmd)
-		j.mu.Lock()
-		if err != nil {
-			if ee, ok := err.(*exec.ExitError); ok {
-				j.code = ee.ExitCode()
-			} else if !errors.Is(err, exec.ErrWaitDelay) {
-				j.err = err.Error()
-			}
-		}
-		j.mu.Unlock()
-		close(j.done)
-	}()
-	return j.ID, nil
+	wait := make(chan error, 1)
+	go func() { wait <- proc.Wait(cmd) }()
+	return m.add(j, wait), nil
 }
 
 // Adopt registers a command that is already running, with the buffer it
@@ -136,6 +120,11 @@ func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, wait <-chan e
 	// the bash result already carried what the buffer holds; job_read
 	// delivers what comes after it
 	j.sent[0] = out.Written()
+	return m.add(j, wait)
+}
+
+// add registers j under the next id and records its exit once wait delivers.
+func (m *Jobs) add(j *Job, wait <-chan error) string {
 	m.mu.Lock()
 	m.seq++
 	j.ID = fmt.Sprintf("job-%d", m.seq)
@@ -144,12 +133,12 @@ func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, wait <-chan e
 	go func() {
 		err := <-wait
 		j.mu.Lock()
-		if err != nil {
-			if ee, ok := err.(*exec.ExitError); ok {
-				j.code = ee.ExitCode()
-			} else if !errors.Is(err, exec.ErrWaitDelay) {
-				j.err = err.Error()
-			}
+		var exit *exec.ExitError
+		switch {
+		case errors.As(err, &exit):
+			j.code = exit.ExitCode()
+		case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+			j.err = err.Error()
 		}
 		j.mu.Unlock()
 		close(j.done)
