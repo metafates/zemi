@@ -51,14 +51,6 @@ func TestRequireResolvesRuntimepath(t *testing.T) {
 	writeFile(t, filepath.Join(cfg, "lua", "mymod.lua"),
 		"local M = {}\nM.x = 42\nreturn M\n")
 
-	var lines []string
-	var mu sync.Mutex
-	r.SetPrintHook(func(origin, line string) {
-		mu.Lock()
-		lines = append(lines, origin+"|"+line)
-		mu.Unlock()
-	})
-
 	if err := r.ExecuteChunk(context.Background(), `
 		local m = require("mymod")
 		assert(m.x == 42, "module body did not run")
@@ -145,6 +137,29 @@ func TestRequireProjectModules(t *testing.T) {
 	}
 	if err := r.ExecuteChunk(context.Background(), `assert(not pcall(require, "pmod"), "user code loaded a project module")`, "init.lua", OriginUser); err != nil {
 		t.Fatalf("user require: %v", err)
+	}
+}
+
+// TestLoadFileStepOrigin: a missing file is skipped, and a file whose path
+// classifies to another origin than the step declares is refused rather
+// than run under the path's origin.
+func TestLoadFileStepOrigin(t *testing.T) {
+	r, cfg, _ := newRequireRuntime(t)
+	path := filepath.Join(cfg, "init.lua")
+	writeFile(t, path, "LOADED = true\n")
+	for _, c := range []struct {
+		path   string
+		origin Origin
+		ok     bool
+	}{
+		{filepath.Join(cfg, "missing.lua"), OriginUser, true},
+		{path, OriginUser, true},
+		{path, OriginProject, false},
+	} {
+		err := LoadFileStep("init", c.path, c.origin).Run(context.Background(), r, r.current())
+		if (err == nil) != c.ok {
+			t.Errorf("LoadFileStep(%s as %s) = %v", filepath.Base(c.path), c.origin, err)
+		}
 	}
 }
 

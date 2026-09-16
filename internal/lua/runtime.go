@@ -550,7 +550,8 @@ type BootStep struct {
 	Run  func(ctx context.Context, r *Runtime, g *Generation) error
 }
 
-// LoadFileStep loads a Lua file from disk as the given origin.
+// LoadFileStep loads a Lua file from disk as the given origin; a missing
+// file is skipped.
 func LoadFileStep(name, path string, origin Origin) BootStep {
 	return BootStep{
 		Name: name,
@@ -558,23 +559,10 @@ func LoadFileStep(name, path string, origin Origin) BootStep {
 			if path == "" {
 				return nil
 			}
-			if _, err := os.Stat(path); err != nil {
-				return nil
-			}
-			resolved, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				resolved = path
-			}
-			class := r.paths.Classify(resolved)
-			if class == "" {
-				return fmt.Errorf("refusing %s: outside known origins", resolved)
-			}
-			data, err := os.ReadFile(resolved)
-			if err != nil {
+			if err := r.EvalFileInline(g.L, path, origin); !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
-			// The chunk carries its file path so relative requires resolve.
-			return r.runChunk(g.L, string(data), resolved, class)
+			return nil
 		},
 	}
 }
