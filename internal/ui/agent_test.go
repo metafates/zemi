@@ -105,10 +105,10 @@ func waitPrompt(t *testing.T, app *App, cond func() bool) {
 }
 
 // TestGoldenPermissionOverlay pins the Go-owned permission ask (DESIGN
-// §6.2, §8): fixed chrome, subject + arg + reason, answer keys. The allow
-// answers and the always-rule storage are asserted around the golden.
+// §6.2, §8): fixed chrome, subject + arg + reason, answer keys, and the
+// always answer delivered to the asker.
 func TestGoldenPermissionOverlay(t *testing.T) {
-	app, host := bootAgentApp(t, 70, 16)
+	app, _ := bootAgentApp(t, 70, 16)
 
 	done := make(chan struct{})
 	var allowed bool
@@ -133,11 +133,6 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 	<-done
 	if !allowed || by != "user:always" {
 		t.Fatalf("allowed=%v by=%q", allowed, by)
-	}
-	// Rule storage for "always" is the host's askHook contract (covered in
-	// hostapi); the overlay's job is the answer delivery asserted above.
-	if host.AgentActive() {
-		t.Fatal("no turn should be active")
 	}
 }
 

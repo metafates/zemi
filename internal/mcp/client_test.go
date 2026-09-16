@@ -181,9 +181,12 @@ func TestStdioBroken(t *testing.T) {
 
 // TestStdioEarlyMessages: a server may ping and announce a tool list change
 // before it answers initialize; both are handled while Start still waits.
+// The server announces the change only after it reads the ping reply.
 func TestStdioEarlyMessages(t *testing.T) {
 	changed := make(chan struct{}, 1)
-	script := `printf '%s\n' '{"jsonrpc":"2.0","id":"p","method":"ping"}' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'; sleep 1`
+	script := `printf '%s\n' '{"jsonrpc":"2.0","id":"p","method":"ping"}'
+while read l; do case $l in *'"id":"p"'*'"result":{}'*) break;; esac; done
+printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'`
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = Start(ctx, Config{Command: "sh", Args: []string{"-c", script}, OnToolsChanged: func() { changed <- struct{}{} }})
