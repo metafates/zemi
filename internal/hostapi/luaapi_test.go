@@ -207,7 +207,7 @@ func TestHighlightOverride(t *testing.T) {
 func TestPurgeStopsLuaJobs(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
-		zemi.permission.rule({ subject = "lua.job.start", pattern = "sleep", decision = "allow", match = "sleep" })
+		zemi.permission.rule({ subject = "lua.job.start", pattern = "sleep *", decision = "allow", match = "sleep 30" })
 		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.put("sleep", "stopped") end })
 	`)
 	h.PurgeGeneration()

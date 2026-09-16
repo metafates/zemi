@@ -30,3 +30,16 @@ func TestJobHandleColonCalls(t *testing.T) {
 		assert(res and res.stdout == "hi", tostring(err))
 	`)
 }
+
+// TestJobGateSeesCommandLine: lua.job.start rules match the whole normalized
+// line, so arguments are scoped and a compound window command cannot ride.
+func TestJobGateSeesCommandLine(t *testing.T) {
+	h, r := newTestHost(t)
+	h.SetUIHooks(&fakeUI{})
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "true*", Decision: perm.Allow})
+	runUser(t, r, `
+		assert(zemi.job.out({ cmd = "true", args = { "x" } }), "allowed")
+		assert(not pcall(zemi.job.out, { cmd = "echo", args = { "true" } }), "the program leads the line")
+		assert(not pcall(zemi.win.open, { cmd = "true; echo" }), "a second command asks")
+	`)
+}

@@ -141,7 +141,18 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	pipe.Ask = nil
 	// rules are attributed to the calling code's origin, not to the model
 	pipe.Principal = string(h.RT.CurrentOrigin(L))
-	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
+	var v tools.Verdict
+	if subject == "lua.job.start" {
+		// a command line, normalized like bash so rules can scope arguments
+		// and a second command cannot ride an allow
+		o := pipe.Store.CheckCommandFor(subject, arg, pipe.Principal)
+		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: "default"}
+		if o.Rule != nil {
+			v.DecidedBy = "rule"
+		}
+	} else {
+		v = pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
+	}
 	switch v.Decision {
 	case perm.Allow:
 	case perm.Ask:
@@ -835,6 +846,16 @@ func (w *lineWriter) flush() {
 
 var jobSeq atomic.Int64
 
+// argvLine is an exec'd program as the shell line the gate checks: every
+// word quoted, so a cmd of "ls; rm x" stays one word as it does in exec.
+func argvLine(cmd string, args []string) string {
+	var words []string
+	for _, w := range append([]string{cmd}, args...) {
+		words = append(words, "'"+strings.ReplaceAll(w, "'", `'\''`)+"'")
+	}
+	return strings.Join(words, " ")
+}
+
 func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
@@ -850,11 +871,8 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
-		h.luaGate(L, "lua.job.start", cmdName)
 		args := rawStrings(spec, "args")
-		if perm.Normalize(cmdName).ForceAsk != "" {
-			L.RaiseError("zemi.job.start: command is refused by the environment gate")
-		}
+		h.luaGate(L, "lua.job.start", argvLine(cmdName, args))
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
 			if v, err := lua.ToGo(envT); err == nil {

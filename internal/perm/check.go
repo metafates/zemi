@@ -5,6 +5,12 @@ package perm
 // and is allowed only when every segment and every redirect target
 // matches an allow rule.
 func (s *Store) CheckCommand(cmd string, principal string) Outcome {
+	return s.CheckCommandFor("tool.bash", cmd, principal)
+}
+
+// CheckCommandFor is CheckCommand with the segments matched under subject
+// (lua.job.start gates Lua-started programs the same way).
+func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 	n := Normalize(cmd)
 	if n.Fail != "" {
 		return Outcome{Decision: Deny, Reason: n.Fail}
@@ -13,7 +19,7 @@ func (s *Store) CheckCommand(cmd string, principal string) Outcome {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}
 	}
 	for _, seg := range n.Segments {
-		o := s.Evaluate("tool.bash", seg, principal)
+		o := s.Evaluate(subject, seg, principal)
 		if o.Decision != Allow {
 			o.Reason = joinReason("segment "+seg, o.Reason)
 			return o

@@ -1063,7 +1063,9 @@ function zemi.http.get(url, opts) end
 ---@field close_stdin fun(self: zemi.JobHandle)
 
 --- Child processes run in their own session and process group, with the
---- project directory as their working directory.
+--- project directory as their working directory. Needs `lua.job.start`
+--- allowed for the command line: rules match it normalized like `tool.bash`
+--- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job
 zemi.job = {}
 
