@@ -92,6 +92,7 @@ func TestWorkflowRun(t *testing.T) {
 			want:   "ok! true",
 		},
 		{name: "agent inside pcall refused", script: `local ok, err = pcall(agent, "x") return tostring(ok) .. " " .. err`, want: "false"},
+		{name: "pcall without a function", script: `return pcall()`, wantErr: true, want: "bad argument #1"},
 		{name: "agent in a library callback", script: `local t = {3, 1, 2} table.sort(t, function(a, b) agent("x") return a < b end) return "sorted"`, wantErr: true, want: "cannot wait"},
 		{name: "many instant parallel calls", script: `local n = 0 for i = 1, 20000 do n = n + parallel({function() return 1 end})[1] end return tostring(n)`, want: "20000"},
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return parallel(t)`, wantErr: true, want: "more than the"},

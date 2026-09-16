@@ -327,6 +327,7 @@ func (r *wfRun) install(args any) {
 	L.SetGlobal("log", logFn)
 	L.SetGlobal("print", logFn)
 	L.SetGlobal("pcall", L.NewFunction(func(L *glua.LState) int {
+		L.CheckAny(1) // PCall with nothing to call dereferences nil
 		t := r.tasks[L]
 		if t != nil {
 			t.pdepth++
@@ -338,7 +339,7 @@ func (r *wfRun) install(args any) {
 		if err != nil {
 			L.SetTop(0)
 			L.Push(glua.LFalse)
-			if ae, ok := err.(*glua.ApiError); ok {
+			if ae, ok := errors.AsType[*glua.ApiError](err); ok {
 				L.Push(ae.Object)
 			} else {
 				L.Push(glua.LString(err.Error()))
@@ -425,7 +426,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		return 0
 	}
 	if desc == "" {
-		desc = truncRunes(strings.SplitN(prompt, "\n", 2)[0], 40)
+		first, _, _ := strings.Cut(prompt, "\n")
+		desc = truncRunes(first, 40)
 	}
 	r.started++
 	t.req = &wfAgentReq{def: def, description: desc, prompt: prompt}
@@ -544,7 +546,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 	}
 	if p.waiting--; p.waiting == 0 {
 		var errs glua.LValue = glua.LNil
-		if p.errs.Len() > 0 || p.errs.MaxN() > 0 {
+		if p.errs.MaxN() > 0 {
 			errs = p.errs
 		}
 		p.args = []glua.LValue{p.vals, errs}
@@ -681,11 +683,11 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 }
 
 func truncOutput(s string) string {
-	const max = 30000
-	if len(s) <= max {
+	const limit = 30000
+	if len(s) <= limit {
 		return s
 	}
-	return s[:max] + "\n... (truncated)"
+	return strings.ToValidUTF8(s[:limit], "") + "\n... (truncated)"
 }
 
 // ---------------------------------------------------------------------------
