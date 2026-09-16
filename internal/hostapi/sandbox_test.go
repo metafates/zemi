@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -54,9 +55,10 @@ func TestSettledCommand(t *testing.T) {
 }
 
 // TestSandboxedBash runs the real bash tool under seatbelt: a command a
-// mode settled writes the project but nothing outside it, gets the hint
-// when denied, and sandbox: false goes to the user instead. Plan mode
-// keeps the project read-only.
+// mode settled writes the project and its own temp dir but nothing outside
+// them, the system temp dir included (xcrun_db there picks what /usr/bin/make
+// runs), gets the hint when denied, and sandbox: false goes to the user
+// instead. Plan mode keeps the project read-only, and go test still passes.
 func TestSandboxedBash(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the end-to-end check drives seatbelt")
@@ -67,8 +69,9 @@ func TestSandboxedBash(t *testing.T) {
 	}
 	h, r := newTestHostDB(t)
 	outside := t.TempDir()
-	// the temp dir is writable in the sandbox, and every test dir is under it
-	t.Setenv("TMPDIR", t.TempDir())
+	// a probe beside xcrun_db, not the file itself: the rule is for the dir
+	shared := filepath.Join(os.TempDir(), fmt.Sprintf("zemi-sandbox-probe-%d", os.Getpid()))
+	t.Cleanup(func() { os.Remove(shared) })
 	h.sandbox.Store(&sandboxProbe{backend: backend})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
@@ -78,6 +81,24 @@ func TestSandboxedBash(t *testing.T) {
 		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
 		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
 	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
+	private := filepath.Join(h.sandboxPolicy(false).Env["TMPDIR"], "made.txt")
+	run := func(in map[string]any) fantasy.ToolResponse {
+		input, _ := json.Marshal(in)
+		var bash fantasy.AgentTool
+		for _, tl := range tools.All(h.PipelineFor()) {
+			if tl.Info().Name == "bash" {
+				bash = tl
+			}
+		}
+		if _, ok := bash.Info().Parameters["sandbox"]; !ok {
+			t.Fatal("bash has no sandbox parameter with a live backend")
+		}
+		resp, err := bash.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "bash", Input: string(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
 	for _, c := range []struct {
 		name, mode, path string
 		unsandboxed      bool
@@ -85,6 +106,8 @@ func TestSandboxedBash(t *testing.T) {
 		asked            string
 	}{
 		{"project write", "sbx", project, false, true, false, ""},
+		{"private temp write", "sbx", private, false, true, false, ""},
+		{"system temp write", "sbx", shared, false, false, true, ""},
 		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, true, ""},
 		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, "run outside the sandbox"},
 		{"plan project write", "sbxplan", filepath.Join(h.Dirs.ProjectDir, "plan.txt"), false, false, true, ""},
@@ -98,20 +121,7 @@ func TestSandboxedBash(t *testing.T) {
 			if c.unsandboxed {
 				in["sandbox"] = false
 			}
-			input, _ := json.Marshal(in)
-			var bash fantasy.AgentTool
-			for _, tl := range tools.All(h.PipelineFor()) {
-				if tl.Info().Name == "bash" {
-					bash = tl
-				}
-			}
-			if _, ok := bash.Info().Parameters["sandbox"]; !ok {
-				t.Fatal("bash has no sandbox parameter with a live backend")
-			}
-			resp, err := bash.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "bash", Input: string(input)})
-			if err != nil {
-				t.Fatal(err)
-			}
+			resp := run(in)
 			_, statErr := os.Stat(c.path)
 			if made := statErr == nil; made != c.made {
 				t.Errorf("made %v, want %v: %s", made, c.made, resp.Content)
@@ -124,6 +134,17 @@ func TestSandboxedBash(t *testing.T) {
 			}
 		})
 	}
+	t.Run("go test", func(t *testing.T) {
+		if err := h.SetPermMode("auto"); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "go.mod"), []byte("module m\n\ngo 1.22\n"), 0o644)
+		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "m_test.go"), []byte("package m\n\nimport \"testing\"\n\nfunc TestTemp(t *testing.T) { t.TempDir() }\n"), 0o644)
+		ui.asked = nil
+		if resp := run(map[string]any{"command": "cd " + h.Dirs.ProjectDir + " && go test -count=1 ./...", "timeout_ms": 300000.0}); resp.IsError || !strings.Contains(resp.Content, "ok") || len(ui.asked) > 0 {
+			t.Errorf("go test in the sandbox: %s, asked %+v", resp.Content, ui.asked)
+		}
+	})
 }
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
@@ -180,9 +201,13 @@ func TestSandboxPolicy(t *testing.T) {
 			if !slices.Contains(p.Hide, h.Dirs.StateHome) || slices.Contains(p.Hide, h.Dirs.ConfigHome) == c.projectInConfig {
 				t.Errorf("hide %v", p.Hide)
 			}
-			cache := p.Env["GOCACHE"]
-			if st, err := os.Stat(cache); err != nil || !st.IsDir() || !slices.Contains(p.Write, cache) || !strings.HasPrefix(cache, h.Dirs.StateHome) {
-				t.Errorf("GOCACHE %q: %v, write %v", cache, err, p.Write)
+			for _, dir := range []string{p.Env["GOCACHE"], p.Env["TMPDIR"]} {
+				if st, err := os.Stat(dir); err != nil || !st.IsDir() || !slices.Contains(p.Write, dir) || !strings.HasPrefix(dir, h.Dirs.StateHome) {
+					t.Errorf("GOCACHE or TMPDIR %q: %v, write %v", dir, err, p.Write)
+				}
+			}
+			if slices.Contains(p.Write, os.TempDir()) {
+				t.Errorf("the shared temp dir is writable: %v", p.Write)
 			}
 		})
 	}

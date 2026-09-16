@@ -37,12 +37,14 @@ func (h *Host) ensureScratch() string {
 	if dir == "" {
 		return ""
 	}
-	// sweep first: a resumed session's own pad may be idle past the TTL too
-	root := filepath.Dir(dir)
-	entries, _ := os.ReadDir(root)
-	for _, e := range entries {
-		if info, err := e.Info(); err == nil && e.IsDir() && time.Since(info.ModTime()) > scratchTTL {
-			_ = os.RemoveAll(filepath.Join(root, e.Name()))
+	// sweep first: a resumed session's own pad may be idle past the TTL too;
+	// sandbox temp dirs go with them
+	for _, root := range []string{filepath.Dir(dir), filepath.Join(h.Dirs.StateHome, "sandbox-tmp")} {
+		entries, _ := os.ReadDir(root)
+		for _, e := range entries {
+			if info, err := e.Info(); err == nil && e.IsDir() && time.Since(info.ModTime()) > scratchTTL {
+				_ = os.RemoveAll(filepath.Join(root, e.Name()))
+			}
 		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {

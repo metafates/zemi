@@ -1273,7 +1273,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   `~/.npmrc`, `~/.git-credentials`, shell histories, ...), zemi's config,
   data and state dirs (sessions, logs, keys in `init.lua`; not when they
   hold the project, and the write roots inside them stay usable) and, on
-  macOS, the strict secret file shapes; writable are the scratchpad, `$TMPDIR`, a Go
+  macOS, the strict secret file shapes; writable are the scratchpad, a temp dir of the session's own
+  (`<state>/sandbox-tmp/<session id>`, set as `TMPDIR`, `TMP` and `TEMP`;
+  the shared system temp dir is not writable, since macOS keeps the
+  `xcrun_db` there that picks what `/usr/bin/make` or `git` runs), a Go
   build cache only sandboxed runs use (`<state>/sandbox-cache/go-build`, set
   as `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and
   the user's own cache written from here could poison a later unconfined
@@ -1291,7 +1294,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   read-only paths nor loopback: with it the project is read-only to
   sandboxed runs (a build that writes it gets the hint and escalates) and
   every inet socket is refused. zemi's own temp files (the ctrl+g draft, a pasted image)
-  live in `<state>/tmp`, since `$TMPDIR` is writable to sandboxed runs. A
+  live in `<state>/tmp`. A
   wrap that fails is a tool error, never an unconfined run.
   While a backend is live, bash, `job_start` and `window` take
   `sandbox: false`, fixed per process so the prompt cache holds: it sets

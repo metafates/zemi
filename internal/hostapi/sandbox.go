@@ -4,6 +4,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,8 +36,8 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 	".config/doctl", ".config/fly", ".bash_history", ".zsh_history", ".local/share/fish/fish_history",
 	".psql_history", ".mysql_history", ".python_history", ".node_repl_history"}
 
-// sandboxPolicy is what a settled command may touch: the scratchpad, the
-// temp dir, a Go build cache of its own and, when trusted and not in plan
+// sandboxPolicy is what a settled command may touch: the scratchpad, a
+// temp dir and a Go build cache of its own and, when trusted and not in plan
 // mode, the project; never .git, .zemi or zemi's own dirs, and zemi's dirs
 // are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
@@ -45,7 +46,9 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 // target, so the link itself could be replaced.
 // NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
 // it cannot cache, and the user's cache written from here could poison a
-// later unconfined build. Other tools' caches stay read-only.
+// later unconfined build. Other tools' caches stay read-only. The system
+// temp dir is not writable for the same reason: macOS keeps xcrun_db there,
+// which picks the binary /usr/bin/make or git runs.
 func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
@@ -85,13 +88,19 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	if s := h.ScratchDir(); s != "" {
 		p.Write = append(p.Write, s)
 	}
-	p.Write = append(p.Write, os.TempDir())
 	if d.StateHome != "" {
+		p.Env = map[string]string{}
+		// made here: the sandbox cannot create them inside the protected state dir
 		cache := filepath.Join(d.StateHome, "sandbox-cache", "go-build")
-		// made here: the sandbox cannot create it inside the protected state dir
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
-			p.Env = map[string]string{"GOCACHE": cache}
+			p.Env["GOCACHE"] = cache
+		}
+		// per session, swept with the scratchpads
+		tmp := filepath.Join(d.StateHome, "sandbox-tmp", cmp.Or(h.AgentSessionID(), "no-session"))
+		if os.MkdirAll(tmp, 0o700) == nil {
+			p.Write = append(p.Write, tmp)
+			p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = tmp, tmp, tmp
 		}
 	}
 	p.Protect = append(p.Protect, zemiDirs...)
@@ -202,7 +211,7 @@ func (h *Host) TrustHeld() bool { return h.trustHeld.Load() }
 func (h *Host) ReleaseTrust() { h.trustHeld.Store(false) }
 
 // TempDir is where zemi keeps its own temp files (the ctrl+g draft, a
-// pasted image): the system temp dir is a sandbox write root.
+// pasted image), out of the temp dir every process of the user shares.
 func (h *Host) TempDir() (string, error) {
 	if h.Dirs.StateHome == "" {
 		return "", errors.New("no state dir for temp files")
