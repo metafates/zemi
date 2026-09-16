@@ -587,7 +587,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runOpenInEditor),
 
-		mk("question", `Ask the user up to 4 questions and wait for the answers. Use it only for what the user alone can decide: requirements, scope, expected behavior, preferences, tradeoffs between approaches. Never ask what reading code or a read-only command would tell you, never ask for permission (risky actions already ask), and never ask whether a plan is ready (use plan).
+		mk("question", `Ask the user up to 4 questions and wait for the answers. Use it only for what the user alone can decide: requirements, scope, expected behavior, preferences, tradeoffs between approaches. Never ask what reading code or a read-only command would tell you, never ask to approve a routine action (only one that is hard to undo or reaches beyond this machine), and never ask whether a plan is ready (use plan).
 
 Put independent questions in one call; ask separately when one answer changes another question. Give 2-4 mutually exclusive options with 1-5 word labels and a description of what each means; put the one you recommend first and end its label with "(Recommended)". The user can always type their own answer, so never add an "Other" option; omit options for an open question.`,
 			false,

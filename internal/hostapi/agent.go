@@ -240,7 +240,7 @@ Help with defensive security, authorized testing, CTFs and security education. R
 func (h *Host) zemiPrompt() string {
 	return "\n\n# zemi\nYou run inside zemi. For questions about zemi itself (config, Lua API, keys, errors, what it learned), load the matching zemi-* skill first." +
 		" To change zemi's behavior (UI, keys, commands, subagents, workflows), write Lua or markdown config after loading zemi-customize; never edit zemi's source code." +
-		" To look at zemi's live state or change it now, run Lua with the lua tool; load zemi-lua for the API first." +
+		" To look at zemi's live state or change it now, run Lua with the Lua tool; load zemi-lua for the API first." +
 		" User config directory: " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi). Project config directory: " + h.Dirs.ProjectConfigDir() + "." +
 		" The shipped Lua UI (theme, widgets, keymaps) is readable at " + filepath.Join(h.TypesDir(), "zemi", "defaultui.lua") + "; read it before restyling or extending the UI."
 }
@@ -475,7 +475,7 @@ func (h *Host) environmentPrompt() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
 	if dir := h.ensureScratch(); dir != "" {
-		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), Lua scripts for the lua tool. Reading and writing here never asks, even in plan mode.\n", dir)
+		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), scripts for the Lua tool. Reading and writing here never asks, even in plan mode.\n", dir)
 	}
 	if out, err := h.git(h.Dirs.ProjectDir, "status", "--short", "--branch"); err != nil {
 		b.WriteString("Git repository: no")
