@@ -144,6 +144,14 @@ to change its config, how to restyle the UI and add workflows, how to read its l
 errors, how its learning works, and how to run parallel work in git worktrees. Ask it to
 "set up a provider", "why did that fail" or "write a statusline widget".
 
+Programs can run inside zemi's screen. The agent's `window` tool (and `zemi.win` from Lua)
+starts any command in a real terminal drawn as a split below the chat, a vsplit beside it,
+or a float over it: the TUI it just built, a dev server, a test watcher, a REPL. It keeps
+working while the program runs, reads the screen back as text, types into it, waits for it
+to exit or closes it, and hears when the program exits on its own. Click a window to type
+into it yourself; `ctrl+\` brings your keys back, `/win` lists, focuses and closes them. It
+is a pure Go terminal emulator, no cgo.
+
 Your editor is part of the loop: `ctrl+g` edits the draft in it, `zemi.ui.edit(path)` opens a
 file from Lua, and the agent's `open_in_editor` tool hands you a file when only you can make
 the change and continues with the diff once you close it. Inside tmux the editor opens in a
