@@ -124,6 +124,18 @@ func TestResizeStartsNoTick(t *testing.T) {
 	}
 }
 
+// TestStaleRenderKeepsNewerLines: a render of an older generation that
+// lands after a newer one leaves the newer lines and pending mark alone.
+func TestStaleRenderKeepsNewerLines(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.pending = map[string]int64{"w": 7}
+	app.Update(widgetRenderedMsg{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, gen: 6})
+	app.Update(widgetRenderedMsg{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, gen: 5})
+	if got := plainSegs(app.widgetLines("w")[0]); got != "new" || app.pending["w"] != 7 {
+		t.Fatalf("lines %q, pending %v", got, app.pending)
+	}
+}
+
 // TestModeSwitchQuiet: tab-style switches only change the pill, and the
 // picker opens at the bottom-left by the statusline instead of mid-chat.
 func TestModeSwitchQuiet(t *testing.T) {

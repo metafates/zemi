@@ -452,7 +452,9 @@ func (a *App) pulse() bool {
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
-	delete(a.pending, msg.id)
+	if a.pending[msg.id] == msg.gen {
+		delete(a.pending, msg.id)
+	}
 	if msg.err != nil {
 		if !isTolerableRenderErr(msg.err) {
 			a.host.RecordError("widget "+msg.id, msg.err.Error())
@@ -460,6 +462,11 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 		a.log.Debug("ui", "widget render failed; keeping last good lines", map[string]any{
 			"widget": msg.id, "error": msg.err.Error(),
 		})
+		return
+	}
+	// renders of different generations run concurrently: an older one that
+	// finishes last must not replace newer lines
+	if c := a.caches[msg.id]; c != nil && c.gen > msg.gen {
 		return
 	}
 	a.caches[msg.id] = &widgetCache{lines: msg.lines, width: msg.width, gen: msg.gen}
