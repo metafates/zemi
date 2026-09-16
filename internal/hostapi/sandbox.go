@@ -123,10 +123,7 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	}
 	if d.StateHome != "" {
 		p.Env = map[string]string{}
-		// one per trust root: Go trusts its cache entries, so a shared one lets
-		// one project's build plant what another's links
-		key := sha256.Sum256([]byte(d.TrustRoot()))
-		cache := filepath.Join(d.StateHome, "sandbox-cache", hex.EncodeToString(key[:8]), "go-build")
+		cache := filepath.Join(d.StateHome, "sandbox-cache", h.trustKey(), "go-build")
 		// made here: the sandbox cannot create them inside the protected state dir
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
@@ -146,6 +143,40 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 			p.Protect = append(p.Protect, e)
 		}
 	}
+	return p
+}
+
+// trustKey names the trust root in cache paths. Caches are kept one per
+// trust root: Go trusts its cache entries, so a shared one lets one
+// project's build plant what another's links.
+func (h *Host) trustKey() string {
+	key := sha256.Sum256([]byte(h.Dirs.TrustRoot()))
+	return hex.EncodeToString(key[:8])
+}
+
+// serverPolicy confines a language server, which runs project code
+// (build.rs, proc macros) the model may have written: it reads what a
+// sandboxed command reads and writes only <cache>/lsp/<trust key>/<name>,
+// which the cache, build and temp variables point at.
+// NOTE: not under the state dir: seatbelt hides that dir's own metadata,
+// which cargo stats. Nothing sweeps it; a rust target dir there can be large.
+func (h *Host) serverPolicy(name string) sandbox.Policy {
+	p := h.sandboxPolicy(true)
+	p.Write, p.Env = nil, map[string]string{}
+	if h.Dirs.CacheHome == "" {
+		return p
+	}
+	if !filepath.IsLocal(name) {
+		name = hex.EncodeToString([]byte(name))
+	}
+	dir := filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), name)
+	for k, sub := range map[string]string{"XDG_CACHE_HOME": "cache", "GOCACHE": "go-build", "GOPLSCACHE": "gopls",
+		"CARGO_TARGET_DIR": "target", "TMPDIR": "tmp", "TMP": "tmp", "TEMP": "tmp"} {
+		if os.MkdirAll(filepath.Join(dir, sub), 0o700) == nil {
+			p.Env[k] = filepath.Join(dir, sub)
+		}
+	}
+	p.Write = []string{dir}
 	return p
 }
 

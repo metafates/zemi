@@ -17,6 +17,7 @@ type Dirs struct {
 	ConfigHome string // ~/.config/zemi
 	DataHome   string // ~/.local/share/zemi
 	StateHome  string // ~/.local/state/zemi
+	CacheHome  string // ~/.cache/zemi
 	ProjectDir string // current project root (cwd)
 }
 
@@ -42,6 +43,7 @@ func ResolveDirs() Dirs {
 		ConfigHome: xdg("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", "~/.config/zemi"),
 		DataHome:   xdg("ZEMI_DATA_HOME", "XDG_DATA_HOME", "~/.local/share/zemi"),
 		StateHome:  xdg("ZEMI_STATE_HOME", "XDG_STATE_HOME", "~/.local/state/zemi"),
+		CacheHome:  xdg("ZEMI_CACHE_HOME", "XDG_CACHE_HOME", "~/.cache/zemi"),
 		ProjectDir: projectRoot(),
 	}
 }

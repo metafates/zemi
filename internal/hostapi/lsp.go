@@ -25,6 +25,7 @@ import (
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -37,18 +38,22 @@ type lspDef struct {
 	Markers []string // files at the repository root that enable a builtin
 	Init    any      // initializationOptions
 	Config  any      // workspace settings
+	// RunsCode marks a builtin that executes project code while it loads a
+	// workspace, so it starts only confined
+	RunsCode bool
 }
 
 // builtinLSP start in a trusted repository with a marker. Servers run the
 // repository's code (rust-analyzer runs build scripts and proc macros, and
 // typescript would load node_modules), which is why no server starts in an
-// untrusted one; typescript still gets the tsserver on PATH.
+// untrusted one and a live backend confines them (serverPolicy); typescript
+// still gets the tsserver on PATH.
 var builtinLSP = []lspDef{
 	{Name: "gopls", Command: "gopls", Exts: []string{".go"}, Markers: []string{"go.mod", "go.work"}},
 	{Name: "pyright", Command: "pyright-langserver", Args: []string{"--stdio"}, Exts: []string{".py"}, Markers: []string{"pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"}},
 	{Name: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}, Exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, Markers: []string{"package.json", "tsconfig.json"}},
 	{Name: "clangd", Command: "clangd", Exts: []string{".c", ".h", ".cc", ".cpp", ".hpp", ".cxx"}, Markers: []string{"compile_commands.json", "CMakeLists.txt", ".clangd"}},
-	{Name: "rust-analyzer", Command: "rust-analyzer", Exts: []string{".rs"}, Markers: []string{"Cargo.toml"}},
+	{Name: "rust-analyzer", Command: "rust-analyzer", Exts: []string{".rs"}, Markers: []string{"Cargo.toml"}, RunsCode: true},
 }
 
 var languageIDs = map[string]string{
@@ -147,6 +152,12 @@ func (h *Host) lspDefs(path string) []lspDef {
 		}
 		for _, d := range builtinLSP {
 			if _, err := exec.LookPath(d.Command); err != nil {
+				continue
+			}
+			// NOTE: without a backend every server runs unconfined; a user-added
+			// one is the user's call, and of the builtins only rust-analyzer is
+			// left out (typescript plugins and clangd drivers are not)
+			if d.RunsCode && !h.sandboxLive() {
 				continue
 			}
 			if d.Name == "typescript" {
@@ -302,11 +313,16 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			}
 			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			p.client, p.err = lsp.Start(sctx, lsp.Config{
+			cfg := lsp.Config{
 				Command: def.Command, Args: def.Args, Env: env, Root: h.Dirs.RepoRoot(),
 				InitOptions: def.Init, Settings: def.Config,
 				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
-			})
+			}
+			if h.sandboxLive() {
+				policy := h.serverPolicy(def.Name)
+				cfg.Wrap = func(cmd *exec.Cmd) error { return sandbox.Wrap(cmd, policy) }
+			}
+			p.client, p.err = lsp.Start(sctx, cfg)
 			if p.err != nil {
 				h.Log.Warn("lsp", "server failed to start", map[string]any{"server": def.Name, "error": p.err.Error()})
 			}

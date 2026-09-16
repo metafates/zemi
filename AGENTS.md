@@ -39,7 +39,7 @@ make fmt                # gofmt -w over the tracked Go files
 ```
 
 For testing against a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`,
-`ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` (see `internal/config/dirs.go`). Most tests don't need
+`ZEMI_DATA_HOME`, `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (see `internal/config/dirs.go`). Most tests don't need
 this — they inject `config.Dirs{...}` with `t.TempDir()` directly.
 
 The project trust prompt and `~/.config/zemi/init.lua` only exist on a real machine;
@@ -98,7 +98,6 @@ fails before the trust step must not leave the old decision in force); `Host.Set
 the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project `.zemi`
 (init.lua, agents, commands, workflows), instruction files and profile `context.files`
 (untrusted: only `<config>/AGENTS.md`), every language server,
-the stdio MCP working directory (untrusted: `DataHome`, with `ZEMI_PROJECT_DIR` set),
 the Lua tool's ask, and what auto and plan mode settle (see below). `Host.git` switches off
 fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a
 sandboxed command can plant a nested repo whose config zemi's own checks would run.
@@ -218,8 +217,8 @@ return `h.sandboxPolicy(plan)`; `tool.Run` puts it on the per-run pipeline copy
 (`Sandboxed`, the `RewriteLoosened` pattern), and `runBash`, `Jobs.Start` (a `wrap` argument and the guard check;
 `Adopt` takes the already wrapped command and that check, nil when unconfined) and the window tool's `win.Spec.Wrap` call
 `sandbox.Wrap` before starting. A wrap error is a tool error, never an unconfined run.
-Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP/LSP servers and
-`Host.git` stay unconfined. `NewHost` probes the backend synchronously (`h.sandbox`; tests
+Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP servers and
+`Host.git` stay unconfined; language servers run under `serverPolicy` (see LSP below). `NewHost` probes the backend synchronously (`h.sandbox`; tests
 swap it with `fakeSandbox`), so `--health` and the first turn's schema see it. Policy:
 writes to the scratchpad, `<state>/sandbox-tmp/<session id>` (`TMPDIR`, `TMP`, `TEMP` through
 `Policy.Env`; never the shared system temp dir, where macOS keeps the `xcrun_db` that picks
@@ -470,8 +469,9 @@ writes under the screen lock and a program that does not read stdin must not wed
   learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`,
-  in the project directory when it is trusted and in `DataHome` otherwise (`npx` and `uv`
-  read config from the working directory). Tools are
+  unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set, trusted project or not: `npx` and `uv`
+  read config from the working directory, which settled commands and writes may change, and
+  most servers need the network a sandbox refuses. Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
   argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
   server).
@@ -479,7 +479,14 @@ writes under the screen lock and a program that does not read stdin must not wed
   `zemi.lsp.add` first, then an installed builtin whose marker is in the file's directory
   or above it), and only in a trusted project: servers run repo code (rust-analyzer build
   scripts), so `lspDefs` returns nothing untrusted, user-added servers included, and
-  `noLSP` says why. typescript still gets the tsserver on PATH (skipped when that is inside
+  `noLSP` says why. With a live backend every server starts through `lsp.Config.Wrap` under
+  `serverPolicy`: the project read-only, writes only to `<cache>/lsp/<trust key>/<server>`
+  (`Dirs.CacheHome`, `ZEMI_CACHE_HOME`; `XDG_CACHE_HOME`, `GOCACHE`, `GOPLSCACHE`,
+  `CARGO_TARGET_DIR` and `TMPDIR` point there), hidden paths and loopback as for commands.
+  Not under the state dir: seatbelt hides that dir's own metadata, which cargo stats.
+  A confined cargo cannot write a missing `Cargo.lock`, so rust-analyzer reports nothing
+  until one exists. Without a backend rust-analyzer (`RunsCode`) does not start;
+  the other builtins and user-added servers run unconfined. typescript still gets the tsserver on PATH (skipped when that is inside
   the repo). The pipeline's `AfterWrite` appends errors and warnings to
   write/edit/multiedit results plus errors in other files, the `diagnostics` tool reads
   any file and the `lsp` tool does definition, references, rename and symbols by name.

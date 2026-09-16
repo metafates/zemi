@@ -92,16 +92,15 @@ func (h *Host) startMCP(s *mcpServer) {
 	for k, v := range s.spec.Env {
 		env = append(env, k+"="+v)
 	}
-	// npx and uv read config from the working directory, so a server starts
-	// outside an untrusted project
-	dir := h.Dirs.DataHome
-	if h.ProjectTrusted() {
-		dir = h.Dirs.ProjectDir
-	}
+	// Outside the project even when it is trusted: npx and uv read .npmrc,
+	// node_modules/.bin and uv config from the working directory, which
+	// sandboxed commands and settled writes may change, and a server runs
+	// unconfined because most need the network and home caches a sandbox
+	// would refuse. ZEMI_PROJECT_DIR says where the project is.
 	headers := map[string]string{}
 	maps.Copy(headers, s.spec.Headers)
 	cfg := mcp.Config{
-		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: dir,
+		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.DataHome,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
 		OnToolsChanged: func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) },

@@ -246,6 +246,17 @@ func TestSandboxPolicy(t *testing.T) {
 			t.Errorf("%s: %s protected %v: %v", c.name, venv, got, p.Protect)
 		}
 	}
+	h.Dirs.CacheHome = t.TempDir()
+	server := h.serverPolicy("rust-analyzer")
+	dir := filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), "rust-analyzer")
+	if !slices.Equal(server.Write, []string{dir}) || !server.Loopback || !slices.Contains(server.Hide, h.Dirs.StateHome) {
+		t.Errorf("server policy %+v", server)
+	}
+	for _, k := range []string{"CARGO_TARGET_DIR", "GOCACHE", "XDG_CACHE_HOME", "TMPDIR"} {
+		if st, err := os.Stat(server.Env[k]); err != nil || !st.IsDir() || !strings.HasPrefix(server.Env[k], dir) {
+			t.Errorf("server %s %q: %v", k, server.Env[k], err)
+		}
+	}
 	a := h.sandboxPolicy(false).Env["GOCACHE"]
 	h.Dirs.ProjectDir = t.TempDir()
 	if b := h.sandboxPolicy(false).Env["GOCACHE"]; a == b {

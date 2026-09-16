@@ -152,7 +152,7 @@ func TestLSPConfig(t *testing.T) {
 }
 
 // TestLSPBuiltins: no builtin starts in an untrusted project; in a trusted
-// one rust-analyzer does, and typescript only with a tsserver from outside
+// one rust-analyzer does when a sandbox can confine it, and typescript only with a tsserver from outside
 // the repository.
 func TestLSPBuiltins(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -175,16 +175,18 @@ func TestLSPBuiltins(t *testing.T) {
 	exe(filepath.Join(servers, "rust-analyzer"))
 	exe(filepath.Join(servers, "typescript-language-server"))
 	for _, c := range []struct {
-		name, path, want string
-		trusted          bool
+		name, path, want   string
+		trusted, noSandbox bool
 	}{
-		{"untrusted", filepath.Join(global, "bin"), "", false},
-		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js"), true},
-		{"repo tsserver", filepath.Join(root, "bin"), "", true},
-		{"no tsserver", "", "", true},
+		{"untrusted", filepath.Join(global, "bin"), "", false, false},
+		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js"), true, false},
+		{"repo tsserver", filepath.Join(root, "bin"), "", true, false},
+		{"no tsserver", "", "", true, false},
+		{"no sandbox leaves rust-analyzer out", "", "", false, true},
 	} {
 		t.Setenv("PATH", servers+string(os.PathListSeparator)+c.path)
-		h.SetProjectTrusted(c.trusted)
+		h.SetProjectTrusted(c.trusted || c.noSandbox)
+		fakeSandbox(h, !c.noSandbox)
 		got, rust := "", false
 		for _, d := range h.lspDefs("") {
 			rust = rust || d.Name == "rust-analyzer"
@@ -255,5 +257,78 @@ func TestLSPSyncFromGit(t *testing.T) {
 	os.Remove(b)
 	if got := refs(); got != "2 references" {
 		t.Fatalf("after it was deleted: %q", got)
+	}
+}
+
+// TestLSPRealServersSandboxed runs the installed gopls, pyright and
+// rust-analyzer under the live backend: each reports a problem, and the
+// build script rust-analyzer runs writes its OUT_DIR but not outside it.
+func TestLSPRealServersSandboxed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts real language servers")
+	}
+	h, _ := newTestHostDB(t)
+	defer h.lsp.stopAll()
+	if !h.sandboxLive() {
+		t.Skip("no sandbox")
+	}
+	h.SetProjectTrusted(true)
+	h.Dirs.CacheHome = t.TempDir()
+	proj := h.Dirs.ProjectDir
+	outside := filepath.Join(t.TempDir(), "escaped")
+	files := map[string]string{
+		"go.mod":         "module m\n\ngo 1.22\n",
+		"main.go":        "package main\n\nfunc main() { var x int = \"s\"; _ = x }\n",
+		"pyproject.toml": "[project]\nname = \"m\"\n",
+		"a.py":           "x: int = \"s\"\n",
+		"Cargo.toml":     "[package]\nname = \"m\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+		"build.rs": fmt.Sprintf("fn main() {\n    let _ = std::fs::write(%q, \"x\");\n"+
+			"    std::fs::write(std::path::Path::new(&std::env::var(\"OUT_DIR\").unwrap()).join(\"ran\"), \"x\").unwrap();\n}\n", outside),
+		"src/main.rs": "mod missing;\nfn main() {}\n",
+	}
+	for name, body := range files {
+		os.MkdirAll(filepath.Dir(filepath.Join(proj, name)), 0o755)
+		os.WriteFile(filepath.Join(proj, name), []byte(body), 0o644)
+	}
+	// the confined cargo cannot write a missing Cargo.lock into the project
+	if _, err := exec.LookPath("cargo"); err == nil {
+		lock := exec.Command("cargo", "generate-lockfile")
+		lock.Dir = proj
+		if out, err := lock.CombinedOutput(); err != nil {
+			t.Fatalf("cargo generate-lockfile: %v: %s", err, out)
+		}
+	}
+	for _, c := range []struct{ server, file, want string }{
+		{"gopls", "main.go", "error main.go:3"},
+		{"pyright-langserver", "a.py", "error a.py:1"},
+		{"rust-analyzer", "src/main.rs", "error src/main.rs:1"},
+	} {
+		t.Run(c.server, func(t *testing.T) {
+			if _, err := exec.LookPath(c.server); err != nil {
+				t.Skip(c.server, " not installed")
+			}
+			got := ""
+			for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !strings.Contains(got, c.want); time.Sleep(time.Second) {
+				got, _ = h.lspDiagnostics(filepath.Join(proj, c.file))
+			}
+			if !strings.Contains(got, c.want) {
+				t.Fatalf("diagnostics %q, want %q", got, c.want)
+			}
+		})
+	}
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		return
+	}
+	ran := func() bool {
+		m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), "rust-analyzer", "target", "*", "build", "*", "out", "ran"))
+		return len(m) > 0
+	}
+	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !ran(); time.Sleep(time.Second) {
+	}
+	if !ran() {
+		t.Fatal("rust-analyzer never ran build.rs")
+	}
+	if _, err := os.Stat(outside); err == nil {
+		t.Fatal("build.rs wrote outside its sandbox")
 	}
 }

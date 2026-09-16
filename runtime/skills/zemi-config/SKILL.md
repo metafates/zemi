@@ -18,7 +18,8 @@ description: Configure zemi - init.lua, providers, models, settings, keymaps, co
 | `~/.local/share/zemi/site/pack/*/start/*/plugin/*.lua` | plugins |
 | `~/.local/state/zemi/` | logs, databases, trust file (see zemi-debug) |
 
-`ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME` and `ZEMI_STATE_HOME` override the three roots.
+`ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` and `ZEMI_CACHE_HOME` (language
+server caches, `~/.cache/zemi`) override the four roots.
 `~/.config/zemi` is a git repo: permanent permission rules zemi writes are commits there,
 undone with `git revert`.
 
@@ -106,6 +107,10 @@ writable; prefer it over guessing. Common keys:
   file zemi touches or above it, up to the repo root. typescript starts only with a
   `tsserver` on PATH outside the repo (never the repo's node_modules). No server starts,
   builtin or added, in a project the user has not trusted: servers run the repo's code.
+  With a sandbox (`/health` sandbox row) every server runs in it: the project read-only,
+  writes only to `~/.cache/zemi/lsp/` (`ZEMI_CACHE_HOME`), localhost only. rust-analyzer
+  needs a `Cargo.lock` to exist there (a sandboxed `cargo build` makes one), and without a
+  sandbox it does not start.
   `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a
   server (user config only); adding a builtin's name replaces it, so
   `zemi.lsp.add("gopls", { command = "gopls", filetypes = { "go" }, settings = { gopls = { staticcheck = true } } })`
@@ -239,6 +244,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/reflect`
 HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the
 browser, and zemi keeps and refreshes the grant. MCP servers:
 `zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
+A command server starts in zemi's data dir, not the project, with the project path in
+`ZEMI_PROJECT_DIR`: pass the project as an absolute path, not `.`.
 
 ## Tools and permission rules
 

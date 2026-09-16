@@ -309,12 +309,9 @@ origin is denylisted anyway (below).
 
 Trusted, zemi loads the project's `.zemi` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
-user-added), starts stdio MCP servers in
-the project, auto and plan mode settle builds and tests in the sandbox, and
+user-added; sandboxed when a backend is live, §9), auto and plan mode settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no language server starts, MCP
-servers start in the data dir with `ZEMI_PROJECT_DIR` in their
-environment, `.zemi` edits trigger no reload, and auto and plan mode
+is an instruction file, no language server starts, `.zemi` edits trigger no reload, and auto and plan mode
 settle only reads and `perm.ReadCommand` commands. Either way zemi's own
 git calls switch off `core.fsmonitor`, hooks and repository filter
 drivers: a sandboxed command can plant a nested repository whose config
@@ -1264,8 +1261,22 @@ configured provider later (`zemi.memory.search` signature does not change).
 - Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`,
   `job_start` or window-open call whose verdict a mode gave
   (`DecidedBy` `mode:<name>`, any base but `yolo`) runs confined; rule-allowed
-  and user-approved runs, `!command`, `zemi.job`, MCP and LSP servers and
-  zemi's own git stay unconfined. The backend (seatbelt through
+  and user-approved runs, `!command`, `zemi.job`, MCP servers and
+  zemi's own git stay unconfined. Stdio MCP servers start in the data dir
+  with `ZEMI_PROJECT_DIR` in their environment, trusted project or not:
+  `npx` and `uv` read `.npmrc`, `node_modules/.bin` and uv config from the
+  working directory, which settled commands and writes may change, and
+  most servers need the network and home caches a sandbox refuses.
+  Language servers run project code (build scripts, proc macros), so with
+  a live backend each starts under `serverPolicy`: readable and hidden as
+  for commands, loopback, the project read-only, and writable only
+  `<cache>/lsp/<trust root hash>/<server>` (`ZEMI_CACHE_HOME`, default
+  `~/.cache/zemi`), which `XDG_CACHE_HOME`, `GOCACHE`, `GOPLSCACHE`,
+  `CARGO_TARGET_DIR` and `TMPDIR` point at. It is not under the state dir:
+  seatbelt hides that dir's own metadata, which cargo stats. A confined
+  cargo cannot create a missing `Cargo.lock`, so rust-analyzer reports
+  nothing until one exists. Without a backend rust-analyzer does not
+  start; the other builtins and user-added servers run unconfined. The backend (seatbelt through
   `/usr/bin/sandbox-exec` on macOS; on Linux the `zemi __sandbox` helper
   with Landlock plus user, network and mount namespaces where the kernel
   allows unprivileged user namespaces, else Landlock plus seccomp) is

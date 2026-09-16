@@ -31,6 +31,7 @@ type Config struct {
 	Env     []string // the child's whole environment
 	Root    string   // workspace root
 	Stderr  io.Writer
+	Wrap    func(*exec.Cmd) error // confines the server before it starts; nil runs it as is
 	// InitOptions is sent as initializationOptions; Settings answers
 	// workspace/configuration (by dotted section) and is pushed once after
 	// the handshake. Both nil for servers that need neither.
@@ -115,6 +116,11 @@ type FileChange struct {
 func Start(ctx context.Context, cfg Config) (*Client, error) {
 	cmd := proc.Command(cfg.Command, cfg.Args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Root, cfg.Stderr
+	if cfg.Wrap != nil {
+		if err := cfg.Wrap(cmd); err != nil {
+			return nil, fmt.Errorf("lsp: confine %s: %w", cfg.Command, err)
+		}
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
