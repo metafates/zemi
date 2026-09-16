@@ -288,7 +288,8 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 			AuthServers []string `json:"authorization_servers"`
 			Scopes      []string `json:"scopes_supported"`
 		}
-		if getJSON(ctx, pu, &prm) == nil && len(prm.AuthServers) > 0 {
+		// a resource other than this server would have its token sent here (RFC 9728 3.3)
+		if getJSON(ctx, pu, &prm) == nil && len(prm.AuthServers) > 0 && (prm.Resource == "" || coversServer(prm.Resource, u)) {
 			issuer, m.resource = prm.AuthServers[0], cmp.Or(prm.Resource, serverURL)
 			if m.scope == "" {
 				m.scope = strings.Join(prm.Scopes, " ")
@@ -326,6 +327,18 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 		}
 	}
 	return m, nil
+}
+
+// coversServer reports whether a protected resource names the server: the
+// same origin, and the server's path equal to or under the resource's.
+func coversServer(resource string, server *url.URL) bool {
+	r, err := url.Parse(resource)
+	if err != nil {
+		return false
+	}
+	rp, sp := strings.TrimSuffix(r.EscapedPath(), "/"), strings.TrimSuffix(server.EscapedPath(), "/")
+	return strings.EqualFold(r.Scheme, server.Scheme) && strings.EqualFold(r.Host, server.Host) &&
+		(rp == sp || strings.HasPrefix(sp, rp+"/"))
 }
 
 // checkEndpoint refuses endpoints that would send secrets in the clear or

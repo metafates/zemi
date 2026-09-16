@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -165,6 +166,42 @@ func TestCheckEndpoint(t *testing.T) {
 	} {
 		if got := checkEndpoint(raw) == nil; got != ok {
 			t.Errorf("checkEndpoint(%q) ok=%v", raw, got)
+		}
+	}
+}
+
+// TestDiscoverChecksResource: metadata naming another resource is ignored,
+// so zemi never asks for a token meant for that resource on its behalf.
+func TestDiscoverChecksResource(t *testing.T) {
+	var (
+		srv      *httptest.Server
+		resource atomic.Value
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"resource": resource.Load(), "authorization_servers": []string{srv.URL + "/as"}})
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server/as", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/as/authorize", "token_endpoint": srv.URL + "/as/token"})
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+	for res, ok := range map[string]bool{
+		"":                           true,
+		srv.URL + "/mcp":             true,
+		srv.URL:                      true,
+		"https://victim.example/mcp": false,
+		srv.URL + "/mcp-other":       false,
+		srv.URL + "/mcp/deeper":      false,
+		"https" + strings.TrimPrefix(srv.URL, "http") + "/mcp": false,
+	} {
+		resource.Store(res)
+		m, err := discover(context.Background(), srv.URL+"/mcp")
+		if err != nil {
+			t.Fatalf("%q: %v", res, err)
+		}
+		if got := m.authURL == srv.URL+"/as/authorize"; got != ok {
+			t.Errorf("resource %q: used the metadata = %v, want %v", res, got, ok)
 		}
 	}
 }
