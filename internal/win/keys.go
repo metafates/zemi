@@ -3,6 +3,7 @@ package win
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -15,7 +16,7 @@ func ParseKeys(s string) ([]uv.KeyPressEvent, error) {
 	var out []uv.KeyPressEvent
 	for i := 0; i < len(s); {
 		if s[i] != '<' {
-			r, size := decodeRune(s[i:])
+			r, size := utf8.DecodeRuneInString(s[i:])
 			out = append(out, uv.KeyPressEvent{Code: r, Text: string(r)})
 			i += size
 			continue
@@ -32,13 +33,6 @@ func ParseKeys(s string) ([]uv.KeyPressEvent, error) {
 		i += end + 1
 	}
 	return out, nil
-}
-
-func decodeRune(s string) (rune, int) {
-	for _, r := range s {
-		return r, len(string(r))
-	}
-	return 0, 1
 }
 
 var keyNames = map[string]rune{
@@ -84,7 +78,7 @@ done:
 		}
 		return k, nil
 	}
-	if r, size := decodeRune(name); size == len(name) && size > 0 {
+	if r, size := utf8.DecodeRuneInString(name); size == len(name) && size > 0 {
 		k := uv.KeyPressEvent{Code: r, Mod: mod}
 		if mod == 0 || mod == uv.ModShift {
 			k.Text = string(r)
@@ -118,8 +112,5 @@ func modifiedSpecial(k uv.KeyPressEvent) string {
 		uv.KeyF5: 15, uv.KeyF6: 17, uv.KeyF7: 18, uv.KeyF8: 19, uv.KeyF9: 20, uv.KeyF10: 21, uv.KeyF11: 23, uv.KeyF12: 24}[k.Code]; ok {
 		return fmt.Sprintf("\x1b[%d;%d~", n, m)
 	}
-	if k.Code == uv.KeyTab && k.Mod == uv.ModShift {
-		return "" // vt encodes shift+tab itself
-	}
-	return ""
+	return "" // vt encodes the rest itself, shift+tab included
 }

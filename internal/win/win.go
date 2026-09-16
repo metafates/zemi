@@ -471,11 +471,11 @@ func (w *Window) SendKey(k uv.KeyPressEvent) {
 }
 
 func (w *Window) sendKey(k uv.KeyPressEvent) {
-	switch {
+	switch seq := modifiedSpecial(k); {
 	case k.Text != "" && k.Mod&(uv.ModCtrl|uv.ModAlt|uv.ModMeta) == 0:
 		w.term.SendText(k.Text)
-	case modifiedSpecial(k) != "":
-		w.term.SendText(modifiedSpecial(k))
+	case seq != "":
+		w.term.SendText(seq)
 	default:
 		w.term.SendKey(k)
 	}
