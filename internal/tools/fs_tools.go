@@ -222,9 +222,9 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	t, ok := p.Seen.Load(absPath(path))
 	switch {
 	case !ok:
-		return "read " + path + " before changing it"
+		return "read " + path + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
 	case !t.(time.Time).Equal(fi.ModTime()):
-		return path + " changed since you last read it; read it again"
+		return path + " changed since you read it (the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
 	return ""
 }

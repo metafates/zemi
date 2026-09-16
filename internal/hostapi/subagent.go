@@ -58,7 +58,7 @@ var builtinAgents = []AgentDef{
 		Description: "General-purpose agent for research and multi-step tasks: searching code, reading files, running commands and making edits.",
 		// this replaces basePrompt rather than extending it, so the git and
 		// verification rules have to be said again here
-		System: "Complete the task with the tools. Read before changing, prefer read, grep, glob and edit over bash, and never run a server, watcher or interactive program in bash (use job_start). Do not commit, push or change git state unless the task says to. Verify what you changed with the narrowest test or build that covers it. Then report to the agent that sent you what you found or changed, with paths and line numbers, and anything you could not verify.",
+		System: "Complete the task with the tools. Edit and write refuse a file not read with the read tool first (cat in bash does not count); when a tool refuses, do what its message says. Prefer read, grep, glob and edit over bash, and never run a server, watcher or interactive program in bash (use job_start). Do not commit, push or change git state unless the task says to. Verify what you changed with the narrowest test or build that covers it. Then report to the agent that sent you what you found or changed, with paths and line numbers, and anything you could not verify.",
 		Source: "builtin",
 	},
 }

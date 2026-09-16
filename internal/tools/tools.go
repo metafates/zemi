@@ -424,7 +424,7 @@ The call blocks until the command exits; at the timeout (default 60000 ms, up to
 - servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
 - interactive programs (vim, less, REPLs, git rebase -i, git add -p, npm init, password or y/n prompts): use the non-interactive form, such as git --no-pager log, git commit -m "msg", npm init -y, --yes, CI=1.
 
-Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Chain dependent steps with &&; send independent commands as separate calls in one response.`,
+Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: what a command prints here does not count as reading a file, so edit will still refuse it. Chain dependent steps with &&; send independent commands as separate calls in one response, and do not join them with echo separators.`,
 			false,
 			map[string]any{
 				"command":     map[string]any{"type": "string"},
@@ -437,7 +437,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runBash),
 
-		mk("read", "Read a file. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. When you know the part you need, read only that part.", true,
+		mk("read", "Read a file (text or image). This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "file path, absolute or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
@@ -449,7 +449,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runRead),
 
-		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for changes to an existing file, and read a file before overwriting it.", false,
+		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", false,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -460,7 +460,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runWrite),
 
-		mk("edit", "Replace an exact substring in a file you have read. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. A multi-line old_string also matches when only whitespace differs.", false,
+		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. A multi-line old_string also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", false,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -473,7 +473,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runEdit),
 
-		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same matching rules as edit. If any edit fails, nothing is written.", false,
+		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", false,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 				"edits": map[string]any{"type": "array", "items": map[string]any{
@@ -503,7 +503,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash.", true,
+		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash, then read the region it points at. A match is not a read: edit still needs the read tool. For a broad question about how something works, delegate to an explore agent instead.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
@@ -532,7 +532,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo. Ch
 			},
 			runFetch),
 
-		mk("todos", "Track multi-step work (three or more steps, or several tasks from the user) in a list the user sees. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
+		mk("todos", "Track work with several distinct steps you could lose, or several tasks from the user, in a list the user sees. Not for one change and its check, and never single-step lists. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{
@@ -576,7 +576,7 @@ Put independent questions in one call; ask separately when one answer changes an
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. Call it in plan mode once nothing is left to decide, and outside plan mode before a large or ambiguous change (a new feature, several reasonable designs, many files). Ask open questions with the question tool first; do not use it to answer a research question.
+		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. Call it in plan mode once nothing is left to decide, and outside plan mode only before a large or ambiguous change (a new feature, several reasonable designs, many files); a clear or small task is done, not planned. Ask open questions with the question tool first; do not use it to answer a research question.
 
 The plan is markdown for someone who will implement it without guessing: the goal, what changes where (files, and existing code to reuse as path:line), how to verify, and the assumptions made. Only the approach you recommend, kept short.
 
@@ -704,7 +704,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				return fantasy.NewTextResponse(out), nil
 			}),
 
-		mk("skill", "Load a skill's full instructions by name.",
+		mk("skill", "Load a skill's full instructions by name when its description matches the task, before acting on it. Do not load one on a keyword alone, and do not load one already in the conversation.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},
