@@ -374,23 +374,24 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	case req.Preview != "":
 		content = codePanel(req.Preview, inner)
 	}
-	pa.stacked = len(permButtons(pa, inner)) > 1
+	btns := permButtons(pa, inner)
+	pa.stacked = len(btns) > 1
 	choose, scroll := "←→", "j/k"
 	if pa.stacked {
 		choose, scroll = "↑↓", "shift+↑↓"
 	}
 	// the rest of the box: borders, title rows, blanks, hint and the buttons
-	if room := max(chatH-10-len(permButtons(pa, inner)), 3); len(content) > room {
+	if room := max(chatH-10-len(btns), 3); len(content) > room {
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
 		more := fmt.Sprintf("  %d of %d lines · %s scroll", pa.scroll+room, len(content), scroll)
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
 	}
 	// panels span the box, and the box fits its content (at least 56 wide)
 	fit := 56
-	for _, r := range append(append([][]hostapi.Segment{}, body...), content...) {
+	for _, r := range slices.Concat(body, content) {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
-	for _, r := range permButtons(pa, inner) {
+	for _, r := range btns {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
@@ -402,7 +403,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		body = append(body, content...)
 	}
 	body = append(body, blank)
-	body = append(body, permButtons(pa, fit)...)
+	body = append(body, btns...)
 	body = append(body, blank, hintLine(choose, "choose", "enter", "confirm", "esc", "deny"))
 
 	badge := ""
