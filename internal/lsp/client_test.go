@@ -291,7 +291,7 @@ func TestWatchedFiles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
-	a, b, g := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt"), filepath.Join(root, "c.go")
+	a, b, g := filepath.Join(root, "a.txt"), filepath.Join(root, "..b.txt"), filepath.Join(root, "c.go")
 	os.WriteFile(a, []byte("func Foo()\nFoo()"), 0o644)
 	if _, err := c.Touch(ctx, a, "plaintext"); err != nil {
 		t.Fatal(err)

@@ -355,7 +355,7 @@ func (c *Client) watched(path string, typ int) bool {
 	for _, ws := range c.watchers {
 		for _, w := range ws {
 			rel, err := filepath.Rel(w.base, path)
-			if err != nil || strings.HasPrefix(rel, "..") {
+			if err != nil || !filepath.IsLocal(rel) {
 				continue
 			}
 			if w.kind&(1<<(typ-1)) != 0 && w.match(rel) {
