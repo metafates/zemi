@@ -110,6 +110,10 @@ func TestScrubKnownShapes(t *testing.T) {
 		{"jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c end", "eyJ"},
 		{"sha 0123456789abcdef0123456789abcdef01234567 end", "0123456789abcdef"},
 		{"blob abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJK end", "abcdefghijklmnopqrstuvwxyz"},
+		{"db is postgres://admin:hunter2secret@db.internal:5432/app", "hunter2"},
+		{"redis redis://:hunter2@cache:6379 and mysql://u:p@ss@h/db", "hunter2"},
+		{"mysql://u:p@ss@h/db", "p@ss"},
+		{"see https://x:pw@example.com/a", ":pw@"},
 	}
 	for _, tc := range cases {
 		out, scrubbed := ScrubSecrets(tc.in)
@@ -121,6 +125,14 @@ func TestScrubKnownShapes(t *testing.T) {
 		}
 		if !strings.Contains(out, "[redacted") {
 			t.Fatalf("%q: no marker: %q", tc.in, out)
+		}
+	}
+}
+
+func TestScrubKeepsURLsWithoutPassword(t *testing.T) {
+	for _, in := range []string{"see https://example.com:8080/a@b", "clone git@github.com:org/repo.git", "https://user@host/x"} {
+		if out, scrubbed := ScrubSecrets(in); scrubbed {
+			t.Errorf("%q scrubbed to %q", in, out)
 		}
 	}
 }

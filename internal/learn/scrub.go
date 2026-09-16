@@ -26,6 +26,10 @@ var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`\b[A-Za-z0-9+_=-]{40,}\b`),
 }
 
+// urlPassword matches the userinfo of a URL (postgres://user:pass@host);
+// group 1 is the password.
+var urlPassword = regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/:@]*:([^\s/]+)@`)
+
 var keyAssignments = regexp.MustCompile(
 	`(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password|passwd|pwd|bearer|authorization)\b\s*[=:]\s*\S+`)
 
@@ -41,7 +45,10 @@ const (
 // reports whether anything was redacted. Redaction is per span, so
 // "[redacted 24 chars]" markers can coexist with surviving prose.
 func ScrubSecrets(text string) (string, bool) {
-	out := text
+	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
+		i := urlPassword.FindStringSubmatchIndex(m)
+		return m[:i[2]] + redactMarker(utf8.RuneCountInString(m[i[2]:i[3]])) + m[i[3]:]
+	})
 	for _, re := range keyShapes {
 		out = redactAll(out, re.FindAllString(out, -1))
 	}
