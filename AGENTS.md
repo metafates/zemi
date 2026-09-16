@@ -280,16 +280,20 @@ what the screen says.
 
 A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go
 emulator (charmbracelet/x/vt). `win.Manager` on the host owns them; they outlive turns and
-reloads (only Lua `on_exit` callbacks are generation-tagged). The UI lays them out per
-frame in a fixed order (vsplits take columns on the right, splits rows at the bottom,
-floats sit centered) and resizes each to its cells; `Screen()` turns cells into `sgr:`
-segments so colors reach the renderer untouched. A focused window (`App.focusWin`) takes
-every key, ctrl+c included, until `ui.window.unfocus`; clicks focus, the title's × closes,
-mouse events inside are forwarded (wheel becomes arrows for programs that never asked for
-the mouse), and a paste goes to the program with bracketing when it asked. The model's
-`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `send` as
-`tool.window`, and an exit lands in the next message through `shellNotes`. Subagents
-never get the tool.
+reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carries a
+`Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: vsplits are
+full-height columns beside the main column (compose lays the main column out at `mainW`
+and joins the columns at the end), splits take rows at the bottom of the chat area,
+floats go over everything at their position or centered; `shares` divides an axis so the
+main area keeps its minimum. `Screen()` turns cells into `sgr:` segments so colors reach
+the renderer untouched. A focused window (`App.focusWin`) takes every key, ctrl+c
+included, until `ui.window.unfocus`; a press on a title or separator starts a `winDrag`
+(move a float, resize a vsplit or split), a release without motion focuses or closes on
+×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
+for the mouse), and a paste goes to the program with bracketing when it asked. The model's
+`window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `keys`/`send`
+as `tool.window`; an exit lands in the next message through `shellNotes`. Subagents get
+`windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
 
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 

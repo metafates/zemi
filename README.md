@@ -145,12 +145,15 @@ errors, how its learning works, and how to run parallel work in git worktrees. A
 "set up a provider", "why did that fail" or "write a statusline widget".
 
 Programs can run inside zemi's screen. The agent's `window` tool (and `zemi.win` from Lua)
-starts any command in a real terminal drawn as a split below the chat, a vsplit beside it,
-or a float over it: the TUI it just built, a dev server, a test watcher, a REPL. It keeps
-working while the program runs, reads the screen back as text, types into it, waits for it
-to exit or closes it, and hears when the program exits on its own. Click a window to type
-into it yourself; `ctrl+\` brings your keys back, `/win` lists, focuses and closes them. It
-is a pure Go terminal emulator, no cgo.
+starts any command in a real terminal drawn as a split below the chat, a full-height sidebar
+beside it, or a float over it: the TUI it just built, a dev server, a test watcher, a REPL.
+It keeps working while the program runs, reads the screen back as text, presses keys in
+neovim notation, clicks and scrolls, changes a window's kind, size and position, hides it
+and shows it again, waits for it to exit or closes it, and hears when the program exits on
+its own. Subagents get the same tool; their windows stay hidden until shown. Click a window
+to type into it yourself, drag a float by its title, a sidebar by its separator, a split by
+its title; `ctrl+\` brings your keys back, `/win` lists, focuses, hides, shows and closes.
+It is a pure Go terminal emulator, no cgo.
 
 Your editor is part of the loop: `ctrl+g` edits the draft in it, `zemi.ui.edit(path)` opens a
 file from Lua, and the agent's `open_in_editor` tool hands you a file when only you can make
