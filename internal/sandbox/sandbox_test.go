@@ -43,6 +43,11 @@ func act(verb, arg string) error {
 	switch verb {
 	case "write":
 		return os.WriteFile(arg, []byte("x"), 0o644)
+	case "mkwrite":
+		if err := os.MkdirAll(filepath.Dir(arg), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(arg, []byte("x"), 0o644)
 	case "read":
 		_, err := os.ReadFile(arg)
 		return err
@@ -163,6 +168,11 @@ func TestPolicy(t *testing.T) {
 		{"read a hidden dir holding a root", "read", filepath.Join(state, "zemi.db"), false, false},
 		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
+		{"create a nested .git", "mkwrite", filepath.Join(root, "pkg", ".git", "config"), false, runtime.GOOS == "linux"},
+		{"create a nested .Zemi", "mkwrite", filepath.Join(root, "pkg", ".Zemi", "init.lua"), false, runtime.GOOS == "linux"},
+		{"write .gitignore", "write", filepath.Join(root, ".gitignore"), true, false},
+		{"write .github", "mkwrite", filepath.Join(root, ".github", "x.yml"), true, false},
+		{"create a .git in a root without protected paths", "mkwrite", filepath.Join(scratch, "repo", ".git", "config"), true, false},
 		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},
 		{"write through a protected symlink", "write", filepath.Join(root, ".zemi", "init.lua"), false, !b.EnforcesProtect},
 		// NOTE: see setupNamespaces
