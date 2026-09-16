@@ -72,6 +72,15 @@ func (s *Store) Add(r Rule) {
 	s.mu.Unlock()
 }
 
+// Remove drops one rule equal to r, if there is one.
+func (s *Store) Remove(r Rule) {
+	s.mu.Lock()
+	if i := slices.Index(s.rules, r); i >= 0 {
+		s.rules = slices.Delete(s.rules, i, i+1)
+	}
+	s.mu.Unlock()
+}
+
 // Rules returns a copy of all rules.
 func (s *Store) Rules() []Rule {
 	s.mu.Lock()

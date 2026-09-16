@@ -235,6 +235,11 @@ type Host struct {
 
 	modes modeReg // permission modes in tab order
 
+	// luaRules are the rules zemi.permission.rule added: a reload replays
+	// the config that adds them, so PurgeGeneration takes them out of Perm.
+	luaRulesMu sync.Mutex
+	luaRules   []perm.Rule
+
 	// projectTrusted is set once the project config tree passed the trust
 	// prompt; project agents, commands and workflows load only then.
 	projectTrusted atomic.Bool
@@ -1061,6 +1066,13 @@ func (h *Host) PurgeGeneration() {
 	h.modes.mu.Lock()
 	h.modes.list = nil
 	h.modes.mu.Unlock()
+	// Permanent rules come back from permissions.lua in PermissionsLoadStep.
+	h.luaRulesMu.Lock()
+	for _, r := range h.luaRules {
+		h.Perm.Remove(r)
+	}
+	h.luaRules = nil
+	h.luaRulesMu.Unlock()
 	h.Keymaps.Purge()
 	h.Commands.Purge()
 	h.Widgets.Purge()

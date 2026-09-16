@@ -1623,6 +1623,9 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.Perm.Add(r)
+		h.luaRulesMu.Lock()
+		h.luaRules = append(h.luaRules, r)
+		h.luaRulesMu.Unlock()
 		if r.Scope == perm.ScopePermanent {
 			if err := h.persistPermanentRule(r, "rules: "+string(r.Decision)+" "+r.Subject+" "+r.Pattern, "user"); err != nil {
 				L.RaiseError("zemi.permission.rule: %v", err)

@@ -2,7 +2,9 @@ package hostapi
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +129,24 @@ func TestPermissionRuleValidation(t *testing.T) {
 	}
 	if out := h.Perm.Evaluate("tool.bash", "rm -rf /tmp/x", "model"); out.Decision != perm.Deny {
 		t.Fatalf("rm -rf: %v (%s)", out.Decision, out.Reason)
+	}
+
+	// A reload replays config, so its rules go; an "always" answer and
+	// permissions.lua keep theirs.
+	always := perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
+	h.Perm.Add(always)
+	permanent := perm.Rule{Subject: "fs.read", Pattern: "/p/*", Decision: perm.Deny, Scope: perm.ScopePermanent}
+	h.Dirs.ConfigHome = t.TempDir()
+	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), permDump([]perm.Rule{permanent}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), h.PermissionsLoadStep()}, h.PurgeGeneration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := h.Perm.Rules(); !slices.Equal(got, []perm.Rule{always, permanent}) {
+		t.Fatalf("rules after reload: %+v", got)
 	}
 }
 
