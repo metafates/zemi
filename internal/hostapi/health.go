@@ -122,7 +122,10 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "store", "sessions and memory on disk")
 	}
 
-	switch id := h.currentModelID(nil); {
+	h.agents.mu.Lock()
+	id := h.liveModelID()
+	h.agents.mu.Unlock()
+	switch {
 	case id == "":
 		add("error", "model", "no provider registered; call zemi.provider.register in init.lua")
 	case !h.Providers.HasKey(strings.SplitN(id, "/", 2)[0]):
