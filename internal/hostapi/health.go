@@ -208,7 +208,7 @@ func (h *Host) healthChecks() []healthCheck {
 	if len(servers) > 0 {
 		add("ok", "lsp", strings.Join(servers, ", "))
 	} else {
-		add("ok", "lsp", "none for this project: install gopls, pyright, rust-analyzer, typescript-language-server or clangd, or zemi.lsp.add one")
+		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server or clangd, or zemi.lsp.add one (rust-analyzer only starts that way)")
 	}
 	return append(out, h.luaHealthRows()...)
 }

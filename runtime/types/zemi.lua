@@ -1300,7 +1300,7 @@ function zemi.mcp.list() end
 zemi.lsp = {}
 
 --- Add a language server. User config only; it starts on the first
---- matching file. Adding a builtin's name (gopls, pyright, rust-analyzer,
+--- matching file. Adding a builtin's name (gopls, pyright,
 --- typescript, clangd) replaces it, which is how a builtin gets args, env
 --- or settings. A server that never comes up only means no diagnostics.
 ---@param name string

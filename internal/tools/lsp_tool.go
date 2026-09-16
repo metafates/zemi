@@ -24,7 +24,7 @@ const lspToolDesc = `Ask the file's language server about code, by symbol name i
 - references: every use of it across the project, grouped by file.
 - rename: rename it everywhere with a true semantic rename (imports and other files included); prefer this over editing each occurrence. Returns the changed files.
 - symbols: the file's outline (functions, types, methods with line ranges); cheaper than reading a large file to find its shape.
-symbol is the identifier as written in path; when it appears on several lines, line picks the occurrence (otherwise the first is used). Works when a server is installed for the language (gopls, pyright, rust-analyzer, typescript-language-server, clangd, or one from config).`
+symbol is the identifier as written in path; when it appears on several lines, line picks the occurrence (otherwise the first is used). Works when a server is installed for the language (gopls, pyright, typescript-language-server, clangd, or one from config such as rust-analyzer).`
 
 var lspToolProps = map[string]any{
 	"action":   map[string]any{"type": "string", "enum": []string{"definition", "references", "rename", "symbols"}},

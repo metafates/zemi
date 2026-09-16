@@ -61,7 +61,7 @@ func (s *Store) defineDefaults() {
 		{Path: "session.auto_title", Kind: "bool", Default: true, UserWritable: true, Desc: "name new sessions from their first exchange with a short model call (agent.small_model when set)"},
 		{Path: "agent.context_window", Kind: "int", Default: 0, UserWritable: true, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, UserWritable: true, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
-		{Path: "lsp.auto", Kind: "bool", Default: true, UserWritable: true, Desc: "start installed language servers (gopls, pyright, rust-analyzer, typescript-language-server, clangd) for projects with their marker files"},
+		{Path: "lsp.auto", Kind: "bool", Default: true, UserWritable: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
 		{Path: "editor.command", Kind: "string", Default: "", UserWritable: true, Desc: "editor for open_in_editor, zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: "editor.window", Kind: "string", Default: "auto", UserWritable: true, Desc: "where the editor opens inside tmux: auto or popup (a popup over zemi), split (a pane beside it), fullscreen (zemi hands over the terminal, as outside tmux)"},
 		{Path: "ui.window.unfocus", Kind: "string", Default: "ctrl+\\", UserWritable: true, Desc: "the key that takes typing back from a focused window to zemi"},
