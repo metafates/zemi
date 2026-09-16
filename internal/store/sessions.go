@@ -168,6 +168,63 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 	return tx.Commit()
 }
 
+// ForkSession copies src into a new top-level session id: its messages
+// under new ids, their checkpoints (a rewind in the fork restores files too)
+// and the summary pointer, in one transaction so a failure leaves no
+// half-copied fork.
+func (s *DB) ForkSession(src *Session, id, title string) error {
+	msgs, err := s.Messages(src.ID)
+	if err != nil {
+		return err
+	}
+	type checkpoint struct {
+		mid, path string
+		existed   bool
+		content   []byte
+	}
+	rows, err := s.db.Query(`SELECT message_id, path, existed, content FROM checkpoints WHERE session_id = ?`, src.ID)
+	cps, err := collect(rows, err, func(r scanner) (c checkpoint, err error) {
+		err = r.Scan(&c.mid, &c.path, &c.existed, &c.content)
+		return
+	})
+	if err != nil {
+		return fmt.Errorf("store: fork session: %w", err)
+	}
+	// every row is read before the transaction: one connection serves both
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	t := now()
+	if _, err := tx.Exec(`INSERT INTO sessions (id, title, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		id, title, src.Profile, t, t); err != nil {
+		return fmt.Errorf("store: fork session: %w", err)
+	}
+	ids := make(map[string]string, len(msgs))
+	for _, m := range msgs {
+		copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, CreatedAt: m.CreatedAt}
+		if err := insertMessage(tx, copied); err != nil {
+			return err
+		}
+		ids[m.ID] = copied.ID
+	}
+	for _, c := range cps {
+		if mid, ok := ids[c.mid]; ok {
+			if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, content, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+				mid, id, c.path, c.existed, c.content, t); err != nil {
+				return fmt.Errorf("store: fork session: %w", err)
+			}
+		}
+	}
+	if summary := ids[src.SummaryMessageID]; summary != "" {
+		if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = ? WHERE id = ?`, summary, id); err != nil {
+			return fmt.Errorf("store: fork session: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // Messages returns a session's messages in insertion order: rowid, since a
 // turn persists several messages within one millisecond and ids are random.
 func (s *DB) Messages(sessionID string) ([]*Message, error) {

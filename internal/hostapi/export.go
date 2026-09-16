@@ -105,36 +105,9 @@ func (h *Host) ForkSession() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rows, err := h.DB.Messages(sid)
-	if err != nil {
-		return "", err
-	}
 	id := store.NewID()
-	title := strings.TrimSuffix(sess.Title, " (fork)") + " (fork)"
-	if err := h.DB.CreateSession(id, "", title, sess.Profile); err != nil {
+	if err := h.DB.ForkSession(sess, id, strings.TrimSuffix(sess.Title, " (fork)")+" (fork)"); err != nil {
 		return "", err
-	}
-	summary := ""
-	ids := make(map[string]string, len(rows))
-	for _, r := range rows {
-		copied := &store.Message{SessionID: id, Role: r.Role, PartsJSON: r.PartsJSON, CreatedAt: r.CreatedAt}
-		if err := h.DB.AddMessage(copied); err != nil {
-			return "", err
-		}
-		ids[r.ID] = copied.ID
-		if r.ID == sess.SummaryMessageID {
-			summary = copied.ID
-		}
-	}
-	// without them a rewind in the fork would cut the conversation and
-	// restore no files
-	if err := h.DB.CopyCheckpoints(sid, id, ids); err != nil {
-		return "", err
-	}
-	if summary != "" {
-		if err := h.DB.SetSummary(id, summary); err != nil {
-			return "", err
-		}
 	}
 	return id, h.ResumeSession(id)
 }

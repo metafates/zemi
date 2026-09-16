@@ -27,34 +27,6 @@ func (s *DB) AddCheckpoint(sessionID, messageID, path string, existed bool, cont
 	return nil
 }
 
-// CopyCheckpoints copies a session's checkpoints to another session under
-// the new message ids, so a fork keeps the rewind points of the
-// conversation it copied. Rows whose message was not copied are skipped.
-func (s *DB) CopyCheckpoints(fromSession, toSession string, messageIDs map[string]string) error {
-	type row struct {
-		mid, path string
-		existed   bool
-		content   []byte
-	}
-	rows, err := s.db.Query(`SELECT message_id, path, existed, content FROM checkpoints WHERE session_id = ?`, fromSession)
-	all, err := collect(rows, err, func(r scanner) (c row, err error) {
-		err = r.Scan(&c.mid, &c.path, &c.existed, &c.content)
-		return
-	})
-	if err != nil {
-		return fmt.Errorf("store: copy checkpoints: %w", err)
-	}
-	// every row is read before the first write: one connection serves both
-	for _, c := range all {
-		if mid, ok := messageIDs[c.mid]; ok {
-			if err := s.AddCheckpoint(toSession, mid, c.path, c.existed, c.content); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // CheckpointsFrom returns, for every file changed in the turns from
 // messageID on, its content before the earliest of those turns.
 func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) {

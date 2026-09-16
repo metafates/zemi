@@ -207,6 +207,53 @@ func TestAddCompaction(t *testing.T) {
 	}
 }
 
+func TestForkSession(t *testing.T) {
+	db := openTest(t)
+	if err := db.CreateSession("s1", "", "t", "p"); err != nil {
+		t.Fatal(err)
+	}
+	summary := &Message{Role: "user", PartsJSON: `{"summary":1}`}
+	if err := db.AddCompaction("s1", summary, []*Message{{Role: "tail", PartsJSON: `{}`}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AddCheckpoint("s1", summary.ID, "/f", true, []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	src, _ := db.GetSession("s1")
+
+	// a write failing partway leaves no fork behind
+	if _, err := db.db.Exec(`CREATE TEMP TRIGGER fail BEFORE INSERT ON checkpoints BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ForkSession(src, "bad", "t (fork)"); err == nil {
+		t.Fatal("want the checkpoint error")
+	}
+	if _, err := db.GetSession("bad"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("half-copied fork: %v", err)
+	}
+	if msgs, _ := db.Messages("bad"); len(msgs) != 0 {
+		t.Fatalf("half-copied messages: %+v", msgs)
+	}
+	if _, err := db.db.Exec(`DROP TRIGGER temp.fail`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.ForkSession(src, "s2", "t (fork)"); err != nil {
+		t.Fatal(err)
+	}
+	fork, err := db.GetSession("s2")
+	if err != nil || fork.Title != "t (fork)" || fork.Profile != "p" || fork.ParentID != "" {
+		t.Fatalf("fork = %+v, %v", fork, err)
+	}
+	msgs, _ := db.Messages("s2")
+	if len(msgs) != 2 || msgs[0].ID == summary.ID || fork.SummaryMessageID != msgs[0].ID {
+		t.Fatalf("messages = %+v, summary %q", msgs, fork.SummaryMessageID)
+	}
+	if counts, err := db.CheckpointCounts("s2"); err != nil || counts[msgs[0].ID] != 1 {
+		t.Fatalf("checkpoints = %+v, %v", counts, err)
+	}
+}
+
 func TestTodosReplace(t *testing.T) {
 	db := openTest(t)
 	if err := db.CreateSession("s1", "", "t", ""); err != nil {
