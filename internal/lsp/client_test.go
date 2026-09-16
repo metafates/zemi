@@ -183,3 +183,31 @@ func TestOffsetPos(t *testing.T) {
 		t.Errorf("past the end = %d", got)
 	}
 }
+
+// TestRefreshStaleDocuments: a file changed on disk after the server saw
+// it (a rename's edits to other files, a formatter) is sent again before
+// the next query, so the server never answers from a stale copy.
+func TestRefreshStaleDocuments(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := start(t, ctx, root)
+	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
+	os.WriteFile(a, []byte("ok"), 0o644)
+	os.WriteFile(b, []byte("ok"), 0o644)
+	for _, p := range []string{a, b} {
+		if _, err := c.Touch(ctx, p, "plaintext"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// b changes behind the server's back
+	os.WriteFile(b, []byte("BROKEN"), 0o644)
+	later := time.Now().Add(time.Hour)
+	os.Chtimes(b, later, later)
+	if _, err := c.Touch(ctx, a, "plaintext"); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Others(a); len(got) != 1 {
+		t.Fatalf("b was not re-sent after changing on disk: %+v", got)
+	}
+}

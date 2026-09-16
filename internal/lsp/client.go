@@ -82,6 +82,7 @@ type Client struct {
 	diags   map[string][]Diagnostic // by absolute path
 	pubs    map[string]int          // publish count by path
 	opened  map[string]int          // document version by path
+	docs    map[string]docState     // what was last sent, by path
 	seq     int                     // publishes so far
 	pubSeq  map[string]int          // seq of the last publish by path
 	synced  map[string]int          // seq when the path was last synced
@@ -112,7 +113,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	c := &Client{
 		cmd: cmd, stdin: stdin,
 		pending: map[int64]chan message{}, diags: map[string][]Diagnostic{},
-		pubs: map[string]int{}, opened: map[string]int{}, pubSeq: map[string]int{}, synced: map[string]int{},
+		pubs: map[string]int{}, opened: map[string]int{}, docs: map[string]docState{}, pubSeq: map[string]int{}, synced: map[string]int{},
 		wake: make(chan struct{}), done: make(chan struct{}), settings: cfg.Settings,
 	}
 	go c.read(bufio.NewReader(stdout))
@@ -159,12 +160,9 @@ var ErrNoFresh = errors.New("lsp: no diagnostics for the current text")
 // diagnostics that follow (servers often publish twice, a quick pass then
 // the full check, so a short quiet period ends the wait).
 func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnostic, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+	c.refresh()
 	key := normPath(path)
-	before, err := c.sync(key, fileURI(path), languageID, string(data))
+	before, err := c.syncFile(path, languageID)
 	if err != nil {
 		return nil, err
 	}
@@ -203,12 +201,59 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 // Open syncs path's current content to the server without waiting for
 // diagnostics, so a query that follows sees the text on disk.
 func (c *Client) Open(path, languageID string) error {
+	c.refresh()
+	_, err := c.syncFile(path, languageID)
+	return err
+}
+
+// docState is what the server holds for an open document: the server uses
+// that text, not the disk, so a file changed behind it (a rename's edits to
+// other files, a formatter, git) has to be sent again before it is queried.
+type docState struct {
+	uri, lang string
+	mtime     time.Time
+}
+
+// syncFile sends path's text from disk and records its modification time.
+func (c *Client) syncFile(path, languageID string) (int, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = c.sync(normPath(path), fileURI(path), languageID, string(data))
-	return err
+	key := normPath(path)
+	c.mu.Lock()
+	c.docs[key] = docState{uri: fileURI(path), lang: languageID, mtime: fi.ModTime()}
+	c.mu.Unlock()
+	return c.sync(key, fileURI(path), languageID, string(data))
+}
+
+// refresh re-sends every open document whose file changed since it was
+// last sent; one that disappeared is left as is.
+func (c *Client) refresh() {
+	c.mu.Lock()
+	stale := map[string]docState{}
+	for key, d := range c.docs {
+		if fi, err := os.Stat(key); err == nil && !fi.ModTime().Equal(d.mtime) {
+			stale[key] = d
+		}
+	}
+	c.mu.Unlock()
+	for key, d := range stale {
+		data, err := os.ReadFile(key)
+		if err != nil {
+			continue
+		}
+		fi, _ := os.Stat(key)
+		c.mu.Lock()
+		d.mtime = fi.ModTime()
+		c.docs[key] = d
+		c.mu.Unlock()
+		_, _ = c.sync(key, d.uri, d.lang, string(data))
+	}
 }
 
 // Call sends a request and decodes its result into out (nil to ignore).

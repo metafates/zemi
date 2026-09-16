@@ -49,10 +49,11 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
-	c, server, err := p.LSP(ctx, path)
+	s, err := p.LSP(ctx, path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	c, server := s.Client, s.Server
 	doc := map[string]any{"uri": lsp.DocumentURI(path)}
 	fail := func(err error) (fantasy.ToolResponse, error) {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %s %v", server, action, err)), nil
@@ -153,6 +154,11 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			}
 			total += n
 			fmt.Fprintf(&b, "%s (%d)\n", f, n)
+			// the server must see the new text, or the next query (a rename
+			// back, references) answers from the old one
+			if err := s.Open(f); err != nil {
+				fmt.Fprintf(&b, "  (not re-sent to %s: %v)\n", server, err)
+			}
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("renamed %s to %s in %d file%s, %d place%s:\n%s", symbol, newName, len(byPath), plural(len(byPath)), total, plural(total), strings.TrimRight(b.String(), "\n")) + p.afterWrite(path)), nil
 	}

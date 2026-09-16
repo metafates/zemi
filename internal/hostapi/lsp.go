@@ -25,6 +25,7 @@ import (
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 type lspDef struct {
@@ -297,19 +298,20 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, 
 }
 
 // lspOpen backs the lsp tool: the server for path with the file synced.
-func (h *Host) lspOpen(ctx context.Context, path string) (*lsp.Client, string, error) {
+func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, error) {
 	def, ok := h.lspFor(path)
 	if !ok {
-		return nil, "", fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
+		return tools.LSPSession{}, fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
 	}
 	p, err := h.lspClient(ctx, def)
 	if err != nil {
-		return nil, "", err
+		return tools.LSPSession{}, err
 	}
-	if err := p.client.Open(path, languageID(path)); err != nil {
-		return nil, "", err
+	open := func(path string) error { return p.client.Open(path, languageID(path)) }
+	if err := open(path); err != nil {
+		return tools.LSPSession{}, err
 	}
-	return p.client, def.Name, nil
+	return tools.LSPSession{Client: p.client, Server: def.Name, Open: open}, nil
 }
 
 // lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for

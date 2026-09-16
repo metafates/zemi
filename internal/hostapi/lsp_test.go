@@ -102,6 +102,14 @@ func TestLSPTool(t *testing.T) {
 	if got, _ := os.ReadFile(b); string(got) != "x := Baz()\n" {
 		t.Fatalf("b.txt after rename: %q", got)
 	}
+	// renaming straight back must see the files the first rename rewrote,
+	// not the text the server was sent before it
+	if got := run(fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Baz","new_name":"Foo"}`, b)); !strings.Contains(got, "renamed Baz to Foo in 2 files, 3 places") {
+		t.Fatalf("reverse rename = %q", got)
+	}
+	if got, _ := os.ReadFile(a); string(got) != "func Foo()\nFoo()\nfunc Bar()\n" {
+		t.Fatalf("a.txt after the reverse rename: %q", got)
+	}
 }
 
 // TestLSPConfig: user config replaces a builtin by name with its own args

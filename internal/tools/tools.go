@@ -109,8 +109,8 @@ type Pipeline struct {
 	Diagnostics func(path string) (string, error)
 
 	// LSP returns the language server covering path, with the file synced
-	// to it, and the server's name; nil = no lsp tool support.
-	LSP func(ctx context.Context, path string) (*lsp.Client, string, error)
+	// to it; nil = no lsp tool support.
+	LSP func(ctx context.Context, path string) (LSPSession, error)
 
 	// Denied reports a call the gate refused (the tool.denied event); nil
 	// = silent.
@@ -127,6 +127,15 @@ type Pipeline struct {
 	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
 	// decisions ask instead (never skips the gate, §6.4).
 	RewriteLoosened bool
+}
+
+// LSPSession is a language server ready for one file's queries.
+type LSPSession struct {
+	Client *lsp.Client
+	Server string
+	// Open sends a file's text from disk to the server, so edits the tool
+	// made to other files are seen before the next query.
+	Open func(path string) error
 }
 
 // Check decides one request; for tool.bash the store normalizes the
