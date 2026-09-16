@@ -37,9 +37,12 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 
 // sandboxPolicy is what a settled command may touch: the scratchpad, the
 // temp dir, a Go build cache of its own and, when trusted and not in plan
-// mode, the project; never .git, .zemi or zemi's own dirs. The project is
+// mode, the project; never .git, .zemi or zemi's own dirs, and zemi's dirs
+// are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
-// never when it is $HOME or above or holds one of zemi's dirs.
+// never when it is $HOME or above, holds one of zemi's dirs or sits in one,
+// or its .git or .zemi is a symlink: the backend protects the resolved
+// target, so the link itself could be replaced.
 // NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
 // it cannot cache, and the user's cache written from here could poison a
 // later unconfined build. Other tools' caches stay read-only.
@@ -51,10 +54,32 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	if s := h.sandbox.Load(); s != nil {
 		backend = s.backend
 	}
-	holdsZemi := slices.ContainsFunc([]string{d.ConfigHome, d.DataHome, d.StateHome}, func(z string) bool {
-		return z != "" && h.inJail(z, d.ProjectDir)
-	})
-	if h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !holdsZemi {
+	zemiDirs := slices.DeleteFunc([]string{d.ConfigHome, d.DataHome, d.StateHome}, func(z string) bool { return z == "" })
+	linked := false
+	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
+		if root == "" {
+			continue
+		}
+		git := filepath.Join(root, ".git")
+		for _, pr := range []string{git, filepath.Join(root, ".zemi")} {
+			p.Protect = append(p.Protect, pr)
+			if fi, err := os.Lstat(pr); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				linked = true
+			}
+		}
+		// a .git file points at the real git dir, which may sit in the project
+		if b, err := os.ReadFile(git); err == nil {
+			if dir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:"); ok {
+				dir = strings.TrimSpace(dir)
+				if !filepath.IsAbs(dir) {
+					dir = filepath.Join(root, dir)
+				}
+				p.Protect = append(p.Protect, dir)
+			}
+		}
+	}
+	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...)
+	if h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested && !linked {
 		p.Write = append(p.Write, d.ProjectDir)
 	}
 	if s := h.ScratchDir(); s != "" {
@@ -69,26 +94,11 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 			p.Env = map[string]string{"GOCACHE": cache}
 		}
 	}
-	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
-		if root == "" {
-			continue
-		}
-		git := filepath.Join(root, ".git")
-		p.Protect = append(p.Protect, git, filepath.Join(root, ".zemi"))
-		// a .git file points at the real git dir, which may sit in the project
-		if b, err := os.ReadFile(git); err == nil {
-			if dir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:"); ok {
-				dir = strings.TrimSpace(dir)
-				if !filepath.IsAbs(dir) {
-					dir = filepath.Join(root, dir)
-				}
-				p.Protect = append(p.Protect, dir)
-			}
-		}
-	}
-	for _, dir := range []string{d.ConfigHome, d.DataHome, d.StateHome} {
-		if dir != "" {
-			p.Protect = append(p.Protect, dir)
+	p.Protect = append(p.Protect, zemiDirs...)
+	for _, z := range zemiDirs {
+		// a project inside a zemi dir stays readable, as it is to the read tool
+		if d.ProjectDir == "" || !h.inJail(d.ProjectDir, z) {
+			p.Hide = append(p.Hide, z)
 		}
 	}
 	if home != "" {

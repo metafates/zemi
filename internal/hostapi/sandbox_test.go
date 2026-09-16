@@ -128,34 +128,57 @@ func TestSandboxedBash(t *testing.T) {
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
 // plan mode, with a backend that keeps .git and .zemi read-only inside it,
-// and when it holds none of zemi's dirs; builds get a Go cache of their own.
+// when it neither holds nor sits in one of zemi's dirs and its .git is not a
+// symlink; zemi's dirs are hidden unless they hold the project, and builds
+// get a Go cache of their own.
 func TestSandboxPolicy(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
+	h.Dirs.ConfigHome = t.TempDir()
 	project := h.Dirs.ProjectDir
 	for _, c := range []struct {
 		name                   string
 		trusted, plan, protect bool
 		configInProject        bool
+		projectInConfig        bool
+		gitLink                bool
 		want                   bool
 	}{
-		{"trusted", true, false, true, false, true},
-		{"untrusted", false, false, true, false, false},
-		{"plan", true, true, true, false, false},
-		{"backend without protect", true, false, false, false, false},
-		{"config home inside", true, false, true, true, false},
+		{"trusted", true, false, true, false, false, false, true},
+		{"untrusted", false, false, true, false, false, false, false},
+		{"plan", true, true, true, false, false, false, false},
+		{"backend without protect", true, false, false, false, false, false, false},
+		{"config home inside", true, false, true, true, false, false, false},
+		{"inside config home", true, false, true, false, true, false, false},
+		{".git is a symlink", true, false, true, false, false, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h.SetProjectTrusted(c.trusted)
 			h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: c.protect}})
-			config := h.Dirs.ConfigHome
+			dirs := h.Dirs
+			defer func() { h.Dirs = dirs }()
 			if c.configInProject {
 				h.Dirs.ConfigHome = filepath.Join(project, ".config", "zemi")
-				defer func() { h.Dirs.ConfigHome = config }()
+			}
+			if c.projectInConfig {
+				h.Dirs.ProjectDir = filepath.Join(h.Dirs.ConfigHome, "lua")
+				if err := os.MkdirAll(h.Dirs.ProjectDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.gitLink {
+				git := filepath.Join(project, ".git")
+				if err := os.Symlink(t.TempDir(), git); err != nil {
+					t.Fatal(err)
+				}
+				defer os.Remove(git)
 			}
 			p := h.sandboxPolicy(c.plan)
-			if got := slices.Contains(p.Write, project); got != c.want {
+			if got := slices.Contains(p.Write, h.Dirs.ProjectDir); got != c.want {
 				t.Errorf("project writable %v, want %v: %v", got, c.want, p.Write)
+			}
+			if !slices.Contains(p.Hide, h.Dirs.StateHome) || slices.Contains(p.Hide, h.Dirs.ConfigHome) == c.projectInConfig {
+				t.Errorf("hide %v", p.Hide)
 			}
 			cache := p.Env["GOCACHE"]
 			if st, err := os.Stat(cache); err != nil || !st.IsDir() || !slices.Contains(p.Write, cache) || !strings.HasPrefix(cache, h.Dirs.StateHome) {
