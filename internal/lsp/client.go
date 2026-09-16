@@ -780,7 +780,9 @@ func ReadMessage(r *bufio.Reader) ([]byte, error) {
 			break
 		}
 		if v, ok := strings.CutPrefix(line, "Content-Length:"); ok {
-			n, _ = strconv.Atoi(strings.TrimSpace(v))
+			if n, err = strconv.Atoi(strings.TrimSpace(v)); err != nil {
+				n = -1
+			}
 		}
 	}
 	if n < 0 || n > 64<<20 {

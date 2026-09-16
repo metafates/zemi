@@ -37,12 +37,14 @@ func start(t *testing.T, ctx context.Context, root string) *lsp.Client {
 // TestBadFrameEndsServer: a frame the client refuses ends the connection
 // at once, though the server itself keeps running.
 func TestBadFrameEndsServer(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	began := time.Now()
-	_, err := lsp.Start(ctx, lsp.Config{Command: "sh", Args: []string{"-c", `printf 'Content-Length: 999999999999\r\n\r\n'; sleep 30`}, Root: t.TempDir()})
-	if err == nil || time.Since(began) > 5*time.Second {
-		t.Fatalf("start = %v after %s", err, time.Since(began))
+	for _, length := range []string{"999999999999", "12abc"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		began := time.Now()
+		_, err := lsp.Start(ctx, lsp.Config{Command: "sh", Args: []string{"-c", `printf 'Content-Length: ` + length + `\r\n\r\n'; sleep 30`}, Root: t.TempDir()})
+		if err == nil || time.Since(began) > 5*time.Second {
+			t.Fatalf("length %s: start = %v after %s", length, err, time.Since(began))
+		}
 	}
 }
 
