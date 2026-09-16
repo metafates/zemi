@@ -574,8 +574,9 @@ func (s *Sandbox) CompileChunk(src, chunkname string) (*glua.LFunction, error) {
 // the loading chunk's environment, with the chunkname re-tagged to the
 // caller's origin, so tracebacks of generated code redact correctly and a
 // generated chunk never receives the interpreter's global table (DESIGN §5).
-// With no Lua caller (Go-side use) the chunk gets the frozen surface:
-// reads work, writes raise.
+// With no Lua caller the chunk gets a fresh chunk env: the frozen surface
+// itself would let its existing keys be overwritten, as gopher-lua skips
+// __newindex for them.
 func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 	L := s.L
 	return L.NewFunction(func(L *glua.LState) int {
@@ -628,6 +629,9 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 			L.Push(glua.LString(err.Error()))
 			return 2
 		}
+		if callerEnv == nil {
+			callerEnv = s.NewChunkEnv()
+		}
 		fn.Env = callerEnv
 		L.Push(fn)
 		return 1
@@ -636,19 +640,19 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 
 // callerChunk returns the environment and origin of the Lua chunk that
 // called the Go function running on thread L (a coroutine's own stack, not
-// the resumer's). Go-side callers yield the frozen surface and no origin.
+// the resumer's). A Go caller, or none, yields a nil env and no origin.
 func (s *Sandbox) callerChunk(L *glua.LState) (*glua.LTable, Origin) {
 	dbg, ok := L.GetStack(1)
 	if !ok {
-		return s.frozen, ""
+		return nil, ""
 	}
 	v, err := L.GetInfo("f", dbg, glua.LNil)
 	if err != nil {
-		return s.frozen, ""
+		return nil, ""
 	}
 	caller, ok := v.(*glua.LFunction)
-	if !ok || caller.IsG || caller.Env == nil {
-		return s.frozen, ""
+	if !ok || caller.IsG || caller.Env == s.frozen {
+		return nil, ""
 	}
 	origin, _ := splitChunkName(caller.Proto.SourceName)
 	return caller.Env, origin

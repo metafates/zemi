@@ -301,6 +301,23 @@ func TestSandboxLoadInheritsChunkEnv(t *testing.T) {
 	`)
 }
 
+// TestSandboxLoadWithoutLuaCaller: a chunk loaded with no Lua function
+// directly above load (called through pcall, or as a coroutine body) gets a
+// fresh env; the frozen surface itself as env would let its existing keys
+// be overwritten for every chunk, since gopher-lua skips __newindex there.
+func TestSandboxLoadWithoutLuaCaller(t *testing.T) {
+	sb := newTestSandbox(t)
+	mustRun(t, sb, `
+		local _, f = pcall(loadstring, "string = {}")
+		assert(not pcall(f), "a pcall-loaded chunk assigned a protected global")
+		local g = coroutine.wrap(loadstring)("pcall = nil")
+		assert(not pcall(g), "a coroutine-loaded chunk assigned a protected global")
+		local _, h = pcall(loadstring, "Mine = 1; return Mine")
+		assert(h() == 1, "ordinary globals in a pcall-loaded chunk")
+	`)
+	mustRun(t, sb, `assert(type(string.upper) == "function" and type(pcall) == "function", "frozen surface overwritten")`)
+}
+
 // TestSandboxLoadInCoroutine: load inside a coroutine binds the env of the
 // function calling it there, not of whoever resumed the coroutine.
 func TestSandboxLoadInCoroutine(t *testing.T) {
