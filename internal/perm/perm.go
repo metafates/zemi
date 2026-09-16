@@ -127,8 +127,8 @@ func subjectMatches(rule, subject string) bool {
 // Evaluate decides one operation argument against one subject's rules.
 // Ordering: deny > ask > allow; within a decision, most specific pattern
 // (fewest wildcards, then longest literal prefix) wins. An argument that
-// matches a rule's pattern but also its NotMatch is skipped (and the
-// fall-through is reported in the reason).
+// matches a rule's pattern but also its NotMatch is skipped, and when no
+// other rule matches it forces ask, ahead of Default.
 func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 	type cand struct {
 		rule  Rule

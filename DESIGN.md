@@ -495,7 +495,7 @@ zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
 There are no editor modes, so a binding is just a key: the composer is
-always focused and slash commands replace the old cmdline. Key notation
+always focused and commands are slash commands typed in it. Key notation
 matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
 lowercased); a string action in `zemi.keymap.set` resolves to a registered
 command name or a dotted
@@ -977,7 +977,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
-  Slash commands replace the old cmdline: `/quit`, `/help`, `/model`,
+  Commands are slash commands: `/quit`, `/help`, `/model`,
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter resumes), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
