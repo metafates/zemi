@@ -105,16 +105,28 @@ func inDir(dir, a string) string {
 // directory when it has no operand after the pattern.
 func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	name, rest := filepath.Base(f[0]), f[1:]
+	// a pattern glued to -e or -f (-eKEY, --regexp=KEY) is not an operand,
+	// so the first operand is already searched; -ie bundles only refuse more
+	first := 1
+	if name != "ag" && slices.ContainsFunc(rest, func(a string) bool {
+		if strings.HasPrefix(a, "--") {
+			return strings.Contains(a, "=") && hasFlag([]string{a}, "--regexp", "--file")
+		}
+		i := strings.IndexAny(a, "ef")
+		return strings.HasPrefix(a, "-") && i > 0 && i < len(a)-1
+	}) {
+		first = 0
+	}
 	switch {
 	// globs, and a whitelist in an --ignore-file, override rg's ignore
 	// rules, so they walk everything too
 	case name == "rg" && !hasFlag(rest, "-u", "-.", "--unrestricted", "--hidden", "--no-ignore", "--no-ignore-dot",
 		"--no-ignore-exclude", "--no-ignore-files", "--no-ignore-global", "--no-ignore-parent", "--no-ignore-vcs",
 		"-g", "--glob", "--iglob", "--ignore-file"):
-		return walkFrom(1, ArgSearch), true
+		return walkFrom(first, ArgSearch), true
 	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
 		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
-		return walkFrom(1, ArgWalk), true
+		return walkFrom(first, ArgWalk), true
 	case name == "diff":
 		return walkFrom(0, ArgWalk), false
 	case name == "cd", !readOnlyPrograms[name] && name != "sed" && name != "awk" && name != "uniq":
@@ -488,6 +500,8 @@ func safeSegment(a []string) bool {
 		return slices.Contains([]string{"", "run", "linters", "formatters", "config", "version", "help"}, sub)
 	case name == "jq":
 		return !jqUnsafe.MatchString(strings.Join(rest, " "))
+	case name == "jest": // --config, --transform and --haste take inline JSON naming modules to run
+		return !slices.ContainsFunc(rest, func(a string) bool { return strings.Contains(a, "{") })
 	case readOnlyPrograms[name], projectTools[name]:
 		return true
 	case name == "ruff": // format and check --fix rewrite files; after -- a flag is a path
@@ -616,7 +630,9 @@ func safeGit(args []string) bool {
 		})
 	case "remote": // -v may come before add or remove
 		rest = slices.DeleteFunc(rest, func(a string) bool { return a == "-v" || a == "--verbose" })
-		return len(rest) == 0 || rest[0] == "show" || rest[0] == "get-url"
+		// show queries the remote, which may be a model-chosen host:path, unless -n
+		return len(rest) == 0 || rest[0] == "get-url" ||
+			rest[0] == "show" && slices.Contains(rest, "-n") && !slices.Contains(rest, "--")
 	case "stash", "worktree":
 		return next == "list" || (sub == "stash" && next == "show")
 	case "reflog":
