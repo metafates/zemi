@@ -297,6 +297,22 @@ func TestGlobAndGrep(t *testing.T) {
 	}
 }
 
+// TestGlobChecksOnlyShownHits: every check resolves symlinks, so a broad
+// glob checks the hits it shows, not every file it scanned.
+func TestGlobChecksOnlyShownHits(t *testing.T) {
+	p, _ := testPipeline(t, true)
+	checks := 0
+	p.Store.Default = func(string, string) perm.Decision { checks++; return perm.Ask }
+	dir := t.TempDir()
+	for i := range 1000 {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), nil, 0o644)
+	}
+	resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`)
+	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
+		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
+	}
+}
+
 // TestEditSafety: write tools refuse files the model has not seen as they
 // are, keep CRLF endings, move a whitespace-tolerant replacement to the
 // file's indentation, and point a failed match at where it diverges.

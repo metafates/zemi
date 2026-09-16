@@ -194,9 +194,11 @@ func foldCase(p string) string {
 // directory before the first wildcard is canonicalized, the rest only case
 // folded. A pattern that starts with a wildcard ("*/.env") stays as is.
 func canonPattern(pat string) string {
+	// a loop resolves to "", which would turn /loop/* into /*
+	canon := func(p string) string { return cmp.Or(CanonPath(p), foldCase(p)) }
 	i := strings.IndexAny(pat, "*?")
 	if i < 0 {
-		return CanonPath(pat)
+		return canon(pat)
 	}
 	sep := string(filepath.Separator)
 	cut := strings.LastIndex(pat[:i], sep)
@@ -204,9 +206,9 @@ func canonPattern(pat string) string {
 	case i == 0 || cut == 0:
 		return foldCase(pat)
 	case cut < 0:
-		return CanonPath(".") + sep + foldCase(pat)
+		return canon(".") + sep + foldCase(pat)
 	}
-	return CanonPath(pat[:cut]) + foldCase(pat[cut:])
+	return canon(pat[:cut]) + foldCase(pat[cut:])
 }
 
 // Evaluate decides one operation argument against one subject's rules.
@@ -215,69 +217,88 @@ func canonPattern(pat string) string {
 // matches a rule's pattern but also its NotMatch is skipped, and when no
 // other rule matches it forces ask, ahead of Default.
 func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
-	type cand struct {
-		rule  Rule
-		score int
+	return s.Evaluator(subject, principal)(arg)
+}
+
+// Evaluator is Evaluate for many arguments: the rules are read and their
+// patterns canonicalized once, which resolves symlinks, instead of per call.
+func (s *Store) Evaluator(subject, principal string) func(arg string) Outcome {
+	type prepared struct {
+		Rule
+		pattern, notMatch string
 	}
-	var (
-		byDecision = map[Decision][]cand{}
-		fellThru   []string
-	)
 	// DESIGN §9: .. resolves before matching (CanonPath), so dir/* cannot
 	// cover dir/../x
 	isPath := strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")
-	match, canon := arg, func(p string) string { return p }
-	if isPath {
-		// every spelling of one file (relative, ./, //, a symlink, another
-		// case) must meet the same rules, so both sides match canonical
-		match, canon = CanonPath(arg), canonPattern
-	}
 	s.mu.Lock()
-	rules := make([]Rule, len(s.rules))
-	copy(rules, s.rules)
+	var rules []prepared
+	for _, r := range s.rules {
+		if subjectMatches(r.Subject, subject) && (r.Principal == "" || principal == "" || r.Principal == principal) {
+			rules = append(rules, prepared{Rule: r, pattern: r.Pattern, notMatch: r.NotMatch})
+		}
+	}
 	s.mu.Unlock()
-	for _, r := range rules {
-		if !subjectMatches(r.Subject, subject) {
-			continue
-		}
-		if r.Principal != "" && principal != "" && r.Principal != principal {
-			continue
-		}
-		if !globMatch(canon(r.Pattern), match) {
-			continue
-		}
-		// globs span newlines so deny and ask rules hold, but an allow for
-		// one line must not cover a second line the user never saw
-		if r.Decision == Allow && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
-			continue
-		}
-		if r.NotMatch != "" && globMatch(canon(r.NotMatch), match) {
-			fellThru = append(fellThru, r.Pattern)
-			continue
-		}
-		byDecision[r.Decision] = append(byDecision[r.Decision], cand{r, specificity(r.Pattern)})
-	}
-	for _, d := range []Decision{Deny, Ask, Allow} {
-		list := byDecision[d]
-		if len(list) == 0 {
-			continue
-		}
-		slices.SortFunc(list, func(a, b cand) int {
-			return cmp.Or(
-				cmp.Compare(a.score, b.score), // fewer wildcards first
-				cmp.Compare(literalPrefix(b.rule.Pattern), literalPrefix(a.rule.Pattern)),
-			)
-		})
-		r := list[0].rule
-		return Outcome{Decision: d, Rule: &r}
-	}
-	if len(fellThru) > 0 {
-		return Outcome{Decision: Ask, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
-	}
-	if s.Default != nil {
-		if d := s.Default(subject, arg); d != Ask {
-			return Outcome{Decision: d, Reason: "default"}
+	// every spelling of one file (relative, ./, //, a symlink, another
+	// case) must meet the same rules, so both sides match canonical
+	for i, r := range rules {
+		if isPath {
+			rules[i].pattern = canonPattern(r.Pattern)
+			if r.NotMatch != "" {
+				rules[i].notMatch = canonPattern(r.NotMatch)
+			}
 		}
 	}
-	return Outcome{Decision: Ask, Reason: "no rule matched"}
+	return func(arg string) Outcome {
+		type cand struct {
+			rule  Rule
+			score int
+		}
+		var (
+			byDecision = map[Decision][]cand{}
+			fellThru   []string
+		)
+		match := arg
+		if isPath {
+			match = CanonPath(arg)
+		}
+		for _, pr := range rules {
+			r := pr.Rule
+			if !globMatch(pr.pattern, match) {
+				continue
+			}
+			// globs span newlines so deny and ask rules hold, but an allow for
+			// one line must not cover a second line the user never saw
+			if r.Decision == Allow && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
+				continue
+			}
+			if r.NotMatch != "" && globMatch(pr.notMatch, match) {
+				fellThru = append(fellThru, r.Pattern)
+				continue
+			}
+			byDecision[r.Decision] = append(byDecision[r.Decision], cand{r, specificity(r.Pattern)})
+		}
+		for _, d := range []Decision{Deny, Ask, Allow} {
+			list := byDecision[d]
+			if len(list) == 0 {
+				continue
+			}
+			slices.SortFunc(list, func(a, b cand) int {
+				return cmp.Or(
+					cmp.Compare(a.score, b.score), // fewer wildcards first
+					cmp.Compare(literalPrefix(b.rule.Pattern), literalPrefix(a.rule.Pattern)),
+				)
+			})
+			r := list[0].rule
+			return Outcome{Decision: d, Rule: &r}
+		}
+		if len(fellThru) > 0 {
+			return Outcome{Decision: Ask, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
+		}
+		if s.Default != nil {
+			if d := s.Default(subject, arg); d != Ask {
+				return Outcome{Decision: d, Reason: "default"}
+			}
+		}
+		return Outcome{Decision: Ask, Reason: "no rule matched"}
+	}
 }

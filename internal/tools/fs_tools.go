@@ -495,15 +495,22 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			mod[rels[i]] = fi.ModTime()
 		}
 	}
-	rels = slices.DeleteFunc(rels, p.ruledOut)
-	if len(rels) == 0 {
+	slices.SortStableFunc(rels, func(a, b string) int { return mod[b].Compare(mod[a]) })
+	// a check resolves symlinks, so only as many hits are checked as are shown
+	ruledOut, shown := p.ruledOut(), rels[:0]
+	for i, rel := range rels {
+		if len(shown) == globMaxFiles {
+			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
+			break
+		}
+		if !ruledOut(rel) {
+			shown = append(shown, rel)
+		}
+	}
+	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(no matches)"), nil
 	}
-	slices.SortStableFunc(rels, func(a, b string) int { return mod[b].Compare(mod[a]) })
-	if len(rels) > globMaxFiles {
-		rels = append(rels[:globMaxFiles], fmt.Sprintf("... (%d more; narrow the pattern or path)", len(rels)-globMaxFiles))
-	}
-	return fantasy.NewTextResponse(strings.Join(rels, "\n")), nil
+	return fantasy.NewTextResponse(strings.Join(shown, "\n")), nil
 }
 
 // runGrep searches file contents under root, optionally only in files
@@ -515,12 +522,12 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil
 	}
 	var hits []string
-	hidden := map[string]bool{}
+	hidden, ruledOut := map[string]bool{}, p.ruledOut()
 	add := func(rel string, line int, text string) bool {
 		path := filepath.Join(root, rel)
 		h, ok := hidden[rel]
 		if !ok {
-			h = perm.PathIsSecret(rel) || p.ruledOut(path)
+			h = perm.PathIsSecret(rel) || ruledOut(path)
 			hidden[rel] = h
 		}
 		if !h {
@@ -577,12 +584,15 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 
 // ruledOut reports whether a deny or ask rule covers reading path: glob
 // and grep are gated on their root only, so each hit meets the read rules.
-func (p *Pipeline) ruledOut(path string) bool {
+func (p *Pipeline) ruledOut() func(path string) bool {
 	if p == nil || p.Store == nil {
-		return false
+		return func(string) bool { return false }
 	}
-	o := p.Store.Evaluate("fs.read", path, p.Principal)
-	return o.Rule != nil && o.Decision != perm.Allow
+	eval := p.Store.Evaluator("fs.read", p.Principal)
+	return func(path string) bool {
+		o := eval(path)
+		return o.Rule != nil && o.Decision != perm.Allow
+	}
 }
 
 // rgBin is ripgrep when installed: it honors .gitignore and is much faster

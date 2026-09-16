@@ -331,4 +331,8 @@ func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 			t.Errorf("RealPath(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
+	s := store(t, Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "loop1", "*"), Decision: Allow})
+	if o := s.Evaluate("fs.read", "/etc/hosts", ""); o.Decision == Allow {
+		t.Error("a rule under a symlink loop allowed a path outside it")
+	}
 }
