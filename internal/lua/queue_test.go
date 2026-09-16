@@ -3,6 +3,7 @@ package lua
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -60,9 +61,7 @@ func TestQueuePriorityOrder(t *testing.T) {
 
 	started := make(chan struct{})
 	sleepDo := func(L *glua.LState) ([]any, error) {
-		mu.Lock()
-		order = append(order, "io:sleep")
-		mu.Unlock()
+		_, _ = record("io:sleep")(L)
 		close(started)
 		time.Sleep(150 * time.Millisecond)
 		return nil, nil
@@ -91,14 +90,8 @@ func TestQueuePriorityOrder(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	want := []string{"io:sleep", "ui", "agent", "io"}
-	if len(order) != len(want) {
+	if want := []string{"io:sleep", "ui", "agent", "io"}; !slices.Equal(order, want) {
 		t.Fatalf("execution order %v, want %v", order, want)
-	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Fatalf("execution order %v, want %v", order, want)
-		}
 	}
 }
 

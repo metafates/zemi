@@ -262,8 +262,7 @@ func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, a
 		for _, a := range args {
 			L.Push(FromGo(L, a))
 		}
-		n := len(args)
-		if err := L.PCall(n, glua.MultRet, nil); err != nil {
+		if err := L.PCall(len(args), glua.MultRet, nil); err != nil {
 			L.SetTop(base)
 			return nil, err
 		}
@@ -319,11 +318,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		// for this chunk alone; wrapping the env in a plain __index
 		// metatable instead would drop that guard.
 		fn.Env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
-			parts := make([]string, L.GetTop())
-			for i := range parts {
-				parts[i] = L.ToStringMeta(L.Get(i + 1)).String()
-			}
-			out(strings.Join(parts, "\t"))
+			out(joinArgs(L, "\t"))
 			return 0
 		}))
 		defer r.PushFrame(origin, rel)()
@@ -427,18 +422,13 @@ func (r *Runtime) loadModule(gen *Generation, key, name string, read func() ([]b
 }
 
 func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
-	if r.rfs == nil {
-		return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
-	}
-	rel := strings.ReplaceAll(name, ".", "/") + ".lua"
-	data, err := fs.ReadFile(r.rfs, "lua/"+rel)
-	if err == nil {
-		return data, rel, nil
-	}
-	relInit := strings.ReplaceAll(name, ".", "/") + "/init.lua"
-	data, err = fs.ReadFile(r.rfs, "lua/"+relInit)
-	if err == nil {
-		return data, relInit, nil
+	if r.rfs != nil {
+		base := strings.ReplaceAll(name, ".", "/")
+		for _, rel := range []string{base + ".lua", base + "/init.lua"} {
+			if data, err := fs.ReadFile(r.rfs, "lua/"+rel); err == nil {
+				return data, rel, nil
+			}
+		}
 	}
 	return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
 }
@@ -489,7 +479,7 @@ func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error
 // function defined in a module still resolves "./x" next to that module
 // when it runs later as a callback. Falls back to the running frame.
 func (r *Runtime) callerFile(L *glua.LState) string {
-	for level := 0; level <= 1; level++ {
+	for level := range 2 {
 		dbg, ok := L.GetStack(level)
 		if !ok {
 			break

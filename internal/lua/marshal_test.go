@@ -172,34 +172,18 @@ func TestFromGoScalars(t *testing.T) {
 		{float32(2.5), glua.LNumber(float64(float32(2.5)))},
 		{1.25, glua.LNumber(1.25)},
 		{errors.New("boom"), glua.LString("boom")},
+		{stringerValue{}, glua.LString("stringer!")},
 	}
 	for _, c := range cases {
 		if got := FromGo(L, c.in); got != c.want {
 			t.Errorf("FromGo(%v) = %v, want %v", c.in, got, c.want)
 		}
 	}
-
-	// fmt.Stringer takes the String() path.
-	st := FromGo(L, stringerValue{})
-	if s, ok := st.(glua.LString); !ok || s != "stringer!" {
-		t.Fatalf("Stringer = %v, want \"stringer!\"", st)
-	}
-
-	// Concrete error type beats Stringer ordering check: error interface
-	// matches first in the type switch.
-	cerr := FromGo(L, customErr{})
-	if s, ok := cerr.(glua.LString); !ok || s != "custom error" {
-		t.Fatalf("error = %v, want \"custom error\"", cerr)
-	}
 }
 
 type stringerValue struct{}
 
 func (stringerValue) String() string { return "stringer!" }
-
-type customErr struct{}
-
-func (customErr) Error() string { return "custom error" }
 
 func TestFromGoContainers(t *testing.T) {
 	L := newTestSandbox(t).L
@@ -291,13 +275,7 @@ func assertFromGoRaises(t *testing.T, L *glua.LState, v any, want string) {
 	defer func() {
 		r := recover()
 		if r == nil {
-			t.Fatalf("FromGo(%v) did not raise; want %q", want, want)
-		}
-		if err, ok := r.(error); ok {
-			if !strings.Contains(err.Error(), want) {
-				t.Fatalf("FromGo raised %q, want containing %q", err.Error(), want)
-			}
-			return
+			t.Fatalf("FromGo(%T) did not raise; want %q", v, want)
 		}
 		if s := fmt.Sprint(r); !strings.Contains(s, want) {
 			t.Fatalf("FromGo raised %q, want containing %q", s, want)

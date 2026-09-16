@@ -81,7 +81,8 @@ func TestSandboxStrippedSurface(t *testing.T) {
 func TestSandboxFrozenTables(t *testing.T) {
 	sb := newTestSandbox(t)
 	want := "cannot modify frozen"
-	// Writes into shared stdlib tables raise.
+	// Writes into shared stdlib tables raise, also over an existing key
+	// (gopher-lua's fast path skips __newindex there).
 	wantRaise(t, sb, `string.format = "x"`, want)
 	wantRaise(t, sb, `table.insert = nil`, want)
 	wantRaise(t, sb, `math.pi = 3`, want)
@@ -95,9 +96,6 @@ func TestSandboxFrozenTables(t *testing.T) {
 		assert(getmetatable("") == "zemi:protected",
 			"string metatable not locked")
 	`)
-	// Existing members are protected too: the write guard must survive
-	// gopher-lua's existing-key fast path (no raw set through __newindex).
-	wantRaise(t, sb, `string.format = "x"`, want)
 	wantRaise(t, sb, `getmetatable("").format = function() end`,
 		"attempt to index a non-table")
 }

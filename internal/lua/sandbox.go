@@ -160,9 +160,7 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 			L.Push(glua.LNumber(time.Date(year, time.Month(mon), day, hh, mm, sec, 0, time.Local).Unix()))
 			return 1
 		},
-		"date": func(L *glua.LState) int {
-			return luaDate(L)
-		},
+		"date": luaDate,
 	})
 	return osTab
 }
@@ -178,14 +176,11 @@ func tableInt(tb *glua.LTable, name string, def int) int {
 // individual specifiers, with optional Unix time argument.
 func luaDate(L *glua.LState) int {
 	format := L.OptString(1, "%c")
-	var t time.Time
-	if L.GetTop() >= 2 && L.Get(2) != glua.LNil {
+	t := time.Now()
+	if L.Get(2) != glua.LNil {
 		t = time.Unix(L.CheckInt64(2), 0)
-	} else {
-		t = time.Now()
 	}
-	utc := strings.HasPrefix(format, "!")
-	format = strings.TrimPrefix(format, "!")
+	format, utc := strings.CutPrefix(format, "!")
 	if utc {
 		t = t.UTC()
 	}
@@ -248,27 +243,25 @@ func luaDate(L *glua.LState) int {
 // SetPrint installs the host-routed print: output goes to the log sink
 // with the currently running origin (DESIGN §5).
 func (s *Sandbox) SetPrint(fn func(origin, line string)) {
-	L := s.L
-	var b strings.Builder
-	printFn := L.NewFunction(func(L *glua.LState) int {
-		n := L.GetTop()
-		sep := " "
-		b.Reset()
-		for i := 1; i <= n; i++ {
-			if i > 1 {
-				b.WriteString(sep)
-			}
-			b.WriteString(L.ToStringMeta(L.Get(i)).String())
-		}
+	printFn := s.L.NewFunction(func(L *glua.LState) int {
 		origin := OriginHost
 		if s.originOf != nil {
 			origin = s.originOf()
 		}
-		fn(string(origin), b.String())
+		fn(string(origin), joinArgs(L, " "))
 		return 0
 	})
 	s.frozen.RawSetString("print", printFn)
 	s.protected["print"] = struct{}{}
+}
+
+// joinArgs renders the call's arguments with tostring, the way print does.
+func joinArgs(L *glua.LState, sep string) string {
+	parts := make([]string, L.GetTop())
+	for i := range parts {
+		parts[i] = L.ToStringMeta(L.Get(i + 1)).String()
+	}
+	return strings.Join(parts, sep)
 }
 
 // SetRequire installs the Go-owned require into the frozen surface so every
@@ -284,15 +277,18 @@ func (s *Sandbox) SetRequire(fn *glua.LFunction) {
 // metatable to swap events. Used for the frozen surface itself; shared leaf
 // tables get protectTable instead (see below).
 func (s *Sandbox) freezeTable(tb *glua.LTable, what string) {
-	L := s.L
-	guard := L.NewFunction(func(L *glua.LState) int {
+	s.L.SetMetatable(tb, s.lockedMeta(what))
+}
+
+// lockedMeta is a metatable whose writes raise and that Lua cannot read.
+func (s *Sandbox) lockedMeta(what string) *glua.LTable {
+	mt := s.L.NewTable()
+	mt.RawSetString("__newindex", s.L.NewFunction(func(L *glua.LState) int {
 		L.RaiseError("zemi: cannot modify frozen %s (write refused)", what)
 		return 0
-	})
-	mt := L.NewTable()
-	mt.RawSetString("__newindex", guard)
+	}))
 	mt.RawSetString("__metatable", glua.LString("zemi:protected"))
-	L.SetMetatable(tb, mt)
+	return mt
 }
 
 // protectTable wraps a shared table in an empty proxy: reads fall through
@@ -303,17 +299,10 @@ func (s *Sandbox) freezeTable(tb *glua.LTable, what string) {
 // takes the existing-key fast path. Returns the proxy to store in place of
 // the real table.
 func (s *Sandbox) protectTable(tb *glua.LTable, what string) *glua.LTable {
-	L := s.L
-	guard := L.NewFunction(func(L *glua.LState) int {
-		L.RaiseError("zemi: cannot modify frozen %s (write refused)", what)
-		return 0
-	})
-	mt := L.NewTable()
+	mt := s.lockedMeta(what)
 	mt.RawSetString("__index", tb)
-	mt.RawSetString("__newindex", guard)
-	mt.RawSetString("__metatable", glua.LString("zemi:protected"))
-	proxy := L.NewTable()
-	L.SetMetatable(proxy, mt)
+	proxy := s.L.NewTable()
+	s.L.SetMetatable(proxy, mt)
 	return proxy
 }
 
@@ -391,15 +380,15 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 		mt := proxy.Metatable.(*glua.LTable)
 		mt.RawSetString("__call", call)
 	}
+	parent, err := s.ensureParent(strings.Split(name, "."))
+	if err != nil {
+		return err
+	}
 	members := map[string]glua.LValue{}
 	tbl.ForEach(func(k, v glua.LValue) {
 		members[k.String()] = v
 	})
 	s.integrity = append(s.integrity, namespaceCheck{name: name, table: tbl, members: members})
-	parent, err := s.ensureParent(strings.Split(name, "."))
-	if err != nil {
-		return err
-	}
 	s.protected[name] = struct{}{}
 	parent.RawSetString(name[strings.LastIndex(name, ".")+1:], proxy)
 	return nil
@@ -426,7 +415,7 @@ func (s *Sandbox) LookupPath(name string) glua.LValue {
 // those names raise (DESIGN §5).
 func (s *Sandbox) ensureParent(parts []string) (*glua.LTable, error) {
 	tbl := s.frozen
-	for i := 0; i < len(parts)-1; i++ {
+	for i := range len(parts) - 1 {
 		joined := strings.Join(parts[:i+1], ".")
 		cur := rawLookup(tbl, parts[i])
 		switch next := cur.(type) {

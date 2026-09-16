@@ -44,7 +44,7 @@ func toGo(v lua.LValue, depth int, seen map[*lua.LTable]struct{}) (any, error) {
 		}
 		return string(t), nil
 	case *lua.LFunction:
-		return nil, fmt.Errorf("zemi.lua: cannot marshal function")
+		return nil, errors.New("zemi.lua: cannot marshal function")
 	case *lua.LTable:
 		if depth >= MaxTableDepth {
 			return nil, ErrTooDeep
