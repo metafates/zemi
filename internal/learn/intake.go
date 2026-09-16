@@ -42,8 +42,7 @@ func Intake(scope, origin, kind, text string, tags []string, provenance string) 
 		return nil, ErrNoProvenance
 	}
 
-	clean, scrubbed := ScrubSecrets(truncate(collapse(sanitize.String(text)), MaxTextLen))
-	clean = strings.TrimSpace(clean)
+	clean, scrubbed := scrubCapped(text, MaxTextLen)
 	if clean == "" {
 		return nil, fmt.Errorf("%w: empty text", ErrRefused)
 	}
@@ -70,11 +69,9 @@ func cleanTags(tags []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, t := range tags {
-		t, _ = ScrubSecrets(truncate(collapse(sanitize.String(t)), MaxTagLen))
-		t = strings.TrimSpace(t)
-		// A tag that kept a redaction marker is junk as a tag; text keeps
-		// its markers, tags do not.
-		if t == "" || seen[t] || IsOneBlob(t) || strings.Contains(t, "[redacted") {
+		t, scrubbed := scrubCapped(t, MaxTagLen)
+		// a tag that held a secret is junk as a tag; text keeps its markers
+		if t == "" || seen[t] || scrubbed {
 			continue
 		}
 		seen[t] = true
@@ -86,10 +83,12 @@ func cleanTags(tags []string) []string {
 	return out
 }
 
-// collapse turns every control/whitespace run into one space; memory text
-// is single-line by construction.
-func collapse(s string) string {
-	return strings.Join(strings.Fields(s), " ")
+// scrubCapped sanitizes s to one line, scrubs it and cuts it to n runes.
+// The scrub runs before the cut, which could leave a secret too short to
+// recognize; the first cut at 2n only bounds the scrub's work.
+func scrubCapped(s string, n int) (string, bool) {
+	out, scrubbed := ScrubSecrets(truncate(strings.Join(strings.Fields(sanitize.String(s)), " "), 2*n))
+	return strings.TrimSpace(truncate(out, n)), scrubbed
 }
 
 func truncate(s string, n int) string {

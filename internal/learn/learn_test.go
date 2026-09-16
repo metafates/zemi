@@ -52,6 +52,15 @@ func TestIntakeScrubsSecrets(t *testing.T) {
 	if strings.Contains(res.Memory.Text, "supersecretvalue123") {
 		t.Fatalf("assignment survived: %q", res.Memory.Text)
 	}
+
+	// a token cut by the length cap is still recognized whole
+	res, err = Intake("project", OriginUser, "fact", strings.Repeat("a ", MaxTextLen/2-6)+"ghp_0123456789abcdefghijklmnopqrstuv", nil, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Memory.Text, "ghp_") {
+		t.Fatalf("cut token survived: %q", res.Memory.Text)
+	}
 }
 
 func TestIntakeRefusesOneBlob(t *testing.T) {
