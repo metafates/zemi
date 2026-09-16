@@ -202,7 +202,10 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		}
 		// give the last output a moment to land on the screen
 		time.Sleep(30 * time.Millisecond)
+		// under mu, like Resize's ioctl: a closed fd number can be reused
+		w.mu.Lock()
 		_ = ptmx.Close()
+		w.mu.Unlock()
 		close(w.done)
 		w.dirty.Store(true)
 		if m.OnExit != nil {
@@ -429,13 +432,12 @@ func (w *Window) Resize(cols, rows int) {
 		return
 	}
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if cols == w.w && rows == w.h {
-		w.mu.Unlock()
 		return
 	}
 	w.w, w.h = cols, rows
 	w.term.Resize(cols, rows)
-	w.mu.Unlock()
 	_ = pty.Setsize(w.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	w.dirty.Store(true)
 }
