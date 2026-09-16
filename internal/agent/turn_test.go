@@ -464,20 +464,24 @@ func TestRegistryResolve(t *testing.T) {
 	err := r.Register(Spec{
 		ID: "myllm", Kind: "openai_compat", BaseURL: "https://llm.internal/v1",
 		Models: []Model{{ID: "main", Display: "Main"}},
-	}, "")
+	}, "k")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	// user-registered provider with no key still resolves (error surfaces at send)
 	if _, err := r.Resolve("myllm/main"); err != nil {
 		t.Fatalf("openai_compat resolve: %v", err)
 	}
-	// every reload replays init.lua, so registering an id again replaces it
+	// every reload replays init.lua, so registering an id again replaces it,
+	// key included
 	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}, ""); err != nil {
 		t.Fatalf("re-register: %v", err)
 	}
-	if specs := r.List(); len(specs) != 1 || specs[0].Kind != "openai" {
-		t.Fatalf("catalog: %v", specs)
+	if specs := r.List(); len(specs) != 1 || specs[0].Kind != "openai" || r.HasKey("myllm") {
+		t.Fatalf("catalog: %v, key kept: %v", specs, r.HasKey("myllm"))
+	}
+	// a provider with no key still resolves (the error surfaces at send)
+	if _, err := r.Resolve("myllm/main"); err != nil {
+		t.Fatalf("keyless resolve: %v", err)
 	}
 }
 

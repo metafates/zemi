@@ -97,6 +97,8 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	}
 	if apiKey != "" {
 		r.keys[spec.ID] = apiKey
+	} else {
+		delete(r.keys, spec.ID)
 	}
 	return nil
 }
