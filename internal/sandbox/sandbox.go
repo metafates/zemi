@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -73,7 +74,17 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 		}
 		return out
 	}
-	p.Write, p.Protect, p.Hide = real(p.Write), real(p.Protect), real(p.Hide)
+	// a protected symlink keeps its target and the link itself, or the link
+	// could be swapped for a real dir
+	protect := real(p.Protect)
+	for _, path := range p.Protect {
+		if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if dir := perm.RealPath(filepath.Dir(path)); dir != "" {
+				protect = append(protect, filepath.Join(dir, filepath.Base(path)))
+			}
+		}
+	}
+	p.Write, p.Protect, p.Hide = real(p.Write), protect, real(p.Hide)
 	return wrap(cmd, p)
 }
 

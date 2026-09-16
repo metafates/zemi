@@ -103,7 +103,7 @@ func TestPolicy(t *testing.T) {
 	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	scratch := filepath.Join(state, "scratch")
-	for _, d := range []string{filepath.Join(root, ".git"), scratch} {
+	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "zemi-real"), scratch} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -113,9 +113,12 @@ func TestPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.Symlink("zemi-real", filepath.Join(root, ".zemi")); err != nil {
+		t.Fatal(err)
+	}
 	p := Policy{
 		Write:    []string{root, scratch},
-		Protect:  []string{filepath.Join(root, ".git"), state},
+		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".zemi"), state},
 		Hide:     []string{hide, state},
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
@@ -149,6 +152,9 @@ func TestPolicy(t *testing.T) {
 		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
 		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},
+		{"write through a protected symlink", "write", filepath.Join(root, ".zemi", "init.lua"), false, !b.EnforcesProtect},
+		// NOTE: see setupNamespaces
+		{"rename a protected symlink", "rename", filepath.Join(root, ".zemi"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},
 		{"read a hidden dir", "read", filepath.Join(hide, "id"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},

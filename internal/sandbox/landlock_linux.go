@@ -188,7 +188,10 @@ func setupNamespaces(p Policy) error {
 	// deeper mounts go on top
 	slices.SortStableFunc(binds, func(a, b bind) int { return len(a.path) - len(b.path) })
 	for _, b := range binds {
-		if _, err := os.Lstat(b.path); err != nil {
+		// NOTE: a mount follows a symlink, so a protected link itself stays
+		// removable (Wrap protects its target too); only a read-only parent
+		// would keep it.
+		if fi, err := os.Lstat(b.path); err != nil || fi.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
 		if err := unix.Mount(b.path, b.path, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
