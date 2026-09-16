@@ -1220,6 +1220,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   and `git remote` only bare: `.git/config` may hold tokens); anything it cannot settle goes to a one-shot screening model
   whose approvals are cached per subject, argument, reason and preview,
   and whose refusals fall back to the user's ask carrying the reason.
+  A file request is judged, screened and shown by its resolved path
+  (relative to the project when inside it), so a symlink a sandboxed
+  command planted cannot dress a write to zemi's config as a project
+  file, and a write under `.git`, the project's `.zemi` or zemi's own dirs
+  goes to the user without screening.
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and project build and test commands both
   settle locally, so the model can write code and run it with no

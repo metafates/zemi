@@ -10,6 +10,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -303,5 +304,46 @@ func TestAutoApprovalCacheKeysInput(t *testing.T) {
 	m.resp = "SAFE"
 	if ok, _ := ask(req(strings.Repeat("a", 4001))); ok {
 		t.Error("an input too long to show the screener was approved")
+	}
+}
+
+// TestAutoResolvesPaths: auto mode judges a file request where it lands. A
+// project symlink into zemi's config or into the repository's git dir goes to
+// the user unscreened, and the overlay names the real path; a write through
+// a symlink out of the project reaches the screener as its real path.
+func TestAutoResolvesPaths(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	h.SetProjectTrusted(true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	m := &promptStub{resp: "SAFE"}
+	screened := 0
+	h.modelFn = func() (fantasy.LanguageModel, error) { screened++; return m, nil }
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	proj, outside := h.Dirs.ProjectDir, perm.RealPath(t.TempDir())
+	os.MkdirAll(filepath.Join(proj, ".git", "hooks"), 0o755)
+	os.Symlink(h.Dirs.ConfigHome, filepath.Join(proj, "cfg"))
+	os.Symlink(filepath.Join(proj, ".git"), filepath.Join(proj, "gl"))
+	os.Symlink(outside, filepath.Join(proj, "out"))
+	ask := h.askHook()
+	for _, c := range []struct {
+		arg, shown string
+		screened   bool
+	}{
+		{"cfg/permissions.lua", filepath.Join(perm.RealPath(h.Dirs.ConfigHome), "permissions.lua"), false},
+		{"gl/hooks/post-checkout", filepath.Join(".git", "hooks", "post-checkout"), false},
+		{"out/x.go", filepath.Join(outside, "x.go"), true},
+	} {
+		screened, ui.asked, m.prompt = 0, nil, ""
+		ok, _ := ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, c.arg)})
+		switch {
+		case c.screened && (!ok || !strings.Contains(m.prompt, "<action>\n"+c.shown+"\n</action>")):
+			t.Errorf("%s: approved %v, screener saw %q", c.arg, ok, m.prompt)
+		case !c.screened && (screened > 0 || len(ui.asked) != 1 || ui.asked[0].Arg != c.shown):
+			t.Errorf("%s: screened %d, asked %+v", c.arg, screened, ui.asked)
+		}
 	}
 }

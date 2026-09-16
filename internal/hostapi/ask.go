@@ -3,6 +3,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/url"
@@ -20,6 +21,11 @@ import (
 // Go-owned overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string) {
+		if isPathSubject(req.Subject) {
+			// judged and shown where it lands: a symlink a sandboxed command
+			// planted must not dress a write to zemi's config as a project file
+			req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
+		}
 		resolved := func(allowed bool, by string) (bool, string) {
 			h.EmitAsync("permission.resolved", map[string]any{
 				"subject": req.Subject, "arg": req.Arg,
@@ -78,6 +84,11 @@ func (h *Host) askHook() tools.Asker {
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
+			if req.Subject == "fs.write" && h.protectedWrite(req.Arg) {
+				// what zemi allows and what git runs: never the screener's call
+				req.Reason = "not settled: this changes .git, .zemi or zemi's own files"
+				break
+			}
 			if !h.ProjectTrusted() {
 				// the screener reads text the repository can steer; the user decides
 				req.Reason = "not settled: this project is not trusted (/trust)"
@@ -107,7 +118,7 @@ func (h *Host) askHook() tools.Asker {
 			return resolved(false, "default")
 		}
 		label, rules := h.alwaysChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: req.Arg, Reason: req.Reason, Preview: req.Preview, Description: req.Description})
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description})
 		if allowed && by == "user:always" {
 			for _, r := range rules {
 				h.Perm.Add(r)
@@ -115,6 +126,20 @@ func (h *Host) askHook() tools.Asker {
 		}
 		return resolved(allowed, by)
 	}
+}
+
+func isPathSubject(subject string) bool { return subject == "fs.read" || subject == "fs.write" }
+
+// shownArg is the request's argument as the user and the screener read it: a
+// path relative to the project when inside it.
+func (h *Host) shownArg(req tools.Request) string {
+	if !isPathSubject(req.Subject) {
+		return req.Arg
+	}
+	if rel, err := filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), req.Arg); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return rel
+	}
+	return req.Arg
 }
 
 // alwaysChoice is the "don't ask again" option for a request: the label the

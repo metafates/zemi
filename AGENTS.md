@@ -194,10 +194,13 @@ be gated with the same `lua.` subject at the Lua boundary.
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
 edits **inside the jail** that are not secret-shaped, except writes under `.git`, the
-project's `.zemi` or zemi's own config/data/state dirs, `tool.workflow` scripts,
+project's `.zemi` or zemi's own config/data/state dirs (`protectedWrite`, which skip the
+screener too and ask the user), `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
-escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands (sandboxed, the project unwritable). Network requests are
+escaped tagged data like the action) and falling back to the user ask with its reason
+(`askHook` resolves `fs.read`/`fs.write` arguments first, and the screener and overlay see
+them relative to the project, `shownArg`); `plan` denies writes and runs `SafeCommand` commands (sandboxed, the project unwritable). Network requests are
 never settled locally: the URL is the model's. Known ceiling: auto settles in-jail writes and
 project build/test commands locally, so the model can write code and run it with no screening;
 that is the intended auto tradeoff, and manual and plan ask. In an untrusted project

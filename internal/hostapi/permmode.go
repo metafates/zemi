@@ -325,14 +325,19 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
 		// write there (permissions.lua, init.lua, .zemi/) changes what zemi allows
-		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg) &&
-			!h.inJail(req.Arg, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
+		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case "tool.bash":
 		return h.settledCommand(req.Arg)
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
 	return false
+}
+
+// protectedWrite reports a write under .git, the project's .zemi or zemi's
+// own dirs: git runs what .git names, and the rest changes what zemi allows.
+func (h *Host) protectedWrite(p string) bool {
+	return inGitDir(p) || h.inJail(p, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
 }
 
 // settledCommand reports a bash command auto and plan mode run without
@@ -559,7 +564,7 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 	tagged := func(tag, body string) string {
 		return fmt.Sprintf("\n<%s>\n%s\n</%s>", tag, strings.ReplaceAll(body, "</", "<\\/"), tag)
 	}
-	prompt := fmt.Sprintf("Project: %s\nAction: %s%s%s", h.Dirs.ProjectDir, req.Subject, tagged("reason", req.Reason), tagged("action", req.Arg))
+	prompt := fmt.Sprintf("Project: %s\nAction: %s%s%s", h.Dirs.ProjectDir, req.Subject, tagged("reason", req.Reason), tagged("action", h.shownArg(req)))
 	// a write's diff carries the file's current content, which must not reach
 	// the provider unless the model could read that file without asking
 	if req.Preview != "" && (req.Subject != "fs.write" || h.fsDefault("fs.read", req.Arg) == perm.Allow) {
