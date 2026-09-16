@@ -7,10 +7,6 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestPanicsDoNotKillZemi: a panicking host goroutine is recovered into
@@ -70,14 +66,7 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 // TestBuiltinSkillsShipEnabled: zemi's self-knowledge skills are written
 // to the data dir, discovered as builtin and enabled by default.
 func TestBuiltinSkillsShipEnabled(t *testing.T) {
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{
-		StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: t.TempDir(),
-	})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatalf("Boot: %v", err)
-	}
+	h, _ := newTestHostSkills(t)
 	h.syncSkills()
 	for _, name := range []string{"zemi-config", "zemi-customize", "zemi-debug", "zemi-learning", "zemi-lua"} {
 		s, ok := h.skillsReg.get(name)

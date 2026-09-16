@@ -459,9 +459,9 @@ func TestReflectGate(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.reflected = 0
 	h.agents.mu.Unlock()
-	h.reflectOnClose("one")
-	time.Sleep(50 * time.Millisecond)
-	if m.calls.Load() != 0 {
+	// The gate returns before a detached run would set reflecting.
+	h.reflectOnClose(closed)
+	if h.reflecting.Load() {
 		t.Fatal("reflected on a non-multiple of 2")
 	}
 	h.reflectOnClose(closed)
@@ -482,9 +482,7 @@ func TestReflectSerializesRuns(t *testing.T) {
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, `{"memories":[]}`)
 	h.reflectMu.Lock()
-	h.runReflectDetached(sid)
-	time.Sleep(50 * time.Millisecond)
-	if m.calls.Load() != 0 {
+	if h.runReflectDetached(sid) || m.calls.Load() != 0 {
 		t.Fatal("second run was not skipped")
 	}
 	h.reflectMu.Unlock()

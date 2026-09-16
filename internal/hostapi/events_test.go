@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -66,9 +65,6 @@ func TestBuiltinReviewWorkflow(t *testing.T) {
 	src, err := h.workflowSource("review")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := glua.NewState().LoadString(src); err != nil {
-		t.Fatalf("review.lua does not compile: %v", err)
 	}
 	echoAgents(h)
 	res, err := h.runWorkflow(context.Background(), src, nil, nil)

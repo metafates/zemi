@@ -6,23 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestReflectDraftsSkills: a proposed skill lands as a disabled learned
 // draft with secrets scrubbed; an invalid name is skipped.
 func TestReflectDraftsSkills(t *testing.T) {
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{
-		StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: t.TempDir(),
-	})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatalf("Boot: %v", err)
-	}
+	h, _ := newTestHostSkills(t)
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	reflectStub(t, h, `{"skills":[
