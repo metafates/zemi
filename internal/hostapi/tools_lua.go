@@ -253,7 +253,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
 		return resp, err
 	}
-	req := tools.Request{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name}
+	req := tools.Request{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name + " with " + truncRunes(call.Input, 300)}
 	if v := a.pipe.Check(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
