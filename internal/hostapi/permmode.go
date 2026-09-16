@@ -371,7 +371,9 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 		return fmt.Sprintf("\n<%s>\n%s\n</%s>", tag, strings.ReplaceAll(body, "</", "<\\/"), tag)
 	}
 	prompt := fmt.Sprintf("Project: %s\nAction: %s\nReason: %s%s", h.Dirs.ProjectDir, req.Subject, req.Reason, tagged("action", req.Arg))
-	if req.Preview != "" {
+	// a write's diff carries the file's current content, which must not reach
+	// the provider unless the model could read that file without asking
+	if req.Preview != "" && (req.Subject != "fs.write" || h.fsDefault("fs.read", req.Arg) == perm.Allow) {
 		prompt += tagged("change", truncRunes(req.Preview, 4000))
 	}
 	out, err := generateText(ctx, model, autoPermSystem, prompt)
