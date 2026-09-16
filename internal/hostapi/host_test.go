@@ -420,10 +420,20 @@ func TestModelPickerFiresWatches(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{pickID: "p/m", pickOK: true})
 	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.put("picked", nv) end)`)
-	h.pickAndStoreModel()
-	if v, _ := h.GlobalDB.GetKV("picked"); v != `"p/m"` {
-		t.Fatalf("agent.model watch saw %q", v)
+	check := func(want string) {
+		t.Helper()
+		if v, _ := h.GlobalDB.GetKV("picked"); v != `"`+want+`"` {
+			t.Fatalf("agent.model watch saw %q, want %q", v, want)
+		}
 	}
+	h.pickAndStoreModel()
+	check("p/m")
+	h.SetUIHooks(&fakeUI{pickID: "p/n", pickOK: true})
+	runUser(t, r, `zemi.model.pick()`)
+	check("p/n")
+	runUser(t, r, `zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "o" } } })
+		zemi.model.set("p/o")`)
+	check("p/o")
 }
 
 // TestEventLogFromLua: emissions are logged and counted with no handler

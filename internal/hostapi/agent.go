@@ -1323,11 +1323,12 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
 			return 0
 		}
-		if _, err := h.Settings.SetQuiet("agent.model", id); err != nil {
+		fired, err := h.Settings.SetQuiet("agent.model", id)
+		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
 		}
-		h.deliverFired(L, nil)
+		h.deliverFired(L, fired)
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
@@ -1337,10 +1338,12 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			L.Push(glua.LNil)
 			return 1
 		}
-		if _, err := h.Settings.SetQuiet("agent.model", id); err != nil {
+		fired, err := h.Settings.SetQuiet("agent.model", id)
+		if err != nil {
 			L.RaiseError("zemi.model.pick: %v", err)
 			return 0
 		}
+		h.deliverFired(L, fired)
 		L.Push(glua.LString(id))
 		return 1
 	}))
