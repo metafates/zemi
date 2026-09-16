@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -67,5 +68,22 @@ func TestWindowClickHitsTopmost(t *testing.T) {
 	a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if a.focusWin != ids[1] {
 		t.Fatalf("click focused window %d, want the float %d", a.focusWin, ids[1])
+	}
+}
+
+// TestWinTitleRowFits: the title row never outgrows its window, which would
+// shift every column joined after it, and keeps the close mark.
+func TestWinTitleRowFits(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []int{2, 10, 20, 80} {
+		row := a.winTitleRow(wn, width, true)
+		if got := plainSegs(row); segsWidth(row) != width || !strings.HasSuffix(got, "× ") {
+			t.Fatalf("width %d: %q is %d cells", width, got, segsWidth(row))
+		}
 	}
 }

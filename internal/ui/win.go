@@ -215,6 +215,10 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
 	right := " " + state + " × "
+	if ansi.StringWidth(right) > width-4 {
+		right = " × " // a narrow window keeps its close mark where titleClick looks
+	}
+	right = ansi.TruncateLeft(right, max(0, ansi.StringWidth(right)-width), "")
 	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
 	fill := max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))
 	return []hostapi.Segment{
