@@ -108,12 +108,10 @@ func (a *App) OpenOverlay(o hostapi.Overlay) {
 	a.do(func() { a.openOverlay(o) })
 }
 
-// CloseOverlay posts the close like every hook and always returns true: no
-// caller reads the result, and waiting for it could deadlock (the
-// interpreter waits on the UI goroutine, which may wait on the interpreter).
-func (a *App) CloseOverlay(id string) bool {
+// CloseOverlay posts the close: waiting on the UI goroutine from the
+// interpreter could deadlock.
+func (a *App) CloseOverlay(id string) {
 	a.do(func() { a.closeOverlayByID(id) })
-	return true
 }
 
 // CloseLuaOverlays drops every overlay owned by the interpreter (Gen != 0)

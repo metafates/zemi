@@ -467,7 +467,7 @@ type fakeUI struct {
 
 func (f *fakeUI) Notify(level, title, body string) {}
 func (f *fakeUI) OpenOverlay(o Overlay)            { f.opened = append(f.opened, o) }
-func (f *fakeUI) CloseOverlay(id string) bool      { f.closed = append(f.closed, id); return true }
+func (f *fakeUI) CloseOverlay(id string)           { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                { f.closedLua++ }
 func (f *fakeUI) Reload()                          { f.reloads++ }
 func (f *fakeUI) Refresh()                         {}

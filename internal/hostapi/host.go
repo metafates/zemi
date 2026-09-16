@@ -30,7 +30,7 @@ import (
 type UIHooks interface {
 	Notify(level, title, body string)
 	OpenOverlay(o Overlay)
-	CloseOverlay(id string) bool
+	CloseOverlay(id string)
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
 	// Reload replays the boot steps on a fresh generation (/reload).
@@ -899,8 +899,8 @@ func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 // ---------------------------------------------------------------------------
 // overlay actions from the UI
 
-// SelectOverlay runs the overlay's on_select with the chosen item, then
-// closes it.
+// SelectOverlay runs the overlay's on_select with the chosen item. The UI
+// closes the overlay first, so on_select may reopen one with the same id.
 func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	var item any
 	if index >= 0 && index < len(o.Items) {
@@ -909,8 +909,7 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	h.submitOverlay(ctx, o, item)
 }
 
-// SubmitOverlayInput hands an input overlay's text to on_select, then
-// closes it.
+// SubmitOverlayInput hands an input overlay's text to on_select.
 func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
 	h.submitOverlay(ctx, o, text)
 }
@@ -924,9 +923,6 @@ func (h *Host) staleOverlay(o Overlay) bool {
 
 func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 	if o.OnSelect == nil || h.staleOverlay(o) {
-		if ui := h.hooks(); ui != nil {
-			ui.CloseOverlay(o.ID)
-		}
 		return
 	}
 	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
@@ -946,9 +942,6 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 		L.SetTop(base)
 		return nil, nil
 	})
-	if ui := h.hooks(); ui != nil {
-		ui.CloseOverlay(o.ID)
-	}
 }
 
 // CancelOverlay closes an overlay and runs on_close if present.

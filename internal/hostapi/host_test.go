@@ -182,8 +182,8 @@ func TestErrorsAndReloadFromLua(t *testing.T) {
 }
 
 // TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a
-// reload must not run its on_select, which belongs to the retired LState;
-// it is closed instead (DESIGN §4).
+// reload must not run its on_select, which belongs to the retired LState
+// (DESIGN §4).
 func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 	h, r := newTestHostDB(t)
 	ui := &fakeUI{}
@@ -212,8 +212,9 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 	if called {
 		t.Fatal("a stale overlay ran a retired generation's on_select")
 	}
-	if len(ui.closed) == 0 || ui.closed[len(ui.closed)-1] != "x" {
-		t.Fatalf("stale overlay was not closed: %v", ui.closed)
+	// The UI closes the overlay before the callback, which may reopen the id.
+	if len(ui.closed) != 0 {
+		t.Fatalf("SelectOverlay closed %v after on_select", ui.closed)
 	}
 }
 

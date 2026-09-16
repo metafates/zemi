@@ -135,13 +135,10 @@ func formatOverlayItem(item any) string {
 	return fmt.Sprint(item)
 }
 
-func (a *App) closeOverlayByID(id string) bool {
-	i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id })
-	if i < 0 {
-		return false
+func (a *App) closeOverlayByID(id string) {
+	if i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id }); i >= 0 {
+		a.overlays = slices.Delete(a.overlays, i, i+1)
 	}
-	a.overlays = slices.Delete(a.overlays, i, i+1)
-	return true
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
