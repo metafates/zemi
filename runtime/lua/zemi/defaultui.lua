@@ -383,8 +383,6 @@ zemi.ui.widget.register({
     -- Blocks are separated by one blank line: the user's message, a run of
     -- activity (thinking and tools), the reply, its stats.
     local prev
-    -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
-    -- assignments whose right side names a left-side target stay split.
     local function gap(block)
       if prev then blank() end
       prev = block
@@ -459,8 +457,8 @@ zemi.ui.widget.register({
     }
     local function tool_name(t) return t.tool or t.name or "?" end
     local function collapsible(t)
-      return t.kind ~= nil and t.kind ~= "tool" and false or
-        (not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil)
+      if t.kind ~= nil and t.kind ~= "tool" then return false end
+      return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil
     end
     local function relpath(s)
       local cwd = ctx.cwd or ""
@@ -529,6 +527,8 @@ zemi.ui.widget.register({
           new = tonumber(b)
         elseif dl ~= "" and dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++" then
           local num, style = nil, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
+          -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
+          -- assignments whose right side names a left-side target stay split.
           if kind == "-" then
             num = old
             old = old + 1
@@ -565,7 +565,7 @@ zemi.ui.widget.register({
     local function add_tools(list, i)
       if collapsible(list[i]) then
         local group = {}
-        while i <= #list and (list[i].kind == nil or list[i].kind == "tool") and collapsible(list[i]) do
+        while i <= #list and collapsible(list[i]) do
           group[#group + 1] = list[i]
           i = i + 1
         end
