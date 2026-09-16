@@ -183,7 +183,7 @@ func (h *Host) healthChecks() []healthCheck {
 	add("ok", "skills", fmt.Sprintf("%d found, %d enabled", len(all), enabled))
 
 	if h.RT.IsHot() {
-		add("error", "lua", "runtime is hot after a wedged call; /reload")
+		add("error", "lua", "stopped: a boot step failed or a call wedged; see /errors, then /reload")
 	} else {
 		add("ok", "lua", "runtime healthy")
 	}

@@ -903,10 +903,10 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	pill := func(text string) {
 		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError"})
 	}
+	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
 		pill(" boot failed ")
-	}
-	if a.host.RT.IsHot() {
+	} else if a.host.RT.IsHot() {
 		pill(" stuck: /reload ")
 	}
 	if a.host.HasUnseenErrors() {
