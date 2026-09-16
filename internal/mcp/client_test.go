@@ -158,12 +158,23 @@ func TestCallCancelNotifies(t *testing.T) {
 	}
 }
 
-// TestStdioExit: a server that dies ends the connection, and pending calls
-// return instead of hanging.
-func TestStdioExit(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", "exit 3"}}); err == nil {
-		t.Fatal("start against a dead server must fail")
+// TestStdioBroken: a server that dies, or sends a message over the size cap
+// and keeps writing, ends the connection instead of leaving calls to time out.
+func TestStdioBroken(t *testing.T) {
+	for name, script := range map[string]string{
+		"exit":     "exit 3",
+		"oversize": "head -c 40000000 /dev/zero | tr '\\0' a; sleep 30",
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			start := time.Now()
+			if _, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", script}}); err == nil {
+				t.Fatal("start against a broken server must fail")
+			}
+			if elapsed := time.Since(start); elapsed > 5*time.Second {
+				t.Fatalf("start waited %s", elapsed)
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ package mcp
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -377,9 +378,14 @@ func startStdio(cfg Config, c *Client) (*stdioTransport, error) {
 		for sc.Scan() {
 			c.handle(sc.Bytes())
 		}
-		err := proc.Wait(cmd)
-		if err == nil {
-			err = errors.New("exited")
+		// An oversized message stops the scanner while the server is still
+		// writing into a pipe nobody reads, so Wait would never return.
+		err := sc.Err()
+		if err != nil {
+			proc.Kill(cmd)
+		}
+		if werr := proc.Wait(cmd); err == nil {
+			err = cmp.Or(werr, errors.New("exited"))
 		}
 		c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
 	}()
