@@ -72,4 +72,8 @@ zemi.skills.list(); zemi.skills.enable("name"); zemi.skills.disable("name")
 zemi.event.on("memory.written", function(ev) zemi.log.info(ev.text) end)
 ```
 
+These return `nil, err` when the call fails at runtime (no such memory, proposal or skill;
+a store error) and raise only on misuse (a bad argument, a kind or scope outside the enum,
+an origin that may not make the call).
+
 Events: `memory.written`, `skill.learned`, `reflector.start`, `reflector.done`.

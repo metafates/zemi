@@ -117,7 +117,10 @@ func TestSkillsEnableGate(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "user or builtin origin") {
 		t.Fatalf("project-origin enable: %v", err)
 	}
-	runExpectErr(t, r, `zemi.skills.disable("missing-skill")`, "no such skill")
+	runUser(t, r, `
+		local ok, err = zemi.skills.disable("missing-skill")
+		assert(ok == nil and err:find("no such skill"), tostring(err))
+	`)
 }
 
 // TestSkillsLearnedHookOnEnable covers the learned enable hook: it runs
@@ -197,7 +200,10 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 		t.Fatalf("accepted proposal stored %d memories", len(rows))
 	}
 
-	runExpectErr(t, r, `zemi.learn.decide("missing", "accept")`, "no such proposal")
+	runUser(t, r, `
+		local ok, err = zemi.learn.decide("missing", "accept")
+		assert(ok == nil and err:find("no such proposal"), tostring(err))
+	`)
 	runExpectErr(t, r, `zemi.learn.decide("x", "maybe")`, "accept or reject")
 
 	err := r.ExecuteChunk(context.Background(),

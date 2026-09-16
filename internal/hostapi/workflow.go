@@ -778,7 +778,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		if name := rawString(spec, "name"); name != "" {
 			s, err := h.workflowSource(name)
 			if err != nil {
-				L.RaiseError("zemi.workflow.run: %v", err)
+				return luaResult(L, err)
 			}
 			src = s
 		}

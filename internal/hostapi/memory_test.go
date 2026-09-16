@@ -94,9 +94,14 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 		t.Fatalf("duplicate queued: %d", queued)
 	}
 
+	runExpectErr(t, r, `zemi.memory.add({ kind = "rumor", text = "x" })`, "kind outside the enum")
+
 	// No provenance before a session: refused.
 	h2, r2 := newTestHostDB(t)
-	runExpectErr(t, r2, `zemi.memory.add({ kind = "fact", text = "x" })`, "provenance")
+	runUser(t, r2, `
+		local out, err = zemi.memory.add({ kind = "fact", text = "x" })
+		assert(out == nil and err:find("provenance"), tostring(err))
+	`)
 	_ = h2
 
 	// Auto mode stores a plain fact and returns its id. The autonomy knob
@@ -252,8 +257,12 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		t.Fatalf("forget: %v", err)
 	}
 
-	runExpectErr(t, r, `zemi.memory.forget("nope")`, "no such memory")
-	runExpectErr(t, r, `zemi.memory.supersede("`+newID+`", "ghost")`, "no such memory")
+	runUser(t, r, `
+		local ok, err = zemi.memory.forget("nope")
+		assert(ok == nil and err:find("no such memory"), tostring(err))
+		ok, err = zemi.memory.supersede("`+newID+`", "ghost")
+		assert(ok == nil and err:find("no such memory"), tostring(err))
+	`)
 }
 
 // TestDigestPinnedAtSessionStart covers §10.7: the digest is computed once

@@ -180,7 +180,8 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key := L.CheckString(1)
 		if h.GlobalDB == nil {
-			L.RaiseError("zemi.state.get: store unavailable")
+			L.Push(glua.LNil)
+			return 1
 		}
 		v, err := h.GlobalDB.GetKV(key)
 		if err != nil {
@@ -199,7 +200,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		key := L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.state.put")
 		if h.GlobalDB == nil {
-			L.RaiseError("zemi.state.put: store unavailable")
+			return luaResult(L, errors.New("store unavailable"))
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -944,7 +945,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
 		jh, err := start(L)
 		if err != nil {
-			L.RaiseError("zemi.job.start: %v", err)
+			return luaResult(L, err)
 		}
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LNumber(jh.id))

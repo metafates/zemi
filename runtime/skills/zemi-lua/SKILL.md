@@ -32,7 +32,8 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 - `render` must be pure: no `zemi.*` mutations (they raise during render).
 - Long work goes to `zemi.job`, `zemi.http` or `zemi.timer` with callbacks.
 - Misuse raises; a runtime failure of a synchronous call returns `nil, err` (`fs.read`,
-  `fs.write`, `state.put`, `json.decode`, `session.new`, `session.open`).
+  `fs.write`, `state.put`, `json.decode`, `session.new`, `session.open`, `job.start`,
+  `workflow.run`, and the `memory`, `learn` and `skills` calls).
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 
 ## Running Lua from the agent
@@ -74,7 +75,7 @@ without asking, the reference for how a widget is written.
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
-| `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` (user config only) |
+| `zemi.workflow` | `list()` -> `{ name, description, source, path }`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` or nil, err (user config only) |
 | `zemi.provider`, `zemi.model` | `register`, `list`, `kind.ANTHROPIC` / `kind.OPENAI` / `kind.OPENAI_COMPAT`; `list`, `set`, `pick` |
 | `zemi.session` | `id`, `title`, `set_title`, `messages`, `list({ limit })`, `new()`, `open(id)`, `todos()`, `rewind(id)` -> files restored or nil, err |
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |

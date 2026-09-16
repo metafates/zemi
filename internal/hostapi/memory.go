@@ -526,14 +526,14 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		}
 		rows, err := h.memorySearch(scope, query, limit)
 		if err != nil {
-			L.RaiseError("zemi.memory.search: %v", err)
+			return luaResult(L, err)
 		}
 		L.Push(memoryToLua(L, rows))
 		return 1
 	}))
 
 	// add(spec): the model/Lua path (origin learned, §10.4 intake, §10.4
-	// autonomy gate). Returns { queued = true } or { stored = true, id }.
+	// autonomy gate). Returns { queued = true }, { stored = true, id } or nil, err.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
@@ -546,8 +546,11 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			scope = "project"
 		}
 		stored, id, err := h.proposeMemory(scope, kind, text, rawStrings(spec, "tags"))
-		if err != nil {
+		switch {
+		case errors.Is(err, learn.ErrBadKind) || scope != "project" && scope != "user":
 			L.RaiseError("zemi.memory.add: %v", err)
+		case err != nil:
+			return luaResult(L, err)
 		}
 		out := L.NewTable()
 		if stored {
@@ -563,7 +566,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		rows, err := h.memoryList(L.OptBool(1, false))
 		if err != nil {
-			L.RaiseError("zemi.memory.list: %v", err)
+			return luaResult(L, err)
 		}
 		L.Push(memoryToLua(L, rows))
 		return 1
@@ -574,10 +577,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.memory.supersede: only user or builtin origin may modify memories")
 		}
-		if err := h.supersedeMemory(old, by); err != nil {
-			L.RaiseError("zemi.memory.supersede: %v", err)
-		}
-		return 0
+		return luaResult(L, h.supersedeMemory(old, by))
 	}))
 
 	tb.RawSetString("forget", L.NewFunction(func(L *glua.LState) int {
@@ -586,13 +586,10 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.memory.forget: only user or builtin origin may modify memories")
 		}
 		db, m, err := h.locateMemory(id)
-		if err != nil {
-			L.RaiseError("zemi.memory.forget: %v", err)
+		if err == nil {
+			err = db.DeleteMemory(m.ID)
 		}
-		if err := db.DeleteMemory(m.ID); err != nil {
-			L.RaiseError("zemi.memory.forget: %v", err)
-		}
-		return 0
+		return luaResult(L, err)
 	}))
 
 	return tb

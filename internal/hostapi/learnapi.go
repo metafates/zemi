@@ -4,6 +4,8 @@
 package hostapi
 
 import (
+	"fmt"
+
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -41,17 +43,17 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		}
 		if action == "reject" {
 			if h.takeProposal(id) == nil {
-				L.RaiseError("zemi.learn.decide: no such proposal %q", id)
+				return luaResult(L, fmt.Errorf("no such proposal %q", id))
 			}
 			h.Notify("info", "learn", "proposal rejected")
-			return 0
+			return luaResult(L, nil)
 		}
 		res, err := h.acceptProposal(id)
 		if err != nil {
-			L.RaiseError("zemi.learn.decide: %v", err)
+			return luaResult(L, err)
 		}
 		h.Notify("info", "learn", "stored: "+res.Memory.Text)
-		return 0
+		return luaResult(L, nil)
 	}))
 
 	return tb

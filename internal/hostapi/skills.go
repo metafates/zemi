@@ -458,10 +458,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.skills.%s: only user or builtin origin may enable or disable skills", verb)
 		}
-		if err := h.setSkillEnabled(L, name, on); err != nil {
-			L.RaiseError("zemi.skills.%s: %v", verb, err)
-		}
-		return 0
+		return luaResult(L, h.setSkillEnabled(L, name, on))
 	}
 	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int { return enable(L, true) }))
 	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int { return enable(L, false) }))

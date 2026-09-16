@@ -728,16 +728,23 @@ function zemi.agent.run(spec, on_done) end
 ---@field name? string A script saved under workflows/ instead.
 ---@field args? any Passed to the script as the `args` global.
 
+---@class zemi.WorkflowInfo
+---@field name string
+---@field description string The file's leading comment.
+---@field source "user"|"builtin"|"project"
+---@field path string
+
 ---@class zemi.workflow
 zemi.workflow = {}
 
----@return string[] names
+---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state. User config only.
+--- Run a workflow in its own Lua state. User or builtin origin only.
 ---@param spec zemi.WorkflowRunSpec
----@param on_done fun(result: any|nil, err: string|nil, log: string)
----@return zemi.RunHandle
+---@param on_done? fun(result: string|nil, err: string|nil, log: string[]) A result that is not a string arrives as JSON.
+---@return zemi.RunHandle|nil handle
+---@return string|nil err No such saved workflow, or one in an untrusted project.
 function zemi.workflow.run(spec, on_done) end
 
 -- ---------------------------------------------------------------------------
@@ -1052,7 +1059,8 @@ function zemi.http.get(url, opts) end
 zemi.job = {}
 
 ---@param spec zemi.JobSpec
----@return zemi.JobHandle
+---@return zemi.JobHandle|nil handle
+---@return string|nil err A process that could not start.
 function zemi.job.start(spec) end
 
 --- Start a job and wait for it.
@@ -1154,27 +1162,34 @@ zemi.memory = {}
 --- Best-first search. Every hit bumps the memory's hit count.
 ---@param query string
 ---@param opts? { scope: "all"|zemi.Scope, limit: integer }
----@return zemi.Memory[]
+---@return zemi.Memory[]|nil memories
+---@return string|nil err
 function zemi.memory.search(query, opts) end
 
 --- Propose a memory. It goes through intake and the autonomy gate, so it
 --- is stored or queued for review, never written blindly.
 ---@param spec zemi.MemorySpec
----@return zemi.MemoryAddResult
+---@return zemi.MemoryAddResult|nil res
+---@return string|nil err
 function zemi.memory.add(spec) end
 
 ---@param include_superseded? boolean
----@return zemi.Memory[]
+---@return zemi.Memory[]|nil memories
+---@return string|nil err
 function zemi.memory.list(include_superseded) end
 
 --- Mark `old` as replaced by `by`. Both ids may be 8-character prefixes.
 --- User or builtin origin only.
 ---@param old string
 ---@param by string
+---@return true|nil ok
+---@return string|nil err
 function zemi.memory.supersede(old, by) end
 
 --- User or builtin origin only.
 ---@param id string
+---@return true|nil ok
+---@return string|nil err
 function zemi.memory.forget(id) end
 
 ---@class zemi.Proposal
@@ -1192,9 +1207,11 @@ zemi.learn = {}
 ---@return zemi.Proposal[]
 function zemi.learn.proposals() end
 
---- Decide one proposal by id. User config only.
+--- Decide one proposal by id. User or builtin origin only.
 ---@param id string
 ---@param action "accept"|"reject"
+---@return true|nil ok
+---@return string|nil err
 function zemi.learn.decide(id, action) end
 
 ---@class zemi.Skill
@@ -1212,9 +1229,13 @@ function zemi.skills.list() end
 
 --- A skill is inert until it is enabled. User or builtin origin only.
 ---@param name string
+---@return true|nil ok
+---@return string|nil err
 function zemi.skills.enable(name) end
 
 ---@param name string
+---@return true|nil ok
+---@return string|nil err
 function zemi.skills.disable(name) end
 
 -- ---------------------------------------------------------------------------
