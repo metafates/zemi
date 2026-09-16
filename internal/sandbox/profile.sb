@@ -18,8 +18,10 @@
 (allow ipc-posix-shm-read* (ipc-posix-name-prefix "apple.cfprefs."))
 (allow mach-lookup (global-name "com.apple.cfprefsd.daemon" "com.apple.cfprefsd.agent") (local-name "com.apple.cfprefsd.agent"))
 (allow user-preference-read)
-(allow pseudo-tty)
-(allow file-read* file-write* file-ioctl (literal "/dev/ptmx") (regex #"^/dev/ttys[0-9]+"))
+; /dev/tty is the process's own terminal. A window's program inherits its pty;
+; ioctl needs an open fd, and no other terminal can be opened by path.
+; NOTE: so programs that allocate a pty (script, expect) fail
+(allow file-read* file-write* file-ioctl (literal "/dev/tty"))
+(allow file-ioctl (regex #"^/dev/ttys[0-9]+$"))
 (allow file-read*)
-(allow file-write* (subpath "/private/tmp") (subpath "/private/var/tmp"))
 (allow file-write-data (literal "/dev/null") (literal "/dev/zero") (subpath "/dev/fd"))

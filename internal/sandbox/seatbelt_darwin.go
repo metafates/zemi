@@ -14,6 +14,12 @@ import (
 // sandboxExec is never looked up on PATH: a planted one would run unconfined.
 const sandboxExec = "/usr/bin/sandbox-exec"
 
+// seatbelt denies with EPERM; a blocked lookup fails in getaddrinfo
+const (
+	deniedErrnos  = `operation not permitted`
+	deniedLookups = `nodename nor servname`
+)
+
 //go:embed profile.sb
 var baseProfile string
 
@@ -26,7 +32,8 @@ func probe() (Backend, error) {
 	if _, err := os.Stat(sandboxExec); err != nil {
 		return Backend{}, err
 	}
-	err := exec.Command(sandboxExec, "-p", "(version 1)(allow default)", "/usr/bin/true").Run()
+	// deny default: an allow-default profile applies even inside another sandbox
+	err := exec.Command(sandboxExec, "-p", "(version 1)(deny default)(allow process-exec)(allow file-read*)", "/usr/bin/true").Run()
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 71 {
 		return Backend{}, errors.New("zemi already runs inside a sandbox, which cannot be nested")
 	}
