@@ -57,6 +57,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, UserWritable: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.subagent_model", Kind: "string", Default: "", UserWritable: true, Desc: "default model for subagents whose definition sets none (provider/model; empty uses the session model); the agent may pick another configured model per run"},
+		{Path: "web.search_url", Kind: "string", Default: "", UserWritable: true, Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: "string", Default: "", UserWritable: true, Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
 		{Path: "session.auto_title", Kind: "bool", Default: true, UserWritable: true, Desc: "name new sessions from their first exchange with a short model call (agent.small_model when set)"},
 		{Path: "agent.context_window", Kind: "int", Default: 0, UserWritable: true, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},

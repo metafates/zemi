@@ -643,7 +643,7 @@ zemi.provider.register({
 ```
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
-definition (builtin `explore` and `general`, plus `agents/*.md` under the
+definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
 config home, zemi's own, and a trusted project's `.zemi`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
@@ -706,7 +706,8 @@ walker fallback, §2), `fetch`,
 `todos`, `question` (1-4 questions in one overlay, options or a typed
 answer), `plan` (shows a plan and asks for approval; in plan mode the
 approval picks the mode to implement in),
-`sourcegraph`, `job_start`/`job_read`/`job_list`/`job_kill`,
+`web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
+`job_start`/`job_read`/`job_list`/`job_kill`,
 `memory_add`/`memory_search`/`memory_update`/`memory_forget` (model
 memory edits re-run intake and ask, §10.4), `diagnostics` (language
 server errors for any file), `skill` (loads a SKILL.md body on demand),
@@ -1657,7 +1658,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 - **M2, remember**: context files, memory store + digest injection,
   reflector v1 (memory only, Go-driven), `/remember`,
   `/reflect`, session summaries; remaining built-in tools (`fetch`,
-  `todos`, `question`, `sourcegraph`, `job_*`, `skill`). Namespace:
+  `todos`, `question`, `web_search`, `job_*`, `skill`). Namespace:
   `zemi.memory`.
 - **M3, learn to act**: skills (authored + learned, quarantined), config
   revision pipeline with diff review + git, validation (smoke-load),

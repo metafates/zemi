@@ -88,6 +88,10 @@ type Pipeline struct {
 	// Scratch reports a path inside the session scratchpad: writes there
 	// pass plan mode. nil = no scratchpad.
 	Scratch func(path string) bool
+	// SearchURL returns the user's SearXNG endpoint for web_search; nil or
+	// "" = DuckDuckGo Lite.
+	SearchURL func() string
+
 	// ScratchDir is the session scratchpad, where output cut from a result
 	// is saved in full; nil or "" = nowhere.
 	ScratchDir func() string
@@ -529,7 +533,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runGrep),
 
-		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML is stripped). Every redirect hop is re-gated and private addresses are refused.",
+		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML is stripped, links kept as markdown). Every redirect hop is re-gated and private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -601,17 +605,21 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runPlan),
 
-		mk("sourcegraph", "Search public open-source repositories on sourcegraph.com.",
+		mk("web_search", "Search the web and return up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short and specific; fetch the results worth reading. For a question that needs several searches and pages, delegate to the web agent instead.",
 			true,
 			map[string]any{
-				"query": map[string]any{"type": "string"},
-				"count": map[string]any{"type": "number"},
+				"query":       map[string]any{"type": "string"},
+				"max_results": map[string]any{"type": "number"},
 			},
 			[]string{"query"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "net.sourcegraph.com", Arg: "sourcegraph.com", Reason: "sourcegraph search"}}
+				u, _, err := searchURL(p, str(in["query"]))
+				if err != nil {
+					return []Request{{Subject: "net.invalid", Arg: err.Error(), Reason: "web search"}}
+				}
+				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}
 			},
-			runSourcegraph),
+			runWebSearch),
 
 		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
 			true,

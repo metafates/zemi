@@ -1,5 +1,5 @@
 // net_tools.go ships the network built-ins (DESIGN §6.4, §9): fetch and
-// sourcegraph. Both go through the net.<host> permission subject, accept
+// web_search. Both go through the net.<host> permission subject, accept
 // http/https URLs only, refuse userinfo, and every connect is checked
 // against the denied-address set on the resolved IP (per hop), so DNS
 // rebinding cannot slip past a hostname rule.
@@ -161,7 +161,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	}
 	text := string(body)
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
-		text = htmlToText(text)
+		text = htmlToText(text, resp.Request.URL)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s\n\n", resp.Proto, resp.Status)
@@ -179,18 +179,35 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 var (
 	// RE2 has no backreferences, so the closing tag is matched by
 	// alternation instead of \1.
-	scriptRe  = regexp.MustCompile(`(?is)<(script|style|noscript|svg|head)[^>]*>.*?</(script|style|noscript|svg|head)>`)
+	scriptRe  = regexp.MustCompile(`(?is)<(script|style|noscript|svg|head|nav|footer|aside)\b[^>]*>.*?</(script|style|noscript|svg|head|nav|footer|aside)>`)
+	linkRe    = regexp.MustCompile(`(?is)<a\b[^>]*?\bhref\s*=\s*["']([^"']*)["'][^>]*>(.*?)</a>`)
 	commentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 	tagRe     = regexp.MustCompile(`(?s)<[^>]*>`)
 	spaceRe   = regexp.MustCompile(`\n\s*\n\s*`)
 	breakRe   = regexp.MustCompile(`(?i)<(br|/p|/div|/li|/tr|/h[1-6])[^>]*>`)
 )
 
-// htmlToText strips markup to a readable plain-text skeleton: enough for
-// the model to decide whether a page is worth a targeted fetch.
-func htmlToText(s string) string {
+// htmlToText strips markup to a readable plain-text skeleton. Links stay
+// as markdown [text](url), resolved against base, so the model can follow
+// them.
+func htmlToText(s string, base *url.URL) string {
 	s = scriptRe.ReplaceAllString(s, " ")
 	s = commentRe.ReplaceAllString(s, " ")
+	s = linkRe.ReplaceAllStringFunc(s, func(a string) string {
+		m := linkRe.FindStringSubmatch(a)
+		text := strings.TrimSpace(tagRe.ReplaceAllString(m[2], ""))
+		ref, err := url.Parse(html.UnescapeString(strings.TrimSpace(m[1])))
+		if err != nil || text == "" || strings.HasPrefix(m[1], "#") {
+			return text
+		}
+		if base != nil {
+			ref = base.ResolveReference(ref)
+		}
+		if ref.Scheme != "http" && ref.Scheme != "https" {
+			return text
+		}
+		return "[" + text + "](" + ref.String() + ")"
+	})
 	s = breakRe.ReplaceAllString(s, "\n")
 	s = tagRe.ReplaceAllString(s, "")
 	s = html.UnescapeString(s)
@@ -201,99 +218,153 @@ func htmlToText(s string) string {
 	return spaceRe.ReplaceAllString(strings.Join(lines, "\n"), "\n\n")
 }
 
-// runSourcegraph searches public repositories via the Sourcegraph stream
-// API and formats repository/path/line hits.
-func runSourcegraph(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	query := str(input["query"])
-	if strings.TrimSpace(query) == "" {
+// searchUA is a browser User-Agent: DuckDuckGo serves its bot check to
+// anything else.
+const searchUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+// searchURL builds the request URL: a SearXNG JSON endpoint when the user
+// set one (web.search_url), DuckDuckGo Lite otherwise.
+func searchURL(p *Pipeline, query string) (*url.URL, bool, error) {
+	base, searx := "https://lite.duckduckgo.com/lite/", false
+	if p.SearchURL != nil {
+		if s := p.SearchURL(); s != "" {
+			base, searx = s, true
+		}
+	}
+	u, err := ParseNetURL(base)
+	if err != nil {
+		return nil, searx, fmt.Errorf("web.search_url: %v", err)
+	}
+	q := u.Query()
+	q.Set("q", query)
+	if searx {
+		q.Set("format", "json")
+	}
+	u.RawQuery = q.Encode()
+	return u, searx, nil
+}
+
+func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	query := strings.TrimSpace(str(input["query"]))
+	if query == "" {
 		return fantasy.NewTextErrorResponse("empty query"), nil
 	}
-	count := 10
-	if v, ok := input["count"].(float64); ok && v > 0 && v <= 50 {
-		count = int(v)
+	limit := 10
+	if v, ok := input["max_results"].(float64); ok && v >= 1 && v <= 20 {
+		limit = int(v)
 	}
-	const host = "sourcegraph.com"
-	v := p.Check(Request{Subject: "net." + host, Arg: host, Reason: "sourcegraph search"})
-	if v.Decision != perm.Allow {
-		return fantasy.NewTextErrorResponse("permission denied: " + v.Reason), nil
-	}
-	q := url.Values{}
-	q.Set("q", query)
-	q.Set("v", "V3")
-	q.Set("t", "literal")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://"+host+"/.api/search/stream?"+q.Encode(), nil)
+	u, searx, err := searchURL(p, query)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	req.Header.Set("Accept", "text/event-stream")
-	client := SafeClient(nil, false)
+	// The host is the user's (config), so a self-hosted SearXNG on a
+	// private address is allowed; redirects are refused so a hop cannot
+	// take that allowance elsewhere.
+	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") }, searx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	req.Header.Set("User-Agent", searchUA)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fantasy.NewTextErrorResponse(fmt.Sprintf("sourcegraph: %s: %s", resp.Status, truncOut(string(body)))), nil
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	return fantasy.NewTextResponse(truncOut(parseSGStream(resp.Body, count))), nil
+	var hits []searchHit
+	if searx {
+		if resp.StatusCode != http.StatusOK {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("search: %s (SearXNG needs format json enabled)", resp.Status)), nil
+		}
+		hits, err = parseSearxng(body)
+	} else {
+		hits, err = parseDDGLite(resp.StatusCode, string(body))
+	}
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	return fantasy.NewTextResponse(formatHits(hits, limit)), nil
 }
 
-// parseSGStream reads the SSE body, pulling repository/path/line matches
-// out of the `matches` events; malformed events are skipped.
-func parseSGStream(r io.Reader, count int) string {
-	data, _ := io.ReadAll(io.LimitReader(r, 4<<20))
-	var b strings.Builder
-	shown := 0
-	for ev := range strings.SplitSeq(string(data), "\n\n") {
-		var payload []string
-		for line := range strings.SplitSeq(ev, "\n") {
-			if s, ok := strings.CutPrefix(line, "data: "); ok {
-				payload = append(payload, s)
-			}
+type searchHit struct{ Title, URL, Snippet string }
+
+var (
+	ddgLinkRe    = regexp.MustCompile(`(?is)<a\b[^>]*class=['"]result-link['"][^>]*>.*?</a>`)
+	ddgHrefRe    = regexp.MustCompile(`(?is)\bhref=['"]([^'"]*)['"]`)
+	ddgSnippetRe = regexp.MustCompile(`(?is)<td\b[^>]*class=['"]result-snippet['"][^>]*>(.*?)</td>`)
+)
+
+// parseDDGLite reads the DuckDuckGo Lite result table: each result-link
+// anchor is followed by its result-snippet cell. The bot check comes back
+// as 202 or as a 200 page with the anomaly modal, and must not read as "no
+// results".
+func parseDDGLite(status int, page string) ([]searchHit, error) {
+	if status == http.StatusAccepted || strings.Contains(page, "anomaly-modal") {
+		return nil, fmt.Errorf("DuckDuckGo answered with its bot check, so this network cannot search it; do not retry. Fetch known URLs directly, or ask the user to set web.search_url to a SearXNG instance")
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("search: HTTP %d", status)
+	}
+	links := ddgLinkRe.FindAllStringIndex(page, -1)
+	var hits []searchHit
+	for i, loc := range links {
+		a := page[loc[0]:loc[1]]
+		h := searchHit{Title: strings.TrimSpace(html.UnescapeString(tagRe.ReplaceAllString(a, "")))}
+		if m := ddgHrefRe.FindStringSubmatch(a); m != nil {
+			h.URL = ddgTarget(html.UnescapeString(m[1]))
 		}
-		if len(payload) == 0 {
-			continue
+		end := len(page)
+		if i+1 < len(links) {
+			end = links[i+1][0]
 		}
-		var matches []map[string]any
-		if json.Unmarshal([]byte(strings.Join(payload, "\n")), &matches) != nil {
-			continue
+		if m := ddgSnippetRe.FindStringSubmatch(page[loc[1]:end]); m != nil {
+			h.Snippet = strings.TrimSpace(html.UnescapeString(tagRe.ReplaceAllString(m[1], "")))
 		}
-		for _, m := range matches {
-			repo, _ := m["repository"].(string)
-			path, _ := m["path"].(string)
-			if repo == "" && path == "" {
-				continue
-			}
-			if lms, ok := m["lineMatches"].([]any); ok && len(lms) > 0 {
-				for _, lm := range lms {
-					if shown >= count {
-						break
-					}
-					lm, ok := lm.(map[string]any)
-					if !ok {
-						continue
-					}
-					line, _ := lm["line"].(string)
-					num := -1
-					if f, ok := lm["lineNumber"].(float64); ok {
-						num = int(f)
-					}
-					fmt.Fprintf(&b, "%s -> %s:%d: %s\n", repo, path, num, truncLine(line))
-					shown++
-				}
-			} else {
-				if shown >= count {
-					break
-				}
-				fmt.Fprintf(&b, "%s -> %s\n", repo, path)
-				shown++
-			}
+		if h.URL != "" {
+			hits = append(hits, h)
 		}
 	}
-	if shown == 0 {
-		return "(no matches)"
+	return hits, nil
+}
+
+// ddgTarget unwraps DuckDuckGo's //duckduckgo.com/l/?uddg=<url> redirect.
+func ddgTarget(href string) string {
+	if u, err := url.Parse(href); err == nil && strings.HasSuffix(u.Host, "duckduckgo.com") {
+		if t := u.Query().Get("uddg"); t != "" {
+			return t
+		}
+	}
+	return href
+}
+
+func parseSearxng(body []byte) ([]searchHit, error) {
+	var out struct {
+		Results []struct{ Title, URL, Content string }
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("search: bad SearXNG reply: %v", err)
+	}
+	hits := make([]searchHit, 0, len(out.Results))
+	for _, r := range out.Results {
+		hits = append(hits, searchHit{r.Title, r.URL, r.Content})
+	}
+	return hits, nil
+}
+
+func formatHits(hits []searchHit, limit int) string {
+	if len(hits) == 0 {
+		return "(no results)"
+	}
+	var b strings.Builder
+	for i, h := range hits[:min(limit, len(hits))] {
+		fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, h.Title, h.URL)
+		if h.Snippet != "" {
+			fmt.Fprintf(&b, "   %s\n", h.Snippet)
+		}
 	}
 	return b.String()
 }

@@ -446,14 +446,14 @@ zemi.ui.widget.register({
     -- own rows, and ctrl+o shows every call.
     local VERB = {
       read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
-      fetch = "Fetch", sourcegraph = "Search code", bash = "Run", job_start = "Start", job_read = "Check job",
+      fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
       job_list = "List jobs", job_kill = "Stop job", memory_add = "Remember", memory_search = "Recall",
       diagnostics = "Check", todos = "Update todos", question = "Ask", skill = "Load skill",
       agent = "Agent", workflow = "Workflow",
     }
     local COUNT = {
       read = { "read", "file", "files" }, glob = { "searched for", "pattern", "patterns" },
-      grep = { "searched for", "pattern", "patterns" }, sourcegraph = { "searched for", "pattern", "patterns" },
+      grep = { "searched for", "pattern", "patterns" }, web_search = { "searched the web for", "query", "queries" },
       bash = { "ran", "command", "commands" }, fetch = { "fetched", "page", "pages" },
       skill = { "loaded", "skill", "skills" }, memory_add = { "saved", "memory", "memories" },
       memory_search = { "searched memory" }, diagnostics = { "checked", "file", "files" },

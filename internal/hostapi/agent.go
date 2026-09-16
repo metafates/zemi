@@ -1931,6 +1931,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		EditMemory:   h.modelEditMemory,
 		Scratch:      h.inScratch,
 		ScratchDir:   h.ScratchDir,
+		SearchURL:    func() string { return h.setStr("web.search_url") },
 		Seen:         h.readLog(),
 		Instructions: h.nearestInstructions,
 	}

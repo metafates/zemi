@@ -253,7 +253,8 @@ func TestAgentDefs(t *testing.T) {
 }
 
 // TestSubagentModelChoice: a subagent's model comes from the tool call,
-// then its definition, then agent.subagent_model, then the session; the
+// then its definition, then agent.small_model for a Small one, then
+// agent.subagent_model, then the session; the
 // agent tool lists the configured models and refuses one it does not know.
 func TestSubagentModelChoice(t *testing.T) {
 	h, r := newTestHostDB(t)
@@ -262,15 +263,21 @@ func TestSubagentModelChoice(t *testing.T) {
 		models = { { id = "main" }, { id = "mini" } },
 	})`)
 	for _, c := range []struct {
-		def, setting, want string
+		def, setting, small string
+		isSmall             bool
+		want                string
 	}{
-		{"", "", ""},
-		{"", "myllm/mini", "myllm/mini"},
-		{"myllm/main", "myllm/mini", "myllm/main"},
+		{"", "", "", false, ""},
+		{"", "myllm/mini", "", false, "myllm/mini"},
+		{"myllm/main", "myllm/mini", "", false, "myllm/main"},
+		{"", "myllm/main", "myllm/mini", false, "myllm/main"},
+		{"", "myllm/main", "myllm/mini", true, "myllm/mini"},
+		{"", "myllm/main", "", true, "myllm/main"},
 	} {
 		h.Settings.SetQuiet("agent.subagent_model", c.setting)
-		if got := h.subagentModelID(AgentDef{Model: c.def}); got != c.want {
-			t.Errorf("def %q setting %q: got %q, want %q", c.def, c.setting, got, c.want)
+		h.Settings.SetQuiet("agent.small_model", c.small)
+		if got := h.subagentModelID(AgentDef{Model: c.def, Small: c.isSmall}); got != c.want {
+			t.Errorf("%+v: got %q", c, got)
 		}
 	}
 	tool := h.agentTool()

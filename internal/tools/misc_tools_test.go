@@ -1,6 +1,6 @@
 // misc_tools_test.go covers the second batch of built-ins: todos, question
 // and skill (misc_tools.go), the job_* family (job_tools.go) and the net
-// helpers behind fetch/sourcegraph (net_tools.go). No test touches the
+// helpers behind fetch/web_search (net_tools.go). No test touches the
 // real network: fetch is proven at the URL/permission layer and via a
 // loopback httptest server that the SSRF guard must refuse.
 package tools
@@ -9,6 +9,7 @@ import (
 	"context"
 	"net"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -338,38 +339,51 @@ func TestFetchGates(t *testing.T) {
 
 func TestHTMLToText(t *testing.T) {
 	in := `<html><head><title>hidden</title></head>` +
-		`<body><!-- comment --><h1>Title</title>` +
+		`<body><!-- comment --><nav><a href="/menu">Menu</a></nav><header><h1>Title</h1></header>` +
 		`<script>alert("x")</script><style>.c{}</style>` +
-		`<p>Hello &amp; <b>world</b><br>line2</p></body></html>`
-	out := htmlToText(in)
-	for _, bad := range []string{"script", "hidden", "alert", ".c{}", "<b>"} {
+		`<p>Hello &amp; <b>world</b><br>line2 <a class="x" href="../docs?a=1&amp;b=2"><b>Docs</b></a>` +
+		` <a href="#top">Top</a> <a href="javascript:void(0)">JS</a></p></body></html>`
+	base, _ := url.Parse("https://example.com/blog/post")
+	out := htmlToText(in, base)
+	for _, bad := range []string{"script", "hidden", "alert", ".c{}", "<b>", "Menu", "#top", "javascript"} {
 		if strings.Contains(out, bad) {
 			t.Fatalf("htmlToText kept %q: %q", bad, out)
 		}
 	}
-	for _, want := range []string{"Hello & world", "line2"} {
+	for _, want := range []string{"Title", "Hello & world", "line2", "[Docs](https://example.com/docs?a=1&b=2)", "Top", "JS"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("htmlToText lost %q: %q", want, out)
 		}
 	}
 }
 
-func TestParseSGStream(t *testing.T) {
-	body := "event: matches\n" +
-		`data: [{"repository":"a/b","path":"x.go","lineMatches":[{"line":"func Foo()","lineNumber":3}]}]` + "\n\n" +
-		"event: matches\n" +
-		`data: [{"repository":"c/d","path":"README.md"}]` + "\n\n" +
-		"event: progress\n\n" +
-		"garbage\n\n"
-	out := parseSGStream(strings.NewReader(body), 10)
-	want := "a/b -> x.go:3: func Foo()\nc/d -> README.md\n"
-	if out != want {
-		t.Fatalf("parseSGStream = %q, want %q", out, want)
+func TestSearchParsers(t *testing.T) {
+	lite := `<table><tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2Fdoc&amp;rut=x" class='result-link'>The <b>Go</b> docs</a></td></tr>
+<tr><td class='result-snippet'>Learn &amp; build</td></tr>
+<tr><td><a rel="nofollow" href="https://pkg.go.dev/" class='result-link'>pkg.go.dev</a></td></tr></table>`
+	hits, err := parseDDGLite(200, lite)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if out := parseSGStream(strings.NewReader(body), 1); out != "a/b -> x.go:3: func Foo()\n" {
-		t.Fatalf("count cap: %q", out)
+	if got := formatHits(hits, 10); got != "1. The Go docs\n   https://go.dev/doc\n   Learn & build\n2. pkg.go.dev\n   https://pkg.go.dev/\n" {
+		t.Fatalf("lite: %q", got)
 	}
-	if out := parseSGStream(strings.NewReader("event: done\n\n"), 5); out != "(no matches)" {
-		t.Fatalf("empty stream: %q", out)
+	if got := formatHits(hits, 1); strings.Contains(got, "pkg.go.dev") {
+		t.Fatalf("limit: %q", got)
+	}
+	for _, c := range []struct {
+		status int
+		page   string
+	}{{202, ""}, {200, `<div class="anomaly-modal__mask">`}} {
+		if _, err := parseDDGLite(c.status, c.page); err == nil || !strings.Contains(err.Error(), "bot check") {
+			t.Fatalf("bot check %d must be an error, got %v", c.status, err)
+		}
+	}
+	sx, err := parseSearxng([]byte(`{"results":[{"title":"A","url":"https://a.example/","content":"about a"}]}`))
+	if err != nil || formatHits(sx, 10) != "1. A\n   https://a.example/\n   about a\n" {
+		t.Fatalf("searxng: %q %v", formatHits(sx, 10), err)
+	}
+	if got := formatHits(nil, 10); got != "(no results)" {
+		t.Fatalf("empty: %q", got)
 	}
 }

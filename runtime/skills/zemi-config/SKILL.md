@@ -80,9 +80,11 @@ writable; prefer it over guessing. Common keys:
 - `agent.subagent_model`: default model for subagents whose definition sets none (empty: the
   session model); a cheaper model here keeps searches cheap. The agent may still pick another
   configured model per run.
-- `agent.small_model`: a fast, cheap model for small jobs (session titles, and auto-mode
-  screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
+- `agent.small_model`: a fast, cheap model for small jobs (session titles, the builtin `web`
+  agent, and auto-mode screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
   `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.
+- `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
+  for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
@@ -203,7 +205,7 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 ## Tools and permission rules
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
-`sourcegraph`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `lua` (runs Lua inside zemi at the lowest trust, so it cannot widen
 permissions, add MCP servers or read secret-shaped env names; permission subject `tool.lua`), plus
