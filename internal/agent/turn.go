@@ -35,7 +35,7 @@ type PersistFunc func(role string, msg fantasy.Message) error
 
 // Runner runs one conversation: history in, streaming turns out. Send is
 // safe for one concurrent turn; a second Send while one runs returns
-// ErrTurnActive (the UI steers via TurnInput instead, DESIGN §8).
+// ErrTurnActive (mid-turn messages go through Steer instead, DESIGN §4).
 type Runner struct {
 	mu          sync.Mutex
 	agent       fantasy.Agent
