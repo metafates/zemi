@@ -110,7 +110,8 @@ config git repo exists before any step can commit a revision (see "Permanent rul
    (~10 ms). Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have
    a 50 ms Lua-handler deadline and then take a logged default (fail-closed for permission
-   asks without an overlay leg).
+   asks without an overlay leg). While the runtime is hot, registered `permission.request`
+   and `tool.pre` handlers cannot run, so both deny until `/reload`.
 6. **No bare goroutines in hostapi.** Start them with `h.GoSafe(where, fn)`: a panic is
    logged with its stack (source `panic`), shown in `/errors`, and zemi keeps running.
    Turn goroutines also defer `h.endTurnAfterPanic()` so the agent is not left "active".

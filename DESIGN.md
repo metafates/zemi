@@ -182,7 +182,9 @@ Contracts that make this safe:
   and ignored); the other
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
-  for `agent.assemble`. The 50 ms leg governs Lua handlers only, arms at
+  for `agent.assemble`. While the runtime is hot, registered
+  `permission.request` and `tool.pre` handlers cannot run, so both deny
+  until `/reload` instead of passing unchecked. The 50 ms leg governs Lua handlers only, arms at
   handler start, and its meaning depends on the ask's shape. A model
   tool call that needs an ask has a second leg: the Go-owned overlay (§8)
   blocks the agent worker goroutine (never the interpreter) until the

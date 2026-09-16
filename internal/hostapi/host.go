@@ -577,6 +577,10 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 	if errors.Is(err, lua.ErrAbandoned) {
 		return VetoResult{TimedOut: true}
 	}
+	if err != nil && name == "permission.request" {
+		// a hot runtime cannot run the deny hooks: fail closed
+		return VetoResult{Denied: true, Handled: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
+	}
 	res := VetoResult{}
 	for _, o := range outcomes {
 		if o.timed {

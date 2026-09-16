@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -87,6 +89,31 @@ func TestToolPreOnce(t *testing.T) {
 		if d, _, _, _ := pre("bash", map[string]any{"command": "ls"}); d != want {
 			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
 		}
+	}
+}
+
+// TestHotRuntimeVetoesFailClosed: while the runtime is hot the deny hooks
+// cannot run, so permission.request and tool.pre deny and app.quit proceeds.
+func TestHotRuntimeVetoesFailClosed(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.event.on("permission.request", function() end)
+		zemi.event.on("app.quit", function() end)
+		zemi.event.on("tool.pre", function() end)`)
+	if _, err := r.Do(context.Background(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, func(*glua.LState) ([]any, error) {
+		time.Sleep(200 * time.Millisecond)
+		return nil, nil
+	}); !r.IsHot() {
+		t.Fatalf("runtime not hot: %v", err)
+	}
+	if res := h.EmitVetoable(context.Background(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied {
+		t.Errorf("permission.request while hot = %+v, want denied", res)
+	}
+	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+		t.Errorf("app.quit while hot = %+v, want proceed", res)
+	}
+	if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
+		t.Errorf("tool.pre while hot = %q, want deny", d)
 	}
 }
 

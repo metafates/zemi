@@ -365,6 +365,10 @@ func (h *Host) toolPreHook() tools.PreHook {
 		})
 		if err != nil {
 			h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
+			if !errors.Is(err, lua.ErrAbandoned) {
+				// a hot runtime cannot run the deny hooks: fail closed
+				return "deny", "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
+			}
 			return "", "", nil, false
 		}
 		return decision, reason, rewritten, loosened
