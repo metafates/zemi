@@ -845,8 +845,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	}
 
 	if n := a.rowsBelow(); n > 0 {
-		left = append(left, hostapi.Segment{Text: "  "},
-			hostapi.Segment{Text: fmt.Sprintf(" ↓ %d · ctrl+end ", n), HL: "Host:Btn"})
+		left = append(left, hostapi.Segment{Text: fmt.Sprintf("  ↓ %d · ctrl+end", n), HL: "Title"})
 	}
 
 	leftW := segsWidth(left)

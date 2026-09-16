@@ -20,11 +20,13 @@ git worktree add -b feat/retry .worktrees/retry
 echo '.worktrees/' >> .git/info/exclude       # once per repository
 ```
 
-`<repo root>/.worktrees/<short name>` is the right place, for three reasons:
+`.worktrees/<short name>` under the directory zemi started in (the Environment section names
+it; it is the repo root in the normal case) is the right place, for three reasons:
 
 - it is inside the project, so reads need no permission prompt and writes ask exactly like
-  any other project file. A worktree outside the project is outside the jail: every read
-  and write there asks, one prompt at a time.
+  any other project file. A worktree outside that directory is outside the jail: every read
+  and write there asks, one prompt at a time. Started in a subdirectory, put `.worktrees/`
+  there rather than at the repo root, or the jail does not cover it.
 - `.git/info/exclude` is local to the clone, so the entry never shows in a diff or needs
   committing, and it keeps `git status` clean.
 - `grep`, `glob` and ripgrep honour that exclude, so a search does not return every hit
