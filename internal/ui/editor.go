@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -65,20 +66,18 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 	defer a.await(func() tea.Cmd { a.editing = ""; a.editEnded = a.now(); return nil })
 
 	if mode == editor.Fullscreen {
+		// ctx kills it: cmd.Process is set on the program's goroutine, so
+		// reading it here would race the start
+		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 		done := make(chan error, 1)
 		a.await(func() tea.Cmd {
 			return tea.ExecProcess(cmd, func(err error) tea.Msg { return editDoneMsg{err: err, done: done} })
 		})
-		select {
-		case err := <-done:
+		// the terminal is restored only after the process exits
+		if err := <-done; ctx.Err() == nil {
 			return mode, err
-		case <-ctx.Done():
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			<-done // the terminal is restored only after the process exits
-			return mode, ctx.Err()
 		}
+		return mode, ctx.Err()
 	}
 
 	// tmux: a short client that blocks until the popup closes or the split
