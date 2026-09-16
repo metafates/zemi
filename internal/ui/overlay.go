@@ -187,10 +187,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		switch {
 		case o.Reload != nil:
 			a.runOverlayRow(o, idx)
-			sel, query := st.selected, st.query
+			f := st.listFilter
 			o.Items = o.Reload()
 			*st = a.overlayState(o)
-			st.query, st.selected = query, sel
+			st.listFilter = f
 			st.refilter()
 			a.frameGen++
 		case key == "space":

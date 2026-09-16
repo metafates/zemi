@@ -13,8 +13,8 @@ import (
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
-// run the row and rebuild the list in place, keeping the selection;
-// ctrl+j moves like j.
+// run the row and rebuild the list in place, keeping the selection and the
+// filter; ctrl+j moves like j.
 func TestToggleOverlayStaysOpen(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	on := false
@@ -36,6 +36,12 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	}
 	if got := a.overlays[0].itemText[1]; got != "○ b" || a.composer.text != "picked" {
 		t.Fatalf("row=%q composer=%q", got, a.composer.text)
+	}
+	a.overlayKey("", "/")
+	a.overlayKey("", "b")
+	a.overlayKey("space", " ")
+	if st := a.overlays[0]; !st.active || st.query != "b" || len(st.visible) != 1 {
+		t.Fatalf("filter after toggle: %+v", st.listFilter)
 	}
 }
 
