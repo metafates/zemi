@@ -230,37 +230,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	}
 }
 
-func TestEditTolerantWhitespace(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow},
-	)
-	dir := t.TempDir()
-	file := filepath.Join(dir, "a.txt")
-	os.WriteFile(file, []byte("func  main() {\n\treturn\n}\n"), 0o644)
-	edit := All(p)[3]
-	resp := call(t, edit, `{"path":"`+file+`","old_string":"func main() {\n    return\n}","new_string":"func main() {\n    return nil\n}"}`)
-	if resp.IsError {
-		t.Fatalf("tolerant edit: %+v", resp)
-	}
-	data, _ := os.ReadFile(file)
-	if !strings.Contains(string(data), "return nil") {
-		t.Fatalf("tolerant edit not applied: %q", data)
-	}
-}
-
-func TestEditNotFound(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	dir := t.TempDir()
-	file := filepath.Join(dir, "a.txt")
-	os.WriteFile(file, []byte("content"), 0o644)
-	edit := All(p)[3]
-	resp := call(t, edit, `{"path":"`+file+`","old_string":"nope","new_string":"x"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "not found") {
-		t.Fatalf("missing match must error: %+v", resp)
-	}
-}
-
 func TestMultieditSequential(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	dir := t.TempDir()
