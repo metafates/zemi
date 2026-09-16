@@ -407,7 +407,7 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			// Every boot decides again: a reload whose changed tree the user
 			// refuses must not keep the trust given to the tree before it.
-			h.SetProjectTrusted(false)
+			h.SetProjectTrusted("")
 			pdir := dirs.ProjectConfigDir()
 			if pdir == "" {
 				return nil
@@ -424,7 +424,7 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 			if !present {
 				return nil
 			}
-			hash, err := hashTree(pdir)
+			hash, err := hostapi.HashTree(pdir)
 			if err != nil {
 				return err
 			}
@@ -454,53 +454,13 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 					return nil
 				}
 			}
-			h.SetProjectTrusted(true)
+			h.SetProjectTrusted(hash)
 			if _, err := os.Stat(initPath); err != nil {
 				return nil
 			}
 			return lua.LoadFileStep("project init", initPath, lua.OriginProject).Run(ctx, r, g)
 		},
 	}
-}
-
-// hashTree fingerprints a project config tree: sorted relative paths plus
-// file contents over sha256. Symlinks and non-regular files are refused
-// (git mode 120000 aliases unreviewed content, DESIGN §10.4).
-func hashTree(root string) (string, error) {
-	var paths []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if t := d.Type(); t&fs.ModeDir == 0 && t != 0 {
-			return fmt.Errorf("project config contains a symlink or non-regular file: %s", p)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		paths = append(paths, rel)
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	slices.Sort(paths)
-	sum := sha256.New()
-	for _, rel := range paths {
-		data, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			return "", err
-		}
-		// the length frames the content: a file holding NULs must not hash
-		// like several files
-		fmt.Fprintf(sum, "%s\x00%d\x00", rel, len(data))
-		sum.Write(data)
-	}
-	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
 func readTrust(path string) map[string]string {

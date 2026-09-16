@@ -2,10 +2,14 @@ package hostapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -253,12 +257,65 @@ type Host struct {
 	reloadSeq  uint64
 	reloadDone chan struct{}
 
-	// projectTrusted is set once the project config tree passed the trust
-	// prompt; project agents, commands and workflows load only then.
-	projectTrusted atomic.Bool
+	// projectTrust is the hash of the project config tree the user trusted
+	// at boot, empty when untrusted; see trustedProject.
+	projectTrust atomic.Pointer[string]
 }
 
-func (h *Host) SetProjectTrusted(ok bool) { h.projectTrusted.Store(ok) }
+// SetProjectTrusted records the trusted tree's HashTree; "" revokes trust.
+func (h *Host) SetProjectTrusted(hash string) { h.projectTrust.Store(&hash) }
+
+// trustedProject reports whether pdir still hashes to the tree the user
+// trusted: agents and workflows are read on use, and a git pull mid-session
+// must not run unreviewed ones before /reload asks again.
+func (h *Host) trustedProject(pdir string) bool {
+	want := h.projectTrust.Load()
+	if pdir == "" || want == nil || *want == "" {
+		return false
+	}
+	got, err := HashTree(pdir)
+	return err == nil && got == *want
+}
+
+// HashTree fingerprints a project config tree: sorted relative paths plus
+// file contents over sha256. Symlinks and non-regular files are refused
+// (git mode 120000 aliases unreviewed content, DESIGN §10.4).
+func HashTree(root string) (string, error) {
+	var paths []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if t := d.Type(); t&fs.ModeDir == 0 && t != 0 {
+			return fmt.Errorf("project config contains a symlink or non-regular file: %s", p)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	slices.Sort(paths)
+	sum := sha256.New()
+	for _, rel := range paths {
+		data, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			return "", err
+		}
+		// the length frames the content: a file holding NULs must not hash
+		// like several files
+		fmt.Fprintf(sum, "%s\x00%d\x00", rel, len(data))
+		sum.Write(data)
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
 
 // Session is the session state (title, cwd, transcript).
 type Session struct {

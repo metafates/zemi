@@ -95,7 +95,7 @@ func (h *Host) agentDefs() []AgentDef {
 		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), "user"))
 	}
 	add(builtinAgents)
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.projectTrusted.Load() {
+	if pdir := h.Dirs.ProjectConfigDir(); h.trustedProject(pdir) {
 		add(h.loadAgentDir(filepath.Join(pdir, "agents"), "project"))
 	}
 	return out
@@ -112,7 +112,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 		}
 		names = append(names, d.Name)
 	}
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.projectTrusted.Load() {
+	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.trustedProject(pdir) {
 		if _, err := os.Stat(filepath.Join(pdir, "agents", name+".md")); err == nil {
 			return AgentDef{}, fmt.Errorf("agent %q is in %s, which is not trusted yet: the user runs /reload and trusts it", name, pdir)
 		}

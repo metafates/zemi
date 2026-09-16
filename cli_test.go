@@ -146,7 +146,7 @@ func TestHashTreeFraming(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		h, err := hashTree(dir)
+		h, err := hostapi.HashTree(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,11 @@ func TestProjectTrustResetOnRefusal(t *testing.T) {
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
-	h.SetProjectTrusted(true)
+	hash, err := hostapi.HashTree(dirs.ProjectConfigDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetProjectTrusted(hash)
 	once := func(string, string) string { return "once" }
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), projectConfigStep(h, once, dirs), h.MarkdownCommandsStep()}); err != nil {
 		t.Fatal(err)

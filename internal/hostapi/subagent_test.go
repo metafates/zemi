@@ -292,7 +292,11 @@ func TestAgentDefs(t *testing.T) {
 	if _, ok := defs["tester"]; ok {
 		t.Fatal("project agents must wait for trust")
 	}
-	h.SetProjectTrusted(true)
+	hash, err := HashTree(filepath.Join(proj, ".zemi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetProjectTrusted(hash)
 	defs = get()
 	for _, c := range []struct{ name, source, desc, tools, system string }{
 		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh."},
@@ -310,6 +314,11 @@ func TestAgentDefs(t *testing.T) {
 	}
 	if _, ok := defs["broken"]; ok {
 		t.Fatal("an agent without description must be skipped")
+	}
+	// a tree changed after trust (a git pull) waits for /reload
+	write(filepath.Join(proj, ".zemi", "agents"), "tester.md", "---\ndescription: runs tests\ntools: bash\n---\npulled\n")
+	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "/reload") {
+		t.Fatalf("changed project agent = %v", err)
 	}
 }
 
