@@ -72,16 +72,16 @@ func probe() (Backend, error) {
 	return Backend{Name: fmt.Sprintf("landlock v%d + seccomp", abi)}, nil
 }
 
-// namespaceAttr starts the helper in its own user, network, mount and, with
-// pid, pid namespaces, as the same uid and with the caps to bring lo up and
-// mount. In its own pid namespace the command cannot name a process outside
-// to signal it, which Landlock scopes only from v6.
+// namespaceAttr starts the helper in its own user, network, mount, IPC and,
+// with pid, pid namespaces, as the same uid and with the caps to bring lo up
+// and mount. In its own pid namespace the command cannot name a process
+// outside to signal it, which Landlock scopes only from v6.
 // Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
 // both refuse this, and the probe falls back. Docker with seccomp unconfined
 // masks parts of /proc, so a fresh proc for the pid namespace is refused
 // there and the probe drops the pid namespace.
 func namespaceAttr(a *syscall.SysProcAttr, pid bool) {
-	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS
+	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS | syscall.CLONE_NEWIPC
 	if pid {
 		a.Cloneflags |= syscall.CLONE_NEWPID
 	}
@@ -452,7 +452,8 @@ func addRead(add func(string, uint64) error, dir string, hide []string) error {
 var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": unix.AUDIT_ARCH_AARCH64}
 
 // seccomp denies io_uring (whose ops skip the socket check), chown and
-// xattrs (ACLs among them), which Landlock does not mediate, and socket():
+// xattrs (ACLs among them) and kernel keyrings, which Landlock does not
+// mediate, SysV IPC without the IPC namespace, and socket():
 // every family without namespaces, and with them all but inet and netlink,
 // which reach only the empty network namespace. Landlock does not mediate
 // connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
@@ -467,6 +468,10 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // the user's files (chmod 644 ~/.ssh/id_ed25519), though not read or write
 // it. The namespace variant cannot remount home read-only for metadata alone
 // either; the upgrade is a Landlock right for it, which no kernel has yet.
+// NOTE: without namespaces SysV IPC is denied outright, so a program that
+// needs it (PostgreSQL's postmaster) fails there. /proc/sysvipc still lists
+// the user's segments (key, owner, size), and POSIX message queues stay
+// shared with the user's other programs.
 // NOTE: socketpair stays allowed, so a unix socket still works between the
 // command's own processes; anything that listens on or dials a unix socket
 // path fails, and an AF_UNIX fd the command inherits stays usable.
@@ -504,7 +509,12 @@ func seccomp(ns bool) error {
 	if runtime.GOARCH == "amd64" {
 		metadata = append(metadata, 92, 94) // chown, lchown; arm64 has only the at forms
 	}
-	for _, nr := range append(metadata, unix.SYS_IO_URING_SETUP) {
+	denied := append(metadata, unix.SYS_IO_URING_SETUP, unix.SYS_KEYCTL, unix.SYS_ADD_KEY, unix.SYS_REQUEST_KEY)
+	if !ns {
+		denied = append(denied, unix.SYS_SHMGET, unix.SYS_SHMAT, unix.SYS_SHMCTL, unix.SYS_MSGGET, unix.SYS_MSGSND,
+			unix.SYS_MSGRCV, unix.SYS_MSGCTL, unix.SYS_SEMGET, unix.SYS_SEMOP, unix.SYS_SEMTIMEDOP, unix.SYS_SEMCTL)
+	}
+	for _, nr := range denied {
 		prog = append(prog, jump(eq, nr, 0, 1), deny)
 	}
 	prog = append(prog, jump(eq, unix.SYS_SOCKET, 1, 0), allow)

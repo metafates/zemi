@@ -40,7 +40,13 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// osActs are the verbs only one OS's test file can build.
+var osActs = map[string]func(arg string) error{}
+
 func act(verb, arg string) error {
+	if f, ok := osActs[verb]; ok {
+		return f(arg)
+	}
 	switch verb {
 	case "write":
 		return os.WriteFile(arg, []byte("x"), 0o644)
