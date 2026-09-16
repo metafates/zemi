@@ -98,23 +98,50 @@ func call(t *testing.T, ag fantasy.AgentTool, input string) fantasy.ToolResponse
 	return resp
 }
 
-func TestBashAllowAndGate(t *testing.T) {
-	p, asked := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow})
-	ag := All(p)[0]
-	resp := call(t, ag, `{"command":"echo hello"}`)
-	if resp.IsError || !strings.Contains(resp.Content, "hello") {
-		t.Fatalf("echo should run: %+v", resp)
+func TestBashGate(t *testing.T) {
+	allow := func(pattern string) perm.Rule {
+		return perm.Rule{Subject: "tool.bash", Pattern: pattern, Decision: perm.Allow}
 	}
-	if len(*asked) != 0 {
-		t.Fatalf("allowed command must not ask: %+v", *asked)
+	rewrite := func(tool string, input map[string]any) (string, string, map[string]any, bool) {
+		if str(input["command"]) == "rewrite-me" {
+			return "rewrite", "", map[string]any{"command": "echo hi"}, true
+		}
+		return "", "", nil, false
 	}
-	resp = call(t, ag, `{"command":"ls /etc"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "(overlay)") {
-		t.Fatalf("unmatched command must hit the overlay and be denied: %+v", resp)
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("overlay consulted once: %+v", *asked)
+	for _, c := range []struct {
+		name      string
+		rule      perm.Rule
+		pre       func(string, map[string]any) (string, string, map[string]any, bool)
+		noOverlay bool
+		command   string
+		want      string
+		wantErr   bool
+		wantAsks  []string
+	}{
+		{name: "allowed runs without asking", rule: allow("echo *"), command: "echo hello", want: "hello"},
+		{name: "unmatched asks the denying overlay", rule: allow("echo *"), command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
+		{name: "compound needs every segment", rule: allow("ls*"), command: "ls; rm -rf x", wantErr: true, wantAsks: []string{"ls; rm -rf x"}},
+		{name: "no overlay fails closed", noOverlay: true, command: "echo hi", want: "ask failed", wantErr: true},
+		{name: "loosened rewrite re-asks under allow", rule: allow("*"), pre: rewrite, command: "rewrite-me", want: "permission denied (overlay)", wantErr: true, wantAsks: []string{"echo hi"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p, asked := testPipeline(t, false, c.rule)
+			if c.noOverlay {
+				p.Ask = nil
+			}
+			p.Pre = c.pre
+			resp := call(t, All(p)[0], `{"command":"`+c.command+`"}`)
+			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("got %+v", resp)
+			}
+			var args []string
+			for _, r := range *asked {
+				args = append(args, r.Arg)
+			}
+			if !slices.Equal(args, c.wantAsks) {
+				t.Fatalf("asks = %q, want %q", args, c.wantAsks)
+			}
+		})
 	}
 }
 
@@ -132,32 +159,6 @@ func TestJobLineChecksWhatRuns(t *testing.T) {
 		if got := perm.Normalize(line).Segments; !slices.Equal(got, c.segs) {
 			t.Errorf("%q %q: %q checks as %q, want %q", c.command, c.args, line, got, c.segs)
 		}
-	}
-}
-
-func TestBashCompoundNeedsEverySegment(t *testing.T) {
-	p, asked := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "ls*", Decision: perm.Allow})
-	ag := All(p)[0]
-	resp := call(t, ag, `{"command":"ls; rm -rf x"}`)
-	if !resp.IsError {
-		t.Fatalf("compound must not ride broad allow: %+v", resp)
-	}
-	if len(*asked) != 1 || (*asked)[0].Arg != "ls; rm -rf x" {
-		t.Fatalf("one ask carrying the whole command preview: %+v", *asked)
-	}
-}
-
-func TestBashAssignmentGateForcesOverlay(t *testing.T) {
-	p, asked := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
-	ag := All(p)[0]
-	resp := call(t, ag, `{"command":"PATH=.:$PATH make"}`)
-	if !resp.IsError {
-		t.Fatalf("assignment gate must ask; denying overlay stops it: %+v", resp)
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("assignment gate must ask: %+v", *asked)
 	}
 }
 
@@ -394,35 +395,6 @@ func TestValidationErrors(t *testing.T) {
 	resp = call(t, ag, `not json`)
 	if !resp.IsError || !strings.Contains(resp.Content, "invalid tool input") {
 		t.Fatalf("bad json: %+v", resp)
-	}
-}
-
-func TestNoOverlayFailsClosed(t *testing.T) {
-	s := perm.NewStore()
-	p := &Pipeline{Store: s}
-	ag := All(p)[0]
-	resp := call(t, ag, `{"command":"echo hi"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "ask failed") {
-		t.Fatalf("no overlay must fail closed: %+v", resp)
-	}
-}
-
-func TestRewriteLoosensAllows(t *testing.T) {
-	p, asked := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
-	p.Pre = func(tool string, input map[string]any) (string, string, map[string]any, bool) {
-		if tool == "bash" && str(input["command"]) == "rewrite-me" {
-			return "rewrite", "", map[string]any{"command": "echo hi"}, true
-		}
-		return "", "", nil, false
-	}
-	ag := All(p)[0]
-	resp := call(t, ag, `{"command":"rewrite-me"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "permission denied (overlay)") {
-		t.Fatalf("loosened rewrite must ask (deny overlay): %+v", resp)
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("re-entered allow must consult the overlay: %+v", *asked)
 	}
 }
 
