@@ -22,6 +22,9 @@ type Normalized struct {
 	// ForceAsk is a non-empty reason when the whole call must ask
 	// regardless of allow rules (environment assignment gate, heredoc).
 	ForceAsk string
+	// Opaque marks shell state the segments do not show: a variable
+	// assignment, or a nested sh -c whose arguments reach the inner shell.
+	Opaque bool
 	// Fail is a non-empty reason when the call must fail outright
 	// (unbalanced quotes or parens, emptied redirect target).
 	Fail string
@@ -207,6 +210,9 @@ func (n *Normalized) scan(cmd string) {
 			for ; j < len(rs) && rs[j] != '"'; j++ {
 				if rs[j] == '\\' && j+1 < len(rs) {
 					j++
+					if rs[j] == '\n' { // line continuation
+						continue
+					}
 				}
 				cur.WriteRune(rs[j])
 			}
@@ -217,6 +223,8 @@ func (n *Normalized) scan(cmd string) {
 				return
 			}
 			i = j
+		case r == '\\' && i+1 < len(rs) && rs[i+1] == '\n': // line continuation
+			i++
 		case r == '\\':
 			any = true
 			if i+1 < len(rs) {
@@ -231,6 +239,29 @@ func (n *Normalized) scan(cmd string) {
 			i++
 			sc.depth++
 			sc.toks = append(sc.toks, token{kind: tokSep})
+		case r == '$' && i+1 < len(rs) && (rs[i+1] == '\'' || rs[i+1] == '"'):
+			// $'..' and $".." quote in bash (the $ goes) but not in dash; a
+			// backslash in $'..' can move where bash ends the quote, so ask
+			q := rs[i+2:]
+			if end := slices.Index(q, '\''); rs[i+1] == '\'' && end >= 0 && slices.Contains(q[:end], '\\') {
+				n.ForceAsk = "ANSI-C quoting with a backslash"
+			}
+		case r == '#' && !any:
+			// a comment ends at the newline, but a quote or backslash in it
+			// would carry the next line into this segment. The comment is
+			// only skipped when the call asks: a # the shell reads as a
+			// word (after a non-ASCII space) must not hide what runs.
+			end := slices.Index(rs[i:], '\n')
+			if end < 0 {
+				end = len(rs) - i
+			}
+			if slices.ContainsFunc(rs[i:i+end], func(c rune) bool { return c == '\'' || c == '"' || c == '\\' }) {
+				n.ForceAsk = "comment with a quote or backslash"
+				i += end - 1
+				continue
+			}
+			any = true
+			cur.WriteRune(r)
 		case r == '(':
 			flush()
 			sc.depth++
@@ -404,8 +435,14 @@ func (n *Normalized) fold(seg []string) {
 	if len(argv) == 0 {
 		return
 	}
+	// these builtins assign the variables they name (read PATH, printf -v PATH)
+	assigns := slices.Contains([]string{"for", "select", "read", "mapfile", "readarray", "getopts", "printf"}, argv[0])
 	for _, a := range argv {
-		if name, ok := assignmentName(a); ok && EnvAssignmentGate(name) {
+		name, ok := assignmentName(a)
+		if assigns && !ok {
+			name, ok = assignmentName(strings.TrimPrefix(a, "-v") + "=")
+		}
+		if ok && EnvAssignmentGate(name) {
 			n.ForceAsk = "environment assignment: " + name
 			return
 		}
@@ -415,6 +452,7 @@ func (n *Normalized) fold(seg []string) {
 			break
 		}
 		argv = argv[1:]
+		n.Opaque = true
 	}
 	if len(argv) == 0 {
 		return
@@ -424,6 +462,7 @@ func (n *Normalized) fold(seg []string) {
 			if argv[i] == "-c" && i+1 < len(argv) {
 				inner := Normalize(argv[i+1])
 				n.absorb(inner)
+				n.Opaque = true
 				return
 			}
 		}
@@ -451,16 +490,18 @@ func isShell(s string) bool {
 	return false
 }
 
-// assignmentName recognizes NAME=value and NAME+=value.
+// assignmentName recognizes NAME=value and NAME+=value, and NAME[i]=value,
+// which sets a plain variable NAME as well.
 func assignmentName(tok string) (string, bool) {
-	if i := strings.Index(tok, "+="); i > 0 {
-		return tok[:i], isName(tok[:i])
-	}
 	i := strings.Index(tok, "=")
 	if i <= 0 {
 		return "", false
 	}
-	return tok[:i], isName(tok[:i])
+	name := strings.TrimSuffix(tok[:i], "+")
+	if j := strings.IndexByte(name, '['); j > 0 && strings.HasSuffix(name, "]") {
+		name = name[:j]
+	}
+	return name, isName(name)
 }
 
 func isName(s string) bool {
