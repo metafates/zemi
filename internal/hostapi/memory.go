@@ -328,7 +328,7 @@ func (h *Host) memoryRows() []MemoryRow {
 	for _, m := range h.memoryProposals() {
 		text := m.Text
 		if m.Supersedes != "" {
-			text += " (replaces " + clipRunes(m.Supersedes, 8) + ")"
+			text += " (replaces " + learn.Truncate(m.Supersedes, 8) + ")"
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,

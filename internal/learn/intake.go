@@ -87,11 +87,12 @@ func cleanTags(tags []string) []string {
 // The scrub runs before the cut, which could leave a secret too short to
 // recognize; the first cut at 2n only bounds the scrub's work.
 func scrubCapped(s string, n int) (string, bool) {
-	out, scrubbed := ScrubSecrets(truncate(strings.Join(strings.Fields(sanitize.String(s)), " "), 2*n))
-	return strings.TrimSpace(truncate(out, n)), scrubbed
+	out, scrubbed := ScrubSecrets(Truncate(strings.Join(strings.Fields(sanitize.String(s)), " "), 2*n))
+	return strings.TrimSpace(Truncate(out, n)), scrubbed
 }
 
-func truncate(s string, n int) string {
+// Truncate cuts s to at most n runes.
+func Truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s

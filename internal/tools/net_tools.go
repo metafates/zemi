@@ -167,7 +167,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		fmt.Fprintf(&b, "Content-Type: %s\n", v)
 	}
 	b.WriteString("\n")
-	if cut := truncOut(text); cut != text {
+	if cut := TruncOut(text, 10000); cut != text {
 		b.WriteString(cut + p.spill("fetch", text))
 	} else {
 		b.WriteString(text)

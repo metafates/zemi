@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -785,7 +786,7 @@ func toolLabel(input string) string {
 	if json.Unmarshal([]byte(input), &in) != nil || in.Command == "" {
 		return ""
 	}
-	return clipRunes(strings.Join(strings.Fields(in.Description), " "), 80)
+	return learn.Truncate(strings.Join(strings.Fields(in.Description), " "), 80)
 }
 
 // toolSummary picks the argument a person reads first (a command, path or
@@ -886,7 +887,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		name = p.Name
 	}
 	first, _, _ := strings.Cut(strings.TrimSpace(firstText), "\n")
-	title := clipRunes(first, 60)
+	title := learn.Truncate(first, 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err

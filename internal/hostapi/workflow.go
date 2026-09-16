@@ -665,13 +665,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 	return fantasy.NewTextResponse(truncOutput(out)), nil
 }
 
-func truncOutput(s string) string {
-	const limit = 30000
-	if len(s) <= limit {
-		return s
-	}
-	return strings.ToValidUTF8(s[:limit], "") + "\n... (truncated)"
-}
+func truncOutput(s string) string { return tools.TruncOut(s, 30000) }
 
 // ---------------------------------------------------------------------------
 // /workflow and zemi.workflow

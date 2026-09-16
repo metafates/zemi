@@ -252,7 +252,7 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-			return fantasy.NewTextResponse(truncOut("Skill directory: " + s.Path + "\n\n" + body)), nil
+			return fantasy.NewTextResponse(TruncOut("Skill directory: "+s.Path+"\n\n"+body, 10000)), nil
 		}
 	}
 	slices.Sort(known)

@@ -300,15 +300,8 @@ func concatText[T any](parts []T) string {
 }
 
 func truncRunes(s string, n int) string {
-	if c := clipRunes(s, n); c != s {
+	if c := learn.Truncate(s, n); c != s {
 		return c + "..."
-	}
-	return s
-}
-
-func clipRunes(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n])
 	}
 	return s
 }

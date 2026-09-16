@@ -16,6 +16,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -103,7 +104,7 @@ func (h *Host) OpenSessions() error {
 		if title == "" {
 			title = "(untitled)"
 		}
-		title = clipRunes(title, 32)
+		title = learn.Truncate(title, 32)
 		title += strings.Repeat(" ", max(0, 32-len([]rune(title))))
 		p := previews[s.ID]
 		var tail []string
@@ -291,7 +292,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			return
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
-		title := sanitize.String(clipRunes(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
+		title := sanitize.String(learn.Truncate(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
 		if title == "" {
 			return
 		}

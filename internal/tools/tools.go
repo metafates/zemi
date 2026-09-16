@@ -935,10 +935,10 @@ func searchRoot(in map[string]any) string {
 	return "."
 }
 
-func truncOut(s string) string {
-	const max = 10000
-	if len(s) <= max {
+// TruncOut cuts tool output to at most n bytes and says so.
+func TruncOut(s string, n int) string {
+	if len(s) <= n {
 		return s
 	}
-	return strings.ToValidUTF8(s[:max], "") + "\n... (truncated)"
+	return strings.ToValidUTF8(s[:n], "") + "\n... (truncated)"
 }
