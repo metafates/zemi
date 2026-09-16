@@ -21,3 +21,10 @@ var Skills embed.FS
 //
 //go:embed workflows
 var Workflows embed.FS
+
+// Types holds the LuaLS annotations for the zemi.* API (types/zemi.lua),
+// written to the data dir on every start so an editor and zemi itself can
+// read the API surface instead of guessing at it.
+//
+//go:embed types
+var Types embed.FS

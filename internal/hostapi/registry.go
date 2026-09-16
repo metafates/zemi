@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -255,11 +254,8 @@ func (r *WidgetRegistry) InRegion(region string) []*Widget {
 			out = append(out, w)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Priority != out[j].Priority {
-			return out[i].Priority < out[j].Priority
-		}
-		return out[i].ID < out[j].ID
+	slices.SortFunc(out, func(a, b *Widget) int {
+		return cmp.Or(cmp.Compare(a.Priority, b.Priority), cmp.Compare(a.ID, b.ID))
 	})
 	return out
 }

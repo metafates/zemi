@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -207,7 +207,7 @@ func (h *Host) healthChecks() []healthCheck {
 	}
 	h.lsp.mu.Unlock()
 	if len(servers) > 0 {
-		sort.Strings(servers)
+		slices.Sort(servers)
 		add("ok", "lsp", strings.Join(servers, ", "))
 	} else {
 		add("ok", "lsp", "starts when the agent edits a supported file")

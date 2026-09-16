@@ -37,23 +37,37 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 
 ## Running Lua from the agent
 
-The `lua` tool runs a chunk in the live runtime as `user` origin, so the agent can read or
-change zemi's state with the same API: `print` output and return values (as JSON) come
-back. Each run asks (`tool.lua`, script shown) unless a rule or mode allows it. It holds
-the interpreter for at most 10s. Keep reusable scripts in the session scratchpad (its path is
-in the Environment section; files there are read and written without asking) and pass `path`.
-Globals a chunk sets stay in that chunk.
+The `lua` tool runs a chunk in the live runtime as `learned` origin, the lowest trust: the
+agent can read and change zemi's state through the same API, but not widen permissions, add
+MCP servers or read secret-shaped environment names. `print` output and return values (as
+JSON) come back. Each run asks (`tool.lua`, script shown) unless a rule or mode allows it.
+It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
+(its path is in the Environment section; files there are read and written without asking)
+and pass `path`. Globals a chunk sets stay in that chunk.
+
+`zemi.ui.screenshot()` returns the drawn screen as plain text, so you can see what the user
+sees - overlay open, statusline, transcript tail, wrapping at the real width - instead of
+asking them to describe it. It is the fastest way to check a widget, theme or layout change:
+apply it, `zemi.config.reload()`, then read the screen back.
+
+## Type annotations
+
+zemi writes LuaLS annotations for this whole API to `~/.local/share/zemi/types/zemi.lua`
+on every start, and a `~/.config/zemi/.luarc.json` pointing at them the first time. Read
+that file when you need an exact signature, field name or return shape - it is generated
+from the surface Go registers and a test fails when the two drift. Do not edit it: the
+next start overwrites it.
 
 ## Namespaces
 
 | Namespace | Members |
 | --- | --- |
-| `zemi.api` | `version` (API version string, currently "0.13.0") |
+| `zemi.api` | `version` (API version string, currently "0.15.0") |
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
-| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `help`, `invalidate()` (redraw) |
+| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help`, `invalidate()` (redraw) |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |

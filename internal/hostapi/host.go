@@ -39,6 +39,9 @@ type UIHooks interface {
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
 	ReviewMemories(items []MemoryRow) map[string]string // row id -> accept, reject or delete
+	// Screenshot is the last drawn frame as plain text, "" before the
+	// first one; safe from any goroutine.
+	Screenshot() string
 	ReviewConfigs(items []ConfigRow) (accepted, rejected []string)
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
@@ -936,6 +939,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	L := g.L
 	h.gen.Store(g.ID)
 	h.syncSkills()
+	h.syncTypes()
 
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
 		if call != nil {
@@ -984,7 +988,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.14.0"))
+	api.RawSetString("version", glua.LString("0.15.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

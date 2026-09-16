@@ -6,6 +6,8 @@
 package ui
 
 import (
+	"slices"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -26,7 +28,10 @@ type memUndo struct {
 // host's review goroutine) until the screen closes.
 func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
 	ch := make(chan map[string]string, 1)
-	a.do(func() { a.memReview = &memReviewPrompt{items: items, actions: map[string]string{}, answer: ch} })
+	// the caller keeps reading its own slice after this returns, so the
+	// screen edits a copy
+	rows := slices.Clone(items)
+	a.do(func() { a.memReview = &memReviewPrompt{items: rows, actions: map[string]string{}, answer: ch} })
 	return <-ch
 }
 
@@ -40,9 +45,10 @@ func (a *App) answerMemReview() {
 	a.frameGen++
 }
 
-// markMemory acts on the selected row and takes it off the list: keep
-// applies to suggestions only; drop rejects a suggestion or forgets a
-// memory.
+// markMemory acts on the selected row: keep moves a suggestion into
+// Remembered so the screen shows what zemi will know without reopening it;
+// drop rejects a suggestion or forgets a memory, taking the row off the
+// list. The host applies the decisions by id when the screen closes.
 func (a *App) markMemory(keep bool) {
 	mr := a.memReview
 	if mr == nil || mr.sel >= len(mr.items) {
@@ -54,14 +60,33 @@ func (a *App) markMemory(keep bool) {
 		return
 	case keep:
 		mr.actions[it.ID] = "accept"
-	case it.Queued:
+	case it.Queued, mr.actions[it.ID] == "accept":
+		// dropping a row accepted a moment ago drops the suggestion; it
+		// was never stored, so there is nothing to forget
 		mr.actions[it.ID] = "reject"
 	default:
 		mr.actions[it.ID] = "delete"
 	}
 	mr.undo = append(mr.undo, memUndo{mr.sel, it})
-	mr.items = append(mr.items[:mr.sel:mr.sel], mr.items[mr.sel+1:]...)
+	mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
+	if keep {
+		it.Queued = false
+		at := rememberedAt(mr.items)
+		mr.items = slices.Insert(mr.items, at, it)
+		if at <= mr.sel {
+			mr.sel++ // the row moved past the cursor; stay on the next suggestion
+		}
+	}
 	mr.sel = max(0, min(mr.sel, len(mr.items)-1))
+}
+
+// rememberedAt is where the Remembered section starts: suggestions come
+// first, so an accepted row lands right after the last of them.
+func rememberedAt(items []hostapi.MemoryRow) int {
+	if i := slices.IndexFunc(items, func(r hostapi.MemoryRow) bool { return !r.Queued }); i >= 0 {
+		return i
+	}
+	return len(items)
 }
 
 func (a *App) undoMemory() {
@@ -72,7 +97,11 @@ func (a *App) undoMemory() {
 	u := mr.undo[len(mr.undo)-1]
 	mr.undo = mr.undo[:len(mr.undo)-1]
 	delete(mr.actions, u.item.ID)
-	mr.items = append(mr.items[:u.at:u.at], append([]hostapi.MemoryRow{u.item}, mr.items[u.at:]...)...)
+	// an accepted row is still on the list, one section down
+	if i := slices.IndexFunc(mr.items, func(r hostapi.MemoryRow) bool { return r.ID == u.item.ID }); i >= 0 {
+		mr.items = slices.Delete(mr.items, i, i+1)
+	}
+	mr.items = slices.Insert(mr.items, min(u.at, len(mr.items)), u.item)
 	mr.sel = u.at
 }
 
@@ -95,16 +124,23 @@ func memReviewBox(mr *memReviewPrompt, w int) [][]hostapi.Segment {
 		if it.Scope == "user" {
 			where = "  everywhere"
 		}
-		body = append(body, []hostapi.Segment{{Text: cur, HL: "Host:HintKey", Hit: i + 1}, {Text: it.Text, HL: hl, Hit: i + 1}, {Text: where, HL: "Host:Hint", Hit: i + 1}})
+		row := []hostapi.Segment{{Text: cur, HL: "Host:HintKey", Hit: i + 1}}
+		if mr.actions[it.ID] == "accept" {
+			row = append(row, hostapi.Segment{Text: "+ ", HL: "Host:Ok", Hit: i + 1})
+		}
+		body = append(body, append(row, hostapi.Segment{Text: it.Text, HL: hl, Hit: i + 1}, hostapi.Segment{Text: where, HL: "Host:Hint", Hit: i + 1}))
 	}
 	if len(mr.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})
 	}
 	var hints []string
 	if mr.sel < len(mr.items) {
-		if mr.items[mr.sel].Queued {
+		switch it := mr.items[mr.sel]; {
+		case it.Queued:
 			hints = append(hints, "a", "keep", "d", "drop")
-		} else {
+		case mr.actions[it.ID] == "accept":
+			hints = append(hints, "d", "drop")
+		default:
 			hints = append(hints, "d", "forget")
 		}
 	}

@@ -6,7 +6,8 @@
 package perm
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -147,11 +148,11 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		if len(list) == 0 {
 			continue
 		}
-		sort.Slice(list, func(i, j int) bool {
-			if list[i].score != list[j].score {
-				return list[i].score < list[j].score // fewer wildcards first
-			}
-			return literalPrefix(list[i].rule.Pattern) > literalPrefix(list[j].rule.Pattern)
+		slices.SortFunc(list, func(a, b cand) int {
+			return cmp.Or(
+				cmp.Compare(a.score, b.score), // fewer wildcards first
+				cmp.Compare(literalPrefix(b.rule.Pattern), literalPrefix(a.rule.Pattern)),
+			)
 		})
 		r := list[0].rule
 		return Outcome{Decision: d, Rule: &r}

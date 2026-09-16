@@ -4,9 +4,10 @@
 package learn
 
 import (
+	"cmp"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,7 +48,7 @@ func Digest(cands []*store.Memory, at time.Time, maxLines int) string {
 		}
 		rows = append(rows, scored{m, DigestScore(m, at)})
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].score > rows[j].score })
+	slices.SortStableFunc(rows, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
 	if maxLines > 0 && len(rows) > maxLines {
 		rows = rows[:maxLines]
 	}

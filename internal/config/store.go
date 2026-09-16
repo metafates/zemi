@@ -4,7 +4,8 @@
 package config
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"sync"
 )
 
@@ -90,7 +91,7 @@ func (s *Store) Schema() []Setting {
 	for _, v := range s.schema {
 		out = append(out, v)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	slices.SortFunc(out, func(a, b Setting) int { return cmp.Compare(a.Path, b.Path) })
 	return out
 }
 

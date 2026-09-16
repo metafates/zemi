@@ -375,6 +375,7 @@ type fakeUI struct {
 	closed          []string
 	closedLua       int
 	reloads         int
+	screenshot      string
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -401,6 +402,8 @@ func (f *fakeUI) ReviewMemories(items []MemoryRow) map[string]string {
 	f.reviewItems = append(f.reviewItems, items)
 	return f.reviewDecisions
 }
+
+func (f *fakeUI) Screenshot() string { return f.screenshot }
 
 func (f *fakeUI) ReviewConfigs(items []ConfigRow) ([]string, []string) {
 	f.cfgItems = append(f.cfgItems, items)

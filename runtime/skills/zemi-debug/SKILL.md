@@ -24,7 +24,21 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
    `zemi.config.reload()` applies config you just wrote, the same as `/reload`.
 
-4. Read the log of the run (the log directory is readable without asking). One file per
+4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay
+   in the way, text wrapping badly, a statusline that lost a segment - look instead of
+   asking:
+
+   ```lua
+   return zemi.ui.screenshot()   -- the drawn screen as plain text, nil, err before the first frame
+   ```
+
+   It is the frame the user is looking at, at their real terminal width, with styling and
+   padding dropped. Save one before a change and one after and diff them; that is the whole
+   loop for UI work: edit config, `zemi.config.reload()`, screenshot, compare. Colors and
+   attributes do not survive it, so for a highlight question read the theme with
+   `zemi.ui.theme.get()` instead.
+
+5. Read the log of the run (the log directory is readable without asking). One file per
    start, newest last:
 
    ```sh

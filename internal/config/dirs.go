@@ -100,6 +100,10 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- Keys: <leader> is keymap.leader, ctrl+g unless you change it.
 -- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
 
+-- Editing this file: zemi ships type annotations for the whole zemi.* API
+-- and a .luarc.json beside this file, so a lua-language-server gives
+-- completion, signatures and warnings here the way it does for vim.*.
+
 -- /help lists the keys and commands, /health says what is missing.
 `
 

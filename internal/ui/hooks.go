@@ -31,6 +31,7 @@ var hostStyles = map[string]uv.Style{
 	"Host:Hint":        {Fg: rgb(0x6b7394)},
 	"Host:HintKey":     {Fg: rgb(0xa9b1d6), Attrs: uv.AttrBold},
 	"Host:Warn":        {Fg: rgb(0xe0af68)},
+	"Host:Ok":          {Fg: rgb(0x9ece6a)},
 	"Host:Panel":       {Fg: rgb(0xc0caf5), Bg: rgb(0x242838)},
 	"Host:DiffAddLine": {Fg: rgb(0xd4e8c8), Bg: rgb(0x243427)},
 	"Host:DiffAddNum":  {Fg: rgb(0x7fa36c), Bg: rgb(0x243427)},

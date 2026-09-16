@@ -3,12 +3,13 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -36,11 +37,10 @@ func permanentRules(all []perm.Rule) []perm.Rule {
 			out = append(out, r)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		return a.Subject+a.Pattern+string(a.Decision)+a.NotMatch+a.Principal <
-			b.Subject+b.Pattern+string(b.Decision)+b.NotMatch+b.Principal
-	})
+	key := func(r perm.Rule) string {
+		return r.Subject + r.Pattern + string(r.Decision) + r.NotMatch + r.Principal
+	}
+	slices.SortFunc(out, func(a, b perm.Rule) int { return cmp.Compare(key(a), key(b)) })
 	return out
 }
 

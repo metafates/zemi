@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -254,6 +255,21 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		h.Themes.SetHL(group, hlSpec(m))
 		h.refresh()
 		return 0
+	}))
+
+	// screenshot() -> the drawn screen as plain text, or nil, err. zemi
+	// reads its own UI with it instead of asking what the user sees.
+	tb.RawSetString("screenshot", L.NewFunction(func(L *glua.LState) int {
+		ui := h.hooks()
+		if ui == nil {
+			return luaResult(L, errors.New("no TUI in this run"))
+		}
+		shot := ui.Screenshot()
+		if shot == "" {
+			return luaResult(L, errors.New("nothing drawn yet"))
+		}
+		L.Push(glua.LString(shot))
+		return 1
 	}))
 
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {

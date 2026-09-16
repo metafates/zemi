@@ -14,7 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -384,7 +384,7 @@ func pluginsStep(dirs config.Dirs) lua.BootStep {
 			if err != nil {
 				return err
 			}
-			sort.Strings(files)
+			slices.Sort(files)
 			for _, f := range files {
 				if err := lua.LoadFileStep("plugin "+f, f, lua.OriginPlugin).Run(ctx, r, g); err != nil {
 					return err
@@ -483,7 +483,7 @@ func hashTree(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	sum := sha256.New()
 	for _, rel := range paths {
 		data, err := os.ReadFile(filepath.Join(root, rel))

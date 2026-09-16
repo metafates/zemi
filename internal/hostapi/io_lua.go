@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -482,7 +482,7 @@ func (h *Host) jailedGlob(pattern string) ([]string, error) {
 		}
 		return nil
 	})
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, err
 }
 

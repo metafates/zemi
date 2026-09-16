@@ -6,6 +6,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -593,7 +593,7 @@ func (h *Host) openAgents() error {
 		return errors.New("no UI")
 	}
 	defs := h.agentDefs()
-	sort.SliceStable(defs, func(i, j int) bool { return defs[i].Source < defs[j].Source })
+	slices.SortStableFunc(defs, func(a, b AgentDef) int { return cmp.Compare(a.Source, b.Source) })
 	items := h.agentRunItems()
 	if len(items) > 0 {
 		items = append(items, map[string]any{"text": ""})

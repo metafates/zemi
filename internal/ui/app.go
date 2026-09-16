@@ -10,6 +10,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -96,6 +97,12 @@ type App struct {
 	quitArmed  time.Time // a second idle ctrl+c before this quits
 
 	bootErr error
+
+	// the last composed frame, published for Screenshot: reading a
+	// snapshot is what lets any goroutine ask what the screen says
+	// without waiting on the Update goroutine.
+	frameMu   sync.Mutex
+	lastFrame string
 
 	program   *tea.Program
 	reload    func()
@@ -428,7 +435,7 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 // isTolerableRenderErr reports failures the UI expects under load (hot
 // mode, reload in flight): they keep the cached lines without flagging.
 func isTolerableRenderErr(err error) bool {
-	return err == lua.ErrHot || err == lua.ErrReloaded || err == lua.ErrCanceled
+	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
 // visibleWidgets lists the widgets of every region composed into the frame.
@@ -666,6 +673,31 @@ func (a *App) compose(w, h int) string {
 			b.WriteString("\r\n")
 		}
 		b.WriteString(a.renderSegs(row, w))
+	}
+	out := b.String()
+	a.frameMu.Lock()
+	a.lastFrame = out
+	a.frameMu.Unlock()
+	return out
+}
+
+// Screenshot implements hostapi.UIHooks: the screen as plain text, one
+// line per row with the styling and trailing padding dropped. It reads the
+// frame compose published, so the interpreter can ask what zemi looks like
+// without the UI goroutine waiting on it or the other way round.
+func (a *App) Screenshot() string {
+	a.frameMu.Lock()
+	frame := a.lastFrame
+	a.frameMu.Unlock()
+	if frame == "" {
+		return ""
+	}
+	var b strings.Builder
+	for i, row := range strings.Split(frame, "\r\n") {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(strings.TrimRight(ansi.Strip(row), " "))
 	}
 	return b.String()
 }

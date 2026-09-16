@@ -9,7 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -93,7 +93,7 @@ func (r *taskReg) list(parent string) []*agentRun {
 			out = append(out, x)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].started.After(out[j].started) })
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
 	return out
 }
 

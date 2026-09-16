@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"charm.land/fantasy"
@@ -206,7 +206,7 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			return fantasy.NewTextResponse(truncOut("Skill directory: " + s.Path + "\n\n" + strings.TrimSpace(body))), nil
 		}
 	}
-	sort.Strings(known)
+	slices.Sort(known)
 	if len(known) == 0 {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("no skills installed (asked for %q)", name)), nil
 	}

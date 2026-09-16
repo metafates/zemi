@@ -2,6 +2,7 @@ package lua
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -480,6 +481,33 @@ func (s *Sandbox) CheckIntegrity() error {
 		}
 	}
 	return nil
+}
+
+// NamespaceMembers lists every registered namespace with its member paths,
+// descending into member tables ("widget.register" under zemi.ui). It is
+// what the API surface actually is, so the shipped type annotations can be
+// checked against it instead of against a hand-kept list.
+func (s *Sandbox) NamespaceMembers() map[string][]string {
+	out := make(map[string][]string, len(s.integrity))
+	for _, c := range s.integrity {
+		out[c.name] = tableMembers(c.table, "")
+	}
+	return out
+}
+
+func tableMembers(tb *glua.LTable, prefix string) []string {
+	var out []string
+	tb.ForEach(func(k, v glua.LValue) {
+		name := prefix + k.String()
+		if sub, ok := v.(*glua.LTable); ok {
+			// sub-tables were swapped for proxies by deepProtect
+			out = append(out, tableMembers(realTableOf(sub), name+".")...)
+			return
+		}
+		out = append(out, name)
+	})
+	slices.Sort(out)
+	return out
 }
 
 // NewChunkEnv builds the per-chunk environment: __index reads the frozen

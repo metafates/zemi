@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,7 +17,6 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -206,7 +206,7 @@ func (r *mcpReg) list() []*mcpServer {
 	for _, s := range r.servers {
 		out = append(out, s)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	slices.SortFunc(out, func(a, b *mcpServer) int { return cmp.Compare(a.name, b.name) })
 	return out
 }
 

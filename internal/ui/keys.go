@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -340,7 +341,7 @@ func (a *App) runRHS(b *hostapi.KeyBinding) {
 		err := a.host.RunRHS(context.Background(), b.Origin, b.RHS, "")
 		switch {
 		case err == nil:
-		case err == lua.ErrHot || err == lua.ErrReloaded:
+		case errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
 			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Key})
 		default:
 			a.host.RecordError("keymap "+b.Key, err.Error())
