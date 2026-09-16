@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // Dirs holds the resolved XDG locations zemi uses. Every directory is
@@ -133,9 +135,10 @@ func (d Dirs) ProjectConfigDir() string {
 // dotfiles repository there is not the project of every directory in home.
 func (d Dirs) RepoRoot() string {
 	home, _ := os.UserHomeDir()
-	realHome, _ := filepath.EvalSymlinks(home)
+	// canonical: a case variant of home is home on a folding volume
+	canonHome := perm.CanonPath(home)
 	for dir := d.ProjectDir; dir != ""; dir = filepath.Dir(dir) {
-		if dir != d.ProjectDir && home != "" && (dir == home || dir == realHome) {
+		if dir != d.ProjectDir && home != "" && perm.CanonPath(dir) == canonHome {
 			break
 		}
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {

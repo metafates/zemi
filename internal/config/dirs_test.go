@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestEnsureStarterInit: a fresh config home gets the starter, an
@@ -80,11 +82,18 @@ func TestRepoRootStopsAtHome(t *testing.T) {
 		}
 	}
 	t.Setenv("HOME", filepath.Join(tmp, "home"))
-	for _, c := range []struct{ name, cwd, root, config string }{
-		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.zemi"},
-		{"repo below home", "home/repo/sub", "home/repo", "home/repo/sub/.zemi"},
-		{"home itself", "home", "home", "home/.zemi"},
+	for _, c := range []struct {
+		name, cwd, root, config string
+		folds                   bool // needs a case-folding volume
+	}{
+		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.zemi", false},
+		{"repo below home", "home/repo/sub", "home/repo", "home/repo/sub/.zemi", false},
+		{"home itself", "home", "home", "home/.zemi", false},
+		{"case variant of home", "HOME/work/sub", "HOME/work/sub", "HOME/work/sub/.zemi", true},
 	} {
+		if c.folds && perm.FoldCase("A") == "A" {
+			continue
+		}
 		d := Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}
 		if got := d.RepoRoot(); got != filepath.Join(tmp, c.root) {
 			t.Errorf("%s: root %s", c.name, got)

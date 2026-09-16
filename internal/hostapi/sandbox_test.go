@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -333,5 +334,24 @@ func TestSandboxNestedConfig(t *testing.T) {
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), nil, 0o644)
 	if p := h.sandboxPolicy(false); slices.Contains(p.Write, h.Dirs.ProjectDir) {
 		t.Errorf("a project too big to walk is writable: %v", p.Write)
+	}
+}
+
+func TestTrustUnsaved(t *testing.T) {
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	t.Setenv("HOME", home)
+	for _, c := range []struct {
+		name, root string
+		want       bool
+	}{
+		{"home", home, true},
+		{"filesystem root", "/", true},
+		{"none", "", true},
+		{"repo below home", filepath.Join(home, "repo"), false},
+		{"home in upper case", strings.ToUpper(home), perm.FoldCase("A") != "A"},
+	} {
+		if got := TrustUnsaved(c.root); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
 	}
 }

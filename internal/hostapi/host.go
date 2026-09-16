@@ -291,12 +291,7 @@ func (h *Host) SetProjectTrusted(ok bool) {
 // unless /trust or --trust says otherwise for one run.
 func TrustUnsaved(root string) bool {
 	home, err := os.UserHomeDir()
-	if err == nil {
-		if h, err := filepath.EvalSymlinks(home); err == nil {
-			home = h
-		}
-	}
-	return root == "" || filepath.Dir(root) == root || (err == nil && root == home)
+	return root == "" || filepath.Dir(root) == root || (err == nil && home != "" && perm.CanonPath(root) == perm.CanonPath(home))
 }
 
 // ProjectTrusted reports whether the user trusts this project.
