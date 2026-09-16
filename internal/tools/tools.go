@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -252,10 +253,16 @@ func (p *Pipeline) sandboxHint(out string, err error) string {
 // goes through sandbox.Probe's backend, so that is the one to describe.
 func sandboxLimits() string {
 	b, _ := sandbox.Probe()
-	// a backend that keeps .git read-only also gives loopback (seatbelt, a
-	// namespace variant); Landlock + seccomp blocks every inet socket
+	// a backend that keeps .git read-only also gives loopback: seatbelt the
+	// machine's, the Linux namespace variant one of its own; Landlock +
+	// seccomp blocks every inet socket
+	// NOTE: a refused connection to a host service matches no LikelyDenied
+	// pattern, so on Linux it gets no hint; the limit text is all it gets.
 	s := "no network, writes only in the scratchpad and temp dirs (the project stays read-only)"
-	if b.EnforcesProtect {
+	switch {
+	case b.EnforcesProtect && runtime.GOOS == "linux":
+		s = "no network (localhost inside the sandbox only: servers already running on this machine are unreachable), writes only in the project (not in plan mode), the scratchpad and temp dirs, .git and .zemi read-only"
+	case b.EnforcesProtect:
 		s = "no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and temp dirs, .git and .zemi read-only"
 	}
 	if b.HidesSecretFiles {

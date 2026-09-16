@@ -134,14 +134,19 @@ writable; prefer it over guessing. Common keys:
   composer, ...). Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
-  localhost, credential files in the home dir unreadable; Go builds get a cache of their
-  own. Landlock cannot keep `.git` read-only, so on Linux the project is read-only to these
-  commands and localhost is blocked too; `/health` names the backend. Build, test and
+  localhost, credential files in the home dir and zemi's own dirs unreadable; Go builds get
+  a cache of their own. On Linux with user namespaces (`landlock + namespaces` in
+  `/health`) localhost is the sandbox's own, so servers already running on the machine are
+  unreachable; if such a command creates `.zemi` or `.git`, project trust turns off until
+  `/trust`. Without namespaces (`landlock + seccomp`) the project is read-only to these
+  commands and there is no network at all. A project inside zemi's own dirs, or with a
+  symlinked `.git` or `.zemi`, is read-only to them too. Build, test and
   lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
   `git remote -v` and git commands that print file content in a repository tracking a
   secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a
   build or test flag that runs code can read it in a trusted project. A command that needs more is retried with `sandbox: false`, which asks the
-  user. Without a sandbox (`/health` sandbox row) they run only commands that just read,
+  user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
+  when the window itself runs sandboxed. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
   `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
