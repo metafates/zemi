@@ -39,6 +39,7 @@ type AgentDef struct {
 	Tools       []string // nil = every tool a subagent may use
 	System      string
 	Source      string // builtin, user or project
+	ReadOnly    bool   // file writes denied even when a tool could make one
 }
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
@@ -49,7 +50,8 @@ var builtinAgents = []AgentDef{
 	{
 		Name:        "explore",
 		Description: "Fast read-only agent for finding code: files by pattern, symbols, how something works. It cannot edit files or run commands.",
-		Tools:       []string{"read", "glob", "grep", "fetch", "sourcegraph", "memory_search", "skill"},
+		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "sourcegraph", "memory_search", "skill"},
+		ReadOnly:    true,
 		System:      "You are a read-only search agent. Search broadly, read what matters, never guess. Your report goes to another agent, not the user: lead with the answer, cite paths relative to the project root with line numbers, and quote code only when the exact text matters. If you did not find it, say so and say where you looked.",
 		Source:      "builtin",
 	},
@@ -243,6 +245,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	pipe := h.PipelineFor()
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
+	if def.ReadOnly {
+		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
+	}
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string) {
 			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)

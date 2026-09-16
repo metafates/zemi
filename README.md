@@ -31,7 +31,8 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 
 After `write`, `edit` or `multiedit` changes a file, the language server's errors and
 warnings for it are appended to the result, so the model sees a broken build right away;
-the `diagnostics` tool checks any other file. gopls, pyright, rust-analyzer,
+the `diagnostics` tool checks any other file, and the `lsp` tool asks the server for a
+symbol's definition, its references, a semantic rename or a file's outline. gopls, pyright, rust-analyzer,
 typescript-language-server and clangd start on their own when installed and the project
 has their marker file (`go.mod`, `pyproject.toml`, `Cargo.toml`, `package.json`, ...).
 Add others in `init.lua`, and see what runs with `/lsp`:

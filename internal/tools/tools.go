@@ -15,6 +15,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -106,6 +107,10 @@ type Pipeline struct {
 
 	// Diagnostics backs the diagnostics tool; nil = unavailable.
 	Diagnostics func(path string) (string, error)
+
+	// LSP returns the language server covering path, with the file synced
+	// to it, and the server's name; nil = no lsp tool support.
+	LSP func(ctx context.Context, path string) (*lsp.Client, string, error)
 
 	// Denied reports a call the gate refused (the tool.denied event); nil
 	// = silent.
@@ -703,6 +708,8 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				}
 				return fantasy.NewTextResponse(out), nil
 			}),
+
+		mk("lsp", lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
 
 		mk("skill", "Load a skill's full instructions by name when its description matches the task, before acting on it. Do not load one on a keyword alone, and do not load one already in the conversation.",
 			true,

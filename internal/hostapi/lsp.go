@@ -289,6 +289,22 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, 
 	return fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
 }
 
+// lspOpen backs the lsp tool: the server for path with the file synced.
+func (h *Host) lspOpen(ctx context.Context, path string) (*lsp.Client, string, error) {
+	def, ok := h.lspFor(path)
+	if !ok {
+		return nil, "", fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
+	}
+	p, err := h.lspClient(ctx, def)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := p.client.Open(path, languageID(path)); err != nil {
+		return nil, "", err
+	}
+	return p.client, def.Name, nil
+}
+
 // lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for
 // the file just changed.
 func (h *Host) lspAfterWrite(path string) string {

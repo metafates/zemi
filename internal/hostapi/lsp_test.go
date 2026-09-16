@@ -57,3 +57,49 @@ func TestLSPDiagnostics(t *testing.T) {
 		t.Fatalf("restarted server = %q", got)
 	}
 }
+
+// TestLSPTool: symbols, definition, references and rename go through the
+// file's server by symbol name; rename writes every file the server names.
+func TestLSPTool(t *testing.T) {
+	h, r := newTestHostDB(t)
+	defer h.lsp.stopAll()
+	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	var tool fantasy.AgentTool
+	for _, tl := range tools.All(h.PipelineFor()) {
+		if tl.Info().Name == "lsp" {
+			tool = tl
+		}
+	}
+	a, b := filepath.Join(h.Dirs.ProjectDir, "a.txt"), filepath.Join(h.Dirs.ProjectDir, "b.txt")
+	os.WriteFile(a, []byte("func Foo()\nFoo()\nfunc Bar()\n"), 0o644)
+	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
+	run := func(input string) string {
+		t.Helper()
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// paths come back relative to the process working directory, which
+		// is not the temp project here
+		return strings.ReplaceAll(resp.Content, h.Dirs.ProjectDir+string(filepath.Separator), "")
+	}
+	for _, c := range []struct{ input, want string }{
+		{fmt.Sprintf(`{"action":"symbols","path":%q}`, a), "function Foo  lines 1-2\nfunction Bar  lines 3-4"},
+		{fmt.Sprintf(`{"action":"definition","path":%q,"symbol":"Foo","line":2}`, a), "a.txt:1:6: func Foo()"},
+		{fmt.Sprintf(`{"action":"definition","path":%q,"symbol":"Foo"}`, a), "also appears on lines 2: pass line"},
+		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, b), "3 references\na.txt:1:6: func Foo()\na.txt:2:1: Foo()\nb.txt:1:6: x := Foo()"},
+		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Nope"}`, b), "does not appear"},
+		{fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Foo","new_name":"Baz"}`, b), "renamed Foo to Baz in 2 files, 3 places"},
+	} {
+		if got := run(c.input); !strings.Contains(got, c.want) {
+			t.Fatalf("%s = %q, want %q", c.input, got, c.want)
+		}
+	}
+	if got, _ := os.ReadFile(a); string(got) != "func Baz()\nBaz()\nfunc Bar()\n" {
+		t.Fatalf("a.txt after rename: %q", got)
+	}
+	if got, _ := os.ReadFile(b); string(got) != "x := Baz()\n" {
+		t.Fatalf("b.txt after rename: %q", got)
+	}
+}

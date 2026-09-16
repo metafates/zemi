@@ -122,6 +122,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didSave": true},
 				"publishDiagnostics": map[string]any{},
+				"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			},
 			"workspace": map[string]any{"configuration": true, "workspaceFolders": true},
 		},
@@ -186,6 +187,96 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 		}
 	}
 }
+
+// Open syncs path's current content to the server without waiting for
+// diagnostics, so a query that follows sees the text on disk.
+func (c *Client) Open(path, languageID string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	_, err = c.sync(normPath(path), fileURI(path), languageID, string(data))
+	return err
+}
+
+// Call sends a request and decodes its result into out (nil to ignore).
+func (c *Client) Call(ctx context.Context, method string, params, out any) error {
+	return c.call(ctx, method, params, out)
+}
+
+// Position is an LSP position: 0-based line and UTF-16 character.
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+// Range is an LSP range, end exclusive.
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+// Location is one place in a file.
+type Location struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
+}
+
+// Path is the file a URI names.
+func (l Location) Path() string {
+	u, err := url.Parse(l.URI)
+	if err != nil {
+		return l.URI
+	}
+	return filepath.FromSlash(u.Path)
+}
+
+// TextEdit replaces a range with NewText.
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
+}
+
+// Offset converts a position to a byte offset in text, clamped to its end.
+func Offset(text string, pos Position) int {
+	off := 0
+	for l := 0; l < pos.Line; l++ {
+		i := strings.IndexByte(text[off:], '\n')
+		if i < 0 {
+			return len(text)
+		}
+		off += i + 1
+	}
+	units := 0
+	for i, r := range text[off:] {
+		if units >= pos.Character || r == '\n' {
+			return off + i
+		}
+		units++
+		if r > 0xFFFF {
+			units++
+		}
+	}
+	return len(text)
+}
+
+// Pos converts a byte offset in text to a position.
+func Pos(text string, off int) Position {
+	off = min(off, len(text))
+	line := strings.Count(text[:off], "\n")
+	start := strings.LastIndexByte(text[:off], '\n') + 1
+	units := 0
+	for _, r := range text[start:off] {
+		units++
+		if r > 0xFFFF {
+			units++
+		}
+	}
+	return Position{Line: line, Character: units}
+}
+
+// DocumentURI is the URI for a path, as Open sends it.
+func DocumentURI(path string) string { return fileURI(path) }
 
 // Others returns the errors published for files other than path since path
 // was last synced: a change there that broke code elsewhere.

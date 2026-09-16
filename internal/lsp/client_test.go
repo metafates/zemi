@@ -161,3 +161,25 @@ func TestTouch(t *testing.T) {
 		}
 	}
 }
+
+// TestOffsetPos: positions count UTF-16 units, so a character outside the
+// BMP is two of them and the round trip holds.
+func TestOffsetPos(t *testing.T) {
+	text := "a😀b\ncd"
+	for _, c := range []struct {
+		off  int
+		line int
+		char int
+	}{{0, 0, 0}, {1, 0, 1}, {5, 0, 3}, {6, 0, 4}, {7, 1, 0}, {8, 1, 1}} {
+		pos := lsp.Position{Line: c.line, Character: c.char}
+		if got := lsp.Offset(text, pos); got != c.off {
+			t.Errorf("Offset(%+v) = %d, want %d", pos, got, c.off)
+		}
+		if got := lsp.Pos(text, c.off); got != pos {
+			t.Errorf("Pos(%d) = %+v, want %+v", c.off, got, pos)
+		}
+	}
+	if got := lsp.Offset(text, lsp.Position{Line: 9, Character: 0}); got != len(text) {
+		t.Errorf("past the end = %d", got)
+	}
+}

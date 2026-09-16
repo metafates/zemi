@@ -9,11 +9,30 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"maps"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lsp"
 )
+
+var wordRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+
+// wordAt is the identifier covering character on line, "" when none.
+func wordAt(text string, line, char int) string {
+	lines := strings.Split(text, "\n")
+	if line >= len(lines) {
+		return ""
+	}
+	for _, m := range wordRe.FindAllStringIndex(lines[line], -1) {
+		if m[0] <= char && char <= m[1] {
+			return lines[line][m[0]:m[1]]
+		}
+	}
+	return ""
+}
 
 // Serve answers one client until it exits or in closes.
 func Serve(in io.Reader, out io.Writer) {
@@ -44,6 +63,10 @@ func Serve(in io.Reader, out io.Writer) {
 				ContentChanges []struct {
 					Text string `json:"text"`
 				} `json:"contentChanges"`
+				Position struct {
+					Line, Character int
+				} `json:"position"`
+				NewName string `json:"newName"`
 			} `json:"params"`
 		}
 		if json.Unmarshal(body, &m) != nil {
@@ -52,6 +75,62 @@ func Serve(in io.Reader, out io.Writer) {
 		switch m.Method {
 		case "initialize":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"capabilities": map[string]any{"textDocumentSync": 1}}})
+		case "textDocument/definition", "textDocument/references", "textDocument/rename":
+			uri := m.Params.TextDocument.URI
+			text := texts[uri]
+			word := wordAt(text, m.Params.Position.Line, m.Params.Position.Character)
+			hits := func(uri, text string) []map[string]any {
+				var out []map[string]any
+				for i, line := range strings.Split(text, "\n") {
+					for _, m := range wordRe.FindAllStringIndex(line, -1) {
+						if line[m[0]:m[1]] == word {
+							out = append(out, map[string]any{"uri": uri, "range": map[string]any{
+								"start": map[string]any{"line": i, "character": m[0]}, "end": map[string]any{"line": i, "character": m[1]}}})
+						}
+					}
+				}
+				return out
+			}
+			var result any
+			switch m.Method {
+			case "textDocument/definition":
+				// the definition is the first "func WORD" line, if any
+				for _, h := range hits(uri, text) {
+					l := h["range"].(map[string]any)["start"].(map[string]any)["line"].(int)
+					if strings.HasPrefix(strings.Split(text, "\n")[l], "func "+word) {
+						result = []any{h}
+					}
+				}
+			case "textDocument/references":
+				var all []map[string]any
+				for _, u := range slices.Sorted(maps.Keys(texts)) {
+					all = append(all, hits(u, texts[u])...)
+				}
+				result = all
+			case "textDocument/rename":
+				changes := map[string]any{}
+				for u, t := range texts {
+					var edits []any
+					for _, h := range hits(u, t) {
+						edits = append(edits, map[string]any{"range": h["range"], "newText": m.Params.NewName})
+					}
+					if len(edits) > 0 {
+						changes[u] = edits
+					}
+				}
+				result = map[string]any{"changes": changes}
+			}
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
+		case "textDocument/documentSymbol":
+			var syms []any
+			for i, line := range strings.Split(texts[m.Params.TextDocument.URI], "\n") {
+				if name, ok := strings.CutPrefix(line, "func "); ok {
+					name, _, _ = strings.Cut(name, "(")
+					syms = append(syms, map[string]any{"name": name, "kind": 12, "range": map[string]any{
+						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i + 1, "character": 0}}})
+				}
+			}
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": syms})
 		case "shutdown":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": nil})
 		case "exit":
