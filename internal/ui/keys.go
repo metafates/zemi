@@ -70,10 +70,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
 	case "trust":
+		if a.program != nil && a.now().Sub(a.trust.opened) < permGrace {
+			return nil
+		}
+		// enter is "not now": trusting runs project code, so it takes an explicit y
 		switch key {
-		case "y", "enter":
+		case "y":
 			a.answerTrust("trust")
-		case "n", "esc":
+		case "n", "esc", "enter":
 			a.answerTrust("once")
 		case "d":
 			a.answerTrust("deny")

@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -56,6 +57,7 @@ type trustPrompt struct {
 	path   string
 	hash   string
 	answer chan string
+	opened time.Time // a reload can open it mid-typing (permGrace)
 }
 
 // AskTrust blocks the caller (a boot step) until the user answers "trust",
@@ -64,7 +66,10 @@ type trustPrompt struct {
 // answer comes back on a buffered channel.
 func (a *App) AskTrust(path, hash string) string {
 	ch := make(chan string, 1)
-	a.await(func() tea.Cmd { a.trust = &trustPrompt{path: path, hash: hash, answer: ch}; return nil })
+	a.await(func() tea.Cmd {
+		a.trust = &trustPrompt{path: path, hash: hash, answer: ch, opened: a.now()}
+		return nil
+	})
 	return <-ch
 }
 

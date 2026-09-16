@@ -417,16 +417,24 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 }
 
 // TestTrustAnswers: the project trust prompt maps y, n and d to trust,
-// not now and never for this tree hash.
+// not now and never for this tree hash; enter is the safe not now.
 func TestTrustAnswers(t *testing.T) {
-	for key, want := range map[rune]string{'y': "trust", 'n': "once", 'd': "deny"} {
+	for _, c := range []struct {
+		key        tea.KeyPressMsg
+		want, name string
+	}{
+		{tea.KeyPressMsg{Code: 'y', Text: "y"}, "trust", "y"},
+		{tea.KeyPressMsg{Code: 'n', Text: "n"}, "once", "n"},
+		{tea.KeyPressMsg{Code: 'd', Text: "d"}, "deny", "d"},
+		{tea.KeyPressMsg{Code: tea.KeyEnter}, "once", "enter"},
+	} {
 		app, _ := bootAgentApp(t, 80, 20)
 		done := make(chan string, 1)
 		go func() { done <- app.AskTrust("/proj/.zemi", "abc123") }()
 		waitPrompt(t, app, func() bool { return app.trust != nil })
-		app.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
-		if got := <-done; got != want {
-			t.Errorf("%c answered %q, want %q", key, got, want)
+		app.Update(c.key)
+		if got := <-done; got != c.want {
+			t.Errorf("%s answered %q, want %q", c.name, got, c.want)
 		}
 	}
 }
