@@ -79,12 +79,10 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	dbg.RawSetString("traceback", L.NewFunction(s.debugTraceback))
 	global.RawSetString("debug", dbg)
 
-	// The string module doubles as the metatable of every string value;
-	// lock it so getmetatable("").format = f cannot patch string methods
-	// behind the proxy (DESIGN §5).
-	if strMod, ok := global.RawGetString("string").(*glua.LTable); ok {
-		strMod.RawSetString("__metatable", glua.LString("zemi:protected"))
-	}
+	// The stdlib makes the string module the metatable of every string with
+	// __index pointing at itself, so ("").__index would hand out the real
+	// table; strings get a locked metatable over the frozen proxy below.
+	global.RawGetString("string").(*glua.LTable).RawSetString("__index", glua.LNil)
 
 	// A thread keeps the context it was created under: unless resume rebinds
 	// it, a coroutine made in one request raises "context canceled" in a
@@ -149,6 +147,10 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	for _, e := range toFreeze {
 		frozen.RawSetString(e.name, s.protectTable(e.tb, "stdlib table "+e.name))
 	}
+	strMeta := L.NewTable()
+	strMeta.RawSetString("__index", frozen.RawGetString("string"))
+	strMeta.RawSetString("__metatable", glua.LString("zemi:protected"))
+	L.SetMetatable(glua.LString(""), strMeta)
 	L.Env = frozen
 
 	return s, nil

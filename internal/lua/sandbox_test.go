@@ -98,6 +98,11 @@ func TestSandboxFrozenTables(t *testing.T) {
 	`)
 	wantRaise(t, sb, `getmetatable("").format = function() end`,
 		"attempt to index a non-table")
+	// A string value's __index reaches nothing writable, and methods work.
+	mustRun(t, sb, `
+		assert(("").__index == nil, "string values expose their method table")
+		assert(("a"):upper() == "A" and ("%d"):format(1) == "1", "string methods broken")
+	`)
 }
 
 func TestSandboxChunkEnv(t *testing.T) {
