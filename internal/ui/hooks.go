@@ -107,17 +107,10 @@ func (a *App) OpenOverlay(o hostapi.Overlay) {
 	a.do(func() { a.openOverlay(o) })
 }
 
-// CloseOverlay pops the overlay synchronously when no program is attached
-// (tests); with a program it posts the close and returns true: the Lua
-// side only uses the call, and a synchronous reply here could deadlock the
-// queue (interpreter waits for the UI goroutine, which may be blocked in
-// rt.Do waiting for that same interpreter).
+// CloseOverlay posts the close like every hook and always returns true: no
+// caller reads the result, and waiting for it could deadlock (the
+// interpreter waits on the UI goroutine, which may wait on the interpreter).
 func (a *App) CloseOverlay(id string) bool {
-	if a.program == nil {
-		ok := a.closeOverlayByID(id)
-		a.frameGen++
-		return ok
-	}
 	a.do(func() { a.closeOverlayByID(id) })
 	return true
 }
