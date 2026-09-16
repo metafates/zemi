@@ -324,6 +324,9 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg) &&
 			!h.inJail(req.Arg, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
 	case "tool.bash":
+		// NOTE: settled git honors .git/config (core.fsmonitor): no settled write
+		// reaches .git, and a shipped one is as trusted as a shipped Makefile.
+		// Settling untrusted repos would need Host.git's switches here too.
 		return perm.SafeCommand(req.Arg, h.safeCommandPath)
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated

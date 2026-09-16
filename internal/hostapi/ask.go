@@ -153,7 +153,13 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if shown == "." {
 			where = "anywhere in the project"
 		}
-		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{rule(req.Subject, filepath.Join(dir, "*"))}
+		r := rule(req.Subject, filepath.Join(dir, "*"))
+		if req.Subject == "fs.write" {
+			// git runs programs .git/config and hooks name, and .gitattributes
+			// or .gitmodules point it at them; dir* stands for dir and below
+			r.NotMatch = filepath.Join(dir+"*", ".git*")
+		}
+		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{r}
 	case req.Subject == "tool.workflow" && req.Arg == "script":
 		return "", nil // a pattern for "script" would allow every future inline script
 	case strings.HasPrefix(req.Subject, "net."):

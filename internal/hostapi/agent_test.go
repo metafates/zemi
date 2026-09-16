@@ -738,6 +738,17 @@ func TestAlwaysChoice(t *testing.T) {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
 		}
 	}
+	_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "main.go")})
+	s := perm.NewStore()
+	s.Add(rules[0])
+	for arg, want := range map[string]perm.Decision{
+		"main.go": perm.Allow, "internal/a.go": perm.Allow,
+		".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask,
+	} {
+		if o := s.Evaluate("fs.write", filepath.Join(proj, arg), "model"); o.Decision != want {
+			t.Errorf("always edits in the project: %s = %v, want %v", arg, o.Decision, want)
+		}
+	}
 }
 
 // TestTurnPricedWithProfileModel: a turn records the model it was built
