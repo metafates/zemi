@@ -229,9 +229,8 @@ func (h *Host) luaFantasyTools() []fantasy.AgentTool {
 	return out
 }
 
-// luaToolAdapter runs a Lua tool through the standard pipeline: schema
-// validation, tool.pre, permission gate (tool.<name>), interpreter
-// execution, tool.post (DESIGN §6.4).
+// luaToolAdapter runs a Lua tool through tool.pre, the permission gate
+// (tool.<name>) and the interpreter (DESIGN §6.4).
 type luaToolAdapter struct {
 	h    *Host
 	t    *luaTool
@@ -256,11 +255,14 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 	}
+	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
+		return resp, err
+	}
 	req := tools.Request{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name}
 	if v := a.pipe.Check(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
-	out, err := a.h.runLuaTool(a.t, input)
+	out, err := a.h.runLuaTool(ctx, a.t, input)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -268,11 +270,11 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 }
 
 // runLuaTool executes the Lua callback on the interpreter (the fantasy
-// tool goroutine blocks here; one interpreter serializes Lua tools). A
-// string result or a table's output field is the output; anything else is
-// sent as JSON.
-func (h *Host) runLuaTool(t *luaTool, input map[string]any) (string, error) {
-	res, err := h.RT.Do(context.Background(), lua.ClassAgent, t.Timeout, 5*time.Second,
+// tool goroutine blocks here; one interpreter serializes Lua tools), so an
+// interrupt preempts it. A string result or a table's output field is the
+// output; anything else is sent as JSON.
+func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any) (string, error) {
+	res, err := h.RT.Do(ctx, lua.ClassAgent, t.Timeout, 5*time.Second,
 		func(L *glua.LState) ([]any, error) {
 			defer h.RT.PushFrame(t.Origin, t.Path)()
 			base := L.GetTop()
