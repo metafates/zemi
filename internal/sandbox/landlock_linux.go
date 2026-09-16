@@ -26,8 +26,9 @@ const (
 	probeEnv = "ZEMI_SANDBOX_PROBE"
 
 	// Landlock denies with EACCES, seccomp with EPERM; the namespaces give
-	// read-only mounts (EBUSY to rename one) and a network with no route
-	deniedErrnos  = `operation not permitted|permission denied|read-only file system|device or resource busy|network is unreachable`
+	// read-only mounts (EBUSY to rename one) and a network with no route.
+	// musl words the last two without "device or" and "is".
+	deniedErrnos  = `operation not permitted|permission denied|read-only file system|(?:device or )?resource busy|network (?:is )?unreachable`
 	deniedLookups = `temporary failure in name resolution`
 )
 

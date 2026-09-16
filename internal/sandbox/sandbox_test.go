@@ -386,6 +386,8 @@ func TestLikelyDenied(t *testing.T) {
 		{"landlock write", "sh: can't create /home/u/x: Permission denied", exit(1), linux},
 		{"read-only mount", "touch: .git/config: Read-only file system", exit(1), linux},
 		{"no route", "dial tcp 1.1.1.1:443: connect: network is unreachable", exit(1), linux},
+		{"musl no route", "wget: can't connect to remote host (1.1.1.1): Network unreachable", exit(1), linux},
+		{"musl rename a mount", "mv: can't rename '/tmp/t/proj/.git': Resource busy", exit(1), linux},
 		{"not found", "sh: foo: Permission denied", exit(127), false},
 		{"denial before the tail", "open x: operation not permitted\n" + strings.Repeat("ok\n", 3<<10), exit(1), false},
 		{"go test assertion", "--- FAIL: TestOpen (0.00s)\n    open_test.go:12: want permission denied, got <nil>\nFAIL\nFAIL\tgithub.com/x/sandbox\t0.01s\nFAIL", exit(1), false},
