@@ -64,7 +64,7 @@ func waitFor(t *testing.T, cond func() error) {
 
 // TestNamespaceVersion pins the frozen API surface: the zemi root and the
 // boot-installed namespaces resolve from user chunks, and zemi.api reports
-// the M3 version.
+// the pinned version.
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `

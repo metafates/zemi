@@ -425,7 +425,7 @@ func schemaPointer(root any, ref string) (any, error) {
 	return cur, nil
 }
 
-// All returns the M1+M2 builtin set bound to a pipeline.
+// All returns the builtin tools bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
 		subjects func(map[string]any) []Request,

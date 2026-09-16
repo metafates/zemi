@@ -1,4 +1,4 @@
-// Package agent is the M1 chat core (DESIGN §6.3): a provider registry
+// Package agent is the chat core (DESIGN §6.3): a provider registry
 // (kinds: anthropic, openai, openaicompat; populated only from user
 // config), model catalog and the turn runner that streams fantasy agent
 // output into the UI and persists messages.
