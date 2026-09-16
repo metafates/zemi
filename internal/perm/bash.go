@@ -40,6 +40,13 @@ var envGateNames = []string{
 	"git_ssh_command", "git_editor", "git_pager",
 }
 
+// shellVarNames are variables the shell itself reads (cd, globbing,
+// tracing, startup), so inlineVars never drops their assignment.
+var shellVarNames = []string{
+	"cdpath", "home", "pwd", "oldpwd", "globignore", "fignore", "ps4",
+	"bashopts", "posixly_correct", "histfile", "tmpdir",
+}
+
 // EnvAssignmentGate reports whether a name matches the environment-affecting
 // denylist (case-insensitive). Job env extras are refused on it outright.
 func EnvAssignmentGate(name string) bool {
@@ -80,9 +87,10 @@ func inlineVars(cmd string) string {
 		if m == nil || EnvAssignmentGate(m[1]) {
 			break
 		}
-		// An exported name (HOME, GOFLAGS) reaches every child process, so
-		// its assignment stays in the text and keeps the command opaque.
-		if _, exported := os.LookupEnv(m[1]); exported {
+		// An exported name (HOME, GOFLAGS) reaches every child process and a
+		// shell variable (CDPATH) steers the shell even unexported, so either
+		// assignment stays in the text and keeps the command opaque.
+		if _, exported := os.LookupEnv(m[1]); exported || slices.Contains(shellVarNames, strings.ToLower(m[1])) {
 			break
 		}
 		v := substVars(m[2], vars)
