@@ -113,7 +113,7 @@ func newRequest(class Class, fn Fn, ctx context.Context, ceiling, grace time.Dur
 	}
 }
 
-// generation is one interpreter instance: an LState, its queue and its
+// Generation is one interpreter instance: an LState, its queue and its
 // dispatcher goroutine. A wedged generation is dropped wholesale; the
 // replacement boots fresh (DESIGN §4 hot mode).
 type Generation struct {
@@ -217,6 +217,7 @@ func (g *Generation) execute(r *request) {
 	}
 
 	reqCtx, cancel := context.WithCancel(r.caller)
+	defer cancel()
 	r.setCancel(cancel)
 	ceiling := r.ceiling
 	if ceiling <= 0 {
@@ -227,9 +228,7 @@ func (g *Generation) execute(r *request) {
 		grace = AbandonGrace
 	}
 
-	watchdogDone := make(chan struct{})
 	go func() {
-		defer close(watchdogDone)
 		slow := time.AfterFunc(SoftBudget, func() {
 			g.rt.log.Warn("lua", "handler exceeded soft budget", map[string]any{
 				"class": r.class.String(), "budget": SoftBudget.String(),
@@ -269,7 +268,6 @@ func (g *Generation) execute(r *request) {
 		if g.finish(r) {
 			r.reply <- result{err: ierr}
 		}
-		cancel()
 		return
 	}
 
@@ -280,27 +278,21 @@ func (g *Generation) execute(r *request) {
 		})
 	}
 
-	if r.isFinished() {
-		// The watchdog abandoned this request while we were still running;
-		// the runtime is hot and the reply already carries ErrAbandoned.
-		cancel()
+	// The watchdog may abandon the request up to this point; whoever
+	// finishes it first owns the single reply the buffered channel holds.
+	if !g.finish(r) {
 		return
 	}
-	if reqCtx.Err() != nil {
+	switch {
+	case reqCtx.Err() != nil:
 		// A reply arriving after cancellation is canceled, whatever the Lua
 		// returned (DESIGN §4).
-		g.finish(r)
-		r.reply <- result{vals: vals, err: fmt.Errorf("%w: %v", ErrCanceled, reqCtx.Err())}
-		cancel()
-		return
-	}
-	g.finish(r)
-	if err != nil {
+		r.reply <- result{err: fmt.Errorf("%w: %w", ErrCanceled, reqCtx.Err())}
+	case err != nil:
 		r.reply <- result{err: err}
-	} else {
+	default:
 		r.reply <- result{vals: vals}
 	}
-	cancel()
 }
 
 // finish marks the request finished; it returns false if the watchdog
@@ -313,12 +305,6 @@ func (g *Generation) finish(r *request) bool {
 	}
 	r.finished = true
 	return true
-}
-
-func (r *request) isFinished() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.finished
 }
 
 func (g *Generation) safeRun(r *request) (vals []any, err error) {
