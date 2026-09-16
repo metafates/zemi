@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,10 +26,8 @@ type DB struct {
 // Open creates the parent directory if needed and opens the database with
 // WAL journalling.
 func Open(path string) (*DB, error) {
-	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("store: create dir: %w", err)
-		}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("store: create dir: %w", err)
 	}
 	d, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
@@ -193,8 +192,8 @@ func (s *DB) migrate() error {
 	// current by construction and must be stamped: otherwise the first
 	// migration ever added would run its ALTER against a table that already
 	// has the column, and no new project could open its store.
-	var any string
-	fresh := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&any) == sql.ErrNoRows
+	var name string
+	fresh := errors.Is(s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
@@ -342,7 +341,8 @@ func (s *DB) execOne(what, query string, args ...any) error {
 	return nil
 }
 
-// placeholders returns n comma-separated "?" ("”" for none, so IN () stays valid).
+// placeholders returns n comma-separated "?", or an empty string literal
+// for none so IN () stays valid.
 func placeholders(n int) string {
 	if n == 0 {
 		return "''"

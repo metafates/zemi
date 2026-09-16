@@ -16,7 +16,7 @@ import (
 type Skill struct {
 	Name           string
 	Path           string
-	Source         string // authored | learned
+	Source         string // authored | builtin | learned
 	Enabled        bool
 	DefaultEnabled bool
 	CreatedAt      int64

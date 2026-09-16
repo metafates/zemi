@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -105,7 +106,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if s.Title != "first" || s.Profile != "coder" || s.ParentID != "parent0" {
 		t.Fatalf("unexpected session: %+v", s)
 	}
-	if _, err := db.GetSession("missing"); err != ErrNotFound {
+	if _, err := db.GetSession("missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 	if err := db.RenameSession("s1", "renamed"); err != nil {
@@ -124,7 +125,7 @@ func TestSessionLifecycle(t *testing.T) {
 		db.SetSummary("ghost", "m"),
 		db.AddUsage("ghost", 1, 1, 1),
 	} {
-		if err != ErrNotFound {
+		if !errors.Is(err, ErrNotFound) {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
 	}
@@ -229,7 +230,7 @@ func TestTodosReplace(t *testing.T) {
 
 func TestKVRoundtrip(t *testing.T) {
 	db := openTest(t)
-	if _, err := db.GetKV("k"); err != ErrNotFound {
+	if _, err := db.GetKV("k"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 	if err := db.SetKV("k", `{"v":1}`); err != nil {

@@ -1,6 +1,8 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -102,8 +104,12 @@ func (s *DB) TruncateMessages(sessionID, messageID string) error {
 	}
 	defer tx.Rollback()
 	var rowid int64
-	if err := tx.QueryRow(`SELECT rowid FROM messages WHERE id = ? AND session_id = ?`, messageID, sessionID).Scan(&rowid); err != nil {
+	err = tx.QueryRow(`SELECT rowid FROM messages WHERE id = ? AND session_id = ?`, messageID, sessionID).Scan(&rowid)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("store: truncate messages: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ? AND rowid >= ?`, sessionID, rowid); err != nil {
 		return err

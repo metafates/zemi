@@ -6,12 +6,7 @@ import (
 )
 
 func TestConfigRevisionsCRUD(t *testing.T) {
-	db, err := Open(t.TempDir() + "/test.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+	db := openTest(t)
 	rev := &ConfigRevision{
 		ID:          NewID(),
 		Title:       "rules: deny tool.bash rm -rf *",

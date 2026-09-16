@@ -7,12 +7,7 @@ import (
 )
 
 func TestSyncSkillsAndEnabledState(t *testing.T) {
-	db, err := Open(t.TempDir() + "/test.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+	db := openTest(t)
 	all := []*Skill{
 		{Name: "authored-one", Path: "/a/authored-one", Source: "authored", DefaultEnabled: true},
 		{Name: "learned-one", Path: "/a/learned-one", Source: "learned"},

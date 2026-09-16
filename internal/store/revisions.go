@@ -37,7 +37,7 @@ func scanRevision(row scanner) (*ConfigRevision, error) {
 // lands).
 func (s *DB) AddRevision(r *ConfigRevision) error {
 	if r.ID == "" {
-		return fmt.Errorf("store: add revision: id is required")
+		return errors.New("store: add revision: id is required")
 	}
 	if r.CreatedAt == 0 {
 		r.CreatedAt = now()
@@ -72,7 +72,7 @@ func (s *DB) ListRevisions() ([]*ConfigRevision, error) {
 }
 
 // SetRevisionCommit records the config-repo commit SHA of an applied
-// revision (what /config revert reverts).
+// revision; git revert of that commit in the config directory undoes it.
 func (s *DB) SetRevisionCommit(id, commit string) error {
 	return s.execOne("set revision commit", `UPDATE config_revisions SET commit_sha = ? WHERE id = ?`, commit, id)
 }
