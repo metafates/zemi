@@ -84,6 +84,7 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	// __index pointing at itself, so ("").__index would hand out the real
 	// table; strings get a locked metatable over the frozen proxy below.
 	global.RawGetString("string").(*glua.LTable).RawSetString("__index", glua.LNil)
+	CapStringRep(L)
 
 	// A thread keeps the context it was created under: unless resume rebinds
 	// it, a coroutine made in one request raises "context canceled" in a
@@ -195,6 +196,21 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 		"date": luaDate,
 	})
 	return osTab
+}
+
+// CapStringRep caps string.rep results at MaxStringBytes: an out-of-memory
+// kills the whole process, and string.rep reaches one in a single call.
+// NOTE: .. in a loop, gsub and table.concat still grow strings uncapped;
+// gopher-lua has no allocation hook to cap them all.
+func CapStringRep(L *glua.LState) {
+	L.GetGlobal(glua.StringLibName).(*glua.LTable).RawSetString("rep", L.NewFunction(func(L *glua.LState) int {
+		s, n := L.CheckString(1), L.CheckInt(2)
+		if n > 0 && len(s) > 0 && n > MaxStringBytes/len(s) {
+			L.RaiseError("string.rep: result exceeds the %d byte cap", MaxStringBytes)
+		}
+		L.Push(glua.LString(strings.Repeat(s, max(n, 0))))
+		return 1
+	}))
 }
 
 func tableInt(tb *glua.LTable, name string, def int) int {

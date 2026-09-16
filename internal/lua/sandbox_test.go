@@ -367,6 +367,8 @@ func TestSandboxLoadReaderSizeCap(t *testing.T) {
 			return string.rep("-- pad\n", 500000)
 		end)
 		assert(small and small() == nil, "under-cap reader source must load: " .. tostring(serr))
+		local ok, rerr = pcall(string.rep, "x", 1e13)
+		assert(not ok and rerr:find("byte cap", 1, true), "string.rep must be capped: " .. tostring(rerr))
 	`)
 }
 

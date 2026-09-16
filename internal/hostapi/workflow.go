@@ -206,18 +206,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 	for _, name := range []string{"dofile", "loadfile", "module", "require", "_printregs", "xpcall", "newproxy"} {
 		L.SetGlobal(name, glua.LNil)
 	}
-	// an out-of-memory kills the whole process, and string.rep reaches one in
-	// a single call.
-	// NOTE: .. in a loop, gsub and table.concat still grow strings uncapped;
-	// gopher-lua has no allocation hook to cap them all.
-	L.GetGlobal(glua.StringLibName).(*glua.LTable).RawSetString("rep", L.NewFunction(func(L *glua.LState) int {
-		s, n := L.CheckString(1), L.CheckInt(2)
-		if n > 0 && len(s) > 0 && n > lua.MaxStringBytes/len(s) {
-			L.RaiseError("string.rep: result exceeds the %d byte cap", lua.MaxStringBytes)
-		}
-		L.Push(glua.LString(strings.Repeat(s, max(n, 0))))
-		return 1
-	}))
+	lua.CapStringRep(L)
 	run := &wfRun{h: h, ctx: ctx, L: L, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), progress: progress}
 	run.install(args)
 
