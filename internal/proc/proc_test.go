@@ -71,4 +71,10 @@ func TestBuffer(t *testing.T) {
 	if got := b.String(); !strings.HasPrefix(got, "abcde\n") || !strings.HasSuffix(got, "\nvwxyz") || !strings.Contains(got, "16 bytes") {
 		t.Fatalf("long = %q", got)
 	}
+	for _, c := range "0123456" {
+		b.Write([]byte(string(c)))
+	}
+	if got, n := b.Snapshot(); !strings.HasSuffix(got, "\n23456") || !strings.Contains(got, "23 bytes") || n != 33 {
+		t.Fatalf("after small writes = %q, %d", got, n)
+	}
 }

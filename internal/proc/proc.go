@@ -155,9 +155,12 @@ func (b *Buffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	b.tail = append(b.tail, rest...)
-	if over := len(b.tail) - half; over > 0 {
-		b.dropped += int64(over)
-		b.tail = append(b.tail[:0:0], b.tail[over:]...)
+	// the tail runs to twice its size before it is cut back, so a chatty
+	// server copies it once per half of output instead of on every line
+	if over := len(b.tail) - 2*half; over > 0 {
+		drop := len(b.tail) - half
+		b.dropped += int64(drop)
+		b.tail = append(b.tail[:0:0], b.tail[drop:]...)
 	}
 	return len(p), nil
 }
@@ -179,13 +182,17 @@ func (b *Buffer) Snapshot() (string, int64) {
 }
 
 func (b *Buffer) str() string {
-	if b.dropped == 0 {
-		return string(b.head) + string(b.tail)
+	tail, dropped := b.tail, b.dropped
+	if over := len(tail) - max(b.Max/2, 1); over > 0 {
+		tail, dropped = tail[over:], dropped+int64(over)
+	}
+	if dropped == 0 {
+		return string(b.head) + string(tail)
 	}
 	var s bytes.Buffer
 	s.Write(b.head)
-	fmt.Fprintf(&s, "\n... (%d bytes of output skipped) ...\n", b.dropped)
-	s.Write(b.tail)
+	fmt.Fprintf(&s, "\n... (%d bytes of output skipped) ...\n", dropped)
+	s.Write(tail)
 	return s.String()
 }
 
