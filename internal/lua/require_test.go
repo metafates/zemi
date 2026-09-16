@@ -254,7 +254,7 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 		pc = append(pc, PathClass{Prefix: d, Origin: o})
 	}
 	r := NewRuntime(RuntimeOptions{PathClass: pc, RuntimeFS: fstest.MapFS{
-		"lua/zemi/util.lua": {Data: []byte(`return {}`)},
+		"lua/zemi/util.lua": {Data: []byte(`return { nested = {} }`)},
 	}})
 	if err := r.Boot(context.Background(), nil); err != nil {
 		t.Fatal(err)
@@ -277,7 +277,8 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 			local planted = function() print("planted") end
 			local u = require("myutil")
 			u.go, u.util.go = planted, planted
-			require("zemi.util").go = planted
+			assert(not pcall(function() require("zemi.util").go = planted end), "builtin module writable")
+			assert(not pcall(function() require("zemi.util").nested.go = planted end), "nested builtin table writable")
 			require("hub").on(planted)
 			local _, f = pcall(loadstring, "error('boom')", "@user:/x")
 			local _, err = pcall(f)
@@ -290,7 +291,7 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 		local u = require("myutil")
 		u.go()
 		assert(u.util.go == nil, "nested module instance shared")
-		assert(require("zemi.util").go == nil, "zemi.util instance shared")
+		assert(require("zemi.util").go == nil and require("zemi.util").nested.go == nil, "zemi.util written through")
 		require("hub").fire()
 	`, OriginUser)
 	got := strings.Join(lines, "\n")

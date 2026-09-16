@@ -375,6 +375,33 @@ func (s *Sandbox) deepProtect(tbl *glua.LTable, path string) {
 	}
 }
 
+// readOnlyView is protectTable applied lazily down a tree: every table read
+// through it comes back as a proxy too, and the real tables stay writable
+// for the code that owns them.
+func (s *Sandbox) readOnlyView(tb *glua.LTable, what string) *glua.LTable {
+	proxies := map[*glua.LTable]*glua.LTable{}
+	var wrap func(*glua.LTable) *glua.LTable
+	wrap = func(real *glua.LTable) *glua.LTable {
+		if p, ok := proxies[real]; ok {
+			return p
+		}
+		mt := s.lockedMeta(what)
+		mt.RawSetString("__index", s.L.NewFunction(func(L *glua.LState) int {
+			v := L.GetTable(real, L.Get(2))
+			if t, ok := v.(*glua.LTable); ok {
+				v = wrap(t)
+			}
+			L.Push(v)
+			return 1
+		}))
+		p := s.L.NewTable()
+		s.L.SetMetatable(p, mt)
+		proxies[real] = p
+		return p
+	}
+	return wrap(tb)
+}
+
 // realTableOf resolves a protected proxy to the table its __index reads.
 func realTableOf(tb *glua.LTable) *glua.LTable {
 	mt, ok := tb.Metatable.(*glua.LTable)

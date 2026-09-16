@@ -434,12 +434,32 @@ func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, erro
 // its resolved file, so "app.util" and "./util" naming one file share one
 // instance. A requirer below the file's origin gets its own instance run
 // under the requirer's origin: a shared table would let lower code plant
-// functions that higher-origin callbacks later call.
+// functions that higher-origin callbacks later call. Builtin modules are
+// the exception: they keep no caller-supplied functions, and rerunning
+// zemi.defaultui would re-register the UI and hit the cross-origin refusal,
+// so lower origins share the builtin instance through a read-only view.
 func (r *Runtime) loadModule(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
-	if req := r.CurrentOrigin(gen.L); req != OriginHost && req.Rank() < origin.Rank() {
+	req := r.CurrentOrigin(gen.L)
+	lower := req != OriginHost && req.Rank() < origin.Rank()
+	if lower && origin != OriginBuiltin {
 		origin = req
 	}
 	key += "|" + string(origin)
+	if !lower || origin != OriginBuiltin {
+		return r.moduleInstance(gen, key, name, origin, read)
+	}
+	if cached, ok := gen.modules[key+"|view"]; ok {
+		return cached, nil
+	}
+	mod, err := r.moduleInstance(gen, key, name, origin, read)
+	if tb, ok := mod.(*glua.LTable); ok && err == nil {
+		mod = gen.SB.readOnlyView(tb, "builtin module "+name)
+		gen.modules[key+"|view"] = mod
+	}
+	return mod, err
+}
+
+func (r *Runtime) moduleInstance(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
 	if cached, ok := gen.modules[key]; ok {
 		return cached, nil
 	}

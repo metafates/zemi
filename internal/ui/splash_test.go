@@ -1,8 +1,12 @@
 package ui
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestSplashExtends: user config can wrap the default splash through
@@ -28,4 +32,20 @@ zemi.ui.widget.register({
 	if frame := app.Frame(); !strings.Contains(frame, "hack the planet") || !strings.Contains(frame, "╚══════╝") {
 		t.Fatalf("splash not extended:\n%s", frame)
 	}
+}
+
+// TestDefaultUIPluginRequire: plugin code can require zemi.defaultui (its
+// body must not rerun under the plugin's origin) but cannot write into it.
+func TestDefaultUIPluginRequire(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 30)
+	src := `
+local d = require("zemi.defaultui")
+assert(type(d.splash) == "function", "splash missing")
+assert(not pcall(function() d.splash = print end), "plugin wrote into the builtin module")
+assert(require("zemi.defaultui") == d, "view not cached")`
+	plugin := filepath.Join(host.Dirs.DataHome, "site", "pack", "p", "init.lua")
+	if err := host.RT.ExecuteChunk(context.Background(), src, plugin, lua.OriginPlugin); err != nil {
+		t.Fatal(err)
+	}
+	runLua(t, app, `assert(require("zemi.defaultui").splash ~= print)`)
 }
