@@ -40,13 +40,12 @@ func (h *Host) checkpointFile(path string) {
 	if sid == "" || mid == "" {
 		return
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return
-	}
 	// the file tools' key: a symlink and its target are one file, also before
 	// the file exists (the store folds case where the filesystem does)
-	abs = perm.RealPath(abs)
+	abs := perm.RealPath(path)
+	if abs == "" {
+		return
+	}
 	data, err := os.ReadFile(abs)
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

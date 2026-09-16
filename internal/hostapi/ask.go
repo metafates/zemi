@@ -139,13 +139,13 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	case req.Subject == "fs.write" || req.Subject == "fs.read":
 		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
 		// the rule would be "*", which matches every path on disk
-		abs, err := filepath.Abs(req.Arg)
-		if err != nil {
+		abs := perm.RealPath(req.Arg)
+		if abs == "" {
 			return "", nil
 		}
 		dir := filepath.Dir(abs)
 		shown := dir
-		if rel, err := filepath.Rel(h.Dirs.ProjectDir, dir); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), dir); err == nil && !strings.HasPrefix(rel, "..") {
 			shown = rel
 		}
 		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]

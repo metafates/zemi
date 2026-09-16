@@ -711,8 +711,8 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 
 func TestAlwaysChoice(t *testing.T) {
 	h, _ := newTestHost(t)
-	proj := h.Dirs.ProjectDir
-	t.Chdir(proj)
+	t.Chdir(h.Dirs.ProjectDir)
+	proj := perm.RealPath(h.Dirs.ProjectDir) // rules name the resolved dir
 	for _, c := range []struct {
 		req      tools.Request
 		label    string
