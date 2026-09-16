@@ -95,6 +95,31 @@ func (a *App) renderSync(tb testing.TB) {
 	}
 }
 
+// CaptureHooks redirects hook dispatch into a queue drained by Pump
+// instead of inline processing. For tests that answer hooks from other
+// goroutines: with capture on, all state mutation happens on the single
+// goroutine that calls Pump, so no locks are needed.
+func (a *App) CaptureHooks() {
+	if a.testQueue == nil {
+		a.testQueue = make(chan tea.Msg, 64)
+	}
+}
+
+// Pump delivers one queued hook message; it reports whether one was
+// processed. Call from the owning goroutine until it returns false.
+func (a *App) Pump() bool {
+	if a.testQueue == nil {
+		return false
+	}
+	select {
+	case msg := <-a.testQueue:
+		a.Update(msg)
+		return true
+	default:
+		return false
+	}
+}
+
 // The composer with an open @-completion popup and a two-line draft,
 // pinned as a golden (files injected; no filesystem walk).
 func TestGoldenComposerCompletion(t *testing.T) {
