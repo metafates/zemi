@@ -360,40 +360,44 @@ func TestPermissionPreview(t *testing.T) {
 // TestLuaSelect drives zemi.ui.select from Lua: enter hands the chosen item
 // to on_choice, esc hands it nil. The callback reports through a toast.
 func TestLuaSelect(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
-	run := func(src string) {
-		t.Helper()
-		if err := host.RT.ExecuteChunk(context.Background(), src, "select.lua", lua.OriginUser); err != nil {
-			t.Fatal(err)
-		}
-		for app.Pump() {
-		}
-	}
-	lastToast := func() string {
-		for app.Pump() {
-		}
-		if len(app.toasts) == 0 {
-			return ""
-		}
-		return app.toasts[len(app.toasts)-1].body
-	}
+	app, _ := bootAgentApp(t, 80, 20)
 	pick := `function(item) zemi.notify({ title = "picked", body = item or "none" }) end`
 
-	run(`zemi.ui.select({ "red", "green" }, { prompt = "Color" }, ` + pick + `)`)
+	runLua(t, app, `zemi.ui.select({ "red", "green" }, { prompt = "Color" }, `+pick+`)`)
 	if len(app.overlays) != 1 || app.overlays[0].o.Title != "Color" {
 		t.Fatalf("select overlay: %+v", app.overlays)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := lastToast(); got != "green" {
+	if got := lastToast(app); got != "green" {
 		t.Fatalf("enter picked %q", got)
 	}
 
-	run(`zemi.ui.select({ "x" }, {}, ` + pick + `)`)
+	runLua(t, app, `zemi.ui.select({ "x" }, {}, `+pick+`)`)
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := lastToast(); got != "none" {
+	if got := lastToast(app); got != "none" {
 		t.Fatalf("esc picked %q", got)
 	}
+}
+
+// runLua runs src as user config and delivers the hooks it posted.
+func runLua(t *testing.T, app *App, src string) {
+	t.Helper()
+	if err := app.host.RT.ExecuteChunk(context.Background(), src, "test.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+}
+
+// lastToast delivers queued hooks and returns the newest toast's body.
+func lastToast(app *App) string {
+	for app.Pump() {
+	}
+	if len(app.toasts) == 0 {
+		return ""
+	}
+	return app.toasts[len(app.toasts)-1].body
 }
 
 // TestPaletteArgumentCompletion: past "/name " the palette lists the
@@ -449,8 +453,8 @@ func TestPromptWaitsOnFullQueue(t *testing.T) {
 
 // TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
 func TestLuaUtil(t *testing.T) {
-	_, host := bootAgentApp(t, 80, 20)
-	src := `
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `
 		local u = require("zemi.util")
 		assert(u.trim("  hi \n") == "hi", "trim")
 		assert(table.concat(u.split("a,,b", ","), "|") == "a||b", "split")
@@ -463,10 +467,7 @@ func TestLuaUtil(t *testing.T) {
 		local s = u.inspect(cyc)
 		assert(s == '{ 1, name = "x", self = <cycle> }', s)
 		assert(not pcall(u.validate, "opt", 1, "string"), "validate")
-	`
-	if err := host.RT.ExecuteChunk(context.Background(), src, "util.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
+	`)
 }
 
 // TestReasoningExpanded: ctrl+o shows a finished thought as one header with
@@ -519,7 +520,7 @@ func TestWrapSegs(t *testing.T) {
 	}
 
 	rows = wrapSegs([]hostapi.Segment{{Text: "hello world foo", HL: "A"}}, 11)
-	if len(rows) != 2 || segsText(rows[0]) != "hello " || segsText(rows[1]) != "world foo" {
+	if len(rows) != 2 || plainSegs(rows[0]) != "hello " || plainSegs(rows[1]) != "world foo" {
 		t.Fatalf("word wrap: %+v", rows)
 	}
 	for _, r := range rows {
@@ -537,7 +538,7 @@ func TestWrapSegs(t *testing.T) {
 	rows = wrapSegs(line, 7)
 	texts := make([]string, len(rows))
 	for i, r := range rows {
-		texts[i] = segsText(r)
+		texts[i] = plainSegs(r)
 	}
 	if fmt.Sprint(texts) != "[one  two  three]" {
 		t.Fatalf("multi-segment wrap: %v (%+v)", texts, rows)
@@ -547,37 +548,13 @@ func TestWrapSegs(t *testing.T) {
 	}
 }
 
-func segsText(segs []hostapi.Segment) string {
-	var b strings.Builder
-	for _, s := range segs {
-		b.WriteString(s.Text)
-	}
-	return b.String()
-}
-
 // TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
 // hands the text to on_confirm, esc hands it nil.
 func TestLuaInput(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
-	run := func(src string) {
-		t.Helper()
-		if err := host.RT.ExecuteChunk(context.Background(), src, "input.lua", lua.OriginUser); err != nil {
-			t.Fatal(err)
-		}
-		for app.Pump() {
-		}
-	}
-	lastToast := func() string {
-		for app.Pump() {
-		}
-		if len(app.toasts) == 0 {
-			return ""
-		}
-		return app.toasts[len(app.toasts)-1].body
-	}
+	app, _ := bootAgentApp(t, 80, 20)
 	open := `zemi.ui.input({ prompt = "Branch", default = "fix-" }, function(t) zemi.notify({ title = "input", body = t or "none" }) end)`
 
-	run(open)
+	runLua(t, app, open)
 	if len(app.overlays) != 1 || app.overlays[0].o.Title != "Branch" {
 		t.Fatalf("input overlay: %+v", app.overlays)
 	}
@@ -585,12 +562,12 @@ func TestLuaInput(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := lastToast(); got != "fix-lsp" {
+	if got := lastToast(app); got != "fix-lsp" {
 		t.Fatalf("enter gave %q", got)
 	}
-	run(open)
+	runLua(t, app, open)
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := lastToast(); got != "none" || len(app.overlays) != 0 {
+	if got := lastToast(app); got != "none" || len(app.overlays) != 0 {
 		t.Fatalf("esc gave %q, overlays %d", got, len(app.overlays))
 	}
 }
@@ -598,19 +575,15 @@ func TestLuaInput(t *testing.T) {
 // TestKeySequence: ctrl+g then t runs a <leader>t binding without typing
 // the t; a key that breaks the sequence reaches the composer.
 func TestKeySequence(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
-	if err := host.RT.ExecuteChunk(context.Background(), `zemi.keymap.set("<leader>t", function() zemi.notify({ title = "seq", body = "ran" }) end)`, "seq.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `zemi.keymap.set("<leader>t", function() zemi.notify({ title = "seq", body = "ran" }) end)`)
 	ctrlG := tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
 	app.Update(ctrlG)
 	if len(app.keySeq) != 1 {
 		t.Fatalf("pending = %v", app.keySeq)
 	}
 	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
-	for app.Pump() {
-	}
-	if len(app.toasts) == 0 || app.toasts[len(app.toasts)-1].body != "ran" || app.composer.text != "" {
+	if lastToast(app) != "ran" || app.composer.text != "" {
 		t.Fatalf("toasts=%v composer=%q", app.toasts, app.composer.text)
 	}
 	app.Update(ctrlG)
@@ -656,11 +629,7 @@ func TestDiffRows(t *testing.T) {
 	d := "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n"
 	var got []string
 	for _, row := range diffRows(d, 40) {
-		var b strings.Builder
-		for _, s := range row {
-			b.WriteString(s.Text)
-		}
-		got = append(got, strings.TrimRight(b.String(), " "))
+		got = append(got, strings.TrimRight(plainSegs(row), " "))
 	}
 	want := []string{"  9  9   one", " 10    - two", "    10 + TWO", " 11 11   three"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {

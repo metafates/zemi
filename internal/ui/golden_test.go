@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,34 +98,7 @@ func (a *App) renderSync(tb testing.TB) {
 // The composer with an open @-completion popup and a two-line draft,
 // pinned as a golden (files injected; no filesystem walk).
 func TestGoldenComposerCompletion(t *testing.T) {
-	ctx := context.Background()
-	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
-	resolve := func(p string) string {
-		r, err := filepath.EvalSymlinks(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return r
-	}
-	cfg, data, state = resolve(cfg), resolve(data), resolve(state)
-
-	log := logging.New("")
-	settings := config.NewStore()
-	classes := lua.PathClasses{
-		{Prefix: cfg, Origin: lua.OriginUser},
-		{Prefix: filepath.Join(data, "site", "pack"), Origin: lua.OriginPlugin},
-	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})
-	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state})
-	app := NewApp(host, log)
-	host.SetUIHooks(app)
-
-	steps := []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.defaultui")}
-	if err := rt.Boot(ctx, steps); err != nil {
-		t.Fatalf("boot: %v", err)
-	}
-
-	app.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	app, _ := bootAgentApp(t, 60, 12)
 	app.completion.files = []string{"internal/ui/app.go", "main.go"}
 	app.completion.scanning = true
 	for _, k := range []string{"s", "e", "e", " ", "@", "a", "p"} {
@@ -186,10 +158,7 @@ func TestGoldenSlashPalette(t *testing.T) {
 // tail keeps filling underneath.
 func TestGoldenChatScroll(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
-	for i := 1; i <= 30; i++ {
-		host.AppendMessage("user", fmt.Sprintf("message %d", i))
-		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
-	}
+	fillChat(host)
 	app.renderSync(t)
 	app.Frame() // establish the viewport metrics
 

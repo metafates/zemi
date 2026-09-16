@@ -19,11 +19,7 @@ func TestWrapHangs(t *testing.T) {
 	} {
 		var got []string
 		for _, row := range wrapSegs(c.line, 22) {
-			var b strings.Builder
-			for _, s := range row {
-				b.WriteString(s.Text)
-			}
-			got = append(got, strings.TrimRight(b.String(), " "))
+			got = append(got, strings.TrimRight(plainSegs(row), " "))
 		}
 		if strings.Join(got, "|") != strings.Join(c.want, "|") {
 			t.Fatalf("%s: %q", c.name, got)

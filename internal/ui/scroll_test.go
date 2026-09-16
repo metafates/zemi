@@ -9,10 +9,9 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// fillChat appends n user/reply pairs to the transcript.
-func fillChat(t *testing.T, host *hostapi.Host, n int) {
-	t.Helper()
-	for i := 1; i <= n; i++ {
+// fillChat appends 30 user/reply pairs to the transcript.
+func fillChat(host *hostapi.Host) {
+	for i := 1; i <= 30; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
 		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
 	}
@@ -36,7 +35,7 @@ func press(t *testing.T, app *App, key tea.KeyPressMsg) {
 // ends, and reaching the bottom re-arms tail follow.
 func TestChatScrollKeys(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
-	fillChat(t, host, 30)
+	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
 
@@ -81,7 +80,7 @@ func TestChatScrollKeys(t *testing.T) {
 // tail, wheel down re-arms follow at the bottom.
 func TestChatScrollWheel(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
-	fillChat(t, host, 30)
+	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
 
@@ -102,7 +101,7 @@ func TestChatScrollWheel(t *testing.T) {
 // window (the tail keeps filling underneath).
 func TestChatScrollStaysAnchored(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
-	fillChat(t, host, 30)
+	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
 
@@ -138,7 +137,7 @@ func withoutStatus(frame string) string {
 // the view to the tail.
 func TestChatScrollSubmitFollows(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
-	fillChat(t, host, 30)
+	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
 

@@ -130,7 +130,7 @@ func TestWordSpan(t *testing.T) {
 // TestDropPaste: pasted paths in the forms terminals use for drag and drop
 // become attachments; ordinary text stays text.
 func TestDropPaste(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
+	app, _ := bootAgentApp(t, 80, 20)
 	dir := t.TempDir()
 	shot := filepath.Join(dir, "My Shot.png")
 	notes := filepath.Join(dir, "notes.txt")
@@ -149,7 +149,6 @@ func TestDropPaste(t *testing.T) {
 			t.Errorf("paste %q: composer %q, want %q", c.paste, app.composer.text, c.want)
 		}
 	}
-	_ = host
 }
 
 func TestComposerCursorColumn(t *testing.T) {
