@@ -843,9 +843,7 @@ func (a *App) applyChatScroll(kind string) {
 	case "down":
 		a.scrollChatRows(a.chatStep())
 	case "top":
-		a.chatFollow = false
-		a.chatTop = 0
-		a.frameGen++
+		a.scrollChatRows(-a.chatRows)
 	case "bottom":
 		a.chatFollow = true
 		a.frameGen++

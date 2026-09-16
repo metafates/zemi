@@ -160,9 +160,11 @@ func TestChatScrollShortContent(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if !app.chatFollow {
-		t.Fatalf("short content cannot scroll")
+	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyPgUp}, {Code: tea.KeyHome, Mod: tea.ModCtrl}} {
+		press(t, app, key)
+		if !app.chatFollow {
+			t.Fatalf("short content cannot scroll: %s", key)
+		}
 	}
 	if !strings.Contains(app.Frame(), "only one") {
 		t.Fatalf("message must stay visible")
