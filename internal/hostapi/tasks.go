@@ -72,7 +72,8 @@ func (r *taskReg) add(run *agentRun) error {
 	if len(r.runs) > maxKeptRuns {
 		var oldest *agentRun
 		for _, x := range r.runs {
-			if !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
+			// never the run just added: loadRun adds old finished runs to view them
+			if x != run && !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
 				oldest = x
 			}
 		}
