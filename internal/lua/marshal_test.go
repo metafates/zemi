@@ -266,6 +266,9 @@ func TestFromGoUnsupportedRefused(t *testing.T) {
 	assertFromGoRaises(t, L, struct{ X int }{1}, "cannot marshal")
 	assertFromGoRaises(t, L, make(chan int), "cannot marshal")
 	assertFromGoRaises(t, L, map[int]string{1: "no"}, "cannot marshal")
+	big := strings.Repeat("x", MaxStringBytes+1)
+	assertFromGoRaises(t, L, []string{big}, "size cap")
+	assertFromGoRaises(t, L, map[string]string{"k": big}, "size cap")
 }
 
 // assertFromGoRaises runs FromGo with recovery: RaiseError panics outside a

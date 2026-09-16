@@ -145,7 +145,7 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 	case []string:
 		tb := L.NewTable()
 		for _, item := range t {
-			tb.Append(lua.LString(item))
+			tb.Append(fromGo(L, item, depth+1, seen))
 		}
 		return tb
 	case map[string]any:
@@ -158,13 +158,13 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 	case map[string]string:
 		tb := L.NewTable()
 		for k, item := range t {
-			tb.RawSetString(k, lua.LString(item))
+			tb.RawSetString(k, fromGo(L, item, depth+1, seen))
 		}
 		return tb
 	case error:
-		return lua.LString(t.Error())
+		return fromGo(L, t.Error(), depth, seen)
 	case fmt.Stringer:
-		return lua.LString(t.String())
+		return fromGo(L, t.String(), depth, seen)
 	default:
 		L.RaiseError("zemi.lua: cannot marshal Go value of type %T", v)
 		return lua.LNil
