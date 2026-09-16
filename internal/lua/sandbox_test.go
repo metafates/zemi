@@ -296,6 +296,35 @@ func TestSandboxLoadInheritsChunkEnv(t *testing.T) {
 	`)
 }
 
+// TestSandboxLoadInCoroutine: load inside a coroutine binds the env of the
+// function calling it there, not of whoever resumed the coroutine.
+func TestSandboxLoadInCoroutine(t *testing.T) {
+	sb := newTestSandbox(t)
+	other, err := sb.CompileChunk(`return function() return loadstring("return SECRET")() end`, "@plugin:other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb.L.Push(other)
+	if err := sb.L.PCall(0, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	peek := sb.L.Get(-1)
+	sb.L.Pop(1)
+	fn, err := sb.CompileChunk(`
+		SECRET = "user secret"
+		local peek = ...
+		assert(coroutine.wrap(peek)() == nil, "a coroutine's load read the resumer's globals")
+	`, "@user:init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb.L.Push(fn)
+	sb.L.Push(peek)
+	if err := sb.L.PCall(1, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSandboxLoadReaderSizeCap(t *testing.T) {
 	sb := newTestSandbox(t)
 	mustRun(t, sb, `

@@ -86,9 +86,9 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 		strMod.RawSetString("__metatable", glua.LString("zemi:protected"))
 	}
 
-	// A thread keeps the context it was created under, so a coroutine made
-	// in one request raised "context canceled" when a later one resumed it,
-	// and one made at boot ignored cancellation. Resume rebinds it (§4).
+	// A thread keeps the context it was created under: unless resume rebinds
+	// it, a coroutine made in one request raises "context canceled" in a
+	// later one, and one made at boot ignores cancellation (DESIGN §4).
 	if co, ok := global.RawGetString("coroutine").(*glua.LTable); ok {
 		resume := co.RawGetString("resume").(*glua.LFunction).GFunction
 		wrap := co.RawGetString("wrap").(*glua.LFunction).GFunction
@@ -616,7 +616,7 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 			}
 			src = b.String()
 		}
-		callerEnv, callerOrigin := s.callerChunk()
+		callerEnv, callerOrigin := s.callerChunk(L)
 		if callerOrigin != "" {
 			chunkname = callerOrigin.ChunkName(chunkname)
 		}
@@ -633,10 +633,9 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 }
 
 // callerChunk returns the environment and origin of the Lua chunk that
-// called the running Go function. Go-side callers (or a call chain made of
-// Go functions only) yield the frozen surface and no origin.
-func (s *Sandbox) callerChunk() (*glua.LTable, Origin) {
-	L := s.L
+// called the Go function running on thread L (a coroutine's own stack, not
+// the resumer's). Go-side callers yield the frozen surface and no origin.
+func (s *Sandbox) callerChunk(L *glua.LState) (*glua.LTable, Origin) {
 	dbg, ok := L.GetStack(1)
 	if !ok {
 		return s.frozen, ""
