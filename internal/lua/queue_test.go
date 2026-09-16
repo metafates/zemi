@@ -212,6 +212,35 @@ func TestQueueWatchdogAbandonHot(t *testing.T) {
 	}
 }
 
+// TestRetiredWatchdogLeavesFreshRuntime: a request wedged across a reload
+// is abandoned by its old generation's watchdog, which must not put the
+// fresh generation hot.
+func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
+	r := newTestRuntime(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	errc := make(chan error, 1)
+	go func() {
+		_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+			func(L *glua.LState) ([]any, error) {
+				close(started)
+				<-release
+				return nil, nil
+			})
+		errc <- err
+	}()
+	<-started
+	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	if err := <-errc; !errors.Is(err, ErrAbandoned) {
+		t.Fatalf("wedged request: %v, want ErrAbandoned", err)
+	}
+	if r.IsHot() {
+		t.Fatal("retired generation's watchdog put the fresh runtime hot")
+	}
+}
+
 // TestQueuePendingDroppedOnReload verifies that requests queued behind a
 // busy interpreter are answered with ErrReloaded when ForceReload retires
 // the generation (DESIGN §4: reload purges every registration of the dead

@@ -25,6 +25,7 @@ type Runtime struct {
 	rfs   fs.FS // embedded runtime/lua tree
 
 	hot     atomic.Bool
+	hotMu   sync.Mutex // orders goHot's generation check against retiring cur
 	booting atomic.Bool
 	cur     atomic.Pointer[Generation]
 	seq     atomic.Int64
@@ -118,14 +119,16 @@ func (r *Runtime) topFrame() (frame, bool) {
 
 // goHot marks the runtime wedged: every Lua request fails fast until
 // ForceReload (DESIGN §4).
-func (r *Runtime) goHot(cause error) {
-	if r.hot.Swap(true) {
+func (r *Runtime) goHot(g *Generation, cause error) {
+	r.hotMu.Lock()
+	// a retired generation's watchdog must not wedge its replacement
+	stale := r.current() != g || r.hot.Swap(true)
+	r.hotMu.Unlock()
+	if stale {
 		return
 	}
 	r.log.Error("lua", "runtime marked hot: "+cause.Error(), nil)
-	if g := r.current(); g != nil {
-		g.drain(ErrHot)
-	}
+	g.drain(ErrHot)
 }
 
 func (r *Runtime) IsHot() bool { return r.hot.Load() }
@@ -151,7 +154,9 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	if old := r.current(); old != nil {
 		old.drain(ErrReloaded)
 		close(old.stop)
+		r.hotMu.Lock()
 		r.cur.Store(nil)
+		r.hotMu.Unlock()
 		r.log.Info("lua", "generation retired for reload", map[string]any{"gen": old.ID})
 	}
 	if purge != nil {
@@ -208,7 +213,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 			err = fmt.Errorf("boot step %s: %w", step.Name, err)
 			// no dispatcher will run this generation, so its requests,
 			// queued and future, must fail fast until a reload succeeds
-			r.goHot(err)
+			r.goHot(gen, err)
 			return gen, err
 		}
 	}

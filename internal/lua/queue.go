@@ -255,7 +255,7 @@ func (g *Generation) execute(r *request) {
 				// Mark hot BEFORE answering: while hot every Lua request
 				// fails fast, so a request arriving after the abandon
 				// cannot enqueue onto the wedged interpreter.
-				g.rt.goHot(fmt.Errorf("request in class %s exceeded ceiling %s + grace %s",
+				g.rt.goHot(g, fmt.Errorf("request in class %s exceeded ceiling %s + grace %s",
 					r.class.String(), ceiling, grace))
 				r.reply <- result{err: ErrAbandoned}
 			}
@@ -274,7 +274,7 @@ func (g *Generation) execute(r *request) {
 	// is no longer trustworthy: fail this request and wedge the runtime
 	// rather than let later calls run against it (DESIGN §4, §5).
 	if ierr := g.SB.CheckIntegrity(); ierr != nil {
-		g.rt.goHot(ierr)
+		g.rt.goHot(g, ierr)
 		if g.finish(r) {
 			r.reply <- result{err: ierr}
 		}
