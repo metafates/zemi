@@ -108,3 +108,26 @@ func TestRepliesAfterExit(t *testing.T) {
 		t.Fatal("reply write blocked after exit")
 	}
 }
+
+// TestPasteToIdleProgram: a program that never reads stdin fills the pty,
+// and neither the paste nor the next frame may wait on it. Raw mode, since
+// a canonical tty may discard input past its line limit instead of blocking.
+func TestPasteToIdleProgram(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: "stty raw -echo; sleep 30", Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(w.ID)
+	done := make(chan struct{})
+	go func() {
+		w.Paste(strings.Repeat("x", 1<<20))
+		w.Screen()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("paste or Screen blocked on a program that never reads")
+	}
+}

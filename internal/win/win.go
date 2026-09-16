@@ -71,6 +71,9 @@ type Window struct {
 	w, h int
 
 	ptmx         *os.File
+	inMu         sync.Mutex // guards in: input waiting for the program to read
+	in           []byte
+	inReady      chan struct{}
 	cmd          *exec.Cmd
 	dirty        atomic.Bool
 	cursorHidden atomic.Bool
@@ -146,7 +149,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		ID: id, Cmd: spec.Cmd, Owner: spec.Owner,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
-		done: make(chan struct{}), started: time.Now(),
+		done: make(chan struct{}), inReady: make(chan struct{}, 1), started: time.Now(),
 	}
 	w.term.SetScrollbackSize(2000)
 	w.exit.Store(-1)
@@ -188,6 +191,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 
 	go w.readLoop()
 	go w.replyLoop()
+	go w.writeLoop()
 	go func() {
 		err := proc.Wait(cmd)
 		var ee *exec.ExitError
@@ -234,19 +238,40 @@ func (w *Window) readLoop() {
 }
 
 // replyLoop carries the emulator's answers (cursor reports, device
-// attributes) and the keys it encodes back to the program. It drains until
-// kill closes the pipe, even once the program is gone: the emulator writes
-// to that unbuffered pipe under mu, so a loop that stopped would wedge mu.
+// attributes) and the keys it encodes back to the program. The emulator
+// writes to that unbuffered pipe under mu, so the loop only queues: it
+// drains until kill closes the pipe, and writeLoop waits on the pty instead.
 func (w *Window) replyLoop() {
+	defer close(w.inReady)
 	buf := make([]byte, 4<<10)
 	for {
 		n, err := w.term.Read(buf)
 		if n > 0 {
-			_, _ = w.ptmx.Write(buf[:n])
+			w.inMu.Lock()
+			w.in = append(w.in, buf[:n]...)
+			w.inMu.Unlock()
+			select {
+			case w.inReady <- struct{}{}:
+			default:
+			}
 		}
 		if err != nil {
 			return
 		}
+	}
+}
+
+// writeLoop feeds queued input to the program; a write blocks while the
+// program does not read stdin.
+// NOTE: the queue is unbounded, so a program that never reads holds every
+// paste sent to it in memory until the window closes.
+func (w *Window) writeLoop() {
+	for range w.inReady {
+		w.inMu.Lock()
+		b := w.in
+		w.in = nil
+		w.inMu.Unlock()
+		_, _ = w.ptmx.Write(b)
 	}
 }
 
