@@ -1,0 +1,104 @@
+package sandbox
+
+import (
+	_ "embed"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+)
+
+// sandboxExec is never looked up on PATH: a planted one would run unconfined.
+const sandboxExec = "/usr/bin/sandbox-exec"
+
+//go:embed profile.sb
+var baseProfile string
+
+// secretShapes are the strict shapes of perm.SecretPathShape. The broad
+// *secret* and *credential* stay in the ask layer: Go's own stdlib has
+// runtime/secret.go, so a kernel rule for them breaks go build.
+const secretShapes = `(regex #"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"\.(pem|key)$" #"/id_(rsa|dsa|ecdsa|ed25519)$")`
+
+func probe() (Backend, error) {
+	if _, err := os.Stat(sandboxExec); err != nil {
+		return Backend{}, err
+	}
+	err := exec.Command(sandboxExec, "-p", "(version 1)(allow default)", "/usr/bin/true").Run()
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 71 {
+		return Backend{}, errors.New("zemi already runs inside a sandbox, which cannot be nested")
+	}
+	if err != nil {
+		return Backend{}, fmt.Errorf("sandbox-exec: %w", err)
+	}
+	return Backend{Name: "seatbelt", HidesSecretFiles: true}, nil
+}
+
+func wrap(cmd *exec.Cmd, p Policy) error {
+	prof, defs := profile(p)
+	args := append([]string{sandboxExec, "-p", prof}, defs...)
+	cmd.Args = append(append(args, "--", cmd.Path), cmd.Args[1:]...)
+	cmd.Path = sandboxExec
+	return nil
+}
+
+// profile renders p as seatbelt rules. Paths go in as -D params, so the
+// profile text never needs escaping.
+func profile(p Policy) (string, []string) {
+	var b strings.Builder
+	var defs []string
+	param := func(kind string, i int, path string) string {
+		name := fmt.Sprintf("%s_%d", kind, i)
+		defs = append(defs, "-D"+name+"="+path)
+		return fmt.Sprintf("(param %q)", name)
+	}
+	b.WriteString(baseProfile)
+	if p.Loopback {
+		// NOTE: seatbelt's localhost also matches this machine's LAN addresses,
+		// so a service bound to them is reachable too.
+		b.WriteString("(allow network-bind network-inbound (local ip \"localhost:*\"))\n")
+		b.WriteString("(allow network-outbound (remote ip \"localhost:*\"))\n")
+	}
+	write := make([]string, len(p.Write))
+	for i, w := range p.Write {
+		write[i] = param("WRITE", i, w)
+		fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", write[i])
+	}
+	// denies after allows: the last matching rule wins
+	for i, pr := range p.Protect {
+		fmt.Fprintf(&b, "(deny file-write* (subpath %s))\n", param("PROTECT", i, pr))
+	}
+	// a root inside a protected dir, like the scratchpad under the state dir
+	for i, w := range p.Write {
+		if slices.ContainsFunc(p.Protect, func(pr string) bool { return w != pr && within(w, pr) }) {
+			fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", write[i])
+		}
+	}
+	// renaming a root or a protected path's parent would move the protection away
+	keep := slices.Clone(p.Write)
+	for _, pr := range p.Protect {
+		for d := filepath.Dir(pr); slices.ContainsFunc(p.Write, func(w string) bool { return within(d, w) }); d = filepath.Dir(d) {
+			keep = append(keep, d)
+			if d == "/" {
+				break
+			}
+		}
+	}
+	slices.Sort(keep)
+	for i, d := range slices.Compact(keep) {
+		fmt.Fprintf(&b, "(deny file-write-unlink (require-all (literal %s) (vnode-type DIRECTORY)))\n", param("KEEP", i, d))
+	}
+	for i, h := range p.Hide {
+		fmt.Fprintf(&b, "(deny file-read* file-write* (subpath %s))\n", param("HIDE", i, h))
+	}
+	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
+	return b.String(), defs
+}
+
+// Helper is the Linux re-exec entry; macOS needs none.
+func Helper([]string) int {
+	fmt.Fprintln(os.Stderr, "zemi sandbox: the helper is linux only")
+	return 2
+}

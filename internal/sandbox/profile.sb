@@ -1,0 +1,25 @@
+(version 1)
+(deny default)
+(allow process-exec process-fork)
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+; not kern.procargs2: it prints other processes' env
+(allow sysctl-read
+  (sysctl-name "hw.activecpu" "hw.byteorder" "hw.cachelinesize_compat" "hw.cpufamily" "hw.cputype"
+    "hw.l1dcachesize_compat" "hw.l2cachesize_compat" "hw.logicalcpu" "hw.logicalcpu_max" "hw.machine"
+    "hw.memsize" "hw.model" "hw.ncpu" "hw.nperflevels" "hw.packages" "hw.pagesize" "hw.pagesize_compat"
+    "hw.physicalcpu" "hw.physicalcpu_max" "hw.tbfrequency_compat" "hw.vectorunit" "machdep.cpu.brand_string"
+    "kern.argmax" "kern.hostname" "kern.maxfilesperproc" "kern.maxproc" "kern.osproductversion"
+    "kern.osrelease" "kern.ostype" "kern.osvariant_status" "kern.osversion" "kern.secure_kernel"
+    "kern.sysv.semmns" "kern.usrstack64" "kern.version" "sysctl.proc_cputype" "vm.loadavg")
+  (sysctl-name-prefix "hw.optional.arm." "hw.optional.armv8_" "hw.perflevel" "kern.proc.pgrp." "kern.proc.pid."))
+(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))
+(allow ipc-posix-sem)
+(allow ipc-posix-shm-read* (ipc-posix-name-prefix "apple.cfprefs."))
+(allow mach-lookup (global-name "com.apple.cfprefsd.daemon" "com.apple.cfprefsd.agent") (local-name "com.apple.cfprefsd.agent"))
+(allow user-preference-read)
+(allow pseudo-tty)
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx") (regex #"^/dev/ttys[0-9]+"))
+(allow file-read*)
+(allow file-write* (subpath "/private/tmp") (subpath "/private/var/tmp"))
+(allow file-write-data (literal "/dev/null") (literal "/dev/zero") (subpath "/dev/fd"))
