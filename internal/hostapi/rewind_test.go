@@ -1,15 +1,18 @@
 package hostapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestRewind runs two turns that write files, then rewinds the second and
@@ -101,5 +104,81 @@ func TestRewind(t *testing.T) {
 	}
 	if _, err := h.RewindTo(prompts[0]); err == nil {
 		t.Fatal("rewinding to a removed prompt must fail")
+	}
+}
+
+// TestRewindSnapshotEdges builds the checkpoint rows by hand: a file
+// checkpointed under a symlink and under its target is one file, and a
+// rewind over a turn whose snapshots aged out warns even when later turns
+// left some.
+func TestRewindSnapshotEdges(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		firstAge  time.Duration
+		viaLink   bool   // the first turn names the file through a symlink
+		keepFirst bool   // the sweep left the first turn's snapshot
+		want      string // file content after rewinding to the first turn
+		warn      string // substring of the rewind's warning, "" for none
+	}{
+		{name: "symlink and target", viaLink: true, keepFirst: true, want: "orig"},
+		{name: "partly aged out", firstAge: store.CheckpointTTL + time.Hour, want: "v1", warn: "1 of those turn"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			real := filepath.Join(h.Dirs.ProjectDir, "f.txt")
+			link := filepath.Join(h.Dirs.ProjectDir, "link.txt")
+			if err := os.WriteFile(real, []byte("orig"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(real, link); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.DB.CreateSession("s", "", "s", ""); err != nil {
+				t.Fatal(err)
+			}
+			var ids []string
+			for i, text := range []string{"first", "second"} {
+				parts, _ := json.Marshal(fantasy.NewUserMessage(text))
+				m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
+				if i == 0 && c.firstAge > 0 {
+					m.CreatedAt = time.Now().Add(-c.firstAge).UnixMilli()
+				}
+				if err := h.DB.AddMessage(m); err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, m.ID)
+			}
+			if err := h.ResumeSession("s"); err != nil {
+				t.Fatal(err)
+			}
+			for i, v := range []string{"v1", "v2"} {
+				path := real
+				if i == 0 && c.viaLink {
+					path = link
+				}
+				if i > 0 || c.keepFirst {
+					h.agents.turnMsgID = ids[i]
+					h.checkpointFile(path)
+				}
+				if err := os.WriteFile(path, []byte(v), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := h.RewindTo(ids[0]); err != nil {
+				t.Fatal(err)
+			}
+			if b, _ := os.ReadFile(real); string(b) != c.want {
+				t.Fatalf("file = %q, want %q", b, c.want)
+			}
+			warned := ""
+			for _, n := range h.evlog.notes {
+				if n.level == "warn" {
+					warned += n.body
+				}
+			}
+			if (c.warn == "") != (warned == "") || !strings.Contains(warned, c.warn) {
+				t.Fatalf("warning %q, want %q", warned, c.warn)
+			}
+		})
 	}
 }

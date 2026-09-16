@@ -43,6 +43,11 @@ func (h *Host) checkpointFile(path string) {
 	if err != nil {
 		return
 	}
+	// the file tools' key: a symlink and its target are one file (the store
+	// folds case where the filesystem does)
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real
+	}
 	data, err := os.ReadFile(abs)
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -115,9 +120,21 @@ func (h *Host) RewindTo(id string) (int, error) {
 		return 0, err
 	}
 	// snapshots age out: say so before the conversation is cut, or a rewind
-	// that restored nothing looks like one that had nothing to restore
-	if len(cps) == 0 && time.Since(time.UnixMilli(rows[cut].CreatedAt)) > store.CheckpointTTL {
+	// that restored nothing looks like one that had nothing to restore. With
+	// some left, a file an aged-out turn changed stays as it is or goes back
+	// only to a later turn's snapshot.
+	aged := 0
+	for _, r := range rows[cut:] {
+		if _, ok := userText(r); ok && time.Since(time.UnixMilli(r.CreatedAt)) > store.CheckpointTTL {
+			aged++
+		}
+	}
+	switch {
+	case aged > 0 && len(cps) == 0:
 		h.Notify("warn", "rewind", "the file snapshots for that turn have aged out; the conversation is cut but no file is restored")
+	case aged > 0:
+		h.Notify("warn", "rewind", fmt.Sprintf("file snapshots older than %d days have aged out (%d of those %s); files changed then may not go back to before that turn",
+			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
 	}
 	var failed []string
 	for _, cp := range cps {

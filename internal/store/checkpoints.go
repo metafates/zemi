@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
+	"strings"
 )
 
 // Checkpoint is a file as it was before a turn first changed it.
@@ -40,8 +42,15 @@ func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) 
 	})
 	seen := map[string]bool{}
 	return slices.DeleteFunc(all, func(cp Checkpoint) bool {
-		dup := seen[cp.Path]
-		seen[cp.Path] = true
+		// NOTE: folds case on darwin and windows like the file tools' lock
+		// key, so two files differing only in case on a case-sensitive
+		// volume restore just the earlier one
+		key := cp.Path
+		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		dup := seen[key]
+		seen[key] = true
 		return dup
 	}), err
 }
