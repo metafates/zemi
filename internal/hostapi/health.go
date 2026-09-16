@@ -158,6 +158,15 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "ripgrep", rg+" runs glob and grep")
 	}
 
+	switch s := h.sandbox.Load(); {
+	case s == nil:
+		add("warn", "sandbox", "still probing; settled commands limited to readers")
+	case s.err != nil:
+		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; settled commands limited to readers")
+	default:
+		add("ok", "sandbox", s.backend.Name+" confines the commands auto and plan mode run")
+	}
+
 	h.agents.mu.Lock()
 	reflectErr := h.agents.reflectErr
 	h.agents.mu.Unlock()

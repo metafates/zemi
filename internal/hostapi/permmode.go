@@ -314,7 +314,8 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 // build and test commands, and running workflows (their agents' tools are
 // checked one by one). Network requests are not on this list: a URL carries
 // whatever the model puts in it, so the screening model sees them. An
-// untrusted project settles only reads and commands that just read.
+// untrusted project settles only reads and commands that just read, and so
+// does a trusted one without a sandbox backend for commands.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case "fs.read":
@@ -334,9 +335,10 @@ func (h *Host) autoLocal(req tools.Request) bool {
 
 // settledCommand reports a bash command auto and plan mode run without
 // asking. Build and test commands and git run the repository's code and
-// config, which only a trusted project may have them do.
+// config, which only a trusted project may have them do, and only in the
+// sandbox (Pipeline.SandboxFor); without a backend only readers settle.
 func (h *Host) settledCommand(cmd string) bool {
-	if h.ProjectTrusted() {
+	if h.ProjectTrusted() && h.sandboxLive() {
 		return perm.SafeCommand(cmd, h.safeCommandPath)
 	}
 	return perm.ReadCommand(cmd, h.safeCommandPath)
@@ -409,7 +411,7 @@ func (h *Host) trackedSecret(dir string) string {
 // reason: every other check passes and a git command prints file content
 // from a repository that tracks one. Otherwise it is "".
 func (h *Host) repoNote(cmd string) string {
-	if !h.ProjectTrusted() {
+	if !h.ProjectTrusted() || !h.sandboxLive() {
 		return ""
 	}
 	note := ""

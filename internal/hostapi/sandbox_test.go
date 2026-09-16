@@ -1,0 +1,126 @@
+package hostapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/sandbox"
+	"github.com/metafates/zemi/internal/tools"
+)
+
+// fakeSandbox settles the probe: live or not, whatever this machine has.
+func fakeSandbox(h *Host, live bool) {
+	s := &sandboxProbe{backend: sandbox.Backend{Name: "fake"}}
+	if !live {
+		s.err = errors.New("no backend")
+	}
+	h.sandbox.Store(s)
+}
+
+// TestSettledCommand: builds, tests and git settle only in a trusted
+// project with a live backend, where they run sandboxed; readers always.
+func TestSettledCommand(t *testing.T) {
+	h, _ := newTestHost(t)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
+	for _, c := range []struct {
+		trusted, live bool
+		cmd           string
+		want          bool
+	}{
+		{true, true, "go vet ./...", true},
+		{true, false, "go vet ./...", false},
+		{false, true, "go vet ./...", false},
+		{false, false, "go vet ./...", false},
+		{true, true, "wc -l main.go", true},
+		{true, false, "wc -l main.go", true},
+		{false, true, "wc -l main.go", true},
+		{false, false, "wc -l main.go", true},
+	} {
+		h.SetProjectTrusted(c.trusted)
+		fakeSandbox(h, c.live)
+		if got := h.settledCommand(c.cmd); got != c.want {
+			t.Errorf("trusted=%v live=%v %q: got %v", c.trusted, c.live, c.cmd, got)
+		}
+	}
+}
+
+// TestSandboxedBash runs the real bash tool under seatbelt: a command a
+// mode settled writes the project but nothing outside it, gets the hint
+// when denied, and sandbox: false goes to the user instead. Plan mode
+// keeps the project read-only.
+func TestSandboxedBash(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the end-to-end check drives seatbelt")
+	}
+	backend, err := sandbox.Probe()
+	if err != nil {
+		t.Skip("no sandbox:", err)
+	}
+	h, r := newTestHostDB(t)
+	outside := t.TempDir()
+	// the temp dir is writable in the sandbox, and every test dir is under it
+	t.Setenv("TMPDIR", t.TempDir())
+	h.sandbox.Store(&sandboxProbe{backend: backend})
+	h.SetProjectTrusted(true)
+	h.agents.sessionID = "s1"
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `
+		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
+		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
+	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
+	for _, c := range []struct {
+		name, mode, path string
+		unsandboxed      bool
+		made, hint       bool
+		asked            string
+	}{
+		{"project write", "sbx", project, false, true, false, ""},
+		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, true, ""},
+		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, "run outside the sandbox"},
+		{"plan project write", "sbxplan", filepath.Join(h.Dirs.ProjectDir, "plan.txt"), false, false, true, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := h.SetPermMode(c.mode); err != nil {
+				t.Fatal(err)
+			}
+			ui.asked = nil
+			in := map[string]any{"command": "touch " + c.path}
+			if c.unsandboxed {
+				in["sandbox"] = false
+			}
+			input, _ := json.Marshal(in)
+			var bash fantasy.AgentTool
+			for _, tl := range tools.All(h.PipelineFor()) {
+				if tl.Info().Name == "bash" {
+					bash = tl
+				}
+			}
+			if _, ok := bash.Info().Parameters["sandbox"]; !ok {
+				t.Fatal("bash has no sandbox parameter with a live backend")
+			}
+			resp, err := bash.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "bash", Input: string(input)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, statErr := os.Stat(c.path)
+			if made := statErr == nil; made != c.made {
+				t.Errorf("made %v, want %v: %s", made, c.made, resp.Content)
+			}
+			if hint := strings.Contains(resp.Content, "sandbox: false"); hint != c.hint {
+				t.Errorf("hint %v, want %v: %s", hint, c.hint, resp.Content)
+			}
+			if asked := len(ui.asked) > 0 && ui.asked[0].Reason == c.asked; asked != (c.asked != "") {
+				t.Errorf("asked %+v, want reason %q", ui.asked, c.asked)
+			}
+		})
+	}
+}

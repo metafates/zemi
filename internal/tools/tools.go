@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -32,6 +34,9 @@ type Request struct {
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string
+	// Unsandboxed is the model's sandbox: false: no mode settles the
+	// request, the user answers it
+	Unsandboxed bool
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -140,6 +145,16 @@ type Pipeline struct {
 	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
 	// decisions ask instead (never skips the gate, §6.4).
 	RewriteLoosened bool
+
+	// Sandbox is the policy a command a permission mode settled runs under;
+	// nil or a nil result = unconfined (no backend, yolo).
+	Sandbox func() *sandbox.Policy
+	// SandboxParam gives bash, job_start and window the sandbox: false
+	// escape; set while a backend is live.
+	SandboxParam bool
+	// Sandboxed is this run's policy, set on the per-run copy once the gate
+	// settled a command by mode; nil = unconfined.
+	Sandboxed *sandbox.Policy
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -163,7 +178,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
-		case plan && req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, nil):
+		// rule-allowed commands run unconfined, so only readers skip the ask
+		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "plan mode: commands that change things ask")
 		}
@@ -183,6 +199,38 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	return p.resolveAsk(req, o.Reason)
 }
+
+// SandboxFor is the policy a checked command runs under: one a permission
+// mode settled runs confined, rule-allowed and user-approved ones as they
+// are. nil = unconfined.
+func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
+	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || !strings.HasPrefix(v.DecidedBy, "mode:") {
+		return nil
+	}
+	return p.Sandbox()
+}
+
+// wrap confines a command this run starts; nil when the run is unconfined.
+func (p *Pipeline) wrap() func(*exec.Cmd) error {
+	if p == nil || p.Sandboxed == nil {
+		return nil
+	}
+	pol := *p.Sandboxed
+	return func(c *exec.Cmd) error { return sandbox.Wrap(c, pol) }
+}
+
+// SandboxHint is the line a confined command's failure gets when the
+// sandbox may be why; "" otherwise.
+func SandboxHint(out string, err error) string {
+	if !sandbox.LikelyDenied(out, err) {
+		return ""
+	}
+	return "\nThe sandbox may have blocked this: no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and temp dirs, .git and .zemi read-only, secret files unreadable. If the command needs more, call it again with sandbox: false, which asks the user."
+}
+
+// SandboxProp is the escape bash, job_start and window take while a
+// backend is live.
+var SandboxProp = map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (writes only in the project, scratchpad and temp dirs; no network beyond localhost); false runs the command outside the sandbox and asks the user first. Use it only after a sandbox denial."}
 
 func decidedBy(o perm.Outcome) string {
 	if o.Rule != nil {
@@ -256,6 +304,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		}
 		if v.Decision == perm.Ask {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
+		}
+		if pol := pipe.SandboxFor(req, v); pol != nil {
+			rp := *pipe
+			rp.Sandboxed = pol
+			pipe = &rp
 		}
 	}
 	res, err := t.run(ctx, pipe, input)
@@ -444,6 +497,13 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		}
 	}
 
+	withSandbox := func(props map[string]any) map[string]any {
+		if p != nil && p.SandboxParam {
+			props["sandbox"] = SandboxProp
+		}
+		return props
+	}
+
 	return []fantasy.AgentTool{
 		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. stdout and stderr are merged; output over 10000 characters keeps its start and end, and the whole output is saved to a file named in the result.
 
@@ -453,14 +513,14 @@ The call blocks until the command exits; at the timeout (default 60000 ms, up to
 
 Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: what a command prints here does not count as reading a file, so edit will still refuse it. Chain dependent steps with &&; send independent commands as separate calls in one response, and do not join them with echo separators. When one call repeats a long path, bind it to a short variable first: D=/long/path/to/dir; ls $D; grep -n 'func ' $D/main.go.`,
 			false,
-			map[string]any{
+			withSandbox(map[string]any{
 				"command":     map[string]any{"type": "string"},
 				"description": map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests"},
 				"timeout_ms":  map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-			},
+			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				return bashRequests(str(in["command"]), str(in["description"]))
+				return bashRequests(str(in["command"]), in)
 			},
 			runBash),
 
@@ -645,16 +705,16 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 
 		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
 			true,
-			map[string]any{
+			withSandbox(map[string]any{
 				"command":     map[string]any{"type": "string"},
 				"args":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"env":         map[string]any{"type": "object", "description": "extra environment variables"},
 				"description": map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
-			},
+			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
 				env, _ := in["env"].(map[string]any)
-				return bashRequests(jobLine(str(in["command"]), strList(in["args"]), env), str(in["description"]))
+				return bashRequests(jobLine(str(in["command"]), strList(in["args"]), env), in)
 			},
 			runJobStart),
 
@@ -875,8 +935,8 @@ func ChangePreview(in map[string]any) string {
 
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
-func bashRequests(cmd, description string) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command", Description: description}}
+func bashRequests(cmd string, in map[string]any) []Request {
+	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command", Description: str(in["description"]), Unsandboxed: in["sandbox"] == false}}
 }
 
 // jobLine is what job_start runs, as the shell line the gate checks. With

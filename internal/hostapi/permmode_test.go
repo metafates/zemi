@@ -18,6 +18,7 @@ import (
 // anything leaving the machine go on to the screening model instead.
 func TestAutoModeLocalApprovals(t *testing.T) {
 	h, _ := newTestHost(t)
+	fakeSandbox(h, true)
 	h.Dirs.ConfigHome = filepath.Join(h.Dirs.ProjectDir, ".config", "zemi") // zemi run in $HOME
 	h.Dirs.StateHome = t.TempDir()
 	inside := filepath.Join(h.Dirs.ProjectDir, "main.go")
@@ -73,6 +74,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 // commands that just read; the Lua tool asks there and in plan mode.
 func TestUntrustedModes(t *testing.T) {
 	h, _ := newTestHost(t)
+	fakeSandbox(h, true)
 	screened := 0
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		screened++
@@ -162,6 +164,7 @@ func TestAutoApprovePreview(t *testing.T) {
 // only over trees without secret-shaped files.
 func TestAutoModeSafeCommands(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	fakeSandbox(h, true)
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
 	pad, root := h.ScratchDir(), h.Dirs.ProjectDir

@@ -29,8 +29,11 @@ type Job struct {
 	done   chan struct{}
 	code   int
 	err    string
-	sent   [2]int64 // bytes of stdout/stderr already read, see since
-	mu     sync.Mutex
+	werr   error // what Wait returned
+	// sandboxed marks a confined job, whose failure may need the sandbox hint
+	sandboxed bool
+	sent      [2]int64 // bytes of stdout/stderr already read, see since
+	mu        sync.Mutex
 }
 
 // Running reports whether the process is still running.
@@ -90,9 +93,10 @@ func NewJobs() *Jobs {
 	return &Jobs{jobs: map[string]*Job{}}
 }
 
-// Start launches argv in dir with env; returns the job id. Output is
-// captured as it arrives, so job_read shows a server's lines while it runs.
-func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
+// Start launches argv in dir with env, confined by wrap unless it is nil;
+// returns the job id. Output is captured as it arrives, so job_read shows a
+// server's lines while it runs.
+func (m *Jobs) Start(dir string, argv []string, env []string, wrap func(*exec.Cmd) error) (string, error) {
 	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return "", errors.New("command is required")
 	}
@@ -104,6 +108,12 @@ func (m *Jobs) Start(dir string, argv []string, env []string) (string, error) {
 	j := &Job{Name: strings.Join(argv, " "), cmd: cmd, done: make(chan struct{}),
 		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
+	if wrap != nil {
+		if err := wrap(cmd); err != nil {
+			return "", fmt.Errorf("the sandbox failed, so the command did not run: %w", err)
+		}
+		j.sandboxed = true
+	}
 	if err := proc.Start(cmd); err != nil {
 		return "", err
 	}
@@ -132,6 +142,7 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	go func() {
 		err := <-wait
 		j.mu.Lock()
+		j.werr = err
 		var exit *exec.ExitError
 		switch {
 		case errors.As(err, &exit):
@@ -205,7 +216,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	env = append(env, proc.NonInteractiveEnv...)
-	id, err := p.Jobs.Start(workdir(), argv, env)
+	id, err := p.Jobs.Start(workdir(), argv, env, p.wrap())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -234,6 +245,12 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	}
 	if running && out == "" && errOut == "" {
 		b.WriteString("(no new output)")
+	}
+	if !running && j.sandboxed {
+		j.mu.Lock()
+		werr := j.werr
+		j.mu.Unlock()
+		b.WriteString(SandboxHint(out+errOut, werr))
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

@@ -53,6 +53,11 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
+	if wrap := p.wrap(); wrap != nil {
+		if err := wrap(c); err != nil {
+			return fantasy.NewTextErrorResponse("the sandbox failed, so the command did not run: " + err.Error()), nil
+		}
+	}
 	if err = proc.Start(c); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -101,6 +106,9 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			b.WriteString("stopped: the user interrupted the command")
 		} else {
 			b.WriteString("exit: " + err.Error())
+			if p != nil && p.Sandboxed != nil {
+				b.WriteString(SandboxHint(raw, err))
+			}
 		}
 		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
 	}

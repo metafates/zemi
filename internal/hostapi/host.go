@@ -257,6 +257,9 @@ type Host struct {
 	// config, instructions and language servers load only when it is set,
 	// and auto and plan mode settle less without it.
 	projectTrusted atomic.Bool
+
+	// sandbox is the startup probe's result (sandbox.go), nil until it ends
+	sandbox atomic.Pointer[sandboxProbe]
 }
 
 // SetProjectTrusted records the trust decision. A change drops the auto-mode
@@ -327,6 +330,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.refreshPending()
 	h.recentStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
+	h.probeSandbox()
 	return h
 }
 

@@ -43,6 +43,8 @@ type Spec struct {
 	Rows   int
 	Owner  string // who opened it: "model", "user" or "lua"
 	Origin string // the Lua origin that opened a "lua" window
+	// Wrap confines the command before it starts; nil = unconfined
+	Wrap func(*exec.Cmd) error
 }
 
 // Layout is where and how big a window shows; the UI reads it every frame
@@ -177,6 +179,11 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	cmd := exec.Command("sh", "-c", spec.Cmd)
 	cmd.Dir = spec.Dir
 	cmd.Env = append(append([]string{}, spec.Env...), "TERM=xterm-256color", "COLORTERM=truecolor")
+	if spec.Wrap != nil {
+		if err := spec.Wrap(cmd); err != nil {
+			return nil, fmt.Errorf("window: the sandbox failed, so the command did not run: %w", err)
+		}
+	}
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		return nil, fmt.Errorf("window: %w", err)

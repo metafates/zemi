@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/win"
@@ -456,7 +458,7 @@ func (t *windowTool) gate() *tools.Pipeline {
 }
 
 func (t *windowTool) Info() fantasy.ToolInfo {
-	return fantasy.ToolInfo{
+	info := fantasy.ToolInfo{
 		Name: "window",
 		Description: `Run a program in a window inside zemi's screen (a split below the chat, a vsplit beside it, or a float over it) and keep working while it runs: show the user a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
 
@@ -496,6 +498,10 @@ A window stays on screen after its program exits, exit code in the title, until 
 		},
 		Required: []string{"action"},
 	}
+	if t.h.sandboxLive() {
+		info.Parameters["sandbox"] = tools.SandboxProp
+	}
+	return info
 }
 
 func (t *windowTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
@@ -525,6 +531,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		Mod     string   `json:"mod"`
 		WaitMS  float64  `json:"wait_ms"`
 		Timeout float64  `json:"timeout_ms"`
+		Sandbox *bool    `json:"sandbox"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -552,10 +559,16 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 			return fantasy.NewTextErrorResponse("open needs cmd"), nil
 		}
 		// the same gate as bash: rules, modes and the user see the command
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title}); v.Decision != perm.Allow {
+		gate := t.gate()
+		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title, Unsandboxed: in.Sandbox != nil && !*in.Sandbox}
+		v := gate.Check(req)
+		if v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd), nil
 		}
 		spec := win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Owner: t.owner}
+		if pol := gate.SandboxFor(req, v); pol != nil {
+			spec.Wrap = func(c *exec.Cmd) error { return sandbox.Wrap(c, *pol) }
+		}
 		if in.Cols != nil {
 			spec.Cols = *in.Cols
 		}

@@ -43,17 +43,20 @@ func (h *Host) askHook() tools.Asker {
 			if req.Subject == "tool.bash" {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
-			switch o.Decision {
-			case perm.Allow:
+			switch {
+			case o.Decision == perm.Allow && !req.Unsandboxed:
 				return resolved(true, "mode:"+def.Name)
-			case perm.Deny:
+			case o.Decision == perm.Deny:
 				return resolved(false, "mode:"+def.Name)
 			}
 		}
-		switch def.Base {
-		case "yolo":
+		switch {
+		case def.Base == "yolo":
 			return resolved(true, "mode:"+def.Name)
-		case "plan":
+		case req.Unsandboxed:
+			// a mode settles a command only to run it sandboxed
+			req.Reason = "run outside the sandbox"
+		case def.Base == "plan":
 			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {
 				return resolved(true, "mode:"+def.Name)
 			}
@@ -62,7 +65,7 @@ func (h *Host) askHook() tools.Asker {
 					req.Reason = strings.TrimPrefix(req.Reason+"; not settled in plan mode: "+note, "; ")
 				}
 			}
-		case "auto":
+		case def.Base == "auto":
 			// everything the screener saw: an MCP or Lua tool's Arg is only its
 			// name, the input it approved is in Preview
 			key := strings.Join([]string{req.Subject, req.Arg, req.Reason, req.Preview}, "\x00")

@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -1488,6 +1489,15 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return h.permModeDef().Base == "plan" },
+		Sandbox: func() *sandbox.Policy {
+			// yolo allows everything anyway, so confining it only breaks commands
+			if def := h.permModeDef(); h.sandboxLive() && def.Base != "yolo" {
+				p := h.sandboxPolicy(def.Base == "plan")
+				return &p
+			}
+			return nil
+		},
+		SandboxParam: h.sandboxLive(),
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
