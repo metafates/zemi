@@ -537,7 +537,8 @@ func ChildEnv(extras map[string]any) ([]string, error) {
 		}
 	}
 	for k, v := range extras {
-		if EnvIsSecret(k) || EnvAssignmentGate(k) {
+		// a key carrying = would set the name before it (PATH=/tmp/x:)
+		if !isName(k) || EnvIsSecret(k) || EnvAssignmentGate(k) {
 			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
 		}
 		out = append(out, k+"="+fmt.Sprint(v))

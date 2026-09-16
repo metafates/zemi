@@ -292,3 +292,19 @@ func TestGlobConcurrentAndRunes(t *testing.T) {
 		t.Fatalf("literalPrefix(\"\u00e9*\") = %d, want 1", n)
 	}
 }
+
+func TestChildEnvRefusesGatedExtras(t *testing.T) {
+	for _, c := range []struct {
+		key string
+		ok  bool
+	}{
+		{"FOO", true},
+		{"PATH", false},
+		{"PATH=/tmp/x:", false},
+		{"API_TOKEN", false},
+	} {
+		if _, err := ChildEnv(map[string]any{c.key: "1"}); (err == nil) != c.ok {
+			t.Errorf("%q: err %v, want ok=%v", c.key, err, c.ok)
+		}
+	}
+}
