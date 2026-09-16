@@ -371,26 +371,28 @@ func startStdio(cfg Config, c *Client) error {
 	}
 	c.t = &stdioTransport{cmd: cmd, stdin: stdin}
 	go func() {
+		var err error
 		defer func() {
 			if r := recover(); r != nil {
-				c.end(fmt.Errorf("mcp: reader panic: %v", r))
+				err = fmt.Errorf("reader panic: %v", r)
 			}
+			// A reader that stopped early (an oversized message, a panic)
+			// leaves the server writing into a pipe nobody reads, so Wait
+			// would never return.
+			if err != nil {
+				proc.Kill(cmd)
+			}
+			if werr := proc.Wait(cmd); err == nil {
+				err = cmp.Or(werr, errors.New("exited"))
+			}
+			c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
 		}()
 		sc := bufio.NewScanner(stdout)
 		sc.Buffer(make([]byte, 64<<10), maxMessage)
 		for sc.Scan() {
 			c.handle(sc.Bytes())
 		}
-		// An oversized message stops the scanner while the server is still
-		// writing into a pipe nobody reads, so Wait would never return.
-		err := sc.Err()
-		if err != nil {
-			proc.Kill(cmd)
-		}
-		if werr := proc.Wait(cmd); err == nil {
-			err = cmp.Or(werr, errors.New("exited"))
-		}
-		c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
+		err = sc.Err()
 	}()
 	return nil
 }

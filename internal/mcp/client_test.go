@@ -193,3 +193,24 @@ func TestStdioEarlyMessages(t *testing.T) {
 		t.Fatal("OnToolsChanged did not run")
 	}
 }
+
+// TestStdioReaderPanic: a panic on the reader ends the connection and
+// reaps the server, which would otherwise keep running unwaited.
+func TestStdioReaderPanic(t *testing.T) {
+	script := `read l; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{}}'; read l; printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'; sleep 30`
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", script}, OnToolsChanged: func() { panic("boom") }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	select {
+	case <-c.Done():
+	case <-ctx.Done():
+		t.Fatal("the connection outlived a reader panic")
+	}
+	if state := c.t.(*stdioTransport).cmd.ProcessState; state == nil || !strings.Contains(c.Err().Error(), "reader panic") {
+		t.Fatalf("err %v, server state %v", c.Err(), state)
+	}
+}
