@@ -138,9 +138,10 @@ func subjectMatches(rule, subject string) bool {
 func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
 // RealPath makes p absolute and resolves it one component at a time, so
-// L/../x with L a symlink lands where open lands, not beside L. Past the
-// first missing component the rest is joined lexically, so a file about to
-// be created is judged by its real parent directory. A symlink loop gives
+// L/../x with L a symlink lands where open lands, not beside L. A missing
+// component is joined lexically, so a file about to be created is judged by
+// its real parent directory, and a later .. climbs back to resolving
+// components that exist (new/../L/x). A symlink loop gives
 // "", which is inside no root.
 func RealPath(p string) string {
 	sep := string(filepath.Separator)
@@ -155,7 +156,7 @@ func RealPath(p string) string {
 	}
 	vol := filepath.VolumeName(p)
 	real, rest := vol+sep, p[len(vol):]
-	missing, hops := false, 0
+	hops := 0
 	for rest != "" {
 		var c string
 		c, rest, _ = strings.Cut(rest, sep)
@@ -168,8 +169,7 @@ func RealPath(p string) string {
 		}
 		next := filepath.Join(real, c)
 		fi, err := os.Lstat(next)
-		if missing || err != nil || fi.Mode()&os.ModeSymlink == 0 {
-			missing = missing || err != nil
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
 			real = next
 			continue
 		}

@@ -326,6 +326,7 @@ func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 		{"real/../x", filepath.Join(proj, "x")},
 		{"L/new/../../x", filepath.Join(out, "x")},
 		{"nope/../x", filepath.Join(proj, "x")},
+		{"nope/../L/x", filepath.Join(out, "sub", "x")},
 		{"gone", filepath.Join(out, "new")},
 		{"loop1/x", ""},
 	} {
