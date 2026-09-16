@@ -202,12 +202,7 @@ func (r *mcpReg) stopAll() {
 func (r *mcpReg) list() []*mcpServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]*mcpServer, 0, len(r.servers))
-	for _, s := range r.servers {
-		out = append(out, s)
-	}
-	slices.SortFunc(out, func(a, b *mcpServer) int { return cmp.Compare(a.name, b.name) })
-	return out
+	return slices.SortedFunc(maps.Values(r.servers), func(a, b *mcpServer) int { return cmp.Compare(a.name, b.name) })
 }
 
 // serverLogWriter logs an MCP or language server's stderr under source.
@@ -249,12 +244,12 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 			if (s.spec.EnabledTools != nil && !slices.Contains(s.spec.EnabledTools, t.Name)) || slices.Contains(s.spec.DisabledTools, t.Name) {
 				continue
 			}
-			if name := mcpToolName(s.name, t.Name); seen[name] {
+			name := mcpToolName(s.name, t.Name)
+			if seen[name] {
 				h.Log.Warn("mcp", "tool name collides, skipped", map[string]any{"server": s.name, "tool": t.Name})
 				continue
-			} else {
-				seen[name] = true
 			}
+			seen[name] = true
 			props, err := tools.ResolveSchemaRefs(t.InputSchema)
 			if err != nil {
 				h.Log.Warn("mcp", "tool schema cannot be flattened, skipped", map[string]any{
@@ -494,12 +489,13 @@ func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 }
 
 func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {
-	for _, s := range h.mcp.list() {
-		if s.name == name {
-			return s, nil
-		}
+	h.mcp.mu.Lock()
+	s := h.mcp.servers[name]
+	h.mcp.mu.Unlock()
+	if s == nil {
+		return nil, fmt.Errorf("no MCP server %q", name)
 	}
-	return nil, fmt.Errorf("no MCP server %q", name)
+	return s, nil
 }
 
 // signInMCP runs the browser sign-in in the background and restarts the

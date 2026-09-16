@@ -141,11 +141,9 @@ func (h *Host) lspDefs(path string) []lspDef {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
 			}
-			found := false
-			for _, dir := range dirs {
-				found = found || slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
-			}
-			if found {
+			if slices.ContainsFunc(dirs, func(dir string) bool {
+				return slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
+			}) {
 				defs = append(defs, d)
 			}
 		}
