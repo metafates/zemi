@@ -33,6 +33,9 @@ func TestKeymapRegistry(t *testing.T) {
 		{"builtin cannot override user", "tab", lua.OriginBuiltin, false},
 		{"plugin key", "x", lua.OriginPlugin, true},
 		{"plugin rebinds its own", "x", lua.OriginPlugin, true},
+		{"user sequence", "ctrl+g s", lua.OriginUser, true},
+		{"project cannot bind a user sequence's prefix", "ctrl+g", lua.OriginProject, false},
+		{"project cannot extend a user key", "tab x", lua.OriginProject, false},
 		{"empty key", "", lua.OriginUser, false},
 	} {
 		if err := r.Set(bind(s.key, s.origin)); (err == nil) != s.ok {
@@ -42,7 +45,7 @@ func TestKeymapRegistry(t *testing.T) {
 	if got := r.Lookup("tab"); got.Origin != lua.OriginUser {
 		t.Fatalf("tab origin = %v, want user", got.Origin)
 	}
-	if all := r.List(); len(all) != 2 || all[0].Key != "tab" || all[1].Key != "x" {
+	if all := r.List(); len(all) != 3 || all[1].Key != "tab" || all[2].Key != "x" {
 		t.Fatalf("List = %+v", all)
 	}
 	for _, d := range []struct {

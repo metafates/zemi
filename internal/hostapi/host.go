@@ -567,6 +567,10 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 				case err != nil:
 					h.logHandlerError(hd, err)
 				default:
+					// a repo may not keep the user from quitting
+					if name == "app.quit" && hd.Origin.Rank() <= lua.OriginProject.Rank() {
+						break
+					}
 					if tb, ok := ret.(*glua.LTable); ok && rawString(tb, "decision") == "deny" {
 						outcomes[i] = outcome{denied: true, reason: rawString(tb, "reason")}
 					}

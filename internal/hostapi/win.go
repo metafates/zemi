@@ -71,6 +71,16 @@ func (h *Host) closeWindow(id int) bool {
 	return ok
 }
 
+// refuseWin raises unless user config, shipped code or the origin that
+// opened the window is calling: a focused window takes every key, and
+// closing one kills the user's or the model's program.
+func (h *Host) refuseWin(L *glua.LState, what string, id int) {
+	o := h.RT.CurrentOrigin(L)
+	if w, ok := h.Wins.Get(id); ok && o != lua.OriginUser && o != lua.OriginBuiltin && w.Origin != string(o) {
+		L.RaiseError("zemi.win.%s: %s code may not %s window %d", what, o, what, id)
+	}
+}
+
 func (h *Host) focusWindow(id int) {
 	if ui := h.hooks(); ui != nil {
 		ui.FocusWindow(id)
@@ -235,11 +245,13 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			return 1
 		}))
 		t.RawSetString("focus", L.NewFunction(func(L *glua.LState) int {
+			h.refuseWin(L, "focus", w.ID)
 			h.focusWindow(w.ID)
 			return 0
 		}))
 		// set({ kind, hidden, frac, cols, rows, x, y, title })
 		t.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+			h.refuseWin(L, "set", w.ID)
 			spec := L.CheckTable(2)
 			var p layoutPatch
 			if s, ok := spec.RawGetString("kind").(glua.LString); ok {
@@ -268,6 +280,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, h.applyLayout(w, p))
 		}))
 		t.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
+			h.refuseWin(L, "close", w.ID)
 			h.closeWindow(w.ID)
 			return 0
 		}))
@@ -293,6 +306,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		w, err := h.openWindow(win.Spec{
 			Cmd: cmd, Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
 			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"), Owner: "lua",
+			Origin: string(h.RT.CurrentOrigin(L)),
 		})
 		if err != nil {
 			return luaResult(L, err)
@@ -332,12 +346,16 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
-		L.Push(glua.LBool(h.closeWindow(L.CheckInt(1))))
+		id := L.CheckInt(1)
+		h.refuseWin(L, "close", id)
+		L.Push(glua.LBool(h.closeWindow(id)))
 		return 1
 	}))
 
 	tb.RawSetString("focus", L.NewFunction(func(L *glua.LState) int {
-		h.focusWindow(L.OptInt(1, 0))
+		id := L.OptInt(1, 0)
+		h.refuseWin(L, "focus", id)
+		h.focusWindow(id)
 		return 0
 	}))
 

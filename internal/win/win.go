@@ -34,14 +34,15 @@ const (
 
 // Spec is what opens a window.
 type Spec struct {
-	Cmd   string // run with sh -c, so pipes and quoting work as in bash
-	Dir   string
-	Env   []string
-	Kind  string // KindSplit, KindVSplit or KindFloat
-	Title string
-	Cols  int // requested size, 0 = the layout's choice
-	Rows  int
-	Owner string // who opened it: "model", "user" or "lua"
+	Cmd    string // run with sh -c, so pipes and quoting work as in bash
+	Dir    string
+	Env    []string
+	Kind   string // KindSplit, KindVSplit or KindFloat
+	Title  string
+	Cols   int // requested size, 0 = the layout's choice
+	Rows   int
+	Owner  string // who opened it: "model", "user" or "lua"
+	Origin string // the Lua origin that opened a "lua" window
 }
 
 // Layout is where and how big a window shows; the UI reads it every frame
@@ -57,9 +58,10 @@ type Layout struct {
 
 // Window is one running program and its screen.
 type Window struct {
-	ID    int
-	Cmd   string
-	Owner string
+	ID     int
+	Cmd    string
+	Owner  string
+	Origin string
 
 	lmu    sync.Mutex
 	layout Layout
@@ -142,7 +144,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		ID: id, Cmd: spec.Cmd, Owner: spec.Owner,
+		ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),

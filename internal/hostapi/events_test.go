@@ -13,6 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
+	"github.com/metafates/zemi/internal/win"
 )
 
 // TestToolDeniedEvent: a call the gate refuses reaches tool.denied
@@ -43,17 +44,39 @@ func TestToolDeniedEvent(t *testing.T) {
 // TestLuaAgentsNeedUserConfig: project code cannot act with the user's
 // authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {
-	_, r := newTestHostDB(t)
+	h, r := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
+	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Wins.Close(w.ID)
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
 		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.agent.set_default("default")`,
 		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
 		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add({ kind = "fact", text = "x" })`,
+		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
+		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
 	} {
 		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
 			t.Errorf("%s from project: %v", src, err)
 		}
+	}
+	own, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "lua", Origin: string(lua.OriginProject)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ExecuteChunk(context.Background(), fmt.Sprintf(`assert(zemi.win.close(%d))`, own.ID), "p.lua", lua.OriginProject); err != nil {
+		t.Errorf("project closing its own window: %v", err)
+	}
+	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
+		t.Fatal(err)
+	}
+	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+		t.Errorf("project app.quit deny = %+v, want ignored", res)
 	}
 }
 

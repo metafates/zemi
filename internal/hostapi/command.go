@@ -106,6 +106,11 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		if err := nargsOK(name, cmd.NArgs, args); err != nil {
 			return luaResult(L, err)
 		}
+		// the body runs under the command's origin, so a lower caller would
+		// borrow that authority with arguments it picks
+		if o := h.RT.CurrentOrigin(L); cmd.Origin.Rank() > o.Rank() {
+			return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run %s command /%s", o, cmd.Origin, name))
+		}
 		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, args))

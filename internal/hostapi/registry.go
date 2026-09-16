@@ -60,6 +60,13 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	if old := r.bindings[b.Key]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
 		return fmt.Errorf("keymap: %s is already bound by a %s registration", b.Key, old.Origin)
 	}
+	// a key fires before the longer sequences it starts, so overlapping a
+	// more trusted sequence would take it over (or be dead)
+	for k, old := range r.bindings {
+		if old.Origin.Rank() > b.Origin.Rank() && (strings.HasPrefix(k, b.Key+" ") || strings.HasPrefix(b.Key, k+" ")) {
+			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k, old.Origin)
+		}
+	}
 	r.bindings[b.Key] = b
 	return nil
 }

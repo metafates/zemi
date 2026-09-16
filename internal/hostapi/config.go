@@ -92,6 +92,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	// applies without the user typing /reload.
 	tb.RawSetString("reload", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.config.reload")
+		h.refuseBelowUser(L, "config.reload")
 		return luaResult(L, h.ReloadConfig())
 	}))
 

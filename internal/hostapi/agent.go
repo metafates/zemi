@@ -1414,6 +1414,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "model.set")
 		id := L.CheckString(1)
 		if _, ok := h.modelSpec(id); !ok {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
