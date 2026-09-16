@@ -258,7 +258,7 @@ func (s *DB) resyncFTS() error {
 // before the live session exists, so it can never cut the conversation in
 // progress.
 const (
-	checkpointTTL = 30 * 24 * time.Hour
+	CheckpointTTL = 30 * 24 * time.Hour
 	// 0 keeps every session forever: losing a conversation costs more than
 	// the disk it holds, so zemi never deletes one on its own. Set a
 	// duration here to sweep sessions nobody has touched since.
@@ -268,7 +268,7 @@ const (
 // sweep drops aged rows and reclaims their pages when it removed any.
 func (s *DB) sweep() error {
 	cps, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
-		time.Now().Add(-checkpointTTL).UnixMilli())
+		time.Now().Add(-CheckpointTTL).UnixMilli())
 	if err != nil {
 		return fmt.Errorf("store: sweep checkpoints: %w", err)
 	}

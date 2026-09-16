@@ -42,7 +42,7 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
-// TestRetentionSweep: opening drops checkpoints past checkpointTTL, keeps
+// TestRetentionSweep: opening drops checkpoints past CheckpointTTL, keeps
 // the ones inside it, and never deletes a session (sessionTTL is off).
 func TestRetentionSweep(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
@@ -68,7 +68,7 @@ func TestRetentionSweep(t *testing.T) {
 	}
 	// the live session's own checkpoint is old enough to go on its own
 	if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = ? WHERE session_id = 'new'`,
-		time.Now().Add(-checkpointTTL-time.Hour).UnixMilli()); err != nil {
+		time.Now().Add(-CheckpointTTL-time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

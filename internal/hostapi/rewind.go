@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -112,6 +113,11 @@ func (h *Host) RewindTo(id string) (int, error) {
 	cps, err := h.DB.CheckpointsFrom(sid, id)
 	if err != nil {
 		return 0, err
+	}
+	// snapshots age out: say so before the conversation is cut, or a rewind
+	// that restored nothing looks like one that had nothing to restore
+	if len(cps) == 0 && time.Since(time.UnixMilli(rows[cut].CreatedAt)) > store.CheckpointTTL {
+		h.Notify("warn", "rewind", "the file snapshots for that turn have aged out; the conversation is cut but no file is restored")
 	}
 	var failed []string
 	for _, cp := range cps {
