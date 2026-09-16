@@ -144,7 +144,8 @@ concurrent agent or the user's editor cannot lose changes. Matching runs on LF t
 a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
 `new_string` to the file's own indentation and says so. `glob` and `grep` shell out to
 `rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same
-glob rules; grep never reads secret-shaped files. Long bash and fetch output is saved
+glob rules; they are gated on their root only, so neither shows a hit that a deny or ask
+`fs.read` rule covers, and grep hides secret-shaped files (rg still reads them). Long bash and fetch output is saved
 whole to the session scratchpad and the result names the file. A bash command still
 running at its timeout is handed to `Jobs.Adopt` instead of being killed, so a slow build
 keeps going under a job id (which is why the command is not bound to the turn's context;
@@ -178,7 +179,9 @@ no write redirects, and every argument must pass the host's path check (inside t
 project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
 `perm.ArgUse` tells the check how the argument is used: code may not run from the
 scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`) settles only over a tree
-with no secret-shaped file in it. Arguments after a `cd` are judged from every directory the
+with no secret-shaped file in it. No argument may point into `.git`, and a git command that
+prints file content (`grep`, `show`, `diff`, `cat-file`, `log -p`) settles only in a repository
+that tracks no secret-shaped file (`tracksNoSecrets`). Arguments after a `cd` are judged from every directory the
 shell may be in, and commands that rewrite project files (formatters, `--fix`, `go build -o`)
 are left out so plan mode stays read-only.
 User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
@@ -186,9 +189,13 @@ Only user config sets it; binding a key to the mode cycle is refused for other o
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, and
 they are prefix globs rather than the exact request: `alwaysChoice` (ask.go) gives bash
-each normalized segment's two-word command prefix plus `prefix *`, `fs.read`/`fs.write` the
-file's directory with `/*`, and `net.*` both `scheme://host` and `scheme://host/*`. A
-gate-forced ask (heredoc, env assignment) offers no always option at all.
+each normalized segment's two-word prefix plus `prefix *` when the program takes
+subcommands (`git`, `go`, `npm`, ...; `subcommandPrograms`) and the exact segment otherwise,
+`fs.read`/`fs.write` the file's resolved directory with `/*` (the `fs.write` rule has a
+`not_match` of `dir*/.git*`, so `.git`, `.gitattributes` and `.gitmodules` still ask; an
+approved `.gitignore` or `.github/` file also gets its own exact rule), and `net.*` both
+`scheme://host` and `scheme://host/*`. A gate-forced ask (heredoc, env assignment) and a
+request whose pattern text holds a glob wildcard (`*`, `?`) offer no always option at all.
 
 ### require (internal/lua/runtime.go)
 

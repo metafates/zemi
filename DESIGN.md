@@ -1173,7 +1173,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   script is sandboxed and each agent it starts is gated), and `SafeCommand`
   commands, whose arguments may not run code from the scratchpad and
   whose recursive searches settle only over trees with no secret-shaped
-  file; anything it cannot settle goes to a one-shot screening model
+  file, whose arguments may not point into `.git`, and whose git commands
+  that print file content settle only in a repository tracking no
+  secret-shaped file; anything it cannot settle goes to a one-shot screening model
   whose approvals are cached per subject, argument, reason and preview,
   and whose refusals fall back to the user's ask carrying the reason.
   Network is never settled locally, because the URL is the model's.
@@ -1186,10 +1188,11 @@ configured provider later (`zemi.memory.search` signature does not change).
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
   where the kernel lands, case-folded on darwin and windows. Paths
-  outside the jail ask (model tools) or are refused (`zemi.fs`). Write roots are the project roots plus
-  the per-session scratchpad
-  (`<state>/projects/<hash>/scratch/<session id>`, §5), which is the one
-  path `fs.write` allows by default; the read jail is wider: project
+  outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the project
+  root; the per-session scratchpad
+  (`<state>/projects/<hash>/scratch/<session id>`, §5) is outside it but
+  is the one path model `fs.write` allows by default (`fsDefault`;
+  `zemi.fs` cannot write there); the read jail is wider: project
   roots, the config repo, the project's `.zemi`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI). `site/pack` and the rest of the state dir are never
