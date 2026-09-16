@@ -824,7 +824,8 @@ func runMemoryEdit(p *Pipeline, id, text string) (fantasy.ToolResponse, error) {
 func ChangeDiff(tool string, in map[string]any) string {
 	path := str(in["path"])
 	data, _ := os.ReadFile(path)
-	old, updated := lf(string(data)), ""
+	old := lf(string(data))
+	var updated string
 	switch tool {
 	case "write":
 		updated = lf(str(in["content"]))

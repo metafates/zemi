@@ -103,7 +103,7 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 func ParseNetURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("bad url: %v", err)
+		return nil, fmt.Errorf("bad url: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fmt.Errorf("only http and https urls are allowed")
@@ -233,7 +233,7 @@ func searchURL(p *Pipeline, query string) (*url.URL, bool, error) {
 	}
 	u, err := ParseNetURL(base)
 	if err != nil {
-		return nil, searx, fmt.Errorf("web.search_url: %v", err)
+		return nil, searx, fmt.Errorf("web.search_url: %w", err)
 	}
 	q := u.Query()
 	q.Set("q", query)
@@ -346,7 +346,7 @@ func parseSearxng(body []byte) ([]searchHit, error) {
 		Results []struct{ Title, URL, Content string }
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("search: bad SearXNG reply: %v", err)
+		return nil, fmt.Errorf("search: bad SearXNG reply: %w", err)
 	}
 	hits := make([]searchHit, 0, len(out.Results))
 	for _, r := range out.Results {

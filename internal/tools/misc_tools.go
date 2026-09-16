@@ -72,7 +72,7 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		case "in_progress":
 			mark = ">"
 		}
-		b.WriteString(fmt.Sprintf("[%s] %s\n", mark, td.Content))
+		fmt.Fprintf(&b, "[%s] %s\n", mark, td.Content)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

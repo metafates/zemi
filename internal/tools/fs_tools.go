@@ -83,7 +83,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
 			id := p.Jobs.Adopt(cmd, c, buf, wait)
-			b.WriteString(fmt.Sprintf("still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id))
+			fmt.Fprintf(&b, "still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id)
 			return fantasy.NewTextResponse(b.String()), nil
 		}
 		proc.Kill(c)
@@ -277,10 +277,8 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		}
 	}
 	p.checkpoint(path)
-	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -546,7 +544,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 		}
-		walk(ctx, root, func(path, rel string) error {
+		err = walk(ctx, root, func(path, rel string) error {
 			if !match(rel) || !isTextFile(path) {
 				return nil
 			}
@@ -561,6 +559,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 			return nil
 		})
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
 	}
 	if len(hits) == 0 {
 		return fantasy.NewTextResponse("(no matches)"), nil

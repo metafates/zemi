@@ -379,17 +379,8 @@ func TestReadAndBashShapes(t *testing.T) {
 		}
 	}
 	p.Images = func() bool { return false }
-	for _, c := range []struct {
-		name      string
-		offset    float64
-		typ, want string
-	}{
-		{"i.png", 0, "text", "does not take images"},
-	} {
-		res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, c.name), "offset": c.offset})
-		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {
-			t.Errorf("%s: %+v", c.name, res)
-		}
+	if res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, "i.png")}); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
+		t.Errorf("text-only model: %+v", res)
 	}
 	if res, _ := runBash(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
 		t.Fatalf("merged output: %q", res.Content)
