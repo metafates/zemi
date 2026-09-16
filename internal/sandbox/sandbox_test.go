@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -235,8 +236,10 @@ func nonLoopbackIP() net.IP {
 	return nil
 }
 
-func TestPidKept(t *testing.T) {
-	probeOrSkip(t)
+// zemi stops a command by killing its process group, so the program must
+// stay in the group the wrap started, and die with it.
+func TestGroupKill(t *testing.T) {
+	b := probeOrSkip(t)
 	cmd := exec.Command(os.Args[0], "__act", "pid", "")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := Wrap(cmd, Policy{}); err != nil {
@@ -255,12 +258,52 @@ func TestPidKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid := cmd.Process.Pid
-	if strings.TrimSpace(line) != fmt.Sprint(pid) {
-		t.Fatalf("program pid %s, started %d", line, pid)
+	group := []int{pid}
+	if runtime.GOOS == "linux" {
+		group = groupOf(pid)
+	}
+	// the namespace variant runs the program under an init of its own
+	if inner := len(group) > 1; strings.TrimSpace(line) != fmt.Sprint(pid) && !(inner && b.EnforcesProtect) {
+		t.Fatalf("program pid %s, started %d, group %v", line, pid, group)
 	}
 	if pgid, err := syscall.Getpgid(pid); err != nil || pgid != pid {
 		t.Fatalf("pgid %d, %v; want %d", pgid, err, pid)
 	}
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		left := slices.DeleteFunc(groupOf(pid), func(p int) bool { return p == pid })
+		if runtime.GOOS != "linux" || len(left) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still running after the group kill: %v", left)
+		}
+	}
+}
+
+// groupOf lists the live, non-zombie processes in process group pgid.
+func groupOf(pgid int) []int {
+	var out []int
+	dirs, _ := os.ReadDir("/proc")
+	for _, d := range dirs {
+		pid, err := strconv.Atoi(d.Name())
+		if err != nil {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join("/proc", d.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		// pid (comm) state ppid pgrp ...; comm may hold spaces
+		f := strings.Fields(string(b[strings.LastIndexByte(string(b), ')')+1:]))
+		if len(f) > 2 && f[0] != "Z" && f[2] == fmt.Sprint(pgid) {
+			out = append(out, pid)
+		}
+	}
+	return out
 }
 
 func TestCaps(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -66,19 +67,22 @@ func probe() (Backend, error) {
 	return Backend{Name: fmt.Sprintf("landlock v%d + seccomp", abi)}, nil
 }
 
-// namespaceAttr starts the helper in its own user, network and mount
+// namespaceAttr starts the helper in its own user, network, mount and pid
 // namespaces, as the same uid and with the caps to bring lo up and mount.
+// In its own pid namespace the command cannot name a process outside to
+// signal it, which Landlock scopes only from v6.
 // Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
 // both refuse this, and the probe falls back.
 func namespaceAttr(a *syscall.SysProcAttr) {
-	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS
+	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID
 	a.UidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getuid(), HostID: os.Getuid(), Size: 1}}
 	a.GidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getgid(), HostID: os.Getgid(), Size: 1}}
 	a.AmbientCaps = []uintptr{unix.CAP_NET_ADMIN, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP}
 }
 
 // wrap runs cmd as `zemi __sandbox <mode> <policy> -- <path> <argv...>`,
-// which confines itself and then execs the command in place.
+// which confines itself and then execs the command in place (or, with
+// namespaces, starts it as a child in the same session and group).
 // NOTE: without namespaces Protect and Loopback are not enforced: Landlock
 // cannot keep .git read-only inside a writable root without splitting the
 // root, which breaks creating top-level files, and seccomp blocks every socket.
@@ -104,7 +108,7 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 	return nil
 }
 
-// Helper confines the process to the policy in args and execs the command.
+// Helper confines the process to the policy in args and runs the command.
 // It must run before anything else in main: the confinement covers only
 // the calling thread's exec.
 // NOTE: an x86_64 command under Rosetta from an arm64 helper (a mixed-arch
@@ -161,6 +165,9 @@ func Helper(args []string) int {
 	if err := seccomp(ns); err != nil {
 		return fail("seccomp", err)
 	}
+	if ns {
+		return runInit(path, args[4:], fail)
+	}
 	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
 }
 
@@ -195,6 +202,34 @@ func dropCaps(keep uint64) error {
 		data[i] = unix.CapUserData{Effective: data[i].Effective & k, Permitted: data[i].Permitted & k}
 	}
 	return unix.Capset(&hdr, &data[0])
+}
+
+// runInit is pid 1 of the command's pid namespace: it starts the command,
+// reaps what gets orphaned to it and exits with the command's status. The
+// command shares its process group, so zemi's group kill and hangup and a
+// terminal's ^C reach it directly; init swallows its own copy, or the Go
+// runtime would exit on it and take the namespace down first.
+// NOTE: a command killed by a signal exits 128+signal, not signaled: pid 1
+// cannot deliver itself a fatal signal.
+func runInit(path string, argv []string, fail func(string, error) int) int {
+	signal.Notify(make(chan os.Signal, 1))
+	pid, err := syscall.ForkExec(path, argv, &syscall.ProcAttr{Env: os.Environ(), Files: []uintptr{0, 1, 2}})
+	if err != nil {
+		return fail("exec", err)
+	}
+	for {
+		var ws syscall.WaitStatus
+		wpid, err := syscall.Wait4(-1, &ws, 0, nil)
+		switch {
+		case errors.Is(err, syscall.EINTR), err == nil && wpid != pid:
+		case err != nil:
+			return fail("wait", err)
+		case ws.Signaled():
+			return 128 + int(ws.Signal())
+		default:
+			return ws.ExitStatus()
+		}
+	}
 }
 
 // setupNamespaces brings lo up for Loopback and makes each Protect path
@@ -404,6 +439,11 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // which reach only the empty network namespace. Landlock does not mediate
 // connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
 // systemd user bus), so AF_UNIX is denied in both.
+// NOTE: kill is not filtered, so before Landlock v6 scopes signals the
+// seccomp variant can signal any process of the user, zemi and an editor
+// with unsaved work included. Requiring v6 (linux 6.12) would turn the
+// sandbox off on the LTS kernels most machines run; a signal cannot read
+// or write a file.
 // NOTE: socketpair stays allowed, so a unix socket still works between the
 // command's own processes; anything that listens on or dials a unix socket
 // path fails, and an AF_UNIX fd the command inherits stays usable.

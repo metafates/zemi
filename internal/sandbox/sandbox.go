@@ -1,6 +1,7 @@
 // Package sandbox confines a command before it starts: seatbelt on macOS,
-// Landlock plus seccomp on Linux. Both exec the command in place, so the
-// pid, session and process group proc relies on stay the command's own.
+// Landlock plus seccomp on Linux. The session and process group proc relies
+// on stay the command's own: it is exec'd in place, or with Linux namespaces
+// runs under a helper init that shares them.
 package sandbox
 
 import (
