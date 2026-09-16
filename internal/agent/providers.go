@@ -178,45 +178,27 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	}
 	switch spec.Kind {
 	case KindAnthropic:
-		opts := []anthropic.Option{}
-		if spec.BaseURL != "" {
-			opts = append(opts, anthropic.WithBaseURL(spec.BaseURL))
-		}
-		if k := r.apiKey(spec.ID); k != "" {
-			opts = append(opts, anthropic.WithAPIKey(k))
-		}
-		p, err := anthropic.New(opts...)
-		if err != nil {
-			return nil, err
-		}
-		return p.LanguageModel(context.Background(), model)
+		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey)
 	case KindOpenAI:
-		opts := []openai.Option{}
-		if spec.BaseURL != "" {
-			opts = append(opts, openai.WithBaseURL(spec.BaseURL))
-		}
-		if k := r.apiKey(spec.ID); k != "" {
-			opts = append(opts, openai.WithAPIKey(k))
-		}
-		p, err := openai.New(opts...)
-		if err != nil {
-			return nil, err
-		}
-		return p.LanguageModel(context.Background(), model)
+		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, openai.New, openai.WithBaseURL, openai.WithAPIKey)
 	case KindOpenAICompat:
-		opts := []openaicompat.Option{}
-		if spec.BaseURL != "" {
-			opts = append(opts, openaicompat.WithBaseURL(spec.BaseURL))
-		}
-		if k := r.apiKey(spec.ID); k != "" {
-			opts = append(opts, openaicompat.WithAPIKey(k))
-		}
-		p, err := openaicompat.New(opts...)
-		if err != nil {
-			return nil, err
-		}
-		return p.LanguageModel(context.Background(), model)
+		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey)
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}
+}
+
+func languageModel[O any](baseURL, key, model string, newProvider func(...O) (fantasy.Provider, error), withBaseURL, withAPIKey func(string) O) (fantasy.LanguageModel, error) {
+	var opts []O
+	if baseURL != "" {
+		opts = append(opts, withBaseURL(baseURL))
+	}
+	if key != "" {
+		opts = append(opts, withAPIKey(key))
+	}
+	p, err := newProvider(opts...)
+	if err != nil {
+		return nil, err
+	}
+	return p.LanguageModel(context.Background(), model)
 }
