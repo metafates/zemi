@@ -36,6 +36,22 @@ func rawString(tb *glua.LTable, key string) string {
 	return ""
 }
 
+// rawStrings reads the strings of a list field off a raw spec table; nil
+// when the field is not a table, so a caller can tell absent from empty.
+func rawStrings(tb *glua.LTable, key string) []string {
+	list, ok := tb.RawGetString(key).(*glua.LTable)
+	if !ok {
+		return nil
+	}
+	out := []string{}
+	list.ForEach(func(_, v glua.LValue) {
+		if s, ok := v.(glua.LString); ok {
+			out = append(out, string(s))
+		}
+	})
+	return out
+}
+
 func rawBool(tb *glua.LTable, key string) bool {
 	if b, ok := tb.RawGetString(key).(glua.LBool); ok {
 		return bool(b)

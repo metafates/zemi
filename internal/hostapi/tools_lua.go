@@ -143,13 +143,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			if m, ok := v.(map[string]any); ok {
 				schema = m
 			}
-			if req, ok := in.RawGetString("required").(*glua.LTable); ok {
-				req.ForEach(func(_, v glua.LValue) {
-					if s, ok := v.(glua.LString); ok {
-						required = append(required, string(s))
-					}
-				})
-			}
+			required = rawStrings(in, "required")
 		}
 		if schema["type"] == nil {
 			schema["type"] = "object"

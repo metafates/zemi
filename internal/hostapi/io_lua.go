@@ -856,14 +856,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		h.luaGate(L, "lua.job.start", cmdName)
-		var args []string
-		if list, ok := spec.RawGetString("args").(*glua.LTable); ok {
-			list.ForEach(func(_, v glua.LValue) {
-				if s, ok := v.(glua.LString); ok {
-					args = append(args, string(s))
-				}
-			})
-		}
+		args := rawStrings(spec, "args")
 		if perm.Normalize(cmdName).ForceAsk != "" {
 			L.RaiseError("zemi.job.start: command is refused by the environment gate")
 		}

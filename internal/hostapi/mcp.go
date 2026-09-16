@@ -344,19 +344,6 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin() != lua.OriginUser {
 			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
 		}
-		strs := func(key string) []string {
-			list, ok := opts.RawGetString(key).(*glua.LTable)
-			if !ok {
-				return nil
-			}
-			out := []string{}
-			list.ForEach(func(_, v glua.LValue) {
-				if s, ok := v.(glua.LString); ok {
-					out = append(out, string(s))
-				}
-			})
-			return out
-		}
 		strMap := func(key string) map[string]string {
 			out := map[string]string{}
 			if m, ok := opts.RawGetString(key).(*glua.LTable); ok {
@@ -369,9 +356,9 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 			return out
 		}
 		spec := MCPSpec{
-			Command: rawString(opts, "command"), Args: strs("args"), Env: strMap("env"),
+			Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: strMap("env"),
 			URL: rawString(opts, "url"), Headers: strMap("headers"),
-			EnabledTools: strs("enabled_tools"), DisabledTools: strs("disabled_tools"),
+			EnabledTools: rawStrings(opts, "enabled_tools"), DisabledTools: rawStrings(opts, "disabled_tools"),
 			Source: "init.lua",
 		}
 		if n, ok := opts.RawGetString("timeout").(glua.LNumber); ok && n > 0 {

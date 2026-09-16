@@ -1483,21 +1483,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			t := float64(temp)
 			p.Temperature = &t
 		}
-		if list, ok := spec.RawGetString("tools").(*glua.LTable); ok {
-			list.ForEach(func(_, v glua.LValue) {
-				if s, ok := v.(glua.LString); ok {
-					p.Tools = append(p.Tools, string(s))
-				}
-			})
-		}
-		if list, ok := spec.RawGetString("context").(*glua.LTable); ok {
-			if files, ok := list.RawGetString("files").(*glua.LTable); ok {
-				files.ForEach(func(_, v glua.LValue) {
-					if s, ok := v.(glua.LString); ok {
-						p.ContextFiles = append(p.ContextFiles, string(s))
-					}
-				})
-			}
+		p.Tools = rawStrings(spec, "tools")
+		if ctx, ok := spec.RawGetString("context").(*glua.LTable); ok {
+			p.ContextFiles = rawStrings(ctx, "files")
 		}
 		h.agents.mu.Lock()
 		h.agents.profiles[name] = p

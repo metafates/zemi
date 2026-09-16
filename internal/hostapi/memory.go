@@ -531,15 +531,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if scope == "" {
 			scope = "project"
 		}
-		var tags []string
-		if lt, ok := spec.RawGetString("tags").(*glua.LTable); ok {
-			lt.ForEach(func(_, v glua.LValue) {
-				if s, ok := v.(glua.LString); ok {
-					tags = append(tags, string(s))
-				}
-			})
-		}
-		stored, id, err := h.proposeMemory(scope, kind, text, tags)
+		stored, id, err := h.proposeMemory(scope, kind, text, rawStrings(spec, "tags"))
 		if err != nil {
 			L.RaiseError("zemi.memory.add: %v", err)
 		}
