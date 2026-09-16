@@ -301,6 +301,9 @@ type tool struct {
 	subjects func(input map[string]any) []Request
 	run      func(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error)
 	pipe     *Pipeline
+	// gated: the path input is resolved before the gate and the tool opens
+	// exactly that path (openGated)
+	gated bool
 }
 
 func (t *tool) Info() fantasy.ToolInfo                     { return t.info }
@@ -337,6 +340,12 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 				pipe = &rp
 			}
 		}
+	}
+	if t.gated {
+		// resolved once: the gate judges and the tool opens the same path, so
+		// a symlink a sandboxed command plants later cannot redirect the tool
+		input = maps.Clone(input)
+		input["path"] = perm.RealPath(str(input["path"]))
 	}
 	for _, req := range t.subjects(input) {
 		req.Tool = t.info.Name
@@ -523,6 +532,11 @@ func schemaPointer(root any, ref string) (any, error) {
 	return cur, nil
 }
 
+func gated(t fantasy.AgentTool) fantasy.AgentTool {
+	t.(*tool).gated = true
+	return t
+}
+
 // All returns the builtin tools bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
@@ -569,7 +583,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runBash),
 
-		mk("read", "Read a file (text or image). This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
+		gated(mk("read", "Read a file (text or image). This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "file path, absolute or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
@@ -579,9 +593,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			func(in map[string]any) []Request {
 				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "read file"}}
 			},
-			runRead),
+			runRead)),
 
-		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", true,
+		gated(mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -590,9 +604,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			func(in map[string]any) []Request {
 				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: ChangeDiff("write", in)}}
 			},
-			runWrite),
+			runWrite)),
 
-		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. An old_string of whole lines also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
+		gated(mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. An old_string of whole lines also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -603,9 +617,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			func(in map[string]any) []Request {
 				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: ChangeDiff("edit", in)}}
 			},
-			runEdit),
+			runEdit)),
 
-		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", true,
+		gated(mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 				"edits": map[string]any{"type": "array", "items": map[string]any{
@@ -622,7 +636,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			func(in map[string]any) []Request {
 				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: ChangeDiff("multiedit", in)}}
 			},
-			runMultiedit),
+			runMultiedit)),
 
 		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files when ripgrep is installed. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
 			map[string]any{

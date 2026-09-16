@@ -4,18 +4,23 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
 
 func TestEditRefusesAmbiguousMatch(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "f.txt")
+	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt") // the tools open resolved paths
 	os.WriteFile(path, []byte("x = 1\nx = 1\n"), 0o644)
 	p := &Pipeline{}
 	for _, c := range []struct {
@@ -139,5 +144,59 @@ func TestJobStreamsOutput(t *testing.T) {
 	case <-j.done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("job_kill did not stop the shell and its sleep")
+	}
+}
+
+// TestFileToolsSymlinkRace: a directory flipped between a real one and a
+// symlink out of the jail while write, edit and read run never lets one of
+// them act outside.
+func TestFileToolsSymlinkRace(t *testing.T) {
+	proj, outside := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
+	os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600)
+	s := perm.NewStore()
+	s.Default = func(subject, arg string) perm.Decision {
+		if strings.HasPrefix(perm.RealPath(arg), proj+string(filepath.Separator)) {
+			return perm.Allow
+		}
+		return perm.Deny
+	}
+	byName := map[string]fantasy.AgentTool{}
+	for _, tl := range All(&Pipeline{Store: s}) {
+		byName[tl.Info().Name] = tl
+	}
+	run := func(name string, in map[string]any) string {
+		b, _ := json.Marshal(in)
+		res, _ := byName[name].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: name, Input: string(b)})
+		return res.Content
+	}
+	d := filepath.Join(proj, "d")
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			os.RemoveAll(d)
+			os.Mkdir(d, 0o755)
+			os.WriteFile(filepath.Join(d, "secret.txt"), []byte("mine"), 0o644)
+			os.RemoveAll(d)
+			os.Symlink(outside, d)
+		}
+	}()
+	leaked := false
+	for i := range 2000 {
+		run("write", map[string]any{"path": filepath.Join(d, fmt.Sprintf("race%d.txt", i)), "content": "x"})
+		run("edit", map[string]any{"path": filepath.Join(d, "secret.txt"), "old_string": "secret", "new_string": "owned"})
+		leaked = leaked || strings.Contains(run("read", map[string]any{"path": filepath.Join(d, "secret.txt")}), "\tsecret")
+	}
+	close(stop)
+	<-done
+	entries, _ := os.ReadDir(outside)
+	got, _ := os.ReadFile(filepath.Join(outside, "secret.txt"))
+	if len(entries) != 1 || string(got) != "secret" || leaked {
+		t.Fatalf("outside the jail: %d entries, secret %q, read leaked %v", len(entries), got, leaked)
 	}
 }

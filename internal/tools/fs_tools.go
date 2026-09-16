@@ -3,9 +3,11 @@ package tools
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -173,16 +176,13 @@ const (
 // from, so a large file costs pages the model asks for, not one huge result.
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
-	fi, err := os.Stat(path)
+	data, fi, err := readGated(path)
 	switch {
-	case err == nil && fi.IsDir():
+	case fi != nil && fi.IsDir():
 		return fantasy.NewTextErrorResponse(path + " is a directory; list it with glob"), nil
-	case err == nil && !fi.Mode().IsRegular():
-		// a FIFO blocks and a device can be endless
+	case fi != nil && !fi.Mode().IsRegular():
 		return fantasy.NewTextErrorResponse(path + " is not a regular file"), nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
+	case err != nil:
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	switch mt := http.DetectContentType(data); {
@@ -234,6 +234,33 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		b.WriteString(p.Instructions(path))
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// readGated reads a regular file through openGated. fi is set once the
+// file is open, so a directory or a FIFO is reported without reading it.
+func readGated(path string) (data []byte, fi os.FileInfo, err error) {
+	// nonblocking: opening a FIFO must not wait for a writer
+	f, err := openGated(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer f.Close()
+	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		// a FIFO blocks and a device can be endless
+		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}))
+	}
+	data, err = io.ReadAll(f)
+	return data, fi, err
+}
+
+// writeGated replaces a file's content through openGated.
+func writeGated(path string, data []byte, mode os.FileMode) error {
+	f, err := openGated(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return cmp.Or(err, f.Close())
 }
 
 // markRead records the modification time the model saw path at; fi is
@@ -288,10 +315,7 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		}
 	}
 	p.checkpoint(path)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := writeGated(path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	fi, _ := os.Stat(path)
@@ -335,7 +359,7 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	if msg := p.stale(path, fi); msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	data, err := os.ReadFile(path)
+	data, _, err := readGated(path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -349,7 +373,7 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 		out = strings.ReplaceAll(out, "\n", "\r\n")
 	}
 	p.checkpoint(path)
-	if err := os.WriteFile(path, []byte(out), fi.Mode().Perm()); err != nil {
+	if err := writeGated(path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	fi, _ = os.Stat(path)

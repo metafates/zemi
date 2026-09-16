@@ -165,7 +165,10 @@ table-tested; extend those tables when touching it).
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file
 the model has not read, or one whose mtime moved since (`Pipeline.Seen`, a per-session
 map wired in `PipelineFor`; subagents get their own), and hold a per-path lock, so a
-concurrent agent or the user's editor cannot lose changes. Matching runs on LF text and
+concurrent agent or the user's editor cannot lose changes. `tool.Run` resolves the path of
+`read`, `write`, `edit` and `multiedit` (`perm.RealPath`) before the gate, and they open
+exactly that path through `openGated` (an `openat` walk with `O_NOFOLLOW`), so a sandboxed
+command cannot swap a directory for a symlink between the check and the open. Matching runs on LF text and
 a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
 `new_string` to the file's own indentation and says so. `glob` and `grep` shell out to
 `rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same

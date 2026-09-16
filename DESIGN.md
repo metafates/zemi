@@ -1322,9 +1322,13 @@ configured provider later (`zemi.memory.search` signature does not change).
   auto-loads at the next boot. The config repo is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write`
   cannot author `permissions.lua` (which is Go-generated data anyway,
-  §6.1). Residual race: the open is a plain open of the checked path, so
-  a component swapped between check and open is not caught (the Linux
-  endgame is `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
+  §6.1). The model's `read`, `write`, `edit` and `multiedit` get their
+  path resolved once before the gate and open exactly that path, walking
+  it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
+  sandboxed command swaps for a symlink after the check fails the open.
+  Residual race: `zemi.fs` opens the checked path plainly, so a component
+  swapped between check and open is not caught there (the Linux endgame
+  is `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
   of paths, not of filesystem topology: a mount point inside a project
   root or a hardlink to an outside file is out of scope (both need
   privileges or a pre-planted link the threat model cannot create).

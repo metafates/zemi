@@ -372,7 +372,7 @@ func TestEditSafety(t *testing.T) {
 // and offsets past the end; bash keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.
 func TestReadAndBashShapes(t *testing.T) {
-	dir := t.TempDir()
+	dir := perm.RealPath(t.TempDir())
 	os.WriteFile(filepath.Join(dir, "i.png"), append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.bin"), []byte("a\x00b"), 0o644)
 	os.WriteFile(filepath.Join(dir, "t.txt"), []byte("one\n"), 0o644)
@@ -447,7 +447,7 @@ func TestPostHookRuns(t *testing.T) {
 // TestOutputLimits: read pages a long file with a continuation offset, grep
 // returns every matching line up to its cap, and command output keeps its end.
 func TestOutputLimits(t *testing.T) {
-	dir := t.TempDir()
+	dir := perm.RealPath(t.TempDir())
 	path := filepath.Join(dir, "big.txt")
 	lines := make([]string, readMaxLines+5)
 	for i := range lines {

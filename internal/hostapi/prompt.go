@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 const contextBudget = 32 << 10
@@ -211,6 +213,10 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 	root := h.Dirs.RepoRoot()
 	if root == "" || !h.ProjectTrusted() {
 		return ""
+	}
+	// file tools pass resolved paths; the prompt names files under root as given
+	if rel, err := filepath.Rel(perm.RealPath(root), abs); err == nil && root != perm.RealPath(root) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		abs = filepath.Join(root, rel)
 	}
 	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
 		// a path boundary, not a string prefix: /repo2 is not inside /repo
