@@ -93,10 +93,11 @@ now). `$HOME` and `/` are never asked about or saved. `/trust` reopens the promp
 UI goroutine, saves, and reloads when the decision changed; `Host.SetProjectTrusted` clears
 the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project `.zemi`
 (init.lua, agents, commands, workflows), instruction files and profile `context.files`
-(untrusted: only `<config>/AGENTS.md`), every language server, plain `Host.git` (untrusted
-or outside the trust root it switches off fsmonitor, hooks and repo-local filter drivers),
+(untrusted: only `<config>/AGENTS.md`), every language server,
 the stdio MCP working directory (untrusted: `DataHome`, with `ZEMI_PROJECT_DIR` set),
-the Lua tool's ask, and what auto and plan mode settle (see below).
+the Lua tool's ask, and what auto and plan mode settle (see below). `Host.git` switches off
+fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a
+sandboxed command can plant a nested repo whose config zemi's own checks would run.
 `EnsureConfigRepo()` runs in `main` before the step list is built, not after it, so the
 config git repo exists before any step can commit a revision (see "Permanent rules" below).
 

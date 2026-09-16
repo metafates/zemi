@@ -300,14 +300,16 @@ origin is denylisted anyway (below).
 
 Trusted, zemi loads the project's `.zemi` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
-user-added), runs its own git calls plainly, starts stdio MCP servers in
+user-added), starts stdio MCP servers in
 the project, auto and plan mode settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no language server starts, zemi's git calls
-switch off `core.fsmonitor`, hooks and repository filter drivers, MCP
+is an instruction file, no language server starts, MCP
 servers start in the data dir with `ZEMI_PROJECT_DIR` in their
 environment, `.zemi` edits trigger no reload, and auto and plan mode
-settle only reads and `perm.ReadCommand` commands.
+settle only reads and `perm.ReadCommand` commands. Either way zemi's own
+git calls switch off `core.fsmonitor`, hooks and repository filter
+drivers: a sandboxed command can plant a nested repository whose config
+would otherwise run unconfined on zemi's next `git status`.
 
 Load order is a list of boot steps, and the permanent permission store
 loads early so no userland code runs before it: host `zemi.*` namespaces

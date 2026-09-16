@@ -38,36 +38,52 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 }
 
-// TestGitRunsNoRepoPrograms: an untrusted project's .git/config
-// cannot make zemi's own git calls run a program.
+// TestGitRunsNoRepoPrograms: a repository's config cannot make zemi's own
+// git calls run a program, trusted or not, and neither can a nested one a
+// sandboxed command planted inside a trusted project.
 func TestGitRunsNoRepoPrograms(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	h, _ := newTestHost(t)
-	dir := h.Dirs.ProjectDir
-	marker := filepath.Join(t.TempDir(), "ran")
-	os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("a filter=x\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "a"), []byte("hi\n"), 0o644)
-	for _, args := range [][]string{
-		{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"},
-		{"config", "core.fsmonitor", "touch " + marker + "; false"},
-		{"config", "filter.x.clean", "touch " + marker + "; cat"},
-		{"config", "filter.x.required", "true"}, // git lfs install --local
+	for _, c := range []struct {
+		name    string
+		trusted bool
+		sub     string
+	}{
+		{"untrusted", false, ""},
+		{"trusted", true, ""},
+		{"trusted nested repo", true, "sub"},
 	} {
-		if out, err := h.runGit(dir, args...); err != nil {
-			t.Fatalf("git %v: %v %s", args, err, out)
-		}
-	}
-	os.WriteFile(filepath.Join(dir, ".git", "hooks", "post-index-change"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
-	// a stat-dirty file makes status refresh the index, which runs the hook
-	later := time.Now().Add(time.Hour)
-	os.Chtimes(filepath.Join(dir, "a"), later, later)
-	if !strings.Contains(h.environmentPrompt(), "Git status") {
-		t.Fatal("status failed")
-	}
-	h.noSecretsUnder(dir, []string{dir}, true)
-	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("git ran a program from the repository config")
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHost(t)
+			h.SetProjectTrusted(c.trusted)
+			dir := filepath.Join(h.Dirs.ProjectDir, c.sub)
+			os.MkdirAll(dir, 0o755)
+			marker := filepath.Join(t.TempDir(), "ran")
+			os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("a filter=x\n"), 0o644)
+			os.WriteFile(filepath.Join(dir, "a"), []byte("hi\n"), 0o644)
+			for _, args := range [][]string{
+				{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"},
+				{"config", "core.fsmonitor", "touch " + marker + "; false"},
+				{"config", "filter.x.clean", "touch " + marker + "; cat"},
+				{"config", "filter.x.required", "true"}, // git lfs install --local
+			} {
+				if out, err := h.runGit(dir, args...); err != nil {
+					t.Fatalf("git %v: %v %s", args, err, out)
+				}
+			}
+			os.WriteFile(filepath.Join(dir, ".git", "hooks", "post-index-change"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+			// a stat-dirty file makes status refresh the index, which runs the hook
+			later := time.Now().Add(time.Hour)
+			os.Chtimes(filepath.Join(dir, "a"), later, later)
+			if _, err := h.git(dir, "status", "--short"); err != nil {
+				t.Fatal(err)
+			}
+			h.noSecretsUnder(dir, []string{h.Dirs.ProjectDir}, true)
+			h.trackedSecret(dir)
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("git ran a program from the repository config")
+			}
+		})
 	}
 }

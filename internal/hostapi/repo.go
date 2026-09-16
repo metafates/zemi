@@ -42,18 +42,16 @@ func (h *Host) EnsureConfigRepo() {
 }
 
 // git runs one git command in dir with a timeout; stderr is folded into
-// the error. Inside a trusted project it runs plainly. Elsewhere the
-// repository's config may name programs even status and ls-files run:
-// core.fsmonitor, filter drivers, those of submodules, and hooks (an index
-// refresh runs post-index-change), so those are switched off.
+// the error. A repository's config may name programs even status and
+// ls-files run: core.fsmonitor, filter drivers, those of submodules, and
+// hooks (an index refresh runs post-index-change), so those are switched
+// off, in a trusted project too: a sandboxed command can plant a nested
+// repository whose config zemi's own checks would then run unconfined.
 // NOTE: with a repo-local filter off, status compares a stat-dirty filtered
 // file's raw bytes with the cleaned blob and lists it as modified (git-crypt,
 // nbstripout). Only the environment prompt's file list shows it; lspSync keys
 // on mtime and size, so it reports at most one extra change.
 func (h *Host) git(dir string, args ...string) (string, error) {
-	if h.ProjectTrusted() && h.inJail(dir, h.Dirs.RepoRoot(), h.Dirs.TrustRoot()) {
-		return h.runGit(dir, args...)
-	}
 	safe := []string{"-c", "core.fsmonitor=false", "-c", "diff.ignoreSubmodules=all", "-c", "core.hooksPath=/dev/null"}
 	out, _ := h.runGit(dir, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|process)$`)
 	for line := range strings.Lines(out) {
