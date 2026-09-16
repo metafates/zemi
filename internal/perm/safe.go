@@ -639,9 +639,12 @@ func safeGit(args []string) bool {
 	case "reflog":
 		return next == "" || next == "show"
 	case "config":
-		return slices.ContainsFunc(rest, func(a string) bool {
-			return slices.Contains([]string{"--get", "--get-all", "--get-regexp", "--list", "-l"}, a)
-		})
+		// only --local: other scopes and includes read ~/.gitconfig and
+		// friends, which may hold tokens from outside the project
+		return slices.Contains(rest, "--local") && !hasFlag(rest, "--global", "--system", "--file", "-f", "--blob", "--includes") &&
+			slices.ContainsFunc(rest, func(a string) bool {
+				return slices.Contains([]string{"--get", "--get-all", "--get-regexp", "--list", "-l"}, a)
+			})
 	case "submodule":
 		return next == "" || next == "status"
 	}
