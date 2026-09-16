@@ -236,10 +236,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		gen := h.currentGen()
 		ui := h.hooks()
-		if ui == nil {
-			L.RaiseError("zemi.ui.edit: no UI in this run")
-		}
 		h.GoSafe("ui.edit", func() {
+			if ui == nil {
+				h.callLuaAsync(gen, cb, nil, "no UI in this run")
+				return
+			}
 			mode, err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title})
 			if err != nil {
 				h.callLuaAsync(gen, cb, nil, err.Error())
