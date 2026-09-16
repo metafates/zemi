@@ -221,11 +221,7 @@ var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 // user config (a mode answers permission asks, so no other origin may).
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	gate := func(L *glua.LState, fn string) {
-		if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
-			L.RaiseError("zemi.permission.mode.%s: only user config may change permission modes", fn)
-		}
-	}
+	gate := func(L *glua.LState, fn string) { h.refuseBelowUser(L, "permission.mode."+fn) }
 	// add(name, { base, description, prompt, rules = { { subject, pattern, decision }, ... } })
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, spec := L.CheckString(1), L.CheckTable(2)

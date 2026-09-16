@@ -232,7 +232,7 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 		`zemi.memory.forget("` + oldID + `")`,
 	} {
 		err := r.ExecuteChunk(context.Background(), src, "model.lua", lua.OriginLearned)
-		if err == nil || !strings.Contains(err.Error(), "only user or builtin") {
+		if err == nil || !strings.Contains(err.Error(), "only user config") {
 			t.Fatalf("model origin allowed: %v", err)
 		}
 	}

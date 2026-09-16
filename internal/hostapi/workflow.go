@@ -761,9 +761,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		onDone, _ := L.Get(2).(*glua.LFunction)
 		// agents act with the user's tools and permissions: only user config
 		// (and shipped code) may start them from Lua
-		if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
-			L.RaiseError("zemi.workflow.run: only user config may run workflows")
-		}
+		h.refuseBelowUser(L, "workflow.run")
 		src := rawString(spec, "script")
 		if name := rawString(spec, "name"); name != "" {
 			s, err := h.workflowSource(name)

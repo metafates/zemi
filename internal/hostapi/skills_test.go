@@ -114,7 +114,7 @@ func TestSkillsEnableGate(t *testing.T) {
 	`)
 
 	err := r.ExecuteChunk(context.Background(), `zemi.skills.enable("auto-learned")`, "project.lua", lua.OriginProject)
-	if err == nil || !strings.Contains(err.Error(), "user or builtin origin") {
+	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project-origin enable: %v", err)
 	}
 	runUser(t, r, `
@@ -208,7 +208,7 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 
 	err := r.ExecuteChunk(context.Background(),
 		`zemi.learn.decide("whatever", "accept")`, "project.lua", lua.OriginProject)
-	if err == nil || !strings.Contains(err.Error(), "user or builtin origin") {
+	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project-origin decide: %v", err)
 	}
 }

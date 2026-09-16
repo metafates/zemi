@@ -455,9 +455,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 		if !on {
 			verb = "disable"
 		}
-		if !memoryManageAllowed(h.RT.CurrentOrigin(L)) {
-			L.RaiseError("zemi.skills.%s: only user or builtin origin may enable or disable skills", verb)
-		}
+		h.refuseBelowUser(L, "skills."+verb)
 		return luaResult(L, h.setSkillEnabled(L, name, on))
 	}
 	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int { return enable(L, true) }))
