@@ -651,7 +651,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				return bashRequests(strings.Join(append([]string{str(in["command"])}, strList(in["args"])...), " "), str(in["description"]))
+				return bashRequests(jobLine(str(in["command"]), strList(in["args"])), str(in["description"]))
 			},
 			runJobStart),
 
@@ -875,6 +875,28 @@ func ChangePreview(in map[string]any) string {
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd, description string) []Request {
 	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command", Description: description}}
+}
+
+// jobLine is what job_start runs, as the shell line the gate checks. With
+// args the program is exec'd, so every word is quoted where sh would split
+// or expand it: sh -c 'cat ~/.ssh/id_rsa' must not check as a bare cat.
+func jobLine(command string, args []string) string {
+	if len(args) == 0 {
+		return command
+	}
+	words := []string{shellQuote(command)}
+	for _, a := range args {
+		words = append(words, shellQuote(a))
+	}
+	return strings.Join(words, " ")
+}
+
+func shellQuote(s string) string {
+	const plain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-./:@%+,="
+	if s != "" && strings.Trim(s, plain) == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func str(v any) string {

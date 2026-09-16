@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -115,6 +116,23 @@ func TestBashAllowAndGate(t *testing.T) {
 	}
 	if len(*asked) != 1 {
 		t.Fatalf("overlay consulted once: %+v", *asked)
+	}
+}
+
+func TestJobLineChecksWhatRuns(t *testing.T) {
+	for _, c := range []struct {
+		command string
+		args    []string
+		segs    []string
+	}{
+		{"echo ready && sleep 30", nil, []string{"echo ready", "sleep 30"}},
+		{"sh", []string{"-c", "cat ~/.ssh/id_rsa"}, []string{"cat ~/.ssh/id_rsa"}},
+		{"echo", []string{"a;b", "it's"}, []string{"echo a;b it's"}},
+	} {
+		line := jobLine(c.command, c.args)
+		if got := perm.Normalize(line).Segments; !slices.Equal(got, c.segs) {
+			t.Errorf("%q %q: %q checks as %q, want %q", c.command, c.args, line, got, c.segs)
+		}
 	}
 }
 
