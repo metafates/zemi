@@ -113,6 +113,10 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "app", ".env"), []byte("K=v"), 0o600)
 	os.WriteFile(filepath.Join(root, "app", ".gitignore"), []byte("node_modules/\n"), 0o600)
 	os.WriteFile(filepath.Join(root, "app", "node_modules", "secret.txt"), []byte("K=v"), 0o600)
+	// an ignored tree past the walk limit does not count against rg
+	for i := range 10001 {
+		os.WriteFile(filepath.Join(root, "app", "node_modules", fmt.Sprint(i)), nil, 0o600)
+	}
 	os.MkdirAll(filepath.Join(root, "wl"), 0o700)
 	os.WriteFile(filepath.Join(root, "wl", ".env"), []byte("K=v"), 0o600)
 	os.WriteFile(filepath.Join(root, "wl", ".rgignore"), []byte("!.env\n"), 0o600)
