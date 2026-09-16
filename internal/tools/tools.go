@@ -823,6 +823,12 @@ func runMemoryEdit(p *Pipeline, id, text string) (fantasy.ToolResponse, error) {
 // (the tool will report that), it falls back to ChangePreview.
 func ChangeDiff(tool string, in map[string]any) string {
 	path := str(in["path"])
+	// it runs before the gate, on the model's path: a FIFO or /dev/zero
+	// must not block or exhaust memory
+	fi, err := os.Stat(path)
+	if err == nil && (!fi.Mode().IsRegular() || fi.Size() > 1<<20) {
+		return ChangePreview(in)
+	}
 	data, _ := os.ReadFile(path)
 	old := lf(string(data))
 	var updated string

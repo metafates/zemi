@@ -40,4 +40,7 @@ func TestChangeDiff(t *testing.T) {
 	if d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "nope", "new_string": "x"}); d != "- nope\n+ x" {
 		t.Fatalf("fallback = %q", d)
 	}
+	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "content": "x"}); d != "+ x" {
+		t.Fatalf("device fallback = %q", d)
+	}
 }

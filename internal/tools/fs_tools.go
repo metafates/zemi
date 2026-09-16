@@ -154,8 +154,12 @@ const (
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
 	fi, err := os.Stat(path)
-	if err == nil && fi.IsDir() {
+	switch {
+	case err == nil && fi.IsDir():
 		return fantasy.NewTextErrorResponse(path + " is a directory; list it with glob"), nil
+	case err == nil && !fi.Mode().IsRegular():
+		// a FIFO blocks and a device can be endless
+		return fantasy.NewTextErrorResponse(path + " is not a regular file"), nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

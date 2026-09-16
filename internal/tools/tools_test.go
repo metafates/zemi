@@ -396,6 +396,9 @@ func TestReadAndBashShapes(t *testing.T) {
 			t.Errorf("%s: %+v", c.name, res)
 		}
 	}
+	if res, _ := runRead(ctx, p, map[string]any{"path": os.DevNull}); !strings.Contains(res.Content, "not a regular file") {
+		t.Errorf("device: %+v", res)
+	}
 	p.Images = func() bool { return false }
 	if res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, "i.png")}); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
 		t.Errorf("text-only model: %+v", res)
