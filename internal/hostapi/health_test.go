@@ -46,3 +46,21 @@ func TestHealthChecks(t *testing.T) {
 		}
 	}
 }
+
+// TestHealthChecksProfileModel: the model row checks the default profile's
+// model, which is the one a turn uses, not agent.model.
+func TestHealthChecksProfileModel(t *testing.T) {
+	h, r := newTestHostDB(t)
+	runUser(t, r, `
+		zemi.provider.register({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m" } } })
+		zemi.provider.register({ id = "b", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } })
+		zemi.model.set("a/m")
+		zemi.agent.profile("p", { model = "b/m" })
+		zemi.agent.set_default("p")
+	`)
+	for _, c := range h.healthChecks() {
+		if c.name == "model" && (c.level != "error" || c.detail != "b/m: api key not set") {
+			t.Errorf("model = %+v, want b/m without a key", c)
+		}
+	}
+}
