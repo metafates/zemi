@@ -92,7 +92,7 @@ func (h *Host) askHook() tools.Asker {
 
 // alwaysChoice is the "don't ask again" option for a request: the label the
 // prompt shows and the session rules (model principal) accepting it adds.
-// Commands allow their two-word prefix ("go test"), file access its
+// Subcommand programs allow their two-word prefix ("go test"), file access its
 // directory, fetches their host; the rest the exact request. Gate-forced
 // asks (environment assignments, heredocs) and text with a glob wildcard,
 // which the rule would widen, offer no choice.
@@ -183,18 +183,18 @@ const globMeta = "*?"
 
 var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
-// wrappers whose second word is a program or script, not a subcommand
-var bareCommands = map[string]bool{
-	"sh": true, "bash": true, "zsh": true, "fish": true, "env": true, "xargs": true, "sudo": true,
-	"doas": true, "nohup": true, "timeout": true, "time": true, "nice": true, "stdbuf": true,
-	"python": true, "python3": true, "node": true, "ruby": true, "perl": true, "exec": true, "eval": true,
+// programs whose second word is a subcommand; for any other it may be a
+// file ("cat notes"), and the prefix would allow any file after it
+var subcommandPrograms = map[string]bool{
+	"git": true, "go": true, "cargo": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
+	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
 }
 
 // commandPrefix is the two-word prefix "don't ask again" allows for a
 // command segment ("go test ./..." is "go test"), or "" when there is none.
 func commandPrefix(seg string) string {
 	f := strings.Fields(seg)
-	if len(f) < 2 || bareCommands[filepath.Base(f[0])] || !subcommandWord.MatchString(f[1]) {
+	if len(f) < 2 || !subcommandPrograms[f[0]] || !subcommandWord.MatchString(f[1]) {
 		return ""
 	}
 	return f[0] + " " + f[1]

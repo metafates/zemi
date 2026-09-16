@@ -726,6 +726,7 @@ func TestAlwaysChoice(t *testing.T) {
 	}{
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "don't ask again for `go test`, `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "don't ask again for this exact command", []string{"ls -la"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "don't ask again for this exact command", []string{"cat notes"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/", []string{filepath.Join(proj, "internal", "*")}},
 		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
