@@ -949,11 +949,12 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LNumber(jh.id))
+		// Methods are colon calls (DESIGN §6.0), so arguments start at 2.
 		// wait([timeout_ms]) blocks the interpreter: keep it for tools and
 		// short commands, and prefer on_exit elsewhere
 		handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
 			timeout := 30 * time.Second
-			if ms := L.OptInt(1, 0); ms > 0 {
+			if ms := L.OptInt(2, 0); ms > 0 {
 				timeout = time.Duration(ms) * time.Millisecond
 			}
 			return wait(L, jh, timeout)
@@ -966,7 +967,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			if jh.stdin == nil {
 				L.RaiseError("zemi.job: write needs the job started with stdin = true")
 			}
-			_, err := io.WriteString(jh.stdin, L.CheckString(1))
+			_, err := io.WriteString(jh.stdin, L.CheckString(2))
 			return luaResult(L, err)
 		}))
 		handle.RawSetString("close_stdin", L.NewFunction(func(L *glua.LState) int {
