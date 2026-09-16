@@ -8,14 +8,14 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 ## First look
 
 1. Ask the user to run `/health`. It checks the model and its API key, the stores,
-   `permissions.lua`, git, the reflector, pending reviews, skills, recent errors, language
-   servers and the Lua runtime, plus any rows config added with `zemi.health.register`.
+   `permissions.lua`, git, ripgrep, the reflector, pending reviews, skills, recent errors,
+   language servers and the Lua runtime, plus any rows config added with `zemi.health.register`.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
    event-handler errors, and recovered panics. The red `! errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to explain and fix
    this". In every list `/` filters, `y` copies the selected row and `Y` copies the whole
    list, so the user can paste an error back to you.
-3. Read the same entries yourself with the lua tool instead of asking the user what the
+3. Read the same entries yourself with the Lua tool instead of asking the user what the
    screen says:
 
    ```lua
@@ -39,7 +39,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    `zemi.ui.theme.get()` instead.
 
 5. Read the log of the run (the log directory is readable without asking). One file per
-   start, newest last:
+   start:
 
    ```sh
    ls -t ~/.local/state/zemi/logs/ | head -1
@@ -55,11 +55,11 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no models registered" | no provider: see zemi-config (`zemi.provider.register`) |
+| "no model configured" | no provider or `agent.model`: see zemi-config (`zemi.provider.register`) |
 | 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | boot error "permissions.lua refused" | the file was edited by hand; restore it from the git history of `~/.config/zemi` or delete it (permanent rules are lost) |
-| "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
+| `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |

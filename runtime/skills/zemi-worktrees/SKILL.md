@@ -9,7 +9,7 @@ A worktree is a second checkout of the same repository on its own branch, sharin
 `.git`. Two features can be edited, built and tested at the same time without stashing or
 switching branches.
 
-**Use one only when the user asks for parallel work**, or when a change must be tried
+Use one only when the user asks for parallel work, or when a change must be tried
 without disturbing the checkout they are looking at. For a single feature, a branch in the
 current checkout is simpler and leaves nothing to clean up. Never create one to "be safe".
 
@@ -21,7 +21,7 @@ echo '.worktrees/' >> .git/info/exclude       # once per repository
 ```
 
 `.worktrees/<short name>` under the directory zemi started in (the Environment section names
-it; it is the repo root in the normal case) is the right place, for three reasons:
+it; it is the repo root in the normal case) is the right place:
 
 - it is inside the project, so reads need no permission prompt and writes ask exactly like
   any other project file. A worktree outside that directory is outside the jail: every read
@@ -30,15 +30,15 @@ it; it is the repo root in the normal case) is the right place, for three reason
 - `.git/info/exclude` is local to the clone, so the entry never shows in a diff or needs
   committing, and it keeps `git status` clean.
 - `grep`, `glob` and ripgrep honour that exclude, so a search does not return every hit
-  twice, and the Go, Node and Python toolchains all skip a leading-dot directory.
+  twice, and `go test ./...` skips a leading-dot directory.
 
 Check the exclude entry is there before the first `git worktree add`; without it every
 search in the repository doubles.
 
 ## Running work in one
 
-The path is just a directory: `cd .worktrees/retry && go test ./...` in one bash call, or
-pass it as `cwd`-style prefix per command. Two rules:
+The path is just a directory: `cd .worktrees/retry && go test ./...` in one bash call (every
+call starts in the project directory). Two rules:
 
 - **One branch per worktree.** git refuses to check the same branch out twice, and that
   refusal is the feature: it is what keeps two parallel changes from fighting.
@@ -46,12 +46,11 @@ pass it as `cwd`-style prefix per command. Two rules:
   locks the index for the others, so do not run two of them at the same instant. Editing,
   building and testing are independent and safe to overlap.
 
-Long builds and test runs belong in `zemi.job` or a background bash call, so one worktree's
-build does not hold up the other.
+Long builds and test runs belong in `job_start`, so one worktree's build does not hold up
+the other.
 
 A subagent (the `agent` tool) is the usual way to drive one: give it the worktree path in
-the prompt and let it stay there. Subagents share this session's permission rules, so an
-allow answered in the main checkout covers the worktree too.
+the prompt and let it stay there. Subagents share this session's permission rules and mode.
 
 ## Finishing one
 

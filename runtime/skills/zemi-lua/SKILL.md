@@ -38,7 +38,7 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 
 ## Running Lua from the agent
 
-The `lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
+The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
 values (as JSON) come back. It never asks.
@@ -46,10 +46,8 @@ It holds the interpreter for at most 10s. Keep reusable scripts in the session s
 (its path is in the Environment section; files there are read and written without asking)
 and pass `path`. Globals a chunk sets stay in that chunk.
 
-`zemi.ui.screenshot()` returns the drawn screen as plain text, so you can see what the user
-sees - overlay open, statusline, transcript tail, wrapping at the real width - instead of
-asking them to describe it. It is the fastest way to check a widget, theme or layout change:
-apply it, `zemi.config.reload()`, then read the screen back.
+Check a widget, theme or layout change by reading the screen back with
+`zemi.ui.screenshot()` after `zemi.config.reload()` (zemi-debug has the loop).
 
 ## Type annotations
 
@@ -66,12 +64,12 @@ without asking, the reference for how a widget is written.
 | Namespace | Members |
 | --- | --- |
 | `zemi.api` | `version` (API version string) |
-| `zemi.config` | `get`, `set`, `watch`, `schema`, `reload()` (same as `/reload`) |
+| `zemi.config` | `get`, `set` (user config only), `watch`, `schema`, `reload()` (same as `/reload`) |
 | `zemi.errors` | `list()` -> what `/errors` shows, newest first |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
-| `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
+| `zemi.ui` | `widget.register({ id, region, priority, render, wrap })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
@@ -148,7 +146,8 @@ Lua's string, table and math libraries. `agent` and `parallel` cannot run inside
 Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `model`, `profile`,
 `effort`, `permission_mode`, `permission_mode_base`, `agent_active`, `transcript`,
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
-`thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `recent` (sessions,
+`thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `view` (the agent run
+shown instead of the session: `id`, `agent`, `description`, `status`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `pulse`,
 `reflecting`, `pending_memory`, `agents_running`, `transcript_epoch`
 (changes when the transcript is replaced, 0 while an agent run is shown: rows are worth

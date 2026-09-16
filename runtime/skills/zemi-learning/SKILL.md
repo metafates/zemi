@@ -54,8 +54,8 @@ description: when asked to run the local integration tests
 
 - Put user skills in `~/.config/zemi/skills/<name>/SKILL.md` (enabled by default).
 - `name` must match the directory: lowercase letters, digits and `-`.
-- `description` says when to use it (at most 512 characters, but the index cuts at 160 and
-  drafts from the reflector must fit in 160).
+- `description` says when to use it, in at most 512 characters; every prompt carries it
+  whole, so keep it short.
 - An optional `zemi-skill.lua` next to it runs when the skill is enabled.
 - Skills zemi drafts itself live in `~/.local/share/zemi/skills/` and start disabled.
 

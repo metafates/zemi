@@ -61,7 +61,7 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 `-`); `model: provider/model` pins a configured model, `model: inherit` or no model uses
 `agent.subagent_model` when set and the session model otherwise. The `agent` tool's `model`
 field and a workflow's `agent(prompt, { model = ... })` override it per run. `tools` limits what it may use
-(omit for everything but agent, workflow, todos, question, plan). The model sees the description
+(omit for everything but agent, workflow, todos, question, plan, open_in_editor and Lua). The model sees the description
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
 lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, memory_search,
 skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on `agent.small_model`
@@ -88,7 +88,7 @@ the file is saved (zemi reloads config on change).
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
 `splash`, `chat`, `statusline.mode`, `statusline.cwd`, `statusline.reflect`,
-`statusline.agents`, `statusline.learn`, `statusline.info`. Regions: `header`, `chat`,
+`statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.info`. Regions: `header`, `chat`,
 `statusline.left`, `statusline.right`. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
@@ -97,7 +97,7 @@ prompt names the exact path; rewritten on every start) holds the theme, every bu
 and the default keymaps. Read it before changing one: copy the widget you want to alter into
 `init.lua` under the same id and change what you need, or `require("zemi.defaultui")` to
 build on its splash.
-Try a change live with the lua tool first (it lasts until the next reload), screenshot, then
+Try a change live with the Lua tool first (it lasts until the next reload), screenshot, then
 write it to config.
 
 ```lua
@@ -142,12 +142,8 @@ zemi.keymap.set("<leader>r", "review", { desc = "review changes" })
 
 Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must be pure
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
-`zemi.timer` callbacks and read the result from `zemi.state`. Theme groups used by the
-default UI: `Normal`, `Comment`, `Title`, `UserMsg`, `AgentToolOk`, `AgentToolErr`,
-`AgentToolRun`, `AgentToolName`, `AgentReason`, `Thinking`, `ThinkingBar`, `ThinkingMark`,
-`DiffAdd`, `DiffDel`, `DiffCtx` (each with a `*Num` group for its line numbers), `Logo1`..`Logo6`, `SplashKey`, `StatusUsage`, `StatusUsageWarn`,
-`StatusUsageErr`, `Errors`, `Mode*`, `Prompt*`, `ToastInfo`, `ToastWarn`, `ToastErr`,
-`ToastTitle`, `Markdown*`.
+`zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
+uses are the `hl` table at the top of `defaultui.lua`.
 Full API: the zemi-lua skill.
 
 ## After writing
