@@ -125,6 +125,7 @@ type widgetCache struct {
 	lines [][]hostapi.Segment
 	width int
 	gen   int64
+	err   string // last recorded render error; a repeat is not recorded again
 
 	// wrapped holds the lines re-wrapped for wrapW cells: compose runs
 	// every frame and wrapping the transcript is its biggest cost.
@@ -462,8 +463,18 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 		delete(a.pending, msg.id)
 	}
 	if msg.err != nil {
-		if !isTolerableRenderErr(msg.err) {
-			a.host.RecordError("widget "+msg.id, msg.err.Error())
+		// The failure marks the generation rendered so the widget is not
+		// retried every tick, and a repeat of the same error is not recorded
+		// again: RecordError bumps the frame, which would loop.
+		c := a.caches[msg.id]
+		if c == nil {
+			c = &widgetCache{}
+			a.caches[msg.id] = c
+		}
+		c.gen, c.width = msg.gen, msg.width
+		if !isTolerableRenderErr(msg.err) && c.err != msg.err.Error() {
+			c.err = msg.err.Error()
+			a.host.RecordError("widget "+msg.id, c.err)
 		}
 		a.log.Debug("ui", "widget render failed; keeping last good lines", map[string]any{
 			"widget": msg.id, "error": msg.err.Error(),

@@ -682,3 +682,35 @@ func TestStreamEventsCoalesce(t *testing.T) {
 		t.Fatalf("a handled event must let the next one queue, got %d", n)
 	}
 }
+
+// TestWidgetErrorRecordedOnce: a widget whose render raises is recorded in
+// /errors once, not once per frame.
+func TestWidgetErrorRecordedOnce(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	run := func(src string) {
+		t.Helper()
+		if err := host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(`zemi.ui.widget.register({ id = "bad", region = "statusline.right", render = function() error("boom") end })`)
+	for range 10 {
+		for app.Pump() {
+		}
+		cmd := app.renderStaleWidgetsCmd()
+		if cmd == nil {
+			continue
+		}
+		msg := cmd()
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			batch = tea.BatchMsg{func() tea.Msg { return msg }}
+		}
+		for _, c := range batch {
+			if c != nil {
+				app.Update(c())
+			}
+		}
+	}
+	run(`local n = #zemi.errors.list(); assert(n == 1, "errors: " .. n)`)
+}
