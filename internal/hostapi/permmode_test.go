@@ -186,6 +186,10 @@ func TestAutoModeSafeCommands(t *testing.T) {
 			t.Errorf("tracked .env, %s: got %v, want %v", cmd, got, want)
 		}
 	}
+	h.modelFn = func() (fantasy.LanguageModel, error) { return &promptStub{resp: "UNSAFE: diff"}, nil }
+	if _, why := h.autoApprove(tools.Request{Subject: "tool.bash", Arg: "cd internal && git diff"}); !strings.Contains(why, "tracks .env") {
+		t.Errorf("tracked .env, ask reason %q does not name it", why)
+	}
 }
 
 // TestAutoApprovalCacheKeysInput: an approved MCP call does not approve a

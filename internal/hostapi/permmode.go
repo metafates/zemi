@@ -371,21 +371,46 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
 	// a write flag the allowlist misses could still reach .git/config
 	return h.inJail(p, roots...) && !h.secretPath(p) && !inGitDir(p) &&
-		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch)) && (use != perm.ArgRepo || h.tracksNoSecrets(p))
+		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch)) && (use != perm.ArgRepo || h.trackedSecret(p) == "")
 }
 
-// tracksNoSecrets reports whether the repository around dir tracks no
-// secret-shaped file; failing to list, like no repository, counts as tracking one.
+// trackedSecret says why git commands that print file content in the
+// repository around dir may not settle: it tracks a secret-shaped file, or
+// the listing failed (no repository too). Empty means they may.
 // NOTE: a secret committed and later deleted is not seen, and git log -p
 // still prints it; a history scan per command would be too slow.
-func (h *Host) tracksNoSecrets(dir string) bool {
+func (h *Host) trackedSecret(dir string) string {
 	// the pathspecs keep the listing short in a big repository
 	args := []string{"ls-files", "-z", "--recurse-submodules", "--"}
 	for _, s := range perm.SecretPathShape {
 		args = append(args, ":(top,icase,glob)**/"+s)
 	}
 	out, err := h.git(dir, args...)
-	return err == nil && !slices.ContainsFunc(strings.Split(out, "\x00"), perm.PathIsSecret)
+	if err != nil {
+		return "cannot list the files git tracks"
+	}
+	for _, f := range strings.Split(out, "\x00") {
+		if perm.PathIsSecret(f) {
+			return "the repository tracks " + f
+		}
+	}
+	return ""
+}
+
+// repoNote is trackedSecret for the first repository a git command in cmd
+// prints file content from, so an ask can say why it did not settle.
+func (h *Host) repoNote(cmd string) string {
+	note := ""
+	perm.SafeCommand(cmd, func(arg string, use perm.ArgUse) bool {
+		if use == perm.ArgRepo && note == "" {
+			if !filepath.IsAbs(arg) {
+				arg = filepath.Join(h.Dirs.ProjectDir, arg)
+			}
+			note = h.trackedSecret(arg)
+		}
+		return true
+	})
+	return note
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
@@ -484,6 +509,13 @@ When unsure, reply UNSAFE.`
 // returns ok=false with the reason to show the user when the model flags
 // it or cannot be reached (failing toward a manual ask).
 func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
+	defer func() {
+		if !ok && req.Subject == "tool.bash" {
+			if note := h.repoNote(req.Arg); note != "" {
+				why += " (not settled locally: " + note + ")"
+			}
+		}
+	}()
 	model, err := h.modelFor("permissions.auto_model", "agent.small_model")
 	if err != nil {
 		return false, "auto mode unavailable: " + err.Error()
