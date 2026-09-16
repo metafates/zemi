@@ -350,18 +350,7 @@ func (r *wfRun) install(args any) {
 		return L.GetTop()
 	}))
 	js := L.NewTable()
-	js.RawSetString("encode", L.NewFunction(func(L *glua.LState) int {
-		g, err := lua.ToGo(L.CheckAny(1))
-		if err != nil {
-			L.RaiseError("json.encode: %v", err)
-		}
-		b, err := json.Marshal(g)
-		if err != nil {
-			L.RaiseError("json.encode: %v", err)
-		}
-		L.Push(glua.LString(b))
-		return 1
-	}))
+	js.RawSetString("encode", L.NewFunction(jsonEncode("json.encode")))
 	js.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
 		var v any
 		// Model replies often wrap JSON in prose or fences: take the

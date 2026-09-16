@@ -16,20 +16,26 @@ import (
 // ---------------------------------------------------------------------------
 // zemi.json
 
-func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("encode", L.NewFunction(func(L *glua.LState) int {
+// jsonEncode is json.encode for zemi.json and the workflow sandbox, which
+// differ only in the name their errors carry.
+func jsonEncode(name string) glua.LGFunction {
+	return func(L *glua.LState) int {
 		v, err := lua.ToGo(L.CheckAny(1))
 		if err != nil {
-			L.RaiseError("zemi.json.encode: %v", err)
+			L.RaiseError("%s: %v", name, err)
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
-			L.RaiseError("zemi.json.encode: %v", err)
+			L.RaiseError("%s: %v", name, err)
 		}
 		L.Push(glua.LString(b))
 		return 1
-	}))
+	}
+}
+
+func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("encode", L.NewFunction(jsonEncode("zemi.json.encode")))
 	tb.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
 		var v any
 		if err := json.Unmarshal([]byte(L.CheckString(1)), &v); err != nil {
