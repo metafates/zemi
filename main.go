@@ -468,7 +468,7 @@ func (tg *trustGate) decide() (bool, error) {
 	if v, ok := readTrust(tg.dirs.TrustFile())[root]; ok {
 		return v == "trusted", nil
 	}
-	if unsaved(root) {
+	if hostapi.TrustUnsaved(root) {
 		return false, nil
 	}
 	return tg.record(root, tg.ask(root, tg.dirs.ProjectDir, ""))
@@ -478,7 +478,7 @@ func (tg *trustGate) decide() (bool, error) {
 // for this process only (a reload does not ask again, the next start does).
 func (tg *trustGate) record(root, answer string) (bool, error) {
 	ok := answer == "trust"
-	if answer != "later" && !unsaved(root) {
+	if answer != "later" && !hostapi.TrustUnsaved(root) {
 		saved := readTrust(tg.dirs.TrustFile())
 		saved[root] = map[bool]string{true: "trusted", false: "untrusted"}[ok]
 		err := writeTrust(tg.dirs.TrustFile(), saved)
@@ -508,24 +508,14 @@ func (tg *trustGate) command(reload func()) func() {
 			if err != nil {
 				tg.h.Notify("error", "trust", err.Error())
 			}
+			// set before the reload: a boot that fails before the trust step
+			// must not leave the old decision in force
+			tg.h.SetProjectTrusted(ok)
 			if ok != was {
 				reload()
 			}
 		})
 	}
-}
-
-// unsaved reports a root no decision is saved for: the home directory and
-// the filesystem root hold everything, so they stay untrusted unless /trust
-// or --trust says otherwise for one run.
-func unsaved(root string) bool {
-	home, err := os.UserHomeDir()
-	if err == nil {
-		if h, err := filepath.EvalSymlinks(home); err == nil {
-			home = h
-		}
-	}
-	return root == "" || filepath.Dir(root) == root || (err == nil && root == home)
 }
 
 func readTrust(path string) map[string]string {

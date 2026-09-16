@@ -124,7 +124,8 @@ type clipboardMsg struct {
 // becomes an attachment, text is pasted like a terminal paste.
 func (a *App) pasteClipboard() tea.Cmd {
 	return func() tea.Msg {
-		if data := clipboardImage(); len(data) > 0 {
+		dir, _ := a.host.TempDir()
+		if data := clipboardImage(dir); len(data) > 0 {
 			tok, err := a.host.AttachImage(data, ".png")
 			return clipboardMsg{token: tok, err: err}
 		}
@@ -152,10 +153,14 @@ func has(name string) bool {
 	return err == nil
 }
 
-// clipboardImage returns a PNG from the clipboard, or nil.
-func clipboardImage() []byte {
+// clipboardImage returns a PNG from the clipboard, or nil. macOS writes it
+// to a file in tmp first.
+func clipboardImage(tmp string) []byte {
 	if runtime.GOOS == "darwin" {
-		f, err := os.CreateTemp("", "zemi-clip-*.png")
+		if tmp == "" {
+			return nil
+		}
+		f, err := os.CreateTemp(tmp, "zemi-clip-*.png")
 		if err != nil {
 			return nil
 		}

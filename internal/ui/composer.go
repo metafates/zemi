@@ -467,7 +467,12 @@ type editorMsg struct {
 // openEditor edits the draft in the user's editor (ctrl+g) through
 // EditFile, off the UI goroutine; the saved text comes back as editorMsg.
 func (a *App) openEditor() tea.Cmd {
-	f, err := os.CreateTemp("", "zemi-*.md")
+	dir, err := a.host.TempDir()
+	if err != nil {
+		a.pushToast("error", "editor", err.Error())
+		return nil
+	}
+	f, err := os.CreateTemp(dir, "zemi-*.md")
 	if err != nil {
 		a.pushToast("error", "editor", err.Error())
 		return nil

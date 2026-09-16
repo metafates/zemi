@@ -94,6 +94,9 @@ func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
 	if tp.cwd != "" && tp.cwd != tp.root {
 		text("(started in " + tp.cwd + "; trust covers the whole repository)")
 	}
+	if hostapi.TrustUnsaved(tp.root) {
+		text("(home directory: applies to this run only)")
+	}
 	text("")
 	text("Trusted: zemi loads .zemi config, AGENTS.md/CLAUDE.md and language servers, and auto mode edits files and runs build and test commands without asking. Those can run any code in this repository.")
 	text("Not trusted: none of that loads; only commands that just read run without asking.")
