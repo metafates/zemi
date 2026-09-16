@@ -15,6 +15,7 @@ func TestEditorAndMode(t *testing.T) {
 		{"defaults to vi outside tmux", Env{}, "vi", Fullscreen},
 		{"setting beats the environment", Env{Configured: "code --wait", Visual: "nvim", Editor: "vim"}, "code --wait", Fullscreen},
 		{"VISUAL beats EDITOR", Env{Visual: "nvim", Editor: "vim"}, "nvim", Fullscreen},
+		{"blank VISUAL falls through", Env{Visual: " ", Editor: "vim"}, "vim", Fullscreen},
 		{"tmux auto is a popup", Env{Editor: "nvim", TMUX: "/tmp/tmux-1/default,1,0", Window: "auto"}, "nvim", Popup},
 		{"tmux split on request", Env{Editor: "nvim", TMUX: "x", Window: Split}, "nvim", Split},
 		{"tmux fullscreen on request", Env{Editor: "nvim", TMUX: "x", Window: Fullscreen}, "nvim", Fullscreen},

@@ -30,7 +30,7 @@ const (
 
 // Program is the editor command line: setting, then $VISUAL, $EDITOR, vi.
 func (e Env) Program() string {
-	return cmp.Or(strings.TrimSpace(e.Configured), e.Visual, e.Editor, "vi")
+	return cmp.Or(strings.TrimSpace(e.Configured), strings.TrimSpace(e.Visual), strings.TrimSpace(e.Editor), "vi")
 }
 
 // Mode picks where the editor opens. Outside tmux everything is full screen;
