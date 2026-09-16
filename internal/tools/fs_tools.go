@@ -495,6 +495,10 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			mod[rels[i]] = fi.ModTime()
 		}
 	}
+	rels = slices.DeleteFunc(rels, p.ruledOut)
+	if len(rels) == 0 {
+		return fantasy.NewTextResponse("(no matches)"), nil
+	}
 	slices.SortStableFunc(rels, func(a, b string) int { return mod[b].Compare(mod[a]) })
 	if len(rels) > globMaxFiles {
 		rels = append(rels[:globMaxFiles], fmt.Sprintf("... (%d more; narrow the pattern or path)", len(rels)-globMaxFiles))
@@ -511,9 +515,16 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil
 	}
 	var hits []string
+	hidden := map[string]bool{}
 	add := func(rel string, line int, text string) bool {
-		if !perm.PathIsSecret(rel) {
-			hits = append(hits, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(filepath.Join(root, rel)), line, truncLine(text)))
+		path := filepath.Join(root, rel)
+		h, ok := hidden[rel]
+		if !ok {
+			h = perm.PathIsSecret(rel) || p.ruledOut(path)
+			hidden[rel] = h
+		}
+		if !h {
+			hits = append(hits, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(path), line, truncLine(text)))
 		}
 		return len(hits) < grepMaxMatches
 	}
@@ -562,6 +573,16 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		out += fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
 	}
 	return fantasy.NewTextResponse(out), nil
+}
+
+// ruledOut reports whether a deny or ask rule covers reading path: glob
+// and grep are gated on their root only, so each hit meets the read rules.
+func (p *Pipeline) ruledOut(path string) bool {
+	if p == nil || p.Store == nil {
+		return false
+	}
+	o := p.Store.Evaluate("fs.read", path, p.Principal)
+	return o.Rule != nil && o.Decision != perm.Allow
 }
 
 // rgBin is ripgrep when installed: it honors .gitignore and is much faster

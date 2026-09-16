@@ -260,8 +260,10 @@ func TestGlobAndGrep(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "sub", "node_modules"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "private"), 0o755)
+	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
-		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n",
+		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n",
 		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
 	} {
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
@@ -283,6 +285,8 @@ func TestGlobAndGrep(t *testing.T) {
 			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
 			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
+			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
+			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 		} {
 			input := strings.Replace(c.input, "{", `{"path":"`+dir+`",`, 1)
 			resp := call(t, c.tool, input)
