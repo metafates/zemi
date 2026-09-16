@@ -115,3 +115,25 @@ func TestConfigFingerprint(t *testing.T) {
 		t.Fatal("an init.lua edit went unnoticed")
 	}
 }
+
+// TestHashTreeFraming: a file whose content spells out another file does
+// not hash like the tree holding both, or trust would carry over to it.
+func TestHashTreeFraming(t *testing.T) {
+	hash := func(files map[string]string) string {
+		t.Helper()
+		dir := t.TempDir()
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		h, err := hashTree(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+	if hash(map[string]string{"a": "x\x00b\x00y"}) == hash(map[string]string{"a": "x", "b": "y"}) {
+		t.Fatal("two trees share a hash")
+	}
+}

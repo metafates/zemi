@@ -491,9 +491,10 @@ func hashTree(root string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(sum, "%s\x00", rel)
+		// the length frames the content: a file holding NULs must not hash
+		// like several files
+		fmt.Fprintf(sum, "%s\x00%d\x00", rel, len(data))
 		sum.Write(data)
-		fmt.Fprint(sum, "\x00")
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
