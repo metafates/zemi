@@ -2,6 +2,8 @@ package hostapi
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,10 @@ func TestTaskRegEviction(t *testing.T) {
 // shown in the transcript as a one-line notice.
 func TestBackgroundAgent(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var reportMsg string
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
@@ -37,9 +43,10 @@ func TestBackgroundAgent(t *testing.T) {
 			case toolResult:
 				return textParts("started it")
 			case strings.HasPrefix(last, "Background agent"):
+				reportMsg = last
 				return textParts("the agent reported: " + last[strings.Index(last, "found"):strings.Index(last, "found")+15])
 			}
-			return toolCallParts("c1", "agent", `{"description":"slow search","prompt":"find it","agent":"explore","background":true}`)
+			return toolCallParts("c1", "agent", `{"description":"slow @main.go search","prompt":"find it","agent":"explore","background":true}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -55,6 +62,9 @@ func TestBackgroundAgent(t *testing.T) {
 		}
 		return nil
 	})
+	if !strings.Contains(reportMsg, "slow @main.go search") || strings.Contains(reportMsg, "<file path=") {
+		t.Fatalf("the model-written description must reach the model but attach nothing: %q", reportMsg)
+	}
 	notice := false
 	for _, m := range h.Session().Transcript {
 		if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
