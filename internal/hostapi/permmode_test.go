@@ -18,6 +18,7 @@ import (
 // anything leaving the machine go on to the screening model instead.
 func TestAutoModeLocalApprovals(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.Dirs.ConfigHome = filepath.Join(h.Dirs.ProjectDir, ".config", "zemi") // zemi run in $HOME
 	inside := filepath.Join(h.Dirs.ProjectDir, "main.go")
 	secret := filepath.Join(h.Dirs.ProjectDir, ".env")
 	link := filepath.Join(h.Dirs.ProjectDir, "notes.md")
@@ -33,6 +34,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", inside, true},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false},
+		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), false},
 		{"fs.read", secret, false},
 		{"fs.read", link, false},
 		{"fs.read", "/etc/passwd", false},
