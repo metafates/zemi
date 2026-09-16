@@ -90,7 +90,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	req.Description = sanitize.String(req.Description)
 	ch := make(chan permAnswer, 1)
-	a.dispatch(uiFunc(func() tea.Cmd {
+	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
 		if a.permAsk != nil {
 			a.permQueue = append(a.permQueue, p)
@@ -98,7 +98,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 			a.permAsk = p
 		}
 		return a.notifyIfAway("zemi needs your approval: " + req.Subject)
-	}))
+	})
 	ans := <-ch
 	return ans.ok, ans.by
 }
@@ -120,7 +120,7 @@ func (a *App) answerPerm(ok bool, by string) {
 // model or cancels (ok=false on cancel).
 func (a *App) PickModel(items []hostapi.ModelOption, current string) (string, bool) {
 	ch := make(chan modelPick, 1)
-	a.do(func() { a.openModelPick(items, current, ch) })
+	a.await(func() tea.Cmd { a.openModelPick(items, current, ch); return nil })
 	res := <-ch
 	return res.id, res.ok
 }

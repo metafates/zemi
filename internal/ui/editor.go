@@ -61,14 +61,14 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 	title := sanitize.String(req.Title)
 	chanName := fmt.Sprintf("zemi-edit-%d-%d", os.Getpid(), editSeq.Add(1))
 	cmd := env.Cmd(mode, req.Path, a.host.Dirs.ProjectDir, title, chanName, req.Line)
-	a.do(func() { a.editing = title })
-	defer a.do(func() { a.editing = ""; a.editEnded = a.now() })
+	a.await(func() tea.Cmd { a.editing = title; return nil })
+	defer a.await(func() tea.Cmd { a.editing = ""; a.editEnded = a.now(); return nil })
 
 	if mode == editor.Fullscreen {
 		done := make(chan error, 1)
-		a.dispatch(uiFunc(func() tea.Cmd {
+		a.await(func() tea.Cmd {
 			return tea.ExecProcess(cmd, func(err error) tea.Msg { return editDoneMsg{err: err, done: done} })
-		}))
+		})
 		select {
 		case err := <-done:
 			return mode, err

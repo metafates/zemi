@@ -56,10 +56,10 @@ func (a *App) AskQuestion(qs []tools.Question) ([]string, bool) {
 		states[i] = qState{picked: map[int]bool{}, typing: len(q.Options) == 0}
 	}
 	ch := make(chan qAnswer, 1)
-	a.dispatch(uiFunc(func() tea.Cmd {
+	a.await(func() tea.Cmd {
 		a.question = &questionPrompt{qs: clean, states: states, reviewSel: len(clean), answer: ch}
 		return a.notifyIfAway("zemi has a question: " + clean[0].Question)
-	}))
+	})
 	ans := <-ch
 	return ans.answers, ans.ok
 }

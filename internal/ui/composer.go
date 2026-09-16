@@ -468,13 +468,13 @@ func (a *App) openEditor() tea.Cmd {
 	}
 	go func() {
 		defer os.Remove(path)
-		_, err := a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"})
-		if err != nil {
-			a.dispatch(editorMsg{err: err})
-			return
+		var msg editorMsg
+		if _, msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"}); msg.err == nil {
+			b, err := os.ReadFile(path)
+			msg.text, msg.err = strings.TrimRight(string(b), "\n"), err
 		}
-		b, err := os.ReadFile(path)
-		a.dispatch(editorMsg{text: strings.TrimRight(string(b), "\n"), err: err})
+		// await, not dispatch: a full queue must not drop the saved draft
+		a.await(func() tea.Cmd { _, cmd := a.Update(msg); return cmd })
 	}()
 	return nil
 }

@@ -546,13 +546,11 @@ func (a *App) pruneToasts(now time.Time) {
 // ---------------------------------------------------------------------------
 // hook plumbing (drained by a persistent cmd when a program is attached)
 
+// dispatch drops msg when the queue is full, so a caller on the Update
+// goroutine never waits on itself.
 func (a *App) dispatch(msg tea.Msg) {
-	q := a.testQueue
-	if a.program != nil {
-		q = a.hooks
-	}
+	q := a.hookQueue()
 	if q == nil {
-		// No program (headless boot): process inline on the caller's goroutine.
 		a.Update(msg)
 		return
 	}
@@ -561,6 +559,26 @@ func (a *App) dispatch(msg tea.Msg) {
 	default:
 		a.log.Warn("ui", "hook queue full; dropping message", nil)
 	}
+}
+
+// await posts fn for a blocking hook (AskPermission and the like), which
+// never runs on the Update goroutine: its caller waits on the answer, so a
+// dropped prompt would hang it. It waits for room instead.
+func (a *App) await(fn func() tea.Cmd) {
+	if q := a.hookQueue(); q != nil {
+		q <- uiFunc(fn)
+		return
+	}
+	a.Update(uiFunc(fn))
+}
+
+// hookQueue is where posted messages wait for the Update goroutine; nil
+// without a program or captured hooks, where they run inline.
+func (a *App) hookQueue() chan tea.Msg {
+	if a.program != nil {
+		return a.hooks
+	}
+	return a.testQueue
 }
 
 // CaptureHooks redirects hook dispatch into a queue drained by Pump

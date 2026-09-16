@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -34,8 +36,9 @@ func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
 	// the caller keeps reading its own slice after this returns, so the
 	// screen edits a copy
 	rows := slices.Clone(items)
-	a.do(func() {
+	a.await(func() tea.Cmd {
 		a.memReview = &memReviewPrompt{items: rows, actions: map[string]string{}, answer: ch}
+		return nil
 	})
 	return <-ch
 }

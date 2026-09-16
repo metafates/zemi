@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -62,7 +63,7 @@ type trustPrompt struct {
 // answer comes back on a buffered channel.
 func (a *App) AskTrust(path, hash string) string {
 	ch := make(chan string, 1)
-	a.do(func() { a.trust = &trustPrompt{path: path, hash: hash, answer: ch} })
+	a.await(func() tea.Cmd { a.trust = &trustPrompt{path: path, hash: hash, answer: ch}; return nil })
 	return <-ch
 }
 

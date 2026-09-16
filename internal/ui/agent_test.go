@@ -432,6 +432,21 @@ func TestTrustAnswers(t *testing.T) {
 	}
 }
 
+// TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
+// is full waits for room; dropped, its caller would wait forever.
+func TestPromptWaitsOnFullQueue(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	for len(app.testQueue) < cap(app.testQueue) {
+		app.Refresh()
+	}
+	done := make(chan string, 1)
+	go func() { done <- app.AskTrust("/proj/.zemi", "abc123") }()
+	time.Sleep(50 * time.Millisecond) // let the ask reach the full queue before it drains
+	waitPrompt(t, app, func() bool { return app.trust != nil })
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	<-done
+}
+
 // TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
 func TestLuaUtil(t *testing.T) {
 	_, host := bootAgentApp(t, 80, 20)
