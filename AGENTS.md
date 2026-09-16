@@ -91,7 +91,10 @@ config git repo exists before any step can commit a revision (see "Permanent rul
    runtime goes "hot" — every Lua request fails fast until force-reload builds a fresh
    `LState` (generation). All registrations (keymaps, widgets, events, timers, jobs,
    Lua tools) are generation-tagged (`hostapi.Gen`) and purged before replay. Never keep a
-   pointer into an old generation across a reload.
+   pointer into an old generation across a reload. `Host.ForceReload` keeps the old Lua
+   permission rules (`staleRules`) until the replay succeeds, and `tool.pre` and
+   `permission.request` vetoes wait out a running reload (`outsideReload`), so a turn is
+   never checked against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine.
    Work from other goroutines (host hooks, Lua callbacks) is funneled through a hook
    channel drained by a persistent cmd (`internal/ui/hooks.go`). hostapi never imports
@@ -101,7 +104,8 @@ config git repo exists before any step can commit a revision (see "Permanent rul
    calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
    loop receives, so the loop would wait on itself (the `/quit` hang). Wrap such calls in a
    goroutine, like `App.Quit` and `OpenModelPicker` do. Blocking hooks (`PickModel`,
-   `AskPermission`, `AskTrust`) must only ever run on non-UI goroutines.
+   `AskPermission`, `AskTrust`) must only ever run on non-UI goroutines. Stream events only
+   invalidate the frame, so at most one waits in the hook queue (`streamPending`).
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast**
    (~10 ms). Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have
@@ -126,6 +130,8 @@ Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lu
 invariants: a rewritten input **re-enters at the permission gate** (per-run pipeline copy
 with `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); ask
 with no overlay available fails closed; errors become tool-error responses, not panics.
+Host-implemented tools (`agent`, `workflow`, `window`, `Lua`, MCP and Lua tools) run
+`tool.pre` through `preCheck`, which refuses a rewrite with an error result.
 Bash is special: `perm.Store.CheckCommand` normalizes the command first (compound
 splitting, redirect gates, env-assignment gate — see internal/perm/bash.go, heavily
 table-tested; extend those tables when touching it).
@@ -157,9 +163,10 @@ be gated with the same `lua.` subject at the Lua boundary.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
-edits **inside the jail** that are not secret-shaped, `perm.SafeCommand` commands) and only
-then runs a one-shot screening model, caching approvals and falling back to the user ask
-with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
+edits **inside the jail** that are not secret-shaped, except writes under `.git`,
+`perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
+approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
+escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
 never settled locally: the URL is the model's. `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
@@ -264,6 +271,8 @@ what the screen says.
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so
   steered messages are re-inserted every step. Leftovers become one follow-up turn, and
   `active` stays held across that handoff (`nextTurn`) so a submit cannot jump the queue.
+  `/compact` and rewind claim `active` and a `turnScope` together (`beginScope`, released by
+  `handOff`), so a cancel, a send or another claim cannot slip in between.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message.
@@ -297,6 +306,8 @@ for the mouse), and a paste goes to the program with bracketing when it asked. T
 `window` tool gates `open` as `tool.bash` (same rules and modes as bash) and `keys`/`mouse`/`send`
 as `tool.window`; an exit lands in the next message through `shellNotes`. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
+Input to a program queues and a `writeLoop` goroutine feeds the pty, because the emulator
+writes under the screen lock and a program that does not read stdin must not wedge it.
 
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 

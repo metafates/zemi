@@ -166,7 +166,10 @@ Contracts that make this safe:
   the accepted cost of no-kill cancellation. Reload purges every
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
-  dropped `LState`.
+  dropped `LState`. Lua-added permission rules are the exception: they stay
+  in force until the replay succeeds (then those it did not add again are
+  dropped), and `tool.pre` and `permission.request` vetoes wait for a
+  running reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
   the 50 ms deadline the host cancels the handler's context (the
@@ -225,7 +228,8 @@ Contracts that make this safe:
   `agent.reasoning_delta` are emitted once per streamed chunk, each its own
   async request, and carry the incremental chunk only, so a subscriber
   that needs complete text reads the host-held transcript instead of
-  accumulating deltas. Nothing else coalesces either.
+  accumulating deltas. The TUI coalesces its side only: a stream event just
+  invalidates the frame, so at most one waits in its hook queue.
 - **Steering.** Messages sent while a turn runs queue in arrival order
   and join the running turn as user-role messages at the next step
   boundary (before the next model call). Whatever is still queued when
@@ -409,10 +413,12 @@ in which milestone.
   invalid enum) raises a Lua error, catchable with `pcall`. Operations that
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
-  (`zemi.fs.read`/`write`, `zemi.state.put`, `zemi.json.decode`) return
+  (`zemi.fs.read`/`write`, `zemi.state.put`, `zemi.json.decode`,
+  `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a masked mutator in a
-  render) and a permission gate that does not allow always raise.
+  render, an origin that may not make the call) and a permission gate
+  that does not allow always raise.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
   timer, session, window) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
@@ -712,7 +718,9 @@ A `rewrite` re-enters the pipeline at schema validation and the permission
 gate; it never skips them. On re-entry the `tool.pre` handlers run again
 in deny-only mode (deny decisions are re-checked against the rewritten
 input; rewrite and halt do not re-fire, §6.2), so a rewrite cannot
-silence another origin's deny hook and re-entry still terminates. `zemi.tool.override(name, { pre })` wraps a
+silence another origin's deny hook and re-entry still terminates. Tools
+the host runs itself (`agent`, `workflow`, `window`, `Lua`, MCP and Lua
+tools) refuse a rewrite with an error result instead. `zemi.tool.override(name, { pre })` wraps a
 builtin: its `pre` is a scoped handler for that tool only, running right
 after the global `tool.pre` events under the same decision contract.
 
@@ -769,7 +777,8 @@ environment-affecting gate (a dangerous name forces `ask` for the job
 regardless of allow rules, and env extras render in the ask overlay's
 preview for model `job_*` calls; for Lua-originated jobs a gate-forced
 ask is a refusal); jobs never inherit the controlling
-tty (all three stdio are pipes, always).
+tty (each runs in its own session through `internal/proc`; stdin is
+closed unless the job asks for a pipe with `stdin = true`).
 
 ### 6.6 UI
 
@@ -1141,8 +1150,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   and `mcp.*` allows flip to `ask`, and `perm.SafeCommand` commands
   run), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped, and `SafeCommand` commands; anything it cannot
-  settle goes to a one-shot screening model whose approvals are cached
+  are not secret-shaped (writes under `.git` excepted), and `SafeCommand`
+  commands, whose arguments may not run code from the scratchpad and
+  whose recursive searches settle only over trees with no secret-shaped
+  file; anything it cannot settle goes to a one-shot screening model
+  whose approvals are cached per subject, argument, reason and preview,
   and whose refusals fall back to the user's ask carrying the reason.
   Network is never settled locally, because the URL is the model's.
   Only user config may add modes (`zemi.permission.mode.add`) or set the
