@@ -755,6 +755,29 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	}
 }
 
+// TestIdleStreamUsesProfileModel: between turns the context window, the
+// image check and zemi.agent.current follow the default profile's model,
+// not agent.model.
+func TestIdleStreamUsesProfileModel(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.provider.register({ id = "a", kind = "openai", models = {
+			{ id = "big", context_window = 200000, images = false },
+			{ id = "small", context_window = 32000 },
+		} })
+		zemi.model.set("a/small")
+		zemi.agent.profile("p", { model = "a/big" })
+		zemi.agent.set_default("p")
+	`)
+	if s := h.AgentStream(); s.Model != "a/big" || s.CtxWindow != 200000 {
+		t.Fatalf("stream model %q window %d, want the profile's", s.Model, s.CtxWindow)
+	}
+	if h.PipelineFor().Images() {
+		t.Fatal("the profile's model is text-only")
+	}
+	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
+}
+
 // TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
 // profile's context files as written, or the second build joins them to the
 // project directory twice and silently reads nothing.

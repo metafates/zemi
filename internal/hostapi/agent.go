@@ -318,6 +318,16 @@ func (h *Host) currentModelID(p *Profile) string {
 	return ""
 }
 
+// liveModelID is the model turns run on: the running turn's, else the
+// default profile's (ag.mu held).
+func (h *Host) liveModelID() string {
+	ag := h.agents
+	if ag.active && ag.turnModel != "" {
+		return ag.turnModel
+	}
+	return h.currentModelID(ag.profiles[ag.defProf])
+}
+
 // buildSystem renders the system prompt with context files appended
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
@@ -1235,7 +1245,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 	}
 	out.Model = ag.modelSeed
 	if out.Model == "" {
-		out.Model = h.currentModelID(nil)
+		out.Model = h.liveModelID()
 	}
 	if out.CtxWindow == 0 {
 		out.CtxWindow = h.contextWindow(out.Model)
@@ -1596,10 +1606,10 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		ag := h.agents
 		ag.mu.Lock()
 		out.RawSetString("profile", glua.LString(ag.defProf))
-		sid := ag.sessionID
+		sid, model := ag.sessionID, h.liveModelID()
 		ag.mu.Unlock()
 		out.RawSetString("id", glua.LString(sid))
-		out.RawSetString("model", glua.LString(h.currentModelID(nil)))
+		out.RawSetString("model", glua.LString(model))
 		L.Push(out)
 		return 1
 	}))
@@ -2030,7 +2040,12 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Principal: "model",
 		Jobs:      h.jobs,
 		Skills:    h.skillIndex,
-		Images:    func() bool { return h.takesImages(h.currentModelID(nil)) },
+		Images: func() bool {
+			h.agents.mu.Lock()
+			id := h.liveModelID()
+			h.agents.mu.Unlock()
+			return h.takesImages(id)
+		},
 		Remember: func(scope, kind, text string, tags []string) (bool, error) {
 			stored, _, err := h.proposeMemory(scope, kind, text, tags)
 			return stored, err
