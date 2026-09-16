@@ -99,6 +99,14 @@ func act(verb, arg string) error {
 		if err := unix.Setxattr(arg, "user.zemi", []byte("x"), 0); err != nil {
 			return fmt.Errorf("setxattr %s: %w", arg, err)
 		}
+	case "procpid":
+		b, err := os.ReadFile("/proc/self/stat")
+		if err != nil {
+			return err
+		}
+		if pid, _, _ := strings.Cut(string(b), " "); pid != strconv.Itoa(os.Getpid()) {
+			return fmt.Errorf("/proc/self is %s, getpid %d", pid, os.Getpid())
+		}
 	case "pid":
 		fmt.Println(os.Getpid())
 		time.Sleep(10 * time.Second)
@@ -194,6 +202,7 @@ func TestPolicy(t *testing.T) {
 		// Landlock has no right for these, see seccomp
 		{"chown a file in a root", "chown", filepath.Join(root, "plain.txt"), false, runtime.GOOS != "linux"},
 		{"set an xattr in a root", "setxattr", filepath.Join(root, "plain.txt"), false, runtime.GOOS != "linux"},
+		{"/proc agrees with getpid", "procpid", "", true, runtime.GOOS != "linux"},
 		// the namespaces that keep Protect read-only also give a loopback
 		{"listen and dial loopback", "loopback", "", true, !b.EnforcesProtect},
 	}

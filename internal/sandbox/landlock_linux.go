@@ -31,9 +31,9 @@ const (
 	deniedLookups = `temporary failure in name resolution`
 )
 
-// namespaces is whether wraps use the user+net+mount namespace variant; set
-// by probe.
-var namespaces bool
+// namespaces is whether wraps use the user+net+mount namespace variant, and
+// pidns whether it gets a pid namespace too; set by probe.
+var namespaces, pidns bool
 
 func probe() (Backend, error) {
 	exe, err := os.Executable()
@@ -53,13 +53,17 @@ func probe() (Backend, error) {
 		return Backend{}, fmt.Errorf("landlock v%d cannot deny truncate; needs linux 6.2 or newer", abi)
 	}
 	if os.Getenv(probeEnv) == "" {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, exe, helperArg, probeArg)
-		cmd.Env = append(os.Environ(), probeEnv+"=1")
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		namespaceAttr(cmd.SysProcAttr)
-		namespaces = cmd.Run() == nil
+		try := func(pid bool) bool {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, exe, helperArg, probeArg)
+			cmd.Env = append(os.Environ(), probeEnv+"=1")
+			cmd.SysProcAttr = &syscall.SysProcAttr{}
+			namespaceAttr(cmd.SysProcAttr, pid)
+			return cmd.Run() == nil
+		}
+		pidns = try(true)
+		namespaces = pidns || try(false)
 	}
 	if namespaces {
 		return Backend{Name: fmt.Sprintf("landlock v%d + namespaces", abi), EnforcesProtect: true}, nil
@@ -67,22 +71,27 @@ func probe() (Backend, error) {
 	return Backend{Name: fmt.Sprintf("landlock v%d + seccomp", abi)}, nil
 }
 
-// namespaceAttr starts the helper in its own user, network, mount and pid
-// namespaces, as the same uid and with the caps to bring lo up and mount.
-// In its own pid namespace the command cannot name a process outside to
-// signal it, which Landlock scopes only from v6.
+// namespaceAttr starts the helper in its own user, network, mount and, with
+// pid, pid namespaces, as the same uid and with the caps to bring lo up and
+// mount. In its own pid namespace the command cannot name a process outside
+// to signal it, which Landlock scopes only from v6.
 // Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
-// both refuse this, and the probe falls back.
-func namespaceAttr(a *syscall.SysProcAttr) {
-	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID
+// both refuse this, and the probe falls back. Docker with seccomp unconfined
+// masks parts of /proc, so a fresh proc for the pid namespace is refused
+// there and the probe drops the pid namespace.
+func namespaceAttr(a *syscall.SysProcAttr, pid bool) {
+	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS
+	if pid {
+		a.Cloneflags |= syscall.CLONE_NEWPID
+	}
 	a.UidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getuid(), HostID: os.Getuid(), Size: 1}}
 	a.GidMappings = []syscall.SysProcIDMap{{ContainerID: os.Getgid(), HostID: os.Getgid(), Size: 1}}
 	a.AmbientCaps = []uintptr{unix.CAP_NET_ADMIN, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP}
 }
 
 // wrap runs cmd as `zemi __sandbox <mode> <policy> -- <path> <argv...>`,
-// which confines itself and then execs the command in place (or, with
-// namespaces, starts it as a child in the same session and group).
+// which confines itself and then execs the command in place (or, in a pid
+// namespace, starts it as a child in the same session and group).
 // NOTE: without namespaces Protect and Loopback are not enforced: Landlock
 // cannot keep .git read-only inside a writable root without splitting the
 // root, which breaks creating top-level files, and seccomp blocks every socket.
@@ -101,7 +110,7 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 		if cmd.SysProcAttr == nil {
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
 		}
-		namespaceAttr(cmd.SysProcAttr)
+		namespaceAttr(cmd.SysProcAttr, pidns)
 	}
 	cmd.Args = append([]string{exe, helperArg, mode, string(pol), "--", cmd.Path}, cmd.Args...)
 	cmd.Path = exe
@@ -165,7 +174,7 @@ func Helper(args []string) int {
 	if err := seccomp(ns); err != nil {
 		return fail("seccomp", err)
 	}
-	if ns {
+	if ns && os.Getpid() == 1 {
 		return runInit(path, args[4:], fail)
 	}
 	return fail("exec", syscall.Exec(path, args[4:], os.Environ()))
@@ -232,7 +241,8 @@ func runInit(path string, argv []string, fail func(string, error) int) int {
 	}
 }
 
-// setupNamespaces brings lo up for Loopback and makes each Protect path
+// setupNamespaces brings lo up for Loopback, mounts a proc for a pid
+// namespace, and makes each Protect path
 // under a Write root a read-only bind mount (and a Write root inside one
 // writable again). Landlock forbids the command to umount them, and with
 // no caps left it cannot remount them.
@@ -244,6 +254,12 @@ func setupNamespaces(p Policy) error {
 	}
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("private mounts: %w", err)
+	}
+	// the outer /proc lists the outer pids, not the ones the command sees
+	if os.Getpid() == 1 {
+		if err := unix.Mount("proc", "/proc", "proc", unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC, ""); err != nil {
+			return fmt.Errorf("/proc: %w", err)
+		}
 	}
 	if _, err := os.Stat("/dev/shm"); err == nil {
 		if err := unix.Mount("tmpfs", "/dev/shm", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, ""); err != nil {
