@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -234,8 +235,8 @@ func (w *Window) readLoop() {
 
 // replyLoop carries the emulator's answers (cursor reports, device
 // attributes) and the keys it encodes back to the program. It drains until
-// the emulator closes, even once the program is gone: the emulator writes
-// to an unbuffered pipe under mu, so a loop that stopped would wedge mu.
+// kill closes the pipe, even once the program is gone: the emulator writes
+// to that unbuffered pipe under mu, so a loop that stopped would wedge mu.
 func (w *Window) replyLoop() {
 	buf := make([]byte, 4<<10)
 	for {
@@ -317,9 +318,9 @@ func (w *Window) kill() {
 				proc.Kill(w.cmd)
 			}
 		}
-		w.mu.Lock()
-		_ = w.term.Close()
-		w.mu.Unlock()
+		// end replyLoop by closing the input pipe: Emulator.Close sets a flag
+		// that Emulator.Read checks without a lock
+		_ = w.term.InputPipe().(io.Closer).Close()
 	})
 }
 
