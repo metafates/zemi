@@ -36,7 +36,7 @@ func TestTypesCoverAPI(t *testing.T) {
 	// A class member covers constants and sub-tables: zemi.provider.kind is
 	// a table of strings, not a function.
 	var class string
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		if m := reAnnotatedClass.FindStringSubmatch(line); m != nil {
 			class = m[1]
 			continue

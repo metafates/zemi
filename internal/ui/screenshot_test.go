@@ -26,7 +26,7 @@ func TestScreenshotPlainText(t *testing.T) {
 	if strings.ContainsRune(shot, 0x1b) || strings.Contains(shot, "\r") {
 		t.Fatalf("styling leaked into the screenshot:\n%q", shot)
 	}
-	for _, line := range strings.Split(shot, "\n") {
+	for line := range strings.SplitSeq(shot, "\n") {
 		if strings.HasSuffix(line, " ") {
 			t.Fatalf("row padded to the frame width: %q", line)
 		}
