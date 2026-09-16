@@ -1611,14 +1611,17 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0
 		}
-		h.Perm.Add(r)
-		h.luaRulesMu.Lock()
-		h.luaRules = append(h.luaRules, r)
-		h.luaRulesMu.Unlock()
-		if r.Scope == perm.ScopePermanent {
-			if err := h.persistPermanentRule(r, "rules: "+string(r.Decision)+" "+r.Subject+" "+r.Pattern, "user"); err != nil {
-				L.RaiseError("zemi.permission.rule: %v", err)
-				return 0
+		if h.Perm.Add(r) {
+			// only rules this call added: an equal one loaded from
+			// permissions.lua or answered "always" must survive a reload
+			h.luaRulesMu.Lock()
+			h.luaRules = append(h.luaRules, r)
+			h.luaRulesMu.Unlock()
+			if r.Scope == perm.ScopePermanent {
+				if err := h.persistPermanentRule(r, "rules: "+string(r.Decision)+" "+r.Subject+" "+r.Pattern, "user"); err != nil {
+					L.RaiseError("zemi.permission.rule: %v", err)
+					return 0
+				}
 			}
 		}
 		return 0

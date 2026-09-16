@@ -66,11 +66,16 @@ type Store struct {
 // NewStore returns an empty store.
 func NewStore() *Store { return &Store{} }
 
-// Add appends a rule (least specific first is fine; evaluation re-sorts).
-func (s *Store) Add(r Rule) {
+// Add appends a rule unless an equal one is stored (config replays on every
+// boot and reload) and reports whether it did; evaluation re-sorts.
+func (s *Store) Add(r Rule) bool {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slices.Contains(s.rules, r) {
+		return false
+	}
 	s.rules = append(s.rules, r)
-	s.mu.Unlock()
+	return true
 }
 
 // Remove drops one rule equal to r, if there is one.

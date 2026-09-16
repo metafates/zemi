@@ -122,12 +122,15 @@ func TestPermissionsLoadStep(t *testing.T) {
 func TestPermissionPermanentScope(t *testing.T) {
 	h, r := newTestHostSkills(t)
 
-	runUser(t, r, `zemi.permission.rule({
-		subject = "tool.bash", pattern = "rm -rf *", decision = "deny",
-		match = "rm -rf build", not_match = "rm -f build",
-		not_match_example = "rm -f build",
-		scope = "permanent",
-	})`)
+	// init.lua adds it on every boot: the second call finds it stored
+	for range 2 {
+		runUser(t, r, `zemi.permission.rule({
+			subject = "tool.bash", pattern = "rm -rf *", decision = "deny",
+			match = "rm -rf build", not_match = "rm -f build",
+			not_match_example = "rm -f build",
+			scope = "permanent",
+		})`)
+	}
 	data, err := os.ReadFile(h.permanentRulesPath())
 	if err != nil {
 		t.Fatalf("permissions.lua not written: %v", err)
