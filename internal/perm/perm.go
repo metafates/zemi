@@ -7,6 +7,7 @@ package perm
 
 import (
 	"cmp"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -126,32 +127,60 @@ func subjectMatches(rule, subject string) bool {
 }
 
 // CanonPath is the form fs rules match against and file tools key by:
-// absolute, clean, symlinks of the longest existing prefix resolved, and
-// case folded where the filesystem folds.
+// absolute, symlinks and .. resolved as the kernel resolves them, and case
+// folded where the filesystem folds.
 // NOTE: a case-sensitive volume on darwin or windows folds two real files
 // into one; a rule for one then covers both.
-func CanonPath(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	return foldCase(RealPath(p))
-}
+func CanonPath(p string) string { return foldCase(RealPath(p)) }
 
-// RealPath resolves symlinks in the longest existing prefix of p, so a file
-// about to be created is judged by its real parent directory.
+// RealPath makes p absolute and resolves it one component at a time, so
+// L/../x with L a symlink lands where open lands, not beside L. Past the
+// first missing component the rest is joined lexically, so a file about to
+// be created is judged by its real parent directory. A symlink loop gives
+// "", which is inside no root.
 func RealPath(p string) string {
-	suffix := ""
-	for {
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			return filepath.Join(real, suffix)
+	sep := string(filepath.Separator)
+	p = filepath.FromSlash(p)
+	if !filepath.IsAbs(p) {
+		// not filepath.Abs: it cleans .. before any symlink is seen
+		wd, err := os.Getwd()
+		if err != nil {
+			return ""
 		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return filepath.Join(p, suffix)
-		}
-		suffix = filepath.Join(filepath.Base(p), suffix)
-		p = parent
+		p = wd + sep + p
 	}
+	vol := filepath.VolumeName(p)
+	real, rest := vol+sep, p[len(vol):]
+	missing, hops := false, 0
+	for rest != "" {
+		var c string
+		c, rest, _ = strings.Cut(rest, sep)
+		switch c {
+		case "", ".":
+			continue
+		case "..":
+			real = filepath.Dir(real)
+			continue
+		}
+		next := filepath.Join(real, c)
+		fi, err := os.Lstat(next)
+		if missing || err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			missing = missing || err != nil
+			real = next
+			continue
+		}
+		link, err := os.Readlink(next)
+		if hops++; err != nil || hops > 255 {
+			return ""
+		}
+		link = filepath.FromSlash(link)
+		if filepath.IsAbs(link) {
+			v := filepath.VolumeName(link)
+			real, link = v+sep, link[len(v):]
+		}
+		rest = link + sep + rest
+	}
+	return real
 }
 
 func foldCase(p string) string {
@@ -194,11 +223,9 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		byDecision = map[Decision][]cand{}
 		fellThru   []string
 	)
-	// DESIGN §9: .. resolves before matching, so dir/* cannot cover dir/../x
+	// DESIGN §9: .. resolves before matching (CanonPath), so dir/* cannot
+	// cover dir/../x
 	isPath := strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")
-	if isPath && strings.Contains(arg, "..") {
-		arg = filepath.Clean(arg)
-	}
 	match, canon := arg, func(p string) string { return p }
 	if isPath {
 		// every spelling of one file (relative, ./, //, a symlink, another

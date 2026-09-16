@@ -26,6 +26,12 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	if err := os.Symlink(secret, link); err != nil {
 		t.Fatal(err)
 	}
+	// the kernel resolves out/.. from out's target, outside the project
+	outside := t.TempDir()
+	os.Mkdir(filepath.Join(outside, "sub"), 0o700)
+	if err := os.Symlink(filepath.Join(outside, "sub"), filepath.Join(h.Dirs.ProjectDir, "out")); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		subject, arg string
 		want         bool
@@ -39,6 +45,10 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.read", secret, false},
 		{"fs.read", link, false},
 		{"fs.read", "/etc/passwd", false},
+		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false},
+		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false},
+		{"tool.bash", "cat out/../loot.txt", false},
+		{"tool.bash", "cat main.go", true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false},
 		{"net.evil.tld", "https://evil.tld/?d=leak", false},
 	} {

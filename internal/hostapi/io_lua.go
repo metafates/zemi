@@ -38,27 +38,23 @@ func (h *Host) secretPath(p string) bool {
 	if perm.PathIsSecret(p) {
 		return true
 	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return true
-	}
-	return perm.PathIsSecret(perm.RealPath(abs))
+	real := perm.RealPath(p)
+	return real == "" || perm.PathIsSecret(real)
 }
 
 // inJail reports whether path is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).
-	real := perm.CanonPath(abs)
+	real := perm.CanonPath(path)
+	if real == "" {
+		return false
+	}
 	for _, r := range roots {
-		if r == "" {
+		rr := perm.CanonPath(r)
+		if r == "" || rr == "" {
 			continue
 		}
-		rr := perm.CanonPath(r)
 		if real == rr || strings.HasPrefix(real, rr+string(filepath.Separator)) {
 			return true
 		}

@@ -291,3 +291,44 @@ func TestChildEnvRefusesGatedExtras(t *testing.T) {
 		}
 	}
 }
+
+func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	proj, out := filepath.Join(tmp, "proj"), filepath.Join(tmp, "out")
+	for _, d := range []string{filepath.Join(proj, "real"), filepath.Join(out, "sub", "deep")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for link, target := range map[string]string{
+		"L":      filepath.Join(out, "sub"),
+		"rel":    "../out/sub/deep",
+		"nested": "L/deep",
+		"loop1":  "loop2",
+		"loop2":  "loop1",
+		"real/R": "../L",
+		"gone":   filepath.Join(out, "new"),
+	} {
+		if err := os.Symlink(target, filepath.Join(proj, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(proj)
+	for _, c := range []struct{ in, want string }{
+		{"L/../x", filepath.Join(out, "x")},
+		{proj + "/L/../x", filepath.Join(out, "x")},
+		{"L/deep/../../x", filepath.Join(out, "x")},
+		{"rel/../x", filepath.Join(out, "sub", "x")},
+		{"nested/../../x", filepath.Join(out, "x")},
+		{"real/R/../x", filepath.Join(out, "x")},
+		{"real/../x", filepath.Join(proj, "x")},
+		{"L/new/../../x", filepath.Join(out, "x")},
+		{"nope/../x", filepath.Join(proj, "x")},
+		{"gone", filepath.Join(out, "new")},
+		{"loop1/x", ""},
+	} {
+		if got := RealPath(c.in); got != c.want {
+			t.Errorf("RealPath(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

@@ -340,7 +340,7 @@ func inGitDir(p string) bool {
 	}
 	// EqualFold also matches .GIT on a case-sensitive volume, which only asks more
 	isGit := func(s string) bool { return strings.EqualFold(s, ".git") }
-	for _, q := range []string{abs, perm.RealPath(abs)} {
+	for _, q := range []string{abs, perm.RealPath(p)} {
 		if slices.ContainsFunc(strings.Split(filepath.ToSlash(q), "/"), isGit) {
 			return true
 		}
@@ -358,7 +358,8 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	}
 	p := arg
 	if !filepath.IsAbs(p) {
-		p = filepath.Join(h.Dirs.ProjectDir, p)
+		// not Join: it cleans .. before RealPath sees a symlink before it
+		p = h.Dirs.ProjectDir + string(filepath.Separator) + p
 	}
 	roots := []string{h.Dirs.ProjectDir, h.ScratchDir()}
 	if use == perm.ArgRun {
