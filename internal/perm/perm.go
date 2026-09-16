@@ -8,6 +8,7 @@ package perm
 import (
 	"cmp"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -124,6 +125,61 @@ func subjectMatches(rule, subject string) bool {
 	return rule == subject
 }
 
+// CanonPath is the form fs rules match against and file tools key by:
+// absolute, clean, symlinks of the longest existing prefix resolved, and
+// case folded where the filesystem folds.
+// NOTE: a case-sensitive volume on darwin or windows folds two real files
+// into one; a rule for one then covers both.
+func CanonPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return foldCase(RealPath(p))
+}
+
+// RealPath resolves symlinks in the longest existing prefix of p, so a file
+// about to be created is judged by its real parent directory.
+func RealPath(p string) string {
+	suffix := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, suffix)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, suffix)
+		}
+		suffix = filepath.Join(filepath.Base(p), suffix)
+		p = parent
+	}
+}
+
+func foldCase(p string) string {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
+// canonPattern puts an fs rule pattern in CanonPath form: the literal
+// directory before the first wildcard is canonicalized, the rest only case
+// folded. A pattern that starts with a wildcard ("*/.env") stays as is.
+func canonPattern(pat string) string {
+	i := strings.IndexAny(pat, "*?")
+	if i < 0 {
+		return CanonPath(pat)
+	}
+	sep := string(filepath.Separator)
+	cut := strings.LastIndex(pat[:i], sep)
+	switch {
+	case i == 0 || cut == 0:
+		return foldCase(pat)
+	case cut < 0:
+		return CanonPath(".") + sep + foldCase(pat)
+	}
+	return CanonPath(pat[:cut]) + foldCase(pat[cut:])
+}
+
 // Evaluate decides one operation argument against one subject's rules.
 // Ordering: deny > ask > allow; within a decision, most specific pattern
 // (fewest wildcards, then longest literal prefix) wins. An argument that
@@ -139,8 +195,15 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		fellThru   []string
 	)
 	// DESIGN §9: .. resolves before matching, so dir/* cannot cover dir/../x
-	if (strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")) && strings.Contains(arg, "..") {
+	isPath := strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")
+	if isPath && strings.Contains(arg, "..") {
 		arg = filepath.Clean(arg)
+	}
+	match, canon := arg, func(p string) string { return p }
+	if isPath {
+		// every spelling of one file (relative, ./, //, a symlink, another
+		// case) must meet the same rules, so both sides match canonical
+		match, canon = CanonPath(arg), canonPattern
 	}
 	s.mu.Lock()
 	rules := make([]Rule, len(s.rules))
@@ -153,7 +216,7 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		if r.Principal != "" && principal != "" && r.Principal != principal {
 			continue
 		}
-		if !globMatch(r.Pattern, arg) {
+		if !globMatch(canon(r.Pattern), match) {
 			continue
 		}
 		// globs span newlines so deny and ask rules hold, but an allow for
@@ -161,7 +224,7 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		if r.Decision == Allow && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
 			continue
 		}
-		if r.NotMatch != "" && globMatch(r.NotMatch, arg) {
+		if r.NotMatch != "" && globMatch(canon(r.NotMatch), match) {
 			fellThru = append(fellThru, r.Pattern)
 			continue
 		}

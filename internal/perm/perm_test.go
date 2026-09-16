@@ -1,6 +1,9 @@
 package perm
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -42,6 +45,27 @@ func TestEvaluateDecisions(t *testing.T) {
 	}
 	if o := s.Evaluate("fs.read", "/anything", ""); o.Decision != Allow {
 		t.Fatalf("wildcard read: got %v", o.Decision)
+	}
+}
+
+func TestEvaluateCanonicalPaths(t *testing.T) {
+	proj := t.TempDir()
+	if err := os.Mkdir(filepath.Join(proj, "private"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(proj, "private"), filepath.Join(proj, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(proj)
+	s := store(t, Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "private", "*"), Decision: Deny})
+	spellings := []string{"private/x", "./private/x", proj + "//private/x", "alias/x", filepath.Join(proj, "alias", "x")}
+	if runtime.GOOS == "darwin" {
+		spellings = append(spellings, strings.ToUpper(filepath.Join(proj, "private", "x")))
+	}
+	for _, arg := range spellings {
+		if o := s.Evaluate("fs.read", arg, "model"); o.Decision != Deny {
+			t.Errorf("%q skipped the deny rule: %v", arg, o.Decision)
+		}
 	}
 }
 

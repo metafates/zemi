@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -253,25 +252,10 @@ func lockFile(path string) func() {
 	return mu.Unlock
 }
 
-// absPath is the key both the read log and the file locks use: symlinks
-// resolve, so an alias and its target are the same file, and case folds
-// where the filesystem does, so main.go and Main.go take the same lock. A
-// path that does not exist yet (a write) keeps its absolute form.
-// NOTE: a case-sensitive volume on darwin or windows makes two real files
-// share a key; that costs a re-read, never a wrong write.
-func absPath(path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return path
-	}
-	if real, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = real
-	}
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		return strings.ToLower(abs)
-	}
-	return abs
-}
+// absPath is the key both the read log and the file locks use, the same
+// form fs rules match: an alias and its target, or main.go and Main.go
+// where the filesystem folds case, take the same lock.
+func absPath(path string) string { return perm.CanonPath(path) }
 
 // runWrite creates or overwrites a file (parents created).
 func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {

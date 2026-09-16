@@ -1939,7 +1939,13 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		}
 		return "don't ask again for " + strings.Join(shown, ", "), rules
 	case req.Subject == "fs.write" || req.Subject == "fs.read":
-		dir := filepath.Dir(req.Arg)
+		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
+		// the rule would be "*", which matches every path on disk
+		abs, err := filepath.Abs(req.Arg)
+		if err != nil {
+			return "", nil
+		}
+		dir := filepath.Dir(abs)
 		shown := dir
 		if rel, err := filepath.Rel(h.Dirs.ProjectDir, dir); err == nil && !strings.HasPrefix(rel, "..") {
 			shown = rel
