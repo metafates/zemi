@@ -54,7 +54,10 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	var b strings.Builder
 	var images []fantasy.FilePart
 	seen := map[string]bool{}
-	for _, m := range attachRef.FindAllStringSubmatch(text, -1) {
+	// what follows the marker is host-composed from model output (agent
+	// reports), and an @ there must not attach anything
+	typed, _, _ := strings.Cut(text, attachMarker)
+	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
 		rel := strings.TrimRight(m[1], ".,;:!?)")
 		if seen[rel] {
 			continue
@@ -70,21 +73,30 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		} else {
 			var err error
 			abs, err = h.resolveJailed(rel, []string{h.Dirs.ProjectDir})
-			if err != nil || h.Perm.Evaluate("fs.read", abs, "user").Decision != perm.Allow {
+			// the model reads the file, so the model's rules apply
+			if err != nil || h.Perm.Evaluate("fs.read", abs, "model").Decision != perm.Allow {
 				continue
 			}
 		}
-		if mt, ok := imageTypes[strings.ToLower(filepath.Ext(abs))]; ok {
-			data, err := os.ReadFile(abs)
-			if err != nil || len(data) > attachImageMax {
+		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
+		limit := int64(attachMax)
+		if image {
+			limit = attachImageMax
+		}
+		// a FIFO blocks the turn, and a huge file would be read whole first
+		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() || fi.Size() > limit {
+			continue
+		}
+		data, err := os.ReadFile(abs)
+		if image {
+			if err != nil || int64(len(data)) > limit {
 				continue
 			}
 			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: data, MediaType: mt})
 			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", rel)
 			continue
 		}
-		data, err := os.ReadFile(abs)
-		if err != nil || len(data) > attachMax || !utf8.Valid(data) {
+		if err != nil || int64(len(data)) > limit || !utf8.Valid(data) {
 			continue
 		}
 		fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)

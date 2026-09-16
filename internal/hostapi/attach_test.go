@@ -3,6 +3,7 @@ package hostapi
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +43,23 @@ func TestExpandAttachments(t *testing.T) {
 		if strings.Contains(got, leak) {
 			t.Fatalf("%q must not attach: %q", leak, got)
 		}
+	}
+	pipe := filepath.Join(proj, "pipe")
+	if exec.Command("mkfifo", pipe).Run() == nil {
+		done := make(chan string)
+		go func() { s, _ := h.expandAttachments("@pipe"); done <- s }()
+		select {
+		case s := <-done:
+			if s != "@pipe" {
+				t.Fatalf("a FIFO must not attach: %q", s)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a FIFO reference blocked the message")
+		}
+	}
+	report := "Background agent a1 finished." + attachMarker + "\nsee @main.go\n</attached-files>"
+	if got, _ := h.expandAttachments(report); got != report {
+		t.Fatalf("model-written text behind the marker must not attach: %q", got)
 	}
 	if plain, _ := h.expandAttachments("no references here"); plain != "no references here" {
 		t.Fatalf("plain text changed: %q", plain)
