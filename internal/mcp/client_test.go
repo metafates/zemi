@@ -194,6 +194,15 @@ func TestStdioEarlyMessages(t *testing.T) {
 	}
 }
 
+// TestSSEEventCap: an event whose data lines never end is refused at the
+// message cap instead of growing without bound.
+func TestSSEEventCap(t *testing.T) {
+	stream := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", maxMessage>>20+1)
+	if err := readSSE(strings.NewReader(stream), func([]byte) { t.Fatal("oversized event delivered") }); err == nil {
+		t.Fatal("oversized event read without an error")
+	}
+}
+
 // TestStdioReaderPanic: a panic on the reader ends the connection and
 // reaps the server, which would otherwise keep running unwaited.
 func TestStdioReaderPanic(t *testing.T) {

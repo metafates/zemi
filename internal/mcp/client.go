@@ -525,10 +525,11 @@ func readSSE(r io.Reader, handle func([]byte)) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), maxMessage)
 	var data []string
+	size := 0
 	flush := func() {
 		if len(data) > 0 {
 			handle([]byte(strings.Join(data, "\n")))
-			data = nil
+			data, size = nil, 0
 		}
 	}
 	for sc.Scan() {
@@ -536,7 +537,11 @@ func readSSE(r io.Reader, handle func([]byte)) error {
 		if line == "" {
 			flush()
 		} else if v, ok := strings.CutPrefix(line, "data:"); ok {
-			data = append(data, strings.TrimPrefix(v, " "))
+			v = strings.TrimPrefix(v, " ")
+			if size += len(v); size > maxMessage {
+				return errors.New("mcp: sse event exceeds the message cap")
+			}
+			data = append(data, v)
 		}
 	}
 	flush()
