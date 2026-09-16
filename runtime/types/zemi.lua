@@ -77,7 +77,8 @@ function zemi.config.watch(path, fn) end
 function zemi.config.schema() end
 
 --- Replay the boot steps, so config just written takes effect. Same as
---- /reload. Refused while config is still loading.
+--- /reload. Refused while config is still loading. User or builtin origin
+--- only.
 ---@return true|nil ok
 ---@return string|nil err
 function zemi.config.reload() end
@@ -153,6 +154,8 @@ function zemi.command.del(name) end
 --- Run a registered command as if it were typed.
 ---@param name string
 ---@param args? string
+---@return true|nil ok
+---@return string|nil err Not a command, bad arguments, the command's own error, or a command the caller's origin may not run (a Go command below builtin, a more trusted origin's Lua command).
 function zemi.command.run(name, args) end
 
 ---@return zemi.Command[]
@@ -187,8 +190,7 @@ function zemi.event.on(name, fn, opts) end
 ---@return boolean removed
 function zemi.event.off(id) end
 
---- Emit an event. Only `user.*` names and catalogued events are emittable,
---- and project code may emit `user.*` only.
+--- Emit a `user.*` event, the only names Lua may emit from any origin.
 ---@param name string
 ---@param payload? table
 function zemi.event.emit(name, payload) end
@@ -453,7 +455,7 @@ zemi.win = {}
 ---@field title string
 ---@field kind string
 ---@field cmd string
----@field owner "model"|"lua"
+---@field owner string "model", "lua", or "agent:<name>" for a subagent's window.
 ---@field cols integer
 ---@field rows integer
 ---@field running boolean
@@ -496,13 +498,19 @@ function Win:wait_text(want, timeout_ms) end
 ---@return zemi.WinInfo
 function Win:info() end
 --- Give the user's keys to this window.
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
 function Win:focus() end
 --- Change where or how the window shows, or hide and show it; the program
 --- keeps running. Like nvim_win_set_config for a terminal buffer.
 ---@param layout zemi.WinLayout
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
 ---@return true|nil, string|nil
 function Win:set(layout) end
 --- End the program (if still running) and remove the window.
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
 function Win:close() end
 
 --- Open a window: a real terminal (TERM=xterm-256color) drawn inside zemi
@@ -519,11 +527,15 @@ function zemi.win.get(id) end
 ---@return zemi.WinInfo[]
 function zemi.win.list() end
 
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
 ---@param id integer
 ---@return boolean
 function zemi.win.close(id) end
 
 --- Focus a window by id; 0 or nothing gives the keys back to zemi.
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
 ---@param id? integer
 function zemi.win.focus(id) end
 
@@ -639,7 +651,7 @@ zemi.model = {}
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
 
---- Switch the model. Raises for an unknown id.
+--- Switch the model. Raises for an unknown id. User or builtin origin only.
 ---@param id string
 function zemi.model.set(id) end
 
@@ -686,12 +698,13 @@ function zemi.model.pick() end
 ---@class zemi.agent
 zemi.agent = {}
 
---- Define a named profile (model, prompt, tool set). User or project
---- config only.
+--- Define a named profile (model, prompt, tool set). User or builtin origin
+--- only.
 ---@param name string
 ---@param spec zemi.ProfileSpec
 function zemi.agent.profile(name, spec) end
 
+--- User or builtin origin only.
 ---@param name string
 function zemi.agent.set_default(name) end
 
@@ -699,6 +712,7 @@ function zemi.agent.set_default(name) end
 function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter.
+--- User or builtin origin only.
 ---@param text string
 function zemi.agent.send(text) end
 
@@ -782,10 +796,12 @@ function zemi.session.messages() end
 ---@return zemi.SessionInfo[]
 function zemi.session.list(opts) end
 
+--- User or builtin origin only.
 ---@return true|nil ok
 ---@return string|nil err
 function zemi.session.new() end
 
+--- User or builtin origin only.
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
@@ -795,7 +811,7 @@ function zemi.session.open(id) end
 function zemi.session.todos() end
 
 --- Restore the files a turn changed and cut the conversation back to the
---- message with this id.
+--- message with this id. User or builtin origin only.
 ---@param message_id string
 ---@return integer|nil restored
 ---@return string|nil err
@@ -814,14 +830,16 @@ zemi.composer = {}
 ---@return zemi.ComposerState
 function zemi.composer.get() end
 
+--- User or builtin origin only.
 ---@param text string
 ---@param cursor? integer -1, the default, puts the cursor at the end.
 function zemi.composer.set(text, cursor) end
 
+--- User or builtin origin only.
 ---@param text string
 function zemi.composer.insert(text) end
 
---- Submit the draft, as if enter was pressed.
+--- Submit the draft, as if enter was pressed. User or builtin origin only.
 function zemi.composer.submit() end
 
 -- ---------------------------------------------------------------------------
@@ -849,6 +867,7 @@ function zemi.composer.submit() end
 ---@field base? string The mode this one starts from.
 ---@field description? string
 ---@field prompt? string A system prompt section while the mode is active.
+---@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on.
 
 ---@class zemi.PermMode
 ---@field name string
@@ -1178,7 +1197,8 @@ zemi.memory = {}
 function zemi.memory.search(query, opts) end
 
 --- Propose a memory. It goes through intake and the autonomy gate, so it
---- is stored or queued for review, never written blindly.
+--- is stored or queued for review, never written blindly. Raises for
+--- project and learned code.
 ---@param spec zemi.MemorySpec
 ---@return zemi.MemoryAddResult|nil res
 ---@return string|nil err

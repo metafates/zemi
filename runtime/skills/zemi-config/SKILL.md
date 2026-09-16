@@ -281,8 +281,10 @@ It loads after the user answers the trust prompt (`y` trust, `n` not now, `d` ne
 this version of the files); any change to files under `.zemi/` asks again. Project code
 cannot register providers, MCP or LSP servers, allow or permanent rules, permission modes,
 `tool.pre` rewrites, builtin tool names or `agent.assemble` sections, cannot set settings,
-call `zemi.agent.run` or `zemi.workflow.run`, read secret-looking env vars, or override user
-registrations; put personal settings in `~/.config/zemi/init.lua` instead.
+call `zemi.agent.run`, `zemi.agent.send`, `zemi.agent.profile`, `zemi.workflow.run`,
+`zemi.model.set`, `zemi.config.reload`, `zemi.memory.add` or the `zemi.session` and
+`zemi.composer` mutators, run a Go command or a more trusted origin's command, touch windows
+it did not open, deny quitting, read secret-looking env vars, or override user registrations; put personal settings in `~/.config/zemi/init.lua` instead.
 
 ## Splitting config into files
 

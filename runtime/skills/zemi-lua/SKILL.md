@@ -27,7 +27,9 @@ opened, or deny `app.quit` (project and learned denials are ignored). Lua calls 
 `require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
 plugin; project code also searches `.zemi/lua/` first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
-tree. Each file loads once per runtime (both names share it); `/reload` loads fresh.
+tree. Builtin modules load once, and plugin, project and learned code get them read-only;
+any other file loads once per requiring origin (both names share that instance). `/reload`
+loads fresh.
 
 ## Rules that keep zemi responsive
 
