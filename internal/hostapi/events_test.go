@@ -93,14 +93,21 @@ func TestToolPreOnce(t *testing.T) {
 	}
 }
 
+// TestLuaToolRunsToolPre: a rewrite is refused rather than running the
+// original input the hook meant to replace.
 func TestLuaToolRunsToolPre(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.tool.register({ name = "weather", execute = function() return "sunny" end })
-		zemi.event.on("tool.pre", function(ev) if ev.tool == "weather" then return { decision = "deny", reason = "no" } end end)
-	`)
-	resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
-	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "denied by hook") {
-		t.Fatalf("resp = %+v, %v", resp, err)
+	for _, c := range []struct{ ret, want string }{
+		{`{ decision = "deny", reason = "no" }`, "denied by hook"},
+		{`{ decision = "rewrite", input = { city = "x" } }`, "rewrite is not supported"},
+	} {
+		h, r := newTestHost(t)
+		runUser(t, r, `
+			zemi.tool.register({ name = "weather", execute = function() return "sunny" end })
+			zemi.event.on("tool.pre", function(ev) if ev.tool == "weather" then return `+c.ret+` end end)
+		`)
+		resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) {
+			t.Errorf("%s: resp = %+v, %v", c.ret, resp, err)
+		}
 	}
 }

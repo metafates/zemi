@@ -608,7 +608,8 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 }
 
 // preCheck runs the tool.pre events for a host-implemented tool: deny
-// becomes an error result, halt stops the turn. Rewrites are not offered.
+// becomes an error result, halt stops the turn. A rewrite is refused: these
+// tools run and gate their own input, so running the original would ignore it.
 func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
@@ -616,6 +617,8 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) 
 	switch decision {
 	case "deny":
 		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true, nil
+	case "rewrite":
+		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true, nil
 	case "halt":
 		return fantasy.ToolResponse{}, true, fmt.Errorf("halted by hook: %s", reason)
 	}
