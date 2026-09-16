@@ -526,12 +526,17 @@ type grepHit struct {
 	text string
 }
 
+// jailedGrep never reads secret-shaped files, which the lua.fs.read gate
+// would ask for, nor symlinks, which could lead out of the project.
 func (h *Host) jailedGrep(re *regexp.Regexp) []grepHit {
 	var out []grepHit
 	root := h.Dirs.ProjectDir
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return skipHidden(root, p, d, err)
+		}
+		if d.Type()&os.ModeSymlink != 0 || perm.PathIsSecret(p) {
+			return nil
 		}
 		f, err := os.Open(p)
 		if err != nil {
