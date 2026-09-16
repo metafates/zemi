@@ -478,7 +478,7 @@ const (
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
 func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	pattern, root := str(input["pattern"]), argOr(input["path"], ".")
+	pattern, root := str(input["pattern"]), searchRoot(input)
 	var rels []string
 	collect := func(rel string) bool {
 		rels = append(rels, rel)
@@ -520,7 +520,7 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // runGrep searches file contents under root, optionally only in files
 // matching the include glob. Secret-shaped files are never searched.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	pattern, root, include := str(input["pattern"]), argOr(input["path"], "."), str(input["include"])
+	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil

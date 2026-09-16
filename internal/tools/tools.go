@@ -524,7 +524,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: argOr(in["path"], "."), Reason: "glob files"}}
+				return []Request{{Subject: "fs.read", Arg: searchRoot(in), Reason: "glob files"}}
 			},
 			runGlob),
 
@@ -536,7 +536,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: argOr(in["path"], "."), Reason: "search files"}}
+				return []Request{{Subject: "fs.read", Arg: searchRoot(in), Reason: "search files"}}
 			},
 			runGrep),
 
@@ -924,11 +924,12 @@ func strList(v any) []string {
 	return out
 }
 
-func argOr(v any, def string) string {
-	if s := str(v); s != "" {
+// searchRoot is where glob and grep look: path, or the project root.
+func searchRoot(in map[string]any) string {
+	if s := str(in["path"]); s != "" {
 		return s
 	}
-	return def
+	return "."
 }
 
 func truncOut(s string) string {
