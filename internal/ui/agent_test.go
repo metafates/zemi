@@ -763,3 +763,20 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 	}
 	run(`local n = #zemi.errors.list(); assert(n == 1, "errors: " .. n)`)
 }
+
+// TestPermTitle: the prompt names what a request does in words, not its subject.
+func TestPermTitle(t *testing.T) {
+	for _, c := range []struct {
+		req          hostapi.PermRequest
+		verb, target string
+	}{
+		{hostapi.PermRequest{Subject: "tool.bash", Arg: "make", Description: "Build"}, "Run a command", "Build"},
+		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write", "a.go"},
+		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua in zemi", ""},
+		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua in zemi", "x.lua"},
+	} {
+		if verb, target := permTitle(c.req, "/p"); verb != c.verb || target != c.target {
+			t.Errorf("%+v: %q %q", c.req, verb, target)
+		}
+	}
+}
