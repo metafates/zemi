@@ -25,6 +25,7 @@ func globRegexp(pattern string) *regexp.Regexp {
 	}
 	var b strings.Builder
 	// (?s): a quoted newline in an argument must not slip past a deny rule
+	// (Evaluate keeps allow rules to one line)
 	b.WriteString(`(?s)^`)
 	for _, r := range pattern {
 		switch r {

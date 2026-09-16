@@ -156,6 +156,11 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 		if !globMatch(r.Pattern, arg) {
 			continue
 		}
+		// globs span newlines so deny and ask rules hold, but an allow for
+		// one line must not cover a second line the user never saw
+		if r.Decision == Allow && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
+			continue
+		}
 		if r.NotMatch != "" && globMatch(r.NotMatch, arg) {
 			fellThru = append(fellThru, r.Pattern)
 			continue
