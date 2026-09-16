@@ -188,7 +188,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	go w.readLoop()
 	go w.replyLoop()
 	go func() {
-		err := cmd.Wait()
+		err := proc.Wait(cmd)
 		var ee *exec.ExitError
 		switch {
 		case errors.As(err, &ee):
