@@ -103,10 +103,11 @@ func (l *Logger) Close() {
 
 // Log writes one record.
 func (l *Logger) Log(level Level, origin, msg string, fields Fields) {
-	msg = sanitize.LogLine(msg)
+	// Lua picks the field keys, so they are sanitized like the values
+	origin, msg = sanitize.LogLine(origin), sanitize.LogLine(msg)
 	pairs := make([]string, 0, len(fields))
 	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		pairs = append(pairs, k+"="+sanitize.LogLine(fmt.Sprint(fields[k])))
+		pairs = append(pairs, sanitize.LogLine(k)+"="+sanitize.LogLine(fmt.Sprint(fields[k])))
 	}
 	fs := strings.Join(pairs, " ")
 	e := Entry{Time: time.Now(), Level: level, Origin: origin, Message: msg, Fields: fs}
