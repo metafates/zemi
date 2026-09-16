@@ -102,6 +102,8 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
+		{name: "string.rep over the cap", script: `return ("x"):rep(1e13)`, wantErr: true, want: "byte cap"},
+		{name: "string.rep under the cap", script: `return string.rep("ab", 2) .. string.rep("x", -1)`, want: "abab"},
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
