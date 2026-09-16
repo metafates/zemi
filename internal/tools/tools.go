@@ -886,19 +886,21 @@ func bashRequests(cmd, description string) []Request {
 func jobLine(command string, args []string, env map[string]any) string {
 	var words []string
 	for _, k := range slices.Sorted(maps.Keys(env)) {
-		words = append(words, k+"="+shellQuote(fmt.Sprint(env[k])))
+		words = append(words, k+"="+ShellQuote(fmt.Sprint(env[k])))
 	}
 	if len(args) == 0 {
 		return strings.Join(append(words, command), " ")
 	}
-	words = append(words, shellQuote(command))
+	words = append(words, ShellQuote(command))
 	for _, a := range args {
-		words = append(words, shellQuote(a))
+		words = append(words, ShellQuote(a))
 	}
 	return strings.Join(words, " ")
 }
 
-func shellQuote(s string) string {
+// ShellQuote quotes s as one sh word, leaving words sh would not split or
+// expand bare.
+func ShellQuote(s string) string {
 	const plain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-./:@%+,="
 	if s != "" && strings.Trim(s, plain) == "" {
 		return s

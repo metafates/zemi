@@ -847,11 +847,12 @@ func (w *lineWriter) flush() {
 var jobSeq atomic.Int64
 
 // argvLine is an exec'd program as the shell line the gate checks: every
-// word quoted, so a cmd of "ls; rm x" stays one word as it does in exec.
+// word quoted where sh would split it, so a cmd of "ls; rm x" stays one word
+// as it does in exec.
 func argvLine(cmd string, args []string) string {
 	var words []string
 	for _, w := range append([]string{cmd}, args...) {
-		words = append(words, "'"+strings.ReplaceAll(w, "'", `'\''`)+"'")
+		words = append(words, tools.ShellQuote(w))
 	}
 	return strings.Join(words, " ")
 }
