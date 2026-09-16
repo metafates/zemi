@@ -164,7 +164,8 @@ be gated with the same `lua.` subject at the Lua boundary.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto: `yolo` allows; `auto` first settles locally (reads and
-edits **inside the jail** that are not secret-shaped, except writes under `.git`,
+edits **inside the jail** that are not secret-shaped, except writes under `.git`, the
+project's `.zemi` or zemi's own config/data/state dirs, `tool.workflow` scripts,
 `perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
 escaped tagged data like the action) and falling back to the user ask with its reason; `plan` denies writes and runs `SafeCommand` commands. Network requests are
@@ -204,9 +205,10 @@ Every chunk carries an origin from its resolved path class: `user` (~/.config/ze
 `builtin` (embedded runtime/) > `plugin` (site/pack) > `project` (<project>/.zemi);
 `learned` code is denylisted from dangerous APIs. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
-last-writer-wins. Project origin additionally cannot register providers,
-`tool.pre` rewrites, builtin tool names, or emit host-owned events (only `user.*` and
-catalogued events are emittable, internal/hostapi/event.go). A keymap that is a prefix or an
+last-writer-wins. Project origin additionally cannot register providers or builtin tool
+names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
+events: `zemi.event.emit` takes only `user.*`, and `zemi.event.on` takes catalogued names
+or `user.*` (internal/hostapi/event.go). A keymap that is a prefix or an
 extension of a more trusted key is refused, `zemi.command.run` refuses a more trusted
 origin's Lua command (its body runs under that origin), windows can be closed, focused or
 moved only by user, builtin or the origin that opened them, and `app.quit` denials from

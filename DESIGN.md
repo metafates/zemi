@@ -299,10 +299,7 @@ flagged reduced trust: its registrations are tagged `origin = "project"`
 ask rules and `not_match` guards; allow rules are user-config-only), and
 its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.tool.override` (same rewrite capability, same denial), no
-`tool.post` context injection (plugins get it fenced, §6.2; project
-config is refused outright), no
-`load`/`loadstring` (a trust hash pins files, not code built at runtime),
-no `zemi.provider.register`, no `zemi.agent.profile` /
+`zemi.provider.register`, no `zemi.agent.profile` /
 `zemi.agent.set_default` (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
 injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
@@ -312,7 +309,11 @@ opened, no keymap that is a prefix or an extension of a more trusted
 binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
 (builtin ids are reserved; last-writer-wins applies only within one
 origin; cross-origin profile id collisions are refused, §11). The same
-denylist binds learned-origin code (learned skill hooks, §10.5). A
+denylist binds learned-origin code (learned skill hooks, §10.5).
+`load`/`loadstring` stay available to every origin: a chunk they build
+runs as the loading origin (its chunk name is re-tagged, so a forged name
+does not stick) under the same denylist. The trust hash pins files, so
+trusted project code can still run source it reads at runtime. A
 one-time trust prompt gates the first project-config load and stores a
 hash of the project config tree; a changed hash (a pull swapped the Lua)
 re-prompts before load. The prompt answers `y` (trust this
@@ -424,7 +425,8 @@ in which milestone.
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a masked mutator in a
   render, an origin that may not make the call) and a permission gate
-  that does not allow always raise.
+  that does not allow always raise. One exception: `zemi.command.run`
+  returns `nil, err` when the caller's origin may not run the command.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
   timer, session, window) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
@@ -780,10 +782,10 @@ or it fails closed every time. URLs go through the permission gate like tools do
 a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
 looked up from the parent by name); every `env`-extras key runs the §9
-environment-affecting gate (a dangerous name forces `ask` for the job
-regardless of allow rules, and env extras render in the ask overlay's
-preview for model `job_*` calls; for Lua-originated jobs a gate-forced
-ask is a refusal); jobs never inherit the controlling
+environment gates: a secret-shaped or environment-affecting name is
+refused when the job starts (`perm.ChildEnv`), and for model `job_start`
+calls the extras also lead the gated command line as assignments, so
+rules match them and the ask overlay previews them; jobs never inherit the controlling
 tty (each runs in its own session through `internal/proc`; stdin is
 closed unless the job asks for a pipe with `stdin = true`).
 
@@ -1142,15 +1144,17 @@ configured provider later (`zemi.memory.search` signature does not change).
   `zemi.state.get`, `zemi.log`, list/introspection calls) and
   UI-shaping host APIs (`zemi.state.put`, `zemi.notify`, `zemi.timer`,
   `zemi.ui.*`, `zemi.keymap`, `zemi.command`,
-  `zemi.model.set`/`zemi.model.pick` (the M1 picker)) are allow; `fs.read`
+  `zemi.model.pick` (the M1 picker)) are allow; `fs.read`
   inside the jail is allow except secret-shaped paths (matched
   case-insensitively on the resolved path: `.env`, `.env.*`, `.envrc`,
   `*.pem`, `*.key`, `id_rsa*`, `*credential*`, `*secret*`, `.netrc`),
   which ask by default and whose contents are
   scrubbed at the store and log boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,
-  `net.*`, `tool.*`, `zemi.job`, `zemi.http`, `zemi.memory.add`,
-  `zemi.agent.send`) is `ask`; a Lua-originated call to one of these
+  `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
+  `lua.http.<method>`) is `ask`; `zemi.agent.send` and `zemi.model.set`
+  are not gated but refused below builtin origin, and `zemi.memory.add` is
+  refused for project and learned code (§5); a Lua-originated call to one of these
   APIs checks the same capability under its `lua.` subject (`lua.fs.read`
   mirrors `fs.read`, subject namespace above), so these defaults cover
   both origins without extra rules. Registration and config APIs
@@ -1165,7 +1169,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   and `mcp.*` allows flip to `ask`, and `perm.SafeCommand` commands
   run), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped (writes under `.git` excepted), and `SafeCommand`
+  are not secret-shaped (writes under `.git`, the project's `.zemi` or
+  zemi's own config, data and state dirs excepted), workflow scripts (the
+  script is sandboxed and each agent it starts is gated), and `SafeCommand`
   commands, whose arguments may not run code from the scratchpad and
   whose recursive searches settle only over trees with no secret-shaped
   file; anything it cannot settle goes to a one-shot screening model
@@ -1184,8 +1190,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   the per-session scratchpad
   (`<state>/projects/<hash>/scratch/<session id>`, §5), which is the one
   path `fs.write` allows by default; the read jail is wider: project
-  roots, the config repo, the project's `.zemi`, both skills dirs, and
-  that scratchpad. `site/pack` and the rest of the state dir are never
+  roots, the config repo, the project's `.zemi`, both skills dirs, that
+  scratchpad, the log directory and `<data>/types` (the API annotations
+  and shipped Lua UI). `site/pack` and the rest of the state dir are never
   write roots, so an approved `fs.write` cannot plant plugin code that
   auto-loads at the next boot. The config repo is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write`
@@ -1474,12 +1481,11 @@ model call (§10.3).
   profile, a user command, or the shipped chat widget. Command names
   collide case-insensitively: a registration whose name differs from an
   existing command only by case is refused, so `/reload`/`/RELOAD`
-  cannot shadow the reserved `/reload`. MCP tool names (M5) register
-  through the same cross-origin collision path with `mcp:<server>`
-  ranked below `project`, so an MCP server cannot shadow a builtin
-  tool, a command, or another origin's registration; two `mcp:<server>`
-  origins exposing the same tool name refuse outright (no LWW across
-  distinct servers).
+  cannot shadow the reserved `/reload`. MCP tools (M5) are named
+  `mcp_<server>_<tool>` (64 chars max) and gated per call as
+  `mcp.<server>`; servers come from user config only. When two tools map
+  to one name, the first server's tool is kept and the rest are skipped
+  with a logged warning.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
   its decision's source: rule, hook, user, overlay, or default), decisions,
   memory writes, revisions all logged with IDs so the reflector and the user
@@ -1566,8 +1572,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   Namespace: `zemi.eval`.
 - **M5, platform**: subagents (`zemi.agent.run` and the `agent` tool,
   §6.3), LSP client + tools, MCP client (bridged as tools and as
-  `zemi.mcp` under an `mcp:<server>` origin registered through §11's
-  collision path: MCP servers quarantine
+  `zemi.mcp`, tools named as in §11: MCP servers quarantine
   like plugins, their tool descriptions render to the model as fenced
   untrusted data in the §6.2 style, and the server process itself sits
   outside the §9 net gate like any user-installed binary), plugin
