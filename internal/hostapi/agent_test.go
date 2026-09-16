@@ -747,15 +747,25 @@ func TestAlwaysChoice(t *testing.T) {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
 		}
 	}
-	_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "main.go")})
-	s := perm.NewStore()
-	s.Add(rules[0])
-	for arg, want := range map[string]perm.Decision{
-		"main.go": perm.Allow, "internal/a.go": perm.Allow,
-		".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask,
+	for approved, cases := range map[string]map[string]perm.Decision{
+		"main.go": {
+			"main.go": perm.Allow, "internal/a.go": perm.Allow,
+			".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask,
+		},
+		".gitignore":               {".gitignore": perm.Allow, ".gitkeep": perm.Ask, ".git/config": perm.Ask},
+		".github/workflows/ci.yml": {".github/workflows/ci.yml": perm.Allow, ".git/config": perm.Ask},
+		".gitmodules":              {".gitmodules": perm.Ask},
+		"sub/.git":                 {"sub/.git": perm.Ask},
 	} {
-		if o := s.Evaluate("fs.write", filepath.Join(proj, arg), "model"); o.Decision != want {
-			t.Errorf("always edits in the project: %s = %v, want %v", arg, o.Decision, want)
+		_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, approved)})
+		s := perm.NewStore()
+		for _, r := range rules {
+			s.Add(r)
+		}
+		for arg, want := range cases {
+			if o := s.Evaluate("fs.write", filepath.Join(proj, arg), "model"); o.Decision != want {
+				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, o.Decision, want)
+			}
 		}
 	}
 }
