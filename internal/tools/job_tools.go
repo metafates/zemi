@@ -1,8 +1,8 @@
 // job_tools.go ships the job_* built-ins: background processes the model
 // can start, read, list and kill. Jobs share the Lua job discipline (DESIGN
 // §6.5): the child env is the parent minus secret-shaped names plus
-// validated extras, stdio are always pipes, and the working directory is
-// the session dir.
+// validated extras, output lands in capped buffers, and the working
+// directory is the session dir.
 package tools
 
 import (
