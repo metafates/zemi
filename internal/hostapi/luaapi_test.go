@@ -52,9 +52,9 @@ func TestLuaAPIAdditions(t *testing.T) {
 	`)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		h.timers.mu.Lock()
-		pending := len(h.timers.m)
-		h.timers.mu.Unlock()
+		h.stops.mu.Lock()
+		pending := len(h.stops.m)
+		h.stops.mu.Unlock()
 		if v, _ := h.GlobalDB.GetKV("scheduled"); v == `"ran"` && pending == 0 {
 			break
 		}
@@ -206,5 +206,24 @@ func TestHighlightOverride(t *testing.T) {
 	}
 	if s, _ := h.Themes.Group(theme, "Comment"); s.Fg != "#777777" {
 		t.Fatalf("Comment = %+v", s)
+	}
+}
+
+// TestPurgeStopsLuaJobs: a reload stops the jobs Lua started, which would
+// otherwise run on with nobody left to hear from them.
+func TestPurgeStopsLuaJobs(t *testing.T) {
+	h, r := newTestHostDB(t)
+	runUser(t, r, `
+		zemi.permission.rule({ subject = "lua.job.start", pattern = "sleep", decision = "allow", match = "sleep" })
+		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.put("sleep", "stopped") end })
+	`)
+	h.PurgeGeneration()
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if v, _ := h.GlobalDB.GetKV("sleep"); v == `"stopped"` {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the job outlived the purge")
+		}
 	}
 }

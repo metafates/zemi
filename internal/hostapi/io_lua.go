@@ -221,35 +221,37 @@ type timerHandle struct {
 
 func (t *timerHandle) stopIt() { t.once.Do(func() { close(t.stop) }) }
 
-type timerReg struct {
+// stopReg holds how to stop the live generation's timers and jobs, which a
+// reload stops before replay (DESIGN §4).
+type stopReg struct {
 	mu   sync.Mutex
 	next int
-	m    map[int]*timerHandle
+	m    map[int]func()
 }
 
-func newTimerReg() *timerReg { return &timerReg{m: map[int]*timerHandle{}} }
+func newStopReg() *stopReg { return &stopReg{m: map[int]func(){}} }
 
-func (r *timerReg) add(t *timerHandle) int {
+func (r *stopReg) add(stop func()) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.next++
-	r.m[r.next] = t
+	r.m[r.next] = stop
 	return r.next
 }
 
-func (r *timerReg) remove(id int) {
+func (r *stopReg) remove(id int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	delete(r.m, id)
+	r.mu.Unlock()
 }
 
-func (r *timerReg) purge() {
+func (r *stopReg) purge() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, t := range r.m {
-		t.stopIt()
+	for _, stop := range r.m {
+		stop()
 	}
-	r.m = map[int]*timerHandle{}
+	r.m = map[int]func(){}
 }
 
 func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
@@ -267,9 +269,9 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			d := time.Duration(ms) * time.Millisecond
 			gen := h.currentGen()
 			handle := &timerHandle{stop: make(chan struct{})}
-			id := h.timers.add(handle)
+			stopID := h.stops.add(handle.stopIt)
 			h.GoSafe("zemi.timer", func() {
-				defer h.timers.remove(id)
+				defer h.stops.remove(stopID)
 				t := time.NewTimer(d)
 				defer t.Stop()
 				for {
@@ -901,9 +903,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		if err := proc.Start(cmd); err != nil {
 			return nil, err
 		}
+		stopID := h.stops.add(func() { proc.Kill(cmd) })
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
 			err := proc.Wait(cmd)
+			h.stops.remove(stopID)
 			outW.flush()
 			errW.flush()
 			jh.mu.Lock()

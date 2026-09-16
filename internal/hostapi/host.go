@@ -169,7 +169,7 @@ type Host struct {
 	watches  *watchReg
 	agents   *agentHost
 	luaTools *toolReg
-	timers   *timerReg
+	stops    *stopReg
 
 	// memReview serializes the /memory review overlay; the hook runs off
 	// the UI goroutine.
@@ -273,7 +273,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		Perm:      perm.NewStore(),
 		agents:    newAgentHost(),
 		luaTools:  newToolReg(),
-		timers:    newTimerReg(),
+		stops:     newStopReg(),
 		jobs:      tools.NewJobs(),
 		skillsReg: &skillReg{},
 		mcp:       newMCPReg(),
@@ -1081,7 +1081,7 @@ func (h *Host) PurgeGeneration() {
 	h.purgeWatches()
 	h.healthReg.purge()
 	h.luaTools.purge(h.currentGen())
-	h.timers.purge()
+	h.stops.purge()
 	h.mcp.stopAll()
 	h.lsp.stopAll()
 	// An overlay left open would keep drawing with callbacks that are now
