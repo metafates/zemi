@@ -488,18 +488,13 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
 		}
-		def := lspDef{Name: name, Command: rawString(opts, "command"), Env: map[string]string{}}
+		def := lspDef{Name: name, Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: rawStringMap(opts, "env")}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")
 		}
-		each := func(key string, fn func(k, v glua.LValue)) {
-			if t, ok := opts.RawGetString(key).(*glua.LTable); ok {
-				t.ForEach(fn)
-			}
+		for _, ft := range rawStrings(opts, "filetypes") {
+			def.Exts = append(def.Exts, "."+strings.TrimPrefix(ft, "."))
 		}
-		each("args", func(_, v glua.LValue) { def.Args = append(def.Args, v.String()) })
-		each("env", func(k, v glua.LValue) { def.Env[k.String()] = v.String() })
-		each("filetypes", func(_, v glua.LValue) { def.Exts = append(def.Exts, "."+strings.TrimPrefix(v.String(), ".")) })
 		if len(def.Exts) == 0 {
 			L.RaiseError("zemi.lsp.add: filetypes is required")
 		}

@@ -52,6 +52,24 @@ func rawStrings(tb *glua.LTable, key string) []string {
 	return out
 }
 
+// rawStringMap reads the string keys and values of a map field off a raw
+// spec table, skipping other entries like rawStrings; nil when absent.
+func rawStringMap(tb *glua.LTable, key string) map[string]string {
+	m, ok := tb.RawGetString(key).(*glua.LTable)
+	if !ok {
+		return nil
+	}
+	out := map[string]string{}
+	m.ForEach(func(k, v glua.LValue) {
+		ks, kok := k.(glua.LString)
+		vs, vok := v.(glua.LString)
+		if kok && vok {
+			out[string(ks)] = string(vs)
+		}
+	})
+	return out
+}
+
 func rawNumber(tb *glua.LTable, key string) float64 {
 	if n, ok := tb.RawGetString(key).(glua.LNumber); ok {
 		return float64(n)

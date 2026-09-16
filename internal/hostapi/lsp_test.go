@@ -3,9 +3,11 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -120,13 +122,16 @@ func TestLSPConfig(t *testing.T) {
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
 	runUser(t, r, `
-		zemi.lsp.add("gopls", { command = "gopls-wrapper", filetypes = { "go" }, settings = { gopls = { staticcheck = true } }, init_options = { x = 1 } })
+		zemi.lsp.add("gopls", { command = "gopls-wrapper", args = { "-rpc", 1 }, env = { A = "x", B = 2 }, filetypes = { "go" }, settings = { gopls = { staticcheck = true } }, init_options = { x = 1 } })
 		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
 		zemi.lsp.disable("zls")
 	`)
 	defs := h.lspDefs("")
 	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
 		t.Fatalf("defs = %+v", defs)
+	}
+	if !slices.Equal(defs[0].Args, []string{"-rpc"}) || !maps.Equal(defs[0].Env, map[string]string{"A": "x"}) {
+		t.Fatalf("non-string items kept: args = %q env = %q", defs[0].Args, defs[0].Env)
 	}
 	if cfg, _ := defs[0].Config.(map[string]any); cfg["gopls"].(map[string]any)["staticcheck"] != true || defs[0].Init.(map[string]any)["x"] != float64(1) {
 		t.Fatalf("settings = %+v init = %+v", defs[0].Config, defs[0].Init)
