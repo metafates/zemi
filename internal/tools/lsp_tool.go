@@ -54,7 +54,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	c, server := s.Client, s.Server
-	doc := map[string]any{"uri": lsp.DocumentURI(path)}
+	doc := map[string]any{"uri": c.URI(path)}
 	fail := func(err error) (fantasy.ToolResponse, error) {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %s %v", server, action, err)), nil
 	}

@@ -321,6 +321,17 @@ func (c *Client) closeDoc(key, uri string) {
 	_ = c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": uri}})
 }
 
+// URI is the URI the server knows path's document by: the one it was
+// opened with, whatever spelling of the path came later.
+func (c *Client) URI(path string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if d, open := c.docs[normPath(path)]; open {
+		return d.uri
+	}
+	return DocumentURI(path)
+}
+
 // Version is the document version last sent for path, 0 when it is not
 // open. A server's edit that names another version was planned against
 // text the server no longer has.

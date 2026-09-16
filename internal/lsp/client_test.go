@@ -252,6 +252,9 @@ func TestTouchSymlinkSpellings(t *testing.T) {
 			t.Fatalf("%s: diags %+v, err %v", step.path, diags, err)
 		}
 	}
+	if got, want := c.URI(filepath.Join(real, "a.txt")), lsp.DocumentURI(filepath.Join(link, "a.txt")); got != want {
+		t.Fatalf("queries must name the opened document: %s, want %s", got, want)
+	}
 }
 
 // TestOffsetPos: positions count UTF-16 units, so a character outside the
