@@ -2,8 +2,12 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/lua"
+	glua "github.com/yuin/gopher-lua"
 )
 
 // TestCompleteCommand: a Lua command's complete(arg_lead, cmdline) feeds
@@ -46,5 +50,38 @@ func TestNargsOK(t *testing.T) {
 		if got != c.want {
 			t.Errorf("nargsOK(%q, %q) = %q, want %q", c.nargs, c.args, got, c.want)
 		}
+	}
+}
+
+// TestStaleKeymapAndCommandDoNotRun: a binding or command looked up before a
+// reload must not run its function on the fresh LState.
+func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
+	h, r := newTestHost(t)
+	called := 0
+	var fn *glua.LFunction
+	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		fn = L.NewFunction(func(*glua.LState) int { called++; return 0 })
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b := &KeyBinding{Key: "x", RHS: RHS{Fn: fn}, Origin: lua.OriginUser, Gen: h.currentGen()}
+	cmd := &Command{Name: "x", Fn: fn, NArgs: "*", Origin: lua.OriginUser, Gen: h.currentGen()}
+	run := func() []error {
+		return []error{h.RunRHS(context.Background(), b), h.runLuaCommand(context.Background(), cmd, "")}
+	}
+	if errs := run(); errs[0] != nil || errs[1] != nil || called != 2 {
+		t.Fatalf("live: errs=%v called=%d", errs, called)
+	}
+	if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range run() {
+		if !errors.Is(err, lua.ErrReloaded) {
+			t.Errorf("stale run: %v", err)
+		}
+	}
+	if called != 2 {
+		t.Fatalf("stale function ran: called=%d", called)
 	}
 }

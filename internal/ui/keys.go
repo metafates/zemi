@@ -341,7 +341,7 @@ func listMove(key string) int {
 // worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
-		err := a.host.RunRHS(context.Background(), b.Origin, b.RHS, "")
+		err := a.host.RunRHS(context.Background(), b)
 		switch {
 		case err == nil:
 		case errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):

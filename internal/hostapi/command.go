@@ -193,6 +193,9 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 		return err
 	}
 	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		if h.currentGen() != cmd.Gen {
+			return nil, lua.ErrReloaded
+		}
 		defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
 		base := L.GetTop()
 		L.Push(cmd.Fn)
@@ -222,11 +225,15 @@ func commandArgs(L *glua.LState, argString string) *glua.LTable {
 // the binding's registration origin (DESIGN §9 attribution rule). Host
 // actions run on the caller's goroutine (never the interpreter), so config
 // watches they fire go back through the queue.
-func (h *Host) RunRHS(ctx context.Context, origin lua.Origin, rhs RHS, argString string) error {
-	switch {
+func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) error {
+	switch rhs := b.RHS; {
 	case rhs.Fn != nil:
 		_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			defer h.RT.PushFrame(origin, "")()
+			// looked up before a reload, the function belongs to a dropped LState
+			if h.currentGen() != b.Gen {
+				return nil, lua.ErrReloaded
+			}
+			defer h.RT.PushFrame(b.Origin, "")()
 			base := L.GetTop()
 			L.Push(rhs.Fn)
 			if err := L.PCall(0, 0, nil); err != nil {
@@ -237,13 +244,13 @@ func (h *Host) RunRHS(ctx context.Context, origin lua.Origin, rhs RHS, argString
 		})
 		return err
 	case rhs.Command != "":
-		return h.RunCommand(ctx, rhs.Command, argString)
+		return h.RunCommand(ctx, rhs.Command, "")
 	case rhs.API != "":
 		fn, ok := h.hostActions[rhs.API]
 		if !ok || fn == nil {
 			return ErrReserved
 		}
-		return fn(h, argString)
+		return fn(h, "")
 	}
 	return nil
 }
