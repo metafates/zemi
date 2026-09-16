@@ -27,6 +27,7 @@ Usage:
   zemi "fix the failing test"   open the TUI and send a first message
   zemi -p "explain main.go"     answer on stdout and exit
   git diff | zemi -p "review"   piped stdin is appended to the prompt
+  zemi -- why does ls -la fail  flags are read anywhere; after -- it is all prompt
 
 Flags:
   -p, --print         answer the prompt on stdout and exit (no TUI)
