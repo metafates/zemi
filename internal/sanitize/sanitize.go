@@ -26,9 +26,10 @@ func String(s string) string {
 		switch {
 		case r == utf8.RuneError && size <= 1, r < 0x20 && r != '\n' && r != '\t', r >= 0x7f && r < 0xa0:
 			b.WriteByte(' ')
-		case unicode.Is(unicode.Bidi_Control, r), r >= 0xe0000 && r <= 0xe007f, r >= 0xfff9 && r <= 0xfffb:
-			// bidi controls reorder text; tag and annotation runes hide it. Other
-			// format runes (ZWJ, ZWNJ, soft hyphen) join emoji and shape scripts.
+		case unicode.Is(unicode.Bidi_Control, r), r >= 0xe0000 && r <= 0xe007f, r >= 0xfff9 && r <= 0xfffb, r == 0xad:
+			// bidi controls reorder text; tag and annotation runes hide it. A soft
+			// hyphen measures 0 wide but terminals draw 1 column. Other format
+			// runes (ZWJ, ZWNJ) join emoji and shape scripts.
 			// NOTE: subdivision flags lose their tags and show as a plain black flag.
 		default:
 			b.WriteString(s[i : i+size])
