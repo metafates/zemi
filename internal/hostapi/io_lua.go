@@ -98,8 +98,10 @@ func (h *Host) readJails() []string {
 	// them must not ask.
 	// The log dir too: reading its own log is how the agent debugs zemi,
 	// and the records are sanitized and secret-scrubbed on the way in.
+	// The types dir holds the API annotations and the shipped Lua UI, which
+	// the agent reads before restyling or extending it.
 	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.Dirs.LogDir()}
+		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.Dirs.LogDir(), h.TypesDir()}
 }
 
 func (h *Host) writeJails() []string {

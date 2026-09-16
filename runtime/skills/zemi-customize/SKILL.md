@@ -92,6 +92,14 @@ Registering a widget with a builtin id replaces it; a new id adds one. Builtin i
 `statusline.left`, `statusline.right`. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
+The shipped UI is Lua too: `types/zemi/defaultui.lua` under the data directory (the system
+prompt names the exact path; rewritten on every start) holds the theme, every builtin widget
+and the default keymaps. Read it before changing one: copy the widget you want to alter into
+`init.lua` under the same id and change what you need, or `require("zemi.defaultui")` to
+build on its splash.
+Try a change live with the lua tool first (it lasts until the next reload), screenshot, then
+write it to config.
+
 ```lua
 -- <user config>/init.lua
 -- Add a line to the default splash instead of rewriting it: defaultui returns
