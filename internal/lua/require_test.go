@@ -179,6 +179,28 @@ func TestClassifyMostSpecific(t *testing.T) {
 	}
 }
 
+// TestClassifyPrefixCreatedLater: a class registered through a symlink
+// before its directory exists (data/skills on first run) still matches
+// once the directory is made.
+func TestClassifyPrefixCreatedLater(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(root, filepath.Join(root, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	pc := PathClasses{{Prefix: filepath.Join(root, "link", "skills"), Origin: OriginLearned}}
+	file := filepath.Join(root, "skills", "a.lua")
+	if got := pc.Classify(file); got != "" {
+		t.Fatalf("before mkdir: %q", got)
+	}
+	writeFile(t, file, "")
+	if got := pc.Classify(file); got != OriginLearned {
+		t.Fatalf("after mkdir: %q, want %q", got, OriginLearned)
+	}
+}
+
 // TestRequireOriginFollowsFile verifies §5: origin comes from the module
 // file's directory class, never from the requirer, so a plugin module
 // required from user code reports plugin origin (and the user chunk itself

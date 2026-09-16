@@ -80,7 +80,8 @@ func resolvePrefix(p string) string {
 	}
 	res, err := filepath.EvalSymlinks(p)
 	if err != nil {
-		res = p
+		// not memoized: a directory created later still resolves
+		return p
 	}
 	prefixResolution.Store(p, res)
 	return res
