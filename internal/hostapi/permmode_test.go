@@ -31,6 +31,8 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	}{
 		{"fs.read", inside, true},
 		{"fs.write", inside, true},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false},
 		{"fs.read", secret, false},
 		{"fs.read", link, false},
 		{"fs.read", "/etc/passwd", false},

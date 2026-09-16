@@ -321,11 +321,26 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	case "fs.read":
 		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
 	case "fs.write":
-		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg)
+		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg)
 	case "tool.bash":
 		return perm.SafeCommand(req.Arg, h.safeCommandPath)
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
+	}
+	return false
+}
+
+// inGitDir reports a path under a .git directory (or the .git file itself):
+// git runs programs its config and hooks name, even for read-only commands.
+func inGitDir(p string) bool {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return true
+	}
+	for _, q := range []string{abs, realPath(abs)} {
+		if slices.Contains(strings.Split(foldPath(filepath.ToSlash(q)), "/"), ".git") {
+			return true
+		}
 	}
 	return false
 }
