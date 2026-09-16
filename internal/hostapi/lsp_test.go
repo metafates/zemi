@@ -103,3 +103,29 @@ func TestLSPTool(t *testing.T) {
 		t.Fatalf("b.txt after rename: %q", got)
 	}
 }
+
+// TestLSPConfig: user config replaces a builtin by name with its own args
+// and settings, disables one, and list shows what the project can use.
+func TestLSPConfig(t *testing.T) {
+	h, r := newTestHostDB(t)
+	defer h.lsp.stopAll()
+	runUser(t, r, `
+		zemi.lsp.add("gopls", { command = "gopls-wrapper", filetypes = { "go" }, settings = { gopls = { staticcheck = true } }, init_options = { x = 1 } })
+		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
+		zemi.lsp.disable("zls")
+	`)
+	defs := h.lspDefs()
+	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
+		t.Fatalf("defs = %+v", defs)
+	}
+	if cfg, _ := defs[0].Config.(map[string]any); cfg["gopls"].(map[string]any)["staticcheck"] != true || defs[0].Init.(map[string]any)["x"] != float64(1) {
+		t.Fatalf("settings = %+v init = %+v", defs[0].Config, defs[0].Init)
+	}
+	if d, ok := h.lspFor("main.go"); !ok || d.Command != "gopls-wrapper" {
+		t.Fatalf("lspFor(main.go) = %+v %v", d, ok)
+	}
+	runUser(t, r, `
+		local rows = zemi.lsp.list()
+		assert(#rows == 1 and rows[1].name == "gopls" and rows[1].status == "available" and rows[1].filetypes == ".go", "list: " .. tostring(rows[1] and rows[1].status))
+	`)
+}

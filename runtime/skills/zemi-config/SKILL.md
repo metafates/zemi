@@ -89,7 +89,12 @@ writable; prefer it over guessing. Common keys:
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
 - `lsp.auto` (true): start installed gopls, pyright, rust-analyzer,
-  typescript-language-server or clangd when their marker file is at the repo root
+  typescript-language-server or clangd when their marker file is at the repo root.
+  `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a
+  server (user config only); adding a builtin's name replaces it, so
+  `zemi.lsp.add("gopls", { command = "gopls", filetypes = { "go" }, settings = { gopls = { staticcheck = true } } })`
+  configures gopls. `zemi.lsp.disable(name)` keeps one from starting. `zemi.lsp.list()` and
+  `/lsp` show what the project can use (available, running, failed); `/lsp restart <name>`.
 - `keymap.leader` (ctrl+g): what `<leader>` means in keymaps; set it before binding
 - `ui.theme`, `ui.animations`, `ui.composer.multiline`, `ui.composer.history`
 - `ui.mouse` (true): drag copies, clicks act on rows; false leaves selection to the terminal

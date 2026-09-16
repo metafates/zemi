@@ -35,10 +35,13 @@ the `diagnostics` tool checks any other file, and the `lsp` tool asks the server
 symbol's definition, its references, a semantic rename or a file's outline. gopls, pyright, rust-analyzer,
 typescript-language-server and clangd start on their own when installed and the project
 has their marker file (`go.mod`, `pyproject.toml`, `Cargo.toml`, `package.json`, ...).
-Add others in `init.lua`, and see what runs with `/lsp`:
+Add others in `init.lua`, configure a builtin by adding its name, or disable one; `/lsp`
+shows what the project can use:
 
 ```lua
 zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
+zemi.lsp.add("gopls", { command = "gopls", filetypes = { "go" }, settings = { gopls = { staticcheck = true } } })
+zemi.lsp.disable("clangd")
 ```
 
 ## MCP servers

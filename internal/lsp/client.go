@@ -30,6 +30,11 @@ type Config struct {
 	Env     []string // the child's whole environment
 	Root    string   // workspace root
 	Stderr  io.Writer
+	// InitOptions is sent as initializationOptions; Settings answers
+	// workspace/configuration (by dotted section) and is pushed once after
+	// the handshake. Both nil for servers that need neither.
+	InitOptions any
+	Settings    any
 }
 
 // Diagnostic is one published problem; Line and Col are 1-based.
@@ -82,9 +87,10 @@ type Client struct {
 	synced  map[string]int          // seq when the path was last synced
 	wake    chan struct{}           // closed and replaced on every publish
 
-	done    chan struct{}
-	endOnce sync.Once
-	endErr  error
+	done     chan struct{}
+	endOnce  sync.Once
+	endErr   error
+	settings any
 }
 
 // Start launches the server and runs the initialize handshake; ctx bounds
@@ -107,7 +113,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 		cmd: cmd, stdin: stdin,
 		pending: map[int64]chan message{}, diags: map[string][]Diagnostic{},
 		pubs: map[string]int{}, opened: map[string]int{}, pubSeq: map[string]int{}, synced: map[string]int{},
-		wake: make(chan struct{}), done: make(chan struct{}),
+		wake: make(chan struct{}), done: make(chan struct{}), settings: cfg.Settings,
 	}
 	go c.read(bufio.NewReader(stdout))
 
@@ -127,6 +133,9 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			"workspace": map[string]any{"configuration": true, "workspaceFolders": true},
 		},
 	}
+	if cfg.InitOptions != nil {
+		params["initializationOptions"] = cfg.InitOptions
+	}
 	if err := c.call(ctx, "initialize", params, nil); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("lsp: initialize %s: %w", cfg.Command, err)
@@ -134,6 +143,9 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	if err := c.notify("initialized", map[string]any{}); err != nil {
 		c.Close()
 		return nil, err
+	}
+	if cfg.Settings != nil {
+		_ = c.notify("workspace/didChangeConfiguration", map[string]any{"settings": cfg.Settings})
 	}
 	return c, nil
 }
@@ -433,15 +445,22 @@ func (c *Client) read(r *bufio.Reader) {
 		}
 		switch {
 		case m.Method != "" && len(m.ID) > 0:
-			// Server requests: configuration gets one null per item, the rest
-			// (capability registration, progress) a null result.
+			// Server requests: configuration gets each item's section of the
+			// settings (null without any), the rest (capability registration,
+			// progress) a null result.
 			var result any
 			if m.Method == "workspace/configuration" {
 				var p struct {
-					Items []any `json:"items"`
+					Items []struct {
+						Section string `json:"section"`
+					} `json:"items"`
 				}
 				_ = json.Unmarshal(m.Params, &p)
-				result = make([]any, len(p.Items))
+				answers := make([]any, len(p.Items))
+				for i, it := range p.Items {
+					answers[i] = section(c.settings, it.Section)
+				}
+				result = answers
 			}
 			_ = c.send(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
 		case m.Method == "textDocument/publishDiagnostics":
@@ -509,6 +528,23 @@ func (c *Client) publish(raw json.RawMessage) {
 	c.pubSeq[path] = c.seq
 	close(c.wake)
 	c.wake = make(chan struct{})
+}
+
+// section walks settings by a dotted section name ("gopls.analyses");
+// "" is the whole table and a missing key is nil.
+func section(settings any, name string) any {
+	cur := settings
+	for _, k := range strings.Split(name, ".") {
+		if k == "" {
+			continue
+		}
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		cur = m[k]
+	}
+	return cur
 }
 
 // normPath resolves symlinks so a server that answers with a canonicalized

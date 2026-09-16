@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 
@@ -200,17 +199,14 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "errors", "none since start")
 	}
 
-	h.lsp.mu.Lock()
 	var servers []string
-	for name := range h.lsp.running {
-		servers = append(servers, name)
+	for _, row := range h.lspRows() {
+		servers = append(servers, fmt.Sprintf("%s (%s)", row["name"], row["status"]))
 	}
-	h.lsp.mu.Unlock()
 	if len(servers) > 0 {
-		slices.Sort(servers)
 		add("ok", "lsp", strings.Join(servers, ", "))
 	} else {
-		add("ok", "lsp", "starts when the agent edits a supported file")
+		add("ok", "lsp", "none for this project: install gopls, pyright, rust-analyzer, typescript-language-server or clangd, or zemi.lsp.add one")
 	}
 	return append(out, h.luaHealthRows()...)
 }

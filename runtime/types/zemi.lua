@@ -1109,22 +1109,33 @@ function zemi.mcp.list() end
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field filetypes? string[] Extensions the server handles.
+---@field settings? table Workspace settings: answers the server's configuration requests by section and is pushed after start (e.g. { gopls = { staticcheck = true } }).
+---@field init_options? table Sent as initializationOptions.
 
 ---@class zemi.LSPInfo
 ---@field name string
 ---@field command string
----@field status string "starting", "running", "failed" or "exited".
+---@field filetypes string
+---@field status string "available" (starts on its first file), "starting", "running", "failed" or "exited".
 ---@field error string
 
 ---@class zemi.lsp
 zemi.lsp = {}
 
 --- Add a language server. User config only; it starts on the first
---- matching file. A server that never comes up only means no diagnostics.
+--- matching file. Adding a builtin's name (gopls, pyright, rust-analyzer,
+--- typescript, clangd) replaces it, which is how a builtin gets args, env
+--- or settings. A server that never comes up only means no diagnostics.
 ---@param name string
 ---@param spec zemi.LSPSpec
 function zemi.lsp.add(name, spec) end
 
+--- Never start this server: a builtin you do not want, or one added above.
+--- User config only.
+---@param name string
+function zemi.lsp.disable(name) end
+
+--- The servers this project can use and their state.
 ---@return zemi.LSPInfo[]
 function zemi.lsp.list() end
 

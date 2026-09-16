@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -33,6 +34,8 @@ type lspDef struct {
 	Env     map[string]string
 	Exts    []string // ".go"
 	Markers []string // files at the repository root that enable a builtin
+	Init    any      // initializationOptions
+	Config  any      // workspace settings
 }
 
 var builtinLSP = []lspDef{
@@ -69,12 +72,13 @@ const (
 type lspReg struct {
 	mu       sync.Mutex
 	user     []lspDef
+	disabled map[string]bool // names zemi.lsp.disable turned off
 	running  map[string]*lspProc
 	attempts map[string]int
 }
 
 func newLSPReg() *lspReg {
-	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}}
+	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}, disabled: map[string]bool{}}
 }
 
 // stopAll stops every server and forgets user definitions (reload replays
@@ -82,7 +86,7 @@ func newLSPReg() *lspReg {
 func (r *lspReg) stopAll() {
 	r.mu.Lock()
 	procs := r.running
-	r.running, r.user, r.attempts = map[string]*lspProc{}, nil, map[string]int{}
+	r.running, r.user, r.attempts, r.disabled = map[string]*lspProc{}, nil, map[string]int{}, map[string]bool{}
 	r.mu.Unlock()
 	for _, p := range procs {
 		p.close()
@@ -99,36 +103,38 @@ func (p *lspProc) close() {
 	})
 }
 
-// lspFor picks the server for path: user definitions first, then an
-// installed builtin whose marker exists at the repository root.
+// lspFor picks the server for path: the first configured one handling its
+// extension (lspDefs order).
 func (h *Host) lspFor(path string) (lspDef, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
-	h.lsp.mu.Lock()
-	user := append([]lspDef(nil), h.lsp.user...)
-	h.lsp.mu.Unlock()
-	for _, d := range user {
+	for _, d := range h.lspDefs() {
 		if slices.Contains(d.Exts, ext) {
 			return d, true
 		}
 	}
-	if v, ok := h.Settings.Get("lsp.auto"); ok && v == false {
-		return lspDef{}, false
-	}
-	root := h.Dirs.RepoRoot()
-	for _, d := range builtinLSP {
-		if !slices.Contains(d.Exts, ext) {
-			continue
-		}
-		if _, err := exec.LookPath(d.Command); err != nil {
-			continue
-		}
-		for _, m := range d.Markers {
-			if _, err := os.Stat(filepath.Join(root, m)); err == nil {
-				return d, true
+	return lspDef{}, false
+}
+
+// lspDefs lists the servers this project can use: user definitions first,
+// then, unless lsp.auto is off, each installed builtin whose marker exists
+// at the repository root; disabled names are left out of both.
+func (h *Host) lspDefs() []lspDef {
+	h.lsp.mu.Lock()
+	defs := slices.Clone(h.lsp.user)
+	disabled := maps.Clone(h.lsp.disabled)
+	h.lsp.mu.Unlock()
+	if v, ok := h.Settings.Get("lsp.auto"); !ok || v != false {
+		root := h.Dirs.RepoRoot()
+		for _, d := range builtinLSP {
+			if _, err := exec.LookPath(d.Command); err != nil {
+				continue
+			}
+			if slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(root, m)); return err == nil }) {
+				defs = append(defs, d)
 			}
 		}
 	}
-	return lspDef{}, false
+	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled[d.Name] })
 }
 
 // lspClient returns the running server for def, starting it once; a failed
@@ -157,6 +163,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			defer cancel()
 			p.client, p.err = lsp.Start(sctx, lsp.Config{
 				Command: def.Command, Args: def.Args, Env: env, Root: h.Dirs.RepoRoot(),
+				InitOptions: def.Init, Settings: def.Config,
 				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
 			})
 			if p.err != nil {
@@ -327,7 +334,8 @@ func (h *Host) lspDiagnostics(path string) (string, error) {
 
 func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	// add(name, { command, args, env, filetypes = { "go" } }): user config only.
+	// add(name, { command, args, env, filetypes = { "go" }, settings, init_options }):
+	// user config only. A name matching a builtin replaces it.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, opts := L.CheckString(1), L.CheckTable(2)
 		if h.RT.CurrentOrigin() != lua.OriginUser {
@@ -351,8 +359,31 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.lsp.add: filetypes is required")
 			return 0
 		}
+		for key, dst := range map[string]*any{"settings": &def.Config, "init_options": &def.Init} {
+			if v := opts.RawGetString(key); v != glua.LNil {
+				g, err := lua.ToGo(v)
+				if err != nil {
+					L.RaiseError("zemi.lsp.add: %s: %v", key, err)
+					return 0
+				}
+				*dst = g
+			}
+		}
 		h.lsp.mu.Lock()
-		h.lsp.user = append(h.lsp.user, def)
+		// the same name again, or a builtin's name, is a replacement
+		h.lsp.user = append(slices.DeleteFunc(h.lsp.user, func(d lspDef) bool { return d.Name == name }), def)
+		h.lsp.mu.Unlock()
+		return 0
+	}))
+	// disable(name): never start this server (a builtin, or one added above).
+	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		if h.RT.CurrentOrigin() != lua.OriginUser {
+			L.RaiseError("zemi.lsp.disable: only user config may disable language servers")
+			return 0
+		}
+		h.lsp.mu.Lock()
+		h.lsp.disabled[name] = true
 		h.lsp.mu.Unlock()
 		return 0
 	}))
@@ -367,13 +398,20 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// lspRows lists started servers: name, status, error.
+// lspRows lists the servers this project can use with their state: running
+// ones first, then those that would start on their first file.
 func (h *Host) lspRows() []map[string]any {
+	defs := h.lspDefs()
 	h.lsp.mu.Lock()
 	defer h.lsp.mu.Unlock()
 	var out []map[string]any
+	for _, d := range defs {
+		if _, running := h.lsp.running[d.Name]; !running {
+			out = append(out, map[string]any{"name": d.Name, "command": d.Command, "status": "available", "error": "", "filetypes": strings.Join(d.Exts, " ")})
+		}
+	}
 	for name, p := range h.lsp.running {
-		row := map[string]any{"name": name, "command": p.def.Command, "status": "starting", "error": ""}
+		row := map[string]any{"name": name, "command": p.def.Command, "status": "starting", "error": "", "filetypes": strings.Join(p.def.Exts, " ")}
 		select {
 		case <-p.ready:
 			row["status"] = "running"
@@ -390,6 +428,15 @@ func (h *Host) lspRows() []map[string]any {
 		}
 		out = append(out, row)
 	}
+	slices.SortFunc(out, func(a, b map[string]any) int {
+		avail := func(r map[string]any) int {
+			if r["status"] == "available" {
+				return 1
+			}
+			return 0
+		}
+		return cmp.Or(cmp.Compare(avail(a), avail(b)), cmp.Compare(a["name"].(string), b["name"].(string)))
+	})
 	return out
 }
 
@@ -420,12 +467,12 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 					rows := h.lspRows()
 					ui := h.hooks()
 					if ui == nil || len(rows) == 0 {
-						return errors.New("no language server started yet: they start when the agent edits a file (gopls, pyright, rust-analyzer, typescript-language-server, clangd)")
+						return errors.New("no language server for this project: none of gopls, pyright, rust-analyzer, typescript-language-server or clangd is installed with its marker file here; zemi.lsp.add adds one")
 					}
 					items := make([]any, 0, len(rows))
 					for _, row := range rows {
 						items = append(items, map[string]any{
-							"text": fmt.Sprintf("%-14s %-9s %s", row["name"], row["status"], truncRunes(fmt.Sprint(row["error"]), 60)),
+							"text": fmt.Sprintf("%-14s %-9s %s %s", row["name"], row["status"], row["filetypes"], truncRunes(fmt.Sprint(row["error"]), 60)),
 							"run":  fmt.Sprintf("lsp restart %s", row["name"]),
 						})
 					}
