@@ -290,8 +290,8 @@ func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 }
 
-// spliceBox writes box rows centered over the chat area, replacing the
-// covered rows entirely.
+// spliceBox composites box rows centered over the chat area; what the box
+// does not cover stays visible.
 func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
 	if len(rows) == 0 || len(box) == 0 {
 		return rows
@@ -303,16 +303,8 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 	}
 	y0 := headerH + (chatBottom-headerH-bh)/2
 	for i := range bh {
-		bw := segsWidth(box[i])
-		x0 := max((w-bw)/2, 1)
-		// composite: what the box does not cover stays visible, held one
-		// cell off each border so it does not read as part of the box
-		under := rows[y0+i]
-		row := padSegs(truncateSegs(under, max(0, x0-1)), x0)
-		row = append(row, box[i]...)
-		row = append(row, hostapi.Segment{Text: " "})
-		row = append(row, dropCells(under, x0+bw+1)...)
-		rows[y0+i] = padSegs(truncateSegs(row, w), w)
+		x0 := max((w-segsWidth(box[i]))/2, 1)
+		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i])}, x0-1, y0+i, w)
 	}
 	return rows
 }
@@ -324,12 +316,15 @@ func anchorBottom(rows, box [][]hostapi.Segment, w, headerH, chatH int) [][]host
 	bottom := min(headerH+chatH, len(rows))
 	y0 := max(headerH, bottom-len(box))
 	for i := y0; i < bottom; i++ {
-		b := box[i-y0]
-		row := append([]hostapi.Segment{{Text: " "}}, b...)
-		row = append(row, hostapi.Segment{Text: " "})
-		rows[i] = padSegs(truncateSegs(append(row, dropCells(rows[i], segsWidth(b)+2)...), w), w)
+		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i-y0])}, 0, i, w)
 	}
 	return rows
+}
+
+// margined holds what a box does not cover one cell off each border, so it
+// does not read as part of the box.
+func margined(line []hostapi.Segment) []hostapi.Segment {
+	return append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})
 }
 
 // dropCells removes the first n display cells of a row.
