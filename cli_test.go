@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,7 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestFailPrintJSON: a failure before the turn still reaches a script on
@@ -135,5 +139,32 @@ func TestHashTreeFraming(t *testing.T) {
 	}
 	if hash(map[string]string{"a": "x\x00b\x00y"}) == hash(map[string]string{"a": "x", "b": "y"}) {
 		t.Fatal("two trees share a hash")
+	}
+}
+
+// TestProjectTrustResetOnRefusal: a reload whose changed tree is refused
+// loads no project markdown command, even after an earlier trusted boot.
+func TestProjectTrustResetOnRefusal(t *testing.T) {
+	project := t.TempDir()
+	cmds := filepath.Join(project, ".zemi", "commands")
+	if err := os.MkdirAll(cmds, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cmds, "x.md"), []byte("---\ndescription: x\n---\nhello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
+	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
+	h.SetProjectTrusted(true)
+	once := func(string, string) string { return "once" }
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), projectConfigStep(h, once, dirs), h.MarkdownCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range h.Commands.List() {
+		if c.Name == "x" {
+			t.Fatal("refused project command loaded")
+		}
 	}
 }

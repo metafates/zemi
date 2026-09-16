@@ -405,6 +405,9 @@ func projectConfigStep(h *hostapi.Host, askTrust func(path, hash string) string,
 	return lua.BootStep{
 		Name: "project config",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			// Every boot decides again: a reload whose changed tree the user
+			// refuses must not keep the trust given to the tree before it.
+			h.SetProjectTrusted(false)
 			pdir := dirs.ProjectConfigDir()
 			if pdir == "" {
 				return nil
