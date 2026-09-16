@@ -51,21 +51,23 @@ type PathClass struct {
 // Classify resolves the origin of a path. The path must already be
 // symlink-resolved by the caller. Prefixes are symlink-resolved too
 // (memoized), so a class registered under a path containing symlinked
-// segments still matches its files. Unknown paths return "" and are
-// refused at load time.
+// segments still matches its files. The longest matching prefix wins, so a
+// project checked out under the config home is still project code. Unknown
+// paths return "" and are refused at load time.
 func (pc PathClasses) Classify(resolvedPath string) Origin {
 	resolvedPath = filepath.Clean(resolvedPath)
+	best, bestLen := Origin(""), 0
 	for _, c := range pc {
 		if c.Prefix == "" {
 			continue
 		}
-		sep := string(filepath.Separator)
-		if strings.HasPrefix(resolvedPath, c.Prefix+sep) ||
-			strings.HasPrefix(resolvedPath, resolvePrefix(c.Prefix)+sep) {
-			return c.Origin
+		for _, p := range []string{c.Prefix, resolvePrefix(c.Prefix)} {
+			if len(p) > bestLen && strings.HasPrefix(resolvedPath, p+string(filepath.Separator)) {
+				best, bestLen = c.Origin, len(p)
+			}
 		}
 	}
-	return ""
+	return best
 }
 
 // prefixResolution memoizes EvalSymlinks of registered prefixes: Classify

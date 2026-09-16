@@ -163,6 +163,22 @@ func TestLoadFileStepOrigin(t *testing.T) {
 	}
 }
 
+func TestClassifyMostSpecific(t *testing.T) {
+	pc := PathClasses{
+		{Prefix: "/cfg", Origin: OriginUser},
+		{Prefix: "/cfg/repo/.zemi", Origin: OriginProject},
+	}
+	for path, want := range map[string]Origin{
+		"/cfg/init.lua":            OriginUser,
+		"/cfg/repo/.zemi/init.lua": OriginProject,
+		"/cfgx/init.lua":           "",
+	} {
+		if got := pc.Classify(path); got != want {
+			t.Errorf("Classify(%s) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 // TestRequireOriginFollowsFile verifies §5: origin comes from the module
 // file's directory class, never from the requirer, so a plugin module
 // required from user code reports plugin origin (and the user chunk itself
