@@ -129,7 +129,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			}
 		}
 		if fn, ok := tb.RawGetString("render_item").(*glua.LFunction); ok {
-			o.RenderItem = fn
+			o.ItemText = h.renderItems(L, o.ID, fn, o.Items)
 		}
 		if fn, ok := tb.RawGetString("on_select").(*glua.LFunction); ok {
 			o.OnSelect = fn
@@ -181,7 +181,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			OnClose:  cancelWith(L, cb),
 		}
 		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
-			o.RenderItem = fn
+			o.ItemText = h.renderItems(L, o.ID, fn, list)
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -318,6 +318,26 @@ func hlSpec(m map[string]any) HLSpec {
 		Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
 		Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
 	}
+}
+
+// renderItems runs an overlay's render_item here on the interpreter, so the
+// UI goroutine never waits on the queue to draw the rows. A failing item
+// falls back to its plain value.
+func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []any) []string {
+	out := make([]string, len(items))
+	for i, item := range items {
+		base := L.GetTop()
+		L.Push(fn)
+		L.Push(lua.FromGo(L, item))
+		if err := L.PCall(1, 1, nil); err != nil {
+			h.Log.Debug("ui", "overlay render_item failed", map[string]any{"id": id, "error": err.Error()})
+			out[i] = fmt.Sprint(item)
+		} else if v := L.Get(-1); v != glua.LNil {
+			out[i] = v.String()
+		}
+		L.SetTop(base)
+	}
+	return out
 }
 
 // cancelWith is an overlay on_close that calls cb(nil), the vim.ui cancel shape.

@@ -200,6 +200,28 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 	}
 }
 
+// TestOverlayItemsRenderOnOpen: render_item and format_item run when the
+// overlay opens, so the UI never calls Lua to draw it.
+func TestOverlayItemsRenderOnOpen(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `
+		zemi.ui.overlay.open({ id = "o", items = { "a", "b" }, render_item = function(s)
+			if s == "b" then error("boom") end
+			return s:upper()
+		end })
+		zemi.ui.select({ 1 }, { format_item = function(n) return "#" .. n end }, function() end)
+	`)
+	var got []string
+	for _, o := range ui.opened {
+		got = append(got, strings.Join(o.ItemText, ","))
+	}
+	if strings.Join(got, ";") != "A,b;#1" {
+		t.Fatalf("rendered items: %q", got)
+	}
+}
+
 // TestEventRoundTrip covers the user.* event path end to end: register from
 // Lua, emit from Lua, payload attribution (from = emitting origin), and the
 // host-owned-prefix emit refusal.

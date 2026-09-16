@@ -93,8 +93,8 @@ func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	return out
 }
 
-// openOverlay pushes an overlay, rendering its items up front (render_item
-// runs once per item on the queue; the frame never calls Lua).
+// openOverlay pushes an overlay; Lua rendered its items when it opened, so
+// the key loop never calls Lua for them.
 func (a *App) openOverlay(o hostapi.Overlay) {
 	a.overlays = append(a.overlays, a.overlayState(o))
 }
@@ -107,13 +107,10 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.input.insert(sanitize.String(o.Default))
 		return st
 	}
-	for _, item := range o.Items {
-		text, err := a.renderOverlayItem(o, item)
-		if err != nil {
-			a.log.Debug("ui", "overlay render_item failed", map[string]any{
-				"id": o.ID, "error": err.Error(),
-			})
-			text = fmt.Sprint(item)
+	for i, item := range o.Items {
+		text := formatOverlayItem(item)
+		if i < len(o.ItemText) {
+			text = o.ItemText[i]
 		}
 		st.itemText = append(st.itemText, sanitize.String(text))
 	}
@@ -122,25 +119,6 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	}
 	st.refilter()
 	return st
-}
-
-// renderOverlayItem renders one item through the overlay's render_item
-// Lua callback; overlays without one fall back to plain formatting.
-func (a *App) renderOverlayItem(o hostapi.Overlay, item any) (string, error) {
-	if o.RenderItem == nil {
-		return formatOverlayItem(item), nil
-	}
-	res, err := a.host.RT.Call(context.Background(), o.Origin, o.RenderItem, item)
-	if err != nil {
-		return "", err
-	}
-	if len(res) == 0 {
-		return "", nil
-	}
-	if s, ok := res[0].(string); ok {
-		return s, nil
-	}
-	return fmt.Sprint(res[0]), nil
 }
 
 // formatOverlayItem renders items without render_item: strings, or

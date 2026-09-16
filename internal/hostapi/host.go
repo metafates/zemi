@@ -66,16 +66,16 @@ type EditRequest struct {
 // Overlay is the Go-side record of an open Lua overlay. Items are plain
 // marshaled data; render/on_select stay as interpreter-owned functions.
 type Overlay struct {
-	ID         string
-	Title      string
-	Origin     lua.Origin
-	Path       string
-	Items      []any
-	RenderItem *glua.LFunction
-	OnSelect   *glua.LFunction
-	OnClose    *glua.LFunction
-	Gen        Gen
-	Anchor     string // "bottom": over the chat's bottom-left, by the statusline; "" centered
+	ID       string
+	Title    string
+	Origin   lua.Origin
+	Path     string
+	Items    []any
+	ItemText []string // render_item's line per item, rendered when it opened
+	OnSelect *glua.LFunction
+	OnClose  *glua.LFunction
+	Gen      Gen
+	Anchor   string // "bottom": over the chat's bottom-left, by the statusline; "" centered
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
