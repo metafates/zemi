@@ -215,18 +215,20 @@ func TestQueueWatchdogAbandonHot(t *testing.T) {
 // TestQueuePendingDroppedOnReload verifies that requests queued behind a
 // busy interpreter are answered with ErrReloaded when ForceReload retires
 // the generation (DESIGN §4: reload purges every registration of the dead
-// generation before replay).
+// generation before replay), and the running one is canceled: left going,
+// it would see the fresh generation's origin frames.
 func TestQueuePendingDroppedOnReload(t *testing.T) {
 	r := newTestRuntime(t)
 
 	started := make(chan struct{})
+	running := make(chan error, 1)
 	go func() {
-		_, _ = r.Do(context.Background(), ClassIO, 0, 0,
+		_, err := r.Do(context.Background(), ClassIO, 10*time.Second, time.Second,
 			func(L *glua.LState) ([]any, error) {
 				close(started)
-				time.Sleep(400 * time.Millisecond)
-				return nil, nil
+				return nil, L.DoString("while true do end")
 			})
+		running <- err
 	}()
 	select {
 	case <-started:
@@ -252,6 +254,14 @@ func TestQueuePendingDroppedOnReload(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("pending request never answered")
+	}
+	select {
+	case err := <-running:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("running request got %v, want canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("running request kept going after the reload")
 	}
 }
 

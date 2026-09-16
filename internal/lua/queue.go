@@ -125,6 +125,7 @@ type Generation struct {
 
 	mu      sync.Mutex
 	heap    []*request
+	running *request
 	seq     uint64
 	signal  chan struct{}
 	stop    chan struct{} // closed by ForceReload to end loop
@@ -169,16 +170,20 @@ func (g *Generation) pop() *request {
 
 func (g *Generation) drain() { g.drainWith(ErrReloaded) }
 
-// drainWith retires the generation and answers everything still queued
-// with err. Hot mode only fails fast the Do calls that arrive after the
-// wedge, so without this the requests already in the heap would wait on
-// their reply channel forever.
+// drainWith retires the generation, answers everything still queued with
+// err and cancels the running request. Hot mode only fails fast the Do
+// calls that arrive after the wedge, so without this the requests already
+// in the heap would wait on their reply channel forever. A running request
+// left going would push and read origin frames of the next generation.
 func (g *Generation) drainWith(err error) {
 	g.mu.Lock()
 	g.retired = true
-	pending := g.heap
+	pending, running := g.heap, g.running
 	g.heap = nil
 	g.mu.Unlock()
+	if running != nil {
+		running.cancel()
+	}
 	for _, r := range pending {
 		r.mu.Lock()
 		if !r.finished {
@@ -208,17 +213,24 @@ func (g *Generation) loop() {
 }
 
 func (g *Generation) execute(r *request) {
+	reqCtx, cancel := context.WithCancel(r.caller)
+	defer cancel()
+	r.setCancel(cancel)
 	g.mu.Lock()
 	retired := g.retired
+	if !retired {
+		g.running = r
+	}
 	g.mu.Unlock()
 	if retired {
 		r.reply <- result{err: ErrReloaded}
 		return
 	}
-
-	reqCtx, cancel := context.WithCancel(r.caller)
-	defer cancel()
-	r.setCancel(cancel)
+	defer func() {
+		g.mu.Lock()
+		g.running = nil
+		g.mu.Unlock()
+	}()
 	ceiling := r.ceiling
 	if ceiling <= 0 {
 		ceiling = HardCeiling
