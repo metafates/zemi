@@ -44,6 +44,34 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	}
 }
 
+func TestToolRegCollision(t *testing.T) {
+	cases := []struct {
+		name      string
+		old, new  lua.Origin
+		wantError bool
+	}{
+		{"higher origin replaces", lua.OriginPlugin, lua.OriginUser, false},
+		{"same origin last writer wins", lua.OriginUser, lua.OriginUser, false},
+		{"lower origin refused", lua.OriginUser, lua.OriginProject, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newToolReg()
+			if err := r.add(&luaTool{Name: "search", Origin: c.old}); err != nil {
+				t.Fatal(err)
+			}
+			err := r.add(&luaTool{Name: "search", Origin: c.new})
+			want := c.new
+			if c.wantError {
+				want = c.old
+			}
+			if (err != nil) != c.wantError || r.byName["search"].Origin != want {
+				t.Fatalf("err=%v, kept %s, want %s", err, r.byName["search"].Origin, want)
+			}
+		})
+	}
+}
+
 // TestDeferredCallbackKeepsOrigin: a callback runs later under the origin
 // that handed it over, so learned code cannot launder a refused call
 // through one (DESIGN §9).

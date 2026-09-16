@@ -59,8 +59,8 @@ func newToolReg() *toolReg {
 func (r *toolReg) add(t *luaTool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.byName[t.Name]; ok {
-		return fmt.Errorf("tool %q already registered", t.Name)
+	if old, ok := r.byName[t.Name]; ok && old.Origin.Rank() > t.Origin.Rank() {
+		return fmt.Errorf("tool %q is already registered by a %s registration", t.Name, old.Origin)
 	}
 	r.byName[t.Name] = t
 	return nil
