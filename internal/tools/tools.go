@@ -424,7 +424,7 @@ The call blocks until the command exits; at the timeout (default 60000 ms, up to
 - servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
 - interactive programs (vim, less, REPLs, git rebase -i, git add -p, npm init, password or y/n prompts): use the non-interactive form, such as git --no-pager log, git commit -m "msg", npm init -y, --yes, CI=1.
 
-Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: what a command prints here does not count as reading a file, so edit will still refuse it. Chain dependent steps with &&; send independent commands as separate calls in one response, and do not join them with echo separators.`,
+Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: what a command prints here does not count as reading a file, so edit will still refuse it. Chain dependent steps with &&; send independent commands as separate calls in one response, and do not join them with echo separators. When one call repeats a long path, bind it to a short variable first: D=/long/path/to/dir; ls $D; grep -n 'func ' $D/main.go.`,
 			false,
 			map[string]any{
 				"command":     map[string]any{"type": "string"},
