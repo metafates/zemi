@@ -140,14 +140,13 @@ func TestModelPickerFilter(t *testing.T) {
 	}
 }
 
-// TestOverlaySelectOffKeyLoop: enter on a Lua picker returns while the
-// interpreter is busy; on_choice runs on the background worker.
-func TestOverlaySelectOffKeyLoop(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 20)
-	runLua(t, app, `zemi.ui.select({ "a" }, {}, function() end)`)
-	app.program = tea.NewProgram(nil) // never run: it only switches on the worker
+// pressWhileLuaBusy attaches a program that never runs, so Lua work goes to
+// the worker, and presses keys while the interpreter is held; it fails when
+// a key waits on Lua. release frees the interpreter.
+func pressWhileLuaBusy(t *testing.T, app *App, keys ...tea.KeyPressMsg) (release func()) {
+	t.Helper()
+	app.program = tea.NewProgram(nil)
 	busy, hold := make(chan struct{}), make(chan struct{})
-	defer close(hold)
 	go app.host.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
 		close(busy)
 		<-hold
@@ -156,15 +155,52 @@ func TestOverlaySelectOffKeyLoop(t *testing.T) {
 	<-busy
 	done := make(chan struct{})
 	go func() {
-		app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		for _, k := range keys {
+			app.Update(k)
+		}
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("enter waited on the interpreter")
+		close(hold)
+		t.Fatal("a key waited on the interpreter")
 	}
+	return func() { close(hold) }
+}
+
+// TestOverlaySelectOffKeyLoop: enter on a Lua picker returns while the
+// interpreter is busy; on_choice runs on the background worker.
+func TestOverlaySelectOffKeyLoop(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `zemi.ui.select({ "a" }, {}, function() end)`)
+	defer pressWhileLuaBusy(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})()
 	if len(app.overlays) != 0 {
 		t.Fatal("the picker should close at once")
+	}
+}
+
+// TestPaletteLuaCompleterOffKeyLoop: typing past "/name " returns while the
+// interpreter is busy, and the Lua completer's answer fills the palette once
+// it is free.
+func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `zemi.command.add("greet", function() end, { complete = function() return { "alice", "bob" } end })`)
+	var keys []tea.KeyPressMsg
+	for _, r := range "/greet b" {
+		keys = append(keys, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	pressWhileLuaBusy(t, app, keys...)()
+	deadline := time.After(2 * time.Second)
+	for !app.palette.open {
+		select {
+		case msg := <-app.hooks:
+			app.Update(msg)
+		case <-deadline:
+			t.Fatal("the completer never answered")
+		}
+	}
+	if len(app.palette.args) != 1 || app.palette.args[0] != "bob" {
+		t.Fatalf("palette args %v", app.palette.args)
 	}
 }

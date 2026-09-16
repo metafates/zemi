@@ -52,16 +52,34 @@ func (a *App) updatePalette() {
 	for start > nameEnd && r[start-1] != ' ' {
 		start--
 	}
-	lead := strings.ToLower(string(r[start:cur]))
-	args := []string{}
-	for _, c := range a.host.CompleteCommand(context.Background(), string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])) {
-		if strings.HasPrefix(strings.ToLower(c), lead) {
-			args = append(args, c)
+	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
+	show := func(cands []string) {
+		lead := strings.ToLower(typed)
+		args := []string{}
+		for _, c := range cands {
+			if strings.HasPrefix(strings.ToLower(c), lead) {
+				args = append(args, c)
+			}
 		}
+		a.palette.matches, a.palette.args, a.palette.argStart = nil, args, start
+		a.palette.open = len(args) > 0
+		a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
 	}
-	a.palette.matches, a.palette.args, a.palette.argStart = nil, args, start
-	a.palette.open = len(args) > 0
-	a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
+	if c := a.host.Commands.Lookup(name); c == nil || c.Complete == nil || c.GoComplete != nil {
+		show(a.host.CompleteCommand(context.Background(), name, typed, line))
+		return
+	}
+	// A Lua completer runs on the worker, since the key loop never waits on
+	// Lua; its answer is dropped once the line before the cursor moved on.
+	a.palette.close()
+	a.background(func() {
+		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
+		a.do(func() {
+			if string(a.composer.runes()[:a.composer.cursor]) == line {
+				show(cands)
+			}
+		})
+	})
 }
 
 func (p *cmdPalette) close() {
