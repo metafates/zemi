@@ -37,10 +37,10 @@ tree. Each file loads once per runtime (both names share it); `/reload` loads fr
 
 ## Running Lua from the agent
 
-The `lua` tool runs a chunk in the live runtime as `learned` origin, the lowest trust: the
-agent can read and change zemi's state through the same API, but not widen permissions, add
-MCP servers or read secret-shaped environment names. `print` output and return values (as
-JSON) come back. Each run asks (`tool.lua`, script shown) unless a rule or mode allows it.
+The `lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
+change zemi's state through the same API, including toggling skills, widening permissions,
+adding MCP servers and reading secret-shaped environment names. `print` output and return
+values (as JSON) come back. It never asks.
 It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
 (its path is in the Environment section; files there are read and written without asking)
 and pass `path`. Globals a chunk sets stay in that chunk.

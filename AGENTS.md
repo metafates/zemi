@@ -279,8 +279,8 @@ what the screen says.
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 
 - **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
-  are prefixed with the agent name). Definitions: builtin `explore` (read-only tools) and
-  `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
+  are prefixed with the agent name). Definitions: builtin `explore` (read-only tools), `web`
+  (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
   `agent`, `workflow`, `todos`, `question` or `plan` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
   context estimate. The delegation guidance lives in `delegationPrompt` (agent.go):
@@ -319,10 +319,18 @@ what the screen says.
   argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
   server).
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file (user
-  `zemi.lsp.add` first, then an installed builtin whose marker is at the repo root); the
-  pipeline's `AfterWrite` appends errors and warnings to write/edit/multiedit results and
-  the `diagnostics` tool reads any file. A slow or failed server only means no
-  diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
+  `zemi.lsp.add` first, then an installed builtin whose marker is in the file's directory
+  or above it); the pipeline's `AfterWrite` appends errors and warnings to
+  write/edit/multiedit results plus errors in other files, the `diagnostics` tool reads
+  any file and the `lsp` tool does definition, references, rename and symbols by name.
+  A server answers from the text the client sent for an open document and from its own
+  copy of every other file, which it re-reads only when told: so before every touch or
+  query `lspSync` diffs two `git status` listings and sends `workspace/didChangeWatchedFiles`
+  for what changed (bash, formatters, git, the user's editor), the client re-sends open
+  documents whose mtime moved and closes deleted ones, and a rename refuses a versioned
+  edit planned against other text. A slow or failed server only means no diagnostics,
+  never a failed edit; three silent touches in a row restart it. Test against
+  `internal/lsp/lsptest`, whose fake registers a `**/*.txt` watcher like gopls does.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send`
   and `zemi.command.run` of host commands go through `GoSafe`.

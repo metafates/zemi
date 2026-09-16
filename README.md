@@ -83,8 +83,8 @@ gets a fresh context and its own tool set, runs in parallel with others, and ret
 report; its tool calls go through the same permission prompts, labeled with the agent's
 name. The row under the tool call shows live progress. The model can also start one in the
 background: it keeps working (or goes idle) and the report arrives as a message when the
-agent is done; `/agents` lists them and stops one. zemi ships `general` and a
-read-only `explore`; add your own as markdown in `~/.config/zemi/agents/` or
+agent is done; `/agents` lists them and stops one. zemi ships `general`, a
+read-only `explore` and `web` for research on the web; add your own as markdown in `~/.config/zemi/agents/` or
 `.zemi/agents/`:
 
 ```markdown

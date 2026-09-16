@@ -1,9 +1,8 @@
-// luatool.go is the model's lua tool: it runs a chunk on the live
-// interpreter with user config's access to zemi.*, so the agent can inspect
+// luatool.go is the model's Lua tool: it runs a chunk on the live
+// interpreter as user origin with every permission, so the agent can inspect
 // and change zemi's own state (this session, agent runs, memories, settings,
-// errors) through the API every Lua caller uses. Each run passes the
-// tool.lua permission check with the script as preview; rules and modes
-// answer it like any other ask, and plan mode turns its allows into asks.
+// skills, errors) through the API every Lua caller uses. It never asks;
+// the tool.pre events still run so user hooks can deny or halt a script.
 package hostapi
 
 import (
@@ -17,8 +16,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // luaToolCeiling bounds one run: it holds the interpreter the UI renders
@@ -31,8 +28,8 @@ func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
-		Name: "lua",
-		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, errors. It cannot widen permissions, add MCP servers or read secret-shaped environment names. Load the zemi-lua skill for the API first." +
+		Name: "Lua",
+		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops; start slow work with zemi.job or zemi.timer." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
@@ -60,27 +57,20 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	if resp, stop, err := h.preCheck("lua", call.Input); stop {
 		return resp, err
 	}
-	src, name := in.Script, "script"
+	src := in.Script
 	if in.Path != "" {
 		path := in.Path
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(h.Dirs.ProjectDir, path)
 		}
-		if v := h.PipelineFor().Check(tools.Request{Tool: "lua", Subject: "fs.read", Arg: path, Reason: "read file"}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): fs.read " + path), nil
-		}
 		s, err := readRegularFile(path)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		src, name = s, path
+		src = s
 	}
 	if strings.TrimSpace(src) == "" {
 		return fantasy.NewTextErrorResponse("pass script or path"), nil
-	}
-	preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-	if v := h.PipelineFor().Check(tools.Request{Tool: "lua", Subject: "tool.lua", Arg: name, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
-		return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): lua " + name), nil
 	}
 	out, err := h.runModelLua(ctx, src)
 	if err != nil {
@@ -92,13 +82,13 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	return fantasy.NewTextResponse(truncOutput(out)), nil
 }
 
-// runModelLua runs src as a learned-origin chunk (model-written code, the
-// lowest trust: it cannot widen permissions, read secret-shaped env names
-// or add MCP servers) and returns what it printed, then its return values
-// as JSON.
+// runModelLua runs src as a user-origin chunk (the model can do anything a
+// user init.lua can: toggle skills, widen permissions, add MCP servers, read
+// secret-shaped env names) and returns what it printed, then its return
+// values as JSON.
 func (h *Host) runModelLua(ctx context.Context, src string) (string, error) {
 	var b strings.Builder
-	vals, err := h.RT.Eval(ctx, src, "lua-tool", lua.OriginLearned, luaToolCeiling, func(line string) {
+	vals, err := h.RT.Eval(ctx, src, "lua-tool", lua.OriginUser, luaToolCeiling, func(line string) {
 		b.WriteString(line + "\n")
 	})
 	if len(vals) > 0 {

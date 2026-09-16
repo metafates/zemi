@@ -717,7 +717,8 @@ memory edits re-run intake and ask, §10.4), `diagnostics` (language
 server errors for any file), `skill` (loads a SKILL.md body on demand),
 plus the three the host adds: `agent` (delegate to a subagent),
 `workflow` (write or run a workflow script) and `lua` (run Lua inside
-zemi, main agent only, at `learned` origin so it cannot widen anything).
+zemi, main agent only, as user origin: full access to toggle skills and
+anything else user Lua can do).
 Subagents never get `agent`, `workflow`, `todos`, `question` or `plan`
 (§6.3). Every tool, Go or Lua, passes through the same pipeline:
 

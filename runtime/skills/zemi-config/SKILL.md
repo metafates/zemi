@@ -212,8 +212,8 @@ browser, and zemi keeps and refreshes the grant. MCP servers:
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
 `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
-`agent`, `workflow`, `lua` (runs Lua inside zemi at the lowest trust, so it cannot widen
-permissions, add MCP servers or read secret-shaped env names; permission subject `tool.lua`), plus
+`agent`, `workflow`, `lua` (runs Lua inside zemi as user origin, full access: can toggle
+skills, widen permissions, add MCP servers, read secret-shaped env names; never asks), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
 
 Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several
