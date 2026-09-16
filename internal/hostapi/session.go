@@ -13,18 +13,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/metafates/zemi/internal/sanitize"
-
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
 // NewSession closes the live session; the next send creates a fresh one.
 func (h *Host) NewSession() error {
-	if _, err := h.closeSession(); err != nil {
+	if err := h.closeSession(); err != nil {
 		return err
 	}
 	h.setTranscript("zemi", nil)
@@ -57,7 +56,7 @@ func (h *Host) ResumeSession(id string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := h.closeSession(); err != nil {
+	if err := h.closeSession(); err != nil {
 		return err
 	}
 	history, tr := resumeHistory(rows)
@@ -169,13 +168,13 @@ func firstUserLine(partsJSON string) string {
 }
 
 // closeSession detaches the live session (refused mid-turn) and fires its
-// close trigger; it returns the closed id.
-func (h *Host) closeSession() (string, error) {
+// close trigger.
+func (h *Host) closeSession() error {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return "", errors.New("a turn is running; esc interrupts it")
+		return errors.New("a turn is running; esc interrupts it")
 	}
 	prev := ag.sessionID
 	h.recentStale.Store(true)
@@ -191,7 +190,7 @@ func (h *Host) closeSession() (string, error) {
 		h.EmitAsync("session.close", map[string]any{"id": prev})
 		h.reflectOnClose(prev)
 	}
-	return prev, nil
+	return nil
 }
 
 func (h *Host) setTranscript(title string, tr []ChatMessage) {
@@ -297,7 +296,8 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
 			return
 		}
-		title := sanitize.String(clipRunes(strings.Trim(strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]), `"'.# `), 60))
+		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+		title := sanitize.String(clipRunes(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
 		if title == "" {
 			return
 		}

@@ -98,12 +98,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	cut := -1
-	for i, r := range rows {
-		if r.ID == id {
-			cut = i
-		}
-	}
+	cut := slices.IndexFunc(rows, func(r *store.Message) bool { return r.ID == id })
 	text, ok := "", false
 	if cut >= 0 {
 		text, ok = userText(rows[cut])

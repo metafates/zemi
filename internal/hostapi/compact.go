@@ -158,11 +158,12 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		if !imagesDropped && !runner.TextOnly && imagesRefused(err) {
 			imagesDropped = true
 			ag.mu.Lock()
-			imagesRejected.Store(ag.turnModel, true)
+			model := ag.turnModel
 			ag.beginTurn()
 			ag.mu.Unlock()
+			imagesRejected.Store(model, true)
 			runner.TextOnly = true
-			h.Notify("info", "agent", ag.turnModel+" does not take images; going on without them (set images = false on its model entry)")
+			h.Notify("info", "agent", model+" does not take images; going on without them (set images = false on its model entry)")
 			continue
 		}
 		reason := compactAuto

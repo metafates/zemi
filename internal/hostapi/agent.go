@@ -1071,14 +1071,15 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	}
 	if h.DB == nil {
 		ag.mu.Unlock()
-		return fmt.Errorf("agent: session store unavailable")
+		return errors.New("agent: session store unavailable")
 	}
 	sid := store.NewID()
 	name := ""
 	if p != nil {
 		name = p.Name
 	}
-	title := clipRunes(strings.SplitN(strings.TrimSpace(firstText), "\n", 2)[0], 60)
+	first, _, _ := strings.Cut(strings.TrimSpace(firstText), "\n")
+	title := clipRunes(first, 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
@@ -1253,7 +1254,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	v := L.Get(idx)
 	tb, ok := v.(*glua.LTable)
 	if !ok {
-		return agent.Spec{}, fmt.Errorf("spec must be a table")
+		return agent.Spec{}, errors.New("spec must be a table")
 	}
 	if name := rawString(tb, "api_key_env"); name != "" {
 		return agent.Spec{}, fmt.Errorf(`api_key_env is gone: pass the key itself, api_key = zemi.env.get("%s")`, name)
@@ -1295,7 +1296,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		})
 	}
 	if spec.ID == "" || spec.Kind == "" {
-		return agent.Spec{}, fmt.Errorf("provider needs id and kind")
+		return agent.Spec{}, errors.New("provider needs id and kind")
 	}
 	return spec, nil
 }
@@ -1412,9 +1413,6 @@ func (h *Host) contextWindow(modelID string) int64 {
 	return m.ContextWindow
 }
 
-// maxOutput is the reply token limit: the model spec's, else 32000 for
-// Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
-// 0 (the provider default).
 // capRejected remembers models whose provider refused zemi's default output
 // cap: an older Anthropic model with a lower ceiling would otherwise fail
 // every turn until the user set max_output by hand.
@@ -1429,6 +1427,9 @@ func maxTokensRefused(err error) bool {
 	return strings.Contains(s, "max_tokens") || strings.Contains(s, "max_output_tokens")
 }
 
+// maxOutput is the reply token limit: the model spec's, else 32000 for
+// Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
+// 0 (the provider default).
 func (h *Host) maxOutput(modelID string) int64 {
 	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
 		return m.MaxOutput
@@ -1975,7 +1976,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		p.TodosWrite = func(todos []store.Todo) error {
 			sid := h.AgentSessionID()
 			if sid == "" {
-				return fmt.Errorf("no active session")
+				return errors.New("no active session")
 			}
 			defer h.todosStale.Store(true)
 			return h.DB.SetTodos(sid, todos)

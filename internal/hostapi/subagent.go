@@ -252,9 +252,10 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if err != nil {
 		return "", err
 	}
+	modelID := h.currentModelID(prof)
 	pipe := h.PipelineFor()
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
-	pipe.Images = func() bool { return h.takesImages(h.currentModelID(prof)) }
+	pipe.Images = func() bool { return h.takesImages(modelID) }
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	var sent sync.Map       // likewise the instruction files its reads carried
 	pipe.Instructions = func(path string) string {
@@ -275,8 +276,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	all := append(append(tools.All(pipe), h.luaFantasyTools()...), h.mcpFantasyTools(pipe)...)
 	all = append(all, h.windowToolFor(def.Name, pipe))
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
-	runner.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(prof), h.Effort())
-	runner.MaxOutputTokens = h.maxOutput(h.currentModelID(prof))
+	runner.ProviderOptions = h.Providers.EffortOptions(modelID, h.Effort())
+	runner.MaxOutputTokens = h.maxOutput(modelID)
 
 	sid := ""
 	if h.DB != nil {
@@ -295,7 +296,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.sessionID = sid
 		run.mu.Unlock()
 	}
-	hooks := &subagentHooks{h: h, def: def, run: run, modelID: h.currentModelID(prof), progress: progress, sid: sid}
+	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(role string, msg fantasy.Message) error {

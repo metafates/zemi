@@ -1,7 +1,7 @@
 // reflector.go: after a session closes, a tool-less model call reads the
 // transcript, tool stats and memory and skill indexes, and proposes
-// memories, config patches and skills (DESIGN §10.3). Every proposal goes
-// through intake and the autonomy gate.
+// memories and skills (DESIGN §10.3). Memories go through intake and the
+// autonomy gate; skills land as disabled drafts.
 package hostapi
 
 import (
@@ -34,7 +34,6 @@ const (
 	reflectIndexText = 160
 )
 
-// reflectorSystem is the reflector prompt.
 const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions.
 
 Rules:
@@ -238,7 +237,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 	if props := h.memoryProposals(); len(props) > 0 {
 		b.WriteString("\n# Memories awaiting review\n")
 		for _, m := range props {
-			b.WriteString(fmt.Sprintf("- [%s/%s] %s\n", m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText)))
+			fmt.Fprintf(&b, "- [%s/%s] %s\n", m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText))
 		}
 	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
@@ -435,7 +434,7 @@ func (h *Host) ReflectorCommandsStep() lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
 				Name: "reflect", Hidden: true,
-				Desc:   "distill this session into memories and config",
+				Desc:   "distill this session into memories and skills",
 				GoFn:   func(h *Host, args string) error { return h.reflectCommand() },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
