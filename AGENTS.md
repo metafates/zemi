@@ -3,7 +3,7 @@
 zemi is a terminal AI agent harness whose userland (default UI, keymaps, widgets, learning
 machinery) is written in embedded Lua while Go owns the runtime: the agent loop over
 `charm.land/fantasy`, the bubbletea v2 TUI, the sandboxed gopher-lua interpreter, and SQLite
-persistence. `DESIGN.md` (1703 lines) is the authoritative spec; code comments cite its
+persistence. `DESIGN.md` is the authoritative spec; code comments cite its
 sections (`DESIGN §4`, `§6.2`, ...). **Before changing behavior, read the DESIGN section the
 code cites** — it explains the why (usually a security or concurrency invariant), and a
 change that contradicts it is almost always wrong.
@@ -67,11 +67,11 @@ active.
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `main.go:93`) — order
+`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in `main.go`) — order
 matters and permissions sit early so no userland code runs before the permanent store loads:
 host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
-builtin commands -> memory + reflector + config + skills commands -> agents (+ tasks),
-workflow (+ `/review`), mcp and lsp commands ->
+builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
+workflow (+ `/review`), mcp, lsp and window commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
 plugins -> user `init.lua` -> authored skill hooks -> project `.zemi/` (`init.lua`,
 `agents/`, `commands/`, `workflows/`; any of them triggers the one-time trust prompt that
@@ -95,7 +95,7 @@ config git repo exists before any step can commit a revision (see "Permanent rul
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine.
    Work from other goroutines (host hooks, Lua callbacks) is funneled through a hook
    channel drained by a persistent cmd (`internal/ui/hooks.go`). hostapi never imports
-   internal/ui — it defines `UIHooks` (internal/hostapi/host.go:28) and the App implements
+   internal/ui — it defines `UIHooks` (internal/hostapi/host.go) and the App implements
    it; keep that dependency direction (ui -> hostapi, never the reverse).
    Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or anything it
    calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
@@ -206,12 +206,12 @@ with YAML frontmatter (name, description); discovery lives in `internal/skills`,
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only
   user or builtin origin may enable/disable (`memoryManageAllowed` gate at the Lua namespace
   boundary — NOT inside the Go helper; off-interpreter goroutines read `OriginHost`, which
-  would defeat a Go-side gate, see the concurrency rules). Enabling runs `zemi.skill.load:<name>`
-  hooks: inline if already on the interpreter goroutine (hook fns are invoked from Lua, so
-  they may run `runSkillHook` directly), otherwise enqueued via `h.RT.Do` — the
+  would defeat a Go-side gate, see the concurrency rules). Enabling a learned skill runs its
+  `zemi-skill.lua` (`runSkillHook`): inline when `zemi.skills.enable` calls it (already on
+  the interpreter goroutine), otherwise enqueued via `h.RT.Do` (`/skills enable`) — the
   inline-vs-Do split in `enableHook` is load-bearing.
-- **Token efficiency**: the agent prompt carries only the index (name + description capped at
-  160 runes); full bodies load on demand via the `skill` tool after a permission check.
+- **Token efficiency**: the agent prompt carries only the index (name + description, at most
+  512 runes); full bodies load on demand via the `skill` tool after a permission check.
 - **Hook registration placement**: authored skill hooks register at `SkillsAuthoredHooksStep`
   (after user init.lua), learned ones at `SkillsLearnedHooksStep` (after `app.ready`) — the
   learned step must not re-run on reload replay without its `Gen` tag.
@@ -250,9 +250,9 @@ what the screen says.
   `OnStepFinish`, so a cancelled or crashed turn keeps what it already did; the next send
   runs `closeToolCalls` over the history first, inserting an error result after any tool call
   left unanswered (providers refuse a dangling call). The stops are `maxSteps` 200
-  (`ErrStepLimit`) and six identical tool steps in a row (`ErrToolLoop`; `job_read` and
-  `job_list` are exempt, polling is not looping), with `maxRetries` 5 per step and
-  `MaxOutputTokens` turning a length-finished reply into `ErrReplyCut`. Cache tokens are
+  (`ErrStepLimit`) and a block of up to three tool steps repeating over six steps or three
+  cycles (`ErrToolLoop`; `job_read` and `job_list` steps are left out, polling is not
+  looping), with `maxRetries` 5 per step and `MaxOutputTokens` turning a length-finished reply into `ErrReplyCut`. Cache tokens are
   priced apart (`CostPer1MInCached`/`CostPer1MOutCached`), and the session tally counts cache
   reads and creations as input.
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
@@ -298,7 +298,7 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
 - **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
   are prefixed with the agent name). Definitions: builtin `explore` (read-only tools), `web`
   (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
-  `agent`, `workflow`, `todos`, `question` or `plan` (nesting depth 1). A run is a child session
+  `agent`, `workflow`, `todos`, `question`, `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
   context estimate. The delegation guidance lives in `delegationPrompt` (agent.go):
   without it models rarely delegate.
@@ -324,9 +324,10 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
   the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
   `safeCommandPath` include it.
-- **lua tool** (luatool.go): model Lua runs through `Runtime.Eval` as `user` origin with
-  every permission and never asks, on the interpreter (10s ceiling), in a wrapper env whose
-  `print` is captured; only `tool.pre` hooks can deny it. Main agent only.
+- **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
+  origin and the tool never asks (only `tool.pre` hooks can deny it; gated `zemi.fs`,
+  `zemi.http` and `zemi.job` calls inside still raise on an ask), on the interpreter (10s
+  ceiling), in a wrapper env whose `print` is captured. Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
   which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
   learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
@@ -359,7 +360,7 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
   `write`/`edit`/`multiedit` touch it. `RewindTo` restores files first and only then
   truncates messages (checkpoints cascade), so a failed restore leaves the conversation
   intact. Bash changes are not tracked.
-- **Plan mode** is a permission mode enforced in `tools.Pipeline.check` (`Plan` hook):
+- **Plan mode** is a permission mode enforced in `tools.Pipeline.Check` (`Plan` hook):
   `fs.write` denied even under allow rules, bash and `mcp.*` allows flip to ask. The
   prompt section only saves wasted attempts.
 - **Composer bridge**: Lua reads a snapshot the UI publishes (`SetComposerSnapshot` after
@@ -393,8 +394,9 @@ library in go.mod), run with `GIT_CONFIG_NOSYSTEM=1` and a 15s timeout.
 
 Skill proposals always wait for review (DESIGN §10.4). The reflector
 proposes memories and skills only; there is no config-patch pipeline and
-no `/config` command (the agent edits config files directly, and the
-overlay's "always" answer is the one path that writes permanent rules).
+no `/config` command (the agent edits config files directly). The overlay's
+"always" answer adds session rules only; permanent rules come only from
+`zemi.permission.rule{ scope = "permanent" }` in user config.
 Every applied revision records its config-repo commit SHA
 (`config_revisions.commit_sha`); undoing one is `git revert` in the
 config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
@@ -433,7 +435,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
 - **DESIGN.md is the spec; the tree is the truth.** §12's layout and §13's milestone status
   were last squared with the code, so they read correctly today; when they drift again,
   trust the tree. Shipped: M0-M3, plus subagents, workflows, MCP and LSP out of M5, and a
-  pile of things no milestone named (permission modes, rewind, scratchpads, the `lua` tool,
+  pile of things no milestone named (permission modes, rewind, scratchpads, the `Lua` tool,
   print mode). Not built: M4 evals (no `zemi.eval`, and `config_revisions.eval_ok` is a dead
   column), the plugin manager, embeddings.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
@@ -494,7 +496,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   directory, so a forged reference cannot attach other files outside the project.
 - **gopher-lua multiple assignment**: `a[#a + 1], b = b, x` stores `x` in `a`. Split any
   assignment whose right side names a left-side target (this once garbled wrapped text).
-- **Handles vs snapshots**: host resources (job, http, timer, session) are handle tables
+- **Handles vs snapshots**: host resources (job, http, timer, session, window) are handle tables
   with colon methods; everything else is a plain snapshot copy. Marshaling across the Lua
   <-> Go boundary caps string size (16 MB) and depth (64) and refuses cycles.
 - `.crush/` in the repo root is this workspace's Crush CLI session data (gitignored) — not
