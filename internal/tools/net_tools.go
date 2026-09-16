@@ -25,9 +25,8 @@ import (
 )
 
 // deniedNets is the §9 SSRF set; v4-mapped v6 normalizes to v4 before
-// matching. Loopback and RFC1918 are development targets the design gates
-// behind an explicit user allow, which the store does not model yet: v1
-// refuses them outright (safe side).
+// matching. Loopback and RFC1918 are refused unless the caller passes
+// SafeClient's allowPrivate (the user's search URL, a user-allowed host).
 var deniedNets = func() []*net.IPNet {
 	raw := []string{
 		"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
