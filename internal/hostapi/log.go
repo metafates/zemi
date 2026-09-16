@@ -27,7 +27,7 @@ func (h *Host) logCall(L *glua.LState) *glua.LFunction {
 func (h *Host) logFn(level logging.Level, first int) glua.LGFunction {
 	return func(L *glua.LState) int {
 		msg := L.CheckString(first)
-		h.Log.Log(level, string(h.RT.CurrentOrigin()), msg, logFields(L, first+1))
+		h.Log.Log(level, string(h.RT.CurrentOrigin(L)), msg, logFields(L, first+1))
 		return 0
 	}
 }

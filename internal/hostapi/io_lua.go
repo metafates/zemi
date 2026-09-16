@@ -140,7 +140,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	// rules are attributed to the calling code's origin, not to the model
-	pipe.Principal = string(h.RT.CurrentOrigin())
+	pipe.Principal = string(h.RT.CurrentOrigin(L))
 	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	switch v.Decision {
 	case perm.Allow:
@@ -164,7 +164,7 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		// user config reads its own keys (api_key = zemi.env.get(...));
 		// plugins, projects and learned code never see secret-shaped names
-		if o := h.RT.CurrentOrigin(); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
+		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
 		L.Push(lua.FromGo(L, os.Getenv(name)))
@@ -556,7 +556,7 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 				req.headers[k.String()] = v.String()
 			})
 		}
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			for k := range req.headers {
 				switch strings.ToLower(k) {
 				case "authorization", "proxy-authorization", "cookie":
@@ -596,7 +596,7 @@ type httpHandle struct {
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
-	origin := h.RT.CurrentOrigin()
+	origin := h.RT.CurrentOrigin(L)
 	v := h.luaGate(L, subject, req.url)
 	// §9 localhost development opt-in: an explicit user allow rule for the
 	// host overrides the resolved-address deny. Allow rules are user-only

@@ -55,7 +55,7 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		}
 		h.healthReg.mu.Lock()
 		h.healthReg.list = append(h.healthReg.list, luaHealthCheck{
-			name: name, fn: fn, origin: h.RT.CurrentOrigin(), gen: h.currentGen(),
+			name: name, fn: fn, origin: h.RT.CurrentOrigin(L), gen: h.currentGen(),
 		})
 		h.healthReg.mu.Unlock()
 		return 0

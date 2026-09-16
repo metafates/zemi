@@ -574,7 +574,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("supersede", L.NewFunction(func(L *glua.LState) int {
 		old, by := L.CheckString(1), L.CheckString(2)
-		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
+		if !memoryManageAllowed(h.RT.CurrentOrigin(L)) {
 			L.RaiseError("zemi.memory.supersede: only user or builtin origin may modify memories")
 		}
 		return luaResult(L, h.supersedeMemory(old, by))
@@ -582,7 +582,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("forget", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
+		if !memoryManageAllowed(h.RT.CurrentOrigin(L)) {
 			L.RaiseError("zemi.memory.forget: only user or builtin origin may modify memories")
 		}
 		db, m, err := h.locateMemory(id)

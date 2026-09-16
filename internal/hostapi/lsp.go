@@ -449,7 +449,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	// user config only. A name matching a builtin replaces it.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, opts := L.CheckString(1), L.CheckTable(2)
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
 		}
 		def := lspDef{Name: name, Command: rawString(opts, "command"), Env: map[string]string{}}
@@ -485,7 +485,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	// disable(name): never start this server (a builtin, or one added above).
 	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.lsp.disable: only user config may disable language servers")
 		}
 		h.lsp.mu.Lock()

@@ -122,7 +122,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.tool.register")
-		if h.RT.CurrentOrigin() == lua.OriginLearned {
+		if h.RT.CurrentOrigin(L) == lua.OriginLearned {
 			L.RaiseError("zemi.tool.register: learned code may not register tools (DESIGN §10.4, §10.5)")
 		}
 		spec, ok := L.Get(1).(*glua.LTable)
@@ -164,7 +164,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			Schema: schema, Required: required,
 			Parallel: rawBool(spec, "parallel"),
 			Timeout:  timeout, Fn: fn,
-			Origin: h.RT.CurrentOrigin(), Path: h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),
 			Gen: h.currentGen(),
 		}
 		if err := h.luaTools.add(lt); err != nil {
@@ -175,7 +175,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("override", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.tool.override")
-		if o := h.RT.CurrentOrigin(); o == lua.OriginLearned || o == lua.OriginProject {
+		if o := h.RT.CurrentOrigin(L); o == lua.OriginLearned || o == lua.OriginProject {
 			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
 		}
 		name := L.CheckString(1)
@@ -189,7 +189,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		}
 		h.luaTools.addOverride(&overrideRec{
 			Tool: name, Fn: fn,
-			Origin: h.RT.CurrentOrigin(), Path: h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),
 			Gen: h.currentGen(),
 		})
 		return 0
@@ -282,7 +282,7 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any)
 			if h.currentGen() != t.Gen {
 				return nil, errors.New("the tool is gone after a config reload")
 			}
-			defer h.RT.PushFrame(t.Origin, t.Path)()
+			defer h.RT.PushFrame(L, t.Origin, t.Path)()
 			base := L.GetTop()
 			defer L.SetTop(base)
 			L.Push(t.Fn)

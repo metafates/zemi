@@ -21,23 +21,27 @@ func newTestRuntime(t *testing.T) *Runtime {
 	return r
 }
 
-// TestLateFramePopIgnored: a request the watchdog abandoned can return
-// after a reload. Its pop must not take a frame of the live generation,
-// which would misattribute the running chunk's origin (DESIGN §4).
-func TestLateFramePopIgnored(t *testing.T) {
+// TestRetiredGenerationFrames: a request the watchdog abandoned can keep
+// running after a reload. Its pushes and pops must stay on its own
+// generation, or live code reads the wrong origin (DESIGN §4).
+func TestRetiredGenerationFrames(t *testing.T) {
 	r := newTestRuntime(t)
-	stale := r.PushFrame(OriginProject, "old.lua")
+	oldL := r.current().L
+	stale := r.PushFrame(oldL, OriginProject, "old.lua")
 	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
-	live := r.PushFrame(OriginUser, "init.lua")
+	L := r.current().L
+	live := r.PushFrame(L, OriginProject, "init.lua")
 
 	stale()
-	if got, path := r.CurrentOrigin(), r.CurrentPath(); got != OriginUser || path != "init.lua" {
-		t.Fatalf("after late pop: origin=%s path=%q, want user init.lua", got, path)
+	late := r.PushFrame(oldL, OriginUser, "late.lua")
+	if got, path := r.CurrentOrigin(L), r.CurrentPath(L); got != OriginProject || path != "init.lua" {
+		t.Fatalf("after stale push and pop: origin=%s path=%q, want project init.lua", got, path)
 	}
 	live()
-	if got := r.CurrentOrigin(); got != OriginHost {
+	late()
+	if got := r.CurrentOrigin(L); got != OriginHost {
 		t.Fatalf("after live pop: origin=%s, want %s", got, OriginHost)
 	}
 }

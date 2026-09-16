@@ -1310,7 +1310,7 @@ func (ag *agentHost) endThinking() {
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.provider.register: only user config may register providers")
 			return 0
 		}
@@ -1564,7 +1564,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.agent.profile: spec must be a table")
 			return 0
 		}
-		if !userOrProject(h.RT.CurrentOrigin()) {
+		if !userOrProject(h.RT.CurrentOrigin(L)) {
 			L.RaiseError("zemi.agent.profile: only user or project config may define profiles")
 			return 0
 		}
@@ -1585,7 +1585,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("set_default", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if !userOrProject(h.RT.CurrentOrigin()) {
+		if !userOrProject(h.RT.CurrentOrigin(L)) {
 			L.RaiseError("zemi.agent.set_default: only user or project config may set the default profile")
 			return 0
 		}
@@ -1686,7 +1686,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		// user-only too (learned proposals reach it only through the
 		// review commit); every other origin may only add session-scope
 		// deny/ask rules.
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			if r.Decision == perm.Allow {
 				L.RaiseError("zemi.permission.rule: allow rules may only come from user config")
 				return 0

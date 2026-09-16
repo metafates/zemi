@@ -85,8 +85,9 @@ func (r *request) setCancel(fn context.CancelFunc) {
 	r.mu.Unlock()
 }
 
-// cancel preempts the request if it is already running; a request still
-// waiting in the heap has no cancel func yet and settles on drain.
+// cancel preempts the request if it is already running. A request still
+// waiting in the heap has no cancel func yet: it runs when popped, with its
+// caller's cancelled context, or drain answers it.
 func (r *request) cancel() {
 	r.mu.Lock()
 	fn := r.cancelFn
@@ -130,6 +131,8 @@ type Generation struct {
 	signal  chan struct{}
 	stop    chan struct{} // closed by ForceReload to end loop
 	retired bool
+
+	frames []frame // origin stack, see pushFrame
 }
 
 func (g *Generation) enqueue(r *request) {
@@ -265,7 +268,7 @@ func (g *Generation) execute(r *request) {
 
 	started := time.Now()
 	g.L.SetContext(reqCtx)
-	pop := g.rt.PushFrame(OriginHost, "")
+	pop := g.pushFrame(OriginHost, "")
 	vals, err := g.safeRun(r)
 	pop()
 	g.L.RemoveContext()

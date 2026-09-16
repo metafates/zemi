@@ -22,17 +22,13 @@ import (
 type Runtime struct {
 	log   *logging.Logger
 	paths PathClasses
-	rfs   fs.FS // embedded runtime/lua tree
+	rfs   fs.FS // embedded runtime/ tree (lua/ under it)
 
 	hot     atomic.Bool
 	hotMu   sync.Mutex // orders goHot's generation check against retiring cur
 	booting atomic.Bool
 	cur     atomic.Pointer[Generation]
 	seq     atomic.Int64
-
-	originMu sync.Mutex
-	frames   []frame
-	epoch    uint64 // bumped on reload; stamped into every pop
 
 	printHook func(origin, line string)
 	reloadMu  sync.Mutex
@@ -69,52 +65,63 @@ func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
 	r.printHook = fn
 }
 
-// PushFrame pushes the origin of the chunk about to run and returns its
-// pop, for `defer r.PushFrame(...)()`. The pop carries the epoch and depth
-// it pushed at: a request the watchdog abandoned can return long after a
-// reload, and popping then would take a frame of the live generation and
-// misattribute its origin (DESIGN §4).
-func (r *Runtime) PushFrame(origin Origin, path string) func() {
-	r.originMu.Lock()
-	r.frames = append(r.frames, frame{origin: origin, path: path})
-	epoch, depth := r.epoch, len(r.frames)
-	r.originMu.Unlock()
+// genKey is the registry slot holding an LState's *Generation. Lua cannot
+// reach the registry (no debug.getregistry), so it cannot forge it.
+const genKey = "zemi.generation"
+
+// genOf is the generation L belongs to, retired or live, or nil. Frames
+// live on the generation so a retired generation's goroutine, still
+// running after ForceReload, only touches its own stack (DESIGN §4).
+func genOf(L *glua.LState) *Generation {
+	if L == nil {
+		return nil
+	}
+	ud, _ := L.G.Registry.RawGetString(genKey).(*glua.LUserData)
+	if ud == nil {
+		return nil
+	}
+	g, _ := ud.Value.(*Generation)
+	return g
+}
+
+// PushFrame pushes the origin of the chunk about to run on L's generation
+// and returns its pop, for `defer r.PushFrame(L, ...)()`.
+func (r *Runtime) PushFrame(L *glua.LState, origin Origin, path string) func() {
+	g := genOf(L)
+	if g == nil {
+		return func() {}
+	}
+	return g.pushFrame(origin, path)
+}
+
+// CurrentOrigin returns the origin of the chunk currently running on L's
+// interpreter (host entries push the registration origin).
+func (r *Runtime) CurrentOrigin(L *glua.LState) Origin {
+	return genOf(L).top().origin
+}
+
+// CurrentPath returns the file path of the chunk running on L, or "".
+func (r *Runtime) CurrentPath(L *glua.LState) string {
+	return genOf(L).top().path
+}
+
+// The stack is touched only by the goroutine running the generation's
+// Lua (boot steps, then its dispatcher), so it needs no lock.
+func (g *Generation) pushFrame(origin Origin, path string) func() {
+	g.frames = append(g.frames, frame{origin: origin, path: path})
+	depth := len(g.frames)
 	return func() {
-		r.originMu.Lock()
-		defer r.originMu.Unlock()
-		if r.epoch != epoch || len(r.frames) < depth {
-			return
+		if len(g.frames) >= depth {
+			g.frames = g.frames[:depth-1]
 		}
-		r.frames = r.frames[:depth-1]
 	}
 }
 
-// CurrentOrigin returns the origin of the chunk currently running on the
-// interpreter goroutine (host entries push the registration origin).
-func (r *Runtime) CurrentOrigin() Origin {
-	f, ok := r.topFrame()
-	if !ok {
-		return OriginHost
+func (g *Generation) top() frame {
+	if g == nil || len(g.frames) == 0 {
+		return frame{origin: OriginHost}
 	}
-	return f.origin
-}
-
-// CurrentPath returns the file path of the currently running chunk, or "".
-func (r *Runtime) CurrentPath() string {
-	f, ok := r.topFrame()
-	if !ok {
-		return ""
-	}
-	return f.path
-}
-
-func (r *Runtime) topFrame() (frame, bool) {
-	r.originMu.Lock()
-	defer r.originMu.Unlock()
-	if len(r.frames) == 0 {
-		return frame{}, false
-	}
-	return r.frames[len(r.frames)-1], true
+	return g.frames[len(g.frames)-1]
 }
 
 // goHot marks the runtime wedged: every Lua request fails fast until
@@ -138,7 +145,7 @@ func (r *Runtime) current() *Generation { return r.cur.Load() }
 // Boot builds the first generation and runs the boot steps through its
 // queue. steps run in order; each sees a fresh generation.
 func (r *Runtime) Boot(ctx context.Context, steps []BootStep) error {
-	// a reload during boot would run a second boot on the shared frames
+	// a reload during boot would boot a second generation over this one
 	r.reloadMu.Lock()
 	defer r.reloadMu.Unlock()
 	_, err := r.boot(ctx, steps)
@@ -162,14 +169,6 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	if purge != nil {
 		purge()
 	}
-	// An abandoned request never pops its frame: a stale frame left on the
-	// stack would change require resolution and registration origins for
-	// the fresh generation. The epoch bump disarms its pop, should it
-	// return later.
-	r.originMu.Lock()
-	r.frames = nil
-	r.epoch++
-	r.originMu.Unlock()
 	r.hot.Store(false)
 	gen, err := r.boot(ctx, steps)
 	if err != nil {
@@ -182,7 +181,8 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
 	r.booting.Store(true)
 	defer r.booting.Store(false)
-	sb, err := NewSandbox(r.CurrentOrigin)
+	var gen *Generation
+	sb, err := NewSandbox(func() Origin { return gen.top().origin })
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 			r.printHook(origin, line)
 		}
 	})
-	gen := &Generation{
+	gen = &Generation{
 		ID:      r.seq.Add(1),
 		rt:      r,
 		SB:      sb,
@@ -200,6 +200,9 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		signal:  make(chan struct{}, 1),
 		stop:    make(chan struct{}),
 	}
+	ud := sb.L.NewUserData()
+	ud.Value = gen
+	sb.L.G.Registry.RawSetString(genKey, ud)
 	r.installRequire(gen)
 
 	// r.cur is stored before the steps so early callers reach the
@@ -254,8 +257,8 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 		return res.vals, nil
 	case <-ctx.Done():
 		r.cancel()
-		// Wait for the watchdog/executor to settle the request so the
-		// reply channel is never leaked; the outcome is canceled.
+		// Wait for the executor, watchdog or drain to settle the request,
+		// so an error other than cancel or abandon still reaches the caller.
 		res := <-r.reply
 		if res.err != nil && !errors.Is(res.err, ErrCanceled) && !errors.Is(res.err, ErrAbandoned) {
 			return nil, fmt.Errorf("%w (ctx: %v)", res.err, ctx.Err())
@@ -268,7 +271,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 // host -> Lua entry point for UI-class work.
 func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, args ...any) ([]any, error) {
 	return r.Do(ctx, ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		defer r.PushFrame(origin, "callback")()
+		defer r.PushFrame(L, origin, "callback")()
 		base := L.GetTop()
 		L.Push(fn)
 		for _, a := range args {
@@ -320,7 +323,7 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	if err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
 	}
-	defer r.PushFrame(origin, rel)()
+	defer r.PushFrame(L, origin, rel)()
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
@@ -349,7 +352,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 			out(joinArgs(L, "\t"))
 			return 0
 		}))
-		defer r.PushFrame(origin, rel)()
+		defer r.PushFrame(L, origin, rel)()
 		base := L.GetTop()
 		L.Push(fn)
 		if err := L.PCall(0, glua.MultRet, nil); err != nil {
@@ -478,7 +481,7 @@ func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error
 		bases = []string{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua")))}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
-		for _, root := range r.runtimepath() {
+		for _, root := range r.runtimepath(L) {
 			bases = append(bases, filepath.Join(root, "lua", rel))
 		}
 	}
@@ -492,8 +495,8 @@ func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error
 			switch {
 			case origin == "":
 				return "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
-			case relative && origin != r.CurrentOrigin():
-				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.CurrentOrigin())
+			case relative && origin != r.CurrentOrigin(L):
+				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.CurrentOrigin(L))
 			}
 			return resolved, origin, nil
 		}
@@ -521,7 +524,7 @@ func (r *Runtime) callerFile(L *glua.LState) string {
 			return path
 		}
 	}
-	return r.CurrentPath()
+	return r.CurrentPath(L)
 }
 
 func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Origin) (glua.LValue, error) {
@@ -531,7 +534,7 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 		return glua.LNil, fmt.Errorf("%s: %w", rel, cerr)
 	}
 	L := gen.L
-	defer r.PushFrame(origin, rel)()
+	defer gen.pushFrame(origin, rel)()
 	L.Push(fn)
 	if perr := L.PCall(0, 1, nil); perr != nil {
 		return glua.LNil, fmt.Errorf("%s: %w", rel, perr)
@@ -548,10 +551,10 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 // code only (user and plugin requires never resolve into a repository's
 // untrusted files), then config home and plugins; the embedded runtime is
 // consulted separately (DESIGN §5).
-func (r *Runtime) runtimepath() []string {
+func (r *Runtime) runtimepath(L *glua.LState) []string {
 	var out []string
 	for _, want := range []Origin{OriginProject, OriginUser, OriginPlugin} {
-		if want == OriginProject && r.CurrentOrigin() != OriginProject {
+		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
 			continue
 		}
 		for _, c := range r.paths {

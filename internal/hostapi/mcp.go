@@ -341,7 +341,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		opts := L.CheckTable(2)
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
 		}
 		strMap := func(key string) map[string]string {

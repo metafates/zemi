@@ -43,8 +43,8 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		hd := &EventHandler{
 			Event:  name,
 			Fn:     fn,
-			Origin: h.RT.CurrentOrigin(),
-			Path:   h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L),
+			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
@@ -62,7 +62,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	// one; it returns whether a handler was removed.
 	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.event.off")
-		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin())
+		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.event.off: %v", err)
 		}
@@ -86,7 +86,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 				payload = m
 			}
 		}
-		from := string(h.RT.CurrentOrigin())
+		from := string(h.RT.CurrentOrigin(L))
 		h.recordEvent(name, from, payload)
 		handlers := h.Events.Handlers(name)
 		if len(handlers) == 0 {

@@ -49,8 +49,8 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		cmd := &Command{
 			Name:   name,
 			Fn:     fn,
-			Origin: h.RT.CurrentOrigin(),
-			Path:   h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L),
+			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
@@ -70,7 +70,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// lower-trust one; it returns whether one was removed.
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.command.del")
-		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin())
+		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
 		}
@@ -93,7 +93,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			// writes a file, /reload reloads config), so only the user's own
 			// config and zemi's own code may run one: plugin, project and
 			// model code go through their own gated APIs instead
-			if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+			if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
 				return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run /%s", o, name))
 			}
 			h.GoSafe("command "+name, func() {
@@ -106,7 +106,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		if err := nargsOK(name, cmd.NArgs, args); err != nil {
 			return luaResult(L, err)
 		}
-		defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
+		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, args))
 		return luaResult(L, L.PCall(1, 0, nil))
@@ -142,7 +142,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []s
 			if h.currentGen() != cmd.Gen {
 				return nil, lua.ErrReloaded
 			}
-			defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
+			defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
 			base := L.GetTop()
 			defer L.SetTop(base)
 			L.Push(cmd.Complete)
@@ -212,7 +212,7 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 		if h.currentGen() != cmd.Gen {
 			return nil, lua.ErrReloaded
 		}
-		defer h.RT.PushFrame(cmd.Origin, cmd.Path)()
+		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
 		base := L.GetTop()
 		L.Push(cmd.Fn)
 		L.Push(commandArgs(L, argString))
@@ -249,7 +249,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) error {
 			if h.currentGen() != b.Gen {
 				return nil, lua.ErrReloaded
 			}
-			defer h.RT.PushFrame(b.Origin, "")()
+			defer h.RT.PushFrame(L, b.Origin, "")()
 			base := L.GetTop()
 			L.Push(rhs.Fn)
 			if err := L.PCall(0, 0, nil); err != nil {

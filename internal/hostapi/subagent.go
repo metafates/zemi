@@ -697,7 +697,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		onDone, _ := L.Get(2).(*glua.LFunction)
 		// agents act with the user's tools and permissions: only user config
 		// (and shipped code) may start them from Lua
-		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+		if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.agent.run: only user config may launch agents")
 			return 0
 		}

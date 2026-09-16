@@ -25,8 +25,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			ID:     rawString(tb, "id"),
 			Region: rawString(tb, "region"),
 			Wrap:   rawBool(tb, "wrap"),
-			Origin: h.RT.CurrentOrigin(),
-			Path:   h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L),
+			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 		}
 		if n, ok := tb.RawGetString("priority").(glua.LNumber); ok {
@@ -61,8 +61,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Name:    name,
 			Palette: map[string]string{},
 			HL:      map[string]HLSpec{},
-			Origin:  h.RT.CurrentOrigin(),
-			Path:    h.RT.CurrentPath(),
+			Origin:  h.RT.CurrentOrigin(L),
+			Path:    h.RT.CurrentPath(L),
 			Gen:     h.currentGen(),
 		}
 		if pal, ok := m["palette"].(map[string]any); ok {
@@ -115,8 +115,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		o := Overlay{
 			ID:     rawString(tb, "id"),
 			Title:  rawString(tb, "title"),
-			Origin: h.RT.CurrentOrigin(),
-			Path:   h.RT.CurrentPath(),
+			Origin: h.RT.CurrentOrigin(L),
+			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 		}
 		if v := tb.RawGetString("items"); v != glua.LNil {
@@ -173,8 +173,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		o := Overlay{
 			ID:       fmt.Sprintf("select:%d", h.selectSeq.Add(1)),
 			Title:    rawString(opts, "prompt"),
-			Origin:   h.RT.CurrentOrigin(),
-			Path:     h.RT.CurrentPath(),
+			Origin:   h.RT.CurrentOrigin(L),
+			Path:     h.RT.CurrentPath(L),
 			Gen:      h.currentGen(),
 			Items:    list,
 			OnSelect: cb,
@@ -199,8 +199,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		o := Overlay{
 			ID:       fmt.Sprintf("input:%d", h.selectSeq.Add(1)),
 			Title:    rawString(opts, "prompt"),
-			Origin:   h.RT.CurrentOrigin(),
-			Path:     h.RT.CurrentPath(),
+			Origin:   h.RT.CurrentOrigin(L),
+			Path:     h.RT.CurrentPath(L),
 			Gen:      h.currentGen(),
 			Input:    true,
 			Default:  rawString(opts, "default"),

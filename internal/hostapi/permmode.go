@@ -222,7 +222,7 @@ var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	gate := func(L *glua.LState, fn string) {
-		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
+		if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.permission.mode.%s: only user config may change permission modes", fn)
 		}
 	}

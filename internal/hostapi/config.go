@@ -102,7 +102,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
 		}
-		if h.RT.CurrentOrigin() != lua.OriginUser {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
@@ -120,8 +120,8 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			gen:    h.currentGen(),
 			path:   path,
 			fn:     fn,
-			origin: h.RT.CurrentOrigin(),
-			src:    h.RT.CurrentPath(),
+			origin: h.RT.CurrentOrigin(L),
+			src:    h.RT.CurrentPath(L),
 		}
 		id := h.Settings.AddWatch(config.Watcher{Path: path})
 		h.watches.add(id, rec)
@@ -150,7 +150,7 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 }
 
 func (h *Host) callWatch(L *glua.LState, rec watchRec, old, new any) error {
-	defer h.RT.PushFrame(rec.origin, rec.src)()
+	defer h.RT.PushFrame(L, rec.origin, rec.src)()
 	base := L.GetTop()
 	defer L.SetTop(base)
 	L.Push(rec.fn)

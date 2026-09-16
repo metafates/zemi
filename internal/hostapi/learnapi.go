@@ -35,7 +35,7 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("decide", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
 		action := L.CheckString(2)
-		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
+		if !memoryManageAllowed(h.RT.CurrentOrigin(L)) {
 			L.RaiseError("zemi.learn.decide: only user or builtin origin may decide proposals")
 		}
 		if action != "accept" && action != "reject" {
