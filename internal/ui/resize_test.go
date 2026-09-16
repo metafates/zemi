@@ -113,6 +113,17 @@ func TestResizeSweep(t *testing.T) {
 	}
 }
 
+// TestResizeStartsNoTick: Init starts the one frame loop; a resize that
+// started another would leave both running for good.
+func TestResizeStartsNoTick(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	if _, cmd := app.Update(tea.WindowSizeMsg{Width: 80, Height: 24}); cmd != nil {
+		if _, tick := cmd().(frameTickMsg); tick {
+			t.Fatal("resize started a second frame loop")
+		}
+	}
+}
+
 // TestModeSwitchQuiet: tab-style switches only change the pill, and the
 // picker opens at the bottom-left by the statusline instead of mid-chat.
 func TestModeSwitchQuiet(t *testing.T) {

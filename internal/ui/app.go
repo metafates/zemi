@@ -290,7 +290,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
 		a.frameGen++
-		return a, a.frameTickCmd()
+		// render now rather than start a tick: each tick schedules the next,
+		// so every resize would add a frame loop that never stops
+		return a, a.renderStaleWidgetsCmd()
 	case tea.KeyPressMsg:
 		cmd := a.handleKey(msg)
 		a.publishComposer()
