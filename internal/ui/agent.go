@@ -77,8 +77,15 @@ type modelPickPrompt struct {
 }
 
 // AgentEvent implements hostapi.UIHooks (called from the turn goroutine).
+// Stream events only invalidate the frame, so one waits in the queue at a
+// time: a token per message would crowd out hooks that carry state.
 func (a *App) AgentEvent(ev hostapi.AgentEvent) {
-	a.dispatch(agentEventMsg{ev: ev})
+	if ev.Kind != "turn_done" && a.streamPending.Swap(true) {
+		return
+	}
+	if !a.dispatch(agentEventMsg{ev: ev}) && ev.Kind != "turn_done" {
+		a.streamPending.Store(false)
+	}
 }
 
 // AskPermission implements hostapi.UIHooks. It blocks the caller (a tool

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -103,7 +104,8 @@ type App struct {
 	keySeqAt   time.Time
 	quitArmed  time.Time // a second idle ctrl+c before this quits
 
-	bootErr error
+	bootErr       error
+	streamPending atomic.Bool // a stream agentEventMsg is queued
 
 	// the last composed frame, published for Screenshot: reading a
 	// snapshot is what lets any goroutine ask what the screen says
@@ -270,6 +272,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentEventMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.frameGen++
+		if msg.ev.Kind != "turn_done" {
+			a.streamPending.Store(false)
+		}
 		if msg.ev.Kind == "turn_done" {
 			text := "zemi finished"
 			if msg.ev.Err != "" {
@@ -555,17 +560,19 @@ func (a *App) pruneToasts(now time.Time) {
 // hook plumbing (drained by a persistent cmd when a program is attached)
 
 // dispatch drops msg when the queue is full, so a caller on the Update
-// goroutine never waits on itself.
-func (a *App) dispatch(msg tea.Msg) {
+// goroutine never waits on itself; it reports whether msg was delivered.
+func (a *App) dispatch(msg tea.Msg) bool {
 	q := a.hookQueue()
 	if q == nil {
 		a.Update(msg)
-		return
+		return true
 	}
 	select {
 	case q <- msg:
+		return true
 	default:
 		a.log.Warn("ui", "hook queue full; dropping message", nil)
+		return false
 	}
 }
 

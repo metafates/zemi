@@ -667,3 +667,23 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 		t.Fatalf("wrapped words:\n%s", strings.Join(got, " "))
 	}
 }
+
+func TestStreamEventsCoalesce(t *testing.T) {
+	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: logging.New(""), focused: true}
+	for range 3 * hookQueueSize {
+		app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "x"})
+	}
+	if n := len(app.testQueue); n != 1 {
+		t.Fatalf("queued %d stream events, want 1", n)
+	}
+	app.AgentEvent(hostapi.AgentEvent{Kind: "turn_done"})
+	if n := len(app.testQueue); n != 2 {
+		t.Fatalf("turn_done must always queue, got %d", n)
+	}
+	for app.Pump() {
+	}
+	app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "y"})
+	if n := len(app.testQueue); n != 1 {
+		t.Fatalf("a handled event must let the next one queue, got %d", n)
+	}
+}
