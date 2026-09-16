@@ -1951,6 +1951,8 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			where = "anywhere in the project"
 		}
 		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{rule(req.Subject, filepath.Join(dir, "*"))}
+	case req.Subject == "tool.workflow" && req.Arg == "script":
+		return "", nil // a pattern for "script" would allow every future inline script
 	case strings.HasPrefix(req.Subject, "net."):
 		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" {
 			base := u.Scheme + "://" + u.Host
