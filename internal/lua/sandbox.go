@@ -35,11 +35,13 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 		RegistrySize:  1 << 20,
 	})
 
+	// No package module: require is Go-owned, and package.loaded,
+	// package.seeall and package.loaders hand out the unfrozen stdlib and
+	// globals and run files from package.path (DESIGN §5).
 	libs := []struct {
 		name string
 		fn   glua.LGFunction
 	}{
-		{glua.LoadLibName, glua.OpenPackage},
 		{"", glua.OpenBase},
 		{glua.TabLibName, glua.OpenTable},
 		{glua.StringLibName, glua.OpenString},
@@ -77,12 +79,6 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	dbg.RawSetString("traceback", L.NewFunction(s.debugTraceback))
 	global.RawSetString("debug", dbg)
 
-	// The package table stays (require is Go-owned and never consults the
-	// Lua-side module system), but its C-loading surface is stripped; its
-	// subtables are frozen below together with every other shared table.
-	if pkg, ok := global.RawGetString("package").(*glua.LTable); ok {
-		pkg.RawSetString("loadlib", glua.LNil)
-	}
 	// The string module doubles as the metatable of every string value;
 	// lock it so getmetatable("").format = f cannot patch string methods
 	// behind the proxy (DESIGN §5).

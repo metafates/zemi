@@ -66,7 +66,7 @@ func TestSandboxStrippedSurface(t *testing.T) {
 		assert(os.rename == nil, "os.rename present")
 		assert(os.exit == nil, "os.exit present")
 		assert(os.tmpname == nil, "os.tmpname present")
-		assert(package.loadlib == nil, "package.loadlib present")
+		assert(package == nil, "package present: its loaded, seeall and loaders reach the unfrozen stdlib and disk")
 		assert(load ~= nil, "load missing")
 		assert(loadstring ~= nil, "loadstring missing")
 		assert(os.time ~= nil, "os.time missing")
