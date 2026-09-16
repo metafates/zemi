@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"strings"
 	"sync"
 	"testing"
 )
@@ -75,6 +76,25 @@ func TestNormalizeSimple(t *testing.T) {
 	n := Normalize("ls -la")
 	if len(n.Segments) != 1 || n.Segments[0] != "ls -la" {
 		t.Fatalf("segments: %q", n.Segments)
+	}
+}
+
+func TestNormalizeInlinesLiteralVars(t *testing.T) {
+	for _, c := range []struct{ cmd, want string }{
+		{"D=/a/b; ls $D; cat ${D}/x.go", "ls /a/b|cat /a/b/x.go"},
+		{"D=/a/b && P=$D/c; ls $P", "ls /a/b/c"},
+		{"D=/a/b; echo '$D'", "echo $D"},
+		{"D=/a/b; grep -n 'a b' \"$D/x\"", "grep -n a b /a/b/x"},
+		{"D='a b'; ls $D", "ls $D"},
+		{"PATH=/evil; ls $PATH", "ls $PATH"},
+		{"ls $D", "ls $D"},
+	} {
+		if got := strings.Join(Normalize(c.cmd).Segments, "|"); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.cmd, got, c.want)
+		}
+	}
+	if Normalize("PATH=/evil; ls").ForceAsk == "" {
+		t.Fatal("a gated name must still force ask")
 	}
 }
 

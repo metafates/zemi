@@ -25,6 +25,7 @@ func PathIsSecret(p string) bool {
 // files outside the project. A nil pathOK refuses absolute, home and parent
 // paths. Auto and plan mode run these without asking.
 func SafeCommand(cmd string, pathOK func(arg string) bool) bool {
+	cmd = inlineVars(cmd)
 	if expands(cmd) {
 		return false
 	}

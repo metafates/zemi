@@ -3,6 +3,7 @@ package perm
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -55,12 +56,76 @@ func EnvAssignmentGate(name string) bool {
 // redirect gates. It never errors: problems surface in Fail/ForceAsk.
 func Normalize(cmd string) Normalized {
 	var n Normalized
+	cmd = inlineVars(cmd)
 	n.scan(cmd)
 	if n.Fail == "" && n.ForceAsk == "" && quotedSubstitution(cmd) {
 		n.ForceAsk = "command substitution inside quotes"
 	}
 	return n
 }
+
+// inlineVars substitutes leading literal assignments (D=/long/path; ls $D)
+// back into the command, so path gates, rules and SafeCommand see the real
+// path instead of an opaque expansion. Only a value the shell would leave
+// as is qualifies: one word, no quotes, no expansion beyond an earlier
+// variable, no glob. A command that assigns anything else is left alone.
+func inlineVars(cmd string) string {
+	vars := map[string]string{}
+	rest := cmd
+	for {
+		m := leadingAssign.FindStringSubmatch(rest)
+		if m == nil || EnvAssignmentGate(m[1]) {
+			break
+		}
+		v := substVars(m[2], vars)
+		if strings.ContainsRune(v, '$') {
+			break
+		}
+		vars[m[1]] = v
+		rest = rest[len(m[0]):]
+	}
+	if len(vars) == 0 {
+		return cmd
+	}
+	return substVars(rest, vars)
+}
+
+// substVars replaces $NAME and ${NAME} outside single quotes with the
+// known values; unknown names stay as written.
+func substVars(s string, vars map[string]string) string {
+	var b strings.Builder
+	inSingle := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			inSingle = c != '\''
+		case c == '\\':
+			b.WriteByte(c)
+			if i+1 < len(s) {
+				i++
+				c = s[i]
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '$':
+			if m := varRef.FindStringSubmatch(s[i:]); m != nil {
+				if v, ok := vars[m[1]+m[2]]; ok {
+					b.WriteString(v)
+					i += len(m[0]) - 1
+					continue
+				}
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+var (
+	leadingAssign = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z0-9_./:@%+,=${}-]+)\s*(;|&&)\s*`)
+	varRef        = regexp.MustCompile(`^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
+)
 
 // quotedSubstitution reports a $(, backtick or <( inside double quotes. The
 // scanner keeps a quoted run as one literal word, but the shell still runs

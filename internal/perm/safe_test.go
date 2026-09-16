@@ -19,6 +19,10 @@ func TestSafeCommand(t *testing.T) {
 		{"git branch -a", true},
 		{"cd internal && go vet ./...", true},
 		{"python3 -m pytest -q", true},
+		{"D=internal/web; ls $D; grep -n 'func ' $D/main.go", true},
+		{"D=internal/web && wc -l ${D}/main.go", true},
+		{"D=$(pwd); ls $D", false},
+		{"D=/x; ls $E", false},
 
 		{"sed -n 1,50p internal/web/main.go", true},
 		{"awk '$3 < 100 {print $1}' data.txt", true},
