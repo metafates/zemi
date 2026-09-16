@@ -179,7 +179,7 @@ Contracts that make this safe:
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
   must not hold the user's quit or a typed message hostage; a non-user
   `app.quit` denial is honored once per session, further ones are logged
-  and ignored); the other
+  and ignored; project and learned handlers cannot deny it at all); the other
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
@@ -305,7 +305,11 @@ config is refused outright), no
 no `zemi.provider.register`, no `zemi.agent.profile` /
 `zemi.agent.set_default` (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
-injection, no `zemi.memory.add`, no registration of a builtin tool name
+injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
+no `zemi.command.run` of a more trusted origin's command (its body runs
+under that origin), no closing, focusing or moving a window another origin
+opened, no keymap that is a prefix or an extension of a more trusted
+binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
 (builtin ids are reserved; last-writer-wins applies only within one
 origin; cross-origin profile id collisions are refused, §11). The same
 denylist binds learned-origin code (learned skill hooks, §10.5). A
@@ -514,7 +518,8 @@ has the full list including `mcp:<server>` (M5) and attributes by the
 registration origin of the running handler, never the keypress).
 Binding precedence across origins is `user > builtin > plugin > project`;
 last-writer-wins applies only within one origin, so the project config
-loading last cannot shadow a user binding, and `zemi.keymap.del` unmaps
+loading last cannot shadow a user binding (nor bind a prefix or an
+extension of a more trusted key sequence), and `zemi.keymap.del` unmaps
 keys set by the caller's origin or a less trusted one (user config can
 remove shipped defaults; a plugin cannot remove user keys). The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the

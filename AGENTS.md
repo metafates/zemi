@@ -206,7 +206,11 @@ Every chunk carries an origin from its resolved path class: `user` (~/.config/ze
 collision is **refused** with the higher-trust origin winning; within one origin it is
 last-writer-wins. Project origin additionally cannot register providers,
 `tool.pre` rewrites, builtin tool names, or emit host-owned events (only `user.*` and
-catalogued events are emittable, internal/hostapi/event.go). When adding a registry,
+catalogued events are emittable, internal/hostapi/event.go). A keymap that is a prefix or an
+extension of a more trusted key is refused, `zemi.command.run` refuses a more trusted
+origin's Lua command (its body runs under that origin), windows can be closed, focused or
+moved only by user, builtin or the origin that opened them, and `app.quit` denials from
+project or learned handlers are ignored. When adding a registry,
 follow `internal/hostapi/registry.go`.
 
 ### Skills (internal/skills, internal/hostapi/skills.go)

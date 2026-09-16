@@ -15,8 +15,11 @@ tables are frozen: you cannot add or replace members.
 Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) >
 `builtin` (shipped) > `plugin` (`site/pack`) > `project` (`<project>/.zemi`). A
 registration with the same id from a lower origin is refused; the same origin replaces
-its own. Only `user` may register providers, add allow rules or decide learning
-proposals. Lua calls to gated APIs never open a prompt: an "ask" decision raises
+its own, and a binding may not be a prefix or an extension of a more trusted key. Only
+`user` may register providers, add allow rules or decide learning proposals. Below
+`builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, run a more trusted
+origin's command with `zemi.command.run`, close, focus or `set` a window another origin
+opened, or deny `app.quit` (project and learned denials are ignored). Lua calls to gated APIs never open a prompt: an "ask" decision raises
 `permission ask required` unless an allow rule exists.
 
 ## Modules
