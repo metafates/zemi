@@ -75,15 +75,11 @@ type Window struct {
 	in           []byte
 	inReady      chan struct{}
 	cmd          *exec.Cmd
-	dirty        atomic.Bool
 	cursorHidden atomic.Bool
 	mouseOn      atomic.Bool // the program asked for mouse reports
 	done         chan struct{}
 	exit         atomic.Int32 // exit code, -1 while running
-	err          atomic.Pointer[string]
 	once         sync.Once
-
-	started time.Time
 }
 
 // Span is a run of cells sharing one style; SGR holds the parameters of
@@ -149,7 +145,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		ID: id, Cmd: spec.Cmd, Owner: spec.Owner,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
-		done: make(chan struct{}), inReady: make(chan struct{}, 1), started: time.Now(),
+		done: make(chan struct{}), inReady: make(chan struct{}, 1),
 	}
 	w.term.SetScrollbackSize(2000)
 	w.exit.Store(-1)
@@ -199,8 +195,6 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		case errors.As(err, &ee):
 			w.exit.Store(int32(ee.ExitCode()))
 		case err != nil:
-			s := err.Error()
-			w.err.Store(&s)
 			w.exit.Store(-2)
 		default:
 			w.exit.Store(0)
@@ -212,7 +206,6 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		_ = ptmx.Close()
 		w.mu.Unlock()
 		close(w.done)
-		w.dirty.Store(true)
 		if m.OnExit != nil {
 			m.OnExit(w)
 		}
@@ -229,7 +222,6 @@ func (w *Window) readLoop() {
 			w.mu.Lock()
 			_, _ = w.term.Write(buf[:n])
 			w.mu.Unlock()
-			w.dirty.Store(true)
 		}
 		if err != nil {
 			return
@@ -314,23 +306,11 @@ func (m *Manager) Close(id int) bool {
 	return true
 }
 
-// CloseAll ends every window (quit).
+// CloseAll ends every window.
 func (m *Manager) CloseAll() {
 	for _, w := range m.List() {
 		m.Close(w.ID)
 	}
-}
-
-// Dirty reports whether any window drew since the last call and clears
-// the marks; the UI polls it once per frame.
-func (m *Manager) Dirty() bool {
-	dirty := false
-	for _, w := range m.List() {
-		if w.dirty.Swap(false) {
-			dirty = true
-		}
-	}
-	return dirty
 }
 
 func (w *Window) kill() {
@@ -437,19 +417,8 @@ func (w *Window) Wait(ctx context.Context) error {
 }
 
 // ExitCode is the exit status: -1 while running, -2 when the process could
-// not be waited for (Err says why).
+// not be waited for.
 func (w *Window) ExitCode() int { return int(w.exit.Load()) }
-
-// Err is the wait error, "" when there was none.
-func (w *Window) Err() string {
-	if s := w.err.Load(); s != nil {
-		return *s
-	}
-	return ""
-}
-
-// Elapsed is how long the program has run.
-func (w *Window) Elapsed() time.Duration { return time.Since(w.started) }
 
 // Resize sets the terminal size (the pty and the emulator); a no-op when
 // unchanged. Callers pass the cells the layout gives the window.
@@ -465,7 +434,6 @@ func (w *Window) Resize(cols, rows int) {
 	w.w, w.h = cols, rows
 	w.term.Resize(cols, rows)
 	_ = pty.Setsize(w.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
-	w.dirty.Store(true)
 }
 
 // Size is the current terminal size.
