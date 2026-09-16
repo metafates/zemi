@@ -133,6 +133,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		switch key {
+		case "shift+down":
+			a.memReview.scroll++
+		case "shift+up":
+			a.memReview.scroll = max(a.memReview.scroll-1, 0)
 		case "a", "y":
 			a.markMemory(true)
 		case "d", "x", "backspace", "delete":

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -116,30 +117,45 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewLongList: the selected memory reads whole however long it
-// is, and moving down a list taller than the chat scrolls to keep it in view.
+// TestMemoryReviewLongList: the box keeps its size while the selection
+// moves, the list scrolls to the selection, and the preview renders the
+// selected memory as markdown.
 func TestMemoryReviewLongList(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-	long := strings.Repeat("word ", 40) + "tail-marker"
+	app, _ := bootAgentApp(t, 70, 24)
 	var items []hostapi.MemoryRow
 	for i := range 12 {
 		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Kind: "fact", Origin: "user", Text: "short note"})
 	}
-	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned", Text: long, Tags: []string{"db"}})
+	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned",
+		Text: "run **go test** before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
 	done := make(chan map[string]string, 1)
 	go func() { done <- app.ReviewMemories(items) }()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 
+	app.renderSync(t)
+	first := app.Frame()
 	for range items {
 		app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"tail-marker", "gotcha · this project · learned · #db", "13 of 13"} {
+	for _, want := range []string{"tail-marker", "run go test before", "make golden", "gotcha · this project · learned · #db", "13 of 13"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("frame lacks %q:\n%s", want, frame)
 		}
+	}
+	edges := func(frame string) string {
+		var out []string
+		for i, l := range strings.Split(frame, "\n") {
+			if strings.Contains(l, "╭") || strings.Contains(l, "╰") {
+				out = append(out, fmt.Sprint(i, ansi.StringWidth(strings.TrimRight(l, " \r"))))
+			}
+		}
+		return strings.Join(out, "|")
+	}
+	if a, b := edges(ansi.Strip(first)), edges(frame); a != b {
+		t.Fatalf("the box moved: %q vs %q", a, b)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	reviewAnswer(t, done)
