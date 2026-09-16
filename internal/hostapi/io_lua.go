@@ -55,7 +55,9 @@ func (h *Host) inJail(path string, roots ...string) bool {
 		if r == "" || rr == "" {
 			continue
 		}
-		if real == rr || strings.HasPrefix(real, rr+string(filepath.Separator)) {
+		// a root of / already ends in the separator
+		sep := string(filepath.Separator)
+		if real == rr || strings.HasPrefix(real, strings.TrimSuffix(rr, sep)+sep) {
 			return true
 		}
 	}

@@ -298,6 +298,9 @@ func TestFsDefaults(t *testing.T) {
 	if out := h.Perm.Evaluate("fs.write", filepath.Join(proj, "main.go"), "model"); out.Decision != perm.Ask {
 		t.Fatalf("in-jail write: %v (%s)", out.Decision, out.Reason)
 	}
+	if !h.inJail("/etc/hosts", "/") {
+		t.Fatal("a root of / holds nothing")
+	}
 
 	// In-jail reads pass the gate (file may be missing; that is a plain
 	// read error, not a permission failure).
