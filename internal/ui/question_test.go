@@ -161,9 +161,10 @@ func TestQuestionBoxShowsTyping(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	askAsync(t, app, tools.Question{Question: "What should the command be called, now that it replaces both sync and fetch?"})
 	pressKeys(app, "zem")
+	app.Update(tea.PasteMsg{Content: "i ai"})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "> zem") || !strings.Contains(frame, "fetch?") {
-		t.Fatalf("typed text or question end missing:\n%s", frame)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "> zemi ai") || !strings.Contains(frame, "fetch?") {
+		t.Fatalf("typed and pasted text or question end missing:\n%s", frame)
 	}
 	// a line wider than the box scrolls to keep the latest typing in view
 	pressKeys(app, strings.Repeat("x", 80)+"end")

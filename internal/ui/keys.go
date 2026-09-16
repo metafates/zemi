@@ -490,6 +490,16 @@ func (a *App) pasteChrome(text string) bool {
 		return false
 	case "modelPick":
 		a.modelPick.edit("", line, a.modelPick.texts)
+	case "question":
+		qp := a.question
+		if qp.reviewing() {
+			break
+		}
+		// like a typed key, a paste on the last row starts the typed answer
+		if st := &qp.states[qp.at]; st.typing || st.sel == len(qp.qs[qp.at].Options) {
+			st.typing = true
+			st.input.insert(line)
+		}
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {
