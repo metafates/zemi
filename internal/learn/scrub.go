@@ -42,19 +42,18 @@ const (
 // "[redacted 24 chars]" markers can coexist with surviving prose.
 func ScrubSecrets(text string) (string, bool) {
 	out := text
-	scrubbed := false
 	for _, re := range keyShapes {
-		out, scrubbed = scrubMatches(out, re, scrubbed)
+		out = redactAll(out, re.FindAllString(out, -1))
 	}
-	out, scrubbed = scrubMatches(out, keyAssignments, scrubbed)
+	out = redactAll(out, keyAssignments.FindAllString(out, -1))
+	var toks []string
 	for tok := range strings.FieldsSeq(out) {
-		if len(tok) < entropyFloorLen || shannon(tok) < entropyThreshold {
-			continue
+		if len(tok) >= entropyFloorLen && shannon(tok) >= entropyThreshold {
+			toks = append(toks, tok)
 		}
-		out = strings.ReplaceAll(out, tok, redactMarker(utf8.RuneCountInString(tok)))
-		scrubbed = true
 	}
-	return out, scrubbed
+	out = redactAll(out, toks)
+	return out, out != text
 }
 
 // oneBlob strips every redaction marker; what remains must be whitespace.
@@ -66,15 +65,17 @@ func IsOneBlob(scrubbed string) bool {
 	return strings.TrimSpace(oneBlob.ReplaceAllString(scrubbed, "")) == ""
 }
 
-func scrubMatches(s string, re *regexp.Regexp, scrubbed bool) (string, bool) {
-	ms := re.FindAllString(s, -1)
-	if len(ms) == 0 {
-		return s, scrubbed
+// redactAll replaces every occurrence of each span in one pass over s, so a
+// secret found once is also redacted where it recurs glued to other text.
+func redactAll(s string, spans []string) string {
+	if len(spans) == 0 {
+		return s
 	}
-	for _, m := range ms {
-		s = strings.ReplaceAll(s, m, redactMarker(utf8.RuneCountInString(m)))
+	pairs := make([]string, 0, 2*len(spans))
+	for _, m := range spans {
+		pairs = append(pairs, m, redactMarker(utf8.RuneCountInString(m)))
 	}
-	return s, true
+	return strings.NewReplacer(pairs...).Replace(s)
 }
 
 func redactMarker(n int) string {

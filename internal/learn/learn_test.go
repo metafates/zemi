@@ -104,6 +104,7 @@ func TestScrubKnownShapes(t *testing.T) {
 	cases := []struct{ in, mustNotContain string }{
 		{"key AKIAIOSFODNN7EXAMPLE in aws", "AKIA"},
 		{"openai sk-proj-abcdefghij0123456789 done", "sk-proj"},
+		{"recurs sk-aaaaaaaaaaaaaaaaaaaa glued xsk-aaaaaaaaaaaaaaaaaaaa", "sk-a"},
 		{"github ghp_0123456789abcdefghij012345 end", "ghp_"},
 		{"slack xoxb-123456789012-abcd done", "xoxb"},
 		{"jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c end", "eyJ"},
