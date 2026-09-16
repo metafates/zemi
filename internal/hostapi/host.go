@@ -351,12 +351,25 @@ func (h *Host) scrollChat(kind string) {
 // the chosen model is stored when the user answers.
 func (h *Host) OpenModelPicker() { h.GoSafe("model picker", h.pickAndStoreModel) }
 
-// pickAndStoreModel blocks on the picker, so it must run off the UI goroutine.
+// pickAndStoreModel blocks on the picker, so it must run off the UI and
+// interpreter goroutines; the config watches it fires go through the queue.
 func (h *Host) pickAndStoreModel() {
-	if id, ok := h.pickModel(); ok {
-		_, _ = h.Settings.SetQuiet("agent.model", id)
-		h.refresh()
+	id, ok := h.pickModel()
+	if !ok {
+		return
 	}
+	fired, err := h.Settings.SetQuiet("agent.model", id)
+	if err != nil {
+		h.Notify("error", "model", err.Error())
+		return
+	}
+	if len(fired) > 0 {
+		_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			h.deliverFired(L, fired)
+			return nil, nil
+		})
+	}
+	h.refresh()
 }
 
 // Session returns a snapshot of the session state.

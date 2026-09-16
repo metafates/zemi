@@ -416,6 +416,16 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 	}
 }
 
+func TestModelPickerFiresWatches(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{pickID: "p/m", pickOK: true})
+	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.put("picked", nv) end)`)
+	h.pickAndStoreModel()
+	if v, _ := h.GlobalDB.GetKV("picked"); v != `"p/m"` {
+		t.Fatalf("agent.model watch saw %q", v)
+	}
+}
+
 // TestEventLogFromLua: emissions are logged and counted with no handler
 // registered, and notifications are listed, newest first.
 func TestEventLogFromLua(t *testing.T) {
