@@ -8,13 +8,17 @@ import (
 )
 
 // secretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "*credential*", "*secret*", ".netrc"}
+var secretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
+	"*credential*", "*secret*", ".netrc"}
 
+// PathIsSecret folds on every OS: a shape that asks one file too many is
+// cheaper than a darwin spelling that slips past.
 func PathIsSecret(p string) bool {
-	base := strings.ToLower(filepath.Base(p))
+	base := fold(filepath.Base(p))
 	return slices.ContainsFunc(secretPathShape, func(pat string) bool {
-		ok, _ := filepath.Match(strings.ToLower(pat), base)
-		return ok
+		ok, _ := filepath.Match(pat, base)
+		// an ssh public key is meant to be shared
+		return ok && !(strings.HasPrefix(pat, "id_") && strings.HasSuffix(base, ".pub"))
 	})
 }
 

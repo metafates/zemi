@@ -57,10 +57,12 @@ func TestEvaluateCanonicalPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(proj)
-	s := store(t, Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "private", "*"), Decision: Deny})
+	s := store(t, Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "private", "*"), Decision: Deny},
+		Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "secrets.yml"), Decision: Deny})
 	spellings := []string{"private/x", "./private/x", proj + "//private/x", "alias/x", filepath.Join(proj, "alias", "x")}
 	if runtime.GOOS == "darwin" {
-		spellings = append(spellings, strings.ToUpper(filepath.Join(proj, "private", "x")))
+		// APFS opens secrets.yml for a long s (U+017F)
+		spellings = append(spellings, strings.ToUpper(filepath.Join(proj, "private", "x")), "ſecrets.yml")
 	}
 	for _, arg := range spellings {
 		if o := s.Evaluate("fs.read", arg, "model"); o.Decision != Deny {

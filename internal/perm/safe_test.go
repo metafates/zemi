@@ -265,6 +265,11 @@ func TestSafeCommandPathCheck(t *testing.T) {
 	}{
 		{"cat .env", false},
 		{"cat main.go", true},
+		{"cat ſecrets.yml", false},
+		{"cat .ssh/id_rſa", false},
+		{"cat id_ed25519", false},
+		{"cat id_ecdsa_sk", false},
+		{"cat id_ed25519.pub", true},
 		{"git show HEAD:.env", false},
 		{"git show HEAD~1:config/id_rsa", false},
 		{"git cat-file -p HEAD:.env", false},

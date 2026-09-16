@@ -13,6 +13,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Decision is what a rule instructs the caller to do.
@@ -131,7 +135,7 @@ func subjectMatches(rule, subject string) bool {
 // folded where the filesystem folds.
 // NOTE: a case-sensitive volume on darwin or windows folds two real files
 // into one; a rule for one then covers both.
-func CanonPath(p string) string { return foldCase(RealPath(p)) }
+func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
 // RealPath makes p absolute and resolves it one component at a time, so
 // L/../x with L a symlink lands where open lands, not beside L. Past the
@@ -183,11 +187,23 @@ func RealPath(p string) string {
 	return real
 }
 
-func foldCase(p string) string {
+// FoldCase folds p on darwin and windows, where the filesystem ignores case.
+func FoldCase(p string) string {
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		return strings.ToLower(p)
+		return fold(p)
 	}
 	return p
+}
+
+// fold compares names the way APFS does: full Unicode case folding over the
+// canonical decomposition, so U+017F (long s) matches s and U+00E9 matches e+U+0301.
+func fold(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return norm.NFC.String(cases.Fold().String(norm.NFD.String(s)))
+		}
+	}
+	return strings.ToLower(s)
 }
 
 // canonPattern puts an fs rule pattern in CanonPath form: the literal
@@ -195,7 +211,7 @@ func foldCase(p string) string {
 // folded. A pattern that starts with a wildcard ("*/.env") stays as is.
 func canonPattern(pat string) string {
 	// a loop resolves to "", which would turn /loop/* into /*
-	canon := func(p string) string { return cmp.Or(CanonPath(p), foldCase(p)) }
+	canon := func(p string) string { return cmp.Or(CanonPath(p), FoldCase(p)) }
 	i := strings.IndexAny(pat, "*?")
 	if i < 0 {
 		return canon(pat)
@@ -204,11 +220,11 @@ func canonPattern(pat string) string {
 	cut := strings.LastIndex(pat[:i], sep)
 	switch {
 	case i == 0 || cut == 0:
-		return foldCase(pat)
+		return FoldCase(pat)
 	case cut < 0:
-		return canon(".") + sep + foldCase(pat)
+		return canon(".") + sep + FoldCase(pat)
 	}
-	return canon(pat[:cut]) + foldCase(pat[cut:])
+	return canon(pat[:cut]) + FoldCase(pat[cut:])
 }
 
 // Evaluate decides one operation argument against one subject's rules.
