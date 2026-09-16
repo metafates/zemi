@@ -547,13 +547,15 @@ func isName(s string) bool {
 	return true
 }
 
-var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "PRIVATE_KEY"}
+var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "API_KEY", "APIKEY", "PRIVATE_KEY"}
 
 // EnvIsSecret reports whether an env var name looks like it holds a secret
-// (case-insensitive); such variables never reach children or Lua.
+// (case-insensitive); such variables never reach children or Lua. PWD and
+// PASS count only as a suffix after _, so PWD, OLDPWD and COMPASS pass.
 func EnvIsSecret(name string) bool {
 	up := strings.ToUpper(name)
-	return slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
+	return strings.HasSuffix(up, "_PWD") || strings.HasSuffix(up, "_PASS") ||
+		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
 // ChildEnv is a child process environment: zemi's own minus secret-shaped

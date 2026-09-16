@@ -285,6 +285,19 @@ func TestGlobConcurrentAndRunes(t *testing.T) {
 	}
 }
 
+func TestEnvIsSecret(t *testing.T) {
+	for name, want := range map[string]bool{
+		"GITHUB_TOKEN": true, "aws_secret_access_key": true, "OPENAI_API_KEY": true, "GEMINI_APIKEY": true,
+		"SMTP_PASSWD": true, "MYSQL_PWD": true, "DB_PASS": true, "GPG_PASSPHRASE": true, "db_password": true,
+		"PATH": false, "PWD": false, "OLDPWD": false, "COMPASS_HOME": false, "BYPASS": false, "PASSENGER_APP_ENV": false,
+		"KEYTIMEOUT": false, "SSH_AUTH_SOCK": false, "HOME": false,
+	} {
+		if got := EnvIsSecret(name); got != want {
+			t.Errorf("EnvIsSecret(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
 func TestChildEnvRefusesGatedExtras(t *testing.T) {
 	for _, c := range []struct {
 		key string
