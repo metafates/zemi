@@ -298,6 +298,17 @@ func (h *Host) SetUIHooks(ui UIHooks) {
 	h.uiMu.Unlock()
 }
 
+// Reflecting reports whether a reflector run is active; the UI keeps
+// re-rendering widgets while it is, so the statusline badge animates.
+func (h *Host) Reflecting() bool { return h.reflecting.Load() }
+
+// SessionTitle is the current session's title, for the terminal tab.
+func (h *Host) SessionTitle() string {
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	return h.session.Title
+}
+
 func (h *Host) refresh() {
 	if ui := h.hooks(); ui != nil {
 		ui.Refresh()

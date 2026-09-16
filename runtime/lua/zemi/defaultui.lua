@@ -244,15 +244,15 @@ zemi.ui.widget.register({
   end,
 })
 
--- Reflector feedback (§10.3): a badge while a run is active, a toast with
--- the outcome when it ends.
+-- Reflector feedback (§10.3): a blinking badge while a run is active
+-- (ctx.pulse is the shared phase), a toast with the outcome when it ends.
 zemi.ui.widget.register({
   id = "statusline.reflect",
   region = "statusline.left",
   priority = 20,
   render = function(ctx)
     if not ctx.reflecting then return empty() end
-    return { { { text = "✻ reflecting", hl = "AgentReason" } } }
+    return { { { text = ctx.pulse and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
   end,
 })
 

@@ -358,7 +358,18 @@ func (a *App) View() tea.View {
 		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
+	v.WindowTitle = a.windowTitle()
 	return v
+}
+
+// windowTitle names the terminal tab after the session once it has a
+// title of its own.
+func (a *App) windowTitle() string {
+	t := sanitize.String(a.host.SessionTitle())
+	if t == "" || t == "zemi" {
+		return "zemi"
+	}
+	return t + " · zemi"
 }
 
 // notifyIfAway alerts through the terminal when zemi needs attention while
@@ -402,7 +413,7 @@ func (a *App) onFrame() tea.Cmd {
 	// no stream events arrive (long reasoning pauses, slow tools). The
 	// snapshot already computes the live durations; the widgets just need
 	// re-rendering (one every 4 frames, ~8/s).
-	if a.host.AgentActive() && now.Sub(a.activeBump) >= 125*time.Millisecond {
+	if (a.host.AgentActive() || a.host.Reflecting()) && now.Sub(a.activeBump) >= 125*time.Millisecond {
 		a.activeBump = now
 		a.frameGen++
 	}
