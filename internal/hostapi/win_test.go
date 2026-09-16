@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -117,7 +116,7 @@ func TestWinNamespace(t *testing.T) {
 		assert(zemi.win.get(1):keys("<c-c>") == true, "keys")
 		assert(zemi.win.close(1) == true and #zemi.win.list() == 0, "close")
 	`)
-	if got := fmt.Sprint(len(h.Wins.List())); got != "0" {
-		t.Fatalf("windows left: %s", got)
+	if n := len(h.Wins.List()); n != 0 {
+		t.Fatalf("windows left: %d", n)
 	}
 }

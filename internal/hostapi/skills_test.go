@@ -44,9 +44,6 @@ func newTestHostSkillsNoBoot(t *testing.T) (*Host, *lua.Runtime) {
 		StateHome:  state,
 		ProjectDir: proj,
 	})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatalf("Boot: %v", err)
-	}
 	return h, r
 }
 
