@@ -419,11 +419,11 @@ func (h *Host) instructionFiles() []string {
 	for _, dir := range dirs {
 		found := false
 		for _, name := range []string{"ZEMI.md", "AGENTS.md"} {
-			if p := filepath.Join(dir, name); fileExists(p) {
+			if p := filepath.Join(dir, name); h.instructionFile(p) {
 				out, found = append(out, p), true
 			}
 		}
-		if p := filepath.Join(dir, "CLAUDE.md"); !found && fileExists(p) {
+		if p := filepath.Join(dir, "CLAUDE.md"); !found && h.instructionFile(p) {
 			out = append(out, p)
 		}
 	}
@@ -455,7 +455,7 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 		}
 		for _, name := range []string{"ZEMI.md", "AGENTS.md", "CLAUDE.md"} {
 			p := filepath.Join(dir, name)
-			if !fileExists(p) || inPrompt[p] {
+			if !h.instructionFile(p) || inPrompt[p] {
 				continue
 			}
 			if sent(p) {
@@ -474,9 +474,12 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 	return ""
 }
 
-func fileExists(p string) bool {
+// instructionFile reports whether a repository instruction file may load.
+// It skips the read gate, so a symlink must not lead out of the repository
+// or to a secret-shaped file.
+func (h *Host) instructionFile(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode().IsRegular()
+	return err == nil && fi.Mode().IsRegular() && !h.secretPath(p) && h.inJail(p, h.Dirs.RepoRoot())
 }
 
 // environmentPrompt describes the machine and repository. It is computed

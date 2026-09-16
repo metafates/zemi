@@ -46,4 +46,13 @@ func TestNearestInstructions(t *testing.T) {
 	if got := h.nearestInstructions(filepath.Join(sibling, "x.go"), h.instructionSent); got != "" {
 		t.Fatalf("nothing outside the repo may be read: %q", got)
 	}
+
+	leak := filepath.Join(h.Dirs.ProjectDir, "leak")
+	os.MkdirAll(leak, 0o755)
+	if err := os.Symlink(filepath.Join(sibling, "AGENTS.md"), filepath.Join(leak, "CLAUDE.md")); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.nearestInstructions(filepath.Join(leak, "x.go"), h.instructionSent); got != "" {
+		t.Fatalf("a symlink must not lead out of the repo: %q", got)
+	}
 }
