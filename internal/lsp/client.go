@@ -626,24 +626,25 @@ func (c *Client) Call(ctx context.Context, method string, params, out any) error
 }
 
 func (c *Client) read(r *bufio.Reader) {
+	var err error
 	defer func() {
 		if p := recover(); p != nil {
-			c.end(fmt.Errorf("lsp: reader panic: %v", p))
+			err = fmt.Errorf("reader panic: %v", p)
 		}
+		// A reader that stopped on a bad frame or a panic leaves a live
+		// server writing into a pipe nobody reads, so Wait would never return.
+		stopped := !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF)
+		if stopped {
+			proc.Kill(c.cmd)
+		}
+		if werr := proc.Wait(c.cmd); werr != nil && !stopped {
+			err = werr
+		}
+		c.end(fmt.Errorf("lsp: server exited: %w", err))
 	}()
 	for {
-		body, err := ReadMessage(r)
-		if err != nil {
-			// A bad frame leaves a live server writing into a pipe nobody
-			// reads, so Wait would never return.
-			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-				proc.Kill(c.cmd)
-			}
-			werr := proc.Wait(c.cmd)
-			if werr == nil {
-				werr = err
-			}
-			c.end(fmt.Errorf("lsp: server exited: %w", werr))
+		var body []byte
+		if body, err = ReadMessage(r); err != nil {
 			return
 		}
 		var m message
