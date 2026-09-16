@@ -63,22 +63,12 @@ func (a *App) updateCompletion() tea.Cmd {
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	switch {
-	case i == cur:
-		// empty word at the cursor: open only right after the trigger
-		if cur == 0 || string(r[cur-1]) != trigger {
-			a.completion.close()
-			return nil
-		}
-		a.completion.start = cur - 1
-		a.completion.token = ""
-	case string(r[i]) == trigger:
-		a.completion.start = i
-		a.completion.token = string(r[i+1 : cur])
-	default:
+	if i == cur || string(r[i]) != trigger {
 		a.completion.close()
 		return nil
 	}
+	a.completion.start = i
+	a.completion.token = string(r[i+1 : cur])
 	a.completion.open = true
 	a.completion.selected = 0
 	a.completion.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
