@@ -805,6 +805,23 @@ func toolSummary(input string) string {
 		}
 		return fmt.Sprintf("%d todos, %d done", len(list), done)
 	}
+	if qs, ok := m["questions"].([]any); ok && len(qs) > 0 {
+		q, _ := qs[0].(map[string]any)
+		s, _ := q["question"].(string)
+		if len(qs) > 1 {
+			s += fmt.Sprintf(" +%d more", len(qs)-1)
+		}
+		return s
+	}
+	if plan, ok := m["plan"].(string); ok {
+		// the plan itself shows as a message above the row: name its first line
+		for line := range strings.Lines(plan) {
+			if line = strings.TrimSpace(strings.TrimLeft(line, "# \t")); line != "" {
+				return line
+			}
+		}
+		return ""
+	}
 	if cmd, ok := m["command"].(string); ok && cmd != "" {
 		if args, ok := m["args"].([]any); ok {
 			for _, a := range args {

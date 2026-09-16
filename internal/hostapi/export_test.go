@@ -97,6 +97,8 @@ func TestToolSummary(t *testing.T) {
 		`{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`: "2 todos, 1 done",
 		`{"command":"python3","args":["-m","http.server","8765"]}`:                       "python3 -m http.server 8765",
 		`{"id":"job-1"}`: "job-1",
+		`{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`: "Which color? +1 more",
+		`{"plan":"\n# Goal\n\n1. write x.txt"}`:                                         "Goal",
 	} {
 		if got := toolSummary(in); got != want {
 			t.Errorf("toolSummary(%s) = %q, want %q", in, got, want)
