@@ -108,6 +108,7 @@ func run(args []string) int {
 		host.WorkflowCommandsStep(),
 		host.MCPCommandsStep(),
 		host.LSPCommandsStep(),
+		host.WindowCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
 		softStep(host, pluginsStep(dirs)),
 		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),

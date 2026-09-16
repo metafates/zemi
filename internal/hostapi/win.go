@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -261,6 +262,64 @@ func rawInt(t *glua.LTable, key string) int {
 		return int(n)
 	}
 	return 0
+}
+
+// WindowCommandsStep registers /win: the keyboard's way to list, focus
+// and close windows.
+func (h *Host) WindowCommandsStep() lua.BootStep {
+	return lua.BootStep{
+		Name: "window commands",
+		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			_, err := h.Commands.Add(&Command{
+				Name: "win", NArgs: "*", Desc: "windows: list, focus <id>, close <id|all>", Hidden: true,
+				GoFn: func(h *Host, args string) error {
+					fields := strings.Fields(args)
+					switch {
+					case len(fields) == 0 || fields[0] == "list":
+						wins := h.Wins.List()
+						if len(wins) == 0 {
+							h.Notify("info", "windows", "none open")
+							return nil
+						}
+						var lines []string
+						for _, w := range wins {
+							state := "running"
+							if w.Exited() {
+								state = fmt.Sprintf("exited %d", w.ExitCode())
+							}
+							lines = append(lines, fmt.Sprintf("%d %s (%s, %s)", w.ID, w.Title(), w.Kind, state))
+						}
+						h.Notify("info", "windows", strings.Join(lines, "\n"))
+						return nil
+					case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
+						for _, w := range h.Wins.List() {
+							h.closeWindow(w.ID)
+						}
+						return nil
+					case (fields[0] == "close" || fields[0] == "focus") && len(fields) == 2:
+						id, err := strconv.Atoi(fields[1])
+						if err != nil {
+							return fmt.Errorf("usage: /win %s <id>", fields[0])
+						}
+						if fields[0] == "focus" {
+							if _, ok := h.Wins.Get(id); !ok {
+								return fmt.Errorf("no window %d", id)
+							}
+							h.focusWindow(id)
+							return nil
+						}
+						if !h.closeWindow(id) {
+							return fmt.Errorf("no window %d", id)
+						}
+						return nil
+					}
+					return errors.New("usage: /win [list | focus <id> | close <id|all>]")
+				},
+				GoComplete: subcommandCompleter([]string{"list", "focus", "close"}, nil),
+				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
+			return err
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------

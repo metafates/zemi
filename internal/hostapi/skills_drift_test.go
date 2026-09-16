@@ -24,7 +24,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.Boot(context.Background(), []lua.BootStep{
 		h.NamespacesStep(), h.MemoryCommandsStep(), h.ReflectorCommandsStep(),
-		h.SkillsCommandsStep(), h.AgentsCommandsStep(), h.WorkflowCommandsStep(), h.MCPCommandsStep(), h.LSPCommandsStep(),
+		h.SkillsCommandsStep(), h.AgentsCommandsStep(), h.WorkflowCommandsStep(), h.MCPCommandsStep(), h.LSPCommandsStep(), h.WindowCommandsStep(),
 	}); err != nil {
 		t.Fatal(err)
 	}
