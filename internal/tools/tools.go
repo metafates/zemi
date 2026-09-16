@@ -159,6 +159,10 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
+	// Protected reports a write to .git, a .zemi or zemi's own dirs: a rule
+	// allow for it still asks, since broad "always" globs cannot exclude
+	// every such path; nil = none.
+	Protected func(path string) bool
 	// Guard runs before a sandboxed command starts; the func it returns runs
 	// once the command exited, and its text ends the result. nil = none.
 	Guard func(sandbox.Policy) func() string
@@ -185,6 +189,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
+		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg):
+			return p.resolveAsk(req, "this changes .git, .zemi or zemi's own files")
 		// rule-allowed commands run unconfined, so only readers skip the ask
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):

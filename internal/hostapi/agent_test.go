@@ -911,3 +911,27 @@ func TestMaxOutput(t *testing.T) {
 		}
 	}
 }
+
+// TestAlwaysRuleSkipsProtectedWrites: a broad allow for the project still
+// asks for writes under a nested .zemi or .git, but not for the scratchpad.
+func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	proj := perm.RealPath(h.Dirs.ProjectDir)
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.StateHome), "*"), Decision: perm.Allow, Principal: "model"})
+	pipe := h.PipelineFor()
+	for _, c := range []struct {
+		path string
+		want perm.Decision
+	}{
+		{filepath.Join(proj, "main.go"), perm.Allow},
+		{filepath.Join(proj, "pkg", ".zemi", "init.lua"), perm.Deny},
+		{filepath.Join(proj, "pkg", ".git", "config"), perm.Deny},
+		{filepath.Join(h.ScratchDir(), "notes.md"), perm.Allow},
+	} {
+		if v := pipe.Check(tools.Request{Subject: "fs.write", Arg: c.path}); v.Decision != c.want {
+			t.Errorf("%s: %s (%s), want %s", c.path, v.Decision, v.Reason, c.want)
+		}
+	}
+}
