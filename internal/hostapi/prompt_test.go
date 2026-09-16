@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSystemPromptSections: the environment is pinned per session, project
@@ -48,6 +49,10 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
+	os.WriteFile(filepath.Join(dir, ".git", "hooks", "post-index-change"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+	// a stat-dirty file makes status refresh the index, which runs the hook
+	later := time.Now().Add(time.Hour)
+	os.Chtimes(filepath.Join(dir, "a"), later, later)
 	if !strings.Contains(h.environmentPrompt(), "Git status") {
 		t.Fatal("status failed")
 	}
