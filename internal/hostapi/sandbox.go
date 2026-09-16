@@ -44,8 +44,9 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 // are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
 // never when it is $HOME or above, holds one of zemi's dirs or sits in one,
-// or its .git or .zemi is a symlink: the backend protects the resolved
-// target, so the link itself could be replaced.
+// holds a hidden path on a backend other than seatbelt, or its .git or .zemi
+// is a symlink: the backend protects the resolved target, so the link itself
+// could be replaced.
 // NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
 // it cannot cache, and the user's cache written from here could poison a
 // later unconfined build. Other tools' caches stay read-only. The system
@@ -83,7 +84,21 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 			}
 		}
 	}
-	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...)
+	p.Protect = append(p.Protect, zemiDirs...)
+	for _, z := range zemiDirs {
+		// a project inside a zemi dir stays readable, as it is to the read tool
+		if d.ProjectDir == "" || !h.inJail(d.ProjectDir, z) {
+			p.Hide = append(p.Hide, z)
+		}
+	}
+	if home != "" {
+		for _, s := range secretDirs {
+			p.Hide = append(p.Hide, filepath.Join(home, s))
+		}
+	}
+	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
+		// Landlock rules only add access: a write root opens every hidden path inside it
+		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
 	if h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested && !linked {
 		p.Write = append(p.Write, d.ProjectDir)
 	}
@@ -106,18 +121,6 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 		if os.MkdirAll(tmp, 0o700) == nil {
 			p.Write = append(p.Write, tmp)
 			p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = tmp, tmp, tmp
-		}
-	}
-	p.Protect = append(p.Protect, zemiDirs...)
-	for _, z := range zemiDirs {
-		// a project inside a zemi dir stays readable, as it is to the read tool
-		if d.ProjectDir == "" || !h.inJail(d.ProjectDir, z) {
-			p.Hide = append(p.Hide, z)
-		}
-	}
-	if home != "" {
-		for _, s := range secretDirs {
-			p.Hide = append(p.Hide, filepath.Join(home, s))
 		}
 	}
 	return p

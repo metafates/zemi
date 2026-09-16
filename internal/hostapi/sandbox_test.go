@@ -149,7 +149,8 @@ func TestSandboxedBash(t *testing.T) {
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
 // plan mode, with a backend that keeps .git and .zemi read-only inside it,
-// when it neither holds nor sits in one of zemi's dirs and its .git is not a
+// when it neither holds nor sits in one of zemi's dirs, holds no hidden path
+// on a backend that cannot hide inside a write root, and its .git is not a
 // symlink; zemi's dirs are hidden unless they hold the project, and builds
 // get a Go cache of their own.
 func TestSandboxPolicy(t *testing.T) {
@@ -163,15 +164,18 @@ func TestSandboxPolicy(t *testing.T) {
 		configInProject        bool
 		projectInConfig        bool
 		gitLink                bool
+		secretInside           string // backend name when the project is ~/.config
 		want                   bool
 	}{
-		{"trusted", true, false, true, false, false, false, true},
-		{"untrusted", false, false, true, false, false, false, false},
-		{"plan", true, true, true, false, false, false, false},
-		{"backend without protect", true, false, false, false, false, false, false},
-		{"config home inside", true, false, true, true, false, false, false},
-		{"inside config home", true, false, true, false, true, false, false},
-		{".git is a symlink", true, false, true, false, false, true, false},
+		{"trusted", true, false, true, false, false, false, "", true},
+		{"untrusted", false, false, true, false, false, false, "", false},
+		{"plan", true, true, true, false, false, false, "", false},
+		{"backend without protect", true, false, false, false, false, false, "", false},
+		{"config home inside", true, false, true, true, false, false, "", false},
+		{"inside config home", true, false, true, false, true, false, "", false},
+		{".git is a symlink", true, false, true, false, false, true, "", false},
+		{"holds ~/.config/gh under landlock", true, false, true, false, false, false, "fake", false},
+		{"holds ~/.config/gh under seatbelt", true, false, true, false, false, false, "seatbelt", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h.SetProjectTrusted(c.trusted)
@@ -183,6 +187,15 @@ func TestSandboxPolicy(t *testing.T) {
 			}
 			if c.projectInConfig {
 				h.Dirs.ProjectDir = filepath.Join(h.Dirs.ConfigHome, "lua")
+				if err := os.MkdirAll(h.Dirs.ProjectDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.secretInside != "" {
+				h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: c.secretInside, EnforcesProtect: true}})
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				h.Dirs.ProjectDir = filepath.Join(home, ".config")
 				if err := os.MkdirAll(h.Dirs.ProjectDir, 0o755); err != nil {
 					t.Fatal(err)
 				}

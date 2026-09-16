@@ -1285,7 +1285,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   trusts its cache entries, so the user's own cache written from here could
   poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not in plan mode, not `$HOME`
   or above it, neither holds nor sits in one of zemi's config, data and
-  state dirs, has no symlinked `.git` or `.zemi` (the backend protects the
+  state dirs, holds no hidden path unless the backend is seatbelt (a
+  Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.zemi` (the backend protects the
   resolved target, not the link), and the backend keeps protected paths
   read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
   target), `.zemi` and zemi's dirs stay read-only (the scratchpad and cache
