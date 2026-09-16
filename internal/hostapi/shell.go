@@ -13,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -36,10 +37,7 @@ func (h *Host) RunShell(cmd string) {
 		out := &proc.Buffer{Max: 4 * shellMaxOut}
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)
-		text := strings.TrimRight(out.String(), "\n")
-		if len(text) > shellMaxOut {
-			text = text[:shellMaxOut] + "\n... (truncated)"
-		}
+		text := tools.TruncOut(strings.TrimRight(out.String(), "\n"), shellMaxOut)
 		status := "ok"
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):

@@ -114,16 +114,15 @@ func TestRewind(t *testing.T) {
 // left some.
 func TestRewindSnapshotEdges(t *testing.T) {
 	for _, c := range []struct {
-		name      string
-		firstAge  time.Duration
-		viaLink   bool   // the first turn names the file through a symlink
-		create    bool   // the first turn creates the file through a linked directory
-		keepFirst bool   // the sweep left the first turn's snapshot
-		want      string // file content after rewinding to the first turn
-		warn      string // substring of the rewind's warning, "" for none
+		name     string
+		firstAge time.Duration
+		viaLink  bool   // the first turn names the file through a symlink
+		create   bool   // the first turn creates the file through a linked directory
+		want     string // file content after rewinding to the first turn
+		warn     string // substring of the rewind's warning, "" for none
 	}{
-		{name: "symlink and target", viaLink: true, keepFirst: true, want: "orig"},
-		{name: "created through a linked directory", create: true, keepFirst: true, want: "<missing>"},
+		{name: "symlink and target", viaLink: true, want: "orig"},
+		{name: "created through a linked directory", create: true, want: "<missing>"},
 		{name: "partly aged out", firstAge: store.CheckpointTTL + time.Hour, want: "v1", warn: "1 of those turn"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -168,7 +167,7 @@ func TestRewindSnapshotEdges(t *testing.T) {
 				if i == 0 && c.create {
 					path = filepath.Join(h.Dirs.ProjectDir, "dir", "f.txt")
 				}
-				if i > 0 || c.keepFirst {
+				if i > 0 || c.firstAge == 0 {
 					h.agents.turnMsgID = ids[i]
 					h.checkpointFile(path)
 				}
