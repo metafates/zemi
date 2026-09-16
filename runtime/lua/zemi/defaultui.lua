@@ -320,8 +320,9 @@ zemi.event.on("reflector.done", function(ev)
   zemi.notify({ title = "learned from the last session", body = table.concat(parts, ", ") })
 end)
 
--- Statusline right: "model · 12.3k tok · 45%". The context percent colors
--- by threshold: muted, warn at 80%, err at 95%.
+-- Statusline right: "model · 24.5k/200k ctx · 45%", falling back to the
+-- session token total when the model's context window is unknown. The
+-- percent colors by threshold: muted, warn at 80%, err at 95%.
 zemi.ui.widget.register({
   id = "statusline.info",
   region = "statusline.right",
@@ -335,10 +336,18 @@ zemi.ui.widget.register({
     if (ctx.model or "") ~= "" then
       add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment")
     end
+    -- how much of the window is in use, not a running token total: the
+    -- total says nothing about how much room is left
+    local cx = ctx.context or {}
+    local used, window = fmt_tokens(cx.tokens), fmt_tokens(cx.window)
     local total = fmt_tokens((ctx.usage or {}).total)
-    if total then
+    if used and window then
+      add(used .. "/" .. window .. " ctx", "Comment")
+    elseif total then
       add(total .. " tok", "Comment")
-      local pct = tonumber((ctx.context or {}).pct or 0) or 0
+    end
+    if used or total then
+      local pct = tonumber(cx.pct or 0) or 0
       if pct > 0 then
         local hl = pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
         add(string.format("%d%%", pct), hl)
