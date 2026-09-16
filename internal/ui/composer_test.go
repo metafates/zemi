@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -257,21 +258,13 @@ func TestCompletionScan(t *testing.T) {
 	}
 	app.onFilesScanned(msg)
 	for _, want := range []string{"main.go", "internal/app.go"} {
-		found := false
-		for _, f := range app.completion.files {
-			if f == want {
-				found = true
-			}
-		}
-		if !found {
+		if !slices.Contains(app.completion.files, want) {
 			t.Fatalf("missing %s in %v", want, app.completion.files)
 		}
 	}
 	for _, gone := range []string{".git/config", "node_modules/x.js"} {
-		for _, f := range app.completion.files {
-			if f == gone {
-				t.Fatalf("skipped dir leaked: %s", gone)
-			}
+		if slices.Contains(app.completion.files, gone) {
+			t.Fatalf("skipped dir leaked: %s", gone)
 		}
 	}
 }
