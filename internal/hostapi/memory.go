@@ -483,24 +483,15 @@ func memoryManageAllowed(o lua.Origin) bool {
 func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	memoryToLua := func(rows []*store.Memory) *glua.LTable {
-		out := L.NewTable()
+	memoryToLua := func(L *glua.LState, rows []*store.Memory) glua.LValue {
+		out := make([]any, 0, len(rows))
 		for _, m := range rows {
-			row := L.NewTable()
-			row.RawSetString("id", glua.LString(m.ID))
-			row.RawSetString("scope", glua.LString(m.Scope))
-			row.RawSetString("kind", glua.LString(m.Kind))
-			row.RawSetString("origin", glua.LString(m.Origin))
-			row.RawSetString("text", glua.LString(m.Text))
-			row.RawSetString("score", glua.LNumber(m.Score))
-			tags := L.NewTable()
-			for _, t := range m.Tags {
-				tags.Append(glua.LString(t))
-			}
-			row.RawSetString("tags", tags)
-			out.Append(row)
+			out = append(out, map[string]any{
+				"id": m.ID, "scope": m.Scope, "kind": m.Kind, "origin": m.Origin,
+				"text": m.Text, "score": m.Score, "tags": m.Tags,
+			})
 		}
-		return out
+		return lua.FromGo(L, out)
 	}
 
 	// search(query, opts): opts { scope = "all"|"user"|"project", limit }.
@@ -518,14 +509,12 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		}
 		if scope != "all" && scope != "user" && scope != "project" {
 			L.RaiseError("zemi.memory.search: scope must be all, user or project")
-			return 0
 		}
 		rows, err := h.memorySearch(scope, query, limit)
 		if err != nil {
 			L.RaiseError("zemi.memory.search: %v", err)
-			return 0
 		}
-		L.Push(memoryToLua(rows))
+		L.Push(memoryToLua(L, rows))
 		return 1
 	}))
 
@@ -535,7 +524,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.memory.add: spec must be a table")
-			return 0
 		}
 		kind := rawString(spec, "kind")
 		text := rawString(spec, "text")
@@ -554,7 +542,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		stored, id, err := h.proposeMemory(scope, kind, text, tags)
 		if err != nil {
 			L.RaiseError("zemi.memory.add: %v", err)
-			return 0
 		}
 		out := L.NewTable()
 		if stored {
@@ -571,9 +558,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		rows, err := h.memoryList(L.OptBool(1, false))
 		if err != nil {
 			L.RaiseError("zemi.memory.list: %v", err)
-			return 0
 		}
-		L.Push(memoryToLua(rows))
+		L.Push(memoryToLua(L, rows))
 		return 1
 	}))
 
@@ -581,11 +567,9 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		old, by := L.CheckString(1), L.CheckString(2)
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.memory.supersede: only user or builtin origin may modify memories")
-			return 0
 		}
 		if err := h.supersedeMemory(old, by); err != nil {
 			L.RaiseError("zemi.memory.supersede: %v", err)
-			return 0
 		}
 		return 0
 	}))
@@ -594,16 +578,13 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		id := L.CheckString(1)
 		if !memoryManageAllowed(h.RT.CurrentOrigin()) {
 			L.RaiseError("zemi.memory.forget: only user or builtin origin may modify memories")
-			return 0
 		}
 		db, m, err := h.locateMemory(id)
 		if err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
-			return 0
 		}
 		if err := db.DeleteMemory(m.ID); err != nil {
 			L.RaiseError("zemi.memory.forget: %v", err)
-			return 0
 		}
 		return 0
 	}))

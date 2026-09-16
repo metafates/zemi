@@ -389,11 +389,9 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
 	if t == nil {
 		L.RaiseError("agent() must run inside the workflow")
-		return 0
 	}
 	if t.pdepth > 0 {
 		L.RaiseError("agent() cannot run inside pcall; it returns nil, err on failure instead")
-		return 0
 	}
 	var prompt, name, desc, model string
 	switch v := L.Get(1).(type) {
@@ -407,23 +405,19 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	}
 	if strings.TrimSpace(prompt) == "" {
 		L.RaiseError("agent: prompt is required")
-		return 0
 	}
 	def, err := r.h.agentDef(name)
 	if err != nil {
 		L.RaiseError("agent: %v", err)
-		return 0
 	}
 	if err := r.h.checkModelID(model); err != nil {
 		L.RaiseError("agent: %v", err)
-		return 0
 	}
 	if model != "" {
 		def.Model = model
 	}
 	if r.started >= workflowMaxAgents {
 		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
-		return 0
 	}
 	if desc == "" {
 		first, _, _ := strings.Cut(prompt, "\n")
@@ -440,7 +434,6 @@ func (r *wfRun) luaParallel(L *glua.LState) int {
 	t := r.tasks[L]
 	if t == nil || t.pdepth > 0 {
 		L.RaiseError("parallel() cannot run inside pcall")
-		return 0
 	}
 	list := L.CheckTable(1)
 	n := list.Len()
@@ -448,13 +441,11 @@ func (r *wfRun) luaParallel(L *glua.LState) int {
 	// so refuse a batch larger than the run's whole agent budget.
 	if n > workflowMaxAgents {
 		L.RaiseError("parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
-		return 0
 	}
 	for i := 1; i <= n; i++ {
 		fn, ok := list.RawGetInt(i).(*glua.LFunction)
 		if !ok {
 			L.RaiseError("parallel: item %d is not a function", i)
-			return 0
 		}
 		t.kids = append(t.kids, fn)
 	}
@@ -782,25 +773,21 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		// (and shipped code) may start them from Lua
 		if o := h.RT.CurrentOrigin(); o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.workflow.run: only user config may run workflows")
-			return 0
 		}
 		src := rawString(spec, "script")
 		if name := rawString(spec, "name"); name != "" {
 			s, err := h.workflowSource(name)
 			if err != nil {
 				L.RaiseError("zemi.workflow.run: %v", err)
-				return 0
 			}
 			src = s
 		}
 		if strings.TrimSpace(src) == "" {
 			L.RaiseError("zemi.workflow.run: script or name is required")
-			return 0
 		}
 		args, err := lua.ToGo(spec.RawGetString("args"))
 		if err != nil {
 			L.RaiseError("zemi.workflow.run: args: %v", err)
-			return 0
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		gen := h.currentGen()
