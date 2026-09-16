@@ -328,15 +328,22 @@ func TestFetchGates(t *testing.T) {
 		}
 	}
 
-	allowed, _ := testPipeline(t, true)
+	allowed, asked := testPipeline(t, true)
 	srv := httptest.NewServer(nil)
 	defer srv.Close()
-	res, err := runFetch(context.Background(), allowed, map[string]any{"url": srv.URL + "/x"})
-	if err != nil {
-		t.Fatalf("runFetch loopback go error: %v", err)
-	}
+	res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
 	if !res.IsError || !strings.Contains(res.Content, "refused") {
 		t.Fatalf("loopback target must be refused at dial time: %+v", res)
+	}
+	if len(*asked) != 1 {
+		t.Fatalf("one fetch must ask once: %+v", *asked)
+	}
+
+	// the rules an "always" answer writes also cover a redirect hop
+	hops, hopAsks := testPipeline(t, false,
+		perm.Rule{Subject: "net.example.com", Pattern: "https://example.com/*", Decision: perm.Allow})
+	if err := netGate(hops, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}, "fetch redirect"); err != nil || len(*hopAsks) != 0 {
+		t.Fatalf("hop under an allowed url: %v, asked %+v", err, *hopAsks)
 	}
 }
 

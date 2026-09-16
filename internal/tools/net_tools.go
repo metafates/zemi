@@ -117,10 +117,11 @@ func ParseNetURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// netGate checks one hop against the net.<host> subject. The resolve-time
-// Control hook covers the IP side; this covers the hostname rules.
+// netGate checks a redirect hop the way the tool gate checked the first URL:
+// the whole URL under net.<host>, so the same rules answer both. The
+// resolve-time Control hook covers the IP side.
 func netGate(p *Pipeline, u *url.URL, reason string) error {
-	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.Host, Reason: reason})
+	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
 	if v.Decision != perm.Allow {
 		return fmt.Errorf("permission denied for %s: %s", u.Host, v.Reason)
 	}
@@ -128,12 +129,10 @@ func netGate(p *Pipeline, u *url.URL, reason string) error {
 }
 
 func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	// the tool gate already checked this URL; a second check here would ask
+	// the user again
 	raw := str(input["url"])
-	u, err := ParseNetURL(raw)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	if err := netGate(p, u, "fetch url"); err != nil {
+	if _, err := ParseNetURL(raw); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	client := SafeClient(func(hop *url.URL) error {
