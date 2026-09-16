@@ -86,9 +86,11 @@ func skipEscape(s string, i int) int {
 		}
 		return j
 	default:
-		// two-byte C1 escape or other short sequences
-		j++
-		if j < len(s) && s[j] >= 0x20 && s[j] <= 0x7e {
+		// nF (ESC ( B): intermediates then a final byte; otherwise two bytes
+		for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
+			j++
+		}
+		if j < len(s) {
 			j++
 		}
 		return j
