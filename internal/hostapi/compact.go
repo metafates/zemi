@@ -120,9 +120,11 @@ func (h *Host) compactFailed() {
 	}
 }
 
+// contextTooLarge also matches Anthropic's "input length and `max_tokens`
+// exceed context limit", which fantasy does not flag.
 func contextTooLarge(err error) bool {
 	var pe *fantasy.ProviderError
-	return errors.As(err, &pe) && pe.IsContextTooLarge()
+	return errors.As(err, &pe) && (pe.IsContextTooLarge() || strings.Contains(pe.Message, "exceed context limit"))
 }
 
 // sendCompacting runs one turn inside the context window: a turn Full cut
@@ -135,6 +137,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		ag.mu.Lock()
 		ag.holdOverflow = !retried && ag.compactFails < compactMaxFails
 		ag.holdImages = !imagesDropped && !runner.TextOnly
+		ag.holdCap = !capDropped && runner.MaxOutputTokens > 0
 		hold := ag.holdOverflow
 		ag.mu.Unlock()
 		err := runner.Send(ctx, text)

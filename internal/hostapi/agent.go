@@ -148,6 +148,7 @@ type agentHost struct {
 	compacted    bool
 	holdOverflow bool
 	holdImages   bool // a 400 over image parts is resent without them, not reported
+	holdCap      bool // a refused output cap is resent without it, not reported
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -670,7 +671,7 @@ func (h *Host) handOff(scope *turnScope) {
 	ag.mu.Lock()
 	queued := ""
 	if scope.ctx.Err() == nil {
-		queued = strings.Join(ag.steering, "\n\n")
+		queued = joinQueue(ag.steering)
 		ag.steering = nil
 	}
 	if queued == "" {
@@ -725,7 +726,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	ag.mu.Lock()
 	text := ""
 	if done.ctx.Err() == nil {
-		text = strings.Join(ag.steering, "\n\n")
+		text = joinQueue(ag.steering)
 		ag.steering = nil
 	}
 	var next *turnScope
@@ -777,13 +778,37 @@ func (h *Host) deliverSteering() []string {
 func (h *Host) AgentTakeQueue() []string {
 	ag := h.agents
 	ag.mu.Lock()
-	q := ag.steering
-	ag.steering = nil
+	var q, reports []string
+	for _, m := range ag.steering {
+		if strings.Contains(m, attachMarker) {
+			// a background report is for the model, not the composer: it
+			// waits for the next turn
+			reports = append(reports, m)
+		} else {
+			q = append(q, m)
+		}
+	}
+	ag.steering = reports
 	ag.mu.Unlock()
 	if len(q) > 0 {
 		h.refresh()
 	}
 	return q
+}
+
+// joinQueue makes queued messages one message with every shown part ahead
+// of the first attachMarker, where each reader cuts the text.
+func joinQueue(msgs []string) string {
+	shown := make([]string, len(msgs))
+	tails := ""
+	for i, m := range msgs {
+		s, tail, ok := strings.Cut(m, attachMarker)
+		if ok {
+			tails += attachMarker + tail
+		}
+		shown[i] = s
+	}
+	return strings.Join(shown, "\n\n") + tails
 }
 
 // beginTurn resets the per-turn stream state (ag.mu held).
@@ -927,13 +952,12 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err)
-	ag.holdOverflow, ag.holdImages = false, false
+	// sendCompacting resends a held error or reports it; the steps before it
+	// still ran, so their usage and rows are kept
+	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
+	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
 	model := ag.turnModel
 	ag.mu.Unlock()
-	if hold {
-		return // sendCompacting compacts and resends, or reports it
-	}
 	if model == "" {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
@@ -959,8 +983,14 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	sid := ag.sessionID
 	ag.mu.Unlock()
 
-	h.agentEvent(AgentEvent{Kind: "turn_done", Err: errString(err)})
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
+	if sid != "" && h.DB != nil {
+		_ = h.DB.AddUsage(sid, billedInput(usage), usage.OutputTokens, cost)
+	}
+	if hold {
+		return
+	}
+	h.agentEvent(AgentEvent{Kind: "turn_done", Err: errString(err)})
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()
 		first := !ag.titled && ag.sessionID == sid
@@ -982,9 +1012,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.appendChatMessage(row)
 	} else {
 		h.EmitAsync("agent.finish", map[string]any{})
-	}
-	if sid != "" && h.DB != nil {
-		_ = h.DB.AddUsage(sid, billedInput(usage), usage.OutputTokens, cost)
 	}
 }
 
@@ -1474,8 +1501,9 @@ func (h *Host) contextWindow(modelID string) int64 {
 var capRejected sync.Map
 
 // maxTokensRefused reports a provider error about the output cap zemi set.
+// Anthropic's context overflow names max_tokens too; compaction fixes that one.
 func maxTokensRefused(err error) bool {
-	if err == nil {
+	if err == nil || contextTooLarge(err) {
 		return false
 	}
 	s := strings.ToLower(err.Error())
@@ -1483,8 +1511,8 @@ func maxTokensRefused(err error) bool {
 }
 
 // maxOutput is the reply token limit: the model spec's, else 32000 for
-// Anthropic, whose provider otherwise sends 4096 and cuts large writes, else
-// 0 (the provider default).
+// Anthropic (whose provider otherwise sends 4096 and cuts large writes)
+// unless the model refused that cap, else 0 (the provider default).
 func (h *Host) maxOutput(modelID string) int64 {
 	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
 		return m.MaxOutput

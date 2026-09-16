@@ -385,6 +385,19 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue after a cancel = %q", q)
 	}
 
+	// a report's markup stays out of the composer, and joined messages keep
+	// every typed part ahead of the marker readers cut at
+	report := "Background agent x finished." + attachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
+	scope = claim()
+	send(report, "d")
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "d" {
+		t.Fatalf("queue with a report = %q", q)
+	}
+	send("e")
+	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+attachMarker) || !strings.Contains(text, "<agent-report>") {
+		t.Fatalf("follow-up with a report = %q", text)
+	}
+
 	h.AgentCancel() // no runner: must not panic
 }
 

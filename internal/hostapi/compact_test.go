@@ -304,6 +304,42 @@ func toolResult(id string, tokens int) fantasy.Message {
 	}}
 }
 
+// TestCapRefusal: a refused output cap is dropped and resent without an
+// error row, and Anthropic's context overflow, which names max_tokens too,
+// is compacted instead and keeps the cap.
+func TestCapRefusal(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		msg     string
+		dropped bool
+	}{
+		{"cap refused", "max_tokens: 8000 > 4096, which is the maximum allowed", true},
+		{"context overflow", "input length and `max_tokens` exceed context limit: 195000 + 8000 > 200000, decrease input length or `max_tokens`", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHostDB(t)
+			runUser(t, r, `zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "m", max_output = 8000 } } })`)
+			t.Cleanup(func() { capRejected.Delete("a/m") })
+			m := reflectStub(t, h, "ok")
+			m.failOnce.Store(&fantasy.ProviderError{StatusCode: 400, Message: c.msg})
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			sender(t, h)("hi")
+			if n := m.streams.Load(); n != 2 {
+				t.Fatalf("model streamed %d times, want 2", n)
+			}
+			if _, dropped := capRejected.Load("a/m"); dropped != c.dropped {
+				t.Fatalf("cap dropped: %v, want %v", dropped, c.dropped)
+			}
+			for _, row := range h.Session().Transcript {
+				if row.Kind == "error" {
+					t.Fatalf("error row shown: %+v", row)
+				}
+			}
+		})
+	}
+}
+
 func sender(t *testing.T, h *Host) func(string) {
 	return func(text string) {
 		t.Helper()

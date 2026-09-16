@@ -26,11 +26,12 @@ type reflectStubModel struct {
 	calls      atomic.Int32
 	lastPrompt atomic.Int32
 	streams    atomic.Int32
-	overflow   atomic.Int32 // Stream calls left that fail as context too large
-	noImages   atomic.Int32 // Stream calls left that fail as a 400 over image input
-	toolStep   atomic.Int64 // context the next Stream call reports along with a tool call; 0 = text
-	cutReply   bool         // Generate stops at the output limit
-	during     func()       // runs inside Generate, while the model "thinks"
+	overflow   atomic.Int32                          // Stream calls left that fail as context too large
+	noImages   atomic.Int32                          // Stream calls left that fail as a 400 over image input
+	toolStep   atomic.Int64                          // context the next Stream call reports along with a tool call; 0 = text
+	failOnce   atomic.Pointer[fantasy.ProviderError] // the next Stream call's error
+	cutReply   bool                                  // Generate stops at the output limit
+	during     func()                                // runs inside Generate, while the model "thinks"
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
@@ -61,17 +62,20 @@ func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fanta
 func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	m.streams.Add(1)
 	m.lastPrompt.Store(int32(len(call.Prompt)))
+	if used := m.toolStep.Swap(0); used > 0 {
+		return func(yield func(fantasy.StreamPart) bool) {
+			_ = yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"}) &&
+				yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls, Usage: fantasy.Usage{InputTokens: used}})
+		}, nil
+	}
 	if m.overflow.Add(-1) >= 0 {
 		return nil, &fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true}
 	}
 	if m.noImages.Add(-1) >= 0 {
 		return nil, &fantasy.ProviderError{StatusCode: 400, Message: "<path> is not a multimodal model"}
 	}
-	if used := m.toolStep.Swap(0); used > 0 {
-		return func(yield func(fantasy.StreamPart) bool) {
-			_ = yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"}) &&
-				yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls, Usage: fantasy.Usage{InputTokens: used}})
-		}, nil
+	if pe := m.failOnce.Swap(nil); pe != nil {
+		return nil, pe
 	}
 	parts := []fantasy.StreamPart{
 		{Type: fantasy.StreamPartTypeTextStart, ID: "t"},

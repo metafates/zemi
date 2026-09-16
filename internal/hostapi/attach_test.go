@@ -142,17 +142,27 @@ func TestImagesRefusedContinues(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := reflectStub(t, h, "ok")
+	m.toolStep.Store(50_000)
 	m.noImages.Store(1)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
 	sender(t, h)("what is in @shot.png")
-	if n := m.streams.Load(); n != 2 {
-		t.Fatalf("model streamed %d times, want 2", n)
+	if n := m.streams.Load(); n != 3 {
+		t.Fatalf("model streamed %d times, want 3", n)
 	}
+	// the step before the refusal keeps its usage and its tool row
+	if in := h.AgentStream().SessionIn; in < 50_000 {
+		t.Fatalf("session input %d, want the first step's 50000", in)
+	}
+	toolRow := false
 	for _, row := range h.Session().Transcript {
 		if row.Kind == "error" {
 			t.Fatalf("error row shown: %+v", row)
 		}
+		toolRow = toolRow || row.Kind == "tool"
+	}
+	if !toolRow {
+		t.Fatal("tool row of the first step lost")
 	}
 	model := h.currentModelID(nil)
 	t.Cleanup(func() { imagesRejected.Delete(model) })
