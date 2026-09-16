@@ -25,6 +25,8 @@ func TestSafeCommand(t *testing.T) {
 		{"D=/x; ls $E", false},
 		{"HOME=./x; git status", false},
 		{"CDPATH=/etc; cd x && cat y", false},
+		{"_=internal; ls .; grep -r K $_", false},
+		{"SECONDS=internal; sleep 1; ls $SECONDS", false},
 
 		{"sed -n 1,50p internal/web/main.go", true},
 		{"awk '$3 < 100 {print $1}' data.txt", true},

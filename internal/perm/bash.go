@@ -43,10 +43,15 @@ var envGateNames = []string{
 }
 
 // shellVarNames are variables the shell itself reads (cd, globbing,
-// tracing, startup), so inlineVars never drops their assignment.
+// tracing, startup) or sets between commands ($_ is the last argument), so
+// inlineVars never drops their assignment.
 var shellVarNames = []string{
 	"cdpath", "home", "pwd", "oldpwd", "globignore", "fignore", "ps4",
 	"bashopts", "posixly_correct", "histfile", "tmpdir",
+	"_", "lineno", "random", "srandom", "seconds", "optind", "optarg", "reply",
+	"ppid", "bashpid", "uid", "euid", "groups", "shlvl", "columns", "lines",
+	"epochrealtime", "epochseconds", "histcmd", "funcname", "pipestatus",
+	"bash_command", "bash_subshell", "bash_lineno", "bash_argv0", "bash_rematch",
 }
 
 // EnvAssignmentGate reports whether a name matches the environment-affecting
