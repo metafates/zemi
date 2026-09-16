@@ -328,6 +328,13 @@ func (h *Host) liveModelID() string {
 	return h.currentModelID(ag.profiles[ag.defProf])
 }
 
+// sessionModelID is liveModelID for callers not holding ag.mu.
+func (h *Host) sessionModelID() string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.liveModelID()
+}
+
 // buildSystem renders the system prompt with context files appended
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
@@ -546,7 +553,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	return h.Providers.Resolve(id)
 }
 
-// modelFor resolves the model the first set key names, the agent model
+// modelFor resolves the model the first set key names, the session's model
 // when none is set.
 func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
 	for _, key := range keys {
@@ -554,7 +561,7 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
 			return h.Providers.Resolve(id)
 		}
 	}
-	return h.resolveModel(nil)
+	return h.resolveModel(&Profile{Model: h.sessionModelID()})
 }
 
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {

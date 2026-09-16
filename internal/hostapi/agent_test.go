@@ -758,11 +758,11 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
-// not agent.model.
+// not agent.model, and so do compaction and subagents without a model.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.register({ id = "a", kind = "openai", models = {
+		zemi.provider.register({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
 			{ id = "big", context_window = 200000, images = false },
 			{ id = "small", context_window = 32000 },
 		} })
@@ -777,6 +777,12 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		t.Fatal("the profile's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
+	if m, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
+		t.Fatalf("summary model %v, err %v, want the profile's", m, err)
+	}
+	if id := h.subagentModelID(AgentDef{}); id != "a/big" {
+		t.Fatalf("subagent model %q, want the profile's", id)
+	}
 }
 
 // TestProfileContextFilesSurviveTwoSends: building the prompt must leave the

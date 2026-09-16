@@ -328,7 +328,7 @@ func TestSubagentModelChoice(t *testing.T) {
 		isSmall             bool
 		want                string
 	}{
-		{"", "", "", false, ""},
+		{"", "", "", false, "myllm/main"},
 		{"", "myllm/mini", "", false, "myllm/mini"},
 		{"myllm/main", "myllm/mini", "", false, "myllm/main"},
 		{"", "myllm/main", "myllm/mini", false, "myllm/main"},

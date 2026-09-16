@@ -468,14 +468,14 @@ func (h *Host) setToolDetail(callID, detail string) {
 
 // subagentModelID picks a subagent's model: the definition's (a tool call
 // or a workflow may set it per run), then agent.small_model for a Small
-// definition, then the agent.subagent_model setting, then "" for the
-// session model.
+// definition, then the agent.subagent_model setting, then the session's
+// model.
 func (h *Host) subagentModelID(def AgentDef) string {
 	small := ""
 	if def.Small {
 		small = h.setStr("agent.small_model")
 	}
-	return cmp.Or(def.Model, small, h.setStr("agent.subagent_model"))
+	return cmp.Or(def.Model, small, h.setStr("agent.subagent_model"), h.sessionModelID())
 }
 
 // modelIDs lists every provider/model the config registered.
