@@ -68,8 +68,7 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		}
 		return true
 	}
-	for _, seg := range n.Segments {
-		f := strings.Fields(seg)
+	for _, f := range n.Args {
 		if !safeSegment(f) {
 			return false
 		}
@@ -224,10 +223,10 @@ var refusedFlags = map[string][]string{
 	"tree":          {"-o", "-R"},
 	"file":          {"-C", "--compile"},
 	"fd":            {"-x", "-X", "--exec", "--exec-batch"},
-	"rg":            {"--pre"},
+	"rg":            {"--pre", "--hostname-bin"},
 	"ag":            {"--pager"},
 	"find":          {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
-	"sed":           {"-i", "--in-place", "-f", "--file"},
+	"sed":           {"-i", "-I", "--in-place", "-f", "--file"},
 	"awk":           {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec"},
 	"jq":            {"-f", "--from-file", "-L", "--library-path"},
 	"make":          {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval"},
@@ -254,14 +253,181 @@ var projectTools = map[string]bool{
 	"vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
 }
 
-// sedFileCmd matches sed commands that write or read a file or run one: w
-// and r (`w file`, the no-space `w/tmp/out` GNU accepts, after an address
-// like 1w or $r, or as the s///w flag) and e. The character after w or r
-// must not be a letter, or every path holding a word like "web" would read
-// as a write.
-// NOTE: `rsecret.pem` (a letter right after r) still reads a file inside
-// the project; telling it from a path needs a real sed script parser.
-var sedFileCmd = regexp.MustCompile(`(^|[;{}\s/0-9$,!])([wWrR](\s+\S|[/.])|e($|[\s;}]))`)
+// sedSafe reports whether every sed script (the -e values, or else the
+// first operand) parses into commands that write, read and run nothing.
+func sedSafe(args []string) bool {
+	var scripts, operands []string
+	next := func(i *int) bool {
+		if *i++; *i < len(args) {
+			scripts = append(scripts, args[*i])
+		}
+		return *i < len(args)
+	}
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--":
+			operands = append(operands, args[i+1:]...)
+			i = len(args)
+		case strings.HasPrefix(a, "--") && hasFlag([]string{a}, "--expression"):
+			if _, v, ok := strings.Cut(a, "="); ok {
+				scripts = append(scripts, v)
+			} else if !next(&i) {
+				return false
+			}
+		case strings.HasPrefix(a, "--"):
+		case strings.HasPrefix(a, "-") && a != "-":
+			// -ne p and -nep: the value-taking short flags besides -e are refused
+			if _, v, ok := strings.Cut(a, "e"); ok && v != "" {
+				scripts = append(scripts, v)
+			} else if ok && !next(&i) {
+				return false
+			}
+		default:
+			operands = append(operands, a)
+		}
+	}
+	if len(scripts) == 0 && len(operands) > 0 {
+		scripts = operands[:1]
+	}
+	for _, s := range scripts {
+		if !sedScriptSafe(s, false) || !sedScriptSafe(s, true) {
+			return false
+		}
+	}
+	return len(scripts) > 0
+}
+
+// sedScriptSafe parses one sed script. brackets says whether a [...] class
+// in a regex hides the delimiter (BSD sed) or not (GNU sed). Anything it
+// cannot parse is unsafe: sed compiles the whole script before it runs, so
+// only a script sed accepts matters.
+func sedScriptSafe(s string, brackets bool) bool {
+	i := 0
+	space := func(set string) {
+		for i < len(s) && strings.IndexByte(set, s[i]) >= 0 {
+			i++
+		}
+	}
+	// delimited moves past the text up to the closing delimiter d
+	delimited := func(d byte, regex bool) bool {
+		for ; i < len(s); i++ {
+			switch {
+			case s[i] == d:
+				i++
+				return true
+			case regex && brackets && s[i] == '[':
+				end := bracketEnd(s[i:])
+				if end < 0 {
+					return false
+				}
+				i += end
+			case s[i] == '\\' && !(regex && brackets && i+1 < len(s) && s[i+1] == '['):
+				i++
+			}
+		}
+		return false
+	}
+	// a line number, $, first~step, +N, /re/ or \cREc, with I and M flags
+	address := func() bool {
+		space(" \t")
+		switch {
+		case i < len(s) && s[i] == '/':
+			i++
+			if !delimited('/', true) {
+				return false
+			}
+		case i+1 < len(s) && s[i] == '\\':
+			i += 2
+			if !delimited(s[i-1], true) {
+				return false
+			}
+		default:
+			space("0123456789$+~")
+		}
+		space("IM \t")
+		return true
+	}
+	for {
+		space(" \t\n;")
+		if i == len(s) {
+			return true
+		}
+		if !address() || i < len(s) && s[i] == ',' && func() bool { i++; return !address() }() {
+			return false
+		}
+		space("! \t")
+		if i == len(s) {
+			return false
+		}
+		cmd := s[i]
+		i++
+		switch {
+		case cmd == '{':
+			continue
+		case strings.IndexByte("}=dDgGhHnNpPxzF", cmd) >= 0:
+		case strings.IndexByte("lLqQ", cmd) >= 0:
+			space("0123456789 \t")
+		case strings.IndexByte(":btTv", cmd) >= 0:
+			// GNU ends a label at ; and BSD only at a newline: stopping early
+			// parses more of the script as commands
+			space(" \t")
+			for i < len(s) && strings.IndexByte(" \t\n;}", s[i]) < 0 {
+				i++
+			}
+		case cmd == 'a' || cmd == 'i' || cmd == 'c' || cmd == '#':
+			for ; i < len(s) && s[i] != '\n'; i++ {
+				if s[i] == '\\' && cmd != '#' {
+					i++
+				}
+			}
+		case cmd == 's' || cmd == 'y':
+			if i == len(s) || s[i] == '\\' || s[i] == '\n' {
+				return false
+			}
+			d := s[i]
+			i++
+			if !delimited(d, true) || !delimited(d, cmd == 'y') {
+				return false
+			}
+			// BSD skips blanks between flags; w and e are left to the check below
+			if cmd == 's' {
+				space("gpiImM0123456789 \t")
+			}
+		default: // w, W, r, R and e write, read or run
+			return false
+		}
+		space(" \t")
+		if i < len(s) && strings.IndexByte("\n;}#", s[i]) < 0 {
+			return false
+		}
+	}
+}
+
+// bracketEnd returns the index of the ] closing the bracket expression t
+// starts with, or -1.
+func bracketEnd(t string) int {
+	j := 1
+	if j < len(t) && t[j] == '^' {
+		j++
+	}
+	if j < len(t) && t[j] == ']' {
+		j++
+	}
+	for ; j < len(t); j++ {
+		if t[j] == ']' {
+			return j
+		}
+		// [:alpha:], [=a=] and [.x.] may hold a ]
+		if t[j] == '[' && j+1 < len(t) && strings.IndexByte(".:=", t[j+1]) >= 0 {
+			k := strings.Index(t[j+2:], string(t[j+1])+"]")
+			if k < 0 {
+				return -1
+			}
+			j += k + 3
+		}
+	}
+	return -1
+}
 
 // getline and ARGV read files the arguments do not name, system and @
 // (gawk's @include and indirect calls) run code, ENVIRON and PROCINFO print
@@ -306,9 +472,7 @@ func safeSegment(a []string) bool {
 	case name == "tsc": // it writes the compiled files next to the sources
 		return hasFlag(rest, "--noEmit")
 	case name == "sed":
-		// quotes are gone by now, so the script and the file names are one
-		// string; sedFileCmd is written to tell a w command from a path
-		return !sedFileCmd.MatchString(strings.Join(rest, " "))
+		return sedSafe(rest)
 	case name == "awk":
 		return !awkUnsafe.MatchString(strings.Join(rest, " "))
 	case name == "git":

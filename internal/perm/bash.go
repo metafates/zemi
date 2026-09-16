@@ -15,6 +15,8 @@ type Normalized struct {
 	// quote-aware argv, assignment prefixes unwrapped, sh -c recursion
 	// applied. Each segment is matched against rules on its own.
 	Segments []string
+	// Args are the segments' argv, each word as the program receives it.
+	Args [][]string
 	// ReadPaths and WritePaths are redirect targets gating as fs.read /
 	// fs.write (device exemptions already applied).
 	ReadPaths  []string
@@ -489,10 +491,12 @@ func (n *Normalized) fold(seg []string) {
 		}
 	}
 	n.Segments = append(n.Segments, strings.Join(argv, " "))
+	n.Args = append(n.Args, argv)
 }
 
 func (n *Normalized) absorb(inner Normalized) {
 	n.Segments = append(n.Segments, inner.Segments...)
+	n.Args = append(n.Args, inner.Args...)
 	n.ReadPaths = append(n.ReadPaths, inner.ReadPaths...)
 	n.WritePaths = append(n.WritePaths, inner.WritePaths...)
 	if inner.Fail != "" && n.Fail == "" {
