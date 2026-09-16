@@ -146,6 +146,7 @@ func run(args []string) int {
 			app.Notify("error", "reload", err.Error())
 			return
 		}
+		app.SignalBoot(nil)
 		app.Notify("info", "reload", "config reloaded")
 		host.EmitAsync("config.reloaded", nil)
 	}
