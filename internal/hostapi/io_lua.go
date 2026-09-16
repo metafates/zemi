@@ -18,7 +18,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -43,7 +42,7 @@ func (h *Host) secretPath(p string) bool {
 	if err != nil {
 		return true
 	}
-	return perm.PathIsSecret(realPath(abs))
+	return perm.PathIsSecret(perm.RealPath(abs))
 }
 
 // inJail reports whether path is inside one of the jail roots.
@@ -54,44 +53,17 @@ func (h *Host) inJail(path string, roots ...string) bool {
 	}
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).
-	real := foldPath(realPath(abs))
+	real := perm.CanonPath(abs)
 	for _, r := range roots {
 		if r == "" {
 			continue
 		}
-		rr := foldPath(realPath(r))
+		rr := perm.CanonPath(r)
 		if real == rr || strings.HasPrefix(real, rr+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
-}
-
-// foldPath case-folds where the filesystem does: EvalSymlinks keeps the
-// case it was given, so a jail root and a path under it can differ only by
-// case and still be the same directory.
-func foldPath(p string) string {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		return strings.ToLower(p)
-	}
-	return p
-}
-
-// realPath resolves symlinks in the longest existing prefix of p, so a file
-// about to be created is judged by its real parent directory.
-func realPath(p string) string {
-	suffix := ""
-	for {
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			return filepath.Join(real, suffix)
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return filepath.Join(p, suffix)
-		}
-		suffix = filepath.Join(filepath.Base(p), suffix)
-		p = parent
-	}
 }
 
 func (h *Host) readJails() []string {

@@ -342,8 +342,10 @@ func inGitDir(p string) bool {
 	if err != nil {
 		return true
 	}
-	for _, q := range []string{abs, realPath(abs)} {
-		if slices.Contains(strings.Split(foldPath(filepath.ToSlash(q)), "/"), ".git") {
+	// EqualFold also matches .GIT on a case-sensitive volume, which only asks more
+	isGit := func(s string) bool { return strings.EqualFold(s, ".git") }
+	for _, q := range []string{abs, perm.RealPath(abs)} {
+		if slices.ContainsFunc(strings.Split(filepath.ToSlash(q), "/"), isGit) {
 			return true
 		}
 	}
@@ -378,7 +380,7 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 // NOTE: gives up past 10000 entries, so a search over a big tree asks;
 // an index of secret-shaped names kept per project would lift that.
 func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
-	p = realPath(p)
+	p = perm.RealPath(p)
 	st, err := os.Stat(p)
 	if err != nil {
 		return false
