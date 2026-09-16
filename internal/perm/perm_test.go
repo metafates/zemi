@@ -27,6 +27,9 @@ func TestEvaluateDecisions(t *testing.T) {
 	if o := s.Evaluate("fs.write", "/tmp/secret1", ""); o.Decision != Deny {
 		t.Fatalf("deny beats allow by specificity, got %v", o.Decision)
 	}
+	if o := s.Evaluate("fs.write", "/tmp/secret\n1", ""); o.Decision != Deny {
+		t.Fatalf("a newline in the argument must not escape deny, got %v", o.Decision)
+	}
 	if o := s.Evaluate("fs.write", "/etc/passwd", ""); o.Decision != Ask {
 		t.Fatalf("default is ask, got %v", o.Decision)
 	}

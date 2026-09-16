@@ -24,7 +24,8 @@ func globRegexp(pattern string) *regexp.Regexp {
 		return re
 	}
 	var b strings.Builder
-	b.WriteString(`^`)
+	// (?s): a quoted newline in an argument must not slip past a deny rule
+	b.WriteString(`(?s)^`)
 	for _, r := range pattern {
 		switch r {
 		case '*':

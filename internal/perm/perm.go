@@ -99,11 +99,6 @@ type Outcome struct {
 	Reason string
 }
 
-// Evaluate decides one operation argument against one subject's rules.
-// Ordering: deny > ask > allow; within a decision, most specific pattern
-// (fewest wildcards, then longest literal prefix) wins. An argument that
-// matches a rule's pattern but also its NotMatch is skipped (and the
-// fall-through is reported for the audit log).
 // subjectMatches compares a rule's subject with the one being asked about.
 // A rule may end in ".*" to cover a family: net.* answers net.example.com,
 // the subject the fetch tool asks with.
@@ -114,6 +109,11 @@ func subjectMatches(rule, subject string) bool {
 	return rule == subject
 }
 
+// Evaluate decides one operation argument against one subject's rules.
+// Ordering: deny > ask > allow; within a decision, most specific pattern
+// (fewest wildcards, then longest literal prefix) wins. An argument that
+// matches a rule's pattern but also its NotMatch is skipped (and the
+// fall-through is reported in the reason).
 func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 	type cand struct {
 		rule  Rule
