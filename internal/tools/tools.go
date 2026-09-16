@@ -471,7 +471,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runRead),
 
-		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", false,
+		mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -482,7 +482,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runWrite),
 
-		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. A multi-line old_string also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", false,
+		mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. A multi-line old_string also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -495,7 +495,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runEdit),
 
-		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", false,
+		mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 				"edits": map[string]any{"type": "array", "items": map[string]any{
@@ -525,7 +525,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash, then read the region it points at. A match is not a read: edit still needs the read tool. For a broad question about how something works, delegate to an explore agent instead.", true,
+		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash, then read the region it points at. A match is not a read: edit still needs the read tool.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},

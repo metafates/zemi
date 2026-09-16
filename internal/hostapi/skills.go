@@ -221,7 +221,7 @@ func (h *Host) skillsIndexPrompt() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n# Skills\nEach description is a trigger, not a summary: the procedure is in the body. Before the first tool call that does the task, check this list. If one covers the task, load it with the skill tool and follow it, even for a task you know how to do; if you skip an obvious one, say why in one line.\n")
+	b.WriteString("\n\n# Skills\nEach description is a trigger, not a summary: the procedure is in the body. Before the first tool call that does the task, check this list. If one covers the task, load it with the skill tool and follow it, even for a task you know how to do.\n")
 	for _, s := range enabled {
 		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
 	}

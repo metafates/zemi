@@ -199,7 +199,7 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 	quiet := (<-chan time.Time)(nil)
 	// A server that publishes nothing for this file (an unsupported type,
 	// no project) would otherwise hold the caller to its whole timeout.
-	floor := time.After(1500 * time.Millisecond)
+	floor := time.After(800 * time.Millisecond)
 	for {
 		c.mu.Lock()
 		fresh, wake := c.pubs[key] > before, c.wake

@@ -339,7 +339,7 @@ func languageID(path string) string {
 // <= maxSeverity (1 errors ... 4 all), plus, when others is set, the errors
 // the sync surfaced in other files; ok is false when no server covers the
 // file or it did not answer.
-func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, ok bool) {
+func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.Duration) (out string, ok bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", false
@@ -350,7 +350,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, 
 	}
 	// NOTE: a cold gopls or rust-analyzer can take longer than this on a
 	// big workspace; the edit then returns without diagnostics.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	p, err := h.lspClient(ctx, def)
 	if err != nil {
@@ -425,9 +425,10 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 }
 
 // lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for
-// the file just changed.
+// the file just changed. Its budget is short: a write is on the turn's
+// critical path, and the diagnostics tool is there for a slow server.
 func (h *Host) lspAfterWrite(path string) string {
-	if out, ok := h.lspCheck(path, 2, true); ok {
+	if out, ok := h.lspCheck(path, 2, true, 3*time.Second); ok {
 		return "\n\n" + out
 	}
 	return ""
@@ -435,7 +436,7 @@ func (h *Host) lspAfterWrite(path string) string {
 
 // lspDiagnostics backs the diagnostics tool.
 func (h *Host) lspDiagnostics(path string) (string, error) {
-	if out, ok := h.lspCheck(path, 3, false); ok {
+	if out, ok := h.lspCheck(path, 3, false, 10*time.Second); ok {
 		return out, nil
 	}
 	if _, ok := h.lspFor(path); !ok {
