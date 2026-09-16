@@ -46,22 +46,21 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 | `charm.land/bubbletea/v2` | TUI program, event loop, key/mouse input |
 | `charmbracelet/ultraviolet` (+ `x/ansi`, `x/term`, `x/termios`, `colorprofile`, runewidth, uniseg, terminfo, displaywidth, uax29) | Cell-based rendering primitives under bubbletea v2; used for widget buffers and golden tests |
 | `github.com/yuin/gopher-lua` | The embedded Lua 5.1 VM: interpreter thread, sandbox, `require`, coroutines |
-| `github.com/go-viper/mapstructure/v2` | Lua table / `map[string]any` to Go struct decoding (config, tool input, widget specs) |
-| `github.com/goccy/go-yaml` | SKILL.md frontmatter parsing |
-| `kaptinlin/jsonschema` (+ `jsonpointer`) | JSON Schema validation of tool inputs (fantasy already depends on it) |
-| `tidwall/gjson` / `sjson` | Reading and patching tool-input JSON (hook rewrites, proposals) |
-| `google/uuid` | IDs |
+| `github.com/goccy/go-yaml` | SKILL.md and `agents/*.md` frontmatter parsing |
 
 Added since: `modernc.org/sqlite` (pure-Go SQLite, keeps
 `CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
 EXISTS`, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat), `charmbracelet/x/exp/golden` (golden-file assertions
-for TUI output), `aymanbagabas/go-udiff` (edit previews). Not taken:
+for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty` and
+`charmbracelet/x/vt` (windows: a program on a pseudo-terminal drawn through
+a Go terminal emulator). Tool input validation is a small hand-written
+schema check, not a JSON Schema library. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6),
 `charm.land/catwalk` (there is no model catalog; models come only from
 `zemi.provider.register` in user config, §6.3), and `fsnotify` (config
 reload is a one-second fingerprint walk of the config trees). Ripgrep is
-not a dependency either: `glob`, `grep` and `zemi.fs.grep` exec whatever
+not a dependency either: `glob` and `grep` exec whatever
 `rg` `exec.LookPath` found at init, passing the pattern as `--regexp`
 and globs as `--glob` so neither can be read as a flag, and fall back to
 a Go walker with the same glob rules when `rg` is missing (Go-side and
@@ -97,16 +96,17 @@ Layers and ownership:
 - **Lua host** (`internal/lua`): one `lua.LState` on a dedicated goroutine,
   sandboxed stdlib, preload of all `zemi.*` namespaces, `require` resolution
   over the runtimepath.
-- **Host API** (`internal/hostapi`): thin adapters exposing core services to
-  Lua. No logic lives here.
-- **Agent core** (`internal/agent`): sessions, coordinator (profiles), the
-  fantasy agent wiring, built-in tools, tool pipeline (hooks, permissions,
-  execution), prompt assembly.
+- **Host API** (`internal/hostapi`): the `zemi.*` namespaces and the host
+  services behind them: turns, sessions, prompt assembly, compaction,
+  subagents, workflows, the reflector, skills, permissions (§12).
+- **Agent core** (`internal/agent`): the fantasy runner (one turn, steps,
+  stops, retries); built-in tools and the tool pipeline (hooks,
+  permissions, execution) live in `internal/tools`.
 - **UI core** (`internal/ui`): bubbletea program, region layout, widget
   registry, theme/highlight resolution, slash palette, overlay stack.
 - **Learn** (`internal/learn`): the memory intake policy only (caps, the
-  kind enum, provenance, the secret scrubber). The reflector, the skill
-  manager and the config revision pipeline live in `internal/hostapi`.
+  kind enum, provenance, the secret scrubber). The reflector and the skill
+  manager live in `internal/hostapi`.
 - **Store** (`internal/store`): SQLite, one schema const, no migration
   tool (sessions, messages, memory, skills, checkpoints, proposals,
   config revisions, telemetry).
@@ -193,8 +193,8 @@ Contracts that make this safe:
   no-objection: the overlay alone decides, so the fail-closed default
   cannot overrule an ask the user is mid-way through answering. The
   fail-closed default deny is for asks that have no overlay leg:
-  host-API calls from Lua (which fail with `nil, "permission ask
-  required"`, §6.5) and any non-model ask source.
+  host-API calls from Lua (which raise `permission ask required`, §6.5)
+  and any non-model ask source.
 - **Dispatch and staleness.** Go services call into Lua without holding
   the UI hostage: UI-class requests enqueue and return; results come back
   as tea messages and Lua events. While a Lua tool occupies the
@@ -221,17 +221,11 @@ Contracts that make this safe:
   means any generation change: each visible widget renders once per frame
   and the cache only dedupes repeat `View` calls within a frame (per-widget
   dependency invalidation is a later optimization, §8).
-- **Event batching.** High-frequency events (`agent.text_delta`,
-  `agent.reasoning_delta`) always coalesce: they are batched into one tea
-  message per renderer tick (the frame clock), so Lua sees at most one
-  callback per frame per event type
-  (`{coalesce = false}` is ignored for them, so a chatty subscriber cannot
-  starve agent-class work; when the queue backs up, pending coalesced
-  delta messages collapse keep-latest; delta events carry the incremental
-  chunk only, so a subscriber that needs complete text reads the
-  host-held transcript blocks instead of accumulating deltas); other
-  events coalesce when subscribed with
-  `{coalesce = true}`.
+- **Deltas are not batched.** `agent.text_delta` and
+  `agent.reasoning_delta` are emitted once per streamed chunk, each its own
+  async request, and carry the incremental chunk only, so a subscriber
+  that needs complete text reads the host-held transcript instead of
+  accumulating deltas. Nothing else coalesces either.
 - **Steering.** Messages sent while a turn runs queue in arrival order
   and join the running turn as user-role messages at the next step
   boundary (before the next model call). Whatever is still queued when
@@ -285,7 +279,7 @@ Directories (XDG):
 Load order is a list of boot steps, and the permanent permission store
 loads early so no userland code runs before it: host `zemi.*` namespaces
 -> `permissions.lua` (fail-closed) -> builtin commands -> the memory,
-reflector, config, skills, agents, workflow, mcp and lsp commands -> the
+reflector, skills, agents, workflow, mcp, lsp and window commands -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> plugins
 (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user `init.lua` ->
 authored skills' enable hooks -> project `.zemi/` (`init.lua`,
@@ -423,12 +417,12 @@ in which milestone.
   invalid enum) raises a Lua error, catchable with `pcall`. Operations that
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
-  (`zemi.fs.read`/`write`, `zemi.state.put`, `zemi.memory.add`) return
+  (`zemi.fs.read`/`write`, `zemi.state.put`, `zemi.json.decode`) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a masked mutator in a
-  render, a wait outside a tool) always raises.
+  render) and a permission gate that does not allow always raise.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
-  timer, session) is a handle with colon-call methods (`h:wait()`,
+  timer, session, window) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
 - **Frozen namespaces**: all `zemi.*` tables are read-only; the API only
@@ -437,9 +431,9 @@ in which milestone.
 ### 6.1 Config and lifecycle
 
 ```lua
-zemi.config.get("chat.model")                 -- dotted path lookup
-zemi.config.set("composer.wrap", "word")
-zemi.config.watch("provider.anthropic.model", function(new, old) end)
+zemi.config.get("agent.model")                -- dotted path lookup
+zemi.config.set("ui.theme", "default")
+zemi.config.watch("agent.model", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read; secret-shaped
                                               -- names (§9 deny list) are denied
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
@@ -447,17 +441,16 @@ zemi.log.info("...", { key = "value" })
 zemi.notify({ title = "hi", body = "...", level = "info" })
 ```
 
-Config values from `init.lua` merge with defaults in Go; `mapstructure`
-decodes typed structs. `zemi.config.set` is in-memory for the session and
-accepts only the keys Go's schema marks user-writable; everything else is
-refused with an error (an allowlist, not a denylist). The autonomy knobs
-(§10.8) are not in the user-writable set: `config.set` refuses them from
-every origin at every time, boot included; only Go writes them
-(`Settings.SetHost`). Persistent config changes are
-commits in the config repo: proposals go through the revision pipeline
-(§10.4); the user's own hand edits go through `:ConfigEdit`, which opens
-the repo for a plain git commit; the one-line permanent-rule commit below
-(§6.1) is the keypress-is-the-review path.
+Config values from `init.lua` merge with the defaults in Go's schema.
+`zemi.config.set` is in-memory for the session, callable from user config
+only, and accepts only the keys the schema marks user-writable; everything
+else is refused with an error (an allowlist, not a denylist). The
+autonomy knobs (§10.8) are not in the user-writable set: `config.set`
+refuses them from every origin at every time, boot included; only Go
+writes them (`Settings.SetHost`). Persistent config changes are edits to
+files in the config repo (the user's, or the agent's through the
+permission-gated file tools); the one commit zemi makes itself is the
+permanent-rule commit below.
 
 Permission rules are data with one API, two scopes, and an optional
 principal:
@@ -465,17 +458,15 @@ principal:
 ```lua
 zemi.permission.rule{ subject = "tool.bash", pattern = "make *",
                       decision = "deny", match = "make check",
-                      not_match = "make", scope = "session",
-                      principal = "model" }
+                      scope = "session" }
 ```
 
-`principal` defaults to unscoped (the rule then matches every principal,
-§9); rules stored by an `always` answer are scoped to the triggering
-principal, so a model tool call cannot ride a rule meant for the user.
-`scope = "session"` lives in memory until the session ends; `scope =
-"permanent"` is added to the rule store by Go as a one-line commit (the
-keypress is the review; the revision pipeline is for the learning loop's
-proposals). `permissions.lua` is not code: Go generates it from the rule
+Lua rules carry no principal, so they match every principal (§9); rules
+stored by an `always` answer are scoped to the `model` principal, so a
+model tool call cannot ride a rule meant for the user. `scope =
+"session"` lives in memory until the session ends; `scope = "permanent"`
+is added to the rule store and committed by Go as a one-line commit (the
+user's own config line is the review). `permissions.lua` is not code: Go generates it from the rule
 store on every change (a stable, versioned serialization of the permanent
 rules only; the store is the source of truth and the file is its dump;
 session rules live in memory and never touch the file), loads it
@@ -484,15 +475,11 @@ boot error that leaves the store empty (fail-closed; the user fixes or
 deletes the file), so nothing can smuggle executable Lua
 under the guise of a permission patch. Origins: user config may add any
 rule; plugin, project, and learned origins may add only session-scope
-deny/ask rules with `not_match` guards (permanent scope for learned
-proposals arrives only through the §10.4 review commit). Overlay
-`always` answers (§8) append
-through the same call, so rules never live in `zemi.state` or the DB,
-and no Lua can forge one. Patterns are exact-value by default; only a
-user's own config may write an allow rule with a glob pattern (the
-widening direction; plugin, project, and learned rules are deny/ask
-only, so a learned glob like the `rm -rf *` example (§10.3) can only
-tighten).
+deny/ask rules. Overlay `always` answers (§8) append session rules to
+the same store, so rules never live in `zemi.state` or the DB, and no
+Lua can forge one. Only the user's own config and `always` answers
+write allow rules (the widening direction; plugin, project, and learned
+rules are deny/ask only, so their globs can only tighten).
 
 ### 6.2 Keys, commands, events
 
@@ -536,7 +523,7 @@ composer submit before any Lua-visible command lookup) are fixed
 in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
-expands to `space` (configurable); multi-key sequences arm a
+expands to `ctrl+g` (the `keymap.leader` setting); multi-key sequences arm a
 pending state (shown in the statusline) until the next key or timeout.
 Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 `*` = 0 or more).
@@ -547,15 +534,15 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - session: `session.new`, `session.open`, `session.close` (with summary stats)
 - agent turn: `agent.start`, `agent.finish`, `agent.error`
 - subagents: `agent.subagent.start`, `agent.subagent.finish`
-- prompt: `agent.assemble` (vetoable: section add/trim list, §10.7)
-- stream: `agent.text_delta` (coalesced), `agent.reasoning_delta`
+- prompt: `agent.assemble` (returns a section to add, §10.7)
+- stream: `agent.text_delta`, `agent.reasoning_delta`
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
-  `composer.change` (coalesced), `composer.submit` (vetoable)
-- learn: `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
-  `reflector.start`, `reflector.done` (counts, or `error` on failure)
-- io: `job.exit`, `timer.fire`, `fs.changed`, `lsp.request`
+  `composer.change`, `composer.submit` (vetoable)
+- learn: `memory.written`, `skill.learned`, `reflector.start`,
+  `reflector.done` (counts, or `error` on failure)
+- io: `job.exit`, `win.open`, `win.exit`, `win.close`, `lsp.request`
 
 Every emission is recorded whether or not a handler exists: `zemi.event.log()` holds the
 last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`
@@ -582,12 +569,8 @@ otherwise return a decision table:
   do not re-fire), so a rewrite cannot silence another origin's deny hook
   and re-entry still terminates (§6.4);
   `{ decision = "halt", reason = "..." }` ends the turn after this tool call
-  (fantasy `StopTurn`); from `tool.post`, `{ context = "..." }` appends a
-  note to the tool result (crush hook context, size-capped at 64 KiB like
-  `agent.assemble` adds, §10.7), fenced as quoted,
-  untrusted data prefixed with the handler's origin, so it cannot speak
-  as the host; plugin handlers get the fence, project and learned
-  handlers are refused the field outright (the §5 denylist). There is no `allow`
+  (fantasy `StopTurn`). `tool.post` is a notification: its return value is
+  ignored. There is no `allow`
   decision: absence of denial is the only pass, so a Lua hook can never
   pre-approve a permission (crush's `allow` does pre-approve; zemi
   deliberately diverges). A `rewrite` from a non-user principal
@@ -615,7 +598,7 @@ zemi.agent.profile("coder", {
   model = "anthropic/claude-sonnet-4-5",
   system = [[You are zemi, a coding agent...]],
   tools = { "read", "edit", "bash", "glob", "grep" },
-  context = { files = { "ZEMI.md", "AGENTS.md" }, memory = true, skills = true },
+  context = { files = { "ZEMI.md", "AGENTS.md" } },
   temperature = 0.2,
 })
 
@@ -630,7 +613,7 @@ zemi.agent.run({ agent = "explore", prompt = "...",              -- subagent,
                function(result, err) end)    -- returns a handle: h:cancel()
 zemi.agent.list()                    -- the agent definitions and their source
 
-zemi.mcp.add({ ... }); zemi.mcp.list()   -- MCP servers bridged as tools
+zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
                                          -- (user origin only)
 
 zemi.model.list()                    -- { { id = "anthropic/...", ... } }
@@ -651,7 +634,7 @@ definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
 config home, zemi's own, and a trusted project's `.zemi`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
-`question` or `plan`, so nesting stops at depth 1, and `zemi.agent.run`
+`question`, `plan`, `open_in_editor` or `Lua`, so nesting stops at depth 1, and `zemi.agent.run`
 is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
 
@@ -659,7 +642,7 @@ user's tools and permissions. The reflector is not a subagent (§10.3).
 from a plugin, a project, or a learned source cannot call it (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
 gate; the key comes from user config (`zemi.env.get` reads secret-shaped
-variables for user origin only) and is never exposed back to Lua.
+variables for user and builtin origin only) and is never exposed back to Lua.
 
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
@@ -684,11 +667,11 @@ zemi.tool.register({
   },
   parallel = false,
   timeout_ms = 5000,
-  -- execute returns a string, or { output = string, metadata = {...} };
+  -- execute returns a string, { output = string }, or a table sent as JSON;
   -- errors: `error(msg)` is caught and becomes a tool error result.
-  execute = function(args, call)
+  execute = function(args, call)             -- call: { name, origin }
     -- zemi.job.out blocks the queue; timeout_ms bounds it
-    return { output = zemi.job.out("figlet", { args.text }).stdout }
+    return { output = zemi.job.out({ cmd = "figlet", args = { args.text } }).stdout }
   end,
 })
 
@@ -709,21 +692,23 @@ nearest instruction file not already in the prompt, once per session),
 walker fallback, §2), `fetch`,
 `todos`, `question` (1-4 questions in one overlay, options or a typed
 answer), `plan` (shows a plan and asks for approval; in plan mode the
-approval picks the mode to implement in),
+approval picks the mode to implement in), `open_in_editor` (the user
+edits a file in their own editor; the result is the diff),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory_add`/`memory_search`/`memory_update`/`memory_forget` (model
 memory edits re-run intake and ask, §10.4), `diagnostics` (language
-server errors for any file), `skill` (loads a SKILL.md body on demand),
-plus the three the host adds: `agent` (delegate to a subagent),
-`workflow` (write or run a workflow script) and `lua` (run Lua inside
-zemi, main agent only, as user origin: full access to toggle skills and
-anything else user Lua can do).
-Subagents never get `agent`, `workflow`, `todos`, `question` or `plan`
-(§6.3). Every tool, Go or Lua, passes through the same pipeline:
+server errors for any file), `lsp` (definition, references, rename and
+symbols by name), `skill` (loads a SKILL.md body on demand), plus the
+four the host adds: `agent` (delegate to a subagent), `workflow` (write
+or run a workflow script), `window` (a program in a terminal drawn inside
+zemi) and `Lua` (run Lua inside zemi, main agent only, as user origin:
+full access to toggle skills and anything else user Lua can do).
+Subagents never get `agent`, `workflow`, `todos`, `question`, `plan`,
+`open_in_editor` or `Lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
 
 ```
-model call -> schema validation (jsonschema)
+model call -> schema validation
            -> tool.pre events (Lua: deny | rewrite | halt)
            -> permission gate (config rules + learned rules; ask = overlay)
            -> execute (Go impl or Lua callback on interpreter thread)
@@ -753,7 +738,7 @@ a `ToolResultOutputContentError`-style message so the model can recover.
 zemi.fs.read("src/main.go")                  -- jailed to project roots + config
 zemi.fs.write("notes.md", "...")             -- jailed to project roots only;
                                              -- permission-gated on top (§9)
-zemi.fs.glob("**/*_test.go"); zemi.fs.grep("pattern", { glob = "*.go" })
+zemi.fs.glob("**/*_test.go"); zemi.fs.grep("pattern")
 local h = zemi.http.get("https://example.com")    -- returns a handle now
 local res = h:wait()                              -- blocks the queue until done
                                                   -- (legal only inside a tool
@@ -764,7 +749,7 @@ local res = h:wait()                              -- blocks the queue until done
 zemi.http.get(url, { on_done = function(r) end }) -- or callback style
 zemi.job.start({ cmd = "go", args = { "test", "./..." },
                  on_stdout = nil, on_exit = function(ev) end })
-zemi.job.out("figlet", { "hi" })                  -- blocking convenience: run,
+zemi.job.out({ cmd = "figlet", args = { "hi" } }) -- blocking convenience: run,
                                                   -- wait, { stdout, stderr, code }
 local t = zemi.timer.set(1000, function() end)    -- one-shot; also zemi.timer.every
 t:stop()                                          -- cancels a pending timer
@@ -774,15 +759,13 @@ zemi.state.get("recent.model")
 
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
 callbacks; the watchdog cancels handles a tool left running. Blocking
-waits (`h:wait()`, `zemi.job.out`) are legal only inside tool handlers,
-where the watchdog bounds them; the host checks the call context and
-raises a "wait outside tool context" error, so keymaps and event handlers
-use the callback form. Host-API calls from Lua never open the interactive
-overlay: when the matched decision is `ask`, a synchronous call returns
-`nil, "permission ask required"` and an async handle's `h:wait()` returns
-it as an error result (a `permission.request` event is emitted either
-way, post-hoc and informational: the outcome is already decided and the
-event carries no veto leg); only model tool calls surface the overlay, on
+waits (`h:wait()`, `zemi.job.out`) are not refused anywhere, but they
+hold the interpreter until they return, so they belong in tool handlers
+and keymaps and event handlers use the callback form. Host-API calls
+from Lua never open the interactive overlay: when the matched decision
+is `ask`, the call raises `permission ask required` (a
+`permission.request` event is emitted, post-hoc and informational: the
+outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
 the agent worker (§4). Keymap- and command-bound use of an ask-default
 API therefore needs a pre-existing allow rule from the user's own config,
 or it fails closed every time. URLs go through the permission gate like tools do
@@ -836,7 +819,7 @@ UI extensibility contract:
 - The screen is a stack: regions (`header`, `chat`, `composer`, `statusline`)
   composed by Go with ultraviolet constraints, plus an overlay
   stack. The shipped chat and statusline are default Lua registrations
-  under `runtime/lua/zemi/ui/`, replaceable by id. The composer is
+  in `runtime/lua/zemi/defaultui.lua`, replaceable by id. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a
   token, submitted-message history, `ctrl+z` undo, and a
@@ -858,10 +841,9 @@ UI extensibility contract:
   (truecolor/256/16, downgrading as needed).
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks, model
-  picker, question/memory/config overlays) -> active Lua overlay ->
-  open composer popup -> keymap (single keys; printable keys stay with the
-  composer; `zemi.ui.widget.register` takes an optional
-  `keys = function(key) -> handled?` handler for widget-specific keys) ->
+  picker, question/memory overlays) -> active Lua overlay ->
+  open composer popup -> keymap (keys and key sequences; printable keys
+  stay with the composer) ->
   composer (always focused; there are no modes). Overlays capture first,
   user maps override defaults, `zemi.keymap.del` unmaps.
 - Slash palette: typing `/` in the composer opens a popup listing registered
@@ -871,16 +853,12 @@ UI extensibility contract:
   model; an unknown name toasts and does not send; `esc` closes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
-- `zemi.ui.invalidate(id)` (or `id = "all"`) is a no-op in v1 (every
-  visible widget re-renders on every generation change anyway); the API
-  exists so the later dependency-declared invalidation (§4, §8) can turn
-  it into a targeted re-render.
 
 ### 6.7 Learning, session, skills
 
 ```lua
 zemi.session.id(); zemi.session.title(); zemi.session.set_title("...")
-zemi.session.messages({ limit = 50 })  -- read-only message blocks
+zemi.session.messages()                -- { id, role, json } per stored message
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.open(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
@@ -897,12 +875,13 @@ list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
 `insert`, `submit`, over a snapshot the UI publishes and edits it
 applies on its own goroutine), `zemi.health` (`register(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi --health`),
-`zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `list`), and
-`zemi.permission.mode` (`add`, `remove`, `list`; user config only, §9).
+`zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
+`zemi.mcp` (`add`, `list`), `zemi.win` (windows), `zemi.errors` (`list`),
+and `zemi.permission.mode` (`add`, `remove`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
-`zemi.learn.decide` and `zemi.skills.enable` require the `user` principal
-and a user-owned registration origin: the model can propose, but a
+`zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
+registration origin: the model can propose, but a
 plugin-registered keymap or command invoking them is refused; the trust
 anchor is a human keypress on a binding the user's own config registered.
 They gate like the registration APIs in §9 (refusal, never an ask) for
@@ -953,7 +932,7 @@ filters `superseded_by IS NULL` (dead memories never rank) and
 bumps `hit_count` and `last_hit_at` on hits; the digest ranks by FTS5
 score x recency x `log(1 + hit_count)`, the log keeping an inflatable
 count (the model can drive hits by asking for searches) from dominating.
-`memory.origin` is `user` or `learned`: `/remember` writes `user`,
+`memory.origin` is `user` or `learned`: `/memory <note>` writes `user`,
 everything else writes `learned`; the autonomy gate, the supersede guard
 (§10.4), and the digest labels (§10.7) read this column, not the
 provenance string. No embeddings in v1; embeddings via a
@@ -977,10 +956,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   asks each visible region for its cached widget lines; Lua `render` runs
   only when invalidated: v1 re-renders on every generation change (cheap:
   render is pure and cached by `(id, width, generation)`), plus resize
-  (explicit `zemi.ui.invalidate(id)` is a no-op in v1, §6.6);
-  dependency-declared invalidation is
-  opt-in later. `timer.fire` bumps the generation, so a clock widget
-  refreshes without polling APIs.
+  dependency-declared invalidation is opt-in later.
 - **Chat transcript**: messages are stored as content blocks (text, tool
   call, tool result, reasoning); tool output is sanitized before render
   (see below); the default chat widget maps blocks to
@@ -1014,21 +990,21 @@ configured provider later (`zemi.memory.search` signature does not change).
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter resumes), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
-  check: store, model key, permissions.lua, git, reflector, pending
-  reviews, skills, Lua runtime), `/errors` (recent widget, keymap and
-  event-handler errors behind the statusline badge), plus the
-  Lua-registered ones (`/remember`, `/memory`, `/config`,
-  `/skills`, `/reflect`). Enter on a help command row fills the composer.
+  check: store, model key, permissions.lua, git, ripgrep, reflector,
+  pending reviews, skills, recent errors, language servers, Lua runtime),
+  `/errors` (recent widget, keymap and event-handler errors behind the
+  statusline badge), plus the ones the host steps register (`/memory`,
+  `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
+  `/lsp`, `/win`). Enter on a help command row fills the composer.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls queue: one active overlay at
   a time, FIFO. The buttons are `Yes`, `Yes, <always label>` (only when
-  the request has an always choice), `No`, and `No, and tell zemi what
-  to do`; `y` and `o` answer once, `a` takes the always option, `n` and
+  the request has an always choice), `No`, and `No, and say why`; `y` and `o` answer once, `a` takes the always option, `n` and
   `esc` deny, `t` denies and hands the composer back so the user can say
   what to do instead. The overlay writes session rules only: `always`
-  adds allow rules through `zemi.permission.rule` (§6.1), scoped to the
+  adds allow rules to the rule store (§6.1), scoped to the
   `model` principal, with the prefix-glob patterns §6.2 lists. Permanent
   rules never come from the overlay; they are written by
   `zemi.permission.rule{ scope = "permanent" }` in the user's own
@@ -1230,9 +1206,10 @@ configured provider later (`zemi.memory.search` signature does not change).
 - There is no turn-scoped resource budget: per-turn caps on bash
   commands, files touched, tokens spent, or Lua host-API calls are not
   implemented. What bounds a turn is the step limit (200 steps) and the
-  doom-loop stop: six identical tool steps in a row (same calls, same
-  results) end the turn with an error the user can continue from, with
-  `job_read` and `job_list` exempt because polling a job is not looping.
+  doom-loop stop: a block of up to three tool steps (same calls, same
+  results) repeating over six steps or three cycles ends the turn with an
+  error the user can continue from, with `job_read` and `job_list` steps
+  left out because polling a job is not looping.
 
 ## 10. Learning and self-improvement
 
