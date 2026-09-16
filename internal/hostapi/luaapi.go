@@ -181,7 +181,7 @@ func (h *Host) assembleSections() string {
 	_, err := h.RT.Do(context.Background(), lua.ClassUI, time.Duration(len(handlers))*lua.VetoDeadline+2*time.Second, 0,
 		func(L *glua.LState) ([]any, error) {
 			for _, hd := range handlers {
-				if hd.Origin == lua.OriginProject || hd.Origin == lua.OriginLearned {
+				if hd.Origin.Rank() <= lua.OriginProject.Rank() {
 					continue
 				}
 				title, text := h.callAssembleHandler(L, hd)

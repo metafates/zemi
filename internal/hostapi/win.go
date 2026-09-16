@@ -289,7 +289,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.win.open: command is refused by the environment gate")
 		}
 		h.luaGate(L, "lua.job.start", cmd)
-		gen := h.currentGen()
+		at := h.callerOf(L)
 		w, err := h.openWindow(win.Spec{
 			Cmd: cmd, Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
 			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"), Owner: "lua",
@@ -303,7 +303,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		if fn, ok := spec.RawGetString("on_exit").(*glua.LFunction); ok {
 			h.GoSafe("win on_exit", func() {
 				<-w.Done()
-				h.callLuaAsync(gen, fn, windowInfo(w))
+				h.callLuaAsync(at, fn, windowInfo(w))
 			})
 		}
 		if rawBool(spec, "focus") {

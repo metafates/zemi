@@ -716,16 +716,16 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			desc = truncRunes(prompt, 40)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		gen := h.currentGen()
+		at := h.callerOf(L)
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
 			text, err := h.runSubagent(ctx, def, desc, prompt, nil)
 			switch {
 			case onDone == nil:
 			case err != nil:
-				h.callLuaAsync(gen, onDone, nil, friendlyError(err))
+				h.callLuaAsync(at, onDone, nil, friendlyError(err))
 			default:
-				h.callLuaAsync(gen, onDone, text, nil)
+				h.callLuaAsync(at, onDone, text, nil)
 			}
 		})
 		handle := L.NewTable()

@@ -268,7 +268,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				L.RaiseError("zemi.timer: interval must be positive")
 			}
 			d := time.Duration(ms) * time.Millisecond
-			gen := h.currentGen()
+			at := h.callerOf(L)
 			handle := &timerHandle{stop: make(chan struct{})}
 			stopID := h.stops.add(handle.stopIt)
 			h.GoSafe("zemi.timer", func() {
@@ -282,9 +282,10 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 					case <-t.C:
 					}
 					_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-						if h.currentGen() != gen {
+						if h.currentGen() != at.gen {
 							return nil, nil
 						}
+						defer h.RT.PushFrame(L, at.origin, at.path)()
 						base := L.GetTop()
 						L.Push(fn)
 						if err := L.PCall(0, 0, nil); err != nil {
@@ -602,10 +603,9 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	// host overrides the resolved-address deny. Allow rules are user-only
 	// (zemi.permission.rule refuses them elsewhere), and project and
 	// learned callers never get the override.
-	allowPrivate := v.DecidedBy == "rule" &&
-		origin != lua.OriginProject && origin != lua.OriginLearned
+	allowPrivate := v.DecidedBy == "rule" && origin.Rank() > lua.OriginProject.Rank()
 	hnd := &httpHandle{done: make(chan struct{})}
-	gen := h.currentGen()
+	at := h.callerOf(L)
 	h.GoSafe(subject, func() {
 		res, err := h.httpFetch(subject, string(origin), allowPrivate, req)
 		hnd.res, hnd.err = res, err
@@ -617,7 +617,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 			} else {
 				maps.Copy(payload, res)
 			}
-			h.callLuaAsync(gen, onDone, payload)
+			h.callLuaAsync(at, onDone, payload)
 		}
 	})
 	handle := L.NewTable()
@@ -690,14 +690,28 @@ func (h *Host) httpFetch(subject, principal string, allowPrivate bool, r httpReq
 	}, nil
 }
 
+// luaCaller is where a Lua callback was handed over: a later call runs
+// under that generation and origin, since attribution follows the
+// registration, never the trigger (DESIGN §9).
+type luaCaller struct {
+	gen    Gen
+	origin lua.Origin
+	path   string
+}
+
+func (h *Host) callerOf(L *glua.LState) luaCaller {
+	return luaCaller{gen: h.currentGen(), origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L)}
+}
+
 // callLuaAsync runs fn(args...) on the interpreter from a host goroutine,
 // dropping the call when the generation changed; a failing callback is
 // logged and shown in /errors.
-func (h *Host) callLuaAsync(gen Gen, fn *glua.LFunction, args ...any) {
+func (h *Host) callLuaAsync(at luaCaller, fn *glua.LFunction, args ...any) {
 	_, err := h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
-		if h.currentGen() != gen {
+		if h.currentGen() != at.gen {
 			return nil, nil
 		}
+		defer h.RT.PushFrame(L, at.origin, at.path)()
 		L.Push(fn)
 		for _, a := range args {
 			L.Push(lua.FromGo(L, a))
@@ -743,7 +757,7 @@ func (j *jobHandle) snapshot() map[string]any {
 // the queue.
 type lineSink struct {
 	h         *Host
-	gen       Gen
+	at        luaCaller
 	fn        *glua.LFunction
 	mu        sync.Mutex
 	pending   []string
@@ -774,7 +788,7 @@ func (s *lineSink) add(line string) {
 				return
 			}
 			s.mu.Unlock()
-			s.h.callLuaAsync(s.gen, s.fn, lines)
+			s.h.callLuaAsync(s.at, s.fn, lines)
 		}
 	})
 }
@@ -859,10 +873,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
-		gen := h.currentGen()
+		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
 			if fn, ok := spec.RawGetString(key).(*glua.LFunction); ok {
-				return &lineSink{h: h, gen: gen, fn: fn}
+				return &lineSink{h: h, at: at, fn: fn}
 			}
 			return nil
 		}
@@ -905,7 +919,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 			if onExit != nil {
-				h.callLuaAsync(gen, onExit, jh.snapshot())
+				h.callLuaAsync(at, onExit, jh.snapshot())
 			}
 			h.EmitAsync("job.exit", map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
 		})

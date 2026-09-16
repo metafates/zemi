@@ -779,16 +779,16 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.workflow.run: args: %v", err)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		gen := h.currentGen()
+		at := h.callerOf(L)
 		h.GoSafe("zemi.workflow.run", func() {
 			defer cancel()
 			res, err := h.runWorkflow(ctx, src, args, nil)
 			switch {
 			case onDone == nil:
 			case err != nil:
-				h.callLuaAsync(gen, onDone, nil, err.Error(), res.Log)
+				h.callLuaAsync(at, onDone, nil, err.Error(), res.Log)
 			default:
-				h.callLuaAsync(gen, onDone, res.Value, nil, res.Log)
+				h.callLuaAsync(at, onDone, res.Value, nil, res.Log)
 			}
 		})
 		handle := L.NewTable()

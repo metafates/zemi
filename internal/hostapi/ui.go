@@ -234,19 +234,19 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if title == "" {
 			title = filepath.Base(resolved)
 		}
-		gen := h.currentGen()
+		at := h.callerOf(L)
 		ui := h.hooks()
 		h.GoSafe("ui.edit", func() {
 			if ui == nil {
-				h.callLuaAsync(gen, cb, nil, "no UI in this run")
+				h.callLuaAsync(at, cb, nil, "no UI in this run")
 				return
 			}
 			mode, err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title})
 			if err != nil {
-				h.callLuaAsync(gen, cb, nil, err.Error())
+				h.callLuaAsync(at, cb, nil, err.Error())
 				return
 			}
-			h.callLuaAsync(gen, cb, mode)
+			h.callLuaAsync(at, cb, mode)
 		})
 		return 0
 	}))
