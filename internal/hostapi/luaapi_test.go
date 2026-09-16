@@ -52,11 +52,14 @@ func TestLuaAPIAdditions(t *testing.T) {
 	`)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		if v, _ := h.GlobalDB.GetKV("scheduled"); v == `"ran"` {
+		h.timers.mu.Lock()
+		pending := len(h.timers.m)
+		h.timers.mu.Unlock()
+		if v, _ := h.GlobalDB.GetKV("scheduled"); v == `"ran"` && pending == 0 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("timer.set(0) callback never ran")
+			t.Fatalf("timer.set(0) callback never ran or its handle stayed registered (%d)", pending)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

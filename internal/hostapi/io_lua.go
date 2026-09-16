@@ -236,6 +236,12 @@ func (r *timerReg) add(t *timerHandle) int {
 	return r.next
 }
 
+func (r *timerReg) remove(id int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.m, id)
+}
+
 func (r *timerReg) purge() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -260,8 +266,9 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			d := time.Duration(ms) * time.Millisecond
 			gen := h.currentGen()
 			handle := &timerHandle{stop: make(chan struct{})}
-			h.timers.add(handle)
+			id := h.timers.add(handle)
 			h.GoSafe("zemi.timer", func() {
+				defer h.timers.remove(id)
 				t := time.NewTimer(d)
 				defer t.Stop()
 				for {
@@ -282,6 +289,10 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 						}
 						return nil, nil
 					})
+					if err != nil && !isQuietLuaErr(err) {
+						h.Log.Warn("lua", "timer callback failed", map[string]any{"error": err.Error()})
+						h.RecordError("zemi.timer", err.Error())
+					}
 					if err != nil || !repeat {
 						return
 					}
