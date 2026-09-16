@@ -174,6 +174,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	for cmd, want := range map[string]bool{"git grep KEY": false, "git -C internal show HEAD": false, "git log -p": false,
+		"git log -U1": false, "git log --unified=1": false, "git log --binary": false, "git log --diff-merges=on": false,
 		"cd internal && git diff": false, "git log --oneline": true} {
 		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: cmd}); got != want {
 			t.Errorf("tracked .env, %s: got %v, want %v", cmd, got, want)

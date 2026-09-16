@@ -708,8 +708,8 @@ func gitContentDir(f []string) (string, bool) {
 	sub, rest := args[0], args[1:]
 	return dir, slices.Contains([]string{"grep", "show", "diff", "cat-file"}, sub) ||
 		sub == "stash" && slices.Contains(rest, "show") ||
-		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "--patch", "-L", "--word-diff", "--color-words",
-			"--cc", "-c", "--dd", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
+		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "-U", "--patch", "--unified", "--binary", "-L", "--word-diff",
+			"--color-words", "--cc", "-c", "--dd", "--diff-merges", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
 }
 
 // goFlag reports whether args set one of flags the way Go's flag package
