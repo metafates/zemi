@@ -324,9 +324,9 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
-		// write there (permissions.lua, init.lua) changes what zemi allows
+		// write there (permissions.lua, init.lua, .zemi/) changes what zemi allows
 		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg) &&
-			!h.inJail(req.Arg, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome)
+			!h.inJail(req.Arg, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
 	case "tool.bash":
 		return perm.SafeCommand(req.Arg, h.safeCommandPath)
 	case "tool.workflow":
@@ -369,7 +369,8 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 		roots = roots[:1]
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
-	return h.inJail(p, roots...) && !h.secretPath(p) && (!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
+	// a write flag the allowlist misses could still reach .git/config
+	return h.inJail(p, roots...) && !h.secretPath(p) && !inGitDir(p) && (!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
