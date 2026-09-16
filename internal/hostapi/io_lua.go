@@ -644,7 +644,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		select {
 		case <-hnd.done:
 		case <-time.After(120 * time.Second):
-			L.RaiseError("zemi.http: wait timed out")
+			return luaResult(L, errors.New("wait timed out"))
 		}
 		if hnd.err != nil {
 			return luaResult(L, hnd.err)
@@ -844,8 +844,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	// start runs spec = { cmd, args, env, on_stdout(lines), on_stderr(lines),
-	// on_exit(result) }; output is also buffered (1 MiB) for wait().
-	start := func(L *glua.LState) *jobHandle {
+	// on_exit(result) }; output is also buffered (1 MiB) for wait(). Misuse
+	// raises; a process that cannot start is the returned error.
+	start := func(L *glua.LState) (*jobHandle, error) {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
@@ -904,7 +905,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			jh.stdin = stdin
 		}
 		if err := proc.Start(cmd); err != nil {
-			L.RaiseError("zemi.job.start: %v", err)
+			return nil, err
 		}
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
@@ -932,7 +933,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			h.EmitAsync("job.exit", map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
 		})
-		return jh
+		return jh, nil
 	}
 
 	wait := func(L *glua.LState, jh *jobHandle, timeout time.Duration) int {
@@ -948,7 +949,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
-		jh := start(L)
+		jh, err := start(L)
+		if err != nil {
+			L.RaiseError("zemi.job.start: %v", err)
+		}
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LNumber(jh.id))
 		// wait([timeout_ms]) blocks the interpreter: keep it for tools and
@@ -984,7 +988,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	// out runs a command to completion (spec.timeout_ms, default 60s, kills
 	// it); it blocks the interpreter, so it belongs in tools.
 	tb.RawSetString("out", L.NewFunction(func(L *glua.LState) int {
-		jh := start(L)
+		jh, err := start(L)
+		if err != nil {
+			return luaResult(L, err)
+		}
 		timeout := 60 * time.Second
 		if spec, ok := L.Get(1).(*glua.LTable); ok {
 			if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
