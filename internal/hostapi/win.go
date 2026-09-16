@@ -194,14 +194,19 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	handle := func(L *glua.LState, w *win.Window) *glua.LTable {
 		t := L.NewTable()
 		t.RawSetString("id", glua.LNumber(w.ID))
+		// Input runs commands in the window's program (a shell reads it), so
+		// it needs the same right as starting that command.
 		t.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
+			h.luaGate(L, "lua.job.start", w.Cmd)
 			return luaResult(L, w.SendText(L.CheckString(2)))
 		}))
 		t.RawSetString("keys", L.NewFunction(func(L *glua.LState) int {
+			h.luaGate(L, "lua.job.start", w.Cmd)
 			return luaResult(L, w.SendKeys(L.CheckString(2)))
 		}))
 		// mouse({ kind, button, x, y, mod })
 		t.RawSetString("mouse", L.NewFunction(func(L *glua.LState) int {
+			h.luaGate(L, "lua.job.start", w.Cmd)
 			spec := L.CheckTable(2)
 			evs, err := mouseEvent(rawString(spec, "kind"), rawString(spec, "button"), rawInt(spec, "x"), rawInt(spec, "y"), rawString(spec, "mod"))
 			if err != nil {

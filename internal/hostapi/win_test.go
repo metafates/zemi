@@ -8,7 +8,26 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/win"
 )
+
+// TestWinInputGated: typing into a window another party opened needs the
+// job right for its command, like opening it would.
+func TestWinInputGated(t *testing.T) {
+	h, r := newTestHost(t)
+	h.SetUIHooks(&fakeUI{})
+	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Wins.Close(w.ID)
+	runUser(t, r, `
+		local w = zemi.win.get(1)
+		assert(not pcall(w.send, w, "echo hi\r"), "send")
+		assert(not pcall(w.keys, w, "<c-c>"), "keys")
+		assert(not pcall(w.mouse, w, { x = 0, y = 0 }), "mouse")
+	`)
+}
 
 // TestWindowTool drives open, read, send, wait and close through the
 // model's tool: the open goes through the bash gate, typing and clicks through
