@@ -441,7 +441,7 @@ zemi.ui.widget.register({
       read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
       fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
       job_list = "List jobs", job_kill = "Stop job", memory_add = "Remember", memory_search = "Recall",
-      diagnostics = "Check", todos = "Update todos", question = "Ask", skill = "Load skill",
+      diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",
       agent = "Agent", workflow = "Workflow",
     }
     local COUNT = {

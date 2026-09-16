@@ -1145,9 +1145,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   `zemi.model.pick` (the M1 picker)) are allow; `fs.read`
   inside the jail is allow except secret-shaped paths (matched
   case-insensitively on the resolved path: `.env`, `.env.*`, `.envrc`,
-  `*.pem`, `*.key`, `id_rsa*`, `*credential*`, `*secret*`, `.netrc`),
+  `*.pem`, `*.key`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*` but not their
+  `.pub`, `*credential*`, `*secret*`, `.netrc`; folded like APFS),
   which ask by default and whose contents are
-  scrubbed at the store and log boundary with the memory-intake scrubber
+  scrubbed at the memory store boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
   `lua.http.<method>`) is `ask`; `zemi.agent.send` and `zemi.model.set`
@@ -1190,7 +1191,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`<state>/projects/<hash>/scratch/<session id>`, §5), which is the one
   path `fs.write` allows by default; the read jail is wider: project
   roots, the config repo, the project's `.zemi`, both skills dirs, that
-  scratchpad, the log directory and `<data>/types` (the API annotations
+  scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI). `site/pack` and the rest of the state dir are never
   write roots, so an approved `fs.write` cannot plant plugin code that
   auto-loads at the next boot. The config repo is read-only to Lua: of
