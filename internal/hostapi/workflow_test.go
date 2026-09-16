@@ -23,6 +23,9 @@ func echoAgents(h *Host) *atomic.Int32 {
 			}
 			time.Sleep(30 * time.Millisecond)
 			running.Add(-1)
+			if last == "panic" {
+				panic("agent boom")
+			}
 			if last == "fail" {
 				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: context.DeadlineExceeded}}
 			}
@@ -91,6 +94,7 @@ func TestWorkflowRun(t *testing.T) {
 			script: `local out, errs = parallel({function() return agent("ok") end, function() local r, e = agent("fail") return r or error(e) end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
 			want:   "ok! true",
 		},
+		{name: "crashed agent", script: `local r, e = agent("panic") return e`, want: "the agent crashed"},
 		{name: "agent inside pcall refused", script: `local ok, err = pcall(agent, "x") return tostring(ok) .. " " .. err`, want: "false"},
 		{name: "pcall without a function", script: `return pcall()`, wantErr: true, want: "bad argument #1"},
 		{name: "agent in a library callback", script: `local t = {3, 1, 2} table.sort(t, function(a, b) agent("x") return a < b end) return "sorted"`, wantErr: true, want: "cannot wait"},

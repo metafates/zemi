@@ -526,8 +526,10 @@ func (r *wfRun) dispatch() {
 		t.req = nil
 		r.running++
 		r.h.GoSafe("workflow agent", func() {
-			text, err := r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
-			r.done <- wfDone{task: t, text: text, err: err}
+			// deferred so a panicking agent still reports: the run waits on done
+			d := wfDone{task: t, err: errors.New("the agent crashed")}
+			defer func() { r.done <- d }()
+			d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
 		})
 	}
 }
