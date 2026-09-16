@@ -170,26 +170,36 @@ close access f`
 		}
 		data, _ := os.ReadFile(f.Name())
 		return data
-	case has("wl-paste"):
-		if strings.Contains(string(clipOut("wl-paste", "--list-types")), "image/png") {
-			return clipOut("wl-paste", "--type", "image/png")
+	}
+	// each in turn: wl-paste is installed on X11 sessions too, where it
+	// answers nothing and xclip has to get its chance
+	if has("wl-paste") && strings.Contains(string(clipOut("wl-paste", "--list-types")), "image/png") {
+		if out := clipOut("wl-paste", "--type", "image/png"); len(out) > 0 {
+			return out
 		}
-	case has("xclip"):
-		if strings.Contains(string(clipOut("xclip", "-selection", "clipboard", "-t", "TARGETS", "-o")), "image/png") {
-			return clipOut("xclip", "-selection", "clipboard", "-t", "image/png", "-o")
-		}
+	}
+	if has("xclip") && strings.Contains(string(clipOut("xclip", "-selection", "clipboard", "-t", "TARGETS", "-o")), "image/png") {
+		return clipOut("xclip", "-selection", "clipboard", "-t", "image/png", "-o")
 	}
 	return nil
 }
 
 func clipboardText() string {
-	switch {
-	case runtime.GOOS == "darwin":
+	if runtime.GOOS == "darwin" {
 		return string(clipOut("pbpaste"))
-	case has("wl-paste"):
-		return string(clipOut("wl-paste", "--no-newline"))
-	case has("xclip"):
-		return string(clipOut("xclip", "-selection", "clipboard", "-o"))
+	}
+	// each in turn, like the copy path: wl-paste is installed on X11
+	// sessions too, where it exits without output
+	for _, argv := range [][]string{
+		{"wl-paste", "--no-newline"},
+		{"xclip", "-selection", "clipboard", "-o"},
+		{"xsel", "--clipboard", "--output"},
+	} {
+		if has(argv[0]) {
+			if out := clipOut(argv[0], argv[1:]...); len(out) > 0 {
+				return string(out)
+			}
+		}
 	}
 	return ""
 }

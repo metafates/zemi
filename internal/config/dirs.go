@@ -18,9 +18,14 @@ type Dirs struct {
 	ProjectDir string // current project root (cwd)
 }
 
-func xdg(env, defaultPath string) string {
+// xdg resolves one root: zemi's own override first, then the XDG variable
+// the default mirrors, then the default under the home directory.
+func xdg(env, xdgEnv, defaultPath string) string {
 	if v := os.Getenv(env); v != "" {
 		return v
+	}
+	if v := os.Getenv(xdgEnv); v != "" {
+		return filepath.Join(v, "zemi")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -32,9 +37,9 @@ func xdg(env, defaultPath string) string {
 // ResolveDirs computes the standard locations from the environment.
 func ResolveDirs() Dirs {
 	return Dirs{
-		ConfigHome: xdg("ZEMI_CONFIG_HOME", "~/.config/zemi"),
-		DataHome:   xdg("ZEMI_DATA_HOME", "~/.local/share/zemi"),
-		StateHome:  xdg("ZEMI_STATE_HOME", "~/.local/state/zemi"),
+		ConfigHome: xdg("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", "~/.config/zemi"),
+		DataHome:   xdg("ZEMI_DATA_HOME", "XDG_DATA_HOME", "~/.local/share/zemi"),
+		StateHome:  xdg("ZEMI_STATE_HOME", "XDG_STATE_HOME", "~/.local/state/zemi"),
 		ProjectDir: projectRoot(),
 	}
 }

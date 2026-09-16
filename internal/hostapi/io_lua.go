@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -52,17 +53,27 @@ func (h *Host) inJail(path string, roots ...string) bool {
 	}
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).
-	real := realPath(abs)
+	real := foldPath(realPath(abs))
 	for _, r := range roots {
 		if r == "" {
 			continue
 		}
-		rr := realPath(r)
+		rr := foldPath(realPath(r))
 		if real == rr || strings.HasPrefix(real, rr+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
+}
+
+// foldPath case-folds where the filesystem does: EvalSymlinks keeps the
+// case it was given, so a jail root and a path under it can differ only by
+// case and still be the same directory.
+func foldPath(p string) string {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+	return p
 }
 
 // realPath resolves symlinks in the longest existing prefix of p, so a file
