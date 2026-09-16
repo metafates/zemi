@@ -106,10 +106,11 @@ func inDir(dir, a string) string {
 func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	name, rest := filepath.Base(f[0]), f[1:]
 	switch {
-	// globs override rg's ignore rules, so they walk everything too
+	// globs, and a whitelist in an --ignore-file, override rg's ignore
+	// rules, so they walk everything too
 	case name == "rg" && !hasFlag(rest, "-u", "-.", "--unrestricted", "--hidden", "--no-ignore", "--no-ignore-dot",
 		"--no-ignore-exclude", "--no-ignore-files", "--no-ignore-global", "--no-ignore-parent", "--no-ignore-vcs",
-		"-g", "--glob", "--iglob"):
+		"-g", "--glob", "--iglob", "--ignore-file"):
 		return walkFrom(1, ArgSearch), true
 	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
 		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
@@ -215,35 +216,50 @@ var readOnlyPrograms = map[string]bool{
 }
 
 // refusedFlags make an otherwise read-only program write a file, assign a
-// variable, run a program it names or load code from a file.
+// variable, run a program it names, load code from a file or read paths
+// listed in a file the path check never sees.
 var refusedFlags = map[string][]string{
-	"sort":          {"-o", "--output", "--compress-program"},
-	"gofmt":         {"-w"},
+	"sort":          {"-o", "--output", "--compress-program", "--files0-from"},
 	"printf":        {"-v"},
 	"tree":          {"-o", "-R"},
-	"file":          {"-C", "--compile"},
+	"file":          {"-C", "--compile", "-f", "--files-from"},
+	"du":            {"--files0-from"},
+	"wc":            {"--files0-from"},
+	"diff":          {"--from-file", "--to-file"},
 	"fd":            {"-x", "-X", "--exec", "--exec-batch"},
 	"rg":            {"--pre", "--hostname-bin"},
 	"ag":            {"--pager"},
-	"find":          {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
+	"find":          {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls", "-files0-from"},
 	"sed":           {"-i", "-I", "--in-place", "-f", "--file"},
-	"awk":           {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec"},
+	"awk":           {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec", "-W", "-o", "--pretty-print", "-p", "--profile", "-d", "--dump-variables", "-D", "--debug"},
 	"jq":            {"-f", "--from-file", "-L", "--library-path"},
-	"make":          {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval"},
-	"cargo":         {"--config", "--fix", "--out-dir", "--artifact-dir", "--open"},
-	"prettier":      {"-w", "--write"},
-	"eslint":        {"--fix"},
-	"ruff":          {"--fix", "--unsafe-fixes"},
-	"golangci-lint": {"--fix"},
-	"jest":          {"-u", "--updateSnapshot"},
-	"vitest":        {"-u", "--update"},
-	"tsc":           {"--init"},
+	"make":          {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval", "-t", "--touch"},
+	"cargo":         {"--config", "--fix", "--out-dir", "--artifact-dir", "--open", "--logfile", "-Z"},
+	"prettier":      {"-w", "--write", "--cache-location"},
+	"eslint":        {"--fix", "-o", "--output-file", "--init", "--inspect-config", "--cache-location"},
+	"ruff":          {"--fix", "--fix-only", "--unsafe-fixes", "--add-noqa", "-o", "--output-file", "--config", "--cache-dir"},
+	"golangci-lint": {"--fix", "--output", "--out-format", "--cpu-profile-path", "--mem-profile-path", "--trace-path"},
+	"jest":          {"-u", "--updateSnapshot", "--outputFile", "--coverageDirectory", "--init"},
+	"vitest":        {"-u", "--update", "--outputFile", "--ui", "--api", "--open", "--inspect", "--inspect-brk"},
+	// --basetemp removes the directory it names
+	"pytest": {"--basetemp", "--junitxml", "--junit-xml", "--pastebin", "-o", "--override-ini", "--debug",
+		"--log-file", "--report-log", "--result-log", "--cov-report", "--pdbcls"},
+	"mypy": {"--python-executable", "--install-types", "--junit-xml", "--html-report", "--txt-report", "--xml-report",
+		"--linecount-report", "--linecoverage-report", "--lineprecision-report", "--memory-xml-report",
+		"--cobertura-xml-report", "--any-exprs-report"},
+	"tox": {"-x", "--override", "--installpkg", "--devenv", "--discover", "--result-json", "--workdir", "--root"},
 }
 
 // goRefusedFlags run a program, load source from elsewhere or write a file.
 // Go flags never bundle, and -flag and --flag are the same flag.
-var goRefusedFlags = []string{"-exec", "-toolexec", "-vettool", "-overlay", "-modfile", "-o", "-coverprofile",
-	"-cpuprofile", "-memprofile", "-blockprofile", "-mutexprofile", "-trace", "-outputdir", "-fuzz", "-update"}
+var goRefusedFlags = map[string][]string{
+	"go": {"-exec", "-toolexec", "-vettool", "-overlay", "-modfile", "-o", "-coverprofile", "-cpuprofile",
+		"-memprofile", "-blockprofile", "-mutexprofile", "-trace", "-outputdir", "-fuzz", "-update", "-pkgdir",
+		"-testlogfile", "-gocoverdir", "-fuzzcachedir", "-artifacts", "-debug-actiongraph", "-debug-trace",
+		"-debug-runtime-trace", "-http", "-gcflags", "-ldflags", "-asmflags", "-gccgoflags"},
+	"gofmt":       {"-w", "-cpuprofile"},
+	"staticcheck": {"-debug"},
+}
 
 // test and lint tools that only touch the project
 // NOTE: a linter whose own config turns fixes on (ruff fix = true,
@@ -459,18 +475,36 @@ func safeSegment(a []string) bool {
 	switch {
 	case name == "uniq": // a second operand is the output file
 		return len(slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
-	case hasFlag(rest, refusedFlags[name]...):
+	case hasFlag(rest, refusedFlags[name]...), goFlag(rest, goRefusedFlags[name]...):
 		return false
-	case name == "cd": // with no directory or - it leaves the project
-		return len(rest) == 1 && !strings.HasPrefix(sub, "-")
+	case name == "cd": // with no directory or - it leaves the project; from .git/hooks go build writes a hook
+		return len(rest) == 1 && !strings.HasPrefix(sub, "-") &&
+			!slices.ContainsFunc(strings.Split(sub, "/"), func(p string) bool { return strings.EqualFold(p, ".git") })
+	case name == "tox": // exec and devenv run what they are given, and -- reaches the commands
+		return !slices.ContainsFunc(rest, func(a string) bool {
+			return slices.Contains([]string{"--", "exec", "e", "devenv", "d", "quickstart", "q", "legacy", "le", "schema"}, a)
+		})
+	case name == "golangci-lint": // fmt, migrate and custom rewrite files or build code
+		return slices.Contains([]string{"", "run", "linters", "formatters", "config", "version", "help"}, sub)
 	case name == "jq":
 		return !jqUnsafe.MatchString(strings.Join(rest, " "))
 	case readOnlyPrograms[name], projectTools[name]:
 		return true
-	case name == "ruff": // format and check --fix rewrite files
-		return sub == "check" || hasFlag(rest, "--check", "--diff")
-	case name == "tsc": // it writes the compiled files next to the sources
-		return hasFlag(rest, "--noEmit")
+	case name == "ruff": // format and check --fix rewrite files; after -- a flag is a path
+		opts := rest
+		if i := slices.Index(rest, "--"); i >= 0 {
+			opts = rest[:i]
+		}
+		return sub == "check" || hasFlag(opts, "--check", "--diff")
+	case name == "tsc":
+		// it writes the compiled files next to the sources; options ignore
+		// case and a boolean one takes a following false
+		lower := make([]string, len(rest))
+		for i, a := range rest {
+			lower[i] = strings.ToLower(a)
+		}
+		return hasFlag(lower, "--noemit") && !slices.Contains(rest, "false") && !hasFlag(lower, "--init", "-b", "--build",
+			"-i", "--incremental", "--composite", "--tsbuildinfofile", "--generatetrace", "--generatecpuprofile")
 	case name == "sed":
 		return sedSafe(rest)
 	case name == "awk":
@@ -479,12 +513,6 @@ func safeSegment(a []string) bool {
 		return safeGit(rest)
 	// go run and cargo run execute whatever they are pointed at, so they ask
 	case name == "go":
-		if slices.ContainsFunc(rest, func(a string) bool {
-			f, _, _ := strings.Cut("-"+strings.TrimLeft(a, "-"), "=")
-			return strings.HasPrefix(a, "-") && slices.Contains(goRefusedFlags, f)
-		}) {
-			return false
-		}
 		switch sub {
 		case "build", "test", "vet", "list", "version", "doc":
 			return true
@@ -501,7 +529,9 @@ func safeSegment(a []string) bool {
 			return hasFlag(rest, "--check")
 		}
 	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
-		if hasFlag(rest, "--script-shell", "--node-options") {
+		// flags after the command configure npm (--script-shell) or reach the
+		// program a script runs (-- --fix)
+		if slices.ContainsFunc(rest[min(1, len(rest)):], func(a string) bool { return strings.HasPrefix(a, "-") }) {
 			return false
 		}
 		switch sub {
@@ -523,7 +553,9 @@ func safeSegment(a []string) bool {
 		}
 		if sub == "-m" && len(rest) > 1 {
 			switch rest[1] {
-			case "pytest", "unittest", "py_compile", "mypy":
+			case "pytest", "mypy":
+				return !hasFlag(rest[2:], refusedFlags[rest[1]]...)
+			case "unittest", "py_compile":
 				return true
 			case "json.tool": // a second operand is the output file
 				return len(slices.DeleteFunc(slices.Clone(rest[2:]), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
@@ -582,8 +614,9 @@ func safeGit(args []string) bool {
 		return len(rest) == 0 || slices.ContainsFunc(rest, func(a string) bool {
 			return a == "--list" || strings.HasPrefix(a, "-l") || strings.HasPrefix(a, "-n")
 		})
-	case "remote":
-		return next == "" || next == "-v" || next == "show" || next == "get-url"
+	case "remote": // -v may come before add or remove
+		rest = slices.DeleteFunc(rest, func(a string) bool { return a == "-v" || a == "--verbose" })
+		return len(rest) == 0 || rest[0] == "show" || rest[0] == "get-url"
 	case "stash", "worktree":
 		return next == "list" || (sub == "stash" && next == "show")
 	case "reflog":
@@ -598,6 +631,17 @@ func safeGit(args []string) bool {
 	return false
 }
 
+// goFlag reports whether args set one of flags the way Go's flag package
+// reads them: -flag and --flag alike, never bundled, and a test binary's
+// -test.flag too. A dotted name (-debug.cpuprofile) sets its first part.
+func goFlag(args []string, flags ...string) bool {
+	return slices.ContainsFunc(args, func(a string) bool {
+		f, _, _ := strings.Cut("-"+strings.TrimPrefix(strings.TrimLeft(a, "-"), "test."), "=")
+		f, _, _ = strings.Cut(f, ".")
+		return strings.HasPrefix(a, "-") && slices.Contains(flags, f)
+	})
+}
+
 // hasFlag reports whether any argument may set one of flags: the flag with
 // or without =value, a short flag bundled or with a glued value (sed -ni,
 // sort -uo), or an abbreviated long flag, which GNU tools and git accept
@@ -605,6 +649,9 @@ func safeGit(args []string) bool {
 func hasFlag(args []string, flags ...string) bool {
 	for _, a := range args {
 		name, _, _ := strings.Cut(a, "=")
+		if strings.HasPrefix(name, "--") { // --output.json.path sets --output
+			name, _, _ = strings.Cut(name, ".")
+		}
 		for _, f := range flags {
 			switch {
 			case name == f:
