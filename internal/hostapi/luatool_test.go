@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/win"
 )
 
 // TestAgentSelfAccess covers what the agent reaches of zemi itself: the lua
@@ -60,63 +62,110 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 }
 
-// TestLuaToolWidening: in trusted auto mode the Lua tool runs without
-// asking, but a script that widens permissions or starts programs asks the
-// user first (headless it is denied), and such a call it hides from that
-// check, or makes from code an earlier run left behind, raises instead.
-func TestLuaToolWidening(t *testing.T) {
+// TestLuaToolDefaultDeny: in trusted auto mode a Lua script that only reads
+// runs with no ask; one that names any other call asks first, the same call
+// hidden from that scan raises, and an approved run makes it.
+func TestLuaToolDefaultDeny(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	fakeSandbox(h, true)
 	if err := h.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Wins.Close(w.ID)
 	marker := filepath.Join(t.TempDir(), "made")
 	tool := h.luaEvalTool()
-	for _, c := range []struct {
-		name, script    string
-		headless, allow bool
-		asked, made     bool
-		out             string
-	}{
-		{"inspecting asks nothing", `return #zemi.permission.mode.list() > 0`, false, false, false, false, "return: true"},
-		{"allow rule denied", `zemi.permission.rule({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" }) print("added")`, false, false, true, false, "permission denied"},
-		{"allow rule approved", `zemi.permission.rule({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" }) print("added")`, false, true, true, false, "added"},
-		{"hidden deny rule runs", `local p = zemi["permis" .. "sion"] p.rule({ subject = "tool.bash", pattern = "yy *", decision = "deny", match = "yy a" }) print("added")`, false, false, false, false, "added"},
-		{"mode set denied", `zemi.config.set("permissions.mode", "yolo")`, false, false, true, false, "permission denied"},
-		{"mcp headless", `zemi.mcp.add("x", { command = "true" })`, true, true, false, false, "permission denied"},
-		{"job approved", `zemi.job.out({ cmd = "touch", args = { "MARKER" } })`, false, true, true, true, ""},
-		{"hidden job raises", `local j = zemi["jo" .. "b"] j.out({ cmd = "touch", args = { "MARKER" } })`, false, false, false, false, "asks the user"},
-		{"hidden rule raises", `local p = zemi["permis" .. "sion"] p.rule({ subject = "tool.bash", pattern = "xx *", decision = "allow", match = "xx a" })`, false, false, false, false, "asks the user"},
-		{"earlier handler", `zemi.event.on("user.zz", function() local j = zemi["jo" .. "b"] j.out({ cmd = "touch", args = { "MARKER" } }) end)`, false, false, false, false, "(no output)"},
-		{"approved run calls it", `zemi.event.emit("user.zz") -- zemi.job.start`, false, true, true, false, ""},
+	run := func(script string, allow bool) (*fakeUI, string) {
+		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
+		h.SetUIHooks(ui)
+		input, _ := json.Marshal(map[string]string{"description": "x", "script": strings.ReplaceAll(script, "MARKER", marker)})
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: string(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ui, resp.Content
+	}
+
+	// the routes the trust and sandbox verification found
+	for _, c := range []struct{ name, script, scan, member string }{
+		{"composer shell", `zemi.composer.set("!touch MARKER") zemi.composer.submit()`, "zemi.composer.set", "composer.set"},
+		{"editor command", `zemi.config.set("editor.command", "touch MARKER; true") zemi.ui.edit("f.txt", {}, function() end)`, "zemi.config.set", "config.set"},
+		{"screening model", `zemi.provider.register({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("agent.small_model", "e/m")`, "zemi.provider.register", "provider.register"},
+		{"allow rule", `zemi.permission.rule({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
+		{"job", `zemi.job.out({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.out", "job.out"},
+		{"window", `zemi.win.open({ cmd = "sleep 1" })`, "zemi.win.open", "win.open"},
+		{"window input", `zemi.win.get(1):send("x")`, ":send", "win:send"},
+		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			os.Remove(marker)
-			ui := &fakeUI{askAllowed: c.allow, askBy: "user"}
-			h.SetUIHooks(ui)
-			if c.headless {
-				h.SetUIHooks(nil)
+			if _, err := h.runModelLua(context.Background(), c.script, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
+				t.Errorf("unapproved run: %v", err)
 			}
-			input, _ := json.Marshal(map[string]string{"description": "x", "script": strings.ReplaceAll(c.script, "MARKER", marker)})
-			resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: string(input)})
-			if err != nil {
-				t.Fatal(err)
+			ui, out := run(c.script, false)
+			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, c.scan) || !strings.Contains(out, "permission denied") {
+				t.Errorf("pre-ask: %+v %q", ui.asked, out)
 			}
-			if asked := len(ui.asked) > 0; asked != c.asked {
-				t.Errorf("asked %v, want %v: %s", asked, c.asked, resp.Content)
-			} else if asked && !strings.Contains(ui.asked[0].Reason, "outside the sandbox") {
-				t.Errorf("ask reason %q", ui.asked[0].Reason)
-			}
-			if _, err := os.Stat(marker); (err == nil) != c.made {
-				t.Errorf("made %v, want %v: %s", err == nil, c.made, resp.Content)
-			}
-			if !strings.Contains(resp.Content, c.out) {
-				t.Errorf("response %q, want %q", resp.Content, c.out)
+			if ui, out = run(c.script, true); len(ui.asked) != 1 || strings.Contains(out, "asks before") {
+				t.Errorf("approved run: %q", out)
 			}
 		})
 	}
-	if h.PermMode() == "yolo" {
-		t.Error("the mode changed without the user")
+	if _, err := os.Stat(marker); err != nil {
+		t.Error("the approved job did not run")
+	}
+
+	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().id`
+	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
+		t.Errorf("read-only script: %+v %q", ui.asked, out)
+	}
+	for _, hidden := range []string{`local z = zemi z.job.out({ cmd = "true" })`, `local j = _G["zemi"].job`} {
+		if ui, _ := run(hidden, false); len(ui.asked) != 1 {
+			t.Errorf("%s: no ask", hidden)
+		}
+	}
+	if _, err := h.runModelLua(context.Background(), `local s = zemi.win.get(1) s.send(s, "x")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi.win:send") {
+		t.Errorf("a method called as a field slips the scan but must raise: %v", err)
+	}
+
+	// a callback an approved run left behind loses the approval with the run
+	os.Remove(marker)
+	run(`zemi.event.on("user.zz", function() zemi.job.out({ cmd = "touch", args = { "MARKER" } }) end)`, true)
+	run(`zemi.event.emit("user.zz")`, true)
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("an earlier run's handler started a program")
+	}
+	if h.PermMode() != "auto" {
+		t.Error("the mode changed")
+	}
+
+	// every member is read-only or guarded, so a new one asks by default
+	var members []string
+	for ns, ms := range bootedNamespaces(t) {
+		for _, m := range ms {
+			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly[name] {
+				members = append(members, fmt.Sprintf("%q", name))
+			}
+		}
+	}
+	out, err := h.runModelLua(context.Background(), `local open, n = {}, 0
+		for _, m in ipairs({ `+strings.Join(members, ", ")+` }) do
+			local v = zemi
+			for part in m:gmatch("[^.]+") do v = v[part] end
+			if type(v) == "function" then
+				n = n + 1
+				local ok, err = pcall(v)
+				if ok or not tostring(err):find("asks before zemi." .. m, 1, true) then open[#open + 1] = m end
+			end
+		end
+		return n, table.concat(open, " ")`, luaToolChunk)
+	if err != nil || !strings.HasSuffix(out, `,""]`) || strings.HasPrefix(out, "return: [0,") {
+		t.Errorf("unguarded members: %s %v", out, err)
 	}
 }

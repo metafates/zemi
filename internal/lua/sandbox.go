@@ -19,6 +19,52 @@ type Sandbox struct {
 	integrity []namespaceCheck
 	originOf  func() Origin
 	start     time.Time
+	guard     Guard
+}
+
+// Guard runs before a guarded Go function with the member it belongs to
+// ("config.set", "ui.widget.register", "win:send") and raises to refuse.
+type Guard func(L *glua.LState, member string)
+
+// SetGuard sets the guard every namespace member runs through; it is read
+// per call, so it may be set after registration.
+func (s *Sandbox) SetGuard(g Guard) { s.guard = g }
+
+// GuardFuncs wraps every Go function in tb and its sub-tables so guard runs
+// first; member names are prefix + key, sub-tables joined with ".".
+func GuardFuncs(L *glua.LState, tb *glua.LTable, prefix string, guard Guard) {
+	guardFuncs(L, tb, prefix, guard, map[*glua.LTable]bool{})
+}
+
+func guardFuncs(L *glua.LState, tb *glua.LTable, prefix string, guard Guard, seen map[*glua.LTable]bool) {
+	if seen[tb] {
+		return
+	}
+	seen[tb] = true
+	wraps := map[glua.LValue]glua.LValue{}
+	tb.ForEach(func(k, v glua.LValue) {
+		switch v := v.(type) {
+		case *glua.LFunction:
+			if v.IsG {
+				wraps[k] = guardFunc(L, v, prefix+k.String(), guard)
+			}
+		case *glua.LTable:
+			guardFuncs(L, v, prefix+k.String()+".", guard, seen)
+		}
+	})
+	for k, v := range wraps {
+		tb.RawSet(k, v)
+	}
+}
+
+func guardFunc(L *glua.LState, fn *glua.LFunction, member string, guard Guard) *glua.LFunction {
+	w := L.NewFunction(func(L *glua.LState) int {
+		guard(L, member)
+		return fn.GFunction(L)
+	})
+	// a Go closure reads upvalues through the running function
+	w.Upvalues = fn.Upvalues
+	return w
 }
 
 type namespaceCheck struct {
@@ -447,6 +493,16 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 	}
 	if s.LookupPath(name) != glua.LNil {
 		return fmt.Errorf("namespace %q already registered", name)
+	}
+	short := strings.TrimPrefix(name, "zemi.")
+	guard := func(L *glua.LState, member string) {
+		if s.guard != nil {
+			s.guard(L, member)
+		}
+	}
+	GuardFuncs(s.L, tbl, short+".", guard)
+	if call != nil && call.IsG {
+		call = guardFunc(s.L, call, short, guard)
 	}
 	s.freezeTable(tbl, "namespace "+name)
 	s.deepProtect(tbl, name)

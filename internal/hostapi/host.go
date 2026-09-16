@@ -233,7 +233,7 @@ type Host struct {
 	autoApproved sync.Map
 
 	// luaApproved holds the chunk names of Lua tool runs the user approved
-	// (refuseModelLua); luaRuns numbers them.
+	// (guardModelLua); luaRuns numbers them.
 	luaApproved sync.Map
 	luaRuns     atomic.Int64
 
@@ -1051,6 +1051,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	h.syncSkills()
 	h.syncTypes()
 
+	g.SB.SetGuard(h.guardModelLua)
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
 		if call != nil {
 			return g.SB.RegisterCallableNamespace(name, tbl, call)

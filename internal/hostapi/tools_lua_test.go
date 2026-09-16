@@ -87,7 +87,7 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.ExecuteChunk(context.Background(), src, "lua-tool", lua.OriginLearned); err != nil {
+			if err := r.ExecuteChunk(context.Background(), src, "learned-chunk", lua.OriginLearned); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {

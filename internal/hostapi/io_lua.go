@@ -107,7 +107,8 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
 func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	// a program the Lua tool starts runs unconfined, so the user approves it
-	approved := subject == "lua.job.start" && h.refuseModelLua(L, subject+" "+arg)
+	tool, approved := h.modelLuaRun(L)
+	approved = subject == "lua.job.start" && tool && approved
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	// rules are attributed to the calling code's origin, not to the model
@@ -293,6 +294,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				handle.stopIt()
 				return 0
 			}))
+			lua.GuardFuncs(L, handleTb, "timer:", h.guardModelLua)
 			L.Push(handleTb)
 			return 1
 		})
@@ -617,6 +619,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		L.Push(lua.FromGo(L, hnd.res))
 		return 1
 	}))
+	lua.GuardFuncs(L, handle, "http:", h.guardModelLua)
 	L.Push(handle)
 	return 1
 }
@@ -964,6 +967,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			return 0
 		}))
+		lua.GuardFuncs(L, handle, "job:", h.guardModelLua)
 		L.Push(handle)
 		return 1
 	}))

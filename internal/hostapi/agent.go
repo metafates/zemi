@@ -1329,9 +1329,6 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 				return 0
 			}
 		}
-		if r.Decision == perm.Allow {
-			h.refuseModelLua(L, "zemi.permission.rule")
-		}
 		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule: %v", err)
 			return 0

@@ -286,6 +286,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			h.closeWindow(w.ID)
 			return 0
 		}))
+		lua.GuardFuncs(L, t, "win:", h.guardModelLua)
 		return t
 	}
 

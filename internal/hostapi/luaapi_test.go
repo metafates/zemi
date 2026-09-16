@@ -104,7 +104,7 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 	// to the cloud metadata address.
 	for _, raw := range []string{srv.URL + "/x", "http://169.254.169.254/latest/meta-data"} {
 		src := fmt.Sprintf(`assert(zemi.http.get(%q):wait() == nil, "reached %s")`, raw, raw)
-		if err := r.ExecuteChunk(context.Background(), src, "lua-tool", lua.OriginLearned); err != nil {
+		if err := r.ExecuteChunk(context.Background(), src, "learned-chunk", lua.OriginLearned); err != nil {
 			t.Fatalf("learned origin reached %s: %v", raw, err)
 		}
 	}

@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"strings"
 	"sync"
 
 	"github.com/metafates/zemi/internal/config"
@@ -106,9 +105,6 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
-		}
-		if path == "permissions" || strings.HasPrefix(path, "permissions.") {
-			h.refuseModelLua(L, "zemi.config.set "+path)
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {

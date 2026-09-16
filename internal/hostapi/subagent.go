@@ -730,6 +730,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			cancel()
 			return 0
 		}))
+		lua.GuardFuncs(L, handle, "agent:", h.guardModelLua)
 		L.Push(handle)
 		return 1
 	}))

@@ -96,9 +96,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
 				return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run /%s", o, name))
 			}
-			if name == "mode" {
-				h.refuseModelLua(L, "zemi.command.run mode")
-			}
 			h.GoSafe("command "+name, func() {
 				if err := cmd.GoFn(h, args); err != nil {
 					h.Notify("error", "/"+name, err.Error())

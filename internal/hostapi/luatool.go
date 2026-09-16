@@ -1,10 +1,11 @@
 // luatool.go is the model's Lua tool: it runs a chunk on the live
 // interpreter as user origin, so the agent can inspect and change zemi's own
 // state (this session, agent runs, memories, settings, skills, errors)
-// through the API every Lua caller uses. It asks (tool.lua) in an untrusted
-// project or plan mode, and always before calls that widen what zemi allows
-// or start programs outside the sandbox (refuseModelLua); the tool.pre
-// events always run so user hooks can deny or halt a script.
+// through the API every Lua caller uses. Without the user's approval a run
+// may only call read-only members (luaReadOnly, enforced by guardModelLua);
+// a script that names anything else asks once up front, and so does every
+// run in an untrusted project or plan mode. The tool.pre events always run
+// so user hooks can deny or halt a script.
 package hostapi
 
 import (
@@ -12,16 +13,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua/ast"
+	"github.com/yuin/gopher-lua/parse"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // luaToolCeiling bounds one run: it holds the interpreter the UI renders
@@ -31,10 +34,92 @@ const luaToolCeiling = 10 * time.Second
 // luaToolChunk names the tool's chunks; an approved run appends "#<n>".
 const luaToolChunk = "lua-tool"
 
-// luaWidens spots the calls refuseModelLua holds for the user, so the tool
-// asks before the run. A call it misses (a name built from strings) raises.
-var luaWidens = regexp.MustCompile(`permission\s*\.\s*rule|mode\s*\.\s*(add|remove)|config\s*\.\s*set\s*\(\s*["']permissions|` +
-	`job\s*\.\s*(start|out)|win\s*\.\s*open|:\s*(send|keys|mouse)\b|mcp\s*\.\s*add|lsp\s*\.\s*add|command\s*\.\s*run\s*\(\s*["']mode`)
+// luaReadOnly is what the model's Lua tool may call without the user's
+// approval: members that only read zemi's state, and pure helpers. Every
+// other Go function exposed to Lua, handle methods included ("win:send"),
+// raises in an unapproved run, so a new member asks until it is added here.
+var luaReadOnly = map[string]bool{
+	"agent.current": true, "agent.list": true, "agent.usage": true,
+	"command.list": true, "composer.get": true,
+	"config.get": true, "config.schema": true,
+	"errors.list": true, "event.log": true, "event.stats": true,
+	"json.decode": true, "json.encode": true,
+	"keymap.get": true, "keymap.list": true, "learn.proposals": true,
+	"log": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
+	"lsp.list": true, "mcp.list": true, "memory.list": true, "memory.search": true,
+	"model.list": true, "notify.list": true,
+	"permission.mode.list": true, "permission.rules": true, "provider.list": true,
+	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
+	"skills.list": true, "state.get": true, "tool.list": true,
+	"ui.markdown": true, "ui.screenshot": true, "ui.theme.get": true, "ui.widget.list": true,
+	"win.get": true, "win.list": true, "win:text": true, "win:wait_text": true, "win:info": true,
+	"workflow.list": true, "job:wait": true, "http:wait": true,
+}
+
+// luaReadMethods are the method calls the text scan lets through: string
+// methods and the read-only handle methods.
+var luaReadMethods = map[string]bool{
+	"byte": true, "find": true, "format": true, "gmatch": true, "gsub": true, "len": true,
+	"lower": true, "match": true, "rep": true, "reverse": true, "sub": true, "upper": true,
+	"text": true, "wait_text": true, "info": true, "wait": true,
+}
+
+// luaDynamic names what can reach zemi without spelling a member out.
+var luaDynamic = map[string]bool{
+	"_G": true, "getfenv": true, "setfenv": true, "rawget": true, "load": true,
+	"loadstring": true, "dofile": true, "loadfile": true, "require": true, "debug": true,
+}
+
+// luaUnlisted lists what src may call beyond luaReadOnly: zemi paths off the
+// list (a bare namespace too), other method calls, and dynamic access. A
+// script that does not tokenize lists nothing, as it will not compile.
+func luaUnlisted(src string) []string {
+	sc := parse.NewScanner(strings.NewReader(src), luaToolChunk)
+	lx := &parse.Lexer{}
+	var toks []ast.Token
+	for {
+		tok, err := sc.Scan(lx)
+		if err != nil {
+			return nil
+		}
+		if tok.Type == parse.EOF {
+			break
+		}
+		lx.PrevTokenType = tok.Type
+		toks = append(toks, tok)
+	}
+	var out []string
+	add := func(s string) {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	for i := 0; i < len(toks); i++ {
+		t, prev := toks[i], 0
+		if i > 0 {
+			prev = toks[i-1].Type
+		}
+		switch {
+		case t.Type == ':' && i+1 < len(toks) && toks[i+1].Type == parse.TIdent:
+			if !luaReadMethods[toks[i+1].Str] {
+				add(":" + toks[i+1].Str)
+			}
+		case t.Type != parse.TIdent || prev == '.' || prev == ':':
+		case luaDynamic[t.Str]:
+			add(t.Str)
+		case t.Str == "zemi":
+			var path []string
+			for i+2 < len(toks) && toks[i+1].Type == '.' && toks[i+2].Type == parse.TIdent {
+				path = append(path, toks[i+2].Str)
+				i += 2
+			}
+			if name := strings.Join(path, "."); !luaReadOnly[name] {
+				add(strings.TrimSuffix("zemi."+name, "."))
+			}
+		}
+	}
+	return out
+}
 
 type luaEvalTool struct{ h *Host }
 
@@ -45,6 +130,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Name: "Lua",
 		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops; start slow work with zemi.job or zemi.timer." +
+			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
@@ -89,24 +175,24 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	rel := luaToolChunk
 	// the script can do anything user config can, so it asks where the
 	// model's text is less trusted or the user wants nothing changed, and
-	// before it widens permissions or starts programs: no mode may settle
-	// that, since what it allows or starts runs unconfined
-	widens := luaWidens.MatchString(src)
-	if widens || !h.ProjectTrusted() || h.permModeDef().Base == "plan" {
+	// before any call that is not a read: no mode may settle that, since
+	// what it changes or starts runs unconfined
+	unlisted := luaUnlisted(src)
+	if len(unlisted) > 0 || !h.ProjectTrusted() || h.permModeDef().Base == "plan" {
 		arg := "script"
 		if in.Path != "" {
 			arg = in.Path
 		}
 		preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
 		req := tools.Request{Tool: "Lua", Subject: "tool.lua", Arg: arg, Reason: in.Description, Preview: preview}
-		if widens {
+		if len(unlisted) > 0 {
 			req.Unsandboxed = true
-			req.Reason = strings.TrimSuffix("changes permissions, config or servers, or starts programs outside the sandbox: "+in.Description, ": ")
+			req.Reason = strings.TrimSuffix("uses "+strings.Join(unlisted, ", ")+", which can change zemi or start programs outside the sandbox: "+in.Description, ": ")
 		}
 		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): Lua " + arg), nil
 		}
-		if widens {
+		if len(unlisted) > 0 {
 			rel = fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
 			h.luaApproved.Store(rel, true)
 			defer h.luaApproved.Delete(rel)
@@ -123,8 +209,8 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 }
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do
-// what a user init.lua can, but refuseModelLua holds widening calls for the
-// user) and returns what it printed, then its return values as JSON.
+// what a user init.lua can once the user approves the run, see
+// guardModelLua) and returns what it printed, then its return values as JSON.
 func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error) {
 	var b strings.Builder
 	vals, err := h.RT.Eval(ctx, src, rel, lua.OriginUser, luaToolCeiling, func(line string) {
@@ -144,25 +230,30 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 	return strings.TrimRight(b.String(), "\n"), err
 }
 
-// refuseModelLua raises when code from the model's Lua tool (its chunk, a
-// function it defined, or a callback it registered) makes a call that widens
-// what zemi allows or starts a program, unless the user approved that run.
-// It reports whether an approved run is calling, which settles the call's
-// own ask.
-func (h *Host) refuseModelLua(L *glua.LState, what string) bool {
-	approved := func(name string) bool {
+// guardModelLua is the sandbox guard every Go function exposed to Lua runs
+// through: code from an unapproved Lua tool run may call only luaReadOnly.
+func (h *Host) guardModelLua(L *glua.LState, member string) {
+	if luaReadOnly[member] {
+		return
+	}
+	if tool, approved := h.modelLuaRun(L); tool && !approved {
+		L.RaiseError("the Lua tool asks before zemi.%s; write the call out by name in the script and the whole script runs after one approval", member)
+	}
+}
+
+// modelLuaRun reports whether code from the model's Lua tool (its chunk, a
+// function it defined, or a callback it registered) is calling, and whether
+// the user approved that run. The innermost tool function decides: an
+// approved run calling code an earlier run defined does not approve it.
+func (h *Host) modelLuaRun(L *glua.LState) (tool, approved bool) {
+	isApproved := func(name string) bool {
 		_, ok := h.luaApproved.Load(name)
 		return ok
 	}
-	refuse := func() {
-		L.RaiseError("%s: the Lua tool asks the user before this call; write the call out in the script so the ask covers it", what)
-	}
 	path := h.RT.CurrentPath(L)
-	if strings.HasPrefix(path, luaToolChunk) && !approved(path) {
-		refuse()
+	if strings.HasPrefix(path, luaToolChunk) && !isApproved(path) {
+		return true, false
 	}
-	// the innermost tool function decides: an approved run calling code an
-	// earlier run defined does not approve that code
 	for lvl := 0; ; lvl++ {
 		dbg, ok := L.GetStack(lvl)
 		if !ok {
@@ -176,11 +267,8 @@ func (h *Host) refuseModelLua(L *glua.LState, what string) bool {
 		// load and loadstring tag chunks with the running origin, so only
 		// user code can name one like the tool's
 		if name, ok := strings.CutPrefix(f.Proto.SourceName, lua.OriginUser.ChunkName("")); ok && strings.HasPrefix(name, luaToolChunk) {
-			if !approved(name) {
-				refuse()
-			}
-			return true
+			return true, isApproved(name)
 		}
 	}
-	return approved(path)
+	return strings.HasPrefix(path, luaToolChunk), isApproved(path)
 }
