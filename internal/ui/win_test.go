@@ -38,6 +38,7 @@ func TestShares(t *testing.T) {
 // the float, which is drawn over it.
 func TestWindowClickHitsTopmost(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
+	a.CaptureHooks() // window exits post from their own goroutines
 	defer a.host.Wins.CloseAll()
 	var ids []int
 	for _, kind := range []string{win.KindSplit, win.KindFloat} {
