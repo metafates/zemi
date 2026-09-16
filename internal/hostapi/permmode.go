@@ -313,7 +313,8 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 // editing files inside the jail that are not secret-shaped, read-only or
 // build and test commands, and running workflows (their agents' tools are
 // checked one by one). Network requests are not on this list: a URL carries
-// whatever the model puts in it, so the screening model sees them.
+// whatever the model puts in it, so the screening model sees them. An
+// untrusted project settles only reads and commands that just read.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case "fs.read":
@@ -321,17 +322,24 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
 		// write there (permissions.lua, init.lua, .zemi/) changes what zemi allows
-		return h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg) &&
+		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !inGitDir(req.Arg) &&
 			!h.inJail(req.Arg, h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome, h.Dirs.ProjectConfigDir())
 	case "tool.bash":
-		// NOTE: settled git honors .git/config (core.fsmonitor): no settled write
-		// reaches .git, and a shipped one is as trusted as a shipped Makefile.
-		// Settling untrusted repos would need Host.git's switches here too.
-		return perm.SafeCommand(req.Arg, h.safeCommandPath)
+		return h.settledCommand(req.Arg)
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
 	return false
+}
+
+// settledCommand reports a bash command auto and plan mode run without
+// asking. Build and test commands and git run the repository's code and
+// config, which only a trusted project may have them do.
+func (h *Host) settledCommand(cmd string) bool {
+	if h.ProjectTrusted() {
+		return perm.SafeCommand(cmd, h.safeCommandPath)
+	}
+	return perm.ReadCommand(cmd, h.safeCommandPath)
 }
 
 // inGitDir reports a path under a .git directory (or the .git file itself):
@@ -397,19 +405,34 @@ func (h *Host) trackedSecret(dir string) string {
 	return ""
 }
 
-// repoNote is trackedSecret for the first repository a git command in cmd
-// prints file content from, so an ask can say why it did not settle.
+// repoNote says why cmd did not settle when a tracked secret is the only
+// reason: every other check passes and a git command prints file content
+// from a repository that tracks one. Otherwise it is "".
 func (h *Host) repoNote(cmd string) string {
+	if !h.ProjectTrusted() {
+		return ""
+	}
 	note := ""
-	perm.SafeCommand(cmd, func(arg string, use perm.ArgUse) bool {
-		if use == perm.ArgRepo && note == "" {
-			if !filepath.IsAbs(arg) {
-				arg = filepath.Join(h.Dirs.ProjectDir, arg)
+	ok := perm.SafeCommand(cmd, func(arg string, use perm.ArgUse) bool {
+		if use != perm.ArgRepo {
+			return h.safeCommandPath(arg, use)
+		}
+		// ArgRead runs every check ArgRepo does but the tracked-secret one
+		if !h.safeCommandPath(arg, perm.ArgRead) {
+			return false
+		}
+		if note == "" {
+			p := arg
+			if !filepath.IsAbs(p) {
+				p = h.Dirs.ProjectDir + string(filepath.Separator) + p // as safeCommandPath joins it
 			}
-			note = h.trackedSecret(arg)
+			note = h.trackedSecret(p)
 		}
 		return true
 	})
+	if !ok {
+		return ""
+	}
 	return note
 }
 

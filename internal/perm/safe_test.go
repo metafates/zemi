@@ -258,6 +258,33 @@ func TestSafeCommand(t *testing.T) {
 	}
 }
 
+func TestReadCommand(t *testing.T) {
+	for _, c := range []struct {
+		cmd  string
+		read bool
+	}{
+		{"rg -n foo internal | head -20", true},
+		{"cd internal && sed -n 1,20p main.go", true},
+		{"awk '{print $1}' go.mod | sort | uniq -c", true},
+		{"find . -name '*.go' -type f", true},
+		{"git status", false},
+		{"git log --oneline -5; ls", false},
+		{"ls && go test ./...", false},
+		{"make test", false},
+		{"npm run test", false},
+		{"python3 -m json.tool a.json", false},
+		{"./cat notes", false},
+		{"bin/ls", false},
+		{"/bin/ls", false},
+		{"sed -i s/a/b/ main.go", false},
+		{"cat /etc/passwd", false},
+	} {
+		if got := ReadCommand(c.cmd, nil); got != c.read {
+			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.read)
+		}
+	}
+}
+
 func TestSafeCommandPathCheck(t *testing.T) {
 	// a tree walked past ignore rules holds a .env here
 	notSecret := func(arg string, use ArgUse) bool { return !PathIsSecret(arg) && use != ArgWalk }

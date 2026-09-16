@@ -54,12 +54,12 @@ func (h *Host) askHook() tools.Asker {
 		case "yolo":
 			return resolved(true, "mode:"+def.Name)
 		case "plan":
-			if req.Subject == "tool.bash" && perm.SafeCommand(req.Arg, h.safeCommandPath) {
+			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {
 				return resolved(true, "mode:"+def.Name)
 			}
 			if req.Subject == "tool.bash" {
 				if note := h.repoNote(req.Arg); note != "" {
-					req.Reason = "not settled in plan mode: " + note
+					req.Reason = strings.TrimPrefix(req.Reason+"; not settled in plan mode: "+note, "; ")
 				}
 			}
 		case "auto":
@@ -68,6 +68,11 @@ func (h *Host) askHook() tools.Asker {
 			key := strings.Join([]string{req.Subject, req.Arg, req.Reason, req.Preview}, "\x00")
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
+			}
+			if !h.ProjectTrusted() {
+				// the screener reads text the repository can steer; the user decides
+				req.Reason = "not settled: this project is not trusted (/trust)"
+				break
 			}
 			if _, ok := h.autoApproved.Load(key); ok {
 				return resolved(true, "mode:"+def.Name)
@@ -176,7 +181,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			}
 		}
 		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{r}
-	case req.Subject == "tool.workflow" && req.Arg == "script":
+	case req.Subject == "tool.workflow" && req.Arg == "script", req.Subject == "tool.lua":
 		return "", nil // a pattern for "script" would allow every future inline script
 	case strings.HasPrefix(req.Subject, "net."):
 		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" && !strings.ContainsAny(u.Host, globMeta) {

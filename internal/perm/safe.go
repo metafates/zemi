@@ -107,6 +107,29 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	return safeArgs(n.ReadPaths, func(_ int, a string) bool { return check(a, ArgRead) })
 }
 
+// ReadCommand is SafeCommand limited to programs that only read, found on
+// PATH by name: no build or test tool, which runs the project's code, and no
+// git, which runs programs the repository's config names (core.fsmonitor on
+// status, diff.external and textconv on diff). An untrusted project settles
+// only these.
+func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
+	if !SafeCommand(cmd, pathOK) {
+		return false
+	}
+	for _, f := range Normalize(inlineVars(cmd)).Args {
+		if len(f) > 0 && (!reader(f[0]) || strings.ContainsRune(f[0], '/')) {
+			return false
+		}
+	}
+	return true
+}
+
+// reader reports a program that only reads its arguments; safeSegment
+// refuses the flags and scripts that would make one write or run code.
+func reader(name string) bool {
+	return readOnlyPrograms[name] || name == "sed" || name == "awk" || name == "uniq"
+}
+
 func relativeArg(a string, _ ArgUse) bool {
 	return !strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "~") && a != ".." && !strings.HasPrefix(a, "../") && !strings.Contains(a, "/../")
 }
@@ -148,7 +171,7 @@ func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 		return walkFrom(first, ArgWalk), true
 	case name == "diff":
 		return walkFrom(0, ArgWalk), false
-	case name == "cd", !readOnlyPrograms[name] && name != "sed" && name != "awk" && name != "uniq":
+	case name == "cd", !reader(name):
 		return func(int) ArgUse { return ArgRun }, false
 	}
 	return walkFrom(-1, ArgRead), false

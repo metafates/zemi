@@ -1,8 +1,9 @@
 // luatool.go is the model's Lua tool: it runs a chunk on the live
 // interpreter as user origin with every permission, so the agent can inspect
 // and change zemi's own state (this session, agent runs, memories, settings,
-// skills, errors) through the API every Lua caller uses. It never asks;
-// the tool.pre events still run so user hooks can deny or halt a script.
+// skills, errors) through the API every Lua caller uses. It asks (tool.lua)
+// only in an untrusted project or plan mode; the tool.pre events always run
+// so user hooks can deny or halt a script.
 package hostapi
 
 import (
@@ -16,6 +17,8 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // luaToolCeiling bounds one run: it holds the interpreter the UI renders
@@ -71,6 +74,18 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	}
 	if strings.TrimSpace(src) == "" {
 		return fantasy.NewTextErrorResponse("pass script or path"), nil
+	}
+	// the script can do anything user config can, so it asks where the
+	// model's text is less trusted or the user wants nothing changed
+	if !h.ProjectTrusted() || h.permModeDef().Base == "plan" {
+		arg := "script"
+		if in.Path != "" {
+			arg = in.Path
+		}
+		preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
+		if v := h.PipelineFor().Check(tools.Request{Tool: "Lua", Subject: "tool.lua", Arg: arg, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
+			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): Lua " + arg), nil
+		}
 	}
 	out, err := h.runModelLua(ctx, src)
 	if err != nil {
