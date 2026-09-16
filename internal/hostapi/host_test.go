@@ -486,7 +486,9 @@ func TestEventLogFromLua(t *testing.T) {
 	runUser(t, r, `
 		zemi.event.emit("user.ping", { n = 1 })
 		zemi.event.emit("user.ping", { n = 2 })
-		zemi.notify({ title = "second", body = "two" })
+		zemi.notify({ title = "second", body = "two", level = "error" })
+		zemi.notify({ title = "third", body = "three" })
+		zemi.notify.warn("four", "fourth")
 		local log = zemi.event.log({ name = "user.ping" })
 		assert(#log == 2, "log=" .. #log)
 		assert(log[1].n == 2 and log[1].from == "user" and log[1].at:match("^%d%d:%d%d:%d%d$"), "newest first: " .. tostring(log[1].n))
@@ -496,7 +498,9 @@ func TestEventLogFromLua(t *testing.T) {
 		assert(stats["agent.text_delta"] == 1, "delta counted")
 		assert(#zemi.event.log({ name = "agent.text_delta" }) == 0, "delta not logged")
 		local notes = zemi.notify.list()
-		assert(#notes == 2 and notes[1].title == "second" and notes[2].level == "info", "notes=" .. #notes)
+		assert(#notes == 4 and notes[4].level == "info" and notes[3].level == "ERROR", "notes=" .. #notes)
+		assert(notes[2].title == "third" and notes[2].level == "INFO", "level stuck: " .. notes[2].level)
+		assert(notes[1].title == "fourth" and notes[1].body == "four" and notes[1].level == "WARN", "string form")
 	`)
 }
 

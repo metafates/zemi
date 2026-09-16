@@ -35,15 +35,18 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 		m, _ := v.(map[string]any)
 		title := strField(m, "title")
 		body := strField(m, "body")
-		if s, ok := m["level"].(string); ok {
-			switch s {
-			case "info":
-				level = logging.Info
-			case "warn":
-				level = logging.Warn
-			case "error":
-				level = logging.Error
-			}
+		if s, ok := v.(string); ok {
+			body, title = s, L.OptString(2, "")
+		}
+		// the closure lives for the generation: a spec's level must not stick
+		level := level
+		switch m["level"] {
+		case "info":
+			level = logging.Info
+		case "warn":
+			level = logging.Warn
+		case "error":
+			level = logging.Error
 		}
 		h.Log.Log(level, string(h.RT.CurrentOrigin(L)), "notify: "+title+" "+body, nil)
 		h.Notify(level.String(), sanitize.String(title), sanitize.String(body))
