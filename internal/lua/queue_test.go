@@ -123,6 +123,50 @@ func TestQueueCancellationPreempts(t *testing.T) {
 	}
 }
 
+// TestCoroutineRunsUnderResumingRequest: a coroutine made in an earlier
+// request resumes instead of failing as canceled, and one made at boot,
+// with no context, is still preempted by the request resuming it.
+func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
+	r := NewRuntime(RuntimeOptions{})
+	var spin glua.LValue
+	boot := BootStep{Name: "spin", Run: func(_ context.Context, _ *Runtime, g *Generation) error {
+		err := g.L.DoString(`return coroutine.create(function() while true do end end)`)
+		spin = g.L.Get(-1)
+		return err
+	}}
+	if err := r.Boot(context.Background(), []BootStep{boot}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(ceiling time.Duration, src string, arg glua.LValue) (glua.LValue, error) {
+		var out glua.LValue
+		_, err := r.Do(context.Background(), ClassIO, ceiling, 2*time.Second, func(L *glua.LState) ([]any, error) {
+			fn, err := L.LoadString(src)
+			if err != nil {
+				return nil, err
+			}
+			L.Push(fn)
+			L.Push(arg)
+			if err := L.PCall(1, 1, nil); err != nil {
+				return nil, err
+			}
+			out = L.Get(-1)
+			L.Pop(1)
+			return nil, nil
+		})
+		return out, err
+	}
+	co, err := run(0, `return coroutine.wrap(function() coroutine.yield() end)`, glua.LNil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(0, `local w = ...; w()`, co); err != nil {
+		t.Fatalf("resume in a later request: %v", err)
+	}
+	if _, err := run(100*time.Millisecond, `assert(coroutine.resume(...))`, spin); !errors.Is(err, context.Canceled) || r.IsHot() {
+		t.Fatalf("boot coroutine spin: err %v, hot %v", err, r.IsHot())
+	}
+}
+
 // TestQueueWatchdogAbandonHot verifies the §4 watchdog: a stuck request
 // exceeding ceiling+grace is abandoned hard, the runtime goes hot (every
 // Lua request fails fast), and ForceReload recovers.

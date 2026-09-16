@@ -90,6 +90,30 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 		strMod.RawSetString("__metatable", glua.LString("zemi:protected"))
 	}
 
+	// A thread keeps the context it was created under, so a coroutine made
+	// in one request raised "context canceled" when a later one resumed it,
+	// and one made at boot ignored cancellation. Resume rebinds it (§4).
+	if co, ok := global.RawGetString("coroutine").(*glua.LTable); ok {
+		resume := co.RawGetString("resume").(*glua.LFunction).GFunction
+		wrap := co.RawGetString("wrap").(*glua.LFunction).GFunction
+		co.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
+			bindContext(L, L.CheckThread(1))
+			return resume(L)
+		}))
+		co.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
+			wrap(L)
+			aux := L.Get(-1).(*glua.LFunction)
+			L.Pop(1)
+			// aux reads the thread from the running closure's upvalue, so
+			// this closure carries the same one
+			L.Push(L.NewClosure(func(L *glua.LState) int {
+				bindContext(L, L.ToThread(glua.UpvalueIndex(1)))
+				return aux.GFunction(L)
+			}, aux.Upvalues[0].Value()))
+			return 1
+		}))
+	}
+
 	// load/loadstring stay (Lua source only, DESIGN §5) but the base
 	// versions bind compiled chunks to the interpreter's environment; the
 	// sandbox versions inherit the loading chunk's env and origin.
@@ -132,6 +156,15 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	L.Env = frozen
 
 	return s, nil
+}
+
+// bindContext gives thread th the context of L, the thread resuming it.
+func bindContext(L, th *glua.LState) {
+	if ctx := L.Context(); ctx != nil {
+		th.SetContext(ctx)
+	} else {
+		th.RemoveContext()
+	}
 }
 
 func (s *Sandbox) makeOsTable() *glua.LTable {
