@@ -172,7 +172,6 @@ func TestPopupClickOverWindow(t *testing.T) {
 	}
 	// the window exits on its own: closing it races inside vt's Emulator
 	app.completion.files = []string{"a.go", "b.go", "c.go"}
-	app.completion.scanning = true
 	app.Update(tea.KeyPressMsg{Code: '@', Text: "@"})
 	app.renderSync(t)
 	x, y := findCell(t, app, "b.go")

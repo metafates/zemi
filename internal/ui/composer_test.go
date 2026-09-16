@@ -187,7 +187,6 @@ func TestComposerKeysMultilineOff(t *testing.T) {
 func TestCompletionFlow(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.completion.files = []string{"cmd/root.go", "internal/ui/app.go", "main.go"}
-	app.completion.scanning = true // no rescan in tests
 
 	type k struct {
 		key  string
@@ -267,6 +266,21 @@ func TestCompletionScan(t *testing.T) {
 		if slices.Contains(app.completion.files, gone) {
 			t.Fatalf("skipped dir leaked: %s", gone)
 		}
+	}
+
+	// Reopening rescans, and a result from an older scan is dropped.
+	if err := os.WriteFile(filepath.Join(dir, "new.go"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app.composerKey("esc", tea.KeyPressMsg{})
+	cmd = app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	if cmd == nil {
+		t.Fatal("no rescan on reopen")
+	}
+	app.onFilesScanned(cmd().(filesScannedMsg))
+	app.onFilesScanned(msg)
+	if !slices.Contains(app.completion.files, "new.go") {
+		t.Fatalf("rescan missed new.go: %v", app.completion.files)
 	}
 }
 

@@ -125,7 +125,6 @@ func (a *App) Pump() bool {
 func TestGoldenComposerCompletion(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 12)
 	app.completion.files = []string{"internal/ui/app.go", "main.go"}
-	app.completion.scanning = true
 	for _, k := range []string{"s", "e", "e", " ", "@", "a", "p"} {
 		app.Update(tea.KeyPressMsg{Code: rune(k[0]), Text: k})
 	}

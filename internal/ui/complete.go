@@ -49,8 +49,8 @@ func (a *App) completionEnabled() bool { return a.cfgBool("ui.completion.files",
 
 // updateCompletion recomputes the completion state after a composer edit:
 // the token is the text between a trigger char that starts a word and the
-// cursor; anything else closes the popup. The returned cmd launches the
-// initial file scan when the popup just opened.
+// cursor; anything else closes the popup. The returned cmd launches a
+// file scan when the popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
 	if !a.completionEnabled() {
 		a.completion.close()
@@ -67,12 +67,15 @@ func (a *App) updateCompletion() tea.Cmd {
 		a.completion.close()
 		return nil
 	}
+	opening := !a.completion.open
 	a.completion.start = i
 	a.completion.token = string(r[i+1 : cur])
 	a.completion.open = true
 	a.completion.selected = 0
 	a.completion.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
-	if len(a.completion.files) == 0 && !a.completion.scanning {
+	// Rescan on every open so files created since show up; the old list
+	// stays until the new one lands.
+	if opening {
 		a.completion.scanning = true
 		a.completion.walkGen++
 		return a.scanFilesCmd(a.host.Session().CWD, a.completion.walkGen)
