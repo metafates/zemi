@@ -5,7 +5,10 @@ package sandbox
 
 import (
 	"errors"
+	"maps"
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 
@@ -15,10 +18,11 @@ import (
 // Policy is what a sandboxed command may touch. Everything is readable
 // except Hide; only Write is writable, minus Protect.
 type Policy struct {
-	Write    []string // writable roots
-	Protect  []string // read-only even inside Write
-	Hide     []string // neither readable nor writable
-	Loopback bool     // listen on and connect to localhost
+	Write    []string          // writable roots
+	Protect  []string          // read-only even inside Write
+	Hide     []string          // neither readable nor writable
+	Loopback bool              // listen on and connect to localhost
+	Env      map[string]string // extra environment for the sandboxed command
 }
 
 type Backend struct {
@@ -26,6 +30,8 @@ type Backend struct {
 	// HidesSecretFiles says .env-shaped files are unreadable anywhere,
 	// not only under Hide.
 	HidesSecretFiles bool
+	// Protect paths stay read-only inside Write roots
+	EnforcesProtect bool
 }
 
 var probed struct {
@@ -40,13 +46,21 @@ func Probe() (Backend, error) {
 	return probed.b, probed.err
 }
 
-// Wrap rewrites cmd to run under p. Dir, Env and SysProcAttr carry over.
+// Wrap rewrites cmd to run under p. Dir, Env and SysProcAttr carry over,
+// with p.Env set over Env.
 func Wrap(cmd *exec.Cmd, p Policy) error {
 	if cmd.Err != nil {
 		return cmd.Err
 	}
 	if _, err := Probe(); err != nil {
 		return err
+	}
+	if len(p.Env) > 0 && cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
+	// exec keeps the last of duplicate names
+	for _, k := range slices.Sorted(maps.Keys(p.Env)) {
+		cmd.Env = append(cmd.Env, k+"="+p.Env[k])
 	}
 	// the kernel matches resolved paths: /var is /private/var on macOS
 	real := func(l []string) []string {

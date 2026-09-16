@@ -41,6 +41,10 @@ func act(verb, arg string) error {
 	case "read":
 		_, err := os.ReadFile(arg)
 		return err
+	case "env":
+		if v := os.Getenv("ZEMI_SANDBOX_TEST"); v != arg {
+			return fmt.Errorf("env %q", v)
+		}
 	case "rename":
 		return os.Rename(arg, arg+".moved")
 	case "dial":
@@ -105,6 +109,7 @@ func TestPolicy(t *testing.T) {
 		Protect:  []string{filepath.Join(root, ".git"), state},
 		Hide:     []string{hide},
 		Loopback: true,
+		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
 	_, caseFolds := os.Stat(filepath.Join(root, ".GIT"))
 	cases := []struct {
@@ -113,6 +118,7 @@ func TestPolicy(t *testing.T) {
 	}{
 		{"write inside a root", "write", filepath.Join(root, "a.txt"), true, false},
 		{"read a plain file", "read", filepath.Join(root, "plain.txt"), true, false},
+		{"policy env reaches the command", "env", "on", true, false},
 		{"write in a root under a protected dir", "write", filepath.Join(scratch, "a.txt"), true, false},
 		{"write outside the roots", "write", filepath.Join(outside, "a.txt"), false, false},
 		{"write a protected dir", "write", filepath.Join(state, "a.txt"), false, false},
