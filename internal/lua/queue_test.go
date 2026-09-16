@@ -429,3 +429,32 @@ func TestQueueDoBeforeBoot(t *testing.T) {
 		t.Fatalf("expected not-booted error, got %v", err)
 	}
 }
+
+// TestQueueDoAfterFailedBoot: a boot step that fails leaves a generation
+// with no dispatcher, so requests fail fast until a reload succeeds.
+func TestQueueDoAfterFailedBoot(t *testing.T) {
+	r := NewRuntime(RuntimeOptions{})
+	fail := BootStep{Name: "fail", Run: func(context.Context, *Runtime, *Generation) error { return errors.New("bad permissions.lua") }}
+	if err := r.Boot(context.Background(), []BootStep{fail}); err == nil {
+		t.Fatal("boot with a failing step succeeded")
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.Do(context.Background(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrHot) {
+			t.Fatalf("request after a failed boot: %v, want ErrHot", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request after a failed boot never answered")
+	}
+	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Do(context.Background(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
+		t.Fatalf("request after a good reload: %v", err)
+	}
+}

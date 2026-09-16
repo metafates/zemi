@@ -202,7 +202,11 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 
 	for _, step := range steps {
 		if err := step.Run(ctx, r, gen); err != nil {
-			return gen, fmt.Errorf("boot step %s: %w", step.Name, err)
+			err = fmt.Errorf("boot step %s: %w", step.Name, err)
+			// no dispatcher will run this generation, so its requests,
+			// queued and future, must fail fast until a reload succeeds
+			r.goHot(err)
+			return gen, err
 		}
 	}
 
