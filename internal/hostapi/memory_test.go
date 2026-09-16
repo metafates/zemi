@@ -35,7 +35,7 @@ func projectMemories(t *testing.T, h *Host) []*store.Memory {
 	return rows
 }
 
-// TestRememberStoresUserOrigin covers the :remember path: user origin,
+// TestRememberStoresUserOrigin covers /memory <note>: user origin,
 // project scope, autonomy gate bypassed, secrets scrubbed, one-blob and
 // empty text refused.
 func TestRememberStoresUserOrigin(t *testing.T) {
@@ -339,7 +339,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 }
 
-// TestMemoryCommandsRegistered pins the :remember/:memory command step.
+// TestMemoryCommandsRegistered pins the /memory command step.
 func TestMemoryCommandsRegistered(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	if err := h.MemoryCommandsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {

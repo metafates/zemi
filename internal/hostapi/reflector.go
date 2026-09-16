@@ -443,8 +443,8 @@ func (h *Host) ReflectorCommandsStep() lua.BootStep {
 	}
 }
 
-// reflectCommand starts a detached reflect run over the live session. The
-// cmdline runs on the UI goroutine, so the run must never block it.
+// reflectCommand starts a detached reflect run over the live session. Go
+// commands run on the key loop, so the run must never block it.
 func (h *Host) reflectCommand() error {
 	sid := h.AgentSessionID()
 	if sid == "" {
