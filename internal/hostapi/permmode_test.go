@@ -76,3 +76,52 @@ func TestAutoApprovePreview(t *testing.T) {
 		}
 	}
 }
+
+// TestAutoModeSafeCommands: the model writes the scratchpad even in plan
+// mode, so only plain readers settle on it, and a recursive search settles
+// only over trees without secret-shaped files.
+func TestAutoModeSafeCommands(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	pad, root := h.ScratchDir(), h.Dirs.ProjectDir
+	for _, d := range []string{pad, filepath.Join(root, "internal"), filepath.Join(root, "sub")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(root, ".env"), []byte("K=v"), 0o600)
+	os.WriteFile(filepath.Join(root, "internal", "x.go"), []byte("package x"), 0o600)
+	os.WriteFile(filepath.Join(pad, "out.txt"), []byte("hi"), 0o600)
+	if err := os.Symlink(filepath.Join(root, ".env"), filepath.Join(root, "sub", "notes")); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		cmd  string
+		want bool
+	}{
+		{"cat " + pad + "/out.txt", true},
+		{"grep -n hi " + pad + "/out.txt", true},
+		{"go test " + pad + "/x_test.go", false},
+		{"python3 -m pytest " + pad, false},
+		{"jest --config " + pad + "/j.js", false},
+		{"make -C " + pad, false},
+		{"cd " + pad + " && make test", false},
+		{"cd " + pad + " && cat out.txt", false},
+		{"grep -rn foo internal/", true},
+		{"rg -n foo internal", true},
+		{"diff -r internal internal", true},
+		{"grep -r foo .", false},
+		{"grep -r foo", false},
+		{"rg KEY", false},
+		{"rg -t go KEY", false},
+		{"ag KEY", false},
+		{"diff -r . internal", false},
+		{"grep -rn foo sub", false},
+		{"cd sub && cat notes", false},
+		{"cd internal && cat x.go", true},
+	} {
+		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
+		}
+	}
+}

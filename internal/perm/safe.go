@@ -18,30 +18,111 @@ func PathIsSecret(p string) bool {
 	})
 }
 
+// ArgUse is how a settled command uses an argument, for the path check.
+type ArgUse int
+
+const (
+	// ArgRead is read at most, like cat reads a file.
+	ArgRead ArgUse = iota
+	// ArgRun may hold code the program runs: a test file, a build
+	// directory, a config, the directory cd enters.
+	ArgRun
+	// ArgWalk is searched recursively when it is a directory, and what
+	// matches is printed.
+	ArgWalk
+)
+
 // SafeCommand reports whether a bash command only reads, builds or tests:
 // every segment runs an allowlisted program with harmless arguments, nothing
 // is written through a redirect, the shell expands nothing, and every
 // argument passes pathOK, so a read-only program cannot reach secrets or
 // files outside the project. A nil pathOK refuses absolute, home and parent
 // paths. Auto and plan mode run these without asking.
-func SafeCommand(cmd string, pathOK func(arg string) bool) bool {
+func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	cmd = inlineVars(cmd)
 	if expands(cmd) {
 		return false
 	}
+	if pathOK == nil {
+		pathOK = relativeArg
+	}
 	n := Normalize(cmd)
 	// an assignment can steer a program past its checked flags (GOFLAGS,
 	// RIPGREP_CONFIG_PATH), and sh -c passes arguments nothing here sees
-	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || len(n.WritePaths) > 0 || len(n.Segments) == 0 || !safeArgs(n.ReadPaths, pathOK) {
+	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || len(n.WritePaths) > 0 || len(n.Segments) == 0 {
 		return false
+	}
+	// a subshell or pipeline may drop a cd, so arguments are judged from
+	// every directory the shell may be in
+	dirs := []string{"."}
+	check := func(a string, use ArgUse) bool {
+		// git reads rev:path from the tree, so the path after the colon counts too
+		_, sub, rev := strings.Cut(a, ":")
+		for _, d := range dirs {
+			if !pathOK(inDir(d, a), use) || (rev && sub != "" && !pathOK(inDir(d, sub), use)) {
+				return false
+			}
+		}
+		return true
 	}
 	for _, seg := range n.Segments {
 		f := strings.Fields(seg)
-		if !safeSegment(f) || (len(f) > 1 && !safeArgs(f[1:], pathOK)) {
+		if !safeSegment(f) {
 			return false
 		}
+		use, walkCwd := argUses(f)
+		positional := 0
+		if !safeArgs(f[1:], func(pos int, a string) bool {
+			positional = max(positional, pos+1)
+			return check(a, use(pos))
+		}) || (walkCwd && positional < 2 && !check(".", ArgWalk)) {
+			return false
+		}
+		if filepath.Base(f[0]) == "cd" {
+			for _, d := range dirs {
+				dirs = append(dirs, inDir(d, f[1]))
+			}
+		}
 	}
-	return true
+	return safeArgs(n.ReadPaths, func(_ int, a string) bool { return check(a, ArgRead) })
+}
+
+func relativeArg(a string, _ ArgUse) bool {
+	return !strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "~") && a != ".." && !strings.HasPrefix(a, "../") && !strings.Contains(a, "/../")
+}
+
+func inDir(dir, a string) string {
+	if dir == "." || filepath.IsAbs(a) || strings.HasPrefix(a, "~") {
+		return a
+	}
+	return filepath.Join(dir, a)
+}
+
+// argUses says how a checked segment's program uses its arguments by
+// position among the operands, and whether it searches the working
+// directory when it has no operand after the pattern.
+func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
+	name, rest := filepath.Base(f[0]), f[1:]
+	switch {
+	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
+		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
+		return walkFrom(1), true
+	case name == "diff":
+		return walkFrom(0), false
+	case name == "cd", !readOnlyPrograms[name] && name != "sed" && name != "awk" && name != "uniq":
+		return func(int) ArgUse { return ArgRun }, false
+	}
+	return walkFrom(-1), false
+}
+
+// walkFrom walks the operands from position first on; flag values are read.
+func walkFrom(first int) func(pos int) ArgUse {
+	return func(pos int) ArgUse {
+		if first < 0 || pos < first {
+			return ArgRead
+		}
+		return ArgWalk
+	}
 }
 
 // expands reports whether the shell would substitute anything: a backtick,
@@ -85,19 +166,11 @@ func expands(cmd string) bool {
 
 // safeArgs checks every argument that could name a file: plain arguments,
 // everything after --, the value of --flag=value, and a value glued to a
-// short flag (-f/etc/passwd).
-func safeArgs(args []string, pathOK func(string) bool) bool {
-	ok := func(a string) bool {
-		switch {
-		case a == "":
-		case pathOK != nil:
-			return pathOK(a)
-		case strings.HasPrefix(a, "/"), strings.HasPrefix(a, "~"), a == "..", strings.HasPrefix(a, "../"), strings.Contains(a, "/../"):
-			return false
-		}
-		return true
-	}
-	flags := true
+// short flag (-f/etc/passwd). pathOK gets the operand's position, or -1 for
+// a flag value.
+func safeArgs(args []string, pathOK func(pos int, a string) bool) bool {
+	ok := func(pos int, a string) bool { return a == "" || pathOK(pos, a) }
+	flags, pos := true, 0
 	for _, a := range args {
 		if flags && strings.HasPrefix(a, "-") {
 			if a == "--" {
@@ -105,18 +178,18 @@ func safeArgs(args []string, pathOK func(string) bool) bool {
 				continue
 			}
 			// one glued character is a separator (cut -d/), not a path
-			if !strings.HasPrefix(a, "--") && len(a) > 3 && !ok(a[2:]) {
+			if !strings.HasPrefix(a, "--") && len(a) > 3 && !ok(-1, a[2:]) {
 				return false
 			}
-			_, v, found := strings.Cut(a, "=")
-			if !found {
-				continue
+			if _, v, found := strings.Cut(a, "="); found && !ok(-1, v) {
+				return false
 			}
-			a = v
+			continue
 		}
-		if !ok(a) {
+		if !ok(pos, a) {
 			return false
 		}
+		pos++
 	}
 	return true
 }
@@ -134,28 +207,42 @@ var readOnlyPrograms = map[string]bool{
 }
 
 // refusedFlags make an otherwise read-only program write a file, assign a
-// variable or run a program it names.
+// variable, run a program it names or load code from a file.
 var refusedFlags = map[string][]string{
-	"sort":   {"-o", "--output", "--compress-program"},
-	"gofmt":  {"-w"},
-	"printf": {"-v"},
-	"tree":   {"-o", "-R"},
-	"file":   {"-C", "--compile"},
-	"fd":     {"-x", "-X", "--exec", "--exec-batch"},
-	"rg":     {"--pre"},
-	"ag":     {"--pager"},
-	"find":   {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
-	"sed":    {"-i", "--in-place", "-f", "--file"},
-	"awk":    {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec"},
-	"make":   {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval"},
-	"go":     {"-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool"},
-	"cargo":  {"--config"},
+	"sort":          {"-o", "--output", "--compress-program"},
+	"gofmt":         {"-w"},
+	"printf":        {"-v"},
+	"tree":          {"-o", "-R"},
+	"file":          {"-C", "--compile"},
+	"fd":            {"-x", "-X", "--exec", "--exec-batch"},
+	"rg":            {"--pre"},
+	"ag":            {"--pager"},
+	"find":          {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
+	"sed":           {"-i", "--in-place", "-f", "--file"},
+	"awk":           {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec"},
+	"jq":            {"-f", "--from-file", "-L", "--library-path"},
+	"make":          {"-f", "--file", "--makefile", "-C", "--directory", "-E", "--eval"},
+	"cargo":         {"--config", "--fix", "--out-dir", "--artifact-dir", "--open"},
+	"prettier":      {"-w", "--write"},
+	"eslint":        {"--fix"},
+	"ruff":          {"--fix", "--unsafe-fixes"},
+	"golangci-lint": {"--fix"},
+	"jest":          {"-u", "--updateSnapshot"},
+	"vitest":        {"-u", "--update"},
+	"tsc":           {"--init"},
 }
 
+// goRefusedFlags run a program, load source from elsewhere or write a file.
+// Go flags never bundle, and -flag and --flag are the same flag.
+var goRefusedFlags = []string{"-exec", "-toolexec", "-vettool", "-overlay", "-modfile", "-o", "-coverprofile",
+	"-cpuprofile", "-memprofile", "-blockprofile", "-mutexprofile", "-trace", "-outputdir", "-fuzz", "-update"}
+
 // test and lint tools that only touch the project
+// NOTE: a linter whose own config turns fixes on (ruff fix = true,
+// golangci-lint fix: true) still writes; only the flags are checked.
 var projectTools = map[string]bool{
-	"pytest": true, "tox": true, "mypy": true, "ruff": true, "eslint": true, "prettier": true,
-	"tsc": true, "vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
+	"pytest": true, "tox": true, "mypy": true, "eslint": true, "prettier": true,
+	"vitest": true, "jest": true, "golangci-lint": true, "staticcheck": true,
 }
 
 // sedFileCmd matches sed commands that write or read a file or run one: w
@@ -167,10 +254,23 @@ var projectTools = map[string]bool{
 // the project; telling it from a path needs a real sed script parser.
 var sedFileCmd = regexp.MustCompile(`(^|[;{}\s/0-9$,!])([wWrR](\s+\S|[/.])|e($|[\s;}]))`)
 
-var awkGetline = regexp.MustCompile(`\bgetline\b`)
+// getline and ARGV read files the arguments do not name, system and @
+// (gawk's @include and indirect calls) run code, ENVIRON and PROCINFO print
+// the environment, SYMTAB reaches all of them. A bare < is a comparison.
+var awkUnsafe = regexp.MustCompile(`[>|@]|getline|system|ENVIRON|ARGV|PROCINFO|SYMTAB`)
 
-// npm script names routinely carry a colon: test:unit, lint:fix.
-var safeMakeTarget = regexp.MustCompile(`^(all|build[\w.:-]*|test[\w.:-]*|check[\w.:-]*|lint[\w.:-]*|fmt|format|vet|compile|bench[\w.:-]*|cover(age)?)$`)
+// env and $ENV print the environment; import and include load modules.
+var jqUnsafe = regexp.MustCompile(`\$ENV|\b(env|import|include)\b`)
+
+// npm script names routinely carry a colon: test:unit.
+var safeMakeTarget = regexp.MustCompile(`^(all|build[\w.:-]*|test[\w.:-]*|check[\w.:-]*|lint[\w.:-]*|vet|compile|bench[\w.:-]*|cover(age)?)$`)
+
+// fixing and formatting targets rewrite sources (lint:fix)
+var writingTarget = regexp.MustCompile(`fix|fmt|format|write`)
+
+func safeTarget(t string) bool {
+	return safeMakeTarget.MatchString(t) && !writingTarget.MatchString(t)
+}
 
 func safeSegment(a []string) bool {
 	if len(a) == 0 {
@@ -186,30 +286,46 @@ func safeSegment(a []string) bool {
 		return len(slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
 	case hasFlag(rest, refusedFlags[name]...):
 		return false
+	case name == "cd": // with no directory or - it leaves the project
+		return len(rest) == 1 && !strings.HasPrefix(sub, "-")
+	case name == "jq":
+		return !jqUnsafe.MatchString(strings.Join(rest, " "))
 	case readOnlyPrograms[name], projectTools[name]:
 		return true
+	case name == "ruff": // format and check --fix rewrite files
+		return sub == "check" || hasFlag(rest, "--check", "--diff")
+	case name == "tsc": // it writes the compiled files next to the sources
+		return hasFlag(rest, "--noEmit")
 	case name == "sed":
 		// quotes are gone by now, so the script and the file names are one
 		// string; sedFileCmd is written to tell a w command from a path
 		return !sedFileCmd.MatchString(strings.Join(rest, " "))
 	case name == "awk":
-		// getline reads a file, > and | write one. A bare < is a comparison.
-		s := strings.Join(rest, " ")
-		return !strings.ContainsAny(s, ">|") && !strings.Contains(s, "system") && !awkGetline.MatchString(s)
+		return !awkUnsafe.MatchString(strings.Join(rest, " "))
 	case name == "git":
 		return safeGit(rest)
 	// go run and cargo run execute whatever they are pointed at, so they ask
 	case name == "go":
+		if slices.ContainsFunc(rest, func(a string) bool {
+			f, _, _ := strings.Cut("-"+strings.TrimLeft(a, "-"), "=")
+			return strings.HasPrefix(a, "-") && slices.Contains(goRefusedFlags, f)
+		}) {
+			return false
+		}
 		switch sub {
-		case "build", "test", "vet", "list", "version", "doc", "fmt", "mod", "work":
+		case "build", "test", "vet", "list", "version", "doc":
 			return true
+		case "mod":
+			return len(rest) > 1 && (rest[1] == "graph" || rest[1] == "why" || rest[1] == "verify")
 		case "env":
 			return !hasFlag(rest, "-w", "-u")
 		}
 	case name == "cargo":
 		switch sub {
-		case "build", "check", "test", "clippy", "fmt", "doc", "tree", "metadata", "bench":
+		case "build", "check", "test", "clippy", "doc", "tree", "metadata", "bench":
 			return true
+		case "fmt":
+			return hasFlag(rest, "--check")
 		}
 	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
 		if hasFlag(rest, "--script-shell", "--node-options") {
@@ -219,11 +335,11 @@ func safeSegment(a []string) bool {
 		case "test", "lint", "build", "typecheck", "ls", "list", "outdated", "why":
 			return true
 		case "run": // only the usual build and test scripts, like make
-			return len(rest) > 1 && safeMakeTarget.MatchString(rest[1])
+			return len(rest) > 1 && safeTarget(rest[1])
 		}
 	case name == "make":
 		for _, t := range rest {
-			if !strings.HasPrefix(t, "-") && !safeMakeTarget.MatchString(t) {
+			if !strings.HasPrefix(t, "-") && !safeTarget(t) {
 				return false
 			}
 		}
@@ -234,8 +350,10 @@ func safeSegment(a []string) bool {
 		}
 		if sub == "-m" && len(rest) > 1 {
 			switch rest[1] {
-			case "pytest", "unittest", "json.tool", "py_compile", "mypy":
+			case "pytest", "unittest", "py_compile", "mypy":
 				return true
+			case "json.tool": // a second operand is the output file
+				return len(slices.DeleteFunc(slices.Clone(rest[2:]), func(a string) bool { return strings.HasPrefix(a, "-") })) < 2
 			}
 		}
 	case name == "node":
@@ -261,7 +379,7 @@ func safeGit(args []string) bool {
 		}
 	}
 	// --upload-pack and friends name a program for git to run
-	if len(args) == 0 || hasFlag(args, "--output", "--upload-pack", "--receive-pack", "--exec", "--exec-path") {
+	if len(args) == 0 || hasFlag(args, "--output", "--upload-pack", "--receive-pack", "--exec", "--exec-path", "--no-index") {
 		return false
 	}
 	sub, rest := args[0], args[1:]
@@ -272,7 +390,7 @@ func safeGit(args []string) bool {
 	switch sub {
 	// fetch is not here: it talks to the network and runs transport helpers
 	case "grep": // -O names a program to open the matches with
-		return !hasFlag(rest, "-O", "--open-files-in-pager")
+		return !hasFlag(rest, "-O", "--open-files-in-pager", "--untracked")
 	case "status", "diff", "log", "show", "blame", "describe", "rev-parse", "ls-files", "ls-tree",
 		"shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
 		"name-rev", "count-objects":

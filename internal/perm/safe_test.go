@@ -27,7 +27,7 @@ func TestSafeCommand(t *testing.T) {
 		{"sed -n 1,50p internal/web/main.go", true},
 		{"awk '$3 < 100 {print $1}' data.txt", true},
 		{"npm run test:unit", true},
-		{"npm run lint:fix", true},
+		{"npm run lint:fix", false},
 
 		{"git fetch --upload-pack=./pwn.sh ./repo", false},
 		{"git fetch", false},
@@ -89,6 +89,58 @@ func TestSafeCommand(t *testing.T) {
 		{"npm test --script-shell=./x", false},
 		{"cargo test --config target.x.runner=./x", false},
 		{"cut -d/ -f2 paths.txt", true},
+
+		{"cd && cat .zsh_history", false},
+		{"cd; cat .zsh_history", false},
+		{"cd - && cat .zsh_history", false},
+		{"cd -P internal && ls", false},
+		{"cd internal x && ls", false},
+		{"cd internal/perm && cat ../../../x", false},
+		{"fd -X rm", false},
+		{"fd -H --exec-batch rm", false},
+		{"rg --pre=./x foo", false},
+
+		{`awk 'BEGIN{print ENVIRON["HOME"]}'`, false},
+		{`awk 'BEGIN{ARGV[1]="notes"; ARGC=2} {print}'`, false},
+		{"jq -n env", false},
+		{"jq -n '$ENV.HOME'", false},
+		{"jq -f filter.jq data.json", false},
+		{`jq -n 'import "x" as x; x::f'`, false},
+		{"jq -n --rawfile k /etc/passwd '$k'", false},
+		{"jq -r .name package.json", true},
+		{"git diff --no-index a b", false},
+		{"git grep --untracked KEY", false},
+
+		{"go build -o main.go", false},
+		{"go build --o=main.go .", false},
+		{"go test -c -o x.test", false},
+		{"go test -coverprofile=cover.out ./...", false},
+		{"go test -overlay=o.json ./...", false},
+		{"go test ./internal/ui -update", false},
+		{"go fmt ./...", false},
+		{"go mod tidy", false},
+		{"go work sync", false},
+		{"cargo fmt", false},
+		{"cargo clippy --fix", false},
+		{"prettier --write .", false},
+		{"eslint --fix .", false},
+		{"ruff check --fix", false},
+		{"ruff format", false},
+		{"golangci-lint run --fix", false},
+		{"jest -u", false},
+		{"vitest --update", false},
+		{"tsc", false},
+		{"make fmt", false},
+		{"python3 -m json.tool a.json b.json", false},
+		{"go build ./...", true},
+		{"go test -count=1 -run TestX ./...", true},
+		{"go mod why golang.org/x/net", true},
+		{"cargo fmt --check", true},
+		{"ruff format --check", true},
+		{"ruff check .", true},
+		{"prettier --check .", true},
+		{"tsc --noEmit", true},
+		{"python3 -m json.tool a.json", true},
 	} {
 		if got := SafeCommand(c.cmd, nil); got != c.safe {
 			t.Errorf("SafeCommand(%q) = %v, want %v", c.cmd, got, c.safe)
@@ -97,8 +149,20 @@ func TestSafeCommand(t *testing.T) {
 }
 
 func TestSafeCommandPathCheck(t *testing.T) {
-	notSecret := func(arg string) bool { return arg != ".env" }
-	if SafeCommand("cat .env", notSecret) || !SafeCommand("cat main.go", notSecret) {
-		t.Fatal("pathOK must decide file arguments")
+	notSecret := func(arg string, _ ArgUse) bool { return !PathIsSecret(arg) }
+	for _, c := range []struct {
+		cmd  string
+		safe bool
+	}{
+		{"cat .env", false},
+		{"cat main.go", true},
+		{"git show HEAD:.env", false},
+		{"git show HEAD~1:config/id_rsa", false},
+		{"git cat-file -p HEAD:.env", false},
+		{"git show HEAD:main.go", true},
+	} {
+		if got := SafeCommand(c.cmd, notSecret); got != c.safe {
+			t.Errorf("SafeCommand(%q) = %v, want %v", c.cmd, got, c.safe)
+		}
 	}
 }

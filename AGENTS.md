@@ -165,6 +165,11 @@ the resolved path too, so a symlink cannot hide one. `SafeCommand` is an
 allowlist (internal/perm/safe.go, table-tested): no shell expansion outside single quotes,
 no write redirects, and every argument must pass the host's path check (inside the
 project, not secret-shaped), so a read-only program cannot leak `~/.ssh` to the model.
+`perm.ArgUse` tells the check how the argument is used: code may not run from the
+scratchpad, and a recursive search (`grep -r`, `rg`, `ag`, `diff`) settles only over a tree
+with no secret-shaped file in it. Arguments after a `cd` are judged from every directory the
+shell may be in, and commands that rewrite project files (formatters, `--fix`, `go build -o`)
+are left out so plan mode stays read-only.
 User config adds modes with `zemi.permission.mode.add`; unknown values read as manual.
 Only user config sets it; binding a key to the mode cycle is refused for other origins.
 
@@ -323,7 +328,7 @@ as `tool.window`; an exit lands in the next message through `shellNotes`. Subage
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, created when
   the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
-  `safeCommandPath` include it.
+  `safeCommandPath` include it for plain reads (never for programs that may run code).
 - **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
   origin and the tool never asks (only `tool.pre` hooks can deny it; gated `zemi.fs`,
   `zemi.http` and `zemi.job` calls inside still raise on an ask), on the interpreter (10s
