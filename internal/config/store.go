@@ -63,6 +63,8 @@ func (s *Store) defineDefaults() {
 		{Path: "agent.context_window", Kind: "int", Default: 0, UserWritable: true, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, UserWritable: true, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, UserWritable: true, Desc: "start installed language servers (gopls, pyright, rust-analyzer, typescript-language-server, clangd) for projects with their marker files"},
+		{Path: "editor.command", Kind: "string", Default: "", UserWritable: true, Desc: "editor for open_in_editor, zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
+		{Path: "editor.window", Kind: "string", Default: "auto", UserWritable: true, Desc: "where the editor opens inside tmux: auto or popup (a popup over zemi), split (a pane beside it), fullscreen (zemi hands over the terminal, as outside tmux)"},
 		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", UserWritable: true, Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: "bool", Default: true, UserWritable: true, Desc: "drag to select and copy, click buttons and rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, UserWritable: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},

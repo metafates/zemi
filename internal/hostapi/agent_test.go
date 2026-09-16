@@ -384,6 +384,9 @@ func (f *fakeUI) Refresh()                         {}
 func (f *fakeUI) ScrollChat(kind string)           {}
 func (f *fakeUI) AgentEvent(ev AgentEvent)         {}
 func (f *fakeUI) ComposerEdit(string, string, int) {}
+func (f *fakeUI) EditFile(context.Context, EditRequest) (string, error) {
+	return "fullscreen", nil
+}
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)

@@ -46,6 +46,18 @@ type UIHooks interface {
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert" or "submit".
 	ComposerEdit(op, text string, cursor int)
+	// EditFile opens a file in the user's editor and blocks until it closes;
+	// it returns where the editor ran (fullscreen, popup, split). Never
+	// call it on the UI goroutine.
+	EditFile(ctx context.Context, req EditRequest) (mode string, err error)
+}
+
+// EditRequest is one editor handoff: an absolute path, a 1-based line to
+// start at (0 = none) and a short title for the popup and the working row.
+type EditRequest struct {
+	Path  string
+	Line  int
+	Title string
 }
 
 // Overlay is the Go-side record of an open Lua overlay. Items are plain

@@ -66,6 +66,9 @@ type Pipeline struct {
 	// Question asks the user and returns one answer per question; false =
 	// dismissed. nil = nobody can answer (headless).
 	Question func(qs []Question) (answers []string, ok bool)
+	// Edit opens path in the user's editor and returns when it closes.
+	// nil = nobody is at a terminal (headless, subagent).
+	Edit func(ctx context.Context, path string, line int, title string) error
 	// ApprovePlan shows a plan and asks the user to approve it; false =
 	// dismissed. nil = nobody can answer (headless).
 	ApprovePlan func(plan string) (PlanVerdict, bool)
@@ -570,6 +573,19 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			nil,
 			func(in map[string]any) []Request { return nil },
 			runTodos),
+
+		mk("open_in_editor", `Open a file in the user's own editor and wait until they close it, then continue with what they wrote. Use it when only the user can make the change: wording they own (a commit message, a README section, a config they maintain), a conflict you cannot resolve, a file you must not guess at, or when they ask to edit something themselves. Not for changes you can make: edit and write are the normal path, and this one stops everything until the user is done. The result is a diff of what they changed, and the file counts as read.`,
+			false,
+			map[string]any{
+				"path":   map[string]any{"type": "string", "description": "the file to open; a missing one is created"},
+				"line":   map[string]any{"type": "number", "description": "1-based line to start at"},
+				"reason": map[string]any{"type": "string", "description": "what the user should change, in a few words; shown while the editor is open"},
+			},
+			[]string{"path", "reason"},
+			func(in map[string]any) []Request {
+				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "open in the user's editor"}}
+			},
+			runOpenInEditor),
 
 		mk("question", `Ask the user up to 4 questions and wait for the answers. Use it only for what the user alone can decide: requirements, scope, expected behavior, preferences, tradeoffs between approaches. Never ask what reading code or a read-only command would tell you, never ask for permission (risky actions already ask), and never ask whether a plan is ready (use plan).
 

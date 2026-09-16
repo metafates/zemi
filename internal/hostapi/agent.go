@@ -1960,6 +1960,10 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion
 		p.ApprovePlan = h.approvePlan
+		p.Edit = func(ctx context.Context, path string, line int, title string) error {
+			_, err := ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
+			return err
+		}
 	}
 	if h.DB != nil {
 		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }

@@ -1,10 +1,9 @@
 package ui
 
 import (
-	"cmp"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -449,9 +448,8 @@ type editorMsg struct {
 	err  error
 }
 
-// openEditor edits the draft in $VISUAL or $EDITOR (ctrl+g). It runs through
-// tea.ExecProcess instead of internal/proc because the editor needs the
-// terminal, which bubbletea hands over and takes back.
+// openEditor edits the draft in the user's editor (ctrl+g) through
+// EditFile, off the UI goroutine; the saved text comes back as editorMsg.
 func (a *App) openEditor() tea.Cmd {
 	f, err := os.CreateTemp("", "zemi-*.md")
 	if err != nil {
@@ -468,15 +466,15 @@ func (a *App) openEditor() tea.Cmd {
 		a.pushToast("error", "editor", err.Error())
 		return nil
 	}
-	// sh splits an editor with flags ("code --wait") like a shell would
-	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"), "vi")
-	cmd := exec.Command("sh", "-c", editor+` "$1"`, "sh", path)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	go func() {
 		defer os.Remove(path)
+		_, err := a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"})
 		if err != nil {
-			return editorMsg{err: err}
+			a.dispatch(editorMsg{err: err})
+			return
 		}
 		b, err := os.ReadFile(path)
-		return editorMsg{text: strings.TrimRight(string(b), "\n"), err: err}
-	})
+		a.dispatch(editorMsg{text: strings.TrimRight(string(b), "\n"), err: err})
+	}()
+	return nil
 }

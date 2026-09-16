@@ -285,6 +285,10 @@ func (a *App) workingRow() []hostapi.Segment {
 	if a.cancelling {
 		label = "Cancelling"
 	}
+	if a.editing != "" {
+		label = "Editing " + a.editing
+		parts = []string{"save and close the editor to continue"}
+	}
 	now := a.now()
 	animate := a.cfgBool("ui.animations", true)
 	bullet := hostapi.Segment{Text: "• ", HL: "Title"}

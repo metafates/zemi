@@ -8,11 +8,13 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"charm.land/fantasy"
+	"github.com/aymanbagabas/go-udiff"
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
@@ -175,6 +177,55 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// runOpenInEditor hands the file to the user and reports what they changed.
+// The user's own edit is not a model write, so it needs no fs.write ask,
+// and the file is marked read at its new mtime so the next edit tool call
+// is not refused as stale.
+func runOpenInEditor(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+	if p.Edit == nil {
+		return fantasy.NewTextResponse("No editor is available in this run. Make the change yourself with edit or write, or ask the user."), nil
+	}
+	path, err := filepath.Abs(str(input["path"]))
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	line, _ := input["line"].(float64)
+	created := false
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		created = true
+	}
+	before, _ := os.ReadFile(path)
+	unlock := lockFile(path)
+	err = p.Edit(ctx, path, int(line), str(input["reason"]))
+	unlock()
+	if err != nil {
+		if created {
+			_ = os.Remove(path)
+		}
+		return stopTurn("The editor did not run: " + err.Error() + ". Stop and wait for the user."), nil
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	after, _ := os.ReadFile(path)
+	if created && len(after) == 0 {
+		_ = os.Remove(path)
+		return fantasy.NewTextResponse("The user closed the editor without writing anything; the new file was not kept."), nil
+	}
+	p.markRead(path, fi)
+	if string(before) == string(after) {
+		return fantasy.NewTextResponse("The user closed the editor without changing " + path + "."), nil
+	}
+	return fantasy.NewTextResponse("The user edited " + path + ":\n" + udiff.Unified(path, path, lf(string(before)), lf(string(after)))), nil
 }
 
 // SkillInfo is one resolvable skill: name plus the directory holding

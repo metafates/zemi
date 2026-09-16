@@ -388,6 +388,20 @@ function zemi.ui.select(items, opts, on_choice) end
 ---@param on_confirm fun(text: string|nil)
 function zemi.ui.input(opts, on_confirm) end
 
+---@class zemi.EditOpts
+---@field line? integer 1-based line to start at
+---@field title? string popup title and working-row label (default: the file name)
+
+--- Open a project file in the user's editor (editor.command, $VISUAL, $EDITOR)
+--- and call on_done when it closes: on_done(mode) with "fullscreen", "popup"
+--- or "split", or on_done(nil, err). Inside tmux the editor opens over zemi
+--- (editor.window); otherwise zemi hands over the terminal until it exits.
+--- Never blocks the interpreter. Raises for a path outside the project.
+---@param path string
+---@param opts? zemi.EditOpts
+---@param on_done fun(mode: string|nil, err: string|nil)
+function zemi.ui.edit(path, opts, on_done) end
+
 --- Change one highlight group on top of the active theme, and any theme
 --- set later. `zemi.ui.theme.register` builds a whole theme instead.
 ---@param group string

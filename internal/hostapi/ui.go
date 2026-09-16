@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -212,6 +213,43 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
 		}
+		return 0
+	}))
+
+	// edit(path, opts, on_done): the user's editor on a project file, then
+	// on_done(mode) once it closes, or on_done(nil, err). Never blocks the
+	// interpreter. The gate is a read: the writing is the user's own.
+	tb.RawSetString("edit", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.edit")
+		path := L.CheckString(1)
+		opts := L.OptTable(2, L.NewTable())
+		cb := L.CheckFunction(3)
+		resolved, err := h.resolveJailed(path, h.writeJails())
+		if err != nil {
+			L.RaiseError("zemi.ui.edit: %v", err)
+		}
+		h.luaGate(L, "lua.fs.read", resolved)
+		line := 0
+		if n, ok := opts.RawGetString("line").(glua.LNumber); ok {
+			line = int(n)
+		}
+		title := rawString(opts, "title")
+		if title == "" {
+			title = filepath.Base(resolved)
+		}
+		gen := h.currentGen()
+		ui := h.hooks()
+		if ui == nil {
+			L.RaiseError("zemi.ui.edit: no UI in this run")
+		}
+		h.GoSafe("ui.edit", func() {
+			mode, err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title})
+			if err != nil {
+				h.callLuaAsync(gen, cb, nil, err.Error())
+				return
+			}
+			h.callLuaAsync(gen, cb, mode)
+		})
 		return 0
 	}))
 

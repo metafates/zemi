@@ -18,6 +18,9 @@ import (
 // are no modes: the composer is always focused.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
+	if a.program != nil && a.now().Sub(a.editEnded) < editGrace {
+		return nil // typed at the editor's closing prompt, not at zemi
+	}
 	a.mouse = mouseSel{}
 	top := a.topChrome()
 

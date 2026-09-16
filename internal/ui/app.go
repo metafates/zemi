@@ -80,9 +80,11 @@ type App struct {
 	lastChatBottom int
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
-	work     chan func()
-	workOnce sync.Once
-	question *questionPrompt
+	work      chan func()
+	workOnce  sync.Once
+	question  *questionPrompt
+	editing   string    // the editor handoff in progress, shown in the working row
+	editEnded time.Time // when the last full-screen editor returned (editGrace)
 
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
@@ -297,6 +299,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if step != 0 && !a.wheelChrome(step) {
 			a.scrollChatRows(step * chatWheelStep)
 		}
+		return a, nil
+	case editDoneMsg:
+		msg.done <- msg.err
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {
