@@ -782,9 +782,7 @@ func (s *streamAdapter) TextDelta(text string) {
 	s.h.agentEvent(AgentEvent{Kind: "text", Text: text})
 	// NOTE: one queue round trip per delta; fine for the few configs that
 	// listen, coalesce here if one ever streams into something slow.
-	if len(s.h.Events.Handlers("agent.text_delta")) > 0 {
-		s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
-	}
+	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
 }
 
 func (s *streamAdapter) StepStart() {
@@ -819,9 +817,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag.reasonBuf += text
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "reasoning", Text: text})
-	if len(s.h.Events.Handlers("agent.reasoning_delta")) > 0 {
-		s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
-	}
+	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
@@ -1944,9 +1940,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return h.permModeDef().Base == "plan" },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
-			if len(h.Events.Handlers("tool.denied")) > 0 {
-				h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
-			}
+			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
 		Post:      h.toolPostHook(),
 		Principal: "model",

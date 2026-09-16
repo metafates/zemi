@@ -305,8 +305,13 @@ func cancelWith(L *glua.LState, cb *glua.LFunction) *glua.LFunction {
 
 // EmitAsync delivers a host event without blocking the caller: it is safe
 // from the interpreter goroutine (a blocking Emit there would deadlock the
-// queue). Stale-generation deliveries are dropped.
+// queue). Stale-generation deliveries are dropped. The event is recorded
+// either way; with no handler that is all that happens.
 func (h *Host) EmitAsync(name string, payload map[string]any) {
+	h.recordEvent(name, "host", payload)
+	if len(h.Events.Handlers(name)) == 0 {
+		return
+	}
 	gen := h.currentGen()
 	h.GoSafe("event "+name, func() {
 		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {

@@ -357,6 +357,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool) (out string, 
 		return "", false
 	}
 	h.lspSync()
+	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
 	h.lspAnswered(p, err == nil)
 	if err != nil {
@@ -415,6 +416,7 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 		return tools.LSPSession{}, err
 	}
 	h.lspSync()
+	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": path, "kind": "tool"})
 	open := func(path string) error { return p.client.Open(path, languageID(path)) }
 	if err := open(path); err != nil {
 		return tools.LSPSession{}, err

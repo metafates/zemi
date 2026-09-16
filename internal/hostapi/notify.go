@@ -14,6 +14,7 @@ func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("info", L.NewFunction(h.notifyFn(logging.Info)))
 	tb.RawSetString("warn", L.NewFunction(h.notifyFn(logging.Warn)))
 	tb.RawSetString("error", L.NewFunction(h.notifyFn(logging.Error)))
+	tb.RawSetString("list", L.NewFunction(h.notifyListFn))
 	return tb
 }
 
@@ -45,9 +46,7 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 			}
 		}
 		h.Log.Log(level, string(h.RT.CurrentOrigin()), "notify: "+title+" "+body, nil)
-		if ui := h.hooks(); ui != nil {
-			ui.Notify(level.String(), sanitize.String(title), sanitize.String(body))
-		}
+		h.Notify(level.String(), sanitize.String(title), sanitize.String(body))
 		return 0
 	}
 }

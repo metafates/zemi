@@ -66,9 +66,9 @@ next start overwrites it.
 | `zemi.config` | `get`, `set`, `watch`, `schema` |
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
-| `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)` |
+| `zemi.event` | `on(name, fn, { id, coalesce, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
 | `zemi.ui` | `widget.register({ id, region, priority, render, wrap, keys })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help`, `invalidate()` (redraw) |
-| `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error` |
+| `zemi.notify` | callable `zemi.notify({ title, body })`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`run` from user config only) |
 | `zemi.workflow` | `list`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` (user config only) |
@@ -164,4 +164,12 @@ reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `to
 (vetoable: deny, halt, rewrite), `tool.post`, `permission.request`, `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
 `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
-`reflector.start`, `reflector.done`, `job.exit`, and your own `user.*` names.
+`reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
+`diagnostics` after a write or `tool`), and your own `user.*` names.
+
+Every event is recorded whether or not anything listens: `zemi.event.log({ name, limit })`
+returns the last 500 newest first, each the table a handler would have seen plus `at` and
+`ts`; `zemi.event.stats()` counts emissions per name since start (the streaming deltas are
+counted but not logged). Diff two `stats()` snapshots for a session or a turn, for example
+`stats()["lsp.request"]` in a widget. `zemi.notify.list()` is the last 100 notifications
+newest first (`at`, `ts`, `level`, `title`, `body`).

@@ -555,7 +555,11 @@ Event catalogue (v1, each emitted on the interpreter thread):
   `composer.change` (coalesced), `composer.submit` (vetoable)
 - learn: `memory.written`, `skill.learned`, `config.proposed`, `config.applied`,
   `reflector.start`, `reflector.done` (counts, or `error` on failure)
-- io: `job.exit`, `timer.fire`, `fs.changed`
+- io: `job.exit`, `timer.fire`, `fs.changed`, `lsp.request`
+
+Every emission is recorded whether or not a handler exists: `zemi.event.log()` holds the
+last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`
+holds the last 100 notifications, so a widget can show what the session did.
 
 The `tool.pre` event is the generalization of crush's `hookedTool` +
 PreToolUse hook: it runs in-process in Lua, can rewrite JSON input, and its

@@ -52,7 +52,10 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.16.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.17.0", "version=" .. tostring(zemi.api.version))
+		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
+		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
+		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
 		assert(type(zemi.health.register) == "function", "zemi.health.register missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
@@ -410,4 +413,28 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 	if v, ok := h.Settings.Get("ui.theme"); !ok || v != "watched" {
 		t.Fatalf("watch callback side effect missing: ui.theme = %v, want watched", v)
 	}
+}
+
+// TestEventLogFromLua: emissions are logged and counted with no handler
+// registered, and notifications are listed, newest first.
+func TestEventLogFromLua(t *testing.T) {
+	h, r := newTestHost(t)
+	h.SetUIHooks(&fakeUI{})
+	h.EmitAsync("agent.text_delta", map[string]any{"text": "x"})
+	h.Notify("info", "first", "one")
+	runUser(t, r, `
+		zemi.event.emit("user.ping", { n = 1 })
+		zemi.event.emit("user.ping", { n = 2 })
+		zemi.notify({ title = "second", body = "two" })
+		local log = zemi.event.log({ name = "user.ping" })
+		assert(#log == 2, "log=" .. #log)
+		assert(log[1].n == 2 and log[1].from == "user" and log[1].at:match("^%d%d:%d%d:%d%d$"), "newest first: " .. tostring(log[1].n))
+		assert(#zemi.event.log({ limit = 1 }) == 1, "limit")
+		local stats = zemi.event.stats()
+		assert(stats["user.ping"] == 2, "ping=" .. tostring(stats["user.ping"]))
+		assert(stats["agent.text_delta"] == 1, "delta counted")
+		assert(#zemi.event.log({ name = "agent.text_delta" }) == 0, "delta not logged")
+		local notes = zemi.notify.list()
+		assert(#notes == 2 and notes[1].title == "second" and notes[2].level == "info", "notes=" .. #notes)
+	`)
 }

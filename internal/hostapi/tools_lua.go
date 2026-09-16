@@ -310,6 +310,7 @@ func (h *Host) runLuaTool(t *luaTool, input map[string]any) (string, error) {
 // handler marks the result loosened.
 func (h *Host) toolPreHook() tools.PreHook {
 	return func(name string, input map[string]any) (string, string, map[string]any, bool) {
+		h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
 		handlers := h.Events.Handlers("tool.pre")
 		for _, o := range h.luaTools.overridesFor(name) {
 			handlers = append(handlers, &EventHandler{Event: "tool.pre", Fn: o.Fn, Origin: o.Origin, Path: o.Path})

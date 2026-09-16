@@ -23,6 +23,7 @@ var eventCatalogue = map[string]bool{
 	"config.proposed": true, "config.applied": true,
 	"reflector.start": true, "reflector.done": true,
 	"job.exit": true, "timer.fire": true, "fs.changed": true,
+	"lsp.request": true,
 }
 
 func knownEvent(name string) bool {
@@ -85,14 +86,17 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 				payload = m
 			}
 		}
+		from := string(h.RT.CurrentOrigin())
+		h.recordEvent(name, from, payload)
 		handlers := h.Events.Handlers(name)
 		if len(handlers) == 0 {
 			return 0
 		}
-		from := string(h.RT.CurrentOrigin())
 		h.emitSync(L, handlers, name, payload, from)
 		return 0
 	}))
+	tb.RawSetString("log", L.NewFunction(h.eventLogFn))
+	tb.RawSetString("stats", L.NewFunction(h.eventStatsFn))
 
 	return tb
 }

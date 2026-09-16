@@ -194,6 +194,26 @@ function zemi.event.off(id) end
 ---@param payload? table
 function zemi.event.emit(name, payload) end
 
+---@class zemi.EventLogOpts
+---@field name? string Only this event.
+---@field limit? integer At most this many.
+
+---@class zemi.EventLogEntry: zemi.Event
+---@field at string "15:04:05".
+---@field ts number Unix seconds.
+
+--- Recent events newest first, each the table its handlers saw (or would
+--- have: events are logged whether or not anything listens), the last 500.
+--- The streaming deltas are counted in stats only.
+---@param opts? zemi.EventLogOpts
+---@return zemi.EventLogEntry[]
+function zemi.event.log(opts) end
+
+--- Emissions per event name since zemi started; diff two snapshots for a
+--- session or a turn.
+---@return table<string, integer>
+function zemi.event.stats() end
+
 -- ---------------------------------------------------------------------------
 -- zemi.ui
 
@@ -420,6 +440,18 @@ function zemi.notify.warn(body, title) end
 ---@param body string
 ---@param title? string
 function zemi.notify.error(body, title) end
+
+---@class zemi.NotifyEntry
+---@field at string "15:04:05".
+---@field ts number Unix seconds.
+---@field level string
+---@field title string
+---@field body string
+
+--- Recent notifications from zemi.notify and the host, newest first (the
+--- last 100).
+---@return zemi.NotifyEntry[]
+function zemi.notify.list() end
 
 --- The run's log file, one record per line. Callable:
 --- `zemi.log("message", { key = value })`.

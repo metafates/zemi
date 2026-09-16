@@ -176,7 +176,8 @@ type Host struct {
 
 	selectSeq atomic.Int64 // ids for zemi.ui.select overlays
 
-	errs errLog // recent runtime errors for /errors
+	errs  errLog   // recent runtime errors for /errors
+	evlog eventLog // recent events and notifications for Lua reflection
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs *tools.Jobs
@@ -304,6 +305,7 @@ func (h *Host) refresh() {
 }
 
 func (h *Host) Notify(level, title, body string) {
+	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {
 		ui.Notify(level, title, body)
 	}
@@ -468,6 +470,7 @@ func (h *Host) emitSync(L *glua.LState, handlers []*EventHandler, name string, p
 // EmitOnState is the boot-step entry: run handlers for a host event on the
 // interpreter goroutine that is executing boot steps.
 func (h *Host) EmitOnState(L *glua.LState, name string, payload map[string]any) {
+	h.recordEvent(name, "host", payload)
 	h.emitSync(L, h.Events.Handlers(name), name, payload, "host")
 }
 
@@ -484,6 +487,7 @@ type VetoResult struct {
 // contributes nothing and the aggregated decision or the default wins
 // (DESIGN §4, §6.2).
 func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string]any, deadline time.Duration) VetoResult {
+	h.recordEvent(name, "host", payload)
 	handlers := h.Events.Handlers(name)
 	if len(handlers) == 0 {
 		return VetoResult{}
@@ -988,7 +992,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.16.0"))
+	api.RawSetString("version", glua.LString("0.17.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

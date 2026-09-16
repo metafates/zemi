@@ -614,19 +614,21 @@ func (a *App) compose(w, h int) string {
 		rows = append(rows, padSegs(row, w))
 	}
 
-	// Toasts stack up from the bottom of the chat area, newest lowest,
+	// Toasts stack down from the top of the chat area, newest highest,
 	// right-aligned over the chat rows they cover, one blank row apart.
-	y := len(rows)
+	y, bottom := len(header), len(rows)
 	for _, v := range slices.Backward(a.toasts) {
-		box := toastBox(v, w)
-		for j := len(box) - 1; j >= 0 && y > len(header); j-- {
-			y--
-			x0 := max(0, w-segsWidth(box[j])-1)
+		for _, line := range toastBox(v, w) {
+			if y >= bottom {
+				break
+			}
+			x0 := max(0, w-segsWidth(line)-1)
 			// cut one cell short of the toast so the text it covers never
 			// touches the bar and reads as part of it
-			rows[y] = append(padSegs(truncateSegs(rows[y], max(0, x0-1)), x0), box[j]...)
+			rows[y] = append(padSegs(truncateSegs(rows[y], max(0, x0-1)), x0), line...)
+			y++
 		}
-		y--
+		y++
 	}
 
 	rows = floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
