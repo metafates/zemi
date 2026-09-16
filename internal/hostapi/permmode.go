@@ -363,22 +363,42 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	if use == perm.ArgRun {
 		roots = roots[:1]
 	}
-	return h.inJail(p, roots...) && !h.secretPath(p) && (use != perm.ArgWalk || h.noSecretsUnder(p, roots))
+	walk := use == perm.ArgWalk || use == perm.ArgSearch
+	return h.inJail(p, roots...) && !h.secretPath(p) && (!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
 // secret-shaped file: p exists, and if it is a directory, nothing under it
 // (.git aside) is secret-shaped or a symlink to a directory, a secret or
-// out of roots.
+// out of roots. With skipIgnored, hidden entries and those git ignores are
+// left out, as rg leaves them out.
 // NOTE: gives up past 10000 entries, so a search over a big tree asks;
 // an index of secret-shaped names kept per project would lift that.
-func (h *Host) noSecretsUnder(p string, roots []string) bool {
+func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 	p = realPath(p)
-	if _, err := os.Stat(p); err != nil {
+	st, err := os.Stat(p)
+	if err != nil {
 		return false
+	}
+	ignored := map[string]bool{}
+	if skipIgnored && st.IsDir() {
+		// a failed listing (no repo, no git) leaves nothing ignored: rg
+		// outside a repository skips no gitignored path either
+		out, err := h.git(p, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+		for _, e := range strings.Split(out, "\x00") {
+			if err == nil && e != "" {
+				ignored[strings.TrimSuffix(e, "/")] = true
+			}
+		}
 	}
 	n, unsafe := 0, errors.New("unsafe")
 	return filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+		if rel, _ := filepath.Rel(p, path); skipIgnored && rel != "." && (strings.HasPrefix(d.Name(), ".") || ignored[filepath.ToSlash(rel)]) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		n++
 		switch {
 		case err != nil:

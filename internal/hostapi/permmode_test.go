@@ -95,6 +95,14 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, ".env"), filepath.Join(root, "sub", "notes")); err != nil {
 		t.Fatal(err)
 	}
+	// rg skips hidden and gitignored entries below its argument, grep -r does not
+	os.MkdirAll(filepath.Join(root, "app", "node_modules"), 0o700)
+	os.WriteFile(filepath.Join(root, "app", ".env"), []byte("K=v"), 0o600)
+	os.WriteFile(filepath.Join(root, "app", ".gitignore"), []byte("node_modules/\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "app", "node_modules", "secret.txt"), []byte("K=v"), 0o600)
+	if _, err := h.git(root, "init", "-q"); err != nil {
+		t.Skip("needs git:", err)
+	}
 	for _, c := range []struct {
 		cmd  string
 		want bool
@@ -119,6 +127,13 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"grep -rn foo sub", false},
 		{"cd sub && cat notes", false},
 		{"cd internal && cat x.go", true},
+		{"rg KEY app", true},
+		{"rg --hidden KEY app", false},
+		{"rg -nuu KEY app", false},
+		{"rg --no-ignore-vcs KEY app", false},
+		{"rg -g x KEY app", false},
+		{"grep -r KEY app", false},
+		{"ag KEY app", false},
 	} {
 		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)

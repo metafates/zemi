@@ -30,6 +30,9 @@ const (
 	// ArgWalk is searched recursively when it is a directory, and what
 	// matches is printed.
 	ArgWalk
+	// ArgSearch is ArgWalk minus hidden and gitignored entries below the
+	// argument, which rg skips unless told otherwise.
+	ArgSearch
 )
 
 // SafeCommand reports whether a bash command only reads, builds or tests:
@@ -75,7 +78,7 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		if !safeArgs(f[1:], func(pos int, a string) bool {
 			positional = max(positional, pos+1)
 			return check(a, use(pos))
-		}) || (walkCwd && positional < 2 && !check(".", ArgWalk)) {
+		}) || (walkCwd && positional < 2 && !check(".", use(1))) {
 			return false
 		}
 		if filepath.Base(f[0]) == "cd" {
@@ -104,24 +107,30 @@ func inDir(dir, a string) string {
 func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	name, rest := filepath.Base(f[0]), f[1:]
 	switch {
+	// globs override rg's ignore rules, so they walk everything too
+	case name == "rg" && !hasFlag(rest, "-u", "-.", "--unrestricted", "--hidden", "--no-ignore", "--no-ignore-dot",
+		"--no-ignore-exclude", "--no-ignore-files", "--no-ignore-global", "--no-ignore-parent", "--no-ignore-vcs",
+		"-g", "--glob", "--iglob"):
+		return walkFrom(1, ArgSearch), true
 	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
 		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
-		return walkFrom(1), true
+		return walkFrom(1, ArgWalk), true
 	case name == "diff":
-		return walkFrom(0), false
+		return walkFrom(0, ArgWalk), false
 	case name == "cd", !readOnlyPrograms[name] && name != "sed" && name != "awk" && name != "uniq":
 		return func(int) ArgUse { return ArgRun }, false
 	}
-	return walkFrom(-1), false
+	return walkFrom(-1, ArgRead), false
 }
 
-// walkFrom walks the operands from position first on; flag values are read.
-func walkFrom(first int) func(pos int) ArgUse {
+// walkFrom gives the operands from position first on walk; flag values
+// and earlier operands are read.
+func walkFrom(first int, walk ArgUse) func(pos int) ArgUse {
 	return func(pos int) ArgUse {
 		if first < 0 || pos < first {
 			return ArgRead
 		}
-		return ArgWalk
+		return walk
 	}
 }
 
