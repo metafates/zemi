@@ -5,6 +5,8 @@ package hostapi
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -91,7 +93,10 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	if d.StateHome != "" {
 		p.Env = map[string]string{}
 		// made here: the sandbox cannot create them inside the protected state dir
-		cache := filepath.Join(d.StateHome, "sandbox-cache", "go-build")
+		// one per trust root: Go trusts its cache entries, so a shared one lets
+		// one project's build plant what another's links
+		key := sha256.Sum256([]byte(d.TrustRoot()))
+		cache := filepath.Join(d.StateHome, "sandbox-cache", hex.EncodeToString(key[:8]), "go-build")
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
 			p.Env["GOCACHE"] = cache

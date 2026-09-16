@@ -223,7 +223,7 @@ Rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP/LSP servers and
 swap it with `fakeSandbox`), so `--health` and the first turn's schema see it. Policy:
 writes to the scratchpad, `<state>/sandbox-tmp/<session id>` (`TMPDIR`, `TMP`, `TEMP` through
 `Policy.Env`; never the shared system temp dir, where macOS keeps the `xcrun_db` that picks
-what `/usr/bin/make` and `git` run; swept with the scratchpads), `<state>/sandbox-cache/go-build` (`GOCACHE`) and the project (trusted, not plan mode, not `$HOME` or above, neither holding
+what `/usr/bin/make` and `git` run; swept with the scratchpads), `<state>/sandbox-cache/<hash of the trust root>/go-build` (`GOCACHE`, one per trust root: Go trusts cache entries, so a shared one lets one project poison another's build) and the project (trusted, not plan mode, not `$HOME` or above, neither holding
 nor inside a zemi dir, no symlinked `.git`/`.zemi`, and only with `Backend.EnforcesProtect`:
 Landlock + seccomp leaves the project read-only); `.git`, `.zemi` and zemi's dirs read-only
 and loopback only (seatbelt: the machine's; the Linux namespace variant: its own, host

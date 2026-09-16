@@ -211,6 +211,11 @@ func TestSandboxPolicy(t *testing.T) {
 			}
 		})
 	}
+	a := h.sandboxPolicy(false).Env["GOCACHE"]
+	h.Dirs.ProjectDir = t.TempDir()
+	if b := h.sandboxPolicy(false).Env["GOCACHE"]; a == b {
+		t.Errorf("two trust roots share the Go cache %q", a)
+	}
 }
 
 // TestSandboxGuard: a protected path missing when a sandboxed command

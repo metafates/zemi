@@ -1277,10 +1277,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`<state>/sandbox-tmp/<session id>`, set as `TMPDIR`, `TMP` and `TEMP`;
   the shared system temp dir is not writable, since macOS keeps the
   `xcrun_db` there that picks what `/usr/bin/make` or `git` runs), a Go
-  build cache only sandboxed runs use (`<state>/sandbox-cache/go-build`, set
-  as `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and
-  the user's own cache written from here could poison a later unconfined
-  build) and the project when it is trusted, not in plan mode, not `$HOME`
+  build cache only sandboxed runs use, one per trust root
+  (`<state>/sandbox-cache/<hash of the trust root>/go-build`, set as
+  `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and Go
+  trusts its cache entries, so the user's own cache written from here could
+  poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not in plan mode, not `$HOME`
   or above it, neither holds nor sits in one of zemi's config, data and
   state dirs, has no symlinked `.git` or `.zemi` (the backend protects the
   resolved target, not the link), and the backend keeps protected paths
