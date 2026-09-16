@@ -162,24 +162,16 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Written counts every byte ever written, including what the middle drop
-// removed. A reader that kept a previous count knows how much is new even
-// though the buffer's length barely moves once it saturates.
-func (b *Buffer) Written() int64 {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.written()
-}
-
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.str()
 }
 
-// Snapshot returns the contents and the write count together. Read one
-// after the other, a write landing between them counts as delivered
-// without being returned, and those bytes are never read again.
+// Snapshot returns the contents and the count of every byte ever written,
+// middle drop included, taken together: a reader that keeps the count knows
+// how much is new even once the buffer's length stops growing, and a write
+// between two separate reads would count as delivered without being returned.
 func (b *Buffer) Snapshot() (string, int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

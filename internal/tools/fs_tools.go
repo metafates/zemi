@@ -68,7 +68,9 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case <-time.After(timeout):
 		timedOut = true
 	}
-	out := strings.TrimRight(ansi.Strip(buf.String()), "\n")
+	// the count goes with the text: job_read resumes exactly after it
+	raw, written := buf.Snapshot()
+	out := strings.TrimRight(ansi.Strip(raw), "\n")
 	var b strings.Builder
 	// compare the text, not lengths: the cut marker can outgrow a small cut
 	if cut := truncMiddle(out); cut != out {
@@ -82,7 +84,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
-			id := p.Jobs.Adopt(cmd, c, buf, wait)
+			id := p.Jobs.Adopt(cmd, c, buf, written, wait)
 			fmt.Fprintf(&b, "still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id)
 			return fantasy.NewTextResponse(b.String()), nil
 		}
