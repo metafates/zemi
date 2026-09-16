@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -59,7 +60,8 @@ func TestSettledCommand(t *testing.T) {
 // mode settled writes the project and its own temp dir but nothing outside
 // them, the system temp dir included (xcrun_db there picks what /usr/bin/make
 // runs), gets the hint when denied, and sandbox: false goes to the user
-// instead. Plan mode keeps the project read-only, and go test still passes.
+// instead. Plan mode keeps the project read-only, and go test and cargo build
+// still pass.
 func TestSandboxedBash(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the end-to-end check drives seatbelt")
@@ -144,13 +146,46 @@ func TestSandboxedBash(t *testing.T) {
 			t.Fatal(err)
 		}
 		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "go.mod"), []byte("module m\n\ngo 1.22\n"), 0o644)
-		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "m_test.go"), []byte("package m\n\nimport \"testing\"\n\nfunc TestTemp(t *testing.T) { t.TempDir() }\n"), 0o644)
+		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "m_test.go"), []byte(goTempTest), 0o644)
 		ui.asked = nil
 		if resp := run(map[string]any{"command": "cd " + h.Dirs.ProjectDir + " && go test -count=1 ./...", "timeout_ms": 300000.0}); resp.IsError || !strings.Contains(resp.Content, "ok") || len(ui.asked) > 0 {
 			t.Errorf("go test in the sandbox: %s, asked %+v", resp.Content, ui.asked)
 		}
 	})
+	t.Run("cargo build", func(t *testing.T) {
+		if _, err := exec.LookPath("cargo"); err != nil {
+			t.Skip("no cargo")
+		}
+		if err := h.SetPermMode("auto"); err != nil {
+			t.Fatal(err)
+		}
+		crate := filepath.Join(h.Dirs.ProjectDir, "crate")
+		os.MkdirAll(filepath.Join(crate, "src"), 0o755)
+		os.WriteFile(filepath.Join(crate, "Cargo.toml"), []byte("[package]\nname = \"c\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"), 0o644)
+		os.WriteFile(filepath.Join(crate, "src", "main.rs"), []byte("fn main() {}\n"), 0o644)
+		ui.asked = nil
+		resp := run(map[string]any{"command": "cd " + crate + " && cargo build --offline", "timeout_ms": 300000.0})
+		if _, err := os.Stat(filepath.Join(crate, "target", "debug", "c")); err != nil || resp.IsError || len(ui.asked) > 0 {
+			t.Errorf("cargo build in the sandbox: %v: %s, asked %+v", err, resp.Content, ui.asked)
+		}
+	})
 }
+
+// goTempTest resolves its temp dir, which sits under the hidden state dir, as
+// cargo and realpath do with theirs.
+const goTempTest = `package m
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestTemp(t *testing.T) {
+	if _, err := filepath.EvalSymlinks(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+}
+`
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
 // plan mode, with a backend that keeps .git and .zemi read-only inside it,
