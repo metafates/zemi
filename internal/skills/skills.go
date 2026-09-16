@@ -6,6 +6,7 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,11 +94,11 @@ func frontmatter(data []byte) (name, description string, err error) {
 	s := strings.ReplaceAll(string(data), "\r\n", "\n")
 	rest, ok := strings.CutPrefix(s, "---\n")
 	if !ok {
-		return "", "", fmt.Errorf("SKILL.md must start with a --- frontmatter block")
+		return "", "", errors.New("SKILL.md must start with a --- frontmatter block")
 	}
 	block, _, ok := strings.Cut(rest, "\n---")
 	if !ok {
-		return "", "", fmt.Errorf("unterminated frontmatter block")
+		return "", "", errors.New("unterminated frontmatter block")
 	}
 	var fm struct {
 		Name        string `yaml:"name"`
@@ -107,10 +108,10 @@ func frontmatter(data []byte) (name, description string, err error) {
 		return "", "", fmt.Errorf("frontmatter: %w", err)
 	}
 	if fm.Name == "" {
-		return "", "", fmt.Errorf("frontmatter: name is required")
+		return "", "", errors.New("frontmatter: name is required")
 	}
 	if strings.TrimSpace(fm.Description) == "" {
-		return "", "", fmt.Errorf("frontmatter: description is required")
+		return "", "", errors.New("frontmatter: description is required")
 	}
 	return fm.Name, fm.Description, nil
 }

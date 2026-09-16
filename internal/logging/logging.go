@@ -135,9 +135,7 @@ func (l *Logger) Error(origin, msg string, fields Fields) { l.Log(Error, origin,
 func (l *Logger) Recent(n int) []Entry {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if n > len(l.ring) {
-		n = len(l.ring)
-	}
+	n = min(n, len(l.ring))
 	if n <= 0 {
 		return nil
 	}

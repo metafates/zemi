@@ -38,7 +38,7 @@ func String(s string) string {
 
 // needsWork is a fast path for plain printable ASCII.
 func needsWork(s string) bool {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if c := s[i]; c < 0x20 && c != '\n' && c != '\t' || c >= 0x7f {
 			return true
 		}

@@ -51,7 +51,7 @@ func ScrubSecrets(text string) (string, bool) {
 		if len(tok) < entropyFloorLen || shannon(tok) < entropyThreshold {
 			continue
 		}
-		out = strings.ReplaceAll(out, tok, redactMarker(len(tok)))
+		out = strings.ReplaceAll(out, tok, redactMarker(utf8.RuneCountInString(tok)))
 		scrubbed = true
 	}
 	return out, scrubbed
@@ -84,7 +84,7 @@ func redactMarker(n int) string {
 // shannon computes bits of entropy per byte of s.
 func shannon(s string) float64 {
 	counts := make(map[byte]int, 64)
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		counts[s[i]]++
 	}
 	h := 0.0

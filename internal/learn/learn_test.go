@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/store"
 )
@@ -82,15 +83,13 @@ func TestIntakeCapsTextAndTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if utf8RuneLen(res.Memory.Text) != MaxTextLen {
-		t.Fatalf("text len = %d", utf8RuneLen(res.Memory.Text))
+	if n := utf8.RuneCountInString(res.Memory.Text); n != MaxTextLen {
+		t.Fatalf("text len = %d", n)
 	}
 	if len(res.Memory.Tags) != MaxTags {
 		t.Fatalf("tags = %d", len(res.Memory.Tags))
 	}
 }
-
-func utf8RuneLen(s string) int { return len([]rune(s)) }
 
 func TestScrubKnownShapes(t *testing.T) {
 	cases := []struct{ in, mustNotContain string }{
