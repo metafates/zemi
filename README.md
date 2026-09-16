@@ -144,6 +144,12 @@ to change its config, how to restyle the UI and add workflows, how to read its l
 errors, how its learning works, and how to run parallel work in git worktrees. Ask it to
 "set up a provider", "why did that fail" or "write a statusline widget".
 
+Your editor is part of the loop: `ctrl+g` edits the draft in it, `zemi.ui.edit(path)` opens a
+file from Lua, and the agent's `open_in_editor` tool hands you a file when only you can make
+the change and continues with the diff once you close it. Inside tmux the editor opens in a
+popup over zemi (or a split, `editor.window`); elsewhere zemi hands over the terminal.
+`editor.command` overrides `$VISUAL` and `$EDITOR`.
+
 It can also see its own screen: `zemi.ui.screenshot()` returns the drawn frame as plain
 text, so the agent debugs a widget or a theme by looking instead of asking you what
 changed.
@@ -204,7 +210,7 @@ for scripts. `zemi --help` lists every flag.
 | --- | --- |
 | `enter` / `alt+enter`, `ctrl+j` | send / newline |
 | `alt+left` `alt+right` (or `alt+b` `alt+f`), `ctrl+z` | move by word, undo in the composer |
-| `ctrl+g` | edit the draft in `$VISUAL` / `$EDITOR` (unless `<leader>` bindings claim it) |
+| `ctrl+g` | edit the draft in your editor (unless `<leader>` bindings claim it) |
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
 | `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
