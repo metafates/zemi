@@ -79,7 +79,7 @@ without asking, the reference for how a widget is written.
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
 | `zemi.health` | `register(name, fn)`; `fn` returns `{ level = "ok"/"warn"/"error", detail = "..." }` or a detail string, and shows as a row in `/health`. It runs under the 50 ms handler deadline |
-| `zemi.lsp` | `add(name, { command, args, env, filetypes, settings, init_options })`, `disable(name)` (both user config only), `list()` -> `{ name, command, status, error }` (status: starting, running, failed, exited) |
+| `zemi.lsp` | `add(name, { command, args, env, filetypes, settings, init_options })`, `disable(name)` (both user config only), `list()` -> `{ name, command, filetypes, status, error }` (status: available, starting, running, failed, exited) |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule({ subject, pattern, decision, match, not_match, not_match_example, scope })` (any origin may add deny and ask rules; allow and permanent rules need user config), `rules()`, `mode.add(name, spec)`, `mode.remove(name)`, `mode.list()` (modes: user config only; see zemi-config) |

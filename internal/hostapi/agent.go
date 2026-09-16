@@ -517,12 +517,12 @@ func (h *Host) withDigest(sys string) string {
 	return sys + "\n\n" + digest
 }
 
-// profileTools selects the tool set: profile names filter the builtin set;
-// Lua-registered tools are always included (the pipeline gates them).
 func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool())
 }
 
+// profileTools selects the tool set: profile names filter the builtin set;
+// Lua-registered tools are always included (the pipeline gates them).
 func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	var want []string
 	if p != nil && len(p.Tools) > 0 {

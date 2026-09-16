@@ -314,7 +314,7 @@ func clipRunes(s string, n int) string {
 }
 
 // generateText runs one tool-less, single-step model call (reflector,
-// compaction) and returns its text.
+// session titles) and returns its text.
 func generateText(ctx context.Context, model fantasy.LanguageModel, system, prompt string) (string, error) {
 	ag := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system))
 	res, err := ag.Generate(ctx, fantasy.AgentCall{
