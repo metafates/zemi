@@ -130,6 +130,26 @@ func TestMarkdownCopiesBackToSource(t *testing.T) {
 	}
 }
 
+// TestMarkdownTableWidth: a table is only as wide as its content, and one
+// whose content does not fit is laid out to the width it was given.
+func TestMarkdownTableWidth(t *testing.T) {
+	h, _ := newTestHost(t)
+	width := func(lines [][]Segment) int {
+		w := 0
+		for _, l := range lines {
+			w = max(w, segsWidth(l))
+		}
+		return w
+	}
+	if got := width(h.Markdown("| a | b |\n|---|---|\n| 1 | 2 |\n", 60)); got > 10 {
+		t.Errorf("a two-column table takes %d cells of 60", got)
+	}
+	wide := "| " + strings.Repeat("long header ", 6) + "| b |\n|---|---|\n| 1 | 2 |\n"
+	if got := width(h.Markdown(wide, 40)); got > 40 {
+		t.Errorf("a table too wide for the room takes %d cells", got)
+	}
+}
+
 // TestWrapSegs: rows break after spaces, overlong words hard-split, styles
 // survive the cut, and continuations hang past a gutter.
 func TestWrapSegs(t *testing.T) {

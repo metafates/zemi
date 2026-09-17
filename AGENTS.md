@@ -742,7 +742,8 @@ timeout.
   a `Segment.Soft` one with the next (what follows a `Soft` segment on the row is padding
   or another column). `hostapi.WrapSegs` sets both, so a wrapped user prompt, reply or
   code block copies as the text that was written, and `Host.Markdown` renders glamour
-  unwrapped (tables aside, they need the width) and wraps it itself for the same reason.
+  unwrapped (tables aside: glamour lays those out, sized to their content unless that is
+  wider than the room) and wraps it itself for the same reason.
   Glamour keeps the author's line breaks (`WithPreservedNewLines`), so a reply reads and
   copies back as it was written and chat.lua renders a user message in one call.
   A click reads `Segment.Hit` (a Go-only 1-based item index

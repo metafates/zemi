@@ -120,8 +120,16 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 	for i, chunk := range splitTables(text) {
 		var rows [][]Segment
 		if chunk.table {
-			// a table is laid out to the width, its rows are not prose
-			rows = c.glamour(*cfg, styleKey, chunk.text, width)
+			// A table is laid out, not wrapped like prose: at width 0 glamour
+			// sizes it to its content, and only a table too wide for the room
+			// is laid out to the width, whose columns it stretches to fill.
+			rows = c.glamour(*cfg, styleKey, chunk.text, 0)
+			for _, row := range rows {
+				if segsWidth(row) > width {
+					rows = c.glamour(*cfg, styleKey, chunk.text, width)
+					break
+				}
+			}
 		} else {
 			for _, row := range c.glamour(*cfg, styleKey, chunk.text, 0) {
 				rows = append(rows, WrapSegs(row, width)...)
