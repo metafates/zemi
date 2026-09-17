@@ -522,9 +522,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if len(head) > 0 && len(content) > 0 {
 		fixed++ // the blank row between them
 	}
-	if len(words) > 0 {
-		words = capRows(words, chatH-fixed-min(len(content), 2)-1, inner)
-	}
+	words = capRows(words, chatH-fixed-min(len(content), 2)-1, inner)
 	tail := [][]hostapi.Segment{blank}
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)
@@ -551,7 +549,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	list = alignKeys(list, fit)
+	alignKeys(list, fit) // pads the rows tail already holds
 	body := head
 	if len(head) > 0 && len(content) > 0 {
 		body = append(body, blank)
