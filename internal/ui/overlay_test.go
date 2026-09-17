@@ -68,7 +68,8 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 // TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
 // any case), backspace widens again, esc ends the filter before closing and
 // keeps the matched row, j moves outside a filter, and a new query selects
-// its first match, which enter runs.
+// its first match, which enter runs. A row's hotkey runs it at once, except
+// in a filter, which takes the key.
 func TestOverlayFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	var items []any
@@ -108,6 +109,17 @@ func TestOverlayFilter(t *testing.T) {
 	a.overlayKey("enter", "")
 	if len(a.overlays) != 0 || a.composer.text != "alpha one" {
 		t.Fatalf("enter: overlays=%d composer=%q", len(a.overlays), a.composer.text)
+	}
+	items[2].(map[string]any)["hotkey"] = "3"
+	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: items})
+	typeText("/3")
+	if a.overlays[0].query != "3" {
+		t.Fatalf("a filter takes the hotkey: query %q", a.overlays[0].query)
+	}
+	a.overlayKey("esc", "")
+	a.overlayKey("3", "3")
+	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
+		t.Fatalf("hotkey: overlays=%d composer=%q", len(a.overlays), a.composer.text)
 	}
 }
 

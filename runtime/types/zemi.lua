@@ -737,6 +737,7 @@ function zemi.event.stats() end
 ---@field actions? zemi.OverlayAction[] listed under the detail
 ---@field fill? string put in the composer
 ---@field run? string a command line such as "mcp restart gitlab"
+---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
 
 --- A detail view action; with neither fill nor run it goes back.
 ---@class zemi.OverlayAction

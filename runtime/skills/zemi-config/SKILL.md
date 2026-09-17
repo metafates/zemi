@@ -236,7 +236,9 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   in the composer. Bash changes are not undone. Lua: `zemi.session.rewind(id)`.
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/copy` puts the last reply's raw markdown on
-  the clipboard (a drag copies the wrapped screen rows); `/init` writes or updates AGENTS.md.
+  the clipboard (a drag copies the wrapped screen rows); when the reply has code blocks it
+  opens a picker instead (1-9 copy that block, then all blocks, then the whole reply), and
+  `/copy reply`, `/copy code` and `/copy code <n>` skip it; `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
 - Settings and their values: `zemi.config.get(path)` with the Lua tool; the changes zemi
   made to its own config are the git log of the config directory.

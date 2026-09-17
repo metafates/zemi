@@ -1082,6 +1082,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   of the chat, over the statusline that opened it). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
+  an item's `hotkey`, one character, acts like enter on that row outside a filter,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open); Go still draws the box, the origin badge, the
@@ -1135,8 +1136,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   (default keymaps below).
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
-  `zemi.session.messages` and a copy-raw action, so no widget can hide what
-  the model actually received.
+  `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
+  with code blocks a builtin picker over them, whose rows run `/copy code
+  <n>`, `/copy code` and `/copy reply`), so no widget can hide what the
+  model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `alt+enter`
   newline (configurable); a large paste folds into a token that expands

@@ -278,6 +278,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), key) {
 		return nil
 	}
+	// a row's hotkey acts like enter on it; one printable character, so no
+	// overlay can take esc or ctrl+c
+	if len([]rune(key)) == 1 {
+		if i := slices.IndexFunc(st.visible, func(i int) bool { m, _ := o.Items[i].(map[string]any); return m["hotkey"] == key }); i >= 0 {
+			st.selected, key = i, "enter"
+		}
+	}
 	switch key {
 	case "y", "Y":
 		return a.copyOverlay(st, key == "Y")
