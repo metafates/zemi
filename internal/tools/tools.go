@@ -609,7 +609,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runBash),
 
-		gated(mk("read", "Read a file (text or image). This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
+		gated(mk("read", "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "file path, absolute or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},

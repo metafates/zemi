@@ -729,7 +729,8 @@ zemi.tool.list()          -- introspection for UI and reflector
 
 Built-ins ship in Go, modeled on crush's set (crush also ships `ls` and
 `download`, omitted; `skill` is zemi's own): `bash`, `read` (crush
-names it `view`; it returns images as image content, and carries the
+names it `view`; it returns images as image content, lists a directory
+one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
 `multiedit`, `glob`, `grep` (both Go-exec'd async against `rg` with a Go

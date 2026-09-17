@@ -386,14 +386,17 @@ func TestEditSafety(t *testing.T) {
 	}
 }
 
-// TestReadAndBashShapes: read returns images as images and refuses binaries
-// and offsets past the end; bash keeps stdout and stderr in order, strips
+// TestReadAndBashShapes: read returns images as images, lists a directory
+// without secret-shaped names, and refuses binaries and offsets past the end; bash keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.
 func TestReadAndBashShapes(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
 	os.WriteFile(filepath.Join(dir, "i.png"), append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.bin"), []byte("a\x00b"), 0o644)
 	os.WriteFile(filepath.Join(dir, "t.txt"), []byte("one\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "d", "a"), 0o755)
+	os.WriteFile(filepath.Join(dir, "d", "b.pem"), nil, 0o644)
+	os.WriteFile(filepath.Join(dir, "d", "c"), nil, 0o644)
 	ctx := context.Background()
 	p := &Pipeline{ScratchDir: func() string { return filepath.Join(dir, "pad") }}
 	for _, c := range []struct {
@@ -404,6 +407,7 @@ func TestReadAndBashShapes(t *testing.T) {
 		{"i.png", 0, "image", ""},
 		{"b.bin", 0, "text", "binary file"},
 		{"t.txt", 5, "text", "past the end"},
+		{"d", 0, "text", "a/\nc"},
 	} {
 		res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, c.name), "offset": c.offset})
 		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {

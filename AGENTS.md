@@ -176,7 +176,8 @@ a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
 `new_string` to the file's own indentation and says so. `glob` and `grep` shell out to
 `rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same
 glob rules; they are gated on their root only, so neither shows a hit that a deny or ask
-`fs.read` rule covers, and grep hides secret-shaped files (rg still reads them). Long bash and fetch output is saved
+`fs.read` rule covers, and grep hides secret-shaped files (rg still reads them). `read` on a
+directory lists its entries under the same filter plus secret-shaped names. Long bash and fetch output is saved
 whole to the session scratchpad and the result names the file. A bash command still
 running at its timeout is handed to `Jobs.Adopt` instead of being killed, so a slow build
 keeps going under a job id (which is why the command is not bound to the turn's context;

@@ -179,7 +179,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	data, fi, err := readGated(path)
 	switch {
 	case fi != nil && fi.IsDir():
-		return fantasy.NewTextErrorResponse(path + " is a directory; list it with glob"), nil
+		return listDir(p, path), nil
 	case fi != nil && !fi.Mode().IsRegular():
 		return fantasy.NewTextErrorResponse(path + " is not a regular file"), nil
 	case err != nil:
@@ -234,6 +234,39 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		b.WriteString(p.Instructions(path))
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// listDir lists a directory one level deep, sorted, directories ending in
+// "/". Like glob and grep it hides entries a deny or ask read rule covers,
+// and secret-shaped names.
+func listDir(p *Pipeline, path string) fantasy.ToolResponse {
+	f, err := openGated(path, os.O_RDONLY, 0)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error())
+	}
+	defer f.Close()
+	entries, err := f.ReadDir(-1)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error())
+	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	ruledOut, shown := p.ruledOut(), []string{}
+	for i, e := range entries {
+		if len(shown) == globMaxFiles {
+			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
+			break
+		}
+		if name := e.Name(); !perm.PathIsSecret(name) && !ruledOut(filepath.Join(path, name)) {
+			if e.IsDir() {
+				name += "/"
+			}
+			shown = append(shown, name)
+		}
+	}
+	if len(shown) == 0 {
+		return fantasy.NewTextResponse("(empty directory)")
+	}
+	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
 }
 
 // readGated reads a regular file through openGated. fi is set once the
