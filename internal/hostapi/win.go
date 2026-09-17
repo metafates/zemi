@@ -354,10 +354,13 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		}
 		h.luaGate(L, "lua.job.start", cmd)
 		at := h.callerOf(L)
+		origin := h.RT.CurrentOrigin(L)
+		tool, _ := h.modelLuaRun(L)
 		w, err := h.openWindow(win.Spec{
 			Cmd: cmd, Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
 			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"), Owner: "lua",
-			Origin: string(h.RT.CurrentOrigin(L)),
+			Origin:    string(origin),
+			Clipboard: (origin == lua.OriginUser || origin == lua.OriginBuiltin) && !tool,
 		})
 		if err != nil {
 			return luaResult(L, err)

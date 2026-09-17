@@ -106,6 +106,35 @@ func TestKittyKeyboardFlag(t *testing.T) {
 	}
 }
 
+// TestClipboard: a window allowed the clipboard sets it with OSC 52 and lists
+// 52 in DA1; a read gets no answer, and any other window sets nothing.
+func TestClipboard(t *testing.T) {
+	for _, c := range []struct {
+		allowed bool
+		da1     string
+		clip    string
+	}{
+		{true, "E[?62;1;6;22;52c", "hello"},
+		{false, "E[?62;1;6;22c", ""},
+	} {
+		m := &Manager{}
+		cmd := fmt.Sprintf(`stty raw -echo; printf '\033]52;c;?\007\033[c'; head -c %d | tr '\033' E; printf '\033]52;c;aGVsbG8=\007 END'; sleep 5`, len(c.da1))
+		w, err := m.Open(Spec{Cmd: cmd, Clipboard: c.allowed, Env: os.Environ(), Cols: 40, Rows: 5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		if text, ok := w.WaitText(ctx, c.da1+" END"); !ok {
+			t.Fatalf("allowed %v:\n%s", c.allowed, text)
+		}
+		cancel()
+		if got := m.TakeClipboard(); got != c.clip {
+			t.Errorf("allowed %v: clipboard %q", c.allowed, got)
+		}
+		m.Close(w.ID)
+	}
+}
+
 func TestWindowKillsOnClose(t *testing.T) {
 	m := &Manager{}
 	w, err := m.Open(Spec{Cmd: "sleep 30", Env: os.Environ()})

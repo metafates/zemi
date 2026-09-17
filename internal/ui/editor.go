@@ -47,7 +47,7 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 	editor := cmp.Or(strings.TrimSpace(a.cfgStr("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
 	w, err := a.host.OpenWindow(win.Spec{
 		Cmd: editorScript(editor, req.Line), Args: []string{req.Path}, Kind: win.KindFloat,
-		Title: "Edit " + req.Title, Owner: "editor",
+		Title: "Edit " + req.Title, Owner: "editor", Clipboard: true,
 		// the user's own editor gets the user's env: plugins read API keys, and the model cannot read the window
 		Env: os.Environ(),
 	})

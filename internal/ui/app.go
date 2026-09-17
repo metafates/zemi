@@ -495,6 +495,9 @@ func (a *App) onFrame() tea.Cmd {
 	if g := a.host.Wins.TakeGraphics(); g != "" {
 		cmds = append(cmds, tea.Raw(g))
 	}
+	if c := a.host.Wins.TakeClipboard(); c != "" {
+		cmds = append(cmds, copyCmd(c))
+	}
 	return tea.Batch(cmds...)
 }
 

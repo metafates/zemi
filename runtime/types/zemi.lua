@@ -540,7 +540,8 @@ function Win:close() end
 
 --- Open a window: a real terminal (TERM=xterm-256color) drawn inside zemi
 --- that keeps running while zemi works. Needs `lua.job.start` allowed for
---- the command. Returns nil, err when it cannot start. Windows survive
+--- the command. A window user config opens may set the clipboard (OSC 52
+--- writes; reads get no answer). Returns nil, err when it cannot start. Windows survive
 --- reloads, so init.lua should open one only when `zemi.win.list()` has
 --- no window with its title yet.
 ---@param spec zemi.WinSpec

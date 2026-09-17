@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"image/color"
@@ -49,6 +50,9 @@ type Spec struct {
 	Rows   int
 	Owner  string // who opened it: "model", "agent:<name>", "user", "lua" or "editor"
 	Origin string // the Lua origin that opened a "lua" window
+	// Clipboard lets the program set the host clipboard with OSC 52; never for
+	// a window the model drives, which could plant a command the user pastes
+	Clipboard bool
 	// Wrap confines the command before it starts; nil = unconfined
 	Wrap func(*exec.Cmd) error
 }
@@ -130,6 +134,7 @@ type Manager struct {
 	colors [3]color.Color
 
 	kitty atomic.Bool // the host terminal draws kitty placeholders (kitty.go)
+	clip  atomic.Pointer[string]
 	// gmu guards the image state; lock order is w.mu, then gmu
 	gmu   sync.Mutex
 	gfx   strings.Builder
@@ -147,6 +152,8 @@ const (
 	defaultCols = 80
 	defaultRows = 24
 	maxWindows  = 8
+	// maxClipboard caps an OSC 52 write, decoded
+	maxClipboard = 1 << 20
 )
 
 // Open starts spec's command in a new pseudo-terminal. The window starts at
@@ -197,6 +204,17 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	})
 	w.term.RegisterEscHandler('c', func() bool { w.cursorStyle, w.kittyKeys = 0, [2]bool{}; return false })
 	w.trackKittyKeys()
+	if spec.Clipboard {
+		w.term.RegisterOscHandler(52, m.setClipboard)
+		// vt's DA1 plus 52: nvim uses OSC 52 only when a terminal lists it
+		w.term.RegisterCsiHandler('c', func(p ansi.Params) bool {
+			if n, _, _ := p.Param(0, 0); n != 0 {
+				return false
+			}
+			_, _ = io.WriteString(w.term.InputPipe(), ansi.PrimaryDeviceAttributes(62, 1, 6, 22, 52))
+			return true
+		})
+	}
 	w.exit.Store(-1)
 	w.SetTitle(spec.Title)
 	if spec.Title == "" {
@@ -369,6 +387,29 @@ func (w *Window) setColors(c [3]color.Color) {
 	w.term.SetDefaultForegroundColor(c[0])
 	w.term.SetDefaultBackgroundColor(c[1])
 	w.term.SetDefaultCursorColor(c[2])
+}
+
+// setClipboard takes an OSC 52 write for the host clipboard. A read ("?") gets
+// no answer: the clipboard may hold what a program's screen must not show.
+func (m *Manager) setClipboard(data []byte) bool {
+	_, rest, _ := bytes.Cut(data, []byte{';'})
+	_, payload, _ := bytes.Cut(rest, []byte{';'})
+	if base64.StdEncoding.DecodedLen(len(payload)) > maxClipboard {
+		return true
+	}
+	if text, err := base64.StdEncoding.DecodeString(string(payload)); err == nil && len(text) > 0 {
+		m.clip.Store(new(string(text)))
+	}
+	return true
+}
+
+// TakeClipboard returns the newest text a window set with OSC 52 since the
+// last call, "" when none.
+func (m *Manager) TakeClipboard() string {
+	if p := m.clip.Swap(nil); p != nil {
+		return *p
+	}
+	return ""
 }
 
 // Get returns a window by id.

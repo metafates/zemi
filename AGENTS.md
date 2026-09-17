@@ -426,7 +426,11 @@ the shape and blink the program set with DECSCUSR), hidden under a modal or a fl
 over it. OSC 10, 11 and 12 queries answer with the colors the host terminal reported
 (`Manager.SetHostColor`), so an editor picks a theme that matches. Keys go the xterm way (`legacyKey`),
 and as CSI u (`kittyKey`) while the program keeps kitty keyboard flag 1 on for the screen it is on
-(a bool per screen like zellij, no flag stack), so nvim tells esc, ctrl+i and shift+enter apart. A focused window (`App.focusWin`) takes every key, ctrl+c
+(a bool per screen like zellij, no flag stack), so nvim tells esc, ctrl+i and shift+enter apart.
+OSC 52 writes reach the host clipboard (`Manager.TakeClipboard`, sent through `copyCmd` each frame)
+only from a window whose `Spec.Clipboard` is set: the editor and `zemi.win.open` from user or builtin
+code outside the Lua tool, never a window the model drives, which could plant a command the user
+pastes; those windows also list 52 in DA1. A read is never answered. A focused window (`App.focusWin`) takes every key, ctrl+c
 included, until `ui.window.unfocus`; a press on a title or separator starts a `winDrag`
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
