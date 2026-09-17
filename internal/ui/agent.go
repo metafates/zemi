@@ -496,9 +496,10 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	}
 	list = alignKeys(list, fit)
 	body := head
-	if len(content) > 0 {
-		body = append(append(body, blank), content...)
+	if len(head) > 0 && len(content) > 0 {
+		body = append(body, blank)
 	}
+	body = append(body, content...)
 	body = append(body, tail...)
 
 	badge := ""
