@@ -306,6 +306,19 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
+		{"the wheel scrolls a detail body with actions, and the box keeps its width",
+			hostapi.Overlay{Title: "Errors", Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"}, map[string]any{"text": "Back"})}}, []string{"enter"},
+			func(a *App) string {
+				d := &a.overlays[1]
+				d.o.Body = strings.Repeat("line\n", 60)
+				before := segsWidth(overlayBox(d, 80, 20)[0])
+				a.wheelChrome(1)
+				d.selected = 1 // enter select -> enter back
+				if after := segsWidth(overlayBox(d, 80, 20)[0]); d.scroll != 1 || after != before {
+					return fmt.Sprintf("scroll=%d width %d -> %d", d.scroll, before, after)
+				}
+				return ""
+			}},
 		{"an action that fills closes the stack",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Use", "fill": "/use "})}}, []string{"enter", "enter"},
 			func(a *App) string {

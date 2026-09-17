@@ -463,7 +463,11 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	case st.o.OnSelect != nil:
 		esc = "cancel"
 	}
-	body = append(append(body, list...), nil, hintLine(boxInner(w), append(hints, "esc", esc)...))
+	// the box keeps the widest hint it showed, so moving between rows with
+	// different hints never resizes it under the pointer
+	hint := hintLine(boxInner(w), append(hints, "esc", esc)...)
+	st.width = max(st.width, segsWidth(hint))
+	body = append(append(body, list...), nil, padSegs(hint, min(st.width, boxInner(w))))
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 }
 
