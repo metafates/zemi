@@ -236,7 +236,9 @@ func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segmen
 func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]hostapi.Segment {
 	labelW := 0
 	for _, it := range items {
-		labelW = max(labelW, ansi.StringWidth(it.label))
+		if it.desc != "" { // a row with no description needs no column
+			labelW = max(labelW, ansi.StringWidth(it.label))
+		}
 	}
 	// descriptions line up in one column unless a long label would push them far out
 	labelW = min(labelW, 24)
