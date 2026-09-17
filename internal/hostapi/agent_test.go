@@ -156,7 +156,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	initLua := filepath.Join(dir, "init.lua")
@@ -173,7 +173,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
 			t.Fatal(err)
 		}
 		if got, _ := h.Settings.Get("agent.model"); got != c.want {

@@ -191,7 +191,7 @@ func TestWinNamespace(t *testing.T) {
 // /win subcommands.
 func TestWinCommandOpensMenu(t *testing.T) {
 	h, r := newTestHost(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.WindowCommandsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.WindowCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
 	ui := &fakeUI{}

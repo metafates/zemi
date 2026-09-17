@@ -414,7 +414,7 @@ func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 type memoryProposal struct {
 	store.Memory
 	Supersedes string `json:",omitempty"`
-	Forget     bool   `json:",omitempty"`
+	Forget     bool   `json:",omitzero"`
 }
 
 // memoryProposals lists pending memory proposals from both scopes.

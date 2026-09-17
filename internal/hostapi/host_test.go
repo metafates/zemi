@@ -421,7 +421,7 @@ func TestEmitVetoable(t *testing.T) {
 // and a writable key applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
-	if err := r.ExecuteChunk(context.Background(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project config set memory.autonomy: %v", err)
 	}
 	runUser(t, r, `

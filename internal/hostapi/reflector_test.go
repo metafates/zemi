@@ -450,7 +450,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			t.Fatal(err)
 		}
 		reflectStub(t, h, `{"memories":[{"text":"","supersedes":"`+old.ID[:8]+`"},{"text":" ","supersedes":"`+old.ID+`"},{"text":"","supersedes":"ghost123"}]}`)
-		if err := h.reflectSession(context.Background(), sid); err != nil {
+		if err := h.reflectSession(t.Context(), sid); err != nil {
 			t.Fatal(err)
 		}
 		props := h.memoryProposals()
@@ -484,7 +484,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			}
 		case "moved":
 			// a pending suggestion with the same text is no stored copy to merge into
-			if err := h.addProposal(memoryProposal{Memory: store.Memory{Scope: "user", Kind: "fact", Text: "deploy by hand"}}); err != nil {
+			if err := h.addProposal(memoryProposal{Scope: "user", Kind: "fact", Text: "deploy by hand"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {

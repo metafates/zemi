@@ -377,7 +377,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
+	if _, err := h.runSubagent(t.Context(), def, "d", "look", nil); err != nil {
 		t.Fatal(err)
 	}
 	props := h.memoryProposals()
