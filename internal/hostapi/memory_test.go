@@ -404,7 +404,12 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 		t.Fatalf("no-mark review changed the store: %d rows", len(rows))
 	}
 
-	// Second open: move the remembered note everywhere, keep the proposal here.
+	// Second open: move the remembered note everywhere, with its age and
+	// hits, keep the proposal here.
+	if hit, _ := h.DB.SearchMemory("project", "remembered", 5, true); len(hit) != 1 {
+		t.Fatalf("search hits: %+v", hit)
+	}
+	before := projectMemories(t, h)[0]
 	moved := slices.Clone(ui.reviewItems[0])
 	moved[1].Scope = "user"
 	ui.reviewResult = moved
@@ -412,8 +417,9 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	if rows := projectMemories(t, h); len(rows) != 0 {
 		t.Fatalf("moved note still in the project: %+v", rows)
 	}
-	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 1 || rows[0].ID != moved[1].ID {
-		t.Fatalf("moved note not in the user store: %+v", rows)
+	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 1 || rows[0].ID != moved[1].ID ||
+		rows[0].UpdatedAt != before.UpdatedAt || rows[0].HitCount != 1 || rows[0].LastHitAt != before.LastHitAt {
+		t.Fatalf("moved note not in the user store as it was (%+v): %+v", before, rows)
 	}
 
 	// Third open: accept the proposal, delete the moved note.

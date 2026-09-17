@@ -61,7 +61,8 @@ func scanMemory(row scanner) (*Memory, error) {
 	return &m, nil
 }
 
-// AddMemory inserts one memory row; empty id and timestamps are filled.
+// AddMemory inserts one memory row; empty id and timestamps are filled, and
+// a row copied from another scope keeps its age and hits.
 func (s *DB) AddMemory(m *Memory) error {
 	if m.ID == "" {
 		m.ID = NewID()
@@ -76,14 +77,16 @@ func (s *DB) AddMemory(m *Memory) error {
 	if m.CreatedAt == 0 {
 		m.CreatedAt = t
 	}
-	m.UpdatedAt = t
+	if m.UpdatedAt == 0 {
+		m.UpdatedAt = t
+	}
 	_, err := s.db.Exec(`INSERT INTO memory
 		(id, scope, kind, text, tags, provenance_session_id, confidence,
 		 hit_count, created_at, updated_at, last_hit_at, superseded_by, origin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, NULL, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		m.ID, m.Scope, m.Kind, m.Text, strings.Join(m.Tags, ","),
 		nullString(m.ProvenanceSessionID), m.Confidence,
-		m.CreatedAt, m.UpdatedAt, m.Origin)
+		m.HitCount, m.CreatedAt, m.UpdatedAt, m.LastHitAt, m.Origin)
 	if err != nil {
 		return fmt.Errorf("store: add memory: %w", err)
 	}
