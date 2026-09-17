@@ -971,7 +971,8 @@ holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and
 project-scope memory. Opening a store sweeps checkpoints older than 30
 days; sessions are never swept (the session TTL is 0, and zemi deletes a
-session only when the user says to).
+session only when the user says to: Delete in `/sessions` removes it and its subagent
+runs, then VACUUMs and truncates the WAL so the text leaves the disk).
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `memory(scope, last_hit_at)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,
@@ -1045,7 +1046,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   native scrollback).
   Commands are slash commands: `/quit`, `/help`, `/model`,
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
-  (list; enter resumes), `/resume [id]` (latest without an id; history and
+  (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
   check, problems first: store, model key, permissions.lua, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP

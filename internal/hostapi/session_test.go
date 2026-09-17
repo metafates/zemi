@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -16,7 +17,8 @@ func waitIdle(t *testing.T, h *Host) {
 }
 
 // TestSessionLifecycle: /new starts clean, /resume rebuilds the transcript
-// and the model history from the store, in order.
+// and the model history from the store, in order, and a stored session
+// can be deleted.
 func TestSessionLifecycle(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
@@ -41,6 +43,7 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatal("new session must start clean")
 	}
 	send("two")
+	second := h.AgentSessionID()
 	if n := m.lastPrompt.Load(); n != 2 {
 		t.Fatalf("fresh session prompt has %d messages, want 2", n)
 	}
@@ -59,4 +62,28 @@ func TestSessionLifecycle(t *testing.T) {
 	if got := h.InputHistory(first); len(got) != 2 || got[0] != "one" || got[1] != "three" {
 		t.Fatalf("input history = %q", got)
 	}
+
+	// /sessions delete: the live session is refused, another one goes with its scratchpad
+	if err := h.DeleteSession(first); err == nil {
+		t.Fatal("deleted the live session")
+	}
+	if err := h.ResumeSession(second); err != nil {
+		t.Fatal(err)
+	}
+	pad := h.scratchFor(first)
+	if err := os.MkdirAll(pad, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DeleteSession(first); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if _, err := os.Stat(pad); err == nil {
+			return errors.New("scratchpad still there")
+		}
+		if _, err := h.DB.GetSession(first); err == nil {
+			return errors.New("session still stored")
+		}
+		return nil
+	})
 }

@@ -91,6 +91,22 @@ func (s *DB) RenameSession(id, title string) error {
 		title, now(), id)
 }
 
+// DeleteSession removes a session and its subagent runs (parent_id has no
+// foreign key; the rest cascades), then rewrites the file and empties the
+// WAL: a DELETE only frees pages, so the text would stay on disk.
+func (s *DB) DeleteSession(id string) error {
+	if err := s.execOne("delete session", `DELETE FROM sessions WHERE id = ? OR parent_id = ?`, id, id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return fmt.Errorf("store: vacuum: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return fmt.Errorf("store: checkpoint: %w", err)
+	}
+	return nil
+}
+
 // AddUsage accumulates token counts and cost onto a session. Unknown ids are
 // ErrNotFound: silently dropping a turn's tokens and cost is worse than a
 // caller seeing the miss.

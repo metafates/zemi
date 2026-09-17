@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -246,6 +247,51 @@ func TestForkSession(t *testing.T) {
 	}
 	if counts, err := db.CheckpointPaths("s2"); err != nil || len(counts[msgs[0].ID]) != 1 {
 		t.Fatalf("checkpoints = %+v, %v", counts, err)
+	}
+}
+
+// TestDeleteSession: a deleted session takes its subagent runs and every
+// row under them, and its text is gone from the files on disk.
+func TestDeleteSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const secret = "sk-deleteme-0123456789"
+	for _, s := range [][2]string{{"s1", ""}, {"c1", "s1"}, {"keep", ""}} {
+		if err := db.CreateSession(s[0], s[1], "t", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, sid := range []string{"s1", "c1"} {
+		m := &Message{SessionID: sid, Role: "user", PartsJSON: `{"text":"` + secret + `"}`}
+		if err := db.AddToolCall(m, &ToolCall{Tool: "bash", InputJSON: `{"command":"echo ` + secret + `"}`}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddCheckpoint(sid, m.ID, "/f", true, []byte(secret)); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SetTodos(sid, []Todo{{Content: secret, Status: "pending"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.DeleteSession("s1"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.db.QueryRow(`SELECT (SELECT COUNT(*) FROM sessions WHERE id != 'keep') + (SELECT COUNT(*) FROM messages) +
+		(SELECT COUNT(*) FROM tool_calls) + (SELECT COUNT(*) FROM checkpoints) + (SELECT COUNT(*) FROM todos)`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("%d rows left, %v", n, err)
+	}
+	for _, f := range []string{path, path + "-wal"} {
+		if b, _ := os.ReadFile(f); strings.Contains(string(b), secret) {
+			t.Fatalf("%s still holds the text", filepath.Base(f))
+		}
+	}
+	if err := db.DeleteSession("s1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second delete: %v", err)
 	}
 }
 

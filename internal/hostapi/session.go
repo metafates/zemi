@@ -1,5 +1,5 @@
 // session.go is the session lifecycle (DESIGN §6.3, §10.3): /new closes the
-// live session and starts clean, /sessions lists recent ones, /resume
+// live session and starts clean, /sessions lists recent ones and deletes one, /resume
 // rebuilds the model history and the transcript from the store. Closing a
 // session is the reflector's session-close trigger.
 package hostapi
@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -114,11 +116,45 @@ func (h *Host) OpenSessions() error {
 		if s.ID == current {
 			item["key"] = "current"
 		} else {
-			item["run"] = "resume " + s.ID
+			item["detail"] = strings.Join(desc, " · ") + "\n\nDelete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
+			item["actions"] = []any{
+				map[string]any{"text": "Resume", "run": "resume " + s.ID},
+				map[string]any{"text": "Delete", "run": "sessions delete " + s.ID},
+				map[string]any{"text": "Cancel"},
+			}
 		}
 		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Empty: "No sessions in this project yet."})
+	return nil
+}
+
+// DeleteSession removes a stored session other than the live one, with its
+// subagent runs and scratchpad. The rewrite that clears the text from disk
+// takes a while on a large store, so it runs off the caller's goroutine.
+func (h *Host) DeleteSession(id string) error {
+	if h.DB == nil {
+		return errors.New("session store unavailable")
+	}
+	if id == "" || id == h.AgentSessionID() {
+		return errors.New("the current session cannot be deleted; /new first")
+	}
+	for _, run := range h.tasks.list(id) {
+		if run.isRunning() {
+			return errors.New("an agent from that session is still running; /agents stops it")
+		}
+	}
+	h.GoSafe("delete session", func() {
+		if err := h.DB.DeleteSession(id); err != nil {
+			h.Notify("error", "Could not delete the session", err.Error())
+			return
+		}
+		if h.Dirs.StateHome != "" {
+			_ = os.RemoveAll(h.scratchFor(id))
+			_ = os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-tmp", id))
+		}
+		h.Notify("info", "Session deleted", "")
+	})
 	return nil
 }
 

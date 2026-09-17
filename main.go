@@ -288,7 +288,10 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 				{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.NewSession()
 				}},
-				{Name: "sessions", Desc: "resume an earlier session", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "sessions", NArgs: "*", Desc: "resume or delete an earlier session", GoFn: func(h *hostapi.Host, args string) error {
+					if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
+						return h.DeleteSession(strings.TrimSpace(id))
+					}
 					return h.OpenSessions()
 				}},
 				{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {

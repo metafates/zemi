@@ -232,6 +232,8 @@ Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/mod
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 `/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:
 
+- `/sessions`: enter on an earlier session offers Resume and Delete. Delete removes its
+  messages, subagent runs and scratchpad from disk; memories learned from it stay.
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
   return to their state before it, the conversation is cut there and the prompt comes back
   in the composer. Bash changes are not undone. Lua: `zemi.session.rewind(id)`.

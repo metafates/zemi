@@ -17,8 +17,9 @@ const scratchTTL = 7 * 24 * time.Hour
 
 // ScratchDir is the live session's scratchpad, "" before the first send;
 // subagents share their session's pad.
-func (h *Host) ScratchDir() string {
-	sid := h.AgentSessionID()
+func (h *Host) ScratchDir() string { return h.scratchFor(h.AgentSessionID()) }
+
+func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
