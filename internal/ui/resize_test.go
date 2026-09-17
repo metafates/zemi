@@ -44,8 +44,14 @@ func TestGoldenOverlayDetail(t *testing.T) {
 	}
 	for app.Pump() {
 	}
+	app.renderSync(t)
+	boxRow := func() string { return regexp.MustCompile(`╭.*╮`).FindString(ansi.Strip(app.Frame())) }
+	list := boxRow()
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.renderSync(t)
+	if detail := boxRow(); utf8.RuneCountInString(detail) != utf8.RuneCountInString(list) {
+		t.Errorf("the detail view jumps in width:\n%s\n%s", list, detail)
+	}
 	golden.RequireEqual(t, regexp.MustCompile(`\d\d:\d\d:\d\d`).ReplaceAllString(app.Frame(), "12:00:00"))
 
 	// a detail view shorter than its list replaces it rather than sitting on it

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -374,6 +375,9 @@ func TestOverlayHints(t *testing.T) {
 		a.openOverlay(o)
 		a.overlays[0].active = filtering
 		box := overlayBox(&a.overlays[0], 80, 20)
+		if len(box) > 20 {
+			t.Errorf("%d rows do not fit 20", len(box))
+		}
 		return plainSegs(box[len(box)-2])
 	}
 	for _, c := range []struct {
@@ -387,6 +391,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 30), Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter select · / filter · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)

@@ -189,7 +189,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	}
 	p := parent.o
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, Items: actions})
-	st.back = true
+	st.back, st.width = true, parent.width
 	a.overlays = append(a.overlays, st)
 }
 
@@ -393,8 +393,12 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
-	// borders, the blank row, the hint, the counter and the filter line
+	// borders, the blank row, the hint, the counter and the filter line, and
+	// a body's shortest: 3 rows, the row saying which show and a blank row
 	limit := min(max(h-6, 3), 20)
+	if st.o.Body != "" {
+		limit = min(max(h-11, 3), 20)
+	}
 	var list [][]hostapi.Segment
 	var hints []string
 	switch {
@@ -422,8 +426,13 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	var body [][]hostapi.Segment
 	if st.o.Body != "" {
+		// a detail view keeps about the width of the list it opened from
+		bodyW, padW := boxInner(w), min(boxInner(w), 72)
+		if st.back {
+			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
+		}
 		for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
-			body = append(body, wrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l, "\t", "    ")}}, boxInner(w))...)
+			body = append(body, wrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l, "\t", "    ")}}, bodyW)...)
 		}
 		// borders, the hint line and a blank row before it, and the list
 		room := h - 4
@@ -440,8 +449,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			st.scroll = 0
 		}
 		hints = append(hints, "y", "copy")
-		// a detail view keeps about the width of the list it opened from
-		body[0] = padSegs(body[0], min(boxInner(w), 72))
+		body[0] = padSegs(body[0], padW)
 		if len(list) > 0 {
 			body = append(body, nil)
 		}
