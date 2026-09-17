@@ -396,9 +396,10 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 
 // TestReflectForgetThroughReview: an empty text with supersedes retires a
 // memory only through review, even under auto, once per memory; accepting
-// deletes it and rejecting keeps it.
+// deletes it, rejecting keeps it, and accepting after a rewrite keeps the
+// rewrite.
 func TestReflectForgetThroughReview(t *testing.T) {
-	for _, accept := range []bool{true, false} {
+	for _, decide := range []string{"accept", "reject", "rewritten"} {
 		h, r := newTestHostDB(t)
 		h.Settings.SetHost("memory.autonomy", "auto")
 		h.SetProjectTrusted(true)
@@ -424,16 +425,26 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			t.Fatalf("review row: %+v", rows[0])
 		}
 		want := 1
-		if accept {
+		switch decide {
+		case "accept":
 			want = 0
 			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
 				t.Fatal(err)
 			}
-		} else if h.takeProposal(props[0].ID) == nil {
-			t.Fatal("reject found nothing")
+		case "reject":
+			if h.takeProposal(props[0].ID) == nil {
+				t.Fatal("reject found nothing")
+			}
+		case "rewritten":
+			if err := h.DB.UpdateMemoryText(old.ID, "deploy with bin/deploy", learn.OriginUser); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := h.acceptProposal(props[0].ID, ""); err == nil || len(h.memoryProposals()) != 0 {
+				t.Fatalf("stale forget: err %v, proposals %d", err, len(h.memoryProposals()))
+			}
 		}
 		if got := len(projectMemories(t, h)); got != want {
-			t.Fatalf("accept=%v: memories left %d", accept, got)
+			t.Fatalf("%s: memories left %d", decide, got)
 		}
 	}
 }

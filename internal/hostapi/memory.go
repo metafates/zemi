@@ -339,9 +339,9 @@ func (h *Host) moveMemory(id, from, to string) error {
 }
 
 // acceptProposal stores a pending proposal (in scope when one is given), or deletes the memory a forget
-// proposal names (one already gone counts as done). A store failure other
-// than a duplicate puts it back in the queue, so the decision can be made
-// again.
+// proposal names (one already gone counts as done, one rewritten since drops
+// the proposal). A store failure other than a duplicate puts it back in the
+// queue, so the decision can be made again.
 func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 	p := h.takeProposal(id)
 	if p == nil {
@@ -349,9 +349,17 @@ func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 	}
 	var err error
 	if p.Forget {
-		if db := h.memoryDB(p.Scope); db == nil {
+		db := h.memoryDB(p.Scope)
+		var m *store.Memory
+		if db == nil {
 			err = errors.New("memory store unavailable")
-		} else if err = db.DeleteMemory(p.Supersedes); errors.Is(err, store.ErrNotFound) {
+		} else if m, err = db.GetMemory(p.Supersedes); err == nil && m.Text != p.Text {
+			// the review showed the old text: forgetting the new one needs a new proposal
+			return nil, errors.New("the memory changed since zemi proposed forgetting it")
+		} else if err == nil {
+			err = db.DeleteMemory(p.Supersedes)
+		}
+		if errors.Is(err, store.ErrNotFound) {
 			err = nil
 		}
 	} else {
