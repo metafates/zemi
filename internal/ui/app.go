@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -562,6 +563,10 @@ type toast struct {
 	recorded           bool // the whole error is in /errors
 }
 
+// chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:"),
+// which a toast shortens to the file name.
+var chunkPath = regexp.MustCompile(`@\w+:/\S*/([^/:\s]+):`)
+
 // toastRows caps a toast's body: a long error or a stack trace would cover
 // the transcript.
 const toastRows = 3
@@ -569,7 +574,7 @@ const toastRows = 3
 func (a *App) pushToast(level, title, body string) {
 	t := toast{level: level, title: title, body: body, expires: time.Now().Add(toastTTL)}
 	short, _, trace := strings.Cut(body, "stack traceback:")
-	t.body = strings.TrimRight(short, " \t\n")
+	t.body = chunkPath.ReplaceAllString(strings.TrimRight(short, " \t\n"), "$1:")
 	if level == "error" && (trace || strings.Count(t.body, "\n") >= toastRows || len(t.body) > 150) {
 		a.host.RecordError(title, body)
 		t.recorded = true

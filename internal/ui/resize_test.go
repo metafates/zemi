@@ -184,13 +184,13 @@ func TestModeSwitchQuiet(t *testing.T) {
 // sends the reader to /errors, where the whole text was recorded.
 func TestToastCap(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	body := "init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
+	body := "@user:/home/me/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
 	app.pushToast("error", "Keymap ctrl+t failed", body)
 	var rows []string
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 1+toastRows || rows[toastRows] != "▌ ... full error in /errors" || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 1+toastRows || !strings.HasPrefix(rows[1], "▌ init.lua:10: something") || rows[toastRows] != "▌ ... full error in /errors" || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	if !host.HasUnseenErrors() {
