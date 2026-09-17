@@ -446,9 +446,9 @@ func (h *Host) supersedeMemory(oldID, byID string) error {
 	return db.SupersedeMemory(old.ID, by.ID)
 }
 
-// memorySearch queries one or both scopes best-first; every hit bumps
-// hit_count and last_hit_at (DESIGN §7).
-func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, error) {
+// memorySearch queries one or both scopes best-first; with bump every hit
+// counts as a use in hit_count and last_hit_at (DESIGN §7).
+func (h *Host) memorySearch(scope, query string, limit int, bump bool) ([]*store.Memory, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -462,7 +462,7 @@ func (h *Host) memorySearch(scope, query string, limit int) ([]*store.Memory, er
 		if db == nil {
 			continue
 		}
-		rows, err := db.SearchMemory(s, query, limit, true)
+		rows, err := db.SearchMemory(s, query, limit, bump)
 		if err != nil {
 			return nil, err
 		}
@@ -505,12 +505,28 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	return out, errors.Join(errs...)
 }
 
-// digestFor assembles the §10.7 memory digest across both scopes.
-func (h *Host) digestFor() string {
+// digestFor assembles the §10.7 memory digest across both scopes, ranked
+// toward what query (the session's first message) is about. bm25 stays near
+// zero for a word most memories hold, so matching only common words earns
+// almost no boost. Pinning is not a use, so hits are not bumped.
+func (h *Host) digestFor(query string) string {
 	cands, _ := h.memoryList(false)
 	lines := h.setInt("memory.digest_lines", 12)
 	if lines < 0 {
 		lines = 12
+	}
+	if strings.TrimSpace(query) != "" && len(cands) > lines {
+		hits, err := h.memorySearch("all", query, 3*lines, false)
+		if err != nil {
+			h.Log.Warn("memory", "digest search failed", map[string]any{"error": err.Error()})
+		}
+		score := map[string]float64{}
+		for _, m := range hits {
+			score[m.ID] = 1 + min(m.Score, 2)*2
+		}
+		for _, m := range cands {
+			m.Score = score[m.ID]
+		}
 	}
 	return learn.Digest(cands, time.Now(), lines)
 }
@@ -564,7 +580,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if scope != "all" && scope != "user" && scope != "project" {
 			L.RaiseError("zemi.memory.search: scope must be all, user or project")
 		}
-		rows, err := h.memorySearch(scope, query, limit)
+		rows, err := h.memorySearch(scope, query, limit, true)
 		if err != nil {
 			return luaResult(L, err)
 		}

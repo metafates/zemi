@@ -913,7 +913,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.sessionID = sid
 	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
-	ag.digest = h.digestFor()
+	ag.digest = h.digestFor(firstText)
 	ag.env = ""
 	ag.memAuto = 0
 	ag.mu.Unlock()
@@ -1517,7 +1517,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			return stored, err
 		},
 		Recall: func(query string, limit int) ([]*store.Memory, error) {
-			return h.memorySearch("all", query, limit)
+			return h.memorySearch("all", query, limit, true)
 		},
 		EditMemory:   h.modelEditMemory,
 		Scratch:      h.inScratch,

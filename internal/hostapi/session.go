@@ -59,10 +59,17 @@ func (h *Host) ResumeSession(id string) error {
 		return err
 	}
 	history, tr := resumeHistory(rows)
-	digest := h.digestFor()
+	first := ""
+	for _, m := range tr {
+		if m.Role == "user" && m.Kind == "" {
+			first = m.Text
+			break
+		}
+	}
+	digest := h.digestFor(first)
 	ag := h.agents
 	err = h.closeSession(func() {
-		ag.sessionID, ag.titled = id, true
+		ag.sessionID, ag.titled, ag.firstUser = id, true, first
 		// A bare runner carries the history; AgentSend copies it into the
 		// runner it builds for the next turn.
 		ag.runner = &agent.Runner{History: history}

@@ -14,11 +14,13 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aymanbagabas/go-udiff"
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -939,8 +941,9 @@ func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy
 		return fantasy.NewTextResponse("no matching memories"), nil
 	}
 	var b strings.Builder
+	now := time.Now()
 	for _, m := range rows {
-		fmt.Fprintf(&b, "[%s · %s · %s · %s] %s\n", m.ID[:min(8, len(m.ID))], m.Kind, m.Origin, m.Scope, m.Text)
+		fmt.Fprintf(&b, "[%s · %s · %s · %s%s] %s\n", m.ID[:min(8, len(m.ID))], m.Kind, m.Origin, m.Scope, learn.Age(m.UpdatedAt, now), m.Text)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

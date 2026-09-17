@@ -218,19 +218,14 @@ func TestDigestRanksAndFrames(t *testing.T) {
 	if len(lines) != 4 { // header + 3 candidates
 		t.Fatalf("lines = %d: %q", len(lines), out)
 	}
-	// Ranking: fresh (score 3, recency 1) > popular (recency .25 x 1+log 6)
-	// > old (recency .25, no hits).
-	if !strings.Contains(lines[1], "fresh gotcha") || !strings.Contains(lines[1], "user") {
-		t.Fatalf("fresh line = %q", lines[1])
-	}
-	if !strings.Contains(lines[2], "popular fact") {
-		t.Fatalf("hit boost line = %q", lines[2])
-	}
-	if !strings.Contains(lines[3], "old fact") || !strings.Contains(lines[3], "learned") {
-		t.Fatalf("old line = %q", lines[3])
-	}
-	if !strings.Contains(lines[1], "dddd0000") {
-		t.Fatalf("id prefix missing: %q", lines[1])
+	for i, want := range []string{
+		"[ · fact · user · 3d] popular fact",           // user x2, 1+log 6 for hits
+		"[dddd0000 · gotcha · user] fresh gotcha (ci)", // user x2, no age under 2 days
+		"[ · fact · learned · 3d] old fact",
+	} {
+		if lines[i+1] != want {
+			t.Fatalf("line %d = %q, want %q", i+1, lines[i+1], want)
+		}
 	}
 }
 
@@ -257,21 +252,25 @@ func TestDigestEmpty(t *testing.T) {
 
 func TestDigestScoreFormula(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
-	m := &store.Memory{Score: 4, HitCount: 3, UpdatedAt: at.UnixMilli()}
-	// fresh: recency 1, factor 1 + log1p(3) = 1 + ln4 ~= 2.386; score 4 -> ~9.5
-	got := DigestScore(m, at)
-	if got <= 8 || got >= 11 {
-		t.Fatalf("score = %v, want ~9.5", got)
+	day := 24 * time.Hour
+	ago := func(d time.Duration) int64 { return at.Add(-d).UnixMilli() }
+	score := func(m store.Memory) float64 { return DigestScore(&m, at) }
+	for _, tc := range []struct {
+		name          string
+		better, worse store.Memory
+	}{
+		{"never-hit fresh beats hit-free month-old", store.Memory{UpdatedAt: ago(0)}, store.Memory{UpdatedAt: ago(30 * day)}},
+		{"hits lift an older memory", store.Memory{UpdatedAt: ago(3 * day), HitCount: 5}, store.Memory{UpdatedAt: ago(0)}},
+		{"a user note beats a newer learned one", store.Memory{UpdatedAt: ago(20 * day), Origin: OriginUser}, store.Memory{UpdatedAt: ago(0), Origin: OriginLearned}},
+		{"a recent hit revives an old memory", store.Memory{UpdatedAt: ago(200 * day), LastHitAt: ago(0), HitCount: 1}, store.Memory{UpdatedAt: ago(10 * day)}},
+		{"relevance beats recency", store.Memory{UpdatedAt: ago(60 * day), Score: 5}, store.Memory{UpdatedAt: ago(0)}},
+	} {
+		if b, w := score(tc.better), score(tc.worse); b <= w {
+			t.Errorf("%s: %v <= %v", tc.name, b, w)
+		}
 	}
-	// A never-hit memory must not score zero.
-	if DigestScore(&store.Memory{Score: 4, UpdatedAt: at.UnixMilli()}, at) <= 0 {
-		t.Fatal("never-hit memory scores zero")
-	}
-	// Listings carry score 0: rank by recency and hits instead of all tying at 0.
-	fresh := DigestScore(&store.Memory{UpdatedAt: at.UnixMilli()}, at)
-	stale := DigestScore(&store.Memory{UpdatedAt: at.Add(-72 * time.Hour).UnixMilli()}, at)
-	hit := DigestScore(&store.Memory{UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), HitCount: 5}, at)
-	if !(fresh > hit && hit > stale && stale > 0) {
-		t.Fatalf("zero-score ranking: fresh=%v hit=%v stale=%v", fresh, hit, stale)
+	// a month halves recency
+	if got := score(store.Memory{UpdatedAt: ago(30 * day)}); got != 0.5 {
+		t.Fatalf("30 days = %v, want 0.5", got)
 	}
 }

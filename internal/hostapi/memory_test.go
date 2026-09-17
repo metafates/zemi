@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
@@ -195,7 +196,7 @@ func TestMemorySearchFromLua(t *testing.T) {
 			}
 		}
 	}
-	rows, err := h.memorySearch("all", "widget", 4)
+	rows, err := h.memorySearch("all", "widget", 4, true)
 	if err != nil || len(rows) != 4 {
 		t.Fatalf("interleave: %d %v", len(rows), err)
 	}
@@ -301,8 +302,37 @@ func TestDigestPinnedAtSessionStart(t *testing.T) {
 		t.Fatal("digest changed after session start (must stay pinned)")
 	}
 
-	if got := h.digestFor(); !strings.Contains(got, "later note") {
+	if got := h.digestFor(""); !strings.Contains(got, "later note") {
 		t.Fatalf("digestFor missed the new memory: %q", got)
+	}
+}
+
+// TestDigestRanksByFirstMessage: an old memory about the first message's
+// topic makes a digest that newer memories fill, and common words alone
+// lift nothing.
+func TestDigestRanksByFirstMessage(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	add := func(text string) {
+		if err := h.DB.AddMemory(&store.Memory{Scope: "project", Kind: "fact", Text: text, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond) // distinct updated_at, so newest-first is well defined
+	}
+	add("make golden regenerates the UI golden files")
+	for i := range 15 {
+		add(fmt.Sprintf("the build step %d runs the tests for the project", i))
+	}
+	for _, tc := range []struct {
+		first string
+		want  bool
+	}{
+		{"", false},
+		{"can you fix the tests for the project", false},
+		{"regenerate the golden files", true},
+	} {
+		if got := strings.Contains(h.digestFor(tc.first), "UI golden files"); got != tc.want {
+			t.Errorf("first message %q: golden memory in digest = %v", tc.first, got)
+		}
 	}
 }
 

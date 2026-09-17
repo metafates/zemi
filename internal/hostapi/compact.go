@@ -308,9 +308,12 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 // has the next step judge the result; a manual success re-enables auto
 // compaction.
 func (h *Host) compactDone(used int64, manual bool) {
-	digest := h.digestFor()
-	h.forgetInstructions()
 	ag := h.agents
+	ag.mu.Lock()
+	first := ag.firstUser
+	ag.mu.Unlock()
+	digest := h.digestFor(first)
+	h.forgetInstructions()
 	ag.mu.Lock()
 	ag.lastIn, ag.digest, ag.compacted = used, digest, true
 	if manual {
