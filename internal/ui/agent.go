@@ -139,21 +139,21 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
 	box := [][]hostapi.Segment{{
-		{Text: "╭"},
+		{Text: "╭", NoCopy: true},
 		{Text: title, HL: titleHL},
-		{Text: strings.Repeat("─", fill)},
+		{Text: strings.Repeat("─", fill), NoCopy: true},
 		{Text: badge, HL: "Comment"},
-		{Text: "╮"},
+		{Text: "╮", NoCopy: true},
 	}}
 	for _, r := range body {
 		line := ellipsizeSegs(r, bw-4)
 		pad := bw - 4 - segsWidth(line)
-		row := []hostapi.Segment{{Text: "│ "}}
+		row := []hostapi.Segment{{Text: "│ ", NoCopy: true}}
 		row = append(row, line...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)) + " │"})
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)) + " │", NoCopy: true})
 		box = append(box, row)
 	}
-	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯"}})
+	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
 	return box
 }
 
@@ -418,16 +418,16 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	// title, and a few rows at most so they cannot push the command away
 	var words [][]hostapi.Segment
 	if req.Description != "" {
-		words = append(words, capRows(wrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner), 3, inner)...)
+		words = append(words, capRows(hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner), 3, inner)...)
 	}
 	if note, hl := permNote(req.Reason); note != "" {
-		words = append(words, capRows(wrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner), 3, inner)...)
+		words = append(words, capRows(hostapi.WrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner), 3, inner)...)
 	}
 	choices := pa.choices()
 	items := make([]listItem, len(choices))
 	for i, c := range choices {
 		// a label wraps instead of ending in "…": the user approves what it says
-		rows := wrapSegs([]hostapi.Segment{{Text: c.label}}, inner-4-2-len(c.key))
+		rows := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label}}, inner-4-2-len(c.key))
 		items[i] = listItem{label: plainSegs(rows[0]), key: c.key, more: rows[1:]}
 	}
 	list := listRowsW(items, pa.sel, nil, math.MaxInt, 0, inner)
@@ -583,7 +583,7 @@ func codePanel(text string, width int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
 		l = strings.ReplaceAll(l, "\t", "    ")
-		for _, wrapped := range wrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
+		for _, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
 			line := plainSegs(wrapped)
 			pad := width - 2 - ansi.StringWidth(line)
 			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: "Host:Panel"}})
@@ -650,7 +650,7 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		gutter := " " + num(l.old) + " " + num(l.new) + " "
 		room := max(width-ansi.StringWidth(gutter)-2, 1)
 		// wrapped, never cut: the user approves every character
-		for i, wrapped := range wrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l.text, "\t", "    ")}}, room) {
+		for i, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l.text, "\t", "    ")}}, room) {
 			text := plainSegs(wrapped)
 			if i > 0 {
 				gutter, sign = strings.Repeat(" ", len(gutter)), "  "

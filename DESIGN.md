@@ -53,7 +53,8 @@ Added since: `modernc.org/sqlite` (pure-Go SQLite, keeps
 `CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
 EXISTS` plus an append-only `migrations` list keyed on `PRAGMA
 user_version`, so no migration library came with it), `charm.land/glamour/v2`
-(markdown in chat), `charmbracelet/x/exp/golden` (golden-file assertions
+(markdown in chat, with `alecthomas/chroma/v2` for the code block
+formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty` and
 `charmbracelet/x/vt` (windows: a program on a pseudo-terminal drawn through
 a Go terminal emulator; the user's editor runs in one too). Tool input validation is a small hand-written
@@ -886,12 +887,20 @@ UI extensibility contract:
   `composer.change`/`composer.submit`, reads and edits the draft through
   `zemi.composer` (§6.7), and registers decoration widgets around it,
   but cannot replace it in v1.
-- Widgets return lines of `{ text, hl, click, effect }` segments; Go measures, wraps
-  (opt-in per widget), styles, and diffs via bubbletea v2. No lipgloss in
+- Widgets return lines of `{ text, hl, click, effect, copy, soft_wrap }` segments; Go measures, wraps
+  (opt-in per widget), styles, and diffs via bubbletea v2. `copy = false`
+  marks decoration (gutter bars, bullets, borders, line numbers): a
+  selection neither lights nor copies those cells. Wrapping ends a row that
+  continues on the next in a `soft_wrap` segment, so a copy rejoins the
+  line and skips what follows it on the row (padding, another column). No lipgloss in
   Lua; highlight names only. Rich text goes through
   `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
   styled segment lines (how the default chat widget renders assistant
-  text). Glamour's styles come from the active theme's `Normal` and
+  text). Glamour renders unwrapped and zemi wraps the result, so the rows
+  carry `soft_wrap`; its decorations (list bullets, quote bars, code
+  block margins, code span padding) come back `copy = false`, so what a
+  selection copies is the text the model wrote. A table renders at the
+  width instead: its rows are layout, not prose. Glamour's styles come from the active theme's `Normal` and
   `Markdown*` groups; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes. `effect = "shimmer"` asks Go

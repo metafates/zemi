@@ -996,7 +996,7 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		if c.wrapped == nil || c.wrapW != width {
 			var rows [][]hostapi.Segment
 			for _, line := range lines {
-				rows = append(rows, wrapSegs(line, width)...)
+				rows = append(rows, hostapi.WrapSegs(line, width)...)
 			}
 			c.wrapped, c.wrapW = rows, width
 		}
@@ -1105,7 +1105,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	if t.body != "" {
 		for l := range strings.SplitSeq(t.body, "\n") {
-			rows = append(rows, wrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
+			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
 		}
 	}
 	if len(rows) > toastRows {
@@ -1220,76 +1220,4 @@ func segsWidth(segs []hostapi.Segment) int {
 		n += ansi.StringWidth(s.Text)
 	}
 	return n
-}
-
-// wrapSegs word-wraps one logical line into rows of at most w cells,
-// preserving each chunk's style; words longer than w are hard-split. The
-// transcript is bottom-anchored, so callers concatenate the rows and take
-// the tail.
-func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
-	w = max(w, 1)
-	if segsWidth(line) <= w {
-		return [][]hostapi.Segment{line}
-	}
-	// Continuation rows hang under the text, past a short gutter segment
-	// ("  ✗ ", "▌ ", "    └ ") or leading indentation.
-	indent := 0
-	if len(line) > 0 {
-		if g := line[0].Text; strings.HasSuffix(g, " ") && ansi.StringWidth(g) <= 8 && ansi.StringWidth(g) < w/2 {
-			indent = ansi.StringWidth(g)
-		}
-	}
-	var rows [][]hostapi.Segment
-	var row []hostapi.Segment
-	width := 0
-	flush := func() {
-		rows = append(rows, row)
-		row, width = nil, 0
-		if indent > 0 {
-			row, width = []hostapi.Segment{{Text: strings.Repeat(" ", indent)}}, indent
-		}
-	}
-	// add keeps every field of seg on each piece of text
-	add := func(text string, seg hostapi.Segment) {
-		piece := func(t string) hostapi.Segment { seg.Text = t; return seg }
-		for {
-			if width >= w {
-				flush()
-			}
-			tw := ansi.StringWidth(text)
-			if tw <= w-width {
-				row = append(row, piece(text))
-				width += tw
-				return
-			}
-			cut := ansi.Truncate(text, w-width, "")
-			if cut == "" {
-				if width <= indent { // a wide rune that fits nowhere: place it anyway
-					row = append(row, piece(text))
-					width += tw
-					return
-				}
-				flush()
-				continue
-			}
-			row = append(row, piece(cut))
-			text = strings.TrimPrefix(text, cut)
-			flush()
-		}
-	}
-	for _, seg := range line {
-		for _, word := range strings.SplitAfter(seg.Text, " ") {
-			if word == "" {
-				continue
-			}
-			if width+ansi.StringWidth(word) > w && width > indent {
-				flush()
-			}
-			add(word, seg)
-		}
-	}
-	if width > indent || len(rows) == 0 {
-		rows = append(rows, row)
-	}
-	return rows
 }

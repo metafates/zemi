@@ -754,6 +754,12 @@ type Segment struct {
 	Widget string
 	Effect string // "shimmer": the UI animates the text, blending hl toward Normal
 	Over   string // Go only: a hover group drawn over HL
+	// NoCopy marks decoration (gutters, bullets, borders): a selection
+	// neither lights nor copies it
+	NoCopy bool
+	// Soft ends a row that wraps onto the next: a copy joins the two rows
+	// without a newline and drops the row's cells after this segment
+	Soft bool
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
@@ -848,6 +854,8 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 				if e, ok := c["effect"].(string); ok {
 					seg.Effect = e
 				}
+				seg.NoCopy = c["copy"] == false
+				seg.Soft = c["soft_wrap"] == true
 				if id, ok := c["click"].(string); ok && id != "" {
 					seg.Click, seg.Widget = id, widget
 				}
@@ -1247,7 +1255,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.35.0"))
+	api.RawSetString("version", glua.LString("0.36.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

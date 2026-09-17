@@ -164,13 +164,13 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
 		items = append(items, listItem{
 			section: sections[suggested(it)],
-			more:    append(wrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2), meta),
+			more:    append(hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2), meta),
 		})
 	}
 	// borders, the blank row, the hint and the counter take five rows
 	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))
 	if len(mr.items) == 0 {
-		lines = wrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
+		lines = hostapi.WrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
 	}
 	// the hint pads to the list, so changing hints never resizes the box
 	widest := 0

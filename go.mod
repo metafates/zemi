@@ -6,6 +6,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/fantasy v0.43.2
 	charm.land/glamour/v2 v2.0.1
+	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7
@@ -25,7 +26,6 @@ require (
 	cloud.google.com/go/auth v0.23.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.68.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.45.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect

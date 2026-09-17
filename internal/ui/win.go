@@ -81,7 +81,7 @@ func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]ho
 	wn.Resize(cols, rows)
 	// the title row goes into the top border: one frame, not two
 	body := a.windowRows(wn, cols, rows)
-	top := []hostapi.Segment{{Text: "╭─"}}
+	top := []hostapi.Segment{{Text: "╭─", NoCopy: true}}
 	for _, s := range body[0] {
 		switch {
 		case strings.TrimSpace(s.Text) == "":
@@ -93,14 +93,14 @@ func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]ho
 		}
 		top = append(top, s)
 	}
-	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─╮"})}
+	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─╮", NoCopy: true})}
 	bw := cols + 4
 	for _, row := range body[1:] {
-		line := []hostapi.Segment{{Text: "│ "}}
+		line := []hostapi.Segment{{Text: "│ ", NoCopy: true}}
 		line = append(line, row...)
-		box = append(box, append(line, hostapi.Segment{Text: " │"}))
+		box = append(box, append(line, hostapi.Segment{Text: " │", NoCopy: true}))
 	}
-	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯"}})
+	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
 	x0, y0 = l.X, l.Y
 	if x0 < 0 {
 		x0 = max((w-bw)/2, 0)

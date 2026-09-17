@@ -377,7 +377,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		if i == 0 {
 			p = prefix
 		}
-		segs := []hostapi.Segment{{Text: p, HL: promptHL}}
+		segs := []hostapi.Segment{{Text: p, HL: promptHL, NoCopy: true}}
 		if i == cursorRow && a.focusedNode() == "" { // no cursor while a node has the keys
 			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
 		} else {
@@ -386,7 +386,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		out = append(out, segs)
 	}
 	if hidden := len(rows) - len(out); hidden > 0 {
-		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment"}})
+		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment", NoCopy: true}})
 	}
 	return out
 }
@@ -399,7 +399,7 @@ func (c *composerState) inputRow(width int) []hostapi.Segment {
 	if over := 2 + segsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}
-	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment"}}, segs...), 40)
+	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment", NoCopy: true}}, segs...), 40)
 }
 
 // cursorSegs draws r with a block cursor on the rune at cursor, or on a

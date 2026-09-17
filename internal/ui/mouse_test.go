@@ -426,3 +426,32 @@ func TestHoverStyle(t *testing.T) {
 		})
 	}
 }
+
+// TestSelectionRejoinsWrappedText: a drag over a wrapped user message and a
+// wrapped code block copies the text the model and the user wrote, without
+// the gutter bar, the bullets or the wrap points.
+func TestSelectionRejoinsWrappedText(t *testing.T) {
+	app, host := bootAgentApp(t, 44, 24)
+	prompt := "please rewrite this helper so it stops allocating a slice on every call"
+	code := "func add(a, b int) int { return a + b + 1000000 }"
+	host.AppendMessage("user", prompt)
+	host.AppendMessage("assistant", "here:\n\n```go\n"+code+"\n```\n")
+	app.renderSync(t)
+	dragRows := func(from, to string) string {
+		_, y0 := findCell(t, app, from)
+		_, y1 := findCell(t, app, to)
+		if y1 <= y0 {
+			t.Fatalf("%q did not wrap", from)
+		}
+		app.Update(tea.MouseClickMsg{X: 0, Y: y0, Button: tea.MouseLeft})
+		app.Update(tea.MouseMotionMsg{X: app.width - 1, Y: y1, Button: tea.MouseLeft})
+		app.Update(tea.MouseReleaseMsg{X: app.width - 1, Y: y1, Button: tea.MouseLeft})
+		return app.selectionText()
+	}
+	if got := dragRows("please", "every call"); got != prompt {
+		t.Errorf("prompt: %q", got)
+	}
+	if got := dragRows("func add", "1000000"); got != code {
+		t.Errorf("code: %q", got)
+	}
+}

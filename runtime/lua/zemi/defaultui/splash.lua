@@ -92,7 +92,7 @@ function M.render(ctx)
   local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
   for _ = 1, top do out[#out + 1] = { { text = "" } } end
   for _, r in ipairs(rows) do
-    table.insert(r, 1, { text = pad })
+    table.insert(r, 1, { text = pad, copy = false })
     out[#out + 1] = r
   end
   -- the chat is bottom-anchored: trailing rows keep the block centered

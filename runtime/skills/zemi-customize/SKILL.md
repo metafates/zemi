@@ -208,7 +208,9 @@ zemi.keymap.set("<leader>r", "review", { desc = "review changes" })
 ```
 
 Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }` (`{}` for no
-lines; `effect = "shimmer"` animates a segment like the working label), must be pure
+lines; `effect = "shimmer"` animates a segment like the working label; `copy = false`
+marks decoration a selection skips, `soft_wrap = true` a line that continues on the next
+row), must be pure
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
 `zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
 uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable give it

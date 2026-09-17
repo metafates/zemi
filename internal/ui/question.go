@@ -287,7 +287,7 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	// would push the first options and the hint off screen
 	var ask [][]hostapi.Segment
 	for l := range strings.SplitSeq(q.Question, "\n") {
-		ask = append(ask, wrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
+		ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
 	}
 	// borders, two blank rows, the hint and three options with their i/n row
 	keep := chatH - len(body) - 6 - min(len(items), 4)

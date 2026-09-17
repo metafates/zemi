@@ -720,7 +720,13 @@ timeout.
   test for clicks and hover (a highlight always means a click acts); motion redraws only
   when the target changes, and OSC 22 turns the pointer into a hand where supported. Drag selection and clicks are zemi's own (`internal/ui/mouse.go`):
   compose keeps the last frame's segments, a drag copies their text through OSC 52 plus
-  pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
+  pbcopy/wl-copy/xclip, leaving out `Segment.NoCopy` cells (decoration: gutter bars,
+  bullets, borders, line numbers; `copy = false` in Lua) and rejoining a row that ends in
+  a `Segment.Soft` one with the next (what follows a `Soft` segment on the row is padding
+  or another column). `hostapi.WrapSegs` sets both, so a wrapped user prompt, reply or
+  code block copies as the text that was written, and `Host.Markdown` renders glamour
+  unwrapped (tables aside, they need the width) and wraps it itself for the same reason.
+  A click reads `Segment.Hit` (a Go-only 1-based item index
   that `listRows` puts on every row of an item, prompt choices included) to act on the
   topmost chrome, or `Segment.Click`/`Segment.Widget` (a widget's click id) to run that
   widget's `on_click` on the background worker (`Host.ClickWidget`, generation-checked).

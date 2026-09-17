@@ -8,10 +8,10 @@
 [38;2;59;66;97m [m │   [38;2;192;202;245mshort note[m                                                   │ [38;2;59;66;97m [m
 [38;2;59;66;97m [m │   [38;2;107;115;148mfact · everywhere · saved by you[m                             │ [38;2;59;66;97m [m
 [38;2;59;66;97m [m │                                                                │ [38;2;59;66;97m [m
-[38;2;59;66;97m [m │ [1;38;2;122;162;247m› [m[1mrun [m[1m**go [m[1mtest** [m[1m<!-- [m[1mhidden [m[1m--> [m[1mbefore [m[1m`make [m[1mgolden`; [m[1mword [m  │ [38;2;59;66;97m [m
-[38;2;59;66;97m [m │   [1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m │ [38;2;59;66;97m [m
-[38;2;59;66;97m [m │   [1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mword [m │ [38;2;59;66;97m [m
-[38;2;59;66;97m [m │   [1mword [m[1mword [m[1mword [m[1mword [m[1mword [m[1mtail-marker[m                         │ [38;2;59;66;97m [m
+[38;2;59;66;97m [m │ [1;38;2;122;162;247m› [m[1mrun **go test** <!-- hidden --> before `make golden`; word [m  │ [38;2;59;66;97m [m
+[38;2;59;66;97m [m │   [1mword word word word word word word word word word word word [m │ [38;2;59;66;97m [m
+[38;2;59;66;97m [m │   [1mword word word word word word word word word word word word [m │ [38;2;59;66;97m [m
+[38;2;59;66;97m [m │   [1mword word word word word tail-marker[m                         │ [38;2;59;66;97m [m
 [38;2;59;66;97m [m │   [38;2;107;115;148mgotcha · this project · learned · #db[m                        │ [38;2;59;66;97m [m
 [38;2;59;66;97m [m │                                                                │ [38;2;59;66;97m [m
 [38;2;59;66;97m [m │ [38;2;86;95;137m  13/13[m                                                        │ [38;2;59;66;97m [m

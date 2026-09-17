@@ -60,7 +60,7 @@ zemi.ui.widget.register({
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
         local lead = "  "
         if mark and has_text(segs) then lead, mark = "● ", false end
-        local row = { { text = lead, hl = "Normal" } }
+        local row = { { text = lead, hl = "Normal", copy = false } }
         for _, sg in ipairs(segs) do row[#row + 1] = sg end
         lines[#lines + 1] = row
       end
@@ -68,17 +68,21 @@ zemi.ui.widget.register({
     -- Reasoning is a quiet aside: "✻ Thought for 4.2s" once done, the text
     -- under a thin bar with ctrl+o. While the model thinks, its last lines
     -- show (tail), so the wait is not a blank screen.
+    -- A row that wraps onto the next ends in a space and is soft: a copy
+    -- joins it to the next row.
     ---@param text string
     ---@param room integer
-    ---@return string[]
+    ---@return string[] rows
+    ---@return table<integer, true> soft The rows that wrap onto the next.
     local function wrap_words(text, room)
-      ---@type string[]
-      local out = {}
+      ---@type string[], table<integer, true>
+      local out, soft = {}, {}
       for para in (text .. "\n"):gmatch("(.-)\n") do
         local cur = ""
         for word in para:gmatch("%S+") do
           if cur ~= "" and fmt.cells(cur) + 1 + fmt.cells(word) > room then
-            out[#out + 1] = cur
+            out[#out + 1] = cur .. " "
+            soft[#out] = true
             cur = word
           else
             cur = cur == "" and word or (cur .. " " .. word)
@@ -87,21 +91,21 @@ zemi.ui.widget.register({
         if cur ~= "" or (#out > 0 and out[#out] ~= "") then out[#out + 1] = cur end
       end
       while #out > 0 and out[#out] == "" do out[#out] = nil end
-      return out
+      return out, soft
     end
     ---@param label string
     ---@param hint string? The expand hint after the label.
     ---@param text string
     ---@param tail integer? Show only the last this many lines while collapsed.
     local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning" }, { text = label, hl = "AgentReason", click = "reasoning" } }
+      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning", copy = false }, { text = label, hl = "AgentReason", click = "reasoning" } }
       if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning" } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
-      local body = wrap_words(text, math.max(width - 6, 20))
+      local body, soft = wrap_words(text, math.max(width - 6, 20))
       local first = (ctx.show_reasoning or not tail) and 1 or math.max(1, #body - tail + 1)
       for n = first, #body do
-        lines[#lines + 1] = { { text = "  │ ", hl = "ThinkingBar" }, { text = body[n], hl = "AgentReason" } }
+        lines[#lines + 1] = { { text = "  │ ", hl = "ThinkingBar", copy = false }, { text = body[n], hl = "AgentReason", soft_wrap = soft[n] } }
       end
     end
 
@@ -165,7 +169,7 @@ zemi.ui.widget.register({
       end
       local summary = table.concat(parts, ", ")
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
-      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk" }, { text = fmt.clip(summary, width - 4), hl = "Normal" } }
+      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false }, { text = fmt.clip(summary, width - 4), hl = "Normal" } }
     end
     ---@param t zemi.defaultui.Tool
     local function add_tool(t)
@@ -183,7 +187,7 @@ zemi.ui.widget.register({
       ---@param room integer
       ---@return string
       local function fit(text, room) return ctx.show_reasoning and text or fmt.clip(text, room) end
-      local head = { { text = mark, hl = hl } }
+      local head = { { text = mark, hl = hl, copy = false } }
       if label ~= "" then
         head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
       else
@@ -201,7 +205,7 @@ zemi.ui.widget.register({
       -- under the row: the command a description stands for, then progress
       for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
         if sub ~= "" then
-          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = fit(sub, width - 6), hl = "Comment", click = click } }
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment", copy = false }, { text = fit(sub, width - 6), hl = "Comment", click = click } }
         end
       end
       -- File tools show what they changed as numbered, tinted rows.
@@ -210,7 +214,7 @@ zemi.ui.widget.register({
         local a, b = dl:match("^@@ %-(%d+),?%d* %+(%d+),?%d* @@")
         local kind = dl:sub(1, 1)
         if a then
-          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment" } } end
+          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment", copy = false } } end
           hunks = hunks + 1
           old = tonumber(a) --[[@as integer]]
           new = tonumber(b) --[[@as integer]]
@@ -231,14 +235,17 @@ zemi.ui.widget.register({
             local lead = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
             local room = math.max(width - fmt.cells(lead), 1)
             local blank_lead = string.rep(" ", fmt.cells(lead))
-            for j, part in ipairs(fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)) do
+            -- the number and +/- are decoration: a copy gives the code
+            local parts = fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)
+            for j, part in ipairs(parts) do
               lines[#lines + 1] = {
-                { text = j == 1 and lead or blank_lead, hl = style .. "Num" },
-                { text = part .. string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style },
+                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false },
+                { text = part, hl = style, soft_wrap = j < #parts },
+                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false },
               }
             end
           else
-            lines[#lines + 1] = { { text = "        " .. dl, hl = "Comment" } }
+            lines[#lines + 1] = { { text = "        ", copy = false }, { text = dl, hl = "Comment" } }
           end
         end
       end
@@ -249,7 +256,7 @@ zemi.ui.widget.register({
       if output ~= "" and (t.status == "err" or name == "question" or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
         for ol in (output .. "\n"):gmatch("(.-)\n") do
-          lines[#lines + 1] = { { text = "    " }, { text = ol, hl = ohl } }
+          lines[#lines + 1] = { { text = "    ", copy = false }, { text = ol, hl = ohl } }
         end
       end
     end
@@ -307,19 +314,19 @@ zemi.ui.widget.register({
         -- a !command: the command, then its output (long output folds)
         gap("user")
         local hl = m.status == "err" and "AgentToolErr" or "Title"
-        lines[#lines + 1] = { { text = "$ ", hl = hl }, { text = m.text, hl = "Normal" } }
+        lines[#lines + 1] = { { text = "$ ", hl = hl, copy = false }, { text = m.text, hl = "Normal" } }
         local n = 0
         for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
           n = n + 1
           if n > 12 then
-            lines[#lines + 1] = { { text = "  …", hl = "Comment" } }
+            lines[#lines + 1] = { { text = "  …", hl = "Comment", copy = false } }
             break
           end
-          lines[#lines + 1] = { { text = "  " .. ol, hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
         end
       elseif m.kind == "compact" then
         gap("activity")
-        lines[#lines + 1] = { { text = "✻ " .. m.text, hl = "AgentReason" } }
+        lines[#lines + 1] = { { text = "✻ ", hl = "AgentReason", copy = false }, { text = m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then
         -- Headline, then the raw error dimmed underneath.
         gap("activity")
@@ -328,7 +335,7 @@ zemi.ui.widget.register({
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
           local hl = (cancelled or not first) and "Comment" or "AgentToolErr"
           local mark = first and (cancelled and "■ " or "✗ ") or "  "
-          lines[#lines + 1] = { { text = mark, hl = hl }, { text = text, hl = hl } }
+          lines[#lines + 1] = { { text = mark, hl = hl, copy = false }, { text = text, hl = hl } }
           first = false
         end
       elseif m.role == "user" then
@@ -356,7 +363,7 @@ zemi.ui.widget.register({
         for _, chunk in ipairs(chunks) do
           local rendered = chunk:match("%S") and zemi.ui.markdown(chunk, width - 2) or { {} }
           for _, segs in ipairs(rendered) do
-            local row = { { text = "▌ ", hl = "UserMsg" } }
+            local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
             for _, sg in ipairs(segs) do row[#row + 1] = sg end
             lines[#lines + 1] = row
           end
@@ -371,7 +378,7 @@ zemi.ui.widget.register({
         if tout then parts[#parts + 1] = tout .. " out" end
         if #parts > 0 then
           gap("stats")
-          lines[#lines + 1] = { { text = "  " .. table.concat(parts, " · "), hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
         end
       end
       i = next_i
@@ -407,7 +414,7 @@ zemi.ui.widget.register({
         add_markdown(text, true)
       end
       for _, q in ipairs(queued) do
-        lines[#lines + 1] = { { text = "⧗ " .. q:gsub("%s+", " "), hl = "Comment" } }
+        lines[#lines + 1] = { { text = "⧗ ", hl = "Comment", copy = false }, { text = (q:gsub("%s+", " ")), hl = "Comment" } }
       end
     end
     -- The todo list stays under the conversation until every item is done.
@@ -419,7 +426,7 @@ zemi.ui.widget.register({
       blank()
       for n, td in ipairs(todos) do
         if n > 12 then
-          lines[#lines + 1] = { { text = "… " .. (#todos - 12) .. " more", hl = "Comment" } }
+          lines[#lines + 1] = { { text = "… ", hl = "Comment", copy = false }, { text = (#todos - 12) .. " more", hl = "Comment" } }
           break
         end
         local mark, hl, item = "☐ ", "Normal", td.content
@@ -429,7 +436,7 @@ zemi.ui.widget.register({
           mark, hl = "◼ ", "TodoActive"
           if (td.active_form or "") ~= "" then item = td.active_form end
         end
-        lines[#lines + 1] = { { text = mark, hl = hl }, { text = item, hl = hl } }
+        lines[#lines + 1] = { { text = mark, hl = hl, copy = false }, { text = item, hl = hl } }
       end
     end
     return #lines > 0 and lines or fmt.empty()

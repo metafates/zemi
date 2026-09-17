@@ -197,6 +197,8 @@ function debug.traceback(msg) end
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
 ---@field effect? "shimmer" A bright band sweeps across the text every frame, blending `hl` toward Normal (static with ui.animations off).
+---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
+---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
@@ -993,6 +995,9 @@ function zemi.ui.hl(group, spec) end
 function zemi.ui.hl_get(group) end
 
 --- Render markdown into widget rows of at most `width` cells.
+--- Decoration glamour draws (bullets, quote bars, code margins) comes back
+--- marked `copy = false`, and a row that wrapped ends in `soft_wrap`, so a
+--- selection copies the text the model wrote.
 ---@param text string
 ---@param width integer
 ---@return zemi.Line[]

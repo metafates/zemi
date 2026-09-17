@@ -11,7 +11,7 @@ end
 --- Separates statusline groups with a dot.
 ---@param segs zemi.Line
 local function dot(segs)
-  if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
+  if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment", copy = false } end
 end
 
 -- Statusline left starts with the permission mode as a pill (tab cycles

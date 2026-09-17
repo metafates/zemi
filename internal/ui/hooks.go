@@ -99,7 +99,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	}
 	var body []row
 	add := func(drop int, segs ...hostapi.Segment) {
-		for _, r := range wrapSegs(segs, width) {
+		for _, r := range hostapi.WrapSegs(segs, width) {
 			body = append(body, row{r, drop})
 		}
 	}

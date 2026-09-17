@@ -39,7 +39,7 @@ zemi.ui.widget.register({
     end
     local queued = #ag.steering - ag.reports
     if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end
-    local bullet = ctx.pulse and { text = "◦ ", hl = "Comment" } or { text = "• ", hl = "Title" }
+    local bullet = ctx.pulse and { text = "◦ ", hl = "Comment", copy = false } or { text = "• ", hl = "Title", copy = false }
     return {
       {
         bullet,

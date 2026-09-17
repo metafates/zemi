@@ -294,6 +294,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				if s.HL != "" {
 					seg.RawSetString("hl", glua.LString(s.HL))
 				}
+				if s.NoCopy {
+					seg.RawSetString("copy", glua.LFalse)
+				}
+				if s.Soft {
+					seg.RawSetString("soft_wrap", glua.LTrue)
+				}
 				row.Append(seg)
 			}
 			out.Append(row)

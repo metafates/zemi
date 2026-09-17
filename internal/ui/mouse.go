@@ -130,22 +130,49 @@ func (a *App) focusAt(x, y int) {
 	}
 }
 
-// selectionText is the plain text under the selection, one line per row.
+// selectionText is the plain text under the selection, one line per row:
+// decoration (NoCopy) is left out, and a row that soft-wraps joins the next.
 func (a *App) selectionText() string {
-	var lines []string
+	var b strings.Builder
+	joined := true // no newline before the first line
 	for y, row := range a.lastRows {
-		if from, to, ok := a.mouse.span(y, a.width); ok {
-			lines = append(lines, strings.TrimRight(win.StripPlaceholders(plainSegs(truncateSegs(dropCells(row, from), to-from))), " "))
+		from, to, ok := a.mouse.span(y, a.width)
+		if !ok {
+			continue
 		}
+		var line strings.Builder
+		soft := false
+		for _, s := range truncateSegs(dropCells(row, from), to-from) {
+			if !s.NoCopy {
+				line.WriteString(s.Text)
+			}
+			if soft = s.Soft; soft {
+				break // what follows on the row is padding or another column
+			}
+		}
+		text := win.StripPlaceholders(line.String())
+		if !soft {
+			text = strings.TrimRight(text, " ")
+		}
+		if !joined {
+			b.WriteByte('\n')
+		}
+		b.WriteString(text)
+		joined = soft
 	}
-	return strings.Trim(strings.Join(lines, "\n"), "\n")
+	return strings.TrimRight(strings.Trim(b.String(), "\n"), " ")
 }
 
-// highlightSelection restyles the selected cells of the composed rows.
+// highlightSelection restyles the selected cells of the composed rows,
+// decoration aside.
 func (a *App) highlightSelection(rows [][]hostapi.Segment, w int) {
 	for y := range rows {
 		if from, to, ok := a.mouse.span(y, w); ok {
-			rows[y] = restyle(rows[y], from, to, func(s *hostapi.Segment) { s.HL, s.Over = "Host:Selection", "" })
+			rows[y] = restyle(rows[y], from, to, func(s *hostapi.Segment) {
+				if !s.NoCopy {
+					s.HL, s.Over = "Host:Selection", ""
+				}
+			})
 		}
 	}
 }
