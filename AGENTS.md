@@ -435,7 +435,8 @@ reach bubbletea), and writes placeholder cells into the emulator right after the
 (`Window.write`). The cells are text, so moving, clipping, hiding and scrolling need nothing
 image-specific; `Screen()` maps a cell's fg to the window's own host id (another window's or
 an unknown id renders blank), and `Text`, scrollback, selection copy and screenshots read them
-as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id eviction queue `d=I`.
+as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id eviction queue `d=I`
+(eviction takes the sending window's own oldest image first, so one window's churn cannot blank another's).
 
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 

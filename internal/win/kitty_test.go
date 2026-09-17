@@ -148,8 +148,8 @@ func TestKittyGraphics(t *testing.T) {
 	}
 }
 
-// TestImageIDsEvictOldest: past the 240 host ids the oldest image is
-// deleted before its id is reused, resent or not, and a closed window
+// TestImageIDsEvictOldest: past the 240 host ids the window's oldest image
+// is deleted before its id is reused, resent or not, and a closed window
 // queues nothing.
 func TestImageIDsEvictOldest(t *testing.T) {
 	m := &Manager{}
@@ -165,6 +165,14 @@ func TestImageIDsEvictOldest(t *testing.T) {
 	m.transmit(w, 999, map[string]string{}, []byte("x"))
 	if m.hostID(1, 100) == 0 || m.hostID(1, 2) != 0 || m.hostID(1, 101) == 0 {
 		t.Fatal("a resent image moved eviction off the oldest")
+	}
+	// another window's churn evicts its own images, not this one's
+	other := &Window{m: m, ID: 2}
+	for range 300 {
+		m.transmit(other, 0, map[string]string{}, []byte("x"))
+	}
+	if m.hostID(1, 100) == 0 {
+		t.Fatal("one window's images evicted another's")
 	}
 	m.dropImages(w)
 	m.TakeGraphics()

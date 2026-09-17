@@ -123,7 +123,7 @@ type Manager struct {
 	gmu   sync.Mutex
 	gfx   strings.Builder
 	slots [256]imgSlot // by host image id
-	next  int
+	next  int          // the seq of the newest id taken
 }
 
 // hostTermEnv names the host terminal's identity. A window is its own

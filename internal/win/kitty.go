@@ -10,6 +10,7 @@ package win
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/base64"
 	"fmt"
 	"image/color"
@@ -40,6 +41,7 @@ type imgSlot struct {
 	win    int    // 0 = free
 	key    uint32 // the program's i=, or 1<<23|host id when it gave none
 	pw, ph int    // pixel size, for a placement without c and r
+	seq    int    // when the id was last taken, kept while free: eviction order
 }
 
 // upload is a chunked transmission in progress.
@@ -250,8 +252,10 @@ func (w *Window) placeholderCell(text string, st uv.Style) (string, uv.Style) {
 
 // transmit gives the window's image a host id and queues it; 0 when the
 // window is closed or the queue is full. A key the window already used keeps
-// its id, which the host replaces; otherwise the next free id is taken, the
-// oldest one evicted when none is.
+// its id and its age, and the host replaces the image; otherwise the id free
+// longest is taken, and when none is, the window's own oldest image is
+// evicted, another window's only when it holds none, so a program that
+// churns images cannot blank another window's.
 func (m *Manager) transmit(w *Window, key uint32, k map[string]string, data []byte) (int, uint32) {
 	m.gmu.Lock()
 	defer m.gmu.Unlock()
@@ -264,18 +268,25 @@ func (m *Manager) transmit(w *Window, key uint32, k map[string]string, data []by
 			h = i
 		}
 	}
-	reused, ring := h != 0, len(m.slots)-firstImageID
-	for i := 0; i < ring && h == 0; i++ {
-		if c := firstImageID + (m.next+i)%ring; m.slots[c].win == 0 {
-			h = c
-		}
-	}
+	seq := m.slots[h].seq
 	if h == 0 {
-		h = firstImageID + m.next
-		m.deleteSlot(h)
-	}
-	if !reused { // a resent image is not a new one: eviction stays oldest-first
-		m.next = (h - firstImageID + 1) % ring
+		var free, own, other int
+		for i := firstImageID; i < len(m.slots); i++ {
+			s, pick := m.slots[i], &other
+			if s.win == 0 {
+				pick = &free
+			} else if s.win == w.ID {
+				pick = &own
+			}
+			if *pick == 0 || s.seq < m.slots[*pick].seq {
+				*pick = i
+			}
+		}
+		if h = cmp.Or(free, own, other); m.slots[h].win != 0 {
+			m.deleteSlot(h)
+		}
+		m.next++
+		seq = m.next
 	}
 	if key == 0 {
 		key = 1<<23 | uint32(h)
@@ -289,7 +300,7 @@ func (m *Manager) transmit(w *Window, key uint32, k map[string]string, data []by
 	if k["o"] == "z" {
 		opts = append(opts, "o=z")
 	}
-	slot := imgSlot{win: w.ID, key: key, pw: atoi(k["s"]), ph: atoi(k["v"])}
+	slot := imgSlot{win: w.ID, key: key, seq: seq, pw: atoi(k["s"]), ph: atoi(k["v"])}
 	if k["f"] == "100" && k["o"] == "" {
 		if cfg, err := png.DecodeConfig(bytes.NewReader(data)); err == nil {
 			slot.pw, slot.ph = cfg.Width, cfg.Height
@@ -339,7 +350,7 @@ func (m *Manager) dropImages(w *Window) {
 // deleteSlot queues the delete of a host image and frees its id; gmu held.
 func (m *Manager) deleteSlot(h int) {
 	fmt.Fprintf(&m.gfx, "\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", h)
-	m.slots[h] = imgSlot{}
+	m.slots[h] = imgSlot{seq: m.slots[h].seq}
 }
 
 func (m *Manager) hostID(win int, key uint32) int {
