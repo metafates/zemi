@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -112,6 +113,12 @@ type Manager struct {
 	OnExit func(w *Window) // runs on the wait goroutine after the program exits
 }
 
+// hostTermEnv names the host terminal's identity. A window is its own
+// terminal: with the host's identity image tools emit protocols the emulator
+// drops (chafa: kitty, sixel, OSC 1337, tmux passthrough) and show nothing.
+// NOTE: a prefix list; a terminal detected by a variable not listed slips through.
+var hostTermEnv = []string{"TERM_PROGRAM", "LC_TERMINAL", "GHOSTTY_", "KITTY_", "WEZTERM_", "KONSOLE_", "ITERM_", "VTE_VERSION", "TERMINAL_NAME", "TMUX"}
+
 const (
 	defaultCols = 80
 	defaultRows = 24
@@ -180,7 +187,10 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	})
 	cmd := exec.Command("sh", "-c", spec.Cmd)
 	cmd.Dir = spec.Dir
-	cmd.Env = append(append([]string{}, spec.Env...), "TERM=xterm-256color", "COLORTERM=truecolor")
+	env := slices.DeleteFunc(slices.Clone(spec.Env), func(kv string) bool {
+		return slices.ContainsFunc(hostTermEnv, func(p string) bool { return strings.HasPrefix(kv, p) })
+	})
+	cmd.Env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
 	if spec.Wrap != nil {
 		if err := spec.Wrap(cmd); err != nil {
 			return nil, fmt.Errorf("window: the sandbox failed, so the command did not run: %w", err)

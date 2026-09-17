@@ -83,7 +83,28 @@ func TestWindowKillsOnClose(t *testing.T) {
 	}
 }
 
-// TestRepliesAfterExit: emulator replies written after the program is gone
+func TestWindowEnvHasNoHostTerminal(t *testing.T) {
+	m := &Manager{}
+	env := []string{"TERM_PROGRAM=ghostty", "GHOSTTY_BIN_DIR=/x", "TMUX=/t,1,0", "TMUX_PANE=%1", "LC_TERMINAL=iTerm2", "HOME=/h", "PATH=" + os.Getenv("PATH")}
+	w, err := m.Open(Spec{Cmd: "env; echo END", Env: env, Cols: 60, Rows: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(w.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	text, ok := w.WaitText(ctx, "END")
+	if !ok || !strings.Contains(text, "HOME=/h") {
+		t.Fatalf("env never printed:\n%s", text)
+	}
+	for _, bad := range []string{"TERM_PROGRAM", "GHOSTTY", "TMUX", "LC_TERMINAL"} {
+		if strings.Contains(text, bad) {
+			t.Fatalf("%s leaked into the window:\n%s", bad, text)
+		}
+	}
+}
+
+// TestRepliesAfterExit:emulator replies written after the program is gone
 // (a late cursor report, say) must not block, or mu stays held for good.
 func TestRepliesAfterExit(t *testing.T) {
 	m := &Manager{}
