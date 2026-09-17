@@ -750,7 +750,7 @@ function zemi.event.stats() end
 ---@field title? string
 ---@field body? string text above the items; with no items a read-only view
 ---@field empty? string the line shown when there are no items
----@field items? (zemi.OverlayItem|any)[]
+---@field items? zemi.OverlayItem[]|any[]
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
@@ -1457,6 +1457,10 @@ function zemi.session.rewind(message_id) end
 ---@field text string
 ---@field cursor integer 0-based character offset.
 
+---@class zemi.CompletionItem
+---@field text string
+---@field desc? string
+
 --- A completion source: `trigger` completes the word after that character
 --- where it starts a word ("#12"; "@" rows go ahead of the file list), or
 --- `command` completes that slash command's arguments after its own
@@ -1465,7 +1469,7 @@ function zemi.session.rewind(message_id) end
 ---@field id string Registering the id again from the same origin replaces it.
 ---@field trigger? string One punctuation character other than "/".
 ---@field command? string A command name.
----@field items fun(lead: string, line: string): (string|{ text: string, desc?: string })[] `lead` is the typed word after the trigger (or the argument under the cursor), `line` the draft up to the cursor. Runs off the key path, on every edit of the word; filter by `lead` yourself. At most 50 items across a popup's sources.
+---@field items fun(lead: string, line: string): string[]|zemi.CompletionItem[] `lead` is the typed word after the trigger (or the argument under the cursor), `line` the draft up to the cursor. Runs off the key path, on every edit of the word; filter by `lead` yourself. At most 50 items across a popup's sources.
 
 ---@class zemi.composer
 zemi.composer = {}
