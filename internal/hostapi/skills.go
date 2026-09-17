@@ -388,7 +388,7 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 func (h *Host) openSkills() {
 	if ui := h.hooks(); ui != nil {
 		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems,
-			Empty: "No skills found. Add one as skills/<name>/SKILL.md in " + tildePath(h.Dirs.ConfigHome) + "."})
+			Empty: "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
 	}
 }
 
@@ -406,7 +406,7 @@ func (h *Host) skillItems() []any {
 			"text":    s.Name,
 			"key":     key,
 			"desc":    string(s.Source) + " · " + s.Description,
-			"detail":  fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, tildePath(filepath.Join(s.Dir, "SKILL.md"))),
+			"detail":  fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md"))),
 			"actions": actions,
 			"run":     toggle,
 		})

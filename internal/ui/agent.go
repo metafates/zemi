@@ -316,6 +316,17 @@ func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segmen
 	return rows
 }
 
+// alignKeys moves the key column of listRows rows out to width cells, the
+// right edge of the box they go in.
+func alignKeys(rows [][]hostapi.Segment, width int) [][]hostapi.Segment {
+	for _, r := range rows {
+		if n := len(r); n > 1 && segsWidth(r) < width {
+			r[n-2].Text += strings.Repeat(" ", width-segsWidth(r))
+		}
+	}
+	return rows
+}
+
 // workingRow is the activity line above the composer while a turn runs:
 // a pulsing bullet, a shimmering label naming what the agent is doing,
 // elapsed time, the interrupt key and the queue depth. It stays hidden for
@@ -482,12 +493,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	// the key column sits at the box's right edge
-	for _, r := range list {
-		if n := len(r); n > 1 && segsWidth(r) < fit {
-			r[n-2].Text += strings.Repeat(" ", fit-segsWidth(r))
-		}
-	}
+	list = alignKeys(list, fit)
 	body := head
 	if len(content) > 0 {
 		body = append(append(body, blank), content...)

@@ -683,7 +683,7 @@ func (h *Host) openAgents() error {
 			"desc":    d.Source + " · " + d.Description,
 			"section": "Available",
 			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .zemi.",
-				d.Description, d.Source, model, tools, tildePath(h.Dirs.ConfigHome)),
+				d.Description, d.Source, model, tools, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items})

@@ -307,7 +307,8 @@ The same `agents/`, `commands/` and `workflows/` directories work under
 `~/.config/zemi/` for every project.
 
 It loads only in a project the user trusts. The first start in a repository asks once
-(`y` trust, `n` don't trust, both saved; esc or enter: not now, asked again next start),
+(`y` trust, `n` don't trust, both saved, or a click on the row; esc, enter or ctrl+c: not now,
+asked again next start),
 and `/trust` asks again any time. The decision covers the whole repository, its linked
 worktrees included, and later changes to `.zemi/` do not ask again. Project code
 cannot register providers, MCP or LSP servers, allow or permanent rules, permission modes,

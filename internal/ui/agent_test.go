@@ -416,23 +416,36 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	}
 }
 
-// TestTrustAnswers: enter is the safe not now; trusting takes an explicit y.
+// TestTrustAnswers: enter and ctrl+c are the safe not now; trusting takes
+// an explicit y or a click on its row.
 func TestTrustAnswers(t *testing.T) {
+	click := func(label string) func(*App) {
+		return func(app *App) {
+			app.renderSync(t)
+			x, y := findCell(t, app, label)
+			clickAt(app, x+1, y)
+		}
+	}
+	key := func(k tea.KeyPressMsg) func(*App) { return func(app *App) { app.Update(k) } }
 	for _, c := range []struct {
-		key        tea.KeyPressMsg
-		want, name string
+		name, want string
+		do         func(*App)
 	}{
-		{tea.KeyPressMsg{Code: 'y', Text: "y"}, "trust", "y"},
-		{tea.KeyPressMsg{Code: 'n', Text: "n"}, "untrust", "n"},
-		{tea.KeyPressMsg{Code: tea.KeyEscape}, "later", "esc"},
-		{tea.KeyPressMsg{Code: tea.KeyEnter}, "later", "enter"},
-		{tea.KeyPressMsg{Code: 'd', Text: "d"}, "", "d"},
+		{"y", "trust", key(tea.KeyPressMsg{Code: 'y', Text: "y"})},
+		{"n", "untrust", key(tea.KeyPressMsg{Code: 'n', Text: "n"})},
+		{"esc", "later", key(tea.KeyPressMsg{Code: tea.KeyEscape})},
+		{"enter", "later", key(tea.KeyPressMsg{Code: tea.KeyEnter})},
+		{"ctrl+c", "later", key(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})},
+		{"d", "", key(tea.KeyPressMsg{Code: 'd', Text: "d"})},
+		{"click on Trust", "trust", click("Trust  ")},
+		{"click on Don't trust", "untrust", click("Don't trust")},
+		{"click on the path", "", click("/proj")},
 	} {
-		app, _ := bootAgentApp(t, 80, 20)
+		app, _ := bootAgentApp(t, 80, 24)
 		done := make(chan string, 1)
 		go func() { done <- app.AskTrust("/proj", "/proj", "") }()
 		waitPrompt(t, app, func() bool { return app.trust != nil })
-		app.Update(c.key)
+		c.do(app)
 		if c.want == "" {
 			if app.trust == nil || len(done) != 0 {
 				t.Errorf("%s answered the prompt", c.name)
@@ -442,6 +455,24 @@ func TestTrustAnswers(t *testing.T) {
 		if got := <-done; got != c.want {
 			t.Errorf("%s answered %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestGoldenTrustPrompt pins the trust prompt at boot, started below the
+// repository root, and as /trust shows it with the current decision.
+func TestGoldenTrustPrompt(t *testing.T) {
+	for _, c := range []struct{ name, cwd, state string }{
+		{"boot", "/code/acme/services/api", ""},
+		{"command", "/code/acme", "trusted"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 24)
+			go app.AskTrust("/code/acme", c.cwd, c.state)
+			waitPrompt(t, app, func() bool { return app.trust != nil })
+			app.renderSync(t)
+			golden.RequireEqual(t, app.Frame())
+			app.answerTrust("later")
+		})
 	}
 }
 

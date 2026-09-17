@@ -323,6 +323,12 @@ func TestOverlayNavigation(t *testing.T) {
 				a.closeOverlayByID("p")
 				return map[bool]string{false: "detail left"}[len(a.overlays) == 0]
 			}},
+		{"ctrl+c on a detail view closes the whole menu",
+			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
+			func(a *App) string {
+				a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.quitArmed.IsZero()]
+			}},
 		{"a read-only body scrolls by line",
 			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down", "pgdown"},
 			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].scroll == 11] }},

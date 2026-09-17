@@ -90,7 +90,7 @@ so a dotfiles repo is nobody's root; a linked worktree maps to its main
 checkout by reading the `.git` file, the `gitdir` back-pointer and `commondir`, never by
 running git) and saved in `<state>/trust.json` as `trusted`/`untrusted`. Order: a decision
 held for this process (`--trust`, an esc answer, `/trust` when saving is impossible), the
-saved one, then the Go-owned prompt (`App.AskTrust`: `y` trust, `n` don't, esc/enter not
+saved one, then the Go-owned prompt (`App.AskTrust`: `y` trust, `n` don't, or a click on the row; esc/enter/ctrl+c not
 now). `$HOME` and `/` are never asked about or saved (`hostapi.TrustUnsaved`; `/trust` there
 says the answer applies to this run only). `/trust` reopens the prompt off the UI goroutine,
 releases a trust hold (`Host.ReleaseTrust`, see "Sandbox"), saves, sets `Host.SetProjectTrusted` and then reloads when the decision changed (a reload that

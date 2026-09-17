@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -83,31 +84,58 @@ func (a *App) answerTrust(answer string) {
 	a.frameGen++
 }
 
-// trustBox draws the Go-owned trust prompt (DESIGN §5, §8): title and
-// answer keys use fixed host styles via the "Host:*" highlight names, so no
-// theme group can forge or restyle them, and no Lua text is rendered inside.
+// trustAnswers are the trust prompt's rows, in order: a click on row i or
+// its key gives answer i.
+var trustAnswers = []string{"trust", "untrust", "later"}
+
+// trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
+// styles, with no Lua text inside. It has no cursor: trusting runs project
+// code, so it takes y or a click on its row.
 func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
+	width := min(boxInner(w), 64)
 	var body [][]hostapi.Segment
-	text := func(s string) {
-		body = append(body, wrapSegs([]hostapi.Segment{{Text: s}}, boxInner(w))...)
+	text := func(s, hl string) {
+		body = append(body, wrapSegs([]hostapi.Segment{{Text: s, HL: hl}}, width)...)
 	}
-	text(tp.root)
-	if tp.cwd != "" && tp.cwd != tp.root {
-		text("(started in " + tp.cwd + "; trust covers the whole repository)")
+	text(hostapi.TildePath(tp.root), "Host:Bold")
+	if rel, err := filepath.Rel(tp.root, tp.cwd); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		text("Covers the whole repository, not only "+rel+".", "Host:Hint")
 	}
+	saved := "saved for this repository"
 	if hostapi.TrustUnsaved(tp.root) {
-		text("(home directory: applies to this run only)")
+		text("Trust for your home directory or / lasts this run only.", "Host:Hint")
+		saved = "this run only"
 	}
-	text("")
-	text("Trusted: zemi loads .zemi config, AGENTS.md/CLAUDE.md and language servers, and auto mode edits files and runs build and test commands without asking. Those can run any code in this repository.")
-	text("Not trusted: none of that loads; only commands that just read run without asking.")
-	text("")
-	body = append(body, hintLine("y", "trust", "n", "don't trust", "esc", "not now"))
-	badge := ""
 	if tp.state != "" {
-		badge = " now " + tp.state + " "
+		text("Currently "+tp.state+".", "Host:Hint")
 	}
-	return hostBox(" Trust this project? ", "Host:Title", badge, body, w)
+	text("", "")
+	text("Trusting lets this repository run code and steer zemi:", "")
+	for _, s := range []string{
+		".zemi config: init.lua, agents, commands and workflows",
+		"AGENTS.md and CLAUDE.md instructions",
+		"language servers, which can build the project",
+		"auto mode edits, builds and tests without asking",
+	} {
+		text("  "+s, "Host:Value")
+	}
+	text("", "")
+	text("Without trust, zemi asks before anything but reads.", "Host:Hint")
+	text("", "")
+	later, laterDesc := "Not now", "ask again next start"
+	if tp.state != "" {
+		later, laterDesc = "Keep as is", ""
+	}
+	list := listRows([]listItem{
+		{label: "Trust", desc: saved, key: "y"},
+		{label: "Don't trust", desc: saved, key: "n"},
+		{label: later, desc: laterDesc, key: "esc"},
+	}, -1, nil, 3)
+	for _, r := range body {
+		width = max(width, segsWidth(r))
+	}
+	body = append(body, alignKeys(list, width)...)
+	return hostBox(" Trust this project? ", "Host:Title", "", body, w)
 }
 
 // ---------------------------------------------------------------------------

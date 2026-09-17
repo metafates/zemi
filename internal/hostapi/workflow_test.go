@@ -190,7 +190,7 @@ func TestAgentsOverlayConfigDir(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	h.Dirs.ConfigHome = t.TempDir()
-	if err := h.openAgents(); err != nil || len(ui.opened) != 1 || !strings.Contains(fmt.Sprint(ui.opened[0].Items), tildePath(h.Dirs.ConfigHome)) {
+	if err := h.openAgents(); err != nil || len(ui.opened) != 1 || !strings.Contains(fmt.Sprint(ui.opened[0].Items), TildePath(h.Dirs.ConfigHome)) {
 		t.Fatalf("agents overlay = %v %+v", err, ui.opened)
 	}
 }

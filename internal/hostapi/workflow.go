@@ -731,7 +731,7 @@ func (h *Host) openWorkflows() error {
 		items = append(items, map[string]any{
 			"text":   w.Name,
 			"desc":   desc,
-			"detail": strings.TrimLeft(w.Description+"\n\npath: "+tildePath(w.Path), "\n"),
+			"detail": strings.TrimLeft(w.Description+"\n\npath: "+TildePath(w.Path), "\n"),
 			"actions": []any{
 				map[string]any{"text": "Run", "run": "workflow " + w.Name},
 				map[string]any{"text": "Run with arguments", "fill": "/workflow " + w.Name + " "},
@@ -739,7 +739,7 @@ func (h *Host) openWorkflows() error {
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
-		Empty: "No saved workflows. Add workflows/<name>.lua to " + tildePath(h.Dirs.ConfigHome) + " or .zemi."})
+		Empty: "No saved workflows. Add workflows/<name>.lua to " + TildePath(h.Dirs.ConfigHome) + " or .zemi."})
 	return nil
 }
 

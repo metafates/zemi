@@ -211,7 +211,7 @@ func (h *Host) healthChecks() []healthCheck {
 	}
 
 	if h.ProjectTrusted() {
-		add("ok", "trust", "trusted: "+tildePath(h.Dirs.TrustRoot()))
+		add("ok", "trust", "trusted: "+TildePath(h.Dirs.TrustRoot()))
 	} else {
 		add("warn", "trust", "not trusted: project config, instructions and language servers are off; /trust")
 	}

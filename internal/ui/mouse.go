@@ -228,7 +228,14 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		c := choices[hit-1]
 		return spans, func() { a.choosePerm(c) }, true
-	case top == "trust", top == "question":
+	case top == "trust":
+		spans, ok := item(len(trustAnswers))
+		if !ok || (a.program != nil && a.now().Sub(a.trust.opened) < permGrace) {
+			return nil, nil, false
+		}
+		answer := trustAnswers[hit-1]
+		return spans, func() { a.answerTrust(answer) }, true
+	case top == "question":
 		return nil, nil, false
 	case top == "memReview":
 		mr := a.memReview

@@ -54,6 +54,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.finishQuestion(false)
 		case top == "modelPick":
 			a.answerPick("", false)
+		case top == "trust":
+			a.answerTrust("later")
+		case top == "overlay":
+			// the whole menu closes, not only a detail view on top of it
+			i := len(a.overlays) - 1
+			for i > 0 && a.overlays[i].back {
+				i--
+			}
+			a.cancelOverlay(a.overlays[i].o)
 		case a.host.AgentActive() && a.cancelling:
 			// the turn did not stop: leave anyway, children die on exit
 			a.forceQuit()
