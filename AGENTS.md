@@ -463,7 +463,9 @@ included, until `ui.window.unfocus`, and hears the host terminal's focus in and 
 `winDrag` (move a float; resize a float, kept on screen and at least `minFloatW` by `minFloatH`, a vsplit
 or a split; `edgeShape` sets the OSC 22 resize pointer over a float's border), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
-for the mouse), and a paste goes to the program with bracketing when it asked, as does
+for the mouse). A left drag over an **unfocused** window's cells is zemi's own selection instead, so the
+user can copy what a window printed; the press reaches the program only when the release
+comes without a drag, which also focuses it. A paste goes to the program with bracketing when it asked, as does
 `SendText` of several lines (the trailing newline outside the brackets, so it still
 submits, but an editor's auto-indent never sees the lines one by one). The model's
 `window` tool gates `open` as `tool.bash` (same rules and modes as bash, and a mode-settled

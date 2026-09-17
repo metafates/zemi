@@ -400,6 +400,24 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 			return false
 		}
 		local := uv.Mouse{X: m.X - r.x, Y: m.Y - r.y, Button: m.Button, Mod: m.Mod}
+		// An unfocused window's cells are zemi's to select: a left drag over
+		// them copies its text like anywhere else, and only a press that ends
+		// without one focuses the window and reaches the program.
+		if a.focusWin != r.id && m.Button == tea.MouseLeft {
+			switch msg.(type) {
+			case tea.MouseClickMsg, tea.MouseMotionMsg:
+				return false
+			case tea.MouseReleaseMsg:
+				if a.mouse.dragged {
+					return false
+				}
+				a.mouse = mouseSel{}
+				a.setFocusWin(r.id)
+				wn.SendMouse(uv.MouseClickEvent(local))
+				wn.SendMouse(uv.MouseReleaseEvent(local))
+				return true
+			}
+		}
 		switch msg.(type) {
 		case tea.MouseClickMsg:
 			a.setFocusWin(r.id)

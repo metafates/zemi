@@ -121,13 +121,51 @@ func TestWindowClickHitsTopmost(t *testing.T) {
 	if x >= split.x+split.w || y < float.y || y >= float.y+float.h {
 		t.Fatalf("float %+v does not cover split %+v", float, split)
 	}
-	a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	clickAt(a, x, y)
 	if a.focusWin != ids[1] {
 		t.Fatalf("click focused window %d, want the float %d", a.focusWin, ids[1])
 	}
 	// the float's title sits in its top border, right above its cells
 	if top := plainSegs(a.lastRows[float.titleY]); float.titleY != float.y-1 || !strings.Contains(top, "╭─ 2 sleep 5 ─") || !strings.Contains(top, "× ─╮") {
 		t.Fatalf("float top border %q at %d, cells at %d", top, float.titleY, float.y)
+	}
+}
+
+// TestWindowDragCopies: a drag over an unfocused window copies its text
+// like anywhere else instead of focusing it; a click without a drag focuses.
+func TestWindowDragCopies(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	a.CaptureHooks()
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.Open(win.Spec{Cmd: "printf 'hello window'; sleep 5", Kind: win.KindFloat, Cols: 20, Rows: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	for !strings.Contains(fmt.Sprint(wn.Screen().Rows[0]), "hello window") {
+		if ctx.Err() != nil {
+			t.Fatal("the window never printed")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	a.Frame()
+	var r winRect
+	for _, rr := range a.winRects {
+		if rr.id == wn.ID {
+			r = rr
+		}
+	}
+	a.Update(tea.MouseClickMsg{X: r.x, Y: r.y, Button: tea.MouseLeft})
+	a.Update(tea.MouseMotionMsg{X: r.x + 4, Y: r.y, Button: tea.MouseLeft})
+	a.Update(tea.MouseReleaseMsg{X: r.x + 4, Y: r.y, Button: tea.MouseLeft})
+	if a.focusWin != 0 || a.selectionText() != "hello" {
+		t.Fatalf("drag: focus=%d selection=%q", a.focusWin, a.selectionText())
+	}
+	clickAt(a, r.x, r.y)
+	if a.focusWin != wn.ID {
+		t.Fatalf("a click without a drag must focus the window: focus=%d", a.focusWin)
 	}
 }
 

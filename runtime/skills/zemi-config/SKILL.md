@@ -282,7 +282,8 @@ keys in neovim notation (`ihello<esc>:wq<cr>`, `<c-x>`, `<s-tab>`), click or scr
 windows the model opened: the user's, Lua's and the editor's are not its to read or close.
 Subagents have the tool too; their windows open hidden until shown. The user drags a float by its title, resizes it by
 its border or a corner, a vsplit by its separator and a split by its title. The user clicks a window to type into it and presses
-`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it. Use it to show a TUI
+`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it, and a drag over a
+window nobody is typing in copies its text. Use it to show a TUI
 you built, a log, a REPL, then read it back to see what the user sees.
 `text` opens a panel that shows text instead of a program (`markdown` renders it like the chat),
 and `set_text` rewrites it in place while the work runs: benchmark or test numbers refreshed as
