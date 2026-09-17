@@ -45,7 +45,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// keys (tab accepts even though tab is bound). The composer is Go-drawn,
 	// so typing must not bump the frame generation: that would re-render
 	// every Lua widget on every keystroke.
-	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.open || !a.keySequence(key, "")) {
+	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.shown() || !a.keySequence(key, "")) {
 		return a.composerKey(key, msg)
 	}
 	a.frameGen++
@@ -193,9 +193,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// enter falls through: it submits the "/name args" line
 	}
 
-	if a.completion.open {
+	if a.completion.shown() {
 		if popupMove != 0 {
-			moveSel(&a.completion.selected, len(a.completion.matches), key)
+			moveSel(&a.completion.selected, a.completion.count(), key)
 			return nil
 		}
 		switch key {

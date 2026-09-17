@@ -223,6 +223,8 @@ type Host struct {
 
 	// healthReg holds the /health checks Lua registered.
 	healthReg healthReg
+	// completions holds the zemi.composer.complete sources
+	completions completeReg
 
 	hostActions map[string]func(h *Host, args string) error
 
@@ -1225,7 +1227,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.31.0"))
+	api.RawSetString("version", glua.LString("0.32.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1342,6 +1344,7 @@ func (h *Host) PurgeGeneration() {
 	h.Themes.Purge()
 	h.purgeWatches()
 	h.healthReg.purge()
+	h.completions.purge()
 	h.luaTools.purge(h.currentGen())
 	h.stops.purge()
 	h.mcp.stopAll()

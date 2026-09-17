@@ -67,15 +67,22 @@ func (a *App) updatePalette() {
 		a.palette.open = len(args) > 0
 		a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
 	}
-	if c := a.host.Commands.Lookup(name); c == nil || c.Complete == nil || c.GoComplete != nil {
+	lua := a.host.HasCompletions("", name)
+	if c := a.host.Commands.Lookup(name); !lua && (c == nil || c.Complete == nil || c.GoComplete != nil) {
 		show(a.host.CompleteCommand(context.Background(), name, typed, line))
 		return
 	}
-	// A Lua completer runs on the worker, since the key loop never waits on
-	// Lua; its answer is dropped once the line before the cursor moved on.
+	// A Lua completer or source runs on the worker, since the key loop never
+	// waits on Lua; its answer is dropped once the line before the cursor
+	// moved on.
 	a.palette.close()
 	a.background(func() {
 		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
+		if lua {
+			for _, it := range a.host.Complete(context.Background(), "", name, typed, line) {
+				cands = append(cands, it.Text)
+			}
+		}
 		a.do(func() {
 			if string(a.composer.runes()[:a.composer.cursor]) == line {
 				show(cands)

@@ -1063,8 +1063,24 @@ function zemi.session.rewind(message_id) end
 ---@field text string
 ---@field cursor integer 0-based character offset.
 
+--- A completion source: `trigger` completes the word after that character
+--- where it starts a word ("#12"; "@" rows go ahead of the file list), or
+--- `command` completes that slash command's arguments after its own
+--- candidates. Set one of the two.
+---@class zemi.CompletionSpec
+---@field id string Registering the id again from the same origin replaces it.
+---@field trigger? string One punctuation character other than "/".
+---@field command? string A command name.
+---@field items fun(lead: string, line: string): (string|{ text: string, desc?: string })[] `lead` is the typed word after the trigger (or the argument under the cursor), `line` the draft up to the cursor. Runs off the key path, on every edit of the word; filter by `lead` yourself. At most 50 items across a popup's sources.
+
 ---@class zemi.composer
 zemi.composer = {}
+
+--- Register a completion source. Accepting a row puts its text after the
+--- trigger, or in place of the argument, followed by a space. Raises on a
+--- bad spec or an id a more trusted origin registered.
+---@param spec zemi.CompletionSpec
+function zemi.composer.complete(spec) end
 
 ---@return zemi.ComposerState
 function zemi.composer.get() end

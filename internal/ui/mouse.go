@@ -290,9 +290,9 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			open = func() { a.overlayKey("enter", "") }
 		}
 		return list(len(st.visible), &st.selected, open)
-	case y >= a.popRect.Min.Y && y < a.popRect.Max.Y && a.completion.open && len(a.completion.matches) > 0:
+	case y >= a.popRect.Min.Y && y < a.popRect.Max.Y && a.completion.open && a.completion.count() > 0:
 		f := &a.completion
-		spans, ok := item(len(f.matches))
+		spans, ok := item(f.count())
 		return spans, func() { f.selected = hit - 1; a.acceptCompletion() }, ok
 	case y >= a.popRect.Min.Y && y < a.popRect.Max.Y && a.palette.open:
 		p := &a.palette

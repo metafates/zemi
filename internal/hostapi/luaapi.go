@@ -95,6 +95,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("insert", edit("insert", func(L *glua.LState) (string, int) {
 		return L.CheckString(1), 0
 	}))
+	tb.RawSetString("complete", L.NewFunction(h.addCompletion))
 	for _, op := range []string{"submit", "history_prev", "history_next", "paste", "edit"} {
 		tb.RawSetString(op, edit(op, func(L *glua.LState) (string, int) { return "", 0 }))
 	}

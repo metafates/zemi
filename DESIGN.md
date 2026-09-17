@@ -936,6 +936,14 @@ UI extensibility contract:
   model; an unknown name toasts and does not send; `esc` closes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
+- Completion sources: `zemi.composer.complete({ id, trigger | command,
+  items })` adds rows to the popup after a punctuation character that
+  starts a word (a `#` issue list; `@` rows go ahead of the files) or to a
+  command's argument candidates. `items(lead, line)` runs on the UI worker
+  after each edit, like a Lua command completer, and its answer is dropped
+  when the draft moved on, so the key loop never waits on it; Go sanitizes
+  the rows and caps them at 50. A trigger popup with nothing to offer is
+  not drawn and takes no keys, so prose with a `#` in it still submits.
 
 ### 6.7 Learning, session, skills
 

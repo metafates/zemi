@@ -2,6 +2,7 @@ package ui
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 
@@ -10,15 +11,17 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// fileCompleter is the composer popup listing project files after the
-// "@" that starts a word. The file list is scanned off the UI
-// goroutine and fuzzy-ranked client-side.
+// fileCompleter is the composer popup after a trigger that starts a word:
+// "@" lists project files, scanned off the UI goroutine and fuzzy-ranked
+// here, and any trigger lists what its Lua sources offer (extra, first).
 type fileCompleter struct {
 	open     bool
+	trigger  rune
 	start    int      // rune index of the trigger char in the composer
 	token    string   // query between the trigger and the cursor
 	files    []string // paths relative to the session cwd
 	matches  []string
+	extra    []listItem // the Lua sources' items, ahead of matches
 	selected int
 
 	scanning bool
@@ -30,30 +33,55 @@ const scanMaxFiles = 5000
 func (a *App) completionEnabled() bool { return a.cfgBool("ui.completion.files", true) }
 
 // updateCompletion recomputes the completion state after a composer edit:
-// the token is the text between an "@" that starts a word and the
-// cursor; anything else closes the popup. The returned cmd launches a
-// file scan when the popup just opened.
+// the token is the text between a trigger that starts a word and the
+// cursor; anything else closes the popup. Lua sources run on the worker,
+// never on the key path. The returned cmd launches a file scan when an "@"
+// popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
-	if !a.completionEnabled() {
-		a.completion.close()
-		return nil
-	}
 	r := a.composer.runes()
 	cur := a.composer.cursor
 	i := cur
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	if i == cur || r[i] != '@' {
+	files := i < cur && r[i] == '@' && a.completionEnabled()
+	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
+	if !files && !lua {
 		a.completion.close()
 		return nil
 	}
-	opening := !a.completion.open
-	a.completion.start = i
-	a.completion.token = string(r[i+1 : cur])
-	a.completion.open = true
-	a.completion.selected = 0
-	a.completion.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
+	f := &a.completion
+	opening := !f.open || f.trigger != r[i]
+	if opening {
+		f.close()
+	}
+	f.start, f.trigger, f.open, f.selected = i, r[i], true, 0
+	f.token = string(r[i+1 : cur])
+	if lua {
+		// until the sources answer, the rows they gave for a shorter word
+		// narrow by prefix, so a fast tab never takes a row the word left
+		f.extra = slices.DeleteFunc(f.extra, func(it listItem) bool {
+			return !strings.HasPrefix(strings.ToLower(it.label), strings.ToLower(f.token))
+		})
+		trigger, token, line := string(r[i]), f.token, string(r[:cur])
+		a.background(func() {
+			items := a.host.Complete(context.Background(), trigger, "", token, line)
+			a.do(func() {
+				if !f.open || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
+					return // the draft moved on
+				}
+				f.extra = f.extra[:0]
+				for _, it := range items {
+					f.extra = append(f.extra, listItem{label: it.Text, desc: it.Desc})
+				}
+				f.selected = max(0, min(f.selected, f.count()-1))
+			})
+		})
+	}
+	if !files {
+		return nil
+	}
+	f.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands.
 	if opening {
@@ -80,7 +108,14 @@ func (f *fileCompleter) close() {
 	f.open = false
 	f.token = ""
 	f.selected = 0
+	f.matches, f.extra = f.matches[:0], nil
 }
+
+func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
+
+// shown reports whether the popup is drawn and takes its keys: a Lua
+// trigger with nothing to offer stays out of the way of prose.
+func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
 // rematch re-filters and re-ranks the file list against the token.
 func (f *fileCompleter) rematch(maxItems int) {
@@ -108,7 +143,7 @@ func (f *fileCompleter) rematch(maxItems int) {
 	if len(f.matches) > maxItems {
 		f.matches = f.matches[:maxItems]
 	}
-	f.selected = max(0, min(f.selected, len(f.matches)-1))
+	f.selected = max(0, min(f.selected, f.count()-1))
 }
 
 // matchScore ranks a path against the query: basename prefix beats
@@ -149,26 +184,32 @@ func subseq(s, q string) bool {
 // attaches the file.
 func (a *App) acceptCompletion() {
 	f := &a.completion
-	if !f.open || f.selected >= len(f.matches) {
+	var text string
+	switch n := len(f.extra); {
+	case !f.open || f.selected >= f.count():
 		return
+	case f.selected < n:
+		text = f.extra[f.selected].label
+	default:
+		text = f.matches[f.selected-n]
 	}
-	a.composer.replace(f.start+1, f.matches[f.selected]+" ")
+	a.composer.replace(f.start+1, text+" ")
 	f.close()
 }
 
 // completionRows renders the popup rows shown above the composer.
 func (a *App) completionRows() [][]hostapi.Segment {
 	f := &a.completion
-	if !f.open {
+	if !f.shown() {
 		return nil
 	}
-	if f.scanning && len(f.files) == 0 {
+	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{{{Text: "  scanning files...", HL: "Comment"}}}
 	}
-	if len(f.matches) == 0 {
+	if f.count() == 0 && f.trigger == '@' {
 		return [][]hostapi.Segment{{{Text: "  no matches", HL: "Comment"}}}
 	}
-	items := make([]listItem, 0, len(f.matches))
+	items := append([]listItem(nil), f.extra...)
 	for _, m := range f.matches {
 		items = append(items, listItem{label: m})
 	}
