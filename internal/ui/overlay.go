@@ -425,9 +425,9 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	// borders, the blank row, the hint, the counter and the filter line, and
 	// a body's shortest: 3 rows, the row saying which show and a blank row
-	limit := min(max(h-6, 3), 20)
+	limit := max(h-6, 3)
 	if st.o.Body != "" {
-		limit = min(max(h-11, 3), 20)
+		limit = max(h-11, 3)
 	}
 	var list [][]hostapi.Segment
 	var hints []string
