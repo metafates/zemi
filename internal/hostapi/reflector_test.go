@@ -188,6 +188,7 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 func TestReflectAppliesUnderAuto(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Settings.SetHost("memory.autonomy", "auto")
+	h.SetProjectTrusted(true)
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	seedSession(t, h) // the reflected session is closed, another one is live
@@ -443,6 +444,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 func TestReflectScrubAndInstructionShape(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Settings.SetHost("memory.autonomy", "auto")
+	h.SetProjectTrusted(true)
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 

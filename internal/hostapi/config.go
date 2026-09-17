@@ -75,7 +75,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	// schema() lists every known setting: path, kind, default, desc and
-	// whether zemi.config.set accepts it (autonomy knobs never do).
+	// whether zemi.config.set accepts it.
 	tb.RawSetString("schema", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
 		for _, s := range h.Settings.Schema() {

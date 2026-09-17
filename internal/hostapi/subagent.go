@@ -382,7 +382,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	s.h.refreshViewed(run)
 }
 
-func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, out string) {
+func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out string) {
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
@@ -391,6 +391,8 @@ func (s *subagentHooks) ToolCallEnd(id, _ string, ok bool, out string) {
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
+	// memoryAuto reads the child's tools: a web agent's report is outside text
+	s.h.recordToolCall(s.sid, name, ok, out)
 }
 
 func (s *subagentHooks) StepStart() {

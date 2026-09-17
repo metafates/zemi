@@ -669,7 +669,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	}
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id})
-	s.h.recordToolCall(name, ok, output)
+	s.h.recordToolCall(s.h.AgentSessionID(), name, ok, output)
 }
 
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
@@ -867,10 +867,10 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	return nil
 }
 
-// recordToolCall stores one tool telemetry row (each tool call gets its
-// own "tool" message row so tool_calls.message_id stays a real FK).
-func (h *Host) recordToolCall(name string, ok bool, output string) {
-	sid := h.AgentSessionID()
+// recordToolCall stores one tool telemetry row in session sid (each tool
+// call gets its own "tool" message row so tool_calls.message_id stays a
+// real FK).
+func (h *Host) recordToolCall(sid, name string, ok bool, output string) {
 	if h.DB == nil || sid == "" {
 		return
 	}

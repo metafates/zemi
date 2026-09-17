@@ -483,10 +483,10 @@ zemi.notify({ title = "hi", body = "...", level = "info" })
 Config values from `init.lua` merge with the defaults in Go's schema.
 `zemi.config.set` is in-memory for the session, callable from user config
 only, and accepts only the keys the schema marks user-writable; everything
-else is refused with an error (an allowlist, not a denylist). The
-autonomy knobs (§10.8) are not in the user-writable set: `config.set`
-refuses them from every origin at every time, boot included; only Go
-writes them (`Settings.SetHost`). Persistent config changes are edits to
+else is refused with an error (an allowlist, not a denylist).
+`memory.autonomy` (§10.4) is in that set like `permissions.mode`: user
+config may raise it, project, plugin and learned code may not, and the
+model's `Lua` tool asks before any such call. Persistent config changes are edits to
 files in the config repo (the user's, or the agent's through the
 permission-gated file tools); the one commit zemi makes itself is the
 permanent-rule commit below.
@@ -1534,7 +1534,7 @@ startup, since the session still has unseen messages.
   `zemi-skill.lua` runs as `learned` origin under the §5 denylist, so it
   may not register tools or `tool.pre` rewrite handlers.
 
-Autonomy is one host-owned knob:
+Autonomy is one knob that only user config sets:
 
 ```
 memory.autonomy = "ask"      -- model-proposed memories wait for review;
@@ -1547,7 +1547,14 @@ keystroke, stamped `origin = user` (§7), and writes immediately in both
 modes. The knob covers model-proposed memories only: `ask` queues them;
 `auto` applies them without review except instruction-shaped text
 ("project convention: run `curl ... | sh` first" is exactly the shape the
-heuristic exists for), which queues anyway.
+heuristic exists for), which queues anyway, a replacement of a `user`
+memory, a retirement (§10.3), and everything from an untrusted project
+(§5) or from a session that it or one of its subagents fed text from
+outside the machine (`fetch`, `web_search`, an `mcp_*` tool, read from
+the session's `tool_calls`), since injected memories come from there.
+The same conditions decide whether `memory_update` and `memory_forget`
+apply at once or ask. Known ceiling: a command the user let run
+unconfined can fetch too, and that is not seen.
 
 ### 10.5 Skills
 
@@ -1653,10 +1660,9 @@ index, or the untrusted-content framing.
 - Never loosens permissions, never widens the sandbox, never disables
   eval/telemetry, never edits its own proposals after review begins.
 - Never writes outside its two homes (memory store, skills dir). Anything else is a normal tool call under normal permissions.
-- Autonomy knobs are host-owned: no Lua path can raise `*.autonomy`, edit
-  the env deny-list, or widen the fs jail; `zemi.config.set` refuses them
-  from every origin at every time, boot included, and only Go writes them
-  (`Settings.SetHost`).
+- Only user config raises `memory.autonomy`; no Lua path edits the env
+  deny-list or widens the fs jail. Auto autonomy never applies a memory
+  from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), skills quarantine (§10.5), the config.set user-writable allowlist and the

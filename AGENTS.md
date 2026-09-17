@@ -390,6 +390,13 @@ what the screen says.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
   the latest session, never on quit; `reflectDue` compares the message count with kv
   `reflector.seen.<sid>`, so a session is reflected again only after new messages.
+- **Digest and reflector input.** `digestFor(query)` ranks by the FTS score against the
+  session's first message (bm25 stays near zero for common words, so they lift nothing),
+  user origin x2 and recency over 30 days from the later of write and last search hit;
+  pinning never bumps hits. The reflector prompt carries the instruction files
+  (`instructionSections`, shared with `systemWith`, same trust gate) and a memory index of
+  the newest 20 plus FTS matches against the user's lines. A reflector entry with empty
+  text and `supersedes` queues a forget proposal (`queueForget`), never auto-applied.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides
   real-provider bugs (this once made the reflector read empty output everywhere).
@@ -477,8 +484,10 @@ as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id evicti
   It runs on the interpreter (10s ceiling), in a wrapper env whose `print` is captured.
   Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
-  which re-runs intake and asks (`memory.write`) unless autonomy is auto, the memory is
-  learned and the text is not instruction-shaped. Ids may be 8-char prefixes.
+  which re-runs intake and asks (`memory.write`) unless `memoryAuto` holds (autonomy auto,
+  a trusted project, and no `fetch`, `web_search` or `mcp_*` call in the session or its
+  subagents' child sessions, whose tool calls `subagentHooks` records for this), the memory
+  is learned and the text is not instruction-shaped. `gateMemory` uses the same check. Ids may be 8-char prefixes.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`,
   unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set, trusted project or not: `npx` and `uv`
@@ -613,8 +622,8 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   memory/store boundary — don't log raw tool output or memory text.
 - **Memory intake policy** (`internal/learn`): text cap 500, fixed kind enum
   (fact/gotcha/preference/convention/decision), provenance required, `origin` is `user` or
-  `learned` and gates autonomy/supersede/digest-labeling. The autonomy knob is host-owned:
-  only Go may flip it (`Settings.SetHost`), never user config.
+  `learned` and gates autonomy/supersede/digest-labeling. `memory.autonomy` is set by user
+  config only (`zemi.config.set` refuses other origins).
 - **Config store** (`internal/config/store.go`): dotted-path keys; `SetHost` is Go-only,
   user config cannot set host-owned knobs. Providers ship none; user config registers them, keys
   included (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for

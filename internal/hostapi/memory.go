@@ -732,7 +732,7 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 		text, verb, shaped = res.Memory.Text, "update", res.InstructionShaped
 		preview += "\n+ " + text
 	}
-	if h.setStr("memory.autonomy") != "auto" || m.Origin != learn.OriginLearned || shaped {
+	if !h.memoryAuto(h.AgentSessionID()) || m.Origin != learn.OriginLearned || shaped {
 		req := tools.Request{Tool: "memory_" + verb, Subject: "memory.write", Arg: m.ID[:8], Reason: verb + " memory", Preview: preview}
 		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): %s memory %s", v.DecidedBy, verb, m.ID[:8])
@@ -752,11 +752,42 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 // gateMemory is the autonomy gate (DESIGN §10.4): an intake result is
 // stored under auto when policy-clean and within budget, queued otherwise.
 func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
-	if h.setStr("memory.autonomy") == "auto" && !res.InstructionShaped && !h.replacesUserMemory(res.Supersedes) && h.autoApplyBudgetLeft() {
+	if h.memoryAuto(res.Memory.ProvenanceSessionID) && !res.InstructionShaped && !h.replacesUserMemory(res.Supersedes) && h.autoApplyBudgetLeft() {
 		return true, h.applyProposal(res)
 	}
 	h.queueProposal(res)
 	return false, nil
+}
+
+// memoryAuto reports whether auto autonomy may skip review for what session
+// sid wrote. It may not in an untrusted project, or when the session or one
+// of its subagents read text from outside the machine (fetch, web_search, an
+// MCP tool), where an injected memory would come from.
+// NOTE: a bash command the user approved can fetch too and is not seen here.
+func (h *Host) memoryAuto(sid string) bool {
+	if h.setStr("memory.autonomy") != "auto" || !h.ProjectTrusted() || h.DB == nil {
+		return false
+	}
+	sids := []string{sid}
+	children, err := h.DB.ChildSessions(sid)
+	if err != nil {
+		return false
+	}
+	for _, c := range children {
+		sids = append(sids, c.ID)
+	}
+	for _, id := range sids {
+		stats, err := h.DB.ToolCallStats(id)
+		if err != nil {
+			return false
+		}
+		for _, s := range stats {
+			if s.Tool == "fetch" || s.Tool == "web_search" || strings.HasPrefix(s.Tool, "mcp_") {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // replacesUserMemory reports whether id names a user-attested memory, which

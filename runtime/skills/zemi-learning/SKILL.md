@@ -12,7 +12,8 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    `decision`) and one specific fact (up to 500 characters); under the default autonomy it
    is queued for the user's review. `memory_search` finds earlier memories. `memory_update`
    rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
-   show; the change asks the user unless autonomy is `auto` and the memory is `learned`.
+   show; the change asks the user unless autonomy is `auto` (and would store at once, see
+   below) and the memory is `learned`.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
    reflector reads it and proposes memories and skill drafts, and retirements of memories
    the session showed are no longer true (they wait for review as `forget:` rows).
@@ -26,8 +27,10 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      or `/skills enable|disable <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own.
-   - Autonomy (`memory.autonomy`) is host-owned. Under `auto`, memories apply without
-     review.
+   - Autonomy (`memory.autonomy = "auto"` in user config) stores proposed memories without
+     review, except instruction-shaped text, retirements, replacements of the user's own
+     memories, and anything from an untrusted project or a session that used `fetch`,
+     `web_search` or an MCP tool (itself or through a subagent).
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
    session start (new memories apply from the next session or compaction). The digest
    (`memory.digest_lines`, 12 by default) favors memories about the session's first

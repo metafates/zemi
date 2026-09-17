@@ -106,11 +106,11 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	`)
 	_ = h2
 
-	// Auto mode stores a plain fact and returns its id. The autonomy knob
-	// is host-owned: only the Go side may flip it.
+	// Auto mode in a trusted project stores a plain fact and returns its id.
 	if err := h.Settings.SetHost("memory.autonomy", "auto"); err != nil {
 		t.Fatalf("SetHost autonomy: %v", err)
 	}
+	h.SetProjectTrusted(true)
 	runUser(t, r, `
 		local out = zemi.memory.add({ kind = "fact", text = "the deploy script lives in bin/deploy" })
 		assert(out.stored == true, "auto mode must store")
@@ -137,6 +137,45 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 		local out = zemi.memory.add({ kind = "fact", text = "budget spent" })
 		assert(out.queued == true, "spent budget must queue")
 	`)
+}
+
+// TestMemoryAutoQueuesOutsideText: auto autonomy still queues in an
+// untrusted project and in a session that it or a subagent fed text from
+// outside the machine.
+func TestMemoryAutoQueuesOutsideText(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		untrusted    bool
+		tool, inTool string // a tool the session called, one its subagent called
+		stored       bool
+	}{
+		{name: "trusted, local tools", tool: "bash", inTool: "read", stored: true},
+		{name: "untrusted project", untrusted: true},
+		{name: "fetch in the session", tool: "fetch"},
+		{name: "web search in a subagent", inTool: "web_search"},
+		{name: "mcp tool", tool: "mcp_github_search"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Settings.SetHost("memory.autonomy", "auto")
+			h.SetProjectTrusted(!tc.untrusted)
+			sid := seedSession(t, h)
+			child := store.NewID()
+			if err := h.DB.CreateSession(child, sid, "sub", "web"); err != nil {
+				t.Fatal(err)
+			}
+			if tc.tool != "" {
+				h.recordToolCall(sid, tc.tool, true, "")
+			}
+			if tc.inTool != "" {
+				h.recordToolCall(child, tc.inTool, true, "")
+			}
+			stored, _, err := h.proposeMemory("project", "fact", "the build uses make", nil)
+			if err != nil || stored != tc.stored {
+				t.Fatalf("stored = %v, want %v (%v)", stored, tc.stored, err)
+			}
+		})
+	}
 }
 
 // TestMemorySearchFromLua covers search rows, scope merging and the hit

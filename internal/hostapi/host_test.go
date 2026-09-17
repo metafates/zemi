@@ -98,7 +98,7 @@ func TestNamespaceVersion(t *testing.T) {
 		local writable = {}
 		for _, s in ipairs(zemi.config.schema()) do writable[s.path] = s.writable end
 		assert(writable["ui.theme"] == true, "ui.theme must be writable")
-		assert(writable["memory.autonomy"] == false, "autonomy knobs must not look writable")
+		assert(writable["reflector.every_n_sessions"] == false, "host-owned knobs must not look writable")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
@@ -418,15 +418,15 @@ func TestEmitVetoable(t *testing.T) {
 	`)
 }
 
-// TestConfigSetGating pins the config write gate: after the boot window
-// closes, autonomy knobs are refused everywhere, non-writable keys are
-// refused, and a writable key applies to the store.
+// TestConfigSetGating pins the config write gate: only user config sets,
+// non-writable keys are refused, and a writable key applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
+	if err := r.ExecuteChunk(context.Background(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
+		t.Fatalf("project config set memory.autonomy: %v", err)
+	}
 	runUser(t, r, `
-		local ok, err = pcall(zemi.config.set, "memory.autonomy", "auto")
-		assert(not ok, "autonomy knob accepted")
-		assert(tostring(err):find("not writable", 1, true) ~= nil, "err=" .. tostring(err))
+		zemi.config.set("memory.autonomy", "auto")
 
 		local ok2, err2 = pcall(zemi.config.set, "reflector.every_n_sessions", 5)
 		assert(not ok2, "non-writable key accepted")

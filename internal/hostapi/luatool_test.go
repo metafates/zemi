@@ -44,6 +44,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	if err := h.Settings.SetHost("memory.autonomy", "auto"); err != nil {
 		t.Fatal(err)
 	}
+	h.SetProjectTrusted(true)
 	stored, id, err := h.proposeMemory("project", "fact", "the build uses make", nil)
 	if err != nil || !stored {
 		t.Fatalf("propose: %v %v", stored, err)
