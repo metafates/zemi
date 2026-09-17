@@ -273,7 +273,9 @@ keys in neovim notation (`ihello<esc>:wq<cr>`, `<c-x>`, `<s-tab>`), click or scr
 tool too; their windows open hidden until shown. The user drags a float by its title, resizes a
 vsplit by its separator and a split by its title. The user clicks a window to type into it and presses
 `ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it. Use it to show a TUI
-you built, a log, a REPL, then read it back to see what the user sees.
+you built, a log, a REPL, then read it back to see what the user sees. Images (`chafa x.png`)
+show as pixels when zemi runs directly in Ghostty or kitty, and as colored symbols elsewhere
+(tmux included); a window's text reads an image's cells as blanks.
 `open_in_editor` opens a file in the user's editor (`editor.command`, `editor.window`) and waits
 until they close it; the result is a diff of what they changed. It is for changes only the user
 can make, or when they ask to edit something themselves; subagents never get it.

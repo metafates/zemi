@@ -418,6 +418,17 @@ window runs sandboxed; an exit lands in the next message through `shellNotes`. S
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
 Input to a program queues and a `writeLoop` goroutine feeds the pty, because the emulator
 writes under the screen lock and a program that does not read stdin must not wedge it.
+A window's env drops the host terminal's identity (`hostTermEnv`: `TERM_PROGRAM`, `GHOSTTY_*`,
+`TMUX`, ...), or image tools emit protocols x/vt drops and show nothing. Images (kitty.go) work
+through kitty Unicode placeholders: the UI asks XTVERSION and `SetKitty` turns them on for
+ghostty and kitty only (windows then see `TERM_PROGRAM=ghostty`); an APC handler takes direct
+base64 transmissions only (never `t=f/t/s`: the unconfined host would read the file), forwards
+them under host ids 16..255 zemi owns as a virtual placement with `q=2` (host replies never
+reach bubbletea), and writes placeholder cells into the emulator right after the ST
+(`Window.write`). The cells are text, so moving, clipping, hiding and scrolling need nothing
+image-specific; `Screen()` maps a cell's fg to the window's own host id (another window's or
+an unknown id renders blank), and `Text`, scrollback, selection copy and screenshots read them
+as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id eviction queue `d=I`.
 
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)
 
