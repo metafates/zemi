@@ -17,7 +17,6 @@ type Session struct {
 	Profile          string
 	CreatedAt        int64
 	UpdatedAt        int64
-	SummaryMessageID string
 	PromptTokens     int64
 	CompletionTokens int64
 	Cost             float64
@@ -37,21 +36,19 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 }
 
 const sessionCols = `id, parent_id, title, profile, created_at, updated_at,
-	summary_message_id, prompt_tokens, completion_tokens, cost`
+	prompt_tokens, completion_tokens, cost`
 
 func scanSession(row scanner) (*Session, error) {
 	var (
-		s          Session
-		parent     any
-		summaryMsg any
+		s      Session
+		parent any
 	)
 	if err := row.Scan(&s.ID, &parent, &s.Title, &s.Profile,
-		&s.CreatedAt, &s.UpdatedAt, &summaryMsg,
+		&s.CreatedAt, &s.UpdatedAt,
 		&s.PromptTokens, &s.CompletionTokens, &s.Cost); err != nil {
 		return nil, err
 	}
 	s.ParentID = asString(parent)
-	s.SummaryMessageID = asString(summaryMsg)
 	return &s, nil
 }
 
@@ -92,13 +89,6 @@ func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 func (s *DB) RenameSession(id, title string) error {
 	return s.execOne("rename session", `UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
 		title, now(), id)
-}
-
-// SetSummary points a session at the message its history resumes from.
-// Unknown ids are ErrNotFound.
-func (s *DB) SetSummary(id, messageID string) error {
-	return s.execOne("set summary", `UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
-		messageID, now(), id)
 }
 
 // AddUsage accumulates token counts and cost onto a session. Unknown ids are
@@ -147,8 +137,8 @@ func insertMessage(ex execer, m *Message) error {
 func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
 
 // AddCompaction stores a compaction's summary row, the verbatim tail copies
-// that follow it and the session's summary pointer in one transaction: a
-// crash partway would leave a resumed conversation missing the tail.
+// that follow it in one transaction: a crash partway would leave a resumed
+// conversation missing the tail.
 func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -161,8 +151,7 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 			return err
 		}
 	}
-	if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = ?, updated_at = ? WHERE id = ?`,
-		summary.ID, now(), sessionID); err != nil {
+	if _, err := tx.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now(), sessionID); err != nil {
 		return fmt.Errorf("store: add compaction: %w", err)
 	}
 	return tx.Commit()
@@ -171,8 +160,8 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 // ForkSession copies src into a new top-level session id: its messages
 // under new ids, their checkpoints (a rewind in the fork restores files too),
 // its tool calls and its subagents' (on the first message: the fork has no
-// children, and the calls gate memory autonomy) and the summary pointer, in
-// one transaction so a failure leaves no half-copied fork.
+// children, and the calls gate memory autonomy), in one transaction so a
+// failure leaves no half-copied fork.
 func (s *DB) ForkSession(src *Session, id, title string) error {
 	msgs, err := s.Messages(src.ID)
 	if err != nil {
@@ -244,11 +233,6 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 			(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			mid, c.Tool, c.InputJSON, c.OK, c.ErrorKind, c.LatencyMS, c.Denied, c.DecidedBy, c.at); err != nil {
-			return fmt.Errorf("store: fork session: %w", err)
-		}
-	}
-	if summary := ids[src.SummaryMessageID]; summary != "" {
-		if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = ? WHERE id = ?`, summary, id); err != nil {
 			return fmt.Errorf("store: fork session: %w", err)
 		}
 	}

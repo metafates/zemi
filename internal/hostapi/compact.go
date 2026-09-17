@@ -322,8 +322,8 @@ func (h *Host) compactDone(used int64, manual bool) {
 	ag.mu.Unlock()
 }
 
-// storeCompaction stores the summary, copies of the verbatim tail and the
-// session's summary pointer in one transaction, so the rows from the summary
+// storeCompaction stores the summary and copies of the verbatim tail in one
+// transaction, so the rows from the summary
 // on always rebuild the whole history: a crash mid-write would otherwise
 // leave a resumed conversation short of its recent messages.
 func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) error {

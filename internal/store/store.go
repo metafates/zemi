@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	profile TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
-	summary_message_id TEXT,
+	summary_message_id TEXT, -- unused; resume scans for the summary row
 	prompt_tokens INTEGER NOT NULL DEFAULT 0,
 	completion_tokens INTEGER NOT NULL DEFAULT 0,
 	cost REAL NOT NULL DEFAULT 0

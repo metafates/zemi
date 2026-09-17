@@ -122,7 +122,6 @@ func TestSessionLifecycle(t *testing.T) {
 	// a vanished session must report the miss, not swallow the update
 	for _, err := range []error{
 		db.RenameSession("ghost", "x"),
-		db.SetSummary("ghost", "m"),
 		db.AddUsage("ghost", 1, 1, 1),
 	} {
 		if !errors.Is(err, ErrNotFound) {
@@ -179,8 +178,7 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	}
 }
 
-// TestAddCompaction: summary, tail copies and the summary pointer land
-// together, and a write that fails leaves none of them behind.
+// TestAddCompaction: summary and tail copies land together, and a write that fails leaves none of them behind.
 func TestAddCompaction(t *testing.T) {
 	db := openTest(t)
 	if err := db.CreateSession("s1", "", "t", ""); err != nil {
@@ -194,9 +192,6 @@ func TestAddCompaction(t *testing.T) {
 	msgs, err := db.Messages("s1")
 	if err != nil || len(msgs) != 3 || msgs[0].ID != summary.ID {
 		t.Fatalf("messages = %+v, %v", msgs, err)
-	}
-	if s, _ := db.GetSession("s1"); s.SummaryMessageID != summary.ID {
-		t.Fatalf("summary pointer = %q", s.SummaryMessageID)
 	}
 	if err := db.AddCompaction("ghost", &Message{Role: "user", PartsJSON: `{}`},
 		[]*Message{{Role: "tail", PartsJSON: `{}`}}); err == nil {
@@ -246,8 +241,8 @@ func TestForkSession(t *testing.T) {
 		t.Fatalf("fork = %+v, %v", fork, err)
 	}
 	msgs, _ := db.Messages("s2")
-	if len(msgs) != 2 || msgs[0].ID == summary.ID || fork.SummaryMessageID != msgs[0].ID {
-		t.Fatalf("messages = %+v, summary %q", msgs, fork.SummaryMessageID)
+	if len(msgs) != 2 || msgs[0].ID == summary.ID || msgs[0].PartsJSON != summary.PartsJSON {
+		t.Fatalf("messages = %+v", msgs)
 	}
 	if counts, err := db.CheckpointPaths("s2"); err != nil || len(counts[msgs[0].ID]) != 1 {
 		t.Fatalf("checkpoints = %+v, %v", counts, err)

@@ -67,8 +67,7 @@ func (s *DB) CheckpointPaths(sessionID string) (map[string][]string, error) {
 }
 
 // TruncateMessages deletes messageID and every later message of the session
-// (their checkpoints and tool calls cascade) and drops a summary pointer
-// left dangling by the cut.
+// (their checkpoints and tool calls cascade).
 func (s *DB) TruncateMessages(sessionID, messageID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -84,11 +83,6 @@ func (s *DB) TruncateMessages(sessionID, messageID string) error {
 		return fmt.Errorf("store: truncate messages: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ? AND rowid >= ?`, sessionID, rowid); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`UPDATE sessions SET summary_message_id = NULL, updated_at = ? WHERE id = ?
-		AND summary_message_id IS NOT NULL
-		AND summary_message_id NOT IN (SELECT id FROM messages WHERE session_id = ?)`, now(), sessionID, sessionID); err != nil {
 		return err
 	}
 	return tx.Commit()

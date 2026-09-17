@@ -109,9 +109,6 @@ func TestCompaction(t *testing.T) {
 	if !compacted {
 		t.Fatal("transcript misses the compaction row")
 	}
-	if sess, err := h.DB.GetSession(first); err != nil || sess.SummaryMessageID == "" {
-		t.Fatalf("summary pointer: %+v %v", sess, err)
-	}
 
 	if err := h.NewSession(); err != nil {
 		t.Fatal(err)
