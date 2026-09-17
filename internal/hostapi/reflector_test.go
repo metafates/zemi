@@ -393,6 +393,50 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 	}
 }
 
+// TestReflectForgetThroughReview: an empty text with supersedes retires a
+// memory only through review, even under auto, once per memory; accepting
+// deletes it and rejecting keeps it.
+func TestReflectForgetThroughReview(t *testing.T) {
+	for _, accept := range []bool{true, false} {
+		h, r := newTestHostDB(t)
+		h.Settings.SetHost("memory.autonomy", "auto")
+		h.SetProjectTrusted(true)
+		sid := seedSession(t, h)
+		seedTranscript(t, h, sid)
+		old := &store.Memory{Scope: "project", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginUser}
+		if err := h.DB.AddMemory(old); err != nil {
+			t.Fatal(err)
+		}
+		reflectStub(t, h, `{"memories":[{"text":"","supersedes":"`+old.ID[:8]+`"},{"text":" ","supersedes":"`+old.ID+`"},{"text":"","supersedes":"ghost123"}]}`)
+		if err := h.reflectSession(context.Background(), sid); err != nil {
+			t.Fatal(err)
+		}
+		props := h.memoryProposals()
+		if len(props) != 1 || !props[0].Forget || len(projectMemories(t, h)) != 1 {
+			t.Fatalf("want one queued forget and the memory kept: %+v", props)
+		}
+		runUser(t, r, `
+			local p = zemi.learn.proposals()
+			assert(#p == 1 and p[1].forget == true and p[1].text == "deploy by hand", "forget row")
+		`)
+		if rows := h.memoryRows(); rows[0].Text != "forget: deploy by hand" {
+			t.Fatalf("review row: %+v", rows[0])
+		}
+		want := 1
+		if accept {
+			want = 0
+			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+				t.Fatal(err)
+			}
+		} else if h.takeProposal(props[0].ID) == nil {
+			t.Fatal("reject found nothing")
+		}
+		if got := len(projectMemories(t, h)); got != want {
+			t.Fatalf("accept=%v: memories left %d", accept, got)
+		}
+	}
+}
+
 // TestReflectScrubAndInstructionShape checks that proposal text passes the
 // intake scrubber (secrets redacted) and that instruction-shaped text
 // queues even under auto autonomy.

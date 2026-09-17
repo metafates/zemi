@@ -1484,6 +1484,13 @@ Output: a JSON proposal document (schema-validated):
 }
 ```
 
+A memory entry with `supersedes` set and an empty `text` retires that
+memory: the reflector read in the session that it stopped being true.
+Retirements always queue as forget proposals (a copy of the memory,
+shown as `forget: <text>` in `/memory` and with `forget = true` in
+`zemi.learn.proposals()`), whatever the autonomy, since deleting loses
+data; accepting one deletes the memory, rejecting keeps it.
+
 The reflector is constrained by prompt and by pipeline: it can only emit
 proposals; application is a separate, reviewed step. Memories go through
 the intake policy (§10.4) into the store; there is no reflector scratch
@@ -1521,7 +1528,8 @@ startup, since the session still has unseen messages.
   model; the cap, the enum, provenance, scrubbing, and the review queue
   narrow that window. `/memory supersede <old> <new>` and
   `/memory forget <id>` are the other review actions: model proposals may
-  never silently drop a user-attested (`/memory <note>`) memory.
+  never silently drop a user-attested (`/memory <note>`) memory, and a
+  reflector retirement (§10.3) never drops any memory without review.
 - Skill drafts always wait for review (§10.3, §10.5). A learned skill's
   `zemi-skill.lua` runs as `learned` origin under the §5 denylist, so it
   may not register tools or `tool.pre` rewrite handlers.

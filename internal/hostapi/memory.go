@@ -67,22 +67,46 @@ func (h *Host) queueProposal(res *learn.Result) {
 		h.Log.Debug("memory", "duplicate proposal dropped", nil)
 		return
 	}
-	if res.Memory.ID == "" {
-		res.Memory.ID = store.NewID()
+	if err := h.addProposal(memoryProposal{Memory: res.Memory, Supersedes: res.Supersedes}); err != nil {
+		h.Log.Warn("memory", "proposal dropped", map[string]any{"error": err.Error()})
 	}
-	db := h.memoryDB(res.Memory.Scope)
-	payload, err := json.Marshal(memoryProposal{res.Memory, res.Supersedes})
-	if err == nil && db == nil {
-		err = errors.New("memory store unavailable")
+}
+
+// addProposal persists a proposal in its scope's store as it is.
+func (h *Host) addProposal(p memoryProposal) error {
+	if p.ID == "" {
+		p.ID = store.NewID()
+	}
+	db := h.memoryDB(p.Scope)
+	if db == nil {
+		return errors.New("memory store unavailable")
+	}
+	payload, err := json.Marshal(p)
+	if err == nil {
+		err = db.AddProposal(&store.Proposal{ID: p.ID, Kind: "memory", Payload: string(payload)})
 	}
 	if err == nil {
-		err = db.AddProposal(&store.Proposal{ID: res.Memory.ID, Kind: "memory", Payload: string(payload)})
+		h.refreshPending()
 	}
+	return err
+}
+
+// queueForget proposes deleting a stored memory, for the reflector to retire
+// one that stopped being true. Deleting loses data, so it always waits for
+// review, whatever the autonomy.
+func (h *Host) queueForget(sid, id string) error {
+	_, old, err := h.locateMemory(id)
 	if err != nil {
-		h.Log.Warn("memory", "proposal dropped", map[string]any{"error": err.Error()})
-		return
+		return err
 	}
-	h.refreshPending()
+	for _, p := range h.memoryProposals() {
+		if p.Forget && p.Supersedes == old.ID {
+			return nil
+		}
+	}
+	p := memoryProposal{Memory: *old, Supersedes: old.ID, Forget: true}
+	p.ID, p.ProvenanceSessionID = "", sid
+	return h.addProposal(p)
 }
 
 // applyProposal stores a proposal under auto autonomy and spends one unit
@@ -239,10 +263,13 @@ func (h *Host) openMemoryReview() {
 			}
 			accepted++
 		case old.Queued && r.Scope != old.Scope:
-			if res := h.takeProposal(r.ID); res != nil {
-				res.Memory.Scope = r.Scope
-				h.queueProposal(res)
+			// a forget proposal names a memory in its own scope; it cannot move
+			if p := h.takeProposal(r.ID); p != nil && !p.Forget {
+				p.Memory.Scope = r.Scope
+				h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
 				moved++
+			} else if p != nil {
+				_ = h.addProposal(*p)
 			}
 		case old.Queued:
 		case r.Action == "delete":
@@ -273,7 +300,7 @@ func (h *Host) openMemoryReview() {
 
 // takeProposal removes one pending memory proposal by id and returns it,
 // or nil when no scope holds it.
-func (h *Host) takeProposal(id string) *learn.Result {
+func (h *Host) takeProposal(id string) *memoryProposal {
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
@@ -287,7 +314,7 @@ func (h *Host) takeProposal(id string) *learn.Result {
 		if json.Unmarshal([]byte(p.Payload), &m) != nil {
 			return nil
 		}
-		return &learn.Result{Memory: m.Memory, Supersedes: m.Supersedes}
+		return &m
 	}
 	return nil
 }
@@ -313,28 +340,43 @@ func (h *Host) moveMemory(id, from, to string) error {
 	return src.DeleteMemory(id)
 }
 
-// acceptProposal stores a pending proposal, in scope when one is given. A
-// store failure other than a duplicate puts it back in the queue, so the
-// decision can be made again.
-func (h *Host) acceptProposal(id, scope string) (*learn.Result, error) {
-	res := h.takeProposal(id)
-	if res == nil {
+// acceptProposal stores a pending proposal (in scope when one is given), or deletes the memory a forget
+// proposal names (one already gone counts as done). A store failure other
+// than a duplicate puts it back in the queue, so the decision can be made
+// again.
+func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
+	p := h.takeProposal(id)
+	if p == nil {
 		return nil, fmt.Errorf("no such proposal %q", id)
 	}
-	res.Memory.Scope = cmp.Or(scope, res.Memory.Scope)
-	if err := h.storeProposal(res); err != nil {
+	var err error
+	if p.Forget {
+		if db := h.memoryDB(p.Scope); db == nil {
+			err = errors.New("memory store unavailable")
+		} else if err = db.DeleteMemory(p.Supersedes); errors.Is(err, store.ErrNotFound) {
+			err = nil
+		}
+	} else {
+		p.Memory.Scope = cmp.Or(scope, p.Memory.Scope)
+		err = h.storeProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
+	}
+	if err != nil {
 		if !errors.Is(err, errDuplicateMemory) {
-			h.queueProposal(res)
+			if qerr := h.addProposal(*p); qerr != nil {
+				h.Log.Warn("memory", "proposal dropped", map[string]any{"error": qerr.Error()})
+			}
 		}
 		return nil, err
 	}
-	return res, nil
+	return p, nil
 }
 
-// memoryProposal is a queued proposal's payload.
+// memoryProposal is a queued proposal's payload. Forget proposes deleting
+// the memory Supersedes names; the embedded memory is a copy of it.
 type memoryProposal struct {
 	store.Memory
 	Supersedes string `json:",omitempty"`
+	Forget     bool   `json:",omitempty"`
 }
 
 // memoryProposals lists pending memory proposals from both scopes.
@@ -371,7 +413,10 @@ func (h *Host) memoryRows() []MemoryRow {
 	var rows []MemoryRow
 	for _, m := range h.memoryProposals() {
 		text := m.Text
-		if m.Supersedes != "" {
+		switch {
+		case m.Forget:
+			text = "forget: " + text
+		case m.Supersedes != "":
 			text += " (replaces " + learn.Truncate(m.Supersedes, 8) + ")"
 		}
 		rows = append(rows, MemoryRow{

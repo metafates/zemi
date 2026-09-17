@@ -14,7 +14,8 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
    show; the change asks the user unless autonomy is `auto` and the memory is `learned`.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
-   reflector reads it and proposes memories and skill drafts.
+   reflector reads it and proposes memories and skill drafts, and retirements of memories
+   the session showed are no longer true (they wait for review as `forget:` rows).
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
    - `/memory`: every memory whole, rendered as markdown, with its kind, scope, origin and
@@ -70,7 +71,7 @@ zemi.memory.search("deploy", { scope = "all", limit = 5 })  -- scope: all, user,
 zemi.memory.add({ kind = "gotcha", text = "...", scope = "project" })  -- queued under ask
 zemi.memory.list(true)                   -- true includes superseded memories
 zemi.memory.supersede(old_id, new_id); zemi.memory.forget(id)  -- user config only
-for _, p in ipairs(zemi.learn.proposals()) do print(p.id, p.text) end
+for _, p in ipairs(zemi.learn.proposals()) do print(p.id, p.forget, p.text) end
 zemi.learn.decide(id, "accept")          -- or "reject"; user config only
 zemi.skills.list(); zemi.skills.enable("name"); zemi.skills.disable("name")
 zemi.event.on("memory.written", function(ev) zemi.log.info(ev.text) end)

@@ -1258,6 +1258,7 @@ function zemi.memory.forget(id) end
 ---@field origin string
 ---@field text string
 ---@field tags string[]
+---@field forget? true Accepting deletes the stored memory this text is a copy of.
 
 ---@class zemi.learn
 zemi.learn = {}

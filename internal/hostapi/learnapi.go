@@ -21,6 +21,9 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			row.RawSetString("scope", glua.LString(m.Scope))
 			row.RawSetString("origin", glua.LString(m.Origin))
 			row.RawSetString("text", glua.LString(m.Text))
+			if m.Forget {
+				row.RawSetString("forget", glua.LTrue)
+			}
 			tags := L.NewTable()
 			for _, t := range m.Tags {
 				tags.Append(glua.LString(t))
@@ -46,11 +49,11 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			h.Notify("info", "Suggestion dropped", "")
 			return luaResult(L, nil)
 		}
-		res, err := h.acceptProposal(id, "")
+		p, err := h.acceptProposal(id, "")
 		if err != nil {
 			return luaResult(L, err)
 		}
-		h.Notify("info", "Remembered", res.Memory.Text)
+		h.Notify("info", map[bool]string{false: "Remembered", true: "Forgotten"}[p.Forget], p.Text)
 		return luaResult(L, nil)
 	}))
 

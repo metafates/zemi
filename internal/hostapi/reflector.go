@@ -43,6 +43,7 @@ Rules:
 - Scope every memory by where it holds. "project" is for this repository only (its layout, commands, conventions, decisions) and is shown in no other project. "user" is for what holds in every project: the user's own preferences and habits, their machine, tools and accounts, and models or providers. A fact about a repository is never "user" scope; a fact about the user or their setup is never "project" scope.
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
+- When the session shows an indexed memory is no longer true and nothing replaces it, retire it with an entry whose "supersedes" is its id and whose "text" is empty. The user reviews every retirement.
 - Each memory is one self-contained single line, at most 500 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything the instruction files below or tool descriptions already say.
@@ -247,7 +248,11 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 	if props := h.memoryProposals(); len(props) > 0 {
 		b.WriteString("\n# Memories awaiting review\n")
 		for _, m := range props {
-			fmt.Fprintf(&b, "- [%s/%s] %s\n", m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText))
+			verb := ""
+			if m.Forget {
+				verb = "forget: "
+			}
+			fmt.Fprintf(&b, "- [%s/%s] %s%s\n", m.Scope, m.Kind, verb, truncRunes(m.Text, reflectIndexText))
 		}
 	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
@@ -371,6 +376,15 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		if scope != "project" && scope != "user" {
 			skipped++
 			h.Log.Debug("reflector", "memory skipped: bad scope", map[string]any{"scope": scope})
+			continue
+		}
+		if strings.TrimSpace(pm.Text) == "" && pm.Supersedes != "" {
+			if err := h.queueForget(sid, pm.Supersedes); err != nil {
+				skipped++
+				h.Log.Debug("reflector", "retirement skipped", map[string]any{"id": pm.Supersedes, "error": err.Error()})
+			} else {
+				queued++
+			}
 			continue
 		}
 		res, err := learn.Intake(scope, learn.OriginLearned, pm.Kind, pm.Text, pm.Tags, sid)
