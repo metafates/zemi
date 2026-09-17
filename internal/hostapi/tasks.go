@@ -327,7 +327,7 @@ func (h *Host) agentRunItems() []any {
 	row := func(id, status, agent string, took time.Duration, desc, calls string) {
 		item := map[string]any{
 			"text":    agent,
-			"desc":    status + " · " + fmtDuration(took) + calls + " · " + strings.Join(strings.Fields(desc), " "),
+			"desc":    status + " · " + fmtDuration(took) + calls + " · " + desc,
 			"run":     "agents view " + id,
 			"section": "Earlier in this session",
 		}

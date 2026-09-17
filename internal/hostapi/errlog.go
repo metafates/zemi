@@ -123,7 +123,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		items = append(items, map[string]any{
 			"text":    e.source,
-			"desc":    at + " · " + strings.Join(strings.Fields(e.msg), " "),
+			"desc":    at + " · " + e.msg,
 			"detail":  at + "\n" + e.msg,
 			"actions": actions,
 		})
