@@ -104,16 +104,16 @@ func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
 	if rel, err := filepath.Rel(tp.root, tp.cwd); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 		text("Covers the whole repository, not only "+rel+".", "Host:Hint")
 	}
-	saved := "saved for this repository"
+	saved, what := "saved for this repository", "repository"
 	if hostapi.TrustUnsaved(tp.root) {
 		text("Trust for your home directory or / lasts this run only.", "Host:Hint")
-		saved = "this run only"
+		saved, what = "this run only", "directory"
 	}
 	if tp.state != "" {
 		text("Currently "+tp.state+".", "Host:Hint")
 	}
 	text("", "")
-	text("Trusting lets this repository run code and steer zemi:", "")
+	text("Trusting lets this "+what+" run code and steer zemi:", "")
 	for _, s := range []string{
 		".zemi config: init.lua, agents, commands and workflows",
 		"AGENTS.md and CLAUDE.md instructions",
