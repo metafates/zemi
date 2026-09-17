@@ -2,6 +2,8 @@ package win
 
 import (
 	"context"
+	"fmt"
+	"image/color"
 	"os"
 	"strings"
 	"testing"
@@ -59,6 +61,29 @@ func TestWindowRunsReadsAndTypes(t *testing.T) {
 	}
 	if len(m.List()) != 1 || !m.Close(w.ID) || len(m.List()) != 0 || m.Close(w.ID) {
 		t.Fatal("close bookkeeping")
+	}
+}
+
+// TestColorQueries: a program asking for the default colors gets the host's,
+// both those known when it opened and those reported later.
+func TestColorQueries(t *testing.T) {
+	m := &Manager{}
+	m.SetHostColor(11, color.RGBA{0x12, 0x34, 0x56, 0xff})
+	query := `printf '\033]%d;?\007'; head -c 24 | tr -d '\033\007'; printf '\r\n'`
+	w, err := m.Open(Spec{Cmd: "stty raw -echo; " + fmt.Sprintf(query, 11) + "; head -c 1 >/dev/null; " + fmt.Sprintf(query, 10) + "; sleep 5", Env: os.Environ(), Cols: 40, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(w.ID)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if text, ok := w.WaitText(ctx, "]11;rgb:1212/3434/5656"); !ok {
+		t.Fatalf("background at open:\n%s", text)
+	}
+	m.SetHostColor(10, color.RGBA{0xab, 0xcd, 0xef, 0xff})
+	w.SendKey(uv.KeyPressEvent{Code: 'x', Text: "x"})
+	if text, ok := w.WaitText(ctx, "]10;rgb:abab/cdcd/efef"); !ok {
+		t.Fatalf("foreground reported later:\n%s", text)
 	}
 }
 

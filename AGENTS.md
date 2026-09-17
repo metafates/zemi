@@ -423,7 +423,8 @@ floats go over everything at their position or centered; `shares` divides an axi
 main area keeps its minimum. `Screen()` turns cells into `sgr:` segments so colors reach
 the renderer untouched. The focused window's cursor is the host's own (`View.Cursor`, in
 the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn
-over it. A focused window (`App.focusWin`) takes every key, ctrl+c
+over it. OSC 10, 11 and 12 queries answer with the colors the host terminal reported
+(`Manager.SetHostColor`), so an editor picks a theme that matches. A focused window (`App.focusWin`) takes every key, ctrl+c
 included, until `ui.window.unfocus`; a press on a title or separator starts a `winDrag`
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked

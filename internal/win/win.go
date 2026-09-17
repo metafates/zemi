@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"os/exec"
@@ -122,6 +123,9 @@ type Manager struct {
 	wins   []*Window
 	seq    int
 	OnExit func(w *Window) // runs on the wait goroutine after the program exits
+	// colors answer a program's OSC 10, 11 and 12 queries: the host terminal's
+	// foreground, background and cursor, nil until it reports them
+	colors [3]color.Color
 
 	kitty atomic.Bool // the host terminal draws kitty placeholders (kitty.go)
 	// gmu guards the image state; lock order is w.mu, then gmu
@@ -163,7 +167,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		return nil, fmt.Errorf("window: %d windows are open, close one first", maxWindows)
 	}
 	m.seq++
-	id := m.seq
+	id, colors := m.seq, m.colors
 	m.mu.Unlock()
 
 	cols, rows := spec.Cols, spec.Rows
@@ -180,6 +184,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),
 	}
 	w.term.SetScrollbackSize(2000)
+	w.setColors(colors)
 	w.term.RegisterApcHandler(w.graphics)
 	// vt keeps the cursor style per screen and has no getter; terminals keep one
 	w.term.RegisterCsiHandler(ansi.Command(0, ' ', 'q'), func(p ansi.Params) bool {
@@ -335,6 +340,27 @@ func (w *Window) writeLoop() {
 		w.inMu.Unlock()
 		_, _ = w.ptmx.Write(b)
 	}
+}
+
+// SetHostColor records a color the host terminal reported, osc naming it
+// (10 foreground, 11 background, 12 cursor), for open and later windows.
+func (m *Manager) SetHostColor(osc int, c color.Color) {
+	m.mu.Lock()
+	m.colors[osc-10] = c
+	colors, wins := m.colors, slices.Clone(m.wins)
+	m.mu.Unlock()
+	for _, w := range wins {
+		w.mu.Lock()
+		w.setColors(colors)
+		w.mu.Unlock()
+	}
+}
+
+// setColors sets the emulator's defaults; nil keeps vt's own.
+func (w *Window) setColors(c [3]color.Color) {
+	w.term.SetDefaultForegroundColor(c[0])
+	w.term.SetDefaultBackgroundColor(c[1])
+	w.term.SetDefaultCursorColor(c[2])
 }
 
 // Get returns a window by id.

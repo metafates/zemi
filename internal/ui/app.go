@@ -282,7 +282,8 @@ type hookMsg struct{ inner tea.Msg }
 // tea.Model
 
 func (a *App) Init() tea.Cmd {
-	cmds := []tea.Cmd{a.frameTickCmd(), a.drainHooksCmd()}
+	// windows answer color queries with the host's colors, so an editor picks a matching theme
+	cmds := []tea.Cmd{a.frameTickCmd(), a.drainHooksCmd(), tea.RequestForegroundColor, tea.RequestBackgroundColor, tea.RequestCursorColor}
 	// the terminal's name says whether windows get kitty images; Terminal.app
 	// prints the query instead of answering it
 	if os.Getenv("TERM_PROGRAM") != "Apple_Terminal" {
@@ -328,6 +329,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// a placeholder names its image by color, which NO_COLOR drops
 		a.colors = msg.Profile
 		a.host.Wins.SetKitty(a.kittyTerm && a.colors >= colorprofile.ANSI256)
+	case tea.ForegroundColorMsg:
+		a.host.Wins.SetHostColor(10, msg.Color)
+	case tea.BackgroundColorMsg:
+		a.host.Wins.SetHostColor(11, msg.Color)
+	case tea.CursorColorMsg:
+		a.host.Wins.SetHostColor(12, msg.Color)
 	case tea.FocusMsg:
 		a.focused = true
 	case tea.BlurMsg:
