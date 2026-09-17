@@ -483,41 +483,42 @@ func (t *windowTool) gate() *tools.Pipeline {
 func (t *windowTool) Info() fantasy.ToolInfo {
 	info := fantasy.ToolInfo{
 		Name: "window",
-		Description: `Run a program in a window inside zemi's screen (a split below the chat, a vsplit beside it, or a float over it) and keep working while it runs: show the user a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
+		Description: `Run a program in a window inside zemi's screen and keep working while it runs: a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
 
 Actions:
-- open (cmd, kind, title, cols, rows, focus, hidden): returns the window id. kind split is below the chat, vsplit a full-height sidebar, float over everything.
-- set (id, kind, title, hidden, frac, cols, rows, x, y): change where or how big a window shows, its title, or hide and show it; the program keeps running. frac is a split's share of the screen (0.3), cols and rows a float's size, x and y a float's top-left (-1 centers). To turn a split into a sidebar, set kind vsplit; no need to open a new one.
-- hide (id) and show (id): hidden windows keep running off screen; read and keys still work, so you can drive several programs and show the one that matters. focus (id): give the user's keys to it.
-- read (id, expect, wait_ms, scrollback): the screen as text plus the cursor. With expect it returns as soon as that text shows (or after wait_ms, saying so); without, it waits wait_ms (default 300) for the program to draw. scrollback N adds the last N lines that scrolled off the top. Always read after acting before deciding the next step.
-- keys (id, keys): press keys in neovim notation: plain characters type themselves, <esc> <cr> <tab> <bs> <space> <up> <down> <left> <right> <home> <end> <pgup> <pgdn> <del> <f1>..<f12> name keys, <c-x> <a-x> <s-tab> <c-s-left> add modifiers, <lt> is a literal <. "ihello<esc>:wq<cr>" edits and saves in vim.
-- mouse (id, x, y, button, mkind, mod): a click at 0-based cell x, y (button left, middle, right; mkind click, press, release, move) or a wheel step (button wheel_up or wheel_down).
-- send (id, text): raw text, as a paste without bracketing; prefer keys.
-- wait (id, timeout_ms): blocks until the program exits.
-- close (id): ends it. list: every window.
+- open: run cmd; returns the window id. kind split goes below the chat, vsplit is a full-height sidebar, float is over everything.
+- set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
+- hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.
+- focus: give the user's keys to the window.
+- read: the screen as text plus the cursor. Always read after acting before deciding the next step.
+- keys: press keys in neovim notation, e.g. "ihello<esc>:wq<cr>" or "<c-b>:q<cr>".
+- mouse: click, press, release or move at a cell, or scroll with button wheel_up or wheel_down.
+- send: raw text, as a paste without bracketing; prefer keys.
+- wait: block until the program exits.
+- close: end it. list: every window.
 A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,
 		Parameters: map[string]any{
 			"action":     map[string]any{"type": "string", "enum": []string{"open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
-			"hidden":     map[string]any{"type": "boolean", "description": "open, set: off screen but running"},
-			"frac":       map[string]any{"type": "number", "description": "set: a split or vsplit's share of the screen, 0.1 to 0.9"},
-			"scrollback": map[string]any{"type": "number", "description": "read: lines above the screen to include"},
-			"cmd":        map[string]any{"type": "string", "description": "open: the command, run with sh -c in the project directory"},
-			"kind":       map[string]any{"type": "string", "enum": []string{"split", "vsplit", "float"}, "description": "open, set: where the window goes (default split)"},
-			"title":      map[string]any{"type": "string", "description": "open, set: a short title (default: the command)"},
-			"cols":       map[string]any{"type": "number", "description": "open, set: a float's width"},
-			"rows":       map[string]any{"type": "number", "description": "open, set: a float's height"},
-			"focus":      map[string]any{"type": "boolean", "description": "open, set: give the user's keys to the window right away"},
-			"id":         map[string]any{"type": "number", "description": "every action but open and list: the window"},
-			"text":       map[string]any{"type": "string", "description": "send: raw text to type"},
-			"keys":       map[string]any{"type": "string", "description": "keys: key presses in neovim notation, e.g. \"<c-b>:q<cr>\""},
-			"expect":     map[string]any{"type": "string", "description": "read: return as soon as the screen shows this text"},
+			"id":         map[string]any{"type": "number"},
+			"cmd":        map[string]any{"type": "string", "description": "run with sh -c in the project directory"},
+			"kind":       map[string]any{"type": "string", "enum": []string{"split", "vsplit", "float"}, "description": "default split"},
+			"title":      map[string]any{"type": "string"},
+			"hidden":     map[string]any{"type": "boolean"},
+			"focus":      map[string]any{"type": "boolean", "description": "give the user's keys to the window right away"},
+			"frac":       map[string]any{"type": "number", "description": "a split or vsplit's share of the screen, 0.1 to 0.9"},
+			"cols":       map[string]any{"type": "number", "description": "a float's width"},
+			"rows":       map[string]any{"type": "number", "description": "a float's height"},
 			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window; set: a float's left column (-1 centers)"},
 			"y":          map[string]any{"type": "number", "description": "mouse: 0-based row inside the window; set: a float's top row (-1 centers)"},
-			"button":     map[string]any{"type": "string", "enum": []string{"left", "middle", "right", "wheel_up", "wheel_down"}, "description": "mouse: default left"},
-			"mkind":      map[string]any{"type": "string", "enum": []string{"click", "press", "release", "move"}, "description": "mouse: default click (press and release)"},
-			"mod":        map[string]any{"type": "string", "description": "mouse: modifiers such as ctrl, shift+alt"},
-			"wait_ms":    map[string]any{"type": "number", "description": "read: ms to wait before reading (default 300); with expect, the longest to wait (default 5000)"},
-			"timeout_ms": map[string]any{"type": "number", "description": "wait: give up after this long (default 60000)"},
+			"expect":     map[string]any{"type": "string", "description": "read returns as soon as the screen shows this text"},
+			"wait_ms":    map[string]any{"type": "number", "description": "read waits this long for the program to draw (default 300); with expect, the longest to wait (default 5000)"},
+			"scrollback": map[string]any{"type": "number", "description": "read adds this many lines that scrolled off the top"},
+			"keys":       map[string]any{"type": "string"},
+			"text":       map[string]any{"type": "string"},
+			"button":     map[string]any{"type": "string", "enum": []string{"left", "middle", "right", "wheel_up", "wheel_down"}, "description": "default left"},
+			"mkind":      map[string]any{"type": "string", "enum": []string{"click", "press", "release", "move"}, "description": "default click"},
+			"mod":        map[string]any{"type": "string", "description": "ctrl, alt or shift, joined with +"},
+			"timeout_ms": map[string]any{"type": "number", "description": "wait gives up after this long (default 60000)"},
 		},
 		Required: []string{"action"},
 	}
