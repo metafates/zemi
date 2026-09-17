@@ -596,7 +596,7 @@ func permNote(reason string) (string, string) {
 	return reason, "Host:Hint"
 }
 
-// hintLine is a footer of key/label pairs: "←→ choose · enter confirm".
+// hintLine is a footer of key/label pairs: "enter confirm · esc deny".
 func hintLine(pairs ...string) []hostapi.Segment {
 	var out []hostapi.Segment
 	for i := 0; i+1 < len(pairs); i += 2 {

@@ -82,8 +82,8 @@ func (a *App) answerTrust(answer string) {
 	a.frameGen++
 }
 
-// trustAnswers are the trust prompt's rows, in order: a click on row i or
-// its key gives answer i.
+// trustAnswers are the trust prompt's rows, in order: a click on row i
+// gives answer i.
 var trustAnswers = []string{"trust", "untrust", "later"}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
