@@ -1452,7 +1452,7 @@ The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin
 and not a profile: one tool-less model call over a closed session. With
 no tools it cannot act at all, so its only output is the proposal
 document below. Triggered on `session.close`: `/new`,
-`/resume`, and at startup for the most recent session, so quitting never
+`/resume`, and at startup (once, not on a reload) for the most recent session, so quitting never
 waits on a model call (configurable: every session, every Nth, or manual
 `/reflect`); a session is reflected again only once it has messages the
 reflector has not seen (the seen count persists in kv).

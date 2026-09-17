@@ -388,7 +388,7 @@ what the screen says.
   before it deletes) or `zemi.learn.decide`; `refreshPending` caches the
   statusline counts.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
-  the latest session, never on quit; `reflectDue` compares the message count with kv
+  the latest session (once per process, not on a reload, when that session is the open one), never on quit; `reflectDue` compares the message count with kv
   `reflector.seen.<sid>`, so a session is reflected again only after new messages.
 - **Digest and reflector input.** `digestFor(query)` ranks by the FTS score against the
   session's first message (bm25 stays near zero for common words, so they lift nothing),

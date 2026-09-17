@@ -16,6 +16,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -123,7 +124,7 @@ func run(args []string) int {
 		softStep(host, host.SkillsAuthoredHooksStep()),
 		softStep(host, projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
-		readyStep(host, !opts.print),
+		readyStep(host, app != nil),
 		host.SkillsLearnedHooksStep(),
 	}
 
@@ -551,9 +552,12 @@ func writeTrust(path string, m map[string]string) error {
 	return os.Rename(tmp, path)
 }
 
-// readyStep emits app.ready. Print mode skips the startup reflection: the
-// process exits before it could finish.
+// readyStep emits app.ready. Only the TUI reflects at startup: -p and
+// --health exit before it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
+	// once per process: a reload replays the step, and the newest session
+	// is then the open one
+	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect last session", h.ReflectLastSession) })
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -561,7 +565,7 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).
 			if reflect {
-				h.GoSafe("reflect last session", h.ReflectLastSession)
+				reflectLast()
 			}
 			return nil
 		},
