@@ -62,6 +62,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.memory.add({ kind = "fact", text = "x" })`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
+		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.register({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
 		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.remove("manual")`,

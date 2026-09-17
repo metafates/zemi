@@ -141,7 +141,8 @@ zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the si
 A region with an id and `focusable = true` can take the keys, which makes a panel you drive
 from the keyboard: `zemi.ui.focus.set(id)` (or the `zemi.ui.focus.set <id>` host action, or a
 click on it) gives it the keys, `zemi.ui.focus.next`/`zemi.ui.focus.prev` cycle through the
-composer and the drawn focusable nodes, and esc hands the keys back to the composer. Keymaps
+composer and the drawn focusable nodes, and esc hands the keys back to the composer. Only
+user config and shipped code may move the focus, as with the layout itself. Keymaps
 with `{ focus = id }` work only there and may be plain letters; the render ctx says who has
 the keys in `ctx.focus`:
 

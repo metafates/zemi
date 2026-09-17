@@ -272,10 +272,14 @@ func (h *Host) dropStaleFocus() {
 }
 
 // focusNamespace is zemi.ui.focus: set(id?), get(), next() and prev().
+// Moving the focus is gated like zemi.ui.layout.set: the focused node takes
+// every key, so lower origins could otherwise route the user's typing to
+// their own keymaps. Only user config sets the layout the ids come from.
 func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.focus.set")
+		h.refuseBelowUser(L, "ui.focus.set")
 		if err := h.focusNode(L.OptString(1, "")); err != nil {
 			L.RaiseError("zemi.ui.focus.set: %v", err)
 		}
@@ -292,6 +296,7 @@ func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
 	for name, step := range map[string]int{"next": 1, "prev": -1} {
 		tb.RawSetString(name, L.NewFunction(func(L *glua.LState) int {
 			h.refuseDuringRender(L, "zemi.ui.focus."+name)
+			h.refuseBelowUser(L, "ui.focus."+name)
 			_ = h.cycleFocus(step)
 			return 0
 		}))

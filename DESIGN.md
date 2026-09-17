@@ -952,9 +952,11 @@ UI extensibility contract:
   layout without the node, or esc give it back. The focus lives in Go and
   every key still goes through normal keymap dispatch, so a panel costs no
   Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
-  composer hides its cursor and popups while a node has the keys. Any
-  origin may move the focus: only a node user or shipped layout marked
-  focusable can take it.
+  composer hides its cursor and popups while a node has the keys. The
+  `zemi.ui.focus.*` calls are user or shipped code only, like setting the
+  layout: a focused node takes every key, so a lower origin could route
+  the user's typing to its own keymaps. A key the user presses still runs
+  whatever bound it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, filtered case-insensitively as you type; `up`/`down`
   navigate, `tab` accepts (fills `/name `), `enter` submits the typed

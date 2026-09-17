@@ -919,7 +919,8 @@ function zemi.ui.title(text) end
 function zemi.ui.redraw() end
 
 --- Give the keys to a focusable node of the layout, or to the composer with
---- nil. Raises when the layout has no focusable node with that id.
+--- nil. Raises when the layout has no focusable node with that id. User or
+--- builtin origin only, like zemi.ui.layout.set.
 ---@param id? string
 function zemi.ui.focus.set(id) end
 
@@ -928,10 +929,10 @@ function zemi.ui.focus.set(id) end
 function zemi.ui.focus.get() end
 
 --- Move the focus to the next drawn focusable node, the composer counting
---- as one, in tree order and then float order.
+--- as one, in tree order and then float order. User or builtin origin only.
 function zemi.ui.focus.next() end
 
---- Move the focus back one.
+--- Move the focus back one. User or builtin origin only.
 function zemi.ui.focus.prev() end
 
 ---@class zemi.ui.theme
