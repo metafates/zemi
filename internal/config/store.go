@@ -8,16 +8,14 @@ import (
 
 // Setting describes one config key.
 type Setting struct {
-	Path         string
-	Kind         string // "string" | "int" | "bool"
-	Default      any
-	UserWritable bool
-	Desc         string
+	Path    string
+	Kind    string // "string" | "int" | "bool"
+	Default any
+	Desc    string
 }
 
 // Store holds the merged config values and user watches. The schema is
-// Go-owned: only keys it marks user-writable can be set from Lua, the rest
-// only from Go.
+// Go-owned: a key outside it cannot be set.
 type Store struct {
 	mu       sync.RWMutex
 	values   map[string]any
@@ -49,33 +47,33 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: "agent.model", Kind: "string", Default: "", UserWritable: true, Desc: "active model id (provider/model)"},
-		{Path: "permissions.mode", Kind: "string", Default: "manual", UserWritable: true, Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
-		{Path: "agent.small_model", Kind: "string", Default: "", UserWritable: true, Desc: "a fast, cheap model for small jobs: session titles and, unless permissions.auto_model is set, auto-mode screening (provider/model; empty uses agent.model)"},
-		{Path: "permissions.auto_model", Kind: "string", Default: "", UserWritable: true, Desc: "model that screens asks in auto mode (provider/model; empty uses agent.small_model, then agent.model)"},
-		{Path: "ui.theme", Kind: "string", Default: "default", UserWritable: true, Desc: "active theme name"},
-		{Path: "ui.animations", Kind: "bool", Default: true, UserWritable: true, Desc: "animate the working indicator (false keeps it static)"},
-		{Path: "agent.subagent_model", Kind: "string", Default: "", UserWritable: true, Desc: "default model for subagents whose definition sets none (provider/model; empty uses the session model); the agent may pick another configured model per run"},
-		{Path: "web.search_url", Kind: "string", Default: "", UserWritable: true, Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
-		{Path: "agent.effort", Kind: "string", Default: "", UserWritable: true, Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
-		{Path: "session.auto_title", Kind: "bool", Default: true, UserWritable: true, Desc: "name new sessions from their first exchange with a short model call (agent.small_model when set)"},
-		{Path: "agent.context_window", Kind: "int", Default: 0, UserWritable: true, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
-		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, UserWritable: true, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
-		{Path: "lsp.auto", Kind: "bool", Default: true, UserWritable: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
-		{Path: "editor.command", Kind: "string", Default: "", UserWritable: true, Desc: "editor for open_in_editor, zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
-		{Path: "editor.window", Kind: "string", Default: "auto", UserWritable: true, Desc: "where the editor opens inside tmux: auto or popup (a popup over zemi), split (a pane beside it), fullscreen (zemi hands over the terminal, as outside tmux)"},
-		{Path: "ui.window.unfocus", Kind: "string", Default: "ctrl+\\", UserWritable: true, Desc: "the key that takes typing back from a focused window to zemi"},
-		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", UserWritable: true, Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
-		{Path: "ui.mouse", Kind: "bool", Default: true, UserWritable: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: "ui.notify", Kind: "bool", Default: true, UserWritable: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
-		{Path: "ui.composer.multiline", Kind: "bool", Default: true, UserWritable: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
-		{Path: "ui.composer.history", Kind: "int", Default: 50, UserWritable: true, Desc: "composer history entries kept (0 disables)"},
-		{Path: "ui.completion.files", Kind: "bool", Default: true, UserWritable: true, Desc: "file completion on the trigger char in the composer"},
-		{Path: "ui.completion.max_items", Kind: "int", Default: 10, UserWritable: true, Desc: "completion popup rows"},
-		{Path: "reflector.model", Kind: "string", Default: "", UserWritable: true, Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
-		{Path: "compact.model", Kind: "string", Default: "", UserWritable: true, Desc: "model that writes compaction summaries (provider/model; empty uses agent.model)"},
-		{Path: "memory.autonomy", Kind: "string", Default: "ask", UserWritable: true, Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
-		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},
+		{Path: "agent.model", Kind: "string", Default: "", Desc: "active model id (provider/model)"},
+		{Path: "permissions.mode", Kind: "string", Default: "manual", Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
+		{Path: "agent.small_model", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs: session titles and, unless permissions.auto_model is set, auto-mode screening (provider/model; empty uses agent.model)"},
+		{Path: "permissions.auto_model", Kind: "string", Default: "", Desc: "model that screens asks in auto mode (provider/model; empty uses agent.small_model, then agent.model)"},
+		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "active theme name"},
+		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
+		{Path: "agent.subagent_model", Kind: "string", Default: "", Desc: "default model for subagents whose definition sets none (provider/model; empty uses the session model); the agent may pick another configured model per run"},
+		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
+		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
+		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call (agent.small_model when set)"},
+		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
+		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
+		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
+		{Path: "editor.command", Kind: "string", Default: "", Desc: "editor for open_in_editor, zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
+		{Path: "editor.window", Kind: "string", Default: "auto", Desc: "where the editor opens inside tmux: auto or popup (a popup over zemi), split (a pane beside it), fullscreen (zemi hands over the terminal, as outside tmux)"},
+		{Path: "ui.window.unfocus", Kind: "string", Default: "ctrl+\\", Desc: "the key that takes typing back from a focused window to zemi"},
+		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
+		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
+		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
+		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
+		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
+		{Path: "ui.completion.files", Kind: "bool", Default: true, Desc: "file completion on the trigger char in the composer"},
+		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
+		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
+		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses agent.model)"},
+		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
+		{Path: "memory.digest_lines", Kind: "int", Default: 12, Desc: "memory digest lines in the system prompt"},
 	}
 	for _, def := range defaults {
 		s.schema[def.Path] = def
@@ -113,10 +111,6 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 		s.mu.Unlock()
 		return nil, &ErrUnknownKey{Path: path}
 	}
-	if !def.UserWritable {
-		s.mu.Unlock()
-		return nil, &ErrNotWritable{Path: path}
-	}
 	val, err := checkKind(def, val)
 	if err != nil {
 		s.mu.Unlock()
@@ -134,8 +128,7 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	return fired, nil
 }
 
-// SetHost writes any schema key from Go code, bypassing the Lua writability
-// gate but still validating kind.
+// SetHost writes a schema key from Go code without firing watches.
 func (s *Store) SetHost(path string, val any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

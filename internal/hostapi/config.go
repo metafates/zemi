@@ -75,14 +75,12 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// schema() lists every known setting: path, kind, default, desc and
-	// whether zemi.config.set accepts it.
+	// schema() lists every known setting: path, kind, default and desc.
 	tb.RawSetString("schema", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
 		for _, s := range h.Settings.Schema() {
 			rows = append(rows, map[string]any{
 				"path": s.Path, "kind": s.Kind, "default": s.Default, "desc": s.Desc,
-				"writable": s.UserWritable,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))

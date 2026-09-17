@@ -50,7 +50,6 @@ zemi.api = {}
 ---@field kind string "string", "bool", "int" or "float".
 ---@field default any
 ---@field desc string
----@field writable boolean False for host-owned knobs `zemi.config.set` refuses.
 
 ---@class zemi.config
 zemi.config = {}
@@ -60,8 +59,8 @@ zemi.config = {}
 ---@return any
 function zemi.config.get(path) end
 
---- Write a setting. User config only; raises for an unknown path, a wrong
---- kind, or a host-owned knob. A reload that writes the same value as the last
+--- Write a setting. User config only; raises for an unknown path or a wrong
+--- kind. A reload that writes the same value as the last
 --- load leaves the setting alone, so a runtime pick (/model, /effort) stays.
 ---@param path string
 ---@param value any

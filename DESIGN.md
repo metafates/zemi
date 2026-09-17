@@ -483,13 +483,13 @@ zemi.notify({ title = "hi", body = "...", level = "info" })
 
 Config values from `init.lua` merge with the defaults in Go's schema.
 `zemi.config.set` is in-memory for the session, callable from user config
-only, and accepts only the keys the schema marks user-writable; everything
-else is refused with an error (an allowlist, not a denylist). A reload
+only, and accepts only keys in the schema; anything else is refused with an
+error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
 so a runtime pick (`/model`, `/effort`, the mode cycle, `-m`) is not reverted
 by an unrelated config edit; replaying `permissions.mode` over a plan-mode
 pick would loosen permissions silently.
-`memory.autonomy` (§10.4) is in that set like `permissions.mode`: user
+`memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project, plugin and learned code may not, and the
 model's `Lua` tool asks before any such call. Persistent config changes are edits to
 files in the config repo (the user's, or the agent's through the
@@ -1675,7 +1675,7 @@ index, or the untrusted-content framing.
   from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
-the host-only proposal channel (§10.3), skills quarantine (§10.5), the config.set user-writable allowlist and the
+the host-only proposal channel (§10.3), skills quarantine (§10.5), the user-only config.set and the
 Go-generated `permissions.lua` (§6.1), and the reflector's tool-less
 model call (§10.3).
 

@@ -634,8 +634,8 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   (fact/gotcha/preference/convention/decision), provenance required, `origin` is `user` or
   `learned` and gates autonomy/supersede/digest-labeling. `memory.autonomy` is set by user
   config only (`zemi.config.set` refuses other origins).
-- **Config store** (`internal/config/store.go`): dotted-path keys; `SetHost` is Go-only,
-  user config cannot set host-owned knobs. Providers ship none; user config registers them, keys
+- **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema;
+  only user config sets them (`SetHost` is the Go path, no watches). Providers ship none; user config registers them, keys
   included (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for
   user and builtin origin only). Config fields hold values, never names of env vars.
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua

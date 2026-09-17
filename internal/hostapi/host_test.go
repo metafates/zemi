@@ -95,9 +95,6 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
 		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")
 		assert(type(zemi.ui.hl) == "function", "zemi.ui.hl missing")
-		local writable = {}
-		for _, s in ipairs(zemi.config.schema()) do writable[s.path] = s.writable end
-		assert(writable["ui.theme"] == true, "ui.theme must be writable")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
@@ -418,7 +415,7 @@ func TestEmitVetoable(t *testing.T) {
 }
 
 // TestConfigSetGating pins the config write gate: only user config sets,
-// and a writable key applies to the store.
+// and the value applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
