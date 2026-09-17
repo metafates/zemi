@@ -436,19 +436,9 @@ func (a *App) View() tea.View {
 		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
-	v.WindowTitle = a.windowTitle()
+	v.WindowTitle = a.host.TerminalTitle()
 	v.Cursor = a.cursor
 	return v
-}
-
-// windowTitle names the terminal tab after the session once it has a
-// title of its own.
-func (a *App) windowTitle() string {
-	t := sanitize.String(a.host.SessionTitle())
-	if t == "" || t == "zemi" {
-		return "zemi"
-	}
-	return t + " · zemi"
 }
 
 // notifyIfAway alerts through the terminal when zemi needs attention while

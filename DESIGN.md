@@ -902,6 +902,10 @@ UI extensibility contract:
   widget can open nothing a plugin keymap could not. An id without a
   handler draws no hover and does nothing. Ids from model text must not
   become command arguments: use host ids.
+- Terminal title: the tab is named after the session ("<title> · zemi");
+  `zemi.ui.title(text)` from user config replaces it until `title(nil)` or a
+  reload that does not set it again. Go strips escapes from it, so it cannot
+  smuggle a sequence into the terminal.
 - Themes: palettes map names to colors; `hl` groups reference palette
   names or raw hex, or `link` to another group (neovim's `link`, followed
   8 deep, a cycle draws unstyled); Go resolves to the terminal's colorprofile

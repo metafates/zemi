@@ -238,3 +238,30 @@ func TestPurgeStopsLuaJobs(t *testing.T) {
 		return nil
 	})
 }
+
+// TestTerminalTitle: user config sets the tab title, lower origins are
+// refused, nil gives it back to the session, and so does a reload that does
+// not set it again.
+func TestTerminalTitle(t *testing.T) {
+	h, r := newTestHost(t)
+	if got := h.TerminalTitle(); got != "zemi" {
+		t.Fatalf("default title %q", got)
+	}
+	runUser(t, r, `zemi.ui.title("build \27]0;x\7 watch")`)
+	if got := h.TerminalTitle(); got != "build watch" {
+		t.Fatalf("title %q", got)
+	}
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.title("pwned")`, "p.lua", lua.OriginPlugin); err == nil || strings.Contains(h.TerminalTitle(), "pwned") {
+		t.Fatalf("a plugin set the title: %v", err)
+	}
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.TerminalTitle(); got != "zemi" {
+		t.Fatalf("after a reload that sets none: %q", got)
+	}
+	runUser(t, r, `zemi.ui.title("x") zemi.ui.title(nil)`)
+	if got := h.TerminalTitle(); got != "zemi" {
+		t.Fatalf("after title(nil): %q", got)
+	}
+}

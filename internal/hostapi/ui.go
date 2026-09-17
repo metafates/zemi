@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -366,6 +367,21 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// repeating timer or code outside a callback changed.
 	tb.RawSetString("redraw", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.redraw")
+		h.refresh()
+		return 0
+	}))
+
+	// title(text?) sets the terminal tab's title; nil gives it back to the
+	// session. A reload that does not set it again gives it back too.
+	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.title")
+		h.refuseBelowUser(L, "ui.title")
+		text := strings.Join(strings.Fields(sanitize.String(L.OptString(1, ""))), " ")
+		if text == "" {
+			h.title.Store(nil)
+		} else {
+			h.title.Store(&titleSet{text: text, gen: h.currentGen()})
+		}
 		h.refresh()
 		return 0
 	}))

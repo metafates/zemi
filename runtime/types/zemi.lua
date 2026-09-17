@@ -556,6 +556,12 @@ function zemi.ui.layout.rects() end
 ---@class zemi.ui.focus
 zemi.ui.focus = {}
 
+--- Set the terminal tab's title (escapes stripped, whitespace collapsed);
+--- nil gives it back to zemi, which names it after the session. A reload
+--- that does not set it again gives it back too. User or builtin origin only.
+---@param text? string
+function zemi.ui.title(text) end
+
 --- Render every widget again on the next frame. Keymaps, clicks, one-shot
 --- timers, job, http, window and agent callbacks and event handlers redraw
 --- on their own when they return; a repeating timer or a widget fed by

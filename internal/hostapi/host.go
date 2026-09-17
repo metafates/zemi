@@ -267,6 +267,7 @@ type Host struct {
 
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
+	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
 
 	// luaRules are the rules zemi.permission.rule added: a reload replays
 	// the config that adds them. PurgeGeneration moves them to staleRules,
@@ -435,6 +436,23 @@ func (h *Host) SetUIHooks(ui UIHooks) {
 // Reflecting reports whether a reflector run is active; the UI keeps
 // re-rendering widgets while it is, so the statusline badge animates.
 func (h *Host) Reflecting() bool { return h.reflecting.Load() }
+
+type titleSet struct {
+	text string
+	gen  Gen
+}
+
+// TerminalTitle is what the terminal tab shows: the title config set this
+// generation, else the session's title with " · zemi" once it has one.
+func (h *Host) TerminalTitle() string {
+	if t := h.title.Load(); t != nil && t.gen == h.currentGen() {
+		return t.text
+	}
+	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
+		return t + " · zemi"
+	}
+	return "zemi"
+}
 
 // SessionTitle is the current session's title, for the terminal tab.
 func (h *Host) SessionTitle() string {
@@ -1228,7 +1246,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.33.0"))
+	api.RawSetString("version", glua.LString("0.34.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
