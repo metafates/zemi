@@ -278,6 +278,29 @@ func TestReflectPromptWindow(t *testing.T) {
 	}
 }
 
+// TestReflectPromptPending: only this session's suggestions show, since
+// what the reflector returns is stored under this session's autonomy.
+func TestReflectPromptPending(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	for _, m := range []store.Memory{
+		{Scope: "project", Kind: "fact", Text: "ours to review", ProvenanceSessionID: sid},
+		{Scope: "user", Kind: "fact", Text: "fetched elsewhere", ProvenanceSessionID: "other"},
+	} {
+		if err := h.addProposal(memoryProposal{Memory: m}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prompt, _, err := h.reflectPrompt(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "[project/fact] ours to review") || strings.Contains(prompt, "fetched elsewhere") {
+		t.Fatalf("pending block not limited to this session:\n%s", prompt)
+	}
+}
+
 // TestReflectPromptSkills: disabled drafts are listed too, with their
 // description, so the reflector does not draft them again.
 func TestReflectPromptSkills(t *testing.T) {

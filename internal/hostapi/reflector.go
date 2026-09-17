@@ -246,7 +246,10 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 	if s := h.instructionSections(h.instructionFiles(), reflectInstructionsMax); s != "" {
 		b.WriteString("\n# Instruction files\nEvery session's prompt carries these already." + s + "\n")
 	}
-	if props := h.memoryProposals(); len(props) > 0 {
+	// only this session's: memoryAuto(sid) stores what comes back, and
+	// another session's suggestion may carry outside text it queued for
+	props := slices.DeleteFunc(h.memoryProposals(), func(m memoryProposal) bool { return m.ProvenanceSessionID != sid })
+	if len(props) > 0 {
 		b.WriteString("\n# Memories awaiting review\n")
 		for _, m := range props {
 			verb := ""
