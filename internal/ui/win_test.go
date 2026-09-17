@@ -197,3 +197,39 @@ func TestWidgetWidthIsMainColumn(t *testing.T) {
 		t.Fatalf("widget width %d, main column %d", a.widgetWidth(), mainW)
 	}
 }
+
+// TestWindowHostCursor: the focused window's cursor is the host cursor, in
+// the shape the program asked for, and a float drawn over it hides it.
+func TestWindowHostCursor(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	a.CaptureHooks()
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.Open(win.Spec{Cmd: `printf '\033[6 q\033[2;3H'; sleep 5`, Kind: win.KindFloat, Cols: 20, Rows: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	for scr := wn.Screen(); scr.CursorY != 1 || scr.CursorShape != 2; scr = wn.Screen() {
+		if ctx.Err() != nil {
+			t.Fatal("the cursor never moved")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	if a.View().Cursor != nil {
+		t.Fatal("no window is focused, yet the host cursor shows")
+	}
+	a.setFocusWin(wn.ID)
+	c := a.View().Cursor
+	r := a.winRects[0]
+	if c == nil || c.X != r.x+2 || c.Y != r.y+1 || c.Shape != tea.CursorBar || c.Blink {
+		t.Fatalf("cursor %+v, window cells at %d,%d", c, r.x, r.y)
+	}
+	if _, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat, Cols: 20, Rows: 6}); err != nil {
+		t.Fatal(err)
+	}
+	if c := a.View().Cursor; c != nil {
+		t.Fatalf("a float covers the cursor, yet it shows at %+v", c)
+	}
+}

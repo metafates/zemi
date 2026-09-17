@@ -90,6 +90,7 @@ type Window struct {
 	inReady      chan struct{}
 	cmd          *exec.Cmd
 	cursorHidden atomic.Bool
+	cursorStyle  int         // the last DECSCUSR parameter, 0 to 6; guarded by mu
 	mouseOn      atomic.Bool // the program asked for mouse reports
 	done         chan struct{}
 	exit         atomic.Int32 // exit code, -1 while running
@@ -110,6 +111,9 @@ type Screen struct {
 	CursorX   int
 	CursorY   int
 	HasCursor bool
+	// CursorShape is 0 block, 1 underline, 2 bar: the order of tea.CursorShape
+	CursorShape int
+	CursorBlink bool
 }
 
 // Manager owns every open window.
@@ -177,6 +181,14 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	}
 	w.term.SetScrollbackSize(2000)
 	w.term.RegisterApcHandler(w.graphics)
+	// vt keeps the cursor style per screen and has no getter; terminals keep one
+	w.term.RegisterCsiHandler(ansi.Command(0, ' ', 'q'), func(p ansi.Params) bool {
+		if n, _, _ := p.Param(0, 0); n <= 6 {
+			w.cursorStyle = n
+		}
+		return false
+	})
+	w.term.RegisterEscHandler('c', func() bool { w.cursorStyle = 0; return false })
 	w.exit.Store(-1)
 	w.SetTitle(spec.Title)
 	if spec.Title == "" {
@@ -654,6 +666,7 @@ func (w *Window) Screen() Screen {
 	pos := w.term.CursorPosition()
 	out.CursorX, out.CursorY = pos.X, pos.Y
 	out.HasCursor = !w.cursorHidden.Load()
+	out.CursorShape, out.CursorBlink = (max(w.cursorStyle, 1)-1)/2, w.cursorStyle%2 == 1 || w.cursorStyle == 0
 	return out
 }
 

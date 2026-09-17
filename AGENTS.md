@@ -421,7 +421,9 @@ full-height columns beside the main column (compose lays the main column out at 
 and joins the columns at the end), splits take rows at the bottom of the chat area,
 floats go over everything at their position or centered; `shares` divides an axis so the
 main area keeps its minimum. `Screen()` turns cells into `sgr:` segments so colors reach
-the renderer untouched. A focused window (`App.focusWin`) takes every key, ctrl+c
+the renderer untouched. The focused window's cursor is the host's own (`View.Cursor`, in
+the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn
+over it. A focused window (`App.focusWin`) takes every key, ctrl+c
 included, until `ui.window.unfocus`; a press on a title or separator starts a `winDrag`
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked

@@ -87,14 +87,17 @@ type App struct {
 	lastChatBottom int
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
-	work      chan func()
-	workOnce  sync.Once
-	question  *questionPrompt
-	editing   string    // the editor handoff in progress, shown in the working row
-	focusWin  int       // window taking keys, 0 = none
-	winRects  []winRect // where windows were drawn on the last frame
-	winDrag   *winDrag  // a drag on window chrome in progress
-	chatAreaH int       // the chat area's height on the last frame (splits resize against it)
+	work     chan func()
+	workOnce sync.Once
+	question *questionPrompt
+	editing  string    // the editor handoff in progress, shown in the working row
+	focusWin int       // window taking keys, 0 = none
+	winRects []winRect // where windows were drawn on the last frame
+	// cursor is the host cursor: the focused window's, nil hides it. windowRows
+	// sets it in window cells and compose places it on the frame.
+	cursor    *tea.Cursor
+	winDrag   *winDrag // a drag on window chrome in progress
+	chatAreaH int      // the chat area's height on the last frame (splits resize against it)
 
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
@@ -422,6 +425,7 @@ func (a *App) View() tea.View {
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
 	v.WindowTitle = a.windowTitle()
+	v.Cursor = a.cursor
 	return v
 }
 
@@ -723,7 +727,7 @@ func (a *App) compose(w, h int) string {
 	rows := make([][]hostapi.Segment, 0, h)
 	rows = append(rows, header...)
 
-	a.winRects = a.winRects[:0]
+	a.winRects, a.cursor = a.winRects[:0], nil
 	for i := range chatViewH {
 		var row []hostapi.Segment
 		if j := a.chatTop + i; j >= 0 && j < len(chat) {
@@ -843,6 +847,7 @@ func (a *App) compose(w, h int) string {
 	if len(modals) == 0 {
 		toasts()
 	}
+	a.cursor = a.placeCursor(a.cursor, len(modals) > 0)
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
 	a.highlightSelection(rows, w)

@@ -191,6 +191,9 @@ func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment 
 	focused := a.focusWin == wn.ID
 	rows := [][]hostapi.Segment{a.winTitleRow(wn, width, focused)}
 	scr := wn.Screen()
+	if focused && scr.HasCursor {
+		a.cursor = &tea.Cursor{Position: tea.Position{X: scr.CursorX, Y: scr.CursorY}, Shape: tea.CursorShape(scr.CursorShape), Blink: scr.CursorBlink}
+	}
 	for y := range height {
 		var row []hostapi.Segment
 		if y < len(scr.Rows) {
@@ -208,12 +211,32 @@ func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment 
 			}
 		}
 		row = padSegs(truncateSegs(row, width), width)
-		if focused && scr.HasCursor && y == scr.CursorY && scr.CursorX < width {
-			row = restyle(row, scr.CursorX, scr.CursorX+1, func(string) string { return "Host:Cursor" })
-		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// placeCursor moves the focused window's cursor from its cells to the
+// frame; nil when a modal is up or the cell is off the window or under a
+// float drawn after it.
+func (a *App) placeCursor(c *tea.Cursor, modal bool) *tea.Cursor {
+	i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == a.focusWin })
+	if c == nil || modal || i < 0 {
+		return nil
+	}
+	r := a.winRects[i]
+	if c.X >= r.w || c.Y >= r.h {
+		return nil
+	}
+	c.X, c.Y = r.x+c.X, r.y+c.Y
+	for _, o := range a.winRects[i+1:] {
+		// a float's box is its cells plus a two-column border and the title and bottom rows
+		if wn, ok := a.host.Wins.Get(o.id); ok && wn.Kind() == win.KindFloat &&
+			c.X >= o.x-2 && c.X < o.x+o.w+2 && c.Y >= o.titleY && c.Y <= o.y+o.h {
+			return nil
+		}
+	}
+	return c
 }
 
 // winTitleRow is the row above a window: id and title on the left, state
