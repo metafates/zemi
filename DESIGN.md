@@ -1060,6 +1060,16 @@ configured provider later (`zemi.memory.search` signature does not change).
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
   in place of the list with its full text and the actions as a list, so a restart, a
   multi-agent run or a rewind is never one stray enter; esc goes back.
+- **Mouse**: one hit test (`App.target`) serves clicks and hover, so a
+  highlight always means a click acts. Go chrome items carry a Go-only
+  item index; widget segments carry their `click` id (§6.6) and are
+  targets only while their widget has `on_click` and no modal chrome is
+  open, which takes every click. The shipped statusline is clickable from
+  `defaultui.lua`: the mode opens the mode picker, the model the model
+  picker, the context and cost `/usage`, pending reviews `/memory`,
+  running agents `/agents`. The boot failed, stuck and errors pills stay
+  Go-drawn, since they report a broken Lua layer that could not draw its
+  own alarm; a click on the errors pill opens `/errors`.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume

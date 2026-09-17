@@ -146,7 +146,10 @@ zemi.keymap.set("<leader>r", "review", { desc = "review changes" })
 Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must be pure
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
 `zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
-uses are the `hl` table at the top of `defaultui.lua`.
+uses are the `hl` table at the top of `defaultui.lua`. To make a segment clickable give it
+`click = "some-id"` and the widget `on_click = function(ev) ... end` (ev.id is that id);
+the shipped statusline widgets run `zemi.command.run(ev.id)`, so a replacement statusline
+keeps its clicks by doing the same.
 Full API: the zemi-lua skill.
 
 ## After writing

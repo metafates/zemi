@@ -125,6 +125,11 @@ local function chunks(text, room)
   return out
 end
 
+-- run_click runs the command a statusline segment names in its click id.
+local function run_click(ev)
+  assert(zemi.command.run(ev.id))
+end
+
 -- dot separates statusline groups.
 local function dot(segs)
   if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
@@ -220,11 +225,12 @@ end
 
 -- Statusline left starts with the permission mode as a pill (tab cycles
 -- it): quiet in manual, filled in auto and yolo, matching the composer
--- prompt color.
+-- prompt color. A click opens the mode picker.
 zemi.ui.widget.register({
   id = "statusline.mode",
   region = "statusline.left",
   priority = 5,
+  on_click = run_click,
   render = function(ctx)
     local mode = ctx.permission_mode or "manual"
     local base = ctx.permission_mode_base or mode
@@ -232,7 +238,7 @@ zemi.ui.widget.register({
     if base == "yolo" then
       mode = " " .. mode .. " "
     end
-    return { { { text = mode, hl = hl } } }
+    return { { { text = mode, hl = hl, click = "mode" } } }
   end,
 })
 
@@ -268,10 +274,11 @@ zemi.ui.widget.register({
   id = "statusline.agents",
   region = "statusline.left",
   priority = 25,
+  on_click = run_click,
   render = function(ctx)
     local n = ctx.agents_running or 0
     if n == 0 then return empty() end
-    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title" }, { text = " /agents", hl = "Comment" } } }
+    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title", click = "agents" }, { text = " /agents", hl = "Comment", click = "agents" } } }
   end,
 })
 
@@ -298,15 +305,16 @@ zemi.ui.widget.register({
   id = "statusline.learn",
   region = "statusline.left",
   priority = 30,
+  on_click = run_click,
   render = function(ctx)
     local segs = {}
     local function add(n, what, cmd)
       if (n or 0) == 0 then return end
       dot(segs)
-      segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title" }
-      segs[#segs + 1] = { text = " " .. cmd, hl = "Comment" }
+      segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title", click = cmd }
+      segs[#segs + 1] = { text = " /" .. cmd, hl = "Comment", click = cmd }
     end
-    add(ctx.pending_memory, "to review", "/memory")
+    add(ctx.pending_memory, "to review", "memory")
     if #segs == 0 then return empty() end
     return { segs }
   end,
@@ -329,19 +337,21 @@ end)
 
 -- Statusline right: "model · 24.5k/200k ctx · 45%", falling back to the
 -- session token total when the model's context window is unknown. The
--- percent colors by threshold: muted, warn at 80%, err at 95%.
+-- percent colors by threshold: muted, warn at 80%, err at 95%. A click on
+-- the model opens the model picker, on the rest /usage.
 zemi.ui.widget.register({
   id = "statusline.info",
   region = "statusline.right",
   priority = 10,
+  on_click = run_click,
   render = function(ctx)
     local segs = {}
-    local function add(text, hl)
+    local function add(text, hl, click)
       dot(segs)
-      segs[#segs + 1] = { text = text, hl = hl }
+      segs[#segs + 1] = { text = text, hl = hl, click = click or "usage" }
     end
     if (ctx.model or "") ~= "" then
-      add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment")
+      add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model")
     end
     -- how much of the window is in use, not a running token total: the
     -- total says nothing about how much room is left

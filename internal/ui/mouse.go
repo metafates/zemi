@@ -1,12 +1,13 @@
 // mouse.go: a drag selects screen text and copies it on release (OSC 52
 // plus the native clipboard tool); a click without a drag acts on what is
-// under it: prompt choices, list rows, a mode name, the thought line.
+// under it: prompt choices, list rows, widget click ids, the thought line.
 // Hovering lights what a click would act on.
 package ui
 
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,9 +17,19 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/win"
 )
+
+// mousePress is the last button press, for the event a widget on_click gets.
+type mousePress struct {
+	x, y   int
+	button tea.MouseButton
+	mod    tea.KeyMod
+	at     time.Time
+	clicks int
+}
 
 type mouseSel struct {
 	pressed, dragged bool
@@ -52,7 +63,19 @@ func (a *App) mouseEnabled() bool { return a.cfgBool("ui.mouse", true) }
 func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {
 	case tea.MouseClickMsg:
+		p := mousePress{x: m.X, y: m.Y, button: m.Button, mod: m.Mod, at: time.Now(), clicks: 1}
+		// NOTE: a fixed 400ms, not the OS double-click time
+		if l := a.press; l.x == p.x && l.y == p.y && l.button == p.button && p.at.Sub(l.at) < 400*time.Millisecond {
+			p.clicks = l.clicks + 1
+		}
+		a.press = p
 		if m.Button != tea.MouseLeft {
+			// right and middle presses start no selection: they click a widget at once
+			if (m.Button == tea.MouseRight || m.Button == tea.MouseMiddle) && m.Y >= 0 && m.Y < len(a.lastRows) {
+				if rest := dropCells(a.lastRows[m.Y], m.X); len(rest) > 0 && rest[0].Widget != "" {
+					a.click(m.X, m.Y)
+				}
+			}
 			return nil
 		}
 		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
@@ -188,16 +211,21 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return nil, nil, false
 	}
 	row := a.lastRows[y]
-	hit := 0
+	var under hostapi.Segment
 	if rest := dropCells(row, x); len(rest) > 0 {
-		hit = rest[0].Hit
+		under = rest[0]
+	}
+	hit := under.Hit
+	// at is the item of the segments same matches, and whether x is on it
+	at := func(same func(hostapi.Segment) bool) ([]cellSpan, bool) {
+		spans := a.itemSpans(y, same)
+		return spans, slices.ContainsFunc(spans, func(s cellSpan) bool { return s.y == y && s.lo <= x && x < s.hi })
 	}
 	item := func(n int) ([]cellSpan, bool) {
 		if hit <= 0 || hit > n {
 			return nil, false
 		}
-		spans := a.itemSpans(y, hit)
-		return spans, slices.ContainsFunc(spans, func(s cellSpan) bool { return s.y == y && s.lo <= x && x < s.hi })
+		return at(func(s hostapi.Segment) bool { return s.Hit == hit })
 	}
 	// with nothing to open, the selected item is not a target
 	list := func(n int, sel *int, open func()) ([]cellSpan, func(), bool) {
@@ -257,24 +285,20 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
-	case y >= a.lastChatBottom:
-		// the statusline mode pill opens the picker
-		text := plainSegs(row)
-		lo, hi := wordSpan(text, x)
-		if y != len(a.lastRows)-1 || lo >= hi {
+	case under.Click != "":
+		act := func() { a.clickWidget(under, x, y) }
+		if under.Widget == "" { // the Go errors pill
+			act = func() {
+				if err := a.host.OpenErrors(""); err != nil {
+					a.pushToast("error", "/errors failed", err.Error())
+				}
+			}
+		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {
 			break
 		}
-		word := ansi.Cut(text, lo, hi)
-		for _, def := range a.host.PermModeList() {
-			if word == def.Name {
-				return line(lo, hi, func() {
-					if err := a.host.OpenModePicker(); err != nil {
-						a.pushToast("error", "Mode picker failed", err.Error())
-					}
-				})
-			}
-		}
-	default:
+		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
+		return spans, act, ok
+	case y < a.lastChatBottom:
 		text := plainSegs(row)
 		end := ansi.StringWidth(strings.TrimRight(text, " "))
 		if before, _, ok := strings.Cut(text, "✻ Th"); ok && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
@@ -295,15 +319,15 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	return nil, nil, false
 }
 
-// itemSpans is the cells of item hit on the contiguous rows around y that
-// carry it, one span per run of text. Blank ends of a segment are dropped
+// itemSpans is the cells of the item same matches on the contiguous rows
+// around y that carry it, one span per run of text. Blank ends of a segment are dropped
 // unless painted (a themed background such as a code span).
 // NOTE: only the top chrome box takes input, so contiguity scopes an item;
 // two boxes stacked edge to edge with the same ids would merge (bound by the
 // box's columns if that ever happens).
-func (a *App) itemSpans(y, hit int) []cellSpan {
+func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	carries := func(y int) bool {
-		return y >= 0 && y < len(a.lastRows) && slices.ContainsFunc(a.lastRows[y], func(s hostapi.Segment) bool { return s.Hit == hit })
+		return y >= 0 && y < len(a.lastRows) && slices.ContainsFunc(a.lastRows[y], same)
 	}
 	for carries(y - 1) {
 		y--
@@ -313,7 +337,7 @@ func (a *App) itemSpans(y, hit int) []cellSpan {
 		col, lo, hi := 0, -1, 0
 		for _, s := range a.lastRows[y] {
 			w := ansi.StringWidth(s.Text)
-			if s.Hit == hit {
+			if same(s) {
 				from, to := col, col+w
 				if a.hlStyle(s.HL).Bg == nil {
 					from += w - ansi.StringWidth(strings.TrimLeft(s.Text, " "))
@@ -348,34 +372,23 @@ func plainSegs(segs []hostapi.Segment) string {
 	return b.String()
 }
 
-// wordSpan returns the cells [from, to) of the space-delimited word
-// covering display cell x (from == to when there is none).
-func wordSpan(text string, x int) (from, to int) {
-	type cell struct {
-		col, w int
-		space  bool
+// clickWidget runs the on_click of the widget that drew s on the background
+// worker, like a keymap.
+func (a *App) clickWidget(s hostapi.Segment, x, y int) {
+	p := a.press
+	ev := map[string]any{
+		"id": s.Click, "x": x, "y": y, "clicks": p.clicks,
+		"button": map[tea.MouseButton]string{tea.MouseLeft: "left", tea.MouseRight: "right", tea.MouseMiddle: "middle"}[p.button],
+		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
-	var cells []cell
-	col, at := 0, -1
-	for _, r := range text {
-		w := ansi.StringWidth(string(r))
-		if col <= x && x < col+max(w, 1) {
-			at = len(cells)
+	a.background(func() {
+		switch err := a.host.ClickWidget(context.Background(), s.Widget, ev); {
+		case err == nil, errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
+		default:
+			a.host.RecordError("click on widget "+s.Widget, err.Error())
+			a.Notify("error", "Click on "+s.Widget+" failed", err.Error())
 		}
-		cells = append(cells, cell{col, w, r == ' '})
-		col += w
-	}
-	if at < 0 || cells[at].space {
-		return 0, 0
-	}
-	i, j := at, at
-	for i > 0 && !cells[i-1].space {
-		i--
-	}
-	for j+1 < len(cells) && !cells[j+1].space {
-		j++
-	}
-	return cells[i].col, cells[j].col + cells[j].w
+	})
 }
 
 // Copy implements hostapi.UIHooks (/copy).

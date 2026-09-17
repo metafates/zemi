@@ -672,7 +672,8 @@ timeout.
   compose keeps the last frame's segments, a drag copies their text through OSC 52 plus
   pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
   that `listRows` puts on every row of an item, prompt choices included) to act on the
-  topmost chrome. Hover lights the whole item, but only the pointer over the item's
+  topmost chrome, or `Segment.Click`/`Segment.Widget` (a widget's click id) to run that
+  widget's `on_click` on the background worker (`Host.ClickWidget`, generation-checked). Hover lights the whole item, but only the pointer over the item's
   non-blank or background-painted cells on its row makes it a target: padding, gutters,
   blank rows and section headers never are. Lists scroll at the edge and never recenter,
   so a click does not move the item under the pointer. Modal chrome is spliced after
@@ -681,7 +682,8 @@ timeout.
   an item with `detail` or `actions` pushes a detail view (`<id>#detail`, the parent's
   origin, drawn in place of the list, esc pops it), `Body` is text above the items, `Empty` the line for none, and the
   hint line lists only keys that act on the selection (`enterVerb`); enter on an inert row
-  does nothing. Helpers that rebuild segments must carry `Hit`. Composer
+  does nothing. Helpers that rebuild segments must copy the segment (`Hit`, `Click`,
+  `Widget`); only `dimRows` drops them, because dimmed rows are not targets. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
   scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua

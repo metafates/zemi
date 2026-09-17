@@ -205,7 +205,9 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= 12 {
 			last.Text = strings.TrimRight(last.Text[:i], " ,;:-")
 		}
-		out = append(out[:n-1:n-1], last, hostapi.Segment{Text: "…", HL: last.HL, Hit: last.Hit})
+		dots := last
+		dots.Text = "…"
+		out = append(out[:n-1:n-1], last, dots)
 	}
 	return out
 }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -65,6 +66,16 @@ func TestMouseClicks(t *testing.T) {
 		t.Fatal("clicking the thought line should expand it")
 	}
 
+	ran := make(chan string, 1)
+	host.Commands.Add(&hostapi.Command{Name: "mode", GoFn: func(*hostapi.Host, string) error { ran <- "mode"; return nil }, Origin: lua.OriginBuiltin})
+	x, y = findCell(t, app, "manual")
+	clickAt(app, x+1, y)
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("clicking the mode pill should run /mode")
+	}
+
 	done := make(chan bool)
 	go func() {
 		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"})
@@ -114,22 +125,6 @@ func TestMouseHover(t *testing.T) {
 	clickAt(app, x+1, y) // open
 	if app.composer.text != "/help " {
 		t.Fatalf("composer = %q", app.composer.text)
-	}
-}
-
-func TestWordSpan(t *testing.T) {
-	for _, c := range []struct {
-		text     string
-		x        int
-		from, to int
-	}{
-		{" manual  plan ", 3, 1, 7},
-		{" manual  plan ", 7, 0, 0},
-		{"✻ auto", 3, 2, 6},
-	} {
-		if from, to := wordSpan(c.text, c.x); from != c.from || to != c.to {
-			t.Errorf("wordSpan(%q, %d) = %d, %d", c.text, c.x, from, to)
-		}
 	}
 }
 
@@ -221,6 +216,15 @@ func TestHoverTargets(t *testing.T) {
 		app.host.AppendMessage("user", "why?")
 		app.host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	}
+	widgets := func(app *App) {
+		src := `zemi.ui.widget.register({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
+			render = function() return {{{ text = "clickme", click = "go" }}} end })
+		zemi.ui.widget.register({ id = "b", region = "statusline.left", priority = 91,
+			render = function() return {{{ text = "noclick", click = "go" }}} end })`
+		if err := app.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, c := range []struct {
 		name string
 		open func(app *App)
@@ -241,6 +245,9 @@ func TestHoverTargets(t *testing.T) {
 		{"the gutter left of a choice is not a target", perm, "No ", -2, 0},
 		{"thought line text is a target", thought, "Thought for", 1, 1},
 		{"right of the thought line is not a target", thought, "Thought for", 60, 0},
+		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1},
+		{"a widget click id without a handler is not", widgets, "noclick", 1, 0},
+		{"the space right of a widget click id is not", widgets, "clickme", 7, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 80, 24)

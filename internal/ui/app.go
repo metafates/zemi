@@ -79,6 +79,7 @@ type App struct {
 	memEdited string // the row the next memory screen opens on
 
 	mouse          mouseSel
+	press          mousePress
 	hovering       bool
 	hoverX, hoverY int
 	hoverKey       string              // what the pointer is over, to redraw only on change
@@ -1042,17 +1043,17 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})
 	}
-	pill := func(text string) {
-		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError"})
+	pill := func(text, click string) {
+		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError", Click: click})
 	}
 	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
-		pill(" boot failed ")
+		pill(" boot failed ", "")
 	} else if a.host.RT.IsHot() {
-		pill(" stuck: /reload ")
+		pill(" stuck: /reload ", "")
 	}
 	if a.host.HasUnseenErrors() {
-		pill(" errors: /errors ")
+		pill(" errors: /errors ", "errors")
 	}
 
 	if n := a.rowsBelow(); n > 0 {
@@ -1191,7 +1192,8 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 		}
 		remaining := w - used
 		if remaining > 0 {
-			out = append(out, hostapi.Segment{Text: ansi.Truncate(s.Text, remaining, ""), HL: s.HL, Hit: s.Hit})
+			s.Text = ansi.Truncate(s.Text, remaining, "")
+			out = append(out, s)
 		}
 		break
 	}
@@ -1241,28 +1243,30 @@ func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
 			row, width = []hostapi.Segment{{Text: strings.Repeat(" ", indent)}}, indent
 		}
 	}
-	add := func(text, hl string) {
+	// add keeps every field of seg on each piece of text
+	add := func(text string, seg hostapi.Segment) {
+		piece := func(t string) hostapi.Segment { seg.Text = t; return seg }
 		for {
 			if width >= w {
 				flush()
 			}
 			tw := ansi.StringWidth(text)
 			if tw <= w-width {
-				row = append(row, hostapi.Segment{Text: text, HL: hl})
+				row = append(row, piece(text))
 				width += tw
 				return
 			}
 			cut := ansi.Truncate(text, w-width, "")
 			if cut == "" {
 				if width <= indent { // a wide rune that fits nowhere: place it anyway
-					row = append(row, hostapi.Segment{Text: text, HL: hl})
+					row = append(row, piece(text))
 					width += tw
 					return
 				}
 				flush()
 				continue
 			}
-			row = append(row, hostapi.Segment{Text: cut, HL: hl})
+			row = append(row, piece(cut))
 			text = strings.TrimPrefix(text, cut)
 			flush()
 		}
@@ -1275,7 +1279,7 @@ func wrapSegs(line []hostapi.Segment, w int) [][]hostapi.Segment {
 			if width+ansi.StringWidth(word) > w && width > indent {
 				flush()
 			}
-			add(word, seg.HL)
+			add(word, seg)
 		}
 	}
 	if width > indent || len(rows) == 0 {
