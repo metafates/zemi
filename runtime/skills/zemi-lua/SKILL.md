@@ -69,8 +69,8 @@ zemi writes LuaLS annotations for this whole API to `~/.local/share/zemi/types/z
 on every start, and a `~/.config/zemi/.luarc.json` pointing at them the first time. Read
 that file when you need an exact signature, field name or return shape - it is generated
 from the surface Go registers and a test fails when the two drift. Do not edit it: the
-next start overwrites it. Next to it, `types/zemi/defaultui.lua` is the shipped default UI
-(theme, widgets, keymaps) and `types/zemi/util.lua` the helpers: real source, readable
+next start overwrites it. Next to it, `types/zemi/defaultui/` is the shipped default UI
+(theme, widgets, keymaps, one module each) and `types/zemi/util.lua` the helpers: real source, readable
 without asking, the reference for how a widget is written.
 
 ## Namespaces

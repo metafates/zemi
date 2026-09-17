@@ -96,9 +96,10 @@ Registering a widget with a builtin id replaces it; a new id adds one. Builtin i
 `chat`, `working`, `statusline.left`, `statusline.right`. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
-The shipped UI is Lua too: `types/zemi/defaultui.lua` under the data directory (the system
-prompt names the exact path; rewritten on every start) holds the theme, every builtin widget
-and the default keymaps. Read it before changing one: copy the widget you want to alter into
+The shipped UI is Lua too: `types/zemi/defaultui/` under the data directory (the system
+prompt names the exact path; rewritten on every start) holds the theme (`theme.lua`), the
+widgets (`statusline.lua`, `working.lua`, `chat.lua`, `splash.lua`) and the default keymaps
+(`init.lua`). Read it before changing one: copy the widget you want to alter into
 `init.lua` under the same id and change what you need, or `require("zemi.defaultui")` to
 build on its splash.
 Try a change live with the Lua tool first (it asks once and lasts until the next reload), screenshot, then
@@ -148,7 +149,7 @@ Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }` (`{}` 
 lines; `effect = "shimmer"` animates a segment like the working label), must be pure
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
 `zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
-uses are the `hl` table at the top of `defaultui.lua`. To make a segment clickable give it
+uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable give it
 `click = "some-id"` and the widget `on_click = function(ev) ... end` (ev.id is that id);
 the shipped statusline widgets run `zemi.command.run(ev.id)`, so a replacement statusline
 keeps its clicks by doing the same. A replacement chat widget keeps its clicks by calling

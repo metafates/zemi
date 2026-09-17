@@ -48,6 +48,10 @@ func (h *Host) writeTypes(dir string) error {
 		{zemiruntime.Types, "types", "types/"},
 		{zemiruntime.FS, "lua", "lua/"},
 	}
+	// a module zemi no longer ships must not linger as a reference
+	if err := os.RemoveAll(filepath.Join(dir, "zemi")); err != nil {
+		return err
+	}
 	for _, t := range trees {
 		err := fs.WalkDir(t.fsys, t.root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {

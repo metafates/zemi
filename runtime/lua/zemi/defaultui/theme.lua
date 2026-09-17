@@ -1,0 +1,67 @@
+-- The default theme: a palette and every highlight group the shipped UI
+-- draws with.
+
+zemi.ui.theme.register("default", {
+  palette = {
+    bg = "#1a1b26",
+    fg = "#c0caf5",
+    muted = "#565f89",
+    accent = "#7aa2f7",
+    ok = "#9ece6a",
+    warn = "#e0af68",
+    err = "#f7768e",
+    panel = "#24283b",
+  },
+  hl = {
+    Normal = { fg = "fg" },
+    Comment = { fg = "muted" },
+    Title = { fg = "accent", bold = true },
+    UserMsg = { fg = "accent" },
+    ToastError = { fg = "bg", bg = "err", bold = true },
+    Toast = { fg = "fg", bg = "panel" },
+    ToastTitle = { fg = "fg", bg = "panel", bold = true },
+    ToastInfo = { fg = "accent", bg = "panel" },
+    ToastWarn = { fg = "warn", bg = "panel" },
+    ToastErr = { fg = "err", bg = "panel" },
+    MarkdownHeading = { fg = "accent", bold = true },
+    MarkdownCode = { fg = "warn", bg = "panel" },
+    MarkdownLink = { fg = "accent", underline = true },
+    MarkdownQuote = { fg = "muted", italic = true },
+    AgentReason = { fg = "muted" },
+    ThinkingMark = { fg = "accent" },
+    ThinkingBar = { fg = "#3b4261" },
+    AgentToolName = { fg = "fg", bold = true },
+    AgentToolRun = { fg = "muted" },
+    AgentToolOk = { fg = "ok" },
+    AgentToolErr = { fg = "err" },
+    -- tool diffs match the permission prompt: tinted rows, dim line numbers
+    DiffAdd = { fg = "#d4e8c8", bg = "#243427" },
+    DiffAddNum = { fg = "#7fa36c", bg = "#243427" },
+    DiffDel = { fg = "#eccad0", bg = "#3a2629" },
+    DiffDelNum = { fg = "#b06d76", bg = "#3a2629" },
+    DiffCtx = { fg = "#9aa0c0" },
+    DiffCtxNum = { fg = "#4c5372" },
+    TodoActive = { fg = "fg", bold = true },
+    StatusUsage = { fg = "muted" },
+    StatusUsageWarn = { fg = "warn" },
+    StatusUsageErr = { fg = "err", bold = true },
+    ModeManual = { fg = "muted" },
+    ModePlan = { fg = "ok", bold = true },
+    ModeAuto = { fg = "accent", bold = true },
+    -- yolo answers every ask by itself, so nothing else on screen shows it
+    -- is on: it gets a filled pill, the other modes plain text
+    ModeYolo = { fg = "bg", bg = "err", bold = true },
+    PromptPlan = { fg = "ok", bold = true },
+    PromptAuto = { fg = "accent", bold = true },
+    PromptYolo = { fg = "err", bold = true },
+    -- splash wordmark, a top-down blend from accent to violet
+    Logo1 = { fg = "#7aa2f7", bold = true },
+    Logo2 = { fg = "#80a0f5", bold = true },
+    Logo3 = { fg = "#8f9cf3", bold = true },
+    Logo4 = { fg = "#9d99f1", bold = true },
+    Logo5 = { fg = "#ac9ef3", bold = true },
+    Logo6 = { fg = "#bb9af7", bold = true },
+    SplashKey = { fg = "fg", bold = true },
+  },
+})
+zemi.ui.theme.set("default")

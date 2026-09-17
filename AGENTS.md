@@ -78,7 +78,7 @@ the mode cycle and `-m`/`--mode` survive a reload until the config changes that 
 matters:
 host namespaces (`zemi.*`) -> builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
 workflow (+ `/review`), mcp, lsp and window commands ->
-`require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
+`require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/defaultui/`, one module per part) ->
 project trust (`trustGate.step`, before any config that can start an MCP server) ->
 plugins -> user `init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua`
 (`projectInitStep`) -> markdown commands (`commands/*.md`, user then trusted project) ->
@@ -703,7 +703,7 @@ timeout.
   does nothing. Helpers that rebuild segments must copy the segment (`Hit`, `Click`,
   `Widget`); only `dimRows` drops them, because dimmed rows are not targets. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
-  scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
+  scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui/init.lua`.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua
   jobs, MCP and LSP servers, git). A child runs in its own session: no controlling terminal
   (nothing can read the TUI's keys or hang on a password prompt) and its own process group,
@@ -715,7 +715,7 @@ timeout.
   `turnScope` context (host.go) covers compaction, the model, tools and auto-mode
   screening, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
 - **Widgets read UI flags, never Go-drawn text.** The working row and the quit, key
-  sequence and scroll flags are `defaultui.lua` widgets reading `hostapi.UIState`
+  sequence and scroll flags are `defaultui/` widgets reading `hostapi.UIState`
   (`App.uiState`); `onFrame` bumps the frame when that state changes, pulse aside. A new
   flag goes into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation
   a widget cannot render at 30 fps is a segment `effect` the UI applies (`shimmer`).
