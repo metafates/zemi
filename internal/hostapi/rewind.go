@@ -204,13 +204,13 @@ func (h *Host) OpenRewind() error {
 		if !ok {
 			continue
 		}
-		desc, effect := ago(row.CreatedAt), "Rewinding removes this prompt and everything after it and puts the prompt back in the composer."
+		desc, restore := ago(row.CreatedAt), ""
 		if n := len(restored); n > 0 {
 			files := fmt.Sprintf("%d %s", n, plural(n, "file", "files"))
 			desc += " · " + files
-			effect = "Rewinding removes this prompt and everything after it, restores " + files + " to " + plural(n, "how it was", "how they were") + " before it, and puts the prompt back in the composer."
+			restore = ", restores " + files + " to " + plural(n, "how it was", "how they were") + " before it,"
 		}
-		effect += " Changes made by commands are not undone."
+		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Changes made by commands are not undone."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,
