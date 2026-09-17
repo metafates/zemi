@@ -477,7 +477,7 @@ func (a *App) wheelChrome(step int) bool {
 		switch {
 		case st.o.Input:
 			return false
-		case st.o.Body != "":
+		case st.o.Body != "" && len(st.o.Items) == 0: // like the arrow keys
 			st.scroll = max(0, st.scroll+step)
 		default:
 			move(&st.selected, len(st.visible))

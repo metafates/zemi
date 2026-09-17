@@ -417,6 +417,8 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			st.scroll = min(st.scroll, len(body)-room)
 			n := len(body)
 			body = append(body[st.scroll:st.scroll+room:st.scroll+room], []hostapi.Segment{{Text: fmt.Sprintf("lines %d-%d of %d", st.scroll+1, st.scroll+room, n), HL: "Comment"}})
+		} else {
+			st.scroll = 0
 		}
 		hints = append(hints, "y", "copy")
 		// a detail view keeps about the width of the list it opened from
