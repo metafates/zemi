@@ -447,9 +447,10 @@ subagents', a subagent its own; the user's, Lua's and editor windows answer "no 
 Editor windows (owner `editor`) are also hidden from `zemi.win.get`/`list` below user origin
 and from the Lua tool (`hiddenWin`), and do not count toward the 8-window limit.
 `App.EditFile` (ui/editor.go) runs the user's editor in such a window: a float kept at frame
-size, `os.Environ()` (not `perm.ChildEnv`), the path as `Spec.Args`, focused until it exits,
-then closed with focus given back; a non-zero exit is an error, and a cancelled ctx returns
-leaving the editor running. `Host.CloseWindow` (× and `/win close`) kills a running editor
+size (the chat area's height while unfocused, so the composer shows), `os.Environ()` (not
+`perm.ChildEnv`), the path as `Spec.Args`, focused until it exits, then closed with focus given
+back; a non-zero exit is an error, and a cancelled ctx returns leaving the editor running
+until it exits. `Host.CloseWindow` (× and `/win close`) kills a running editor
 only on a second request within 3s, and `/win close all` skips it.
 Input to a program queues and a `writeLoop` goroutine feeds the pty, because the emulator
 writes under the screen lock and a program that does not read stdin must not wedge it.

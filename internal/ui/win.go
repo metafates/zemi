@@ -137,6 +137,9 @@ func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostap
 	if rows <= 0 {
 		rows = chatH * 4 / 5
 	}
+	if wn.Owner == "editor" && a.focusWin != wn.ID {
+		rows = min(rows, chatH-2) // an editor left for zemi uncovers the composer it gave the keys to
+	}
 	cols, rows = max(min(cols, w-4), 2), max(min(rows, h-3), 1)
 	wn.Resize(cols, rows)
 	// the title row goes into the top border: one frame, not two

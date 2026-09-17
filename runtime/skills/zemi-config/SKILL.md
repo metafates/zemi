@@ -96,8 +96,8 @@ guessing. Common keys:
 - `ui.window.unfocus` (ctrl+\): the key that takes typing back from a focused window.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
   `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). It runs in a focused
-  float over zemi with the user's full environment; ctrl+c goes to the editor, and the window
-  closes when it exits. × or `/win close <id>` kills a running editor only when repeated.
+  float over zemi with the user's full environment; ctrl+c goes to the editor, `ui.window.unfocus`
+  shrinks it to uncover the composer, and the window closes when it exits. × or `/win close <id>` kills a running editor only when repeated.
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
