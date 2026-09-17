@@ -385,12 +385,21 @@ local chat_cache = {}
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
--- line unless ctx.show_reasoning (ctrl+o). The widget wraps.
+-- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
+-- reasoning line toggles it; one on an agent's row shows that run.
 zemi.ui.widget.register({
   id = "chat",
   region = "chat",
   priority = 10,
   wrap = true,
+  on_click = function(ev)
+    local run = ev.id:match("^agent:(.+)")
+    if run then
+      assert(zemi.command.run("agents", "view " .. run))
+    elseif ev.id == "reasoning" then
+      zemi.ui.reasoning.toggle()
+    end
+  end,
   render = function(ctx)
     local width = ctx.width or 80
     local lines = {}
@@ -439,8 +448,8 @@ zemi.ui.widget.register({
       return out
     end
     local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "✻ ", hl = "ThinkingMark" }, { text = label, hl = "AgentReason" } }
-      if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment" } end
+      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning" }, { text = label, hl = "AgentReason", click = "reasoning" } }
+      if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning" } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
       local body = wrap_words(text, math.max(width - 6, 20))
@@ -523,11 +532,14 @@ zemi.ui.widget.register({
       if t.status == "run" and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
       end
+      -- an agent's rows open its transcript (ids must differ between adjacent rows)
+      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or nil
+      for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
       -- under the row: the command a description stands for, then progress
       for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
         if sub ~= "" then
-          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = fit(sub, width - 6), hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment" }, { text = fit(sub, width - 6), hl = "Comment", click = click } }
         end
       end
       -- File tools show what they changed as numbered, tinted rows.

@@ -95,6 +95,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
 		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")
 		assert(type(zemi.ui.hl) == "function", "zemi.ui.hl missing")
+		assert(type(zemi.ui.reasoning.toggle) == "function", "zemi.ui.reasoning.toggle missing")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")

@@ -109,10 +109,10 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	}
 	waitIdle(t, h)
 
-	var reply, detail string
+	var reply, detail, runID string
 	for _, m := range h.Session().Transcript {
 		if m.Kind == "tool" && m.Tool == "agent" {
-			detail = m.Detail
+			detail, runID = m.Detail, m.Run
 		}
 		if m.Role == "assistant" && m.Kind == "" {
 			reply = m.Text
@@ -132,7 +132,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	// /agents: the run keeps its transcript, the chat can show it, and a run
 	// this process no longer holds reads the same rows from the store.
 	runs := h.tasks.list(h.AgentSessionID())
-	if len(runs) != 1 || h.AgentRunNamed("find thi") != runs[0].id {
+	if len(runs) != 1 || runID != runs[0].id {
 		t.Fatalf("runs = %v", runs)
 	}
 	status, _, _, sid := runs[0].state()

@@ -149,7 +149,9 @@ Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must 
 uses are the `hl` table at the top of `defaultui.lua`. To make a segment clickable give it
 `click = "some-id"` and the widget `on_click = function(ev) ... end` (ev.id is that id);
 the shipped statusline widgets run `zemi.command.run(ev.id)`, so a replacement statusline
-keeps its clicks by doing the same.
+keeps its clicks by doing the same. A replacement chat widget keeps its clicks by calling
+`zemi.ui.reasoning.toggle()` for a reasoning line and `zemi.command.run("agents", "view " .. t.run)`
+for a tool row with a `run` id.
 Full API: the zemi-lua skill.
 
 ## After writing

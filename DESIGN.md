@@ -1067,9 +1067,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   open, which takes every click. The shipped statusline is clickable from
   `defaultui.lua`: the mode opens the mode picker, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
-  running agents `/agents`. The boot failed, stuck and errors pills stay
-  Go-drawn, since they report a broken Lua layer that could not draw its
-  own alarm; a click on the errors pill opens `/errors`.
+  running agents `/agents`. The chat widget marks a reasoning line
+  (`zemi.ui.reasoning.toggle()`) and an agent tool row (`agent:<run id>`,
+  from the row's `run` field, opens that run's transcript). The boot
+  failed, stuck and errors pills stay Go-drawn, since they report a broken
+  Lua layer that could not draw its own alarm; a click on boot failed or
+  errors opens `/errors`, on stuck reloads.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume

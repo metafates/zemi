@@ -465,11 +465,15 @@ func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) [
 
 // setToolDetail updates the live progress line under a running tool row.
 func (h *Host) setToolDetail(callID, detail string) {
+	h.setTool(callID, func(t *StreamTool) { t.Detail = detail })
+}
+
+func (h *Host) setTool(callID string, set func(*StreamTool)) {
 	ag := h.agents
 	ag.mu.Lock()
 	for i := range ag.tools {
 		if ag.tools[i].ID == callID {
-			ag.tools[i].Detail = detail
+			set(&ag.tools[i])
 		}
 	}
 	ag.mu.Unlock()
@@ -600,12 +604,15 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		t.h.setToolDetail(call.ID, def.Name+" · background "+id+" (/agents)")
+		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
 		return fantasy.NewTextResponse("Started background agent " + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
 	}
 	start := time.Now()
 	var last atomic.Value
-	text, err := t.h.runSubagent(ctx, def, in.Description, in.Prompt, func(line string) {
+	run, rctx := t.h.newRun(ctx, def, in.Description, in.Prompt, false)
+	_ = t.h.tasks.add(run)
+	t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
+	text, err := t.h.runAgent(rctx, run, def, in.Prompt, func(line string) {
 		last.Store(line)
 		t.h.setToolDetail(call.ID, line)
 	})

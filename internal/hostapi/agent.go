@@ -69,6 +69,7 @@ type StreamTool struct {
 	Label   string // the model's short description of a command
 	Started time.Time
 	Detail  string // live progress line (subagents, workflows)
+	Run     string // agent tool: the run id, so the row can open its transcript
 	Diff    string // file tools: the change as "- "/"+ " lines
 	Output  string // the last lines of the result (outputTail)
 	Name    string
@@ -763,7 +764,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		if status != "ok" {
 			t.Diff = ""
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Diff: t.Diff, Output: t.Output})
+		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)

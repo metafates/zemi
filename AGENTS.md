@@ -494,7 +494,7 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   queues its prompt for that run (`MessageAgent`, error when it is not running).
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers
   an `agentRun` whose hooks build a live transcript. `/agents view <id>` (or a click on an
-  `Agent` row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
+  `Agent` row, whose `run` id the agent tool puts on the stream row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
   session's (live stream and todos hidden, `agent.steering` holds the run's queue); esc clears it,
   and so does `setTranscript`. A submit while the run is running goes to it through
   `MessageAgent`, otherwise it clears the view and goes to the session. A run's queue is its
@@ -673,7 +673,8 @@ timeout.
   pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
   that `listRows` puts on every row of an item, prompt choices included) to act on the
   topmost chrome, or `Segment.Click`/`Segment.Widget` (a widget's click id) to run that
-  widget's `on_click` on the background worker (`Host.ClickWidget`, generation-checked). Hover lights the whole item, but only the pointer over the item's
+  widget's `on_click` on the background worker (`Host.ClickWidget`, generation-checked).
+  A click id with no widget is a Go statusline pill naming its command (`errors`, `reload`). Hover lights the whole item, but only the pointer over the item's
   non-blank or background-painted cells on its row makes it a target: padding, gutters,
   blank rows and section headers never are. Lists scroll at the edge and never recenter,
   so a click does not move the item under the pointer. Modal chrome is spliced after

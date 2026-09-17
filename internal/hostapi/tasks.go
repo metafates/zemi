@@ -378,20 +378,6 @@ func (h *Host) loadRun(sid string) (*agentRun, error) {
 	return run, nil
 }
 
-// AgentRunNamed finds the newest run of the live session whose description
-// starts with prefix (a chat row clips it); "" when none does.
-func (h *Host) AgentRunNamed(prefix string) string {
-	if prefix = strings.TrimSpace(prefix); prefix == "" {
-		return ""
-	}
-	for _, run := range h.tasks.list(h.AgentSessionID()) {
-		if strings.HasPrefix(strings.Join(strings.Fields(run.description), " "), prefix) {
-			return run.id
-		}
-	}
-	return ""
-}
-
 // agentRunItems are the /agents rows for the live session's runs, the
 // stored ones this process does not hold included; enter shows a transcript.
 func (h *Host) agentRunItems() []any {

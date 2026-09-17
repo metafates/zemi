@@ -289,6 +289,14 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 
+	reasoning := L.NewTable()
+	reasoning.RawSetString("toggle", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.reasoning.toggle")
+		h.ToggleReasoning()
+		return 0
+	}))
+	tb.RawSetString("reasoning", reasoning)
+
 	// screenshot() -> the drawn screen as plain text, or nil, err. zemi
 	// reads its own UI with it instead of asking what the user sees.
 	tb.RawSetString("screenshot", L.NewFunction(func(L *glua.LState) int {

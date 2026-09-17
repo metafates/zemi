@@ -76,6 +76,17 @@ func TestMouseClicks(t *testing.T) {
 		t.Fatal("clicking the mode pill should run /mode")
 	}
 
+	app.reload = func() { ran <- "reload" }
+	app.lastRows = [][]hostapi.Segment{{{Text: " stuck: /reload ", Click: "reload"}}}
+	if _, act, ok := app.target(2, 0); ok {
+		act()
+	}
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("clicking the stuck pill should reload")
+	}
+
 	done := make(chan bool)
 	go func() {
 		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"})

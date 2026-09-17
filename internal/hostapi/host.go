@@ -112,6 +112,7 @@ type ChatMessage struct {
 	Tool   string
 	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
+	Run    string // agent tool rows: the run id
 	Diff   string // file tool rows: the applied change as "- "/"+ " lines
 	Output string // tool rows: the last lines of the result (outputTail)
 	Stat   *TurnStat
@@ -913,6 +914,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("input", glua.LString(t.Input))
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
+		row.RawSetString("run", glua.LString(t.Run))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
 		if !t.Started.IsZero() {
 			row.RawSetString("elapsed", glua.LNumber(time.Since(t.Started).Seconds()))
@@ -932,6 +934,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		row.RawSetString("tool", glua.LString(m.Tool))
 		row.RawSetString("status", glua.LString(m.Status))
 		row.RawSetString("detail", glua.LString(m.Detail))
+		row.RawSetString("run", glua.LString(m.Run))
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		row.RawSetString("output", glua.LString(m.Output))

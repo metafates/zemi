@@ -241,10 +241,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	// line is a one-row target over the cells [lo, hi) of row y
-	line := func(lo, hi int, act func()) ([]cellSpan, func(), bool) {
-		return []cellSpan{{y, lo, hi}}, act, lo <= x && x < hi
-	}
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
@@ -287,10 +283,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
 	case under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
-		if under.Widget == "" { // the Go errors pill
+		if under.Widget == "" { // a Go statusline pill names its command
 			act = func() {
-				if err := a.host.OpenErrors(""); err != nil {
-					a.pushToast("error", "/errors failed", err.Error())
+				if under.Click != "reload" {
+					a.runCommand(under.Click, "")
+				} else if a.reload != nil {
+					go a.reload() // off the UI goroutine, as the typed /reload
 				}
 			}
 		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {
@@ -298,23 +296,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
 		return spans, act, ok
-	case y < a.lastChatBottom:
-		text := plainSegs(row)
-		end := ansi.StringWidth(strings.TrimRight(text, " "))
-		if before, _, ok := strings.Cut(text, "✻ Th"); ok && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
-			return line(ansi.StringWidth(before), end, a.host.ToggleReasoning)
-		}
-		// an agent tool row ("● Agent <description> · 4s") opens that run's transcript
-		for _, mark := range []string{"● Agent ", "◦ Agent "} {
-			i := strings.Index(text, mark)
-			if i < 0 || strings.TrimSpace(text[:i]) != "" {
-				continue
-			}
-			desc, _, _ := strings.Cut(strings.TrimRight(text[i+len(mark):], " "), " · ")
-			if id := a.host.AgentRunNamed(strings.TrimSuffix(desc, "…")); id != "" {
-				return line(ansi.StringWidth(text[:i]), end, func() { _ = a.host.ViewAgent(id) })
-			}
-		}
 	}
 	return nil, nil, false
 }

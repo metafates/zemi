@@ -236,6 +236,7 @@ function zemi.event.stats() end
 ---@field input string
 ---@field status string "running", "ok" or "err".
 ---@field detail string Subagent and workflow progress.
+---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
 ---@field elapsed number
 ---@field diff string
@@ -250,6 +251,7 @@ function zemi.event.stats() end
 ---@field status string
 ---@field label string
 ---@field detail string
+---@field run string Agent calls: the run id, else "".
 ---@field diff string
 ---@field output string Last lines of a tool result.
 ---@field ["in"] integer Prompt tokens.
@@ -458,6 +460,12 @@ function zemi.ui.screenshot() end
 
 --- Open the /help overlay.
 function zemi.ui.help() end
+
+---@class zemi.ui.reasoning
+zemi.ui.reasoning = {}
+
+--- Show or hide finished reasoning and every tool call (ctrl+o).
+function zemi.ui.reasoning.toggle() end
 
 -- ---------------------------------------------------------------------------
 -- zemi.win: programs running in windows over the chat
