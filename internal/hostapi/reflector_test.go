@@ -309,6 +309,12 @@ func TestReflectPromptSkills(t *testing.T) {
 func TestReflectPromptMemoryIndex(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
+	// a long first message must not crowd out what the user said later
+	var long strings.Builder
+	for i := range 100 {
+		fmt.Fprintf(&long, "w%d ", i)
+	}
+	addText(t, h, sid, "user", long.String())
 	seedTranscript(t, h, sid) // the user says "the deploy script keeps failing"
 	var ids []string
 	for i, text := range append([]string{"deploy needs the labels sequence bumped"}, make([]string, reflectIndexMax+1)...) {

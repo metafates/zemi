@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/fantasy"
 
@@ -209,12 +210,12 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		msgs = msgs[n:]
 	}
 	var lines []string
-	var said strings.Builder // what the user wrote, to find related older memories
+	var said []string // what the user wrote, to find related older memories
 	for _, m := range msgs {
 		if line := reflectLine(m); line != "" {
 			lines = append(lines, line)
 			if m.Role == "user" {
-				said.WriteString(line + "\n")
+				said = append(said, strings.TrimPrefix(line, "user: "))
 			}
 		}
 	}
@@ -259,7 +260,11 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		slices.SortStableFunc(mems, func(a, b *store.Memory) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
 		index := mems[:min(len(mems), reflectIndexMax)]
 		if len(mems) > len(index) {
-			related, err := h.memorySearch("all", said.String(), reflectIndexMax, false)
+			// the search keeps only its first terms: newest words first, and no
+			// one- or two-letter filler
+			slices.Reverse(said)
+			words := slices.DeleteFunc(strings.Fields(strings.Join(said, " ")), func(w string) bool { return utf8.RuneCountInString(w) < 3 })
+			related, err := h.memorySearch("all", strings.Join(words, " "), reflectIndexMax, false)
 			if err != nil {
 				h.Log.Warn("reflector", "related memory search failed", map[string]any{"error": err.Error()})
 			}
