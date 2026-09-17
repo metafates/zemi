@@ -88,9 +88,9 @@ var trustAnswers = []string{"trust", "untrust", "later"}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
 // styles, with no Lua text inside. It has no cursor: trusting runs project
-// code, so it takes y or a click on its row. On a short screen the spacers
-// go first, then the line on what no trust means, then what trust allows
-// from its last item up, so the answers stay visible.
+// code, so it takes y or a click on its row. On a short screen rows go in
+// drop order, one spacer at a time and the grant that runs code without
+// asking last, so the answers stay visible.
 func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	width := min(boxInner(w), 64)
 	type row struct {
@@ -129,19 +129,22 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	if tp.state != "" {
 		text("Currently "+tp.state+".", "Host:Hint")
 	}
-	add(1)
-	add(6, hostapi.Segment{Text: "Trusting lets this " + what + " run code and steer zemi:"})
-	for i, s := range []string{
-		".zemi config: init.lua, agents, commands and workflows",
-		"AGENTS.md and CLAUDE.md instructions",
-		"language servers, which can build the project",
-		"auto mode edits, builds and tests without asking",
+	add(2)
+	add(8, hostapi.Segment{Text: "Trusting lets this " + what + " run code and steer zemi:"})
+	for _, g := range []struct {
+		drop int
+		text string
+	}{
+		{7, ".zemi config: init.lua, agents, commands and workflows"},
+		{6, "AGENTS.md and CLAUDE.md instructions"},
+		{5, "language servers, which can build the project"},
+		{8, "auto mode edits, builds and tests without asking"},
 	} {
-		add(6-i, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: s, HL: "Host:Value"})
+		add(g.drop, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: g.text, HL: "Host:Value"})
 	}
 	add(1)
-	add(2, hostapi.Segment{Text: "Without trust, zemi asks before anything but reads.", HL: "Host:Hint"})
-	add(1)
+	add(3, hostapi.Segment{Text: "Without trust, zemi asks before anything but reads.", HL: "Host:Hint"})
+	add(4)
 	later, laterDesc := "Not now", "ask again next start"
 	if tp.state != "" {
 		later, laterDesc = "Keep as is", ""
@@ -151,7 +154,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{label: "Don't trust", desc: saved, key: "n"},
 		{label: later, desc: laterDesc, key: "esc"},
 	}, -1, nil, 3)
-	for drop := 1; drop <= 6 && len(body)+len(list)+2 > h; drop++ {
+	for drop := 1; drop <= 8 && len(body)+len(list)+2 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
 	}
 	var rows [][]hostapi.Segment
