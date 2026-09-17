@@ -310,6 +310,9 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 	// Every row pads to the widest of the whole list, so a box sized from
 	// the visible window keeps its width while scrolling.
 	widest := minW
+	if maxW > 0 { // a width remembered from a wider screen
+		widest = min(minW, maxW)
+	}
 	for y, r := range rows {
 		k, ok := keys[y]
 		kw := map[bool]int{true: 2 + ansi.StringWidth(k.Text)}[ok]
@@ -515,10 +518,14 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		more := fmt.Sprintf("  %d of %d lines · pgdn for more", pa.scroll+room, len(content))
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
 	}
-	// panels span the box, and the box fits its content (at least 56 wide)
+	// panels span the box, and the box fits its content (at least 56 wide):
+	// a padded panel counts by its text, other rows whole as hostBoxW counts them
 	fit := 56
-	for _, r := range slices.Concat(head, content, tail) {
+	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
+	}
+	for _, r := range slices.Concat(head, tail) {
+		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
 	for i := range content {
