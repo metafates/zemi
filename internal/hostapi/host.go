@@ -80,6 +80,13 @@ type Overlay struct {
 	Gen      Gen
 	Anchor   string // "bottom": over the chat's bottom-left, by the statusline; "" centered
 
+	// Body is text above the items; with no items the overlay is a
+	// read-only view. Empty is the line shown when there are no items and
+	// no body. Selected is the item selected when it opens.
+	Body     string
+	Empty    string
+	Selected int
+
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
 	Input   bool
@@ -465,41 +472,26 @@ func (h *Host) AppendReasoning(text string, stat TurnStat) {
 	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
 
-// OpenHelp opens the help overlay listing slash commands and keymaps.
+// OpenHelp opens the help overlay listing keymaps and slash commands.
 func (h *Host) OpenHelp() {
 	ui := h.hooks()
 	if ui == nil {
 		return
 	}
-	keys, cmds := h.Keymaps.List(), h.Commands.List()
-	pad := 0
-	for _, b := range keys {
-		pad = max(pad, len(b.Key))
-	}
-	for _, c := range cmds {
-		pad = max(pad, len(c.Name)+1)
-	}
 	var items []any
-	for _, b := range keys {
+	for _, b := range h.Keymaps.List() {
 		desc := b.Desc
 		if desc == "" {
 			desc = describeRHS(b.RHS)
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-*s  %s", pad, b.Key, desc)})
+		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
 	}
 	// Hidden keeps a command out of the palette's default list, not out of
 	// /help: this is the index the README points people at.
-	for _, c := range cmds {
-		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-*s  %s", pad, "/"+c.Name, c.Desc), "fill": "/" + c.Name + " ",
-		})
+	for _, c := range h.Commands.List() {
+		items = append(items, map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "fill": "/" + c.Name + " "})
 	}
-	ui.OpenOverlay(Overlay{
-		ID:     "help",
-		Title:  "Help - keys and commands",
-		Origin: lua.OriginBuiltin,
-		Items:  items,
-	})
+	ui.OpenOverlay(Overlay{ID: "help", Title: "Help", Origin: lua.OriginBuiltin, Items: items})
 }
 
 func describeRHS(rhs RHS) string {
@@ -1104,7 +1096,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.19.0"))
+	api.RawSetString("version", glua.LString("0.20.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

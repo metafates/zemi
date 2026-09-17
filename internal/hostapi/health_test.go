@@ -39,11 +39,16 @@ func TestHealthChecks(t *testing.T) {
 		got[c.name] = c
 	}
 	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok",
+		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok",
 	} {
 		if got[name].level != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)
 		}
+	}
+
+	items := h.healthItems()
+	if first, last := items[0].(map[string]any), items[len(items)-1].(map[string]any); first["section"] != "Needs attention" || last["section"] != "OK" {
+		t.Fatalf("problems first: %v ... %v", first, last)
 	}
 }
 

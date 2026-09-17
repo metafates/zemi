@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 			t.Fatalf("%s: overlays=%d selected=%d on=%v", key, len(a.overlays), a.overlays[0].selected, on)
 		}
 	}
-	if got := a.overlays[0].itemText[1]; got != "○ b" || a.composer.text != "picked" {
+	if got := a.overlays[0].texts[1]; got != "○ b" || a.composer.text != "picked" {
 		t.Fatalf("row=%q composer=%q", got, a.composer.text)
 	}
 	a.overlayKey("", "/")
@@ -255,5 +256,114 @@ func TestPermissionOverFloat(t *testing.T) {
 	x, y := findCell(t, app, " No ")
 	if _, _, ok := app.target(x, y); !ok {
 		t.Fatal("the No button under a float is not a target")
+	}
+}
+
+func TestOverlayNavigation(t *testing.T) {
+	detail := func(actions ...any) map[string]any {
+		return map[string]any{"text": "err", "desc": "short", "detail": "line one\nline two", "actions": actions}
+	}
+	reloads := 0
+	for _, c := range []struct {
+		name  string
+		o     hostapi.Overlay
+		keys  []string
+		check func(a *App) string // "" when the state is right
+	}{
+		{"enter on an inert row keeps the box open",
+			hostapi.Overlay{Items: []any{"a", "b"}}, []string{"enter"},
+			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
+		{"an empty overlay shows its empty line and enter does nothing",
+			hostapi.Overlay{Empty: "Nothing to see."}, []string{"enter"},
+			func(a *App) string {
+				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(overlayBox(&a.overlays[0], 80, 20)), "Nothing to see.") {
+					return "no empty line"
+				}
+				return ""
+			}},
+		{"enter opens the detail and esc goes back with the selection kept",
+			hostapi.Overlay{Title: "Errors", Items: []any{"a", detail()}}, []string{"down", "enter", "esc"},
+			func(a *App) string {
+				if len(a.overlays) != 1 || a.overlays[0].selected != 1 {
+					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
+				}
+				return ""
+			}},
+		{"the detail view has a breadcrumb title and scrolls its body",
+			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter", "down"},
+			func(a *App) string {
+				d := a.overlays[len(a.overlays)-1]
+				if len(a.overlays) != 2 || d.o.Title != "Errors › err" || d.scroll != 1 || !d.back {
+					return fmt.Sprintf("%+v", d)
+				}
+				return ""
+			}},
+		{"an action that fills closes the stack",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Use", "fill": "/use "})}}, []string{"enter", "enter"},
+			func(a *App) string {
+				if len(a.overlays) != 0 || a.composer.text != "/use " {
+					return fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)
+				}
+				return ""
+			}},
+		{"an action with nothing to do goes back",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Cancel"})}}, []string{"enter", "enter"},
+			func(a *App) string {
+				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
+			}},
+		{"a run action in a toggle list rebuilds the list",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() []any { reloads++; return []any{detail()} }},
+			[]string{"enter", "enter"},
+			func(a *App) string {
+				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
+			}},
+		{"closing the parent drops its detail view",
+			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
+			func(a *App) string {
+				a.closeOverlayByID("p")
+				return map[bool]string{false: "detail left"}[len(a.overlays) == 0]
+			}},
+		{"a read-only body scrolls by line",
+			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down", "pgdown"},
+			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].scroll == 11] }},
+		{"Selected picks the first item",
+			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2}, nil,
+			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			c.o.Origin = lua.OriginBuiltin
+			a.openOverlay(c.o)
+			for _, k := range c.keys {
+				a.overlayKey(k, "")
+			}
+			if msg := c.check(a); msg != "" {
+				t.Fatal(msg)
+			}
+		})
+	}
+}
+
+// TestOverlayHints: the footer names only keys that act on the selection.
+func TestOverlayHints(t *testing.T) {
+	hints := func(o hostapi.Overlay) string {
+		a := newTestApp(t, t.TempDir())
+		o.Origin = lua.OriginBuiltin
+		a.openOverlay(o)
+		box := overlayBox(&a.overlays[0], 80, 20)
+		return plainSegs(box[len(box)-2])
+	}
+	for _, c := range []struct {
+		o    hostapi.Overlay
+		want string
+	}{
+		{hostapi.Overlay{Items: []any{"inert"}}, "esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "enter select · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}}, "enter open · esc close"},
+		{hostapi.Overlay{Body: "text"}, "y copy · esc close"},
+	} {
+		if got := strings.Trim(hints(c.o), "│ "); got != c.want {
+			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
+		}
 	}
 }

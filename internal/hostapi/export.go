@@ -144,16 +144,16 @@ func (h *Host) OpenUsage() error {
 		}
 		return fmt.Sprint(n)
 	}
-	row := func(label string, sessions int, in, out int64, cost float64) any {
+	row := func(label string, sessions int, in, out int64, cost float64) string {
 		text := fmt.Sprintf("%-12s %6s in  %6s out  $%.2f", label, fmtTok(in), fmtTok(out), cost)
 		if sessions > 0 {
 			text += fmt.Sprintf("  (%d %s)", sessions, plural(sessions, "session", "sessions"))
 		}
-		return map[string]any{"text": text}
+		return text
 	}
-	items := []any{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
+	lines := []string{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %6s of %s tokens (%d%%)", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow), s.LastIn*100/s.CtxWindow)})
+		lines = append(lines, fmt.Sprintf("%-12s %6s of %s tokens (%d%%)", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow), s.LastIn*100/s.CtxWindow))
 	}
 	y, m, d := time.Now().Date()
 	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
@@ -169,8 +169,13 @@ func (h *Host) OpenUsage() error {
 		if err != nil {
 			return err
 		}
-		items = append(items, row(w.label, u.Sessions, u.Prompt, u.Completion, u.Cost))
+		lines = append(lines, row(w.label, u.Sessions, u.Prompt, u.Completion, u.Cost))
 	}
-	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage (cost needs model prices)", Origin: lua.OriginBuiltin, Items: items})
+	if id := h.sessionModelID(); id != "" {
+		if spec, _ := h.modelSpec(id); spec.CostPer1MIn == 0 && spec.CostPer1MOut == 0 {
+			lines = append(lines, "", "Cost is $0.00 because "+id+" has no prices: set cost_per_1m_in and cost_per_1m_out on the model.")
+		}
+	}
+	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage", Origin: lua.OriginBuiltin, Body: strings.Join(lines, "\n")})
 	return nil
 }

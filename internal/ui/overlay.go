@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -16,13 +17,16 @@ import (
 // overlayState is one entry of the overlay stack (DESIGN §8): a Lua (or
 // Go-built hostapi.Overlay) plus local list selection.
 type overlayState struct {
-	o        hostapi.Overlay
-	itemText []string // rendered item lines (render_item applied at open)
+	o     hostapi.Overlay
+	items []listItem // render_item's line when given, else the item's text
+	texts []string   // what the filter matches and y copies, per item
 	listFilter
-	input composerState // text of an input overlay
+	input  composerState // text of an input overlay
+	scroll int           // first body row shown
+	back   bool          // a detail view: esc and its actions return to the overlay under it
 }
 
-func (st *overlayState) refilter() { st.apply(st.itemText) }
+func (st *overlayState) refilter() { st.apply(st.texts) }
 
 // listFilter narrows a list as the user types: visible holds the indices of
 // rows containing every word of query (case-insensitive), and selected
@@ -101,23 +105,29 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 }
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
-	// Title and rendered items are Lua strings: sanitize like widget text.
-	o.Title = sanitize.String(o.Title)
+	// Every string here is Lua's (or a model's, through a Go builder):
+	// sanitize like widget text.
+	o.Title, o.Body, o.Empty = sanitize.String(o.Title), sanitize.String(o.Body), sanitize.String(o.Empty)
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
 		return st
 	}
 	for i, item := range o.Items {
-		text := formatOverlayItem(item)
-		if i < len(o.ItemText) {
-			text = o.ItemText[i]
+		m, _ := item.(map[string]any)
+		field := func(k string) string {
+			s, _ := m[k].(string)
+			return strings.Join(strings.Fields(sanitize.String(s)), " ")
 		}
-		st.itemText = append(st.itemText, sanitize.String(text))
+		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: field("key"), section: field("section")}
+		if i < len(o.ItemText) {
+			it.label = o.ItemText[i]
+		}
+		it.label = sanitize.String(it.label)
+		st.items = append(st.items, it)
+		st.texts = append(st.texts, strings.TrimSpace(it.label+"  "+it.desc))
 	}
-	if len(st.itemText) == 0 {
-		st.itemText = []string{"(empty)"}
-	}
+	st.selected = o.Selected
 	st.refilter()
 	return st
 }
@@ -136,10 +146,76 @@ func formatOverlayItem(item any) string {
 	return fmt.Sprint(item)
 }
 
-func (a *App) closeOverlayByID(id string) {
-	if i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id }); i >= 0 {
-		a.overlays = slices.Delete(a.overlays, i, i+1)
+// enterVerb names what enter does on item idx: "open" its detail view,
+// "select" it, "back" from a detail view, or "" when it does nothing.
+func (st *overlayState) enterVerb(idx int) string {
+	m, _ := st.o.Items[idx].(map[string]any)
+	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
+	trusted := st.o.Origin == lua.OriginBuiltin || st.o.Origin == lua.OriginUser
+	switch {
+	case has("detail") || m["actions"] != nil:
+		return "open"
+	case has("fill") || (has("run") && trusted) || st.o.OnSelect != nil:
+		return "select"
+	case st.back:
+		return "back"
 	}
+	return ""
+}
+
+// openDetail pushes the detail view of item idx: its detail text as the
+// body and its actions as the list, under the parent's origin so the badge
+// and the run gate stay the parent's.
+func (a *App) openDetail(parent *overlayState, idx int) {
+	m, _ := parent.o.Items[idx].(map[string]any)
+	body, _ := m["detail"].(string)
+	actions, _ := m["actions"].([]any)
+	title := parent.items[idx].label
+	if parent.o.Title != "" {
+		title = parent.o.Title + " › " + title
+	}
+	p := parent.o
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, Items: actions})
+	st.back = true
+	a.overlays = append(a.overlays, st)
+}
+
+// detailAction runs action idx of the detail view on top. An action that
+// runs or fills something ends the parent too, unless it only runs a
+// command in a toggle list, which rebuilds; one that does neither goes back.
+func (a *App) detailAction(idx int) {
+	d := a.overlays[len(a.overlays)-1]
+	a.closeOverlayByID(d.o.ID)
+	m, _ := d.o.Items[idx].(map[string]any)
+	run, _ := m["run"].(string)
+	fill, _ := m["fill"].(string)
+	pi := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID+"#detail" == d.o.ID })
+	switch {
+	case run == "" && fill == "" || pi < 0:
+		return
+	case fill == "" && a.overlays[pi].o.Reload != nil:
+		a.runOverlayRow(d.o, idx)
+		a.reloadOverlay(&a.overlays[pi])
+	default:
+		a.cancelOverlay(a.overlays[pi].o)
+		a.runOverlayRow(d.o, idx)
+	}
+}
+
+// reloadOverlay rebuilds a toggle list's items, keeping selection and filter.
+func (a *App) reloadOverlay(st *overlayState) {
+	f, o := st.listFilter, st.o
+	o.Items = o.Reload()
+	*st = a.overlayState(o)
+	st.listFilter = f
+	st.refilter()
+}
+
+// closeOverlayByID closes an overlay and the detail views over it.
+func (a *App) closeOverlayByID(id string) {
+	a.overlays = slices.DeleteFunc(a.overlays, func(st overlayState) bool {
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+"#detail")
+	})
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
@@ -151,53 +227,43 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		a.inputKey(st, key, text)
 		return nil
 	}
+	a.frameGen++
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
-	if st.edit(key, text, st.itemText) || moveSel(&st.selected, len(st.visible), key) {
+	// a body scrolls by page, and by line when there is no list to move in
+	d := map[string]int{"pgup": -10, "pgdown": 10}[key]
+	if len(o.Items) == 0 {
+		d += listMove(key)
+	}
+	if o.Body != "" && d != 0 {
+		st.scroll = max(0, st.scroll+d)
 		return nil
 	}
-	// y copies the row, Y the whole list: an error or a diagnostic is worth
-	// nothing if it cannot leave the terminal.
-	switch key {
-	case "y", "Y":
-		var lines []string
-		if key == "Y" {
-			for _, i := range st.visible {
-				lines = append(lines, st.itemText[i])
-			}
-		} else if len(st.visible) > 0 {
-			lines = append(lines, st.itemText[st.visible[st.selected]])
-		}
-		if len(lines) == 0 {
-			return nil
-		}
-		what := "the row"
-		if key == "Y" {
-			what = fmt.Sprintf("%d lines", len(lines))
-		}
-		a.pushToast("info", "copied", what+" to the clipboard")
-		return copyCmd(strings.Join(lines, "\n"))
+	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), key) {
+		return nil
 	}
 	switch key {
+	case "y", "Y":
+		return a.copyOverlay(st, key == "Y")
 	case "enter", "space":
 		if len(st.visible) == 0 {
 			return nil
 		}
 		idx := st.visible[st.selected]
+		verb := st.enterVerb(idx)
 		switch {
+		case key == "space" && o.Reload == nil:
+		case key == "enter" && verb == "open":
+			a.openDetail(st, idx)
+		case st.back:
+			a.detailAction(idx)
 		case o.Reload != nil:
 			a.runOverlayRow(o, idx)
-			f := st.listFilter
-			o.Items = o.Reload()
-			*st = a.overlayState(o)
-			st.listFilter = f
-			st.refilter()
-			a.frameGen++
-		case key == "space":
+			a.reloadOverlay(st)
+		case verb == "":
 		default:
 			a.closeOverlayByID(o.ID)
-			a.frameGen++
 			if o.OnSelect != nil {
 				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
 			} else {
@@ -205,9 +271,41 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 		}
 	case "esc":
+		if st.back {
+			a.closeOverlayByID(o.ID)
+			return nil
+		}
 		a.cancelOverlay(o)
 	}
 	return nil
+}
+
+// copyOverlay copies the body of a view, or the selected row (all rows):
+// an error or a diagnostic is worth nothing if it cannot leave the terminal.
+func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
+	var lines []string
+	switch {
+	case st.o.Body != "" && !all:
+		lines = []string{st.o.Body}
+	case all:
+		for _, i := range st.visible {
+			lines = append(lines, st.texts[i])
+		}
+	case len(st.visible) > 0:
+		lines = append(lines, st.texts[st.visible[st.selected]])
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	what := "the row"
+	switch {
+	case all:
+		what = fmt.Sprintf("%d lines", len(lines))
+	case st.o.Body != "":
+		what = "the text"
+	}
+	a.pushToast("info", "copied", what+" to the clipboard")
+	return copyCmd(strings.Join(lines, "\n"))
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.
@@ -260,8 +358,9 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 }
 
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
-// §8).
-func overlayBox(st *overlayState, w int) [][]hostapi.Segment {
+// §8): the body, then the list, then the keys that act on the selection.
+// h is the height the box may take.
+func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
@@ -275,16 +374,63 @@ func overlayBox(st *overlayState, w int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
-	items := make([]listItem, 0, len(st.visible))
-	for _, i := range st.visible {
-		items = append(items, listItem{label: st.itemText[i]})
+	const limit = 10
+	var list [][]hostapi.Segment
+	var hints []string
+	switch {
+	case len(st.o.Items) > 0:
+		items := make([]listItem, 0, len(st.visible))
+		for _, i := range st.visible {
+			items = append(items, st.items[i])
+		}
+		list = listRows(items, st.selected, &st.top, limit)
+		if len(st.visible) > 0 {
+			verb := st.enterVerb(st.visible[st.selected])
+			if verb != "" {
+				hints = append(hints, "enter", verb)
+			}
+			if st.o.Reload != nil {
+				hints = append(hints, "space", "toggle")
+			}
+		}
+		if len(list) > limit || st.active {
+			hints = append(hints, "/", "filter")
+		}
+		list = st.filterRows(list)
+	case st.o.Body == "":
+		list = [][]hostapi.Segment{{{Text: cmp.Or(st.o.Empty, "Nothing here."), HL: "Comment"}}}
 	}
-	body := st.filterRows(listRows(items, st.selected, &st.top, 10))
-	hints := hintLine("enter", "select", "y", "copy", "/", "filter", "esc", "close")
-	if st.o.Reload != nil {
-		hints = hintLine("space", "toggle", "y", "copy", "/", "filter", "esc", "close")
+	var body [][]hostapi.Segment
+	if st.o.Body != "" {
+		for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
+			body = append(body, wrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l, "\t", "    ")}}, boxInner(w))...)
+		}
+		// borders, the hint line and a blank row before it, and the list
+		room := h - 4
+		if len(list) > 0 {
+			room -= len(list) + 1
+		}
+		if room = max(room, 3); len(body) > room {
+			room--
+			st.scroll = min(st.scroll, len(body)-room)
+			n := len(body)
+			body = append(body[st.scroll:st.scroll+room:st.scroll+room], []hostapi.Segment{{Text: fmt.Sprintf("lines %d-%d of %d", st.scroll+1, st.scroll+room, n), HL: "Comment"}})
+		}
+		hints = append(hints, "y", "copy")
+		// a detail view keeps about the width of the list it opened from
+		body[0] = padSegs(body[0], min(boxInner(w), 72))
+		if len(list) > 0 {
+			body = append(body, nil)
+		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, hints)
+	esc := "close"
+	switch {
+	case st.back:
+		esc = "back"
+	case st.o.OnSelect != nil:
+		esc = "cancel"
+	}
+	body = append(append(body, list...), nil, hintLine(append(hints, "esc", esc)...))
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 }
 

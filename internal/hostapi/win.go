@@ -388,7 +388,7 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 		Name: "window commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "win", NArgs: "*", Desc: "windows: list, focus, hide, show <id>, close <id|all>", Hidden: true,
+				Name: "win", NArgs: "*", Desc: "manage windows", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					fields := strings.Fields(args)
 					switch {

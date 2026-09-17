@@ -238,7 +238,11 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return list(len(mp.visible), &mp.selected, func() { a.answerPick(mp.items[mp.visible[mp.selected]].ID, true) })
 	case top == "overlay":
 		st := &a.overlays[len(a.overlays)-1]
-		return list(len(st.visible), &st.selected, func() { a.overlayKey("enter", "") })
+		var open func()
+		if len(st.visible) > 0 && st.enterVerb(st.visible[st.selected]) != "" {
+			open = func() { a.overlayKey("enter", "") }
+		}
+		return list(len(st.visible), &st.selected, open)
 	case y < a.lastChatBottom && a.completion.open && len(a.completion.matches) > 0:
 		f := &a.completion
 		spans, ok := item(len(f.matches))

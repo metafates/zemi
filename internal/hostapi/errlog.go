@@ -73,9 +73,9 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
-// OpenErrors runs /errors: with no args it lists the recent errors newest
-// first and clears the badge; "<n>" opens one in full, "ask <n>" hands it
-// to the agent to explain and fix.
+// OpenErrors runs /errors: it lists the recent errors newest first and
+// clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
+// explain and fix.
 func (h *Host) OpenErrors(args string) error {
 	l := &h.errs
 	l.mu.Lock()
@@ -87,55 +87,40 @@ func (h *Host) OpenErrors(args string) error {
 	if ui == nil {
 		return errors.New("no UI attached")
 	}
-	if len(entries) == 0 {
-		h.Notify("info", "errors", "no errors recorded")
-		return nil
-	}
 	f := strings.Fields(args)
-	if len(f) == 0 {
-		items := make([]any, 0, len(entries))
-		for i, e := range slices.Backward(entries) {
-			items = append(items, map[string]any{
-				"text": fmt.Sprintf("%s  %-16s %s", e.at.Format("15:04:05"), e.source, strings.Join(strings.Fields(e.msg), " ")),
-				"run":  fmt.Sprintf("errors %d", i),
+	sel := 0
+	if len(f) > 0 {
+		i, err := strconv.Atoi(f[len(f)-1])
+		if err != nil || i < 0 || i >= len(entries) {
+			return fmt.Errorf("no error %q; /errors lists them", args)
+		}
+		if f[0] == "ask" {
+			e := entries[i]
+			prompt := fmt.Sprintf("zemi recorded this error at %s from %s. Load the zemi-debug skill, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s",
+				e.at.Format("15:04:05"), e.source, e.msg)
+			h.GoSafe("errors ask", func() {
+				if err := h.AgentSend(prompt); err != nil {
+					h.Notify("error", "agent", err.Error())
+				}
 			})
+			return nil
 		}
-		ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items})
-		return nil
+		sel = len(entries) - 1 - i
 	}
-	i, err := strconv.Atoi(f[len(f)-1])
-	if err != nil || i < 0 || i >= len(entries) {
-		return fmt.Errorf("no error %q; /errors lists them", args)
-	}
-	e := entries[i]
-	if f[0] == "ask" {
-		prompt := fmt.Sprintf("zemi recorded this error at %s from %s. Load the zemi-debug skill, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s",
-			e.at.Format("15:04:05"), e.source, e.msg)
-		h.GoSafe("errors ask", func() {
-			if err := h.AgentSend(prompt); err != nil {
-				h.Notify("error", "agent", err.Error())
-			}
+	items := make([]any, 0, len(entries))
+	for i, e := range slices.Backward(entries) {
+		at := e.at.Format("15:04:05")
+		actions := []any{map[string]any{"text": "Ask zemi to fix it", "run": fmt.Sprintf("errors ask %d", i)}}
+		if kind, name, ok := strings.Cut(e.source, " "); ok && (kind == "mcp" || kind == "lsp") {
+			actions = append(actions, map[string]any{"text": "Restart " + name, "run": kind + " restart " + name})
+		}
+		items = append(items, map[string]any{
+			"text":    e.source,
+			"desc":    at + " · " + strings.Join(strings.Fields(e.msg), " "),
+			"detail":  at + "\n" + e.msg,
+			"actions": actions,
 		})
-		return nil
 	}
-	items := []any{
-		map[string]any{"text": "Ask zemi to explain and fix this", "run": fmt.Sprintf("errors ask %d", i)},
-		map[string]any{"text": "Back to all errors", "run": "errors"},
-		map[string]any{"text": ""},
-	}
-	// 72 keeps a wrapped row inside the box, so it is not clipped twice;
-	// y and Y copy rows out whole (the box hint says so).
-	for line := range strings.SplitSeq(e.msg, "\n") {
-		r := []rune(line)
-		for len(r) > 0 {
-			n := min(len(r), 72)
-			items = append(items, map[string]any{"text": string(r[:n])})
-			r = r[n:]
-		}
-		if len(line) == 0 {
-			items = append(items, map[string]any{"text": ""})
-		}
-	}
-	ui.OpenOverlay(Overlay{ID: "errors", Title: "Error · " + e.source + " · " + e.at.Format("15:04:05"), Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No errors since zemi started."})
 	return nil
 }

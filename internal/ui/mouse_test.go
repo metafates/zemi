@@ -207,7 +207,7 @@ func TestHoverTargets(t *testing.T) {
 		}}
 	}
 	overlay := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"alpha", "beta and a much longer row"}})
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha"}})
 	}
 	perm := func(app *App) {
 		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}

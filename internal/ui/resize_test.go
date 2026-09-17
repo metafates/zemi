@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,11 +27,26 @@ func TestGoldenHelpOverlay(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 
 	st := &app.overlays[0]
-	st.selected = len(st.itemText) - 1
+	st.selected = len(st.texts) - 1
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if len(app.overlays) != 0 || app.composer.text != "/model " {
 		t.Fatalf("enter on a command row: overlays=%d composer=%q", len(app.overlays), app.composer.text)
 	}
+}
+
+// TestGoldenOverlayDetail pins a detail view: the wrapped body, then the
+// actions as a list.
+func TestGoldenOverlayDetail(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.RecordError("mcp gitlab", `mcp: initialize: Post "http://127.0.0.1:1/mcp": dial tcp 127.0.0.1:1: connect: connection refused`)
+	if err := host.OpenErrors(""); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.renderSync(t)
+	golden.RequireEqual(t, regexp.MustCompile(`\d\d:\d\d:\d\d`).ReplaceAllString(app.Frame(), "12:00:00"))
 }
 
 // TestOverlayWidthStableWhileScrolling: a list longer than its window
@@ -55,7 +71,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 		return 0
 	}
 	want := boxWidth()
-	for range len(app.overlays[0].itemText) {
+	for range len(app.overlays[0].texts) {
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		if got := boxWidth(); got != want {
 			t.Fatalf("box width changed while scrolling: %d -> %d", want, got)

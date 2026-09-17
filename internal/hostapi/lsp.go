@@ -610,7 +610,7 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 		Name: "lsp commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "lsp", NArgs: "*", Desc: "language servers zemi started; restart <name>", Hidden: true,
+				Name: "lsp", NArgs: "*", Desc: "manage language servers", Hidden: true,
 				GoFn: func(h *Host, args string) error {
 					if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
 						name = strings.TrimSpace(name)
@@ -628,19 +628,28 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 						p.close()
 						return nil
 					}
-					rows := h.lspRows()
 					ui := h.hooks()
-					if ui == nil || len(rows) == 0 {
-						return h.noLSP("")
+					if ui == nil {
+						return errors.New("no UI")
 					}
-					items := make([]any, 0, len(rows))
-					for _, row := range rows {
-						items = append(items, map[string]any{
-							"text": fmt.Sprintf("%-14s %-9s %s %s", row["name"], row["status"], row["filetypes"], truncRunes(fmt.Sprint(row["error"]), 60)),
-							"run":  fmt.Sprintf("lsp restart %s", row["name"]),
-						})
+					empty := "No language server for this project. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
+					if !h.ProjectTrusted() {
+						empty = "Language servers are off: this project is not trusted."
 					}
-					ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers (enter restarts)", Origin: lua.OriginBuiltin, Items: items})
+					var items []any
+					for _, row := range h.lspRows() {
+						name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
+						detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
+						if e := fmt.Sprint(row["error"]); e != "" {
+							detail += "\nerror: " + e
+						}
+						item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
+						if status != "available" {
+							item["actions"] = []any{map[string]any{"text": "Restart", "run": "lsp restart " + name}}
+						}
+						items = append(items, item)
+					}
+					ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: items, Empty: empty})
 					return nil
 				},
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),

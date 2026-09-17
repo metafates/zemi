@@ -323,12 +323,20 @@ func (h *Host) AgentRunNamed(prefix string) string {
 // stored ones this process does not hold included; enter shows a transcript.
 func (h *Host) agentRunItems() []any {
 	sid := h.AgentSessionID()
-	var items []any
+	var running, earlier []any
 	row := func(id, status, agent string, took time.Duration, desc, calls string) {
-		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-9s %-10s %6s  %s%s", status, agent, fmtDuration(took), truncRunes(desc, 60), calls),
-			"run":  "agents view " + id,
-		})
+		item := map[string]any{
+			"text":    agent,
+			"desc":    status + " · " + fmtDuration(took) + calls + " · " + strings.Join(strings.Fields(desc), " "),
+			"run":     "agents view " + id,
+			"section": "Earlier in this session",
+		}
+		if status == "running" {
+			item["section"] = "Running"
+			running = append(running, item)
+			return
+		}
+		earlier = append(earlier, item)
 	}
 	held := map[string]bool{}
 	for _, run := range h.tasks.list(sid) {
@@ -340,9 +348,9 @@ func (h *Host) agentRunItems() []any {
 		children, _ := h.DB.ChildSessions(sid)
 		for _, c := range children {
 			if !held[c.ID] {
-				row(c.ID, "earlier", c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
+				row(c.ID, "done", c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
 			}
 		}
 	}
-	return items
+	return append(running, earlier...)
 }

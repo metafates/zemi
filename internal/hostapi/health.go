@@ -204,25 +204,46 @@ func (h *Host) healthChecks() []healthCheck {
 	nerr := len(h.errs.entries)
 	h.errs.mu.Unlock()
 	if nerr > 0 {
-		add("warn", "errors", fmt.Sprintf("%d recent; enter lists them", nerr))
+		add("warn", "errors", fmt.Sprintf("%d since start", nerr))
 		out[len(out)-1].run = "errors"
 	} else {
 		add("ok", "errors", "none since start")
 	}
 
 	if h.ProjectTrusted() {
-		add("ok", "trust", "trusted: "+h.Dirs.TrustRoot())
+		add("ok", "trust", "trusted: "+tildePath(h.Dirs.TrustRoot()))
 	} else {
 		add("warn", "trust", "not trusted: project config, instructions and language servers are off; /trust")
 	}
+	out[len(out)-1].run = "trust"
 
-	var servers []string
-	for _, row := range h.lspRows() {
-		servers = append(servers, fmt.Sprintf("%s (%s)", row["name"], row["status"]))
+	failed, servers := 0, h.mcp.list()
+	for _, s := range servers {
+		s.mu.Lock()
+		if s.status == "failed" || s.status == "needs sign-in" {
+			failed++
+		}
+		s.mu.Unlock()
 	}
 	switch {
-	case len(servers) > 0:
-		add("ok", "lsp", strings.Join(servers, ", "))
+	case len(servers) == 0:
+		add("ok", "mcp", "no servers added")
+	case failed > 0:
+		add("warn", "mcp", fmt.Sprintf("%d %s, %d not working", len(servers), plural(len(servers), "server", "servers"), failed))
+	default:
+		add("ok", "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
+	}
+	if len(servers) > 0 {
+		out[len(out)-1].run = "mcp"
+	}
+
+	var lsps []string
+	for _, row := range h.lspRows() {
+		lsps = append(lsps, fmt.Sprintf("%s (%s)", row["name"], row["status"]))
+	}
+	switch {
+	case len(lsps) > 0:
+		add("ok", "lsp", strings.Join(lsps, ", "))
 	case !h.ProjectTrusted():
 		add("ok", "lsp", "off: project not trusted (/trust)")
 	default:
@@ -244,6 +265,9 @@ func (h *Host) HealthRows() []HealthRow {
 	return out
 }
 
+// healthActions labels the command a check's detail view runs.
+var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "memory": "Review memories"}
+
 // OpenHealth shows the checks in the list overlay.
 func (h *Host) OpenHealth() error {
 	ui := h.hooks()
@@ -253,16 +277,25 @@ func (h *Host) OpenHealth() error {
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.
 	h.GoSafe("health", func() {
-		marks := map[string]string{"ok": "✓", "warn": "!", "error": "✗"}
-		var items []any
-		for _, c := range h.healthChecks() {
-			item := map[string]any{"text": fmt.Sprintf("%s %-12s %s", marks[c.level], c.name, c.detail)}
-			if c.run != "" {
-				item["run"] = c.run
-			}
-			items = append(items, item)
-		}
-		ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: items})
+		ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: h.healthItems()})
 	})
 	return nil
+}
+
+// healthItems are the /health rows, problems first.
+func (h *Host) healthItems() []any {
+	var problems, ok []any
+	for _, c := range h.healthChecks() {
+		item := map[string]any{"text": c.name, "desc": c.detail, "detail": c.detail, "section": "OK"}
+		if c.run != "" {
+			item["actions"] = []any{map[string]any{"text": healthActions[c.run], "run": c.run}}
+		}
+		if c.level == "ok" {
+			ok = append(ok, item)
+			continue
+		}
+		item["section"] = "Needs attention"
+		problems = append(problems, item)
+	}
+	return append(problems, ok...)
 }

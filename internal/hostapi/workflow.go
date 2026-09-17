@@ -722,18 +722,24 @@ func (h *Host) openWorkflows() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	list := h.workflows()
-	if len(list) == 0 {
-		return errors.New("no saved workflows yet: add workflows/<name>.lua to " + tildePath(h.Dirs.ConfigHome) + " or .zemi")
-	}
-	items := make([]any, 0, len(list))
-	for _, w := range list {
+	var items []any
+	for _, w := range h.workflows() {
+		desc := w.Source
+		if d := strings.Join(strings.Fields(w.Description), " "); d != "" {
+			desc += " · " + d
+		}
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-16s %-8s %s", w.Name, w.Source, truncRunes(w.Description, 70)),
-			"run":  "workflow " + w.Name,
+			"text":   w.Name,
+			"desc":   desc,
+			"detail": strings.TrimLeft(w.Description+"\n\npath: "+tildePath(w.Path), "\n"),
+			"actions": []any{
+				map[string]any{"text": "Run", "run": "workflow " + w.Name},
+				map[string]any{"text": "Run with arguments", "fill": "/workflow " + w.Name + " "},
+			},
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
+		Empty: "No saved workflows. Add workflows/<name>.lua to " + tildePath(h.Dirs.ConfigHome) + " or .zemi."})
 	return nil
 }
 

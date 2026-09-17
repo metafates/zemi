@@ -83,7 +83,7 @@ without asking, the reference for how a widget is written.
 | `zemi.keymap` | `set(key, fn_or_action, {desc})` (again to rebind), `del(key)`, `get(key)`, `list()`; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+g) |
 | `zemi.command` | `add(name, fn, { desc, nargs, complete })`, `del(name)`, `run(name [, args])`, `list` |
 | `zemi.event` | `on(name, fn, { id, once })` -> id, `off(id)` -> bool, `emit("user.*", payload)`, `log({ name, limit })`, `stats()` |
-| `zemi.ui` | `widget.register({ id, region, priority, render, wrap })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, items, render_item, on_select, on_close })/close`, `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
+| `zemi.ui` | `widget.register({ id, region, priority, render, wrap })/list`, `theme.register/set/get`, `hl(group, spec)` (override single groups), `overlay.open({ id, title, body, empty, items, render_item, on_select, on_close })/close` (items may be `{ text, desc, key, section, detail, actions, fill, run }`, see the example), `select`, `input({ prompt, default }, on_confirm(text or nil))`, `edit(path, { line, title }, on_done(mode or nil, err))` (the user's editor on a project file; a tmux popup or split, else full screen), `markdown`, `screenshot()` -> the drawn screen as plain text, or nil, err, `help` |
 | `zemi.notify` | callable `zemi.notify({ title, body, level })` or `zemi.notify(body [, title])`, plus `info`, `warn`, `error`, `list()` |
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send`, `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`send`, `profile`, `set_default` and `run` from user config only) |
@@ -120,6 +120,18 @@ end, { desc = "say hi", nargs = "?", complete = function(lead, line) return { "a
 zemi.ui.select({ "patch", "minor" }, { prompt = "Bump" }, function(choice)
   if choice then zemi.agent.send("bump the " .. choice .. " version") end
 end)
+
+-- A list whose items open a detail view: enter shows `detail` with `actions` under
+-- it; an action fills the composer or runs a command (`run` only from user config),
+-- one with neither goes back. esc goes back, y copies the text.
+zemi.ui.overlay.open({
+  id = "deploys", title = "Deploys", empty = "Nothing deployed yet.",
+  items = {
+    { text = "api", desc = "failed · 2m ago", section = "Failed", detail = "exit 1: migration timed out",
+      actions = { { text = "Retry", run = "deploy api" }, { text = "Cancel" } } },
+    { text = "web", desc = "live · 1h ago", section = "Live", fill = "/deploy web " },
+  },
+})
 
 -- Widget
 zemi.ui.widget.register({

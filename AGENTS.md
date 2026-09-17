@@ -557,7 +557,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.19.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.20.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -630,7 +630,11 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   blank rows and section headers never are. Lists scroll at the edge and never recenter,
   so a click does not move the item under the pointer. Modal chrome is spliced after
   windows, and everything outside the top box is repainted `Host:Dim` (`dimRows`); the
-  palette and completion popups are not modal. Helpers that rebuild segments must carry `Hit`. Composer
+  palette and completion popups are not modal. Overlays (`internal/ui/overlay.go`) are data:
+  an item with `detail` or `actions` pushes a detail view (`<id>#detail`, the parent's
+  origin, esc pops it), `Body` is text above the items, `Empty` the line for none, and the
+  hint line lists only keys that act on the selection (`enterVerb`); enter on an inert row
+  does nothing. Helpers that rebuild segments must carry `Hit`. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
   scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua

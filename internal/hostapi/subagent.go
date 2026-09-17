@@ -642,7 +642,7 @@ func (h *Host) AgentsCommandsStep() lua.BootStep {
 		Name: "agents commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "agents", NArgs: "*", Desc: "agents at work and the ones zemi can launch",
+				Name: "agents", NArgs: "*", Desc: "see running agents and the ones zemi can start",
 				GoFn: func(h *Host, args string) error {
 					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
 					switch id = strings.TrimSpace(id); sub {
@@ -670,13 +670,23 @@ func (h *Host) openAgents() error {
 	defs := h.agentDefs()
 	slices.SortStableFunc(defs, func(a, b AgentDef) int { return cmp.Compare(a.Source, b.Source) })
 	items := h.agentRunItems()
-	if len(items) > 0 {
-		items = append(items, map[string]any{"text": ""})
-	}
 	for _, d := range defs {
-		items = append(items, map[string]any{"text": fmt.Sprintf("%-12s %-8s %s", d.Name, d.Source, truncRunes(d.Description, 80))})
+		model, tools := cmp.Or(d.Model, "agent.subagent_model or the session model"), "every tool a subagent may use"
+		if d.Small && d.Model == "" {
+			model = "agent.small_model"
+		}
+		if d.Tools != nil {
+			tools = strings.Join(d.Tools, ", ")
+		}
+		items = append(items, map[string]any{
+			"text":    d.Name,
+			"desc":    d.Source + " · " + d.Description,
+			"section": "Available",
+			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .zemi.",
+				d.Description, d.Source, model, tools, tildePath(h.Dirs.ConfigHome)),
+		})
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents (" + tildePath(filepath.Join(h.Dirs.ConfigHome, "agents")) + ", .zemi/agents)", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 

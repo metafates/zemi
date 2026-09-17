@@ -280,20 +280,20 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 					quit()
 					return nil
 				}},
-				{Name: "help", Desc: "show keys and commands", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenHelp()
 					return nil
 				}},
-				{Name: "new", Desc: "start a fresh session", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.NewSession()
 				}},
-				{Name: "sessions", Desc: "list and resume sessions", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "sessions", Desc: "resume an earlier session", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenSessions()
 				}},
-				{Name: "resume", Hidden: true, Desc: "resume a session (the latest without an id)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {
 					return h.ResumeSession(strings.TrimSpace(args))
 				}},
-				{Name: "rewind", NArgs: "?", Desc: "undo back to an earlier prompt, files included", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "rewind", NArgs: "?", Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenRewind()
 					}
@@ -307,7 +307,7 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 					}
 					return err
 				}},
-				{Name: "effort", Hidden: true, NArgs: "?", Desc: "reasoning effort: low, medium, high or default", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
 					switch args = strings.TrimSpace(args); args {
 					case "":
 						cur := h.Effort()
@@ -324,46 +324,46 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 					_, err := h.Settings.SetQuiet("agent.effort", args)
 					return err
 				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
-				{Name: "usage", Desc: "tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenUsage()
 				}},
-				{Name: "init", Desc: "write or update AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.InitProject()
 				}},
-				{Name: "export", Hidden: true, NArgs: "?", Desc: "write this session as markdown (default zemi-<id>.md)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
 					path, err := h.ExportSession(strings.TrimSpace(args))
 					if err == nil {
 						h.Notify("info", "export", "wrote "+path)
 					}
 					return err
 				}},
-				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session, keeping the original", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
 					_, err := h.ForkSession()
 					return err
 				}},
-				{Name: "reload", Hidden: true, Desc: "reload config now (zemi reloads on its own when config files change)", GoFn: func(*hostapi.Host, string) error {
+				{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(*hostapi.Host, string) error {
 					// the composer matches /reload before the registry; this
 					// serves the palette, keymaps and zemi.config.reload
 					return h.ReloadConfig()
 				}},
-				{Name: "errors", Hidden: true, NArgs: "*", Desc: "recent runtime errors; enter opens one", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "errors", NArgs: "*", Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
 					return h.OpenErrors(args)
 				}},
-				{Name: "trust", Desc: "trust this project or stop trusting it", GoFn: func(*hostapi.Host, string) error {
+				{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(*hostapi.Host, string) error {
 					trust()
 					return nil
 				}},
-				{Name: "health", Desc: "check that everything works", GoFn: func(h *hostapi.Host, _ string) error {
+				{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
 					return h.OpenHealth()
 				}},
-				{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context; /compact <what to keep>", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
 					return h.CompactNow(args)
 				}},
 				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
 					h.OpenModelPicker()
 					return nil
 				}},
-				{Name: "mode", NArgs: "?", Desc: "who approves actions (tab switches)", GoFn: func(h *hostapi.Host, args string) error {
+				{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenModePicker()
 					}

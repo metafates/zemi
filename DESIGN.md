@@ -1032,13 +1032,17 @@ configured provider later (`zemi.memory.search` signature does not change).
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter resumes), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
-  check: store, model key, permissions.lua, git, ripgrep, reflector,
-  pending reviews, skills, recent errors, project trust, language
-  servers, Lua runtime),
+  check, problems first: store, model key, permissions.lua, git, ripgrep,
+  reflector, pending reviews, skills, recent errors, project trust, MCP
+  servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
   `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
+  The menus share one list: a row that only a closer look should act on
+  (an error, a server, a skill, a workflow, a rewind) opens a detail view
+  with its full text and the actions as a list, so a restart, a
+  multi-agent run or a rewind is never one stray enter; esc goes back.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume

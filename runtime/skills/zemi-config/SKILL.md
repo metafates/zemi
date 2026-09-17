@@ -224,8 +224,8 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
-`/usage`, `/trust`, `/health`, `/help`, `/quit`. They also run when typed but stay out of the
-palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/errors`, `/reflect`,
+`/usage`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
+palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 `/reload`, `/win` (`list`, `focus`, `hide`, `show <id>`, `close <id|all>` for windows). Arguments:
 
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit

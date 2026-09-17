@@ -474,10 +474,14 @@ func (a *App) wheelChrome(step int) bool {
 		move(a.question.sel())
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
-		if st.o.Input {
+		switch {
+		case st.o.Input:
 			return false
+		case st.o.Body != "":
+			st.scroll = max(0, st.scroll+step)
+		default:
+			move(&st.selected, len(st.visible))
 		}
-		move(&st.selected, len(st.visible))
 	default:
 		return false
 	}
@@ -509,7 +513,7 @@ func (a *App) pasteChrome(text string) bool {
 		if st.o.Input {
 			st.input.insert(line)
 		} else {
-			st.edit("", line, st.itemText)
+			st.edit("", line, st.texts)
 		}
 	}
 	a.frameGen++

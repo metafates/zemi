@@ -115,6 +115,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		o := Overlay{
 			ID:     rawString(tb, "id"),
 			Title:  rawString(tb, "title"),
+			Body:   rawString(tb, "body"),
+			Empty:  rawString(tb, "empty"),
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),

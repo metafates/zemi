@@ -93,16 +93,16 @@ func (h *Host) OpenModePicker() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	cur := h.PermMode()
+	cur, sel := h.PermMode(), 0
 	var items []any
-	for _, m := range h.PermModeList() {
-		mark := "  "
+	for i, m := range h.PermModeList() {
+		item := map[string]any{"text": m.Name, "desc": m.Description, "run": "mode " + m.Name}
 		if m.Name == cur {
-			mark = "● "
+			item["key"], sel = "current", i
 		}
-		items = append(items, map[string]any{"text": fmt.Sprintf("%s%-7s %s", mark, m.Name, m.Description), "run": "mode " + m.Name})
+		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Anchor: "bottom"})
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
 	return nil
 }
 

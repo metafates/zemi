@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -387,7 +388,7 @@ func (h *Host) MCPCommandsStep() lua.BootStep {
 		Name: "mcp commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "mcp", NArgs: "*", Desc: "connected tool servers (MCP)",
+				Name: "mcp", NArgs: "*", Desc: "manage MCP servers",
 				GoFn: func(h *Host, args string) error {
 					sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
 					switch sub {
@@ -429,30 +430,44 @@ func (h *Host) openMCP() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	servers := h.mcp.list()
-	if len(servers) == 0 {
-		return errors.New(`no MCP servers: add one in init.lua with zemi.mcp.add("name", { command = "...", args = { ... } })`)
-	}
-	items := make([]any, 0, len(servers))
-	for _, s := range servers {
+	var items []any
+	for _, s := range h.mcp.list() {
 		s.mu.Lock()
-		state, run := fmt.Sprintf("%d tools", len(s.tools)), "mcp restart "+s.name
-		if s.status != "ready" {
-			state = s.status
-		}
-		if s.status == "needs sign-in" {
-			state, run = "needs sign-in, enter opens your browser", "mcp sign-in "+s.name
-		}
-		if s.err != "" {
-			state += ": " + truncRunes(s.err, 60)
+		status, errText := s.status, s.err
+		var tools []string
+		for _, t := range s.tools {
+			tools = append(tools, t.Name)
 		}
 		s.mu.Unlock()
-		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-16s %-10s %s", s.name, s.spec.Source, state),
-			"run":  run,
-		})
+		desc := status
+		if status == "ready" {
+			desc = fmt.Sprintf("ready · %d %s", len(tools), plural(len(tools), "tool", "tools"))
+		}
+		detail := "command: " + strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")
+		if s.spec.URL != "" {
+			detail = "url: " + s.spec.URL
+		}
+		detail += "\nstatus: " + status
+		if errText != "" {
+			detail += "\nerror: " + errText
+		}
+		if len(tools) > 20 {
+			tools = append(tools[:20], "...")
+		}
+		if len(tools) > 0 {
+			detail += "\ntools: " + strings.Join(tools, ", ")
+		}
+		actions := []any{map[string]any{"text": "Restart", "run": "mcp restart " + s.name}}
+		if status == "needs sign-in" {
+			actions = append(actions, map[string]any{"text": "Sign in", "run": "mcp sign-in " + s.name})
+		}
+		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
+			actions = append(actions, map[string]any{"text": "Sign out", "run": "mcp sign-out " + s.name})
+		}
+		items = append(items, map[string]any{"text": s.name, "desc": desc + " · " + s.spec.Source, "detail": detail, "actions": actions})
 	}
-	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers (enter restarts or signs in)", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: items,
+		Empty: `No MCP servers. Add one in init.lua: zemi.mcp.add("name", { command = "..." })`})
 	return nil
 }
 

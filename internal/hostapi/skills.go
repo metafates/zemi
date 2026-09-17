@@ -344,6 +344,8 @@ func (h *Host) skillsCommand(args string) error {
 		}
 		h.Notify("info", "skills", fields[0]+"d "+fields[1])
 		return nil
+	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
+		return h.setSkillEnabled(nil, fields[1], !h.skillsReg.isEnabled(fields[1]))
 	default:
 		return errors.New("usage: /skills | /skills enable|disable <name> | /skills use <name> [request]")
 	}
@@ -380,29 +382,33 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 	return msg, nil
 }
 
-// openSkills lists discovered skills with their state; space or enter
-// toggles the selected one through the same enable/disable path as the
-// command and the list stays open.
+// openSkills lists discovered skills with their state; space toggles the
+// selected one through the same enable/disable path as the command and the
+// list stays open, enter opens its detail.
 func (h *Host) openSkills() {
-	ui := h.hooks()
-	if ui == nil || len(h.skillsReg.list()) == 0 {
-		h.Notify("info", "skills", "no skills found (add them under skills/ in your config)")
-		return
+	if ui := h.hooks(); ui != nil {
+		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems,
+			Empty: "No skills found. Add one as skills/<name>/SKILL.md in " + tildePath(h.Dirs.ConfigHome) + "."})
 	}
-	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems})
 }
 
 func (h *Host) skillItems() []any {
 	all := h.skillsReg.list()
 	items := make([]any, 0, len(all))
 	for _, s := range all {
-		mark, verb := "○ ", "enable"
+		toggle := "skills toggle " + s.Name
+		key, state, actions := "off", "disabled", []any{map[string]any{"text": "Enable", "run": toggle}}
 		if h.skillsReg.isEnabled(s.Name) {
-			mark, verb = "● ", "disable"
+			key, state = "on", "enabled"
+			actions = []any{map[string]any{"text": "Disable", "run": toggle}, map[string]any{"text": "Use now", "fill": "/skills use " + s.Name + " "}}
 		}
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%s%-20s %s (%s)", mark, s.Name, s.Description, s.Source),
-			"run":  "skills " + verb + " " + s.Name,
+			"text":    s.Name,
+			"key":     key,
+			"desc":    string(s.Source) + " · " + s.Description,
+			"detail":  fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, tildePath(filepath.Join(s.Dir, "SKILL.md"))),
+			"actions": actions,
+			"run":     toggle,
 		})
 	}
 	return items
@@ -415,7 +421,7 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 		Name: "skills commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "skills", NArgs: "*", Desc: "browse skills, switch them on or off, or use one now",
+				Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
 				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
 				GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
 					var names []string

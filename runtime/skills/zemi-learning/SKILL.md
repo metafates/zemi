@@ -21,7 +21,8 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      tags under it; a bar marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
      forgets a stored memory, `u` undoes the last mark; enter, esc or `q` closes the screen
      and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
-   - `/skills`: drafted skills start disabled; enter toggles, or `/skills enable|disable <name>`.
+   - `/skills`: drafted skills start disabled; space toggles, enter opens one (Enable or Disable, Use now),
+     or `/skills enable|disable <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own.
    - Autonomy (`memory.autonomy`) is host-owned. Under `auto`, memories apply without

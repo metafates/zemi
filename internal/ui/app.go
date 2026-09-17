@@ -752,10 +752,10 @@ func (a *App) compose(w, h int) string {
 	}
 	for i := range a.overlays {
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := overlayBox(ov, w)
+			box := overlayBox(ov, w, chatH)
 			modals = append(modals, func() { rows = anchorBottom(rows, box, w, len(header), chatH) })
 		} else {
-			splice(overlayBox(ov, w))
+			splice(overlayBox(ov, w, chatH))
 		}
 	}
 	if a.trust != nil {

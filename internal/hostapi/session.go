@@ -5,6 +5,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,9 +87,6 @@ func (h *Host) OpenSessions() error {
 	if err != nil {
 		return err
 	}
-	if len(list) == 0 {
-		return errors.New("no sessions yet")
-	}
 	current := h.AgentSessionID()
 	ids := make([]string, 0, len(list))
 	for _, s := range list {
@@ -97,29 +95,23 @@ func (h *Host) OpenSessions() error {
 	previews, _ := h.DB.SessionPreviews(ids) // best effort: a bare list still resumes
 	items := make([]any, 0, len(list))
 	for _, s := range list {
-		mark, title := "  ", s.Title
-		if s.ID == current {
-			mark = "● "
-		}
-		if title == "" {
-			title = "(untitled)"
-		}
-		title = learn.Truncate(title, 32)
-		title += strings.Repeat(" ", max(0, 32-len([]rune(title))))
 		p := previews[s.ID]
-		var tail []string
+		desc := []string{ago(s.UpdatedAt)}
 		if p.Count > 0 {
-			tail = append(tail, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
+			desc = append(desc, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
 		}
 		if line := firstUserLine(p.FirstJSON); line != "" {
-			tail = append(tail, line)
+			desc = append(desc, line)
 		}
-		items = append(items, map[string]any{
-			"text": strings.TrimRight(fmt.Sprintf("%s%-7s  %s  %s", mark, ago(s.UpdatedAt), title, strings.Join(tail, " · ")), " "),
-			"run":  "resume " + s.ID,
-		})
+		item := map[string]any{"text": cmp.Or(s.Title, "Untitled"), "desc": strings.Join(desc, " · ")}
+		if s.ID == current {
+			item["key"] = "current"
+		} else {
+			item["run"] = "resume " + s.ID
+		}
+		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Empty: "No sessions in this project yet."})
 	return nil
 }
 

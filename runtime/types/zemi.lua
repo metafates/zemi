@@ -324,10 +324,32 @@ function zemi.event.stats() end
 ---@field palette? table<string, string>
 ---@field hl? table<string, zemi.HLSpec>
 
+--- One overlay row. Enter on an item with `detail` or `actions` opens a
+--- detail view (never on_select); otherwise it fills, runs or selects the
+--- item, and does nothing when none applies. `run` is honored only for
+--- user config.
+---@class zemi.OverlayItem
+---@field text string
+---@field desc? string dim column after the text
+---@field key? string right-aligned tag
+---@field section? string a change of section starts with a header row
+---@field detail? string body of the detail view
+---@field actions? zemi.OverlayAction[] listed under the detail
+---@field fill? string put in the composer
+---@field run? string a command line such as "mcp restart gitlab"
+
+--- A detail view action; with neither fill nor run it goes back.
+---@class zemi.OverlayAction
+---@field text string
+---@field fill? string
+---@field run? string
+
 ---@class zemi.OverlaySpec
 ---@field id string
 ---@field title? string
----@field items? any[]
+---@field body? string text above the items; with no items a read-only view
+---@field empty? string the line shown when there are no items
+---@field items? (zemi.OverlayItem|any)[]
 ---@field render_item? fun(item: any): string
 ---@field on_select? fun(item: any)
 ---@field on_close? fun()
@@ -378,7 +400,7 @@ function zemi.ui.overlay.open(spec) end
 function zemi.ui.overlay.close(id) end
 
 --- A picker in the shape of `vim.ui.select`. on_choice gets the item on
---- enter, nil on cancel.
+--- enter, nil on cancel. Items take the zemi.OverlayItem keys too.
 ---@param items any[]
 ---@param opts zemi.SelectOpts
 ---@param on_choice fun(item: any|nil)

@@ -212,10 +212,6 @@ func (h *Host) openMemoryReview() {
 		return
 	}
 	rows := h.memoryRows()
-	if len(rows) == 0 {
-		h.Notify("info", "memory", "nothing remembered yet; /memory <note> saves one")
-		return
-	}
 	decisions := ui.ReviewMemories(rows)
 	var accepted, rejected, deleted int
 	for _, r := range rows {
@@ -478,7 +474,7 @@ func (h *Host) MemoryCommandsStep() lua.BootStep {
 		Name: "memory commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			_, err := h.Commands.Add(&Command{
-				Name: "memory", NArgs: "*", Desc: "what zemi remembers; /memory <note> saves one",
+				Name: "memory", NArgs: "*", Desc: "review what zemi remembers",
 				GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})

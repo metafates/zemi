@@ -186,7 +186,7 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 func (h *Host) OpenRewind() error {
 	ui := h.hooks()
 	sid := h.AgentSessionID()
-	if ui == nil || h.DB == nil || sid == "" {
+	if ui == nil || h.DB == nil {
 		return errors.New("no session to rewind")
 	}
 	rows, err := h.DB.Messages(sid)
@@ -200,20 +200,25 @@ func (h *Host) OpenRewind() error {
 		if !ok {
 			continue
 		}
-		files := ""
-		if n := counts[row.ID]; n > 0 {
-			files = fmt.Sprintf("  (%d %s)", n, plural(n, "file", "files"))
+		n := counts[row.ID]
+		desc, effect := ago(row.CreatedAt), "Rewinding removes this prompt and everything after it and puts it back in the composer."
+		if n > 0 {
+			files := fmt.Sprintf("%d %s", n, plural(n, "file", "files"))
+			desc += " · " + files
+			effect = "Rewinding removes this prompt and everything after it, restores " + files + " to how they were before it, and puts the prompt back in the composer. Changes made by commands are not undone."
 		}
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
-			"text": fmt.Sprintf("%-8s %s%s", ago(row.CreatedAt), truncRunes(first, 60), files),
-			"run":  "rewind " + row.ID,
+			"text":   first,
+			"desc":   desc,
+			"detail": text + "\n\n" + effect,
+			"actions": []any{
+				map[string]any{"text": "Rewind", "run": "rewind " + row.ID},
+				map[string]any{"text": "Cancel"},
+			},
 		})
 	}
-	if len(items) == 0 {
-		return errors.New("nothing to rewind yet")
-	}
 	// builtin origin: the UI runs a row's command only for trusted overlays
-	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind to before", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind", Origin: lua.OriginBuiltin, Items: items, Empty: "Nothing to rewind yet."})
 	return nil
 }
