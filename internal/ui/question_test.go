@@ -179,14 +179,15 @@ func TestQuestionBoxShowsTyping(t *testing.T) {
 }
 
 // TestQuestionBoxScrolls: options that do not fit scroll with the
-// selection, keeping the typed-answer row and the hints on screen.
+// selection and a long question gives way, keeping the typed-answer row
+// and the hints on screen.
 func TestQuestionBoxScrolls(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
 	var opts []tools.QuestionOption
 	for i := range 20 {
 		opts = append(opts, tools.QuestionOption{Label: fmt.Sprintf("option %d", i)})
 	}
-	askAsync(t, app, tools.Question{Question: "Pick?", Options: opts})
+	askAsync(t, app, tools.Question{Question: strings.Repeat("which one? ", 300), Options: opts})
 	for range 20 {
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}

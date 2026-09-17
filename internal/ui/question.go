@@ -257,18 +257,19 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 			}
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
-		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, len(items)*3+1)...)
+		// borders, the blank row and the hint take four rows; each answer
+		// takes three with its gap, the submit row one
+		limit := chatH - len(body) - 4
+		if len(items)*3+1 > limit {
+			limit = max(limit-1, 3) // the i/n counter row
+		}
+		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, limit)...)
 		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
 		body = append(body, blank, hintLine(boxInner(w), "enter", enter, "shift+tab", "back", "esc", "cancel"))
 		return box()
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	// wrapped: an ellipsis would hide what is asked
-	for l := range strings.SplitSeq(q.Question, "\n") {
-		body = append(body, wrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
-	}
-	body = append(body, blank)
 	items := make([]listItem, 0, len(q.Options)+1)
 	for i, opt := range q.Options {
 		it := listItem{label: opt.Label, desc: opt.Description}
@@ -282,6 +283,18 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 		items = append(items, it)
 	}
 	items = append(items, listItem{label: cmp.Or(q.Other, "Type your own answer")})
+	// wrapped: an ellipsis would hide what is asked, unless the question
+	// would push the first options and the hint off screen
+	var ask [][]hostapi.Segment
+	for l := range strings.SplitSeq(q.Question, "\n") {
+		ask = append(ask, wrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
+	}
+	// borders, two blank rows, the hint and three options with their i/n row
+	keep := chatH - len(body) - 6 - min(len(items), 4)
+	if st.typing {
+		keep--
+	}
+	body = append(append(body, capRows(ask, max(keep, 1), boxInner(w))...), blank)
 	// borders, the blank row and the hint take four rows, typing one more
 	limit := chatH - len(body) - 4
 	if st.typing {
