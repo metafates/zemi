@@ -464,7 +464,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 
 // TestMemoryReviewMovesProposals: a suggestion moved to the other scope
 // waits there under its id and is stored there when kept; one that
-// replaces a memory stays in that memory's scope, so the old one goes.
+// replaces a memory still retires it from the scope it left.
 func TestMemoryReviewMovesProposals(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
@@ -487,14 +487,14 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	for i := range rows {
 		if rows[i].Queued {
 			rows[i].Scope = "user"
-			if rows[i].Replaces {
+			if strings.Contains(rows[i].Text, "(replaces ") {
 				rows[i].Action = "accept"
 			}
 		}
 	}
 	ui.reviewResult = rows
 	h.openMemoryReview()
-	if live, _ := h.DB.ListMemory("project", false); len(live) != 1 || live[0].Text != "deploy runs bin/deploy" {
+	if live, _ := h.DB.ListMemory("project", false); len(live) != 0 {
 		t.Fatalf("the replaced memory is still live: %+v", live)
 	}
 	moved := h.memoryProposals()
@@ -507,7 +507,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 
 	ui.reviewResult = []MemoryRow{{ID: moved[0].ID, Scope: "user", Action: "accept"}}
 	h.openMemoryReview()
-	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 1 || live[0].Text != "run make check first" {
+	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 2 {
 		t.Fatalf("kept suggestion not stored everywhere: %+v", live)
 	}
 }

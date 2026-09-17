@@ -29,16 +29,15 @@ const memoryAutoApplyCap = 20
 // MemoryRow is one review-overlay row: a queued proposal or a stored
 // memory from either scope.
 type MemoryRow struct {
-	ID       string
-	Scope    string // "user" or "project"
-	Kind     string
-	Origin   string // "user" or "learned"
-	Text     string
-	Tags     []string
-	Queued   bool   // proposal awaiting review, not yet stored
-	Forget   bool   // proposal to forget a stored memory, which stays in its scope
-	Replaces bool   // proposal to replace a stored memory, which stays in its scope
-	Action   string // set by the review screen: accept, reject, delete or ""
+	ID     string
+	Scope  string // "user" or "project"
+	Kind   string
+	Origin string // "user" or "learned"
+	Text   string
+	Tags   []string
+	Queued bool   // proposal awaiting review, not yet stored
+	Forget bool   // proposal to forget a stored memory, which stays in its scope
+	Action string // set by the review screen: accept, reject, delete or ""
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -257,8 +256,8 @@ func (h *Host) openMemoryReview() {
 		if r.Scope != "user" {
 			r.Scope = "project"
 		}
-		if old.Forget || old.Replaces {
-			r.Scope = old.Scope // superseding works within one scope
+		if old.Forget {
+			r.Scope = old.Scope // it names the memory where it is
 		}
 		switch {
 		case old.Queued && r.Action == "reject":
@@ -439,7 +438,7 @@ func (h *Host) memoryRows() []MemoryRow {
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: text, Tags: m.Tags, Queued: true, Forget: m.Forget, Replaces: m.Supersedes != "" && !m.Forget,
+			Text: text, Tags: m.Tags, Queued: true, Forget: m.Forget,
 		})
 	}
 	list, _ := h.memoryList(false)
@@ -499,12 +498,9 @@ func (h *Host) supersedeMemory(oldID, byID string) error {
 	if err != nil {
 		return err
 	}
-	byDB, by, err := h.locateMemory(byID)
+	_, by, err := h.locateMemory(byID)
 	if err != nil {
 		return err
-	}
-	if byDB != db || by.Scope != old.Scope {
-		return fmt.Errorf("memory %s and %s are in different scopes", old.ID[:8], by.ID[:8])
 	}
 	return db.SupersedeMemory(old.ID, by.ID)
 }

@@ -439,17 +439,11 @@ func (h *Host) applySkillDrafts(sid string, p *reflectProposal) (drafted int) {
 }
 
 // linkSupersede marks an existing memory as replaced by a freshly stored
-// one; unknown ids and cross-scope links are dropped with a log.
+// one, in either scope; unknown ids are dropped with a log.
 func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
 	db, old, err := h.locateMemory(oldID)
 	if err != nil {
 		h.Log.Debug("reflector", "supersede skipped: old memory missing", map[string]any{"id": oldID})
-		return
-	}
-	if db != h.memoryDB(fresh.Scope) || old.Scope != fresh.Scope {
-		h.Log.Debug("reflector", "supersede skipped: scope mismatch", map[string]any{
-			"id": oldID, "old_scope": old.Scope, "new_scope": fresh.Scope,
-		})
 		return
 	}
 	if err := db.SupersedeMemory(old.ID, fresh.ID); err != nil {

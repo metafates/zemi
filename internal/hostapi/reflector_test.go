@@ -369,9 +369,10 @@ func TestReflectPromptInstructions(t *testing.T) {
 // TestReflectSupersedeThroughReview: a queued supersede links on accept, and
 // replacing a user memory queues even under auto.
 func TestReflectSupersedeThroughReview(t *testing.T) {
-	for _, tc := range []struct{ name, autonomy, oldOrigin string }{
-		{"ask queues and links on accept", "ask", learn.OriginLearned},
-		{"user memory queues under auto", "auto", learn.OriginUser},
+	for _, tc := range []struct{ name, autonomy, oldOrigin, scope string }{
+		{"ask queues and links on accept", "ask", learn.OriginLearned, "project"},
+		{"user memory queues under auto", "auto", learn.OriginUser, "project"},
+		{"a replacement in the other scope links too", "ask", learn.OriginLearned, "user"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -382,7 +383,7 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 			if err := h.DB.AddMemory(&store.Memory{ID: oldID, Scope: "project", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: tc.oldOrigin}); err != nil {
 				t.Fatal(err)
 			}
-			reflectStub(t, h, `{"memories":[{"scope":"project","kind":"fact","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
+			reflectStub(t, h, `{"memories":[{"scope":"`+tc.scope+`","kind":"fact","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
 			if err := h.reflectSession(context.Background(), sid); err != nil {
 				t.Fatal(err)
 			}

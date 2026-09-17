@@ -152,17 +152,16 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewScopeFixed: s leaves a suggestion that forgets or
-// replaces a memory in that memory's scope, and on a narrow screen the
-// hint gives up its middle keys before esc.
+// TestMemoryReviewScopeFixed: s leaves a suggestion that forgets a memory
+// in that memory's scope, and on a narrow screen the hint gives up its
+// middle keys before esc.
 func TestMemoryReviewScopeFixed(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	done := openReview(t, app, []hostapi.MemoryRow{
 		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-		{ID: "r1", Scope: "project", Kind: "fact", Origin: "learned", Text: "new note (replaces m1)", Queued: true, Replaces: true},
 		{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
 	})
-	for range 3 {
+	for range 2 {
 		app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
