@@ -68,7 +68,7 @@ func (a *App) markMemory(key string) {
 		return
 	}
 	it := mr.items[mr.sel]
-	if key == "keep" && !suggested(it) || key == "scope" && it.Forget {
+	if key == "keep" && !suggested(it) || key == "scope" && (it.Forget || it.Replaces) {
 		return
 	}
 	mr.undo = append(mr.undo, memUndo{mr.sel, it})
@@ -173,7 +173,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		default:
 			hints = append(hints, "d", "forget")
 		}
-		if !it.Forget {
+		if !it.Forget && !it.Replaces {
 			hints = append(hints, "s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"])
 		}
 	}

@@ -462,6 +462,56 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 }
 
+// TestMemoryReviewMovesProposals: a suggestion moved to the other scope
+// waits there under its id and is stored there when kept; one that
+// replaces a memory stays in that memory's scope, so the old one goes.
+func TestMemoryReviewMovesProposals(t *testing.T) {
+	h, r := newTestHostDB(t)
+	seedSession(t, h)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.Remember("deploy by hand"); err != nil {
+		t.Fatal(err)
+	}
+	old := projectMemories(t, h)[0]
+	runUser(t, r, `zemi.memory.add({ kind = "fact", text = "deploy runs bin/deploy" })`)
+	p := h.takeProposal(h.memoryProposals()[0].ID)
+	p.Supersedes = old.ID
+	if err := h.addProposal(*p); err != nil {
+		t.Fatal(err)
+	}
+	runUser(t, r, `zemi.memory.add({ kind = "gotcha", text = "run make check first" })`)
+
+	h.openMemoryReview()
+	rows := slices.Clone(ui.reviewItems[0])
+	for i := range rows {
+		if rows[i].Queued {
+			rows[i].Scope = "user"
+			if rows[i].Replaces {
+				rows[i].Action = "accept"
+			}
+		}
+	}
+	ui.reviewResult = rows
+	h.openMemoryReview()
+	if live, _ := h.DB.ListMemory("project", false); len(live) != 1 || live[0].Text != "deploy runs bin/deploy" {
+		t.Fatalf("the replaced memory is still live: %+v", live)
+	}
+	moved := h.memoryProposals()
+	if len(moved) != 1 || moved[0].Scope != "user" {
+		t.Fatalf("moved suggestion: %+v", moved)
+	}
+	if got, _ := h.GlobalDB.Proposals("memory"); len(got) != 1 || got[0].ID != moved[0].ID {
+		t.Fatalf("moved suggestion not in the user store: %+v", got)
+	}
+
+	ui.reviewResult = []MemoryRow{{ID: moved[0].ID, Scope: "user", Action: "accept"}}
+	h.openMemoryReview()
+	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 1 || live[0].Text != "run make check first" {
+		t.Fatalf("kept suggestion not stored everywhere: %+v", live)
+	}
+}
+
 func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	// no origin: the store refuses the row, after the proposal was taken

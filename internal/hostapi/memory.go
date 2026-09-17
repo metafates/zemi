@@ -29,15 +29,16 @@ const memoryAutoApplyCap = 20
 // MemoryRow is one review-overlay row: a queued proposal or a stored
 // memory from either scope.
 type MemoryRow struct {
-	ID     string
-	Scope  string // "user" or "project"
-	Kind   string
-	Origin string // "user" or "learned"
-	Text   string
-	Tags   []string
-	Queued bool   // proposal awaiting review, not yet stored
-	Forget bool   // proposal to forget a stored memory, which stays in its scope
-	Action string // set by the review screen: accept, reject, delete or ""
+	ID       string
+	Scope    string // "user" or "project"
+	Kind     string
+	Origin   string // "user" or "learned"
+	Text     string
+	Tags     []string
+	Queued   bool   // proposal awaiting review, not yet stored
+	Forget   bool   // proposal to forget a stored memory, which stays in its scope
+	Replaces bool   // proposal to replace a stored memory, which stays in its scope
+	Action   string // set by the review screen: accept, reject, delete or ""
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -256,6 +257,9 @@ func (h *Host) openMemoryReview() {
 		if r.Scope != "user" {
 			r.Scope = "project"
 		}
+		if old.Forget || old.Replaces {
+			r.Scope = old.Scope // superseding works within one scope
+		}
 		switch {
 		case old.Queued && r.Action == "reject":
 			if h.takeProposal(r.ID) != nil {
@@ -267,7 +271,7 @@ func (h *Host) openMemoryReview() {
 				continue
 			}
 			accepted++
-		case old.Queued && r.Scope != old.Scope && !old.Forget:
+		case old.Queued && r.Scope != old.Scope:
 			if p := h.takeProposal(r.ID); p != nil {
 				p.Memory.Scope = r.Scope
 				h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
@@ -435,7 +439,7 @@ func (h *Host) memoryRows() []MemoryRow {
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: text, Tags: m.Tags, Queued: true, Forget: m.Forget,
+			Text: text, Tags: m.Tags, Queued: true, Forget: m.Forget, Replaces: m.Supersedes != "" && !m.Forget,
 		})
 	}
 	list, _ := h.memoryList(false)
