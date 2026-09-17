@@ -343,6 +343,7 @@ func TestInterruptKeys(t *testing.T) {
 
 	app, _ := bootAgentApp(t, 80, 16)
 	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	app.renderSync(t)
 	if !strings.Contains(ansi.Strip(app.Frame()), "ctrl+c again to quit") {
 		t.Fatal("idle ctrl+c should arm quit")
 	}
@@ -605,6 +606,10 @@ func TestWorkingRowRetry(t *testing.T) {
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Retrying  attempt 2 · next try in 4s · esc to interrupt") {
 		t.Fatalf("retry row missing:\n%s", frame)
+	}
+	// the label shimmers: every rune gets its own color
+	if row := app.renderSegs(app.widgetLines("working")[0][1:2], 80); strings.Count(row, "\x1b[") < len("Retrying") {
+		t.Fatalf("label does not shimmer: %q", row)
 	}
 }
 

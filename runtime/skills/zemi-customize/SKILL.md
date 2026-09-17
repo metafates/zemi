@@ -90,9 +90,10 @@ the file is saved (zemi reloads config on change).
 
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
-`splash`, `chat`, `statusline.mode`, `statusline.cwd`, `statusline.reflect`,
-`statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.info`. Regions: `header`, `chat`,
-`statusline.left`, `statusline.right`. zemi reloads config on its own when these files
+`splash`, `chat`, `working` (the activity row above the composer), `statusline.quit`,
+`statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
+`statusline.learn`, `statusline.keys`, `statusline.scroll`, `statusline.info`. Regions: `header`,
+`chat`, `working`, `statusline.left`, `statusline.right`. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
 The shipped UI is Lua too: `types/zemi/defaultui.lua` under the data directory (the system
@@ -143,7 +144,8 @@ zemi.ui.theme.set("dusk")
 zemi.keymap.set("<leader>r", "review", { desc = "review changes" })
 ```
 
-Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }`, must be pure
+Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }` (`{}` for no
+lines; `effect = "shimmer"` animates a segment like the working label), must be pure
 (no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
 `zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
 uses are the `hl` table at the top of `defaultui.lua`. To make a segment clickable give it

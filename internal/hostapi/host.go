@@ -699,6 +699,7 @@ type Segment struct {
 	// statusline pill sets it with no Widget
 	Click  string
 	Widget string
+	Effect string // "shimmer": the UI animates the text, blending hl toward Normal
 }
 
 // RenderWidget runs a widget's Lua render for the given width and returns
@@ -763,6 +764,9 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 
 func convertSegments(v any, widget string) ([][]Segment, error) {
 	rows, ok := v.([]any)
+	if m, isMap := v.(map[string]any); isMap && len(m) == 0 {
+		ok = true // Lua's {} marshals as an empty map: no lines
+	}
 	if !ok {
 		return nil, fmt.Errorf("widget render must return a list of lines, got %T", v)
 	}
@@ -785,6 +789,9 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 				if hl, ok := c["hl"].(string); ok {
 					seg.HL = hl
 				}
+				if e, ok := c["effect"].(string); ok {
+					seg.Effect = e
+				}
 				if id, ok := c["click"].(string); ok && id != "" {
 					seg.Click, seg.Widget = id, widget
 				}
@@ -803,6 +810,13 @@ type UIState struct {
 	Time   string
 	Pulse  bool // shared blink phase for running markers
 	Height int  // chat viewport rows at the last frame (0 before the first)
+
+	QuitArmed  bool   // a second ctrl+c quits
+	KeySeq     string // keys of a bound sequence typed so far
+	RowsBelow  int    // transcript rows under a scrolled-up viewport
+	Cancelling bool   // interrupt sent, turn not finished yet
+	Editing    string // title of the file open in the editor
+	Waiting    string // "approval" or "answer" while a prompt holds the turn
 }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -820,6 +834,12 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("pulse", glua.LBool(state.Pulse))
 	tb.RawSetString("height", glua.LNumber(state.Height))
+	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
+	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
+	tb.RawSetString("rows_below", glua.LNumber(state.RowsBelow))
+	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
+	tb.RawSetString("editing", glua.LString(state.Editing))
+	tb.RawSetString("waiting", glua.LString(state.Waiting))
 	tb.RawSetString("version", glua.LString(h.Version))
 	tb.RawSetString("cwd", glua.LString(TildePath(sess.CWD)))
 	tb.RawSetString("project", glua.LString(h.project()))
@@ -853,7 +873,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		v.RawSetString("status", glua.LString(status))
 		tb.RawSetString("view", v)
 		transcript = run.transcript()
-		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, run.queued()
+		stream.Text, stream.Reasoning, stream.Tools, stream.Steering, stream.Reports = "", "", nil, run.queued(), 0
 	} else {
 		todoRows = h.todoSnapshot()
 	}
@@ -880,6 +900,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	at.RawSetString("steering", steering)
 	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
+	at.RawSetString("reports", glua.LNumber(stream.Reports))
+	at.RawSetString("compacting", glua.LBool(stream.Compacting))
+	if stream.RetryIn > 0 {
+		retry := L.NewTable()
+		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
+		retry.RawSetString("why", glua.LString(sanitize.String(stream.RetryWhy)))
+		retry.RawSetString("next_in", glua.LNumber(stream.RetryIn.Round(time.Second).Seconds()))
+		at.RawSetString("retry", retry)
+	}
 	toolsTb := L.NewTable()
 	for _, t := range stream.Tools {
 		row := L.NewTable()
@@ -1122,7 +1151,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.24.0"))
+	api.RawSetString("version", glua.LString("0.25.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

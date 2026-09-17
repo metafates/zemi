@@ -173,17 +173,22 @@ Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `project` (the
 root, `~`-shortened), `trusted`, `model`, `profile`,
 `effort`, `permission_mode`, `permission_mode_base`, `agent_active`, `transcript`,
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
-`thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `view` (the agent run
+`thought`, `elapsed`, `reports` (background reports among `steering`), `compacting`, `retry`
+(`attempt`, `why`, `next_in`, only while a retry waits)), `todos` (`content`, `status`, `active_form`), `view` (the agent run
 shown instead of the session: `id`, `agent`, `description`, `status`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `pulse`,
-`reflecting`, `pending_memory`, `agents_running`, `transcript_epoch`
+`reflecting`, `pending_memory`, `agents_running`, `quit_armed`, `key_seq` (a pending key
+sequence, "" when none), `rows_below` (transcript rows under a scrolled-up chat),
+`cancelling`, `editing` (the file open in the editor, else ""), `waiting` ("approval" or
+"answer" while a prompt holds the turn, else ""), `transcript_epoch`
 (changes when the transcript is replaced, 0 while an agent run is shown: rows are worth
 caching only when it is stable). Transcript rows carry
 `role`, `kind` ("", reasoning, tool, compact, error), `text`, `tool`, `status`, `label`,
 `detail` (subagent and workflow progress), `diff`, `output` (the last lines of a tool
 result), `in`, `out`, `thought`, `elapsed`.
-Regions: `header`, `chat`, `statusline.left`, `statusline.right`. Segments are
-`{ text = "...", hl = "Group" }`.
+Regions: `header`, `chat`, `working` (above the composer), `statusline.left`,
+`statusline.right`. Segments are `{ text = "...", hl = "Group" }`, plus `click = "id"` and
+`effect = "shimmer"` (Go animates the text every frame, blending `hl` toward Normal).
 
 ## Events
 

@@ -339,77 +339,17 @@ func alignKeys(rows [][]hostapi.Segment, width int) [][]hostapi.Segment {
 	return rows
 }
 
-// workingRow is the activity line above the composer while a turn runs:
-// a pulsing bullet, a shimmering label naming what the agent is doing,
-// elapsed time, the interrupt key and the queue depth. It stays hidden for
-// the first 300ms so instant turns do not flash it.
-func (a *App) workingRow() []hostapi.Segment {
-	st := a.host.AgentStream()
-	if st.Elapsed < 300*time.Millisecond && !a.cancelling {
-		return nil
-	}
-	label := "Working"
-	for _, t := range st.Tools {
-		if t.Status == "run" {
-			label = "Running " + t.Name
-			if t.Label != "" {
-				label = t.Label
-			}
-		}
-	}
-	if label == "Working" && st.Reasoning != "" && st.Text == "" {
-		label = "Thinking"
-	}
-	parts := []string{fmtElapsed(st.Elapsed)}
-	if st.RetryIn > 0 {
-		label = "Retrying"
-		parts = []string{fmt.Sprintf("attempt %d", st.Retries+1)}
-		if st.RetryWhy != "" {
-			parts = append(parts, sanitize.String(st.RetryWhy))
-		}
-		parts = append(parts, "next try in "+fmtElapsed(st.RetryIn.Round(time.Second)))
-	}
-	if st.Compacting {
-		label = "Compacting"
-	}
-	if a.cancelling {
-		label = "Cancelling"
-	}
-	if a.editing != "" {
-		label = "Editing " + a.editing
-		parts = []string{"save and close the editor to continue"}
-	}
-	// esc answers an open prompt, so the row does not offer it
-	waiting := a.permAsk != nil || a.question != nil
-	if waiting {
-		label = map[bool]string{true: "Waiting for your approval", false: "Waiting for your answer"}[a.permAsk != nil]
-	}
-	now := a.now()
-	animate := a.cfgBool("ui.animations", true)
-	bullet := hostapi.Segment{Text: "• ", HL: "Title"}
-	if a.pulse() {
-		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
-	}
-	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
-	if !waiting {
-		parts = append(parts, map[bool]string{false: "esc to interrupt", true: "ctrl+c quits"}[a.cancelling])
-	}
-	if n := len(st.Steering) - st.Reports; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d queued, up to edit", n))
-	}
-	return append(row, hostapi.Segment{Text: "  " + strings.Join(parts, " · "), HL: "Comment"})
-}
-
-// shimmer sweeps a bright band across text every 2s: each rune blends the
-// Comment color toward Normal by its distance to the band center. Blends
-// are quantized to 8 steps so the sgr style cache stays small.
-func (a *App) shimmer(text string, now time.Time, animate bool) []hostapi.Segment {
-	dim, fg := a.thm.style("Comment").Fg, a.thm.style("Normal").Fg
+// shimmer is the "shimmer" segment effect: a bright band sweeps across the
+// text every 2s, each rune blending the segment's color toward Normal by
+// its distance to the band center. Blends are quantized to 8 steps so the
+// sgr style cache stays small.
+func (a *App) shimmer(seg hostapi.Segment, now time.Time, animate bool) []hostapi.Segment {
+	dim, fg := a.thm.style(seg.HL).Fg, a.thm.style("Normal").Fg
 	if !animate || dim == nil || fg == nil {
-		return []hostapi.Segment{{Text: text, HL: "Comment"}}
+		return []hostapi.Segment{{Text: seg.Text, HL: seg.HL}}
 	}
 	const band = 3.0
-	runes := []rune(text)
+	runes := []rune(seg.Text)
 	pos := float64(now.UnixMilli()%2000)/2000*(float64(len(runes))+2*band) - band
 	dr, dg, db, _ := dim.RGBA()
 	fr, fgn, fb, _ := fg.RGBA()

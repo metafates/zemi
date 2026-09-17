@@ -22,7 +22,7 @@
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
 ---@alias zemi.Scope "user"|"project"
----@alias zemi.Region "header"|"chat"|"statusline.left"|"statusline.right"
+---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"
 
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
@@ -30,6 +30,7 @@
 ---@field text string
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
+---@field effect? "shimmer" A bright band sweeps across the text every frame, blending `hl` toward Normal (static with ui.animations off).
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
@@ -230,11 +231,14 @@ function zemi.event.stats() end
 ---@field steering string[] Messages queued mid-turn; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
 ---@field elapsed number Seconds since the turn started.
+---@field reports integer Background agent reports among steering; they stay queued, so they are not "queued, up to edit".
+---@field compacting boolean History is being summarized.
+---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits.
 
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status string "running", "ok" or "err".
+---@field status string "run", "ok" or "err".
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -304,12 +308,18 @@ function zemi.event.stats() end
 ---@field reflecting boolean
 ---@field pending_memory integer
 ---@field agents_running integer
+---@field quit_armed boolean A second ctrl+c quits.
+---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.
+---@field rows_below integer Transcript rows under a scrolled-up chat; 0 when it follows the tail.
+---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
+---@field editing string Title of the file open in the user's editor, else "".
+---@field waiting string "approval" or "answer" while a prompt holds the turn, else "".
 
 ---@class zemi.WidgetSpec
 ---@field id string
 ---@field region zemi.Region
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[]
----@field priority? integer Higher draws first within a region.
+---@field priority? integer Lower draws first within a region.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.
 

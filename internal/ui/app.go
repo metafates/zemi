@@ -103,6 +103,7 @@ type App struct {
 	frameGen   int64
 	timeStr    string
 	activeBump time.Time
+	lastState  hostapi.UIState  // what the widgets last rendered with, pulse aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	focused    bool             // terminal focus (true until the terminal reports a blur)
@@ -491,6 +492,13 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
+	// widgets read these flags, so a change re-renders them; the pulse
+	// alone does not, it only matters while a turn bumps the frame anyway
+	st := a.uiState()
+	if st.Pulse = false; st != a.lastState {
+		a.lastState = st
+		a.frameGen++
+	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
 	if g := a.host.Wins.TakeGraphics(); g != "" {
 		cmds = append(cmds, tea.Raw(g))
@@ -502,7 +510,21 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 func (a *App) uiState() hostapi.UIState {
-	return hostapi.UIState{Time: a.timeStr, Pulse: a.pulse(), Height: a.chatViewH}
+	st := hostapi.UIState{
+		Time: a.timeStr, Pulse: a.pulse(), Height: a.chatViewH,
+		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
+		Cancelling: a.cancelling, Editing: a.editing,
+	}
+	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+		st.KeySeq = strings.Join(a.keySeq, " ")
+	}
+	switch {
+	case a.permAsk != nil:
+		st.Waiting = "approval"
+	case a.question != nil:
+		st.Waiting = "answer"
+	}
+	return st
 }
 
 // pulse is the 600ms blink phase shared by the working row and running
@@ -553,6 +575,7 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	var out []*hostapi.Widget
 	out = append(out, a.host.Widgets.InRegion("header")...)
 	out = append(out, a.host.Widgets.InRegion("chat")...)
+	out = append(out, a.host.Widgets.InRegion("working")...)
 	out = append(out, a.host.Widgets.InRegion("statusline.left")...)
 	out = append(out, a.host.Widgets.InRegion("statusline.right")...)
 	return out
@@ -700,11 +723,12 @@ func (a *App) compose(w, h int) string {
 	compRows := a.composerRows(w)
 	compPopup := a.completionRows()
 	palPopup := a.paletteRows()
-	var working [][]hostapi.Segment
 	if !a.host.AgentActive() {
 		a.cancelling = false
-	} else if row := a.workingRow(); row != nil {
-		working = [][]hostapi.Segment{row, padSegs(nil, w)}
+	}
+	working := a.regionLines("working", w)
+	if len(working) > 0 {
+		working = append(working, padSegs(nil, w))
 	}
 	// + statusline + composer, the working row with a blank row under it, a
 	// blank row that keeps the input off the conversation and one above the
@@ -1034,20 +1058,14 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	return lines
 }
 
-// statusRow builds the one-row statusline: left widgets, Go chrome flags,
-// then right widgets aligned to the right edge (DESIGN §8).
+// statusRow builds the one-row statusline: the focused window, left
+// widgets, the pills that report a broken Lua layer, then right widgets aligned to the right edge (DESIGN §8).
 func (a *App) statusRow(w int) []hostapi.Segment {
 	left := a.statuslineSegments("statusline.left")
 	right := a.statuslineSegments("statusline.right")
 
-	if a.now().Before(a.quitArmed) {
-		left = append([]hostapi.Segment{{Text: "ctrl+c again to quit ", HL: "Title"}}, left...)
-	}
 	if wn := a.focusedWin(); wn != nil {
 		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)
-	}
-	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
-		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})
 	}
 	pill := func(text, click string) {
 		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError", Click: click})
@@ -1060,10 +1078,6 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	}
 	if a.host.HasUnseenErrors() {
 		pill(" errors: /errors ", "errors")
-	}
-
-	if n := a.rowsBelow(); n > 0 {
-		left = append(left, hostapi.Segment{Text: fmt.Sprintf("  ↓ %d · ctrl+end", n), HL: "Title"})
 	}
 
 	leftW := segsWidth(left)
@@ -1156,6 +1170,13 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
 	for _, s := range segs {
 		if s.Text == "" {
+			continue
+		}
+		if s.Effect == "shimmer" {
+			for _, r := range a.shimmer(s, a.now(), a.cfgBool("ui.animations", true)) {
+				st := a.hlStyle(r.HL)
+				b.WriteString(st.Styled(r.Text))
+			}
 			continue
 		}
 		st := a.hlStyle(s.HL)

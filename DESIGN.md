@@ -863,7 +863,7 @@ zemi.ui.theme.set("tokyonight")
 
 UI extensibility contract:
 
-- The screen is a stack: regions (`header`, `chat`, `composer`, `statusline`)
+- The screen is a stack: regions (`header`, `chat`, `working`, `composer`, `statusline`)
   composed by Go with ultraviolet constraints, plus an overlay
   stack. The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/defaultui.lua`, replaceable by id. The composer is
@@ -874,7 +874,7 @@ UI extensibility contract:
   `composer.change`/`composer.submit`, reads and edits the draft through
   `zemi.composer` (§6.7), and registers decoration widgets around it,
   but cannot replace it in v1.
-- Widgets return lines of `{ text, hl, click }` segments; Go measures, wraps
+- Widgets return lines of `{ text, hl, click, effect }` segments; Go measures, wraps
   (opt-in per widget), styles, and diffs via bubbletea v2. No lipgloss in
   Lua; highlight names only. Rich text goes through
   `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
@@ -882,7 +882,10 @@ UI extensibility contract:
   text). Glamour's styles come from the active theme's `Normal` and
   `Markdown*` groups; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
-  colors and attributes, never other escapes.
+  colors and attributes, never other escapes. `effect = "shimmer"` asks Go
+  to sweep a bright band across the text every frame (widgets render at
+  about 8/s, the effect needs 30), blending `hl` toward `Normal`;
+  `ui.animations = false` keeps it static.
 - Clicks: a segment's `click` is a plain string id and the widget spec
   carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
   the shape of neovim's statusline `%N@Func@`. Render stays pure data, so
@@ -1001,11 +1004,17 @@ configured provider later (`zemi.memory.search` signature does not change).
 ## 8. UI core detail
 
 - **Layout**: header (no default widget; the region stays for Lua), chat
-  (flex), a Go-drawn working row while a turn runs (pulsing bullet,
-  shimmering label naming the current activity, elapsed time, interrupt
-  key, queue depth; `ui.animations = false` keeps it static), composer (3..8 rows, textarea grows), statusline
+  (flex), the `working` region above the composer (the shipped `working`
+  widget while a turn runs: pulsing bullet, shimmering label naming the
+  current activity, elapsed time, interrupt key, queue depth; it reads
+  `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`,
+  and a blank row follows it), composer (3..8 rows, textarea grows), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
+  shipped left widgets also show an armed quit (`ctx.quit_armed`), a
+  pending key sequence (`key_seq`) and the rows below a scrolled chat
+  (`rows_below`); only the focused window pill (window focus chrome) and
+  the boot failed, stuck and errors pills are Go-drawn; the
   shipped `statusline.info` widget shows the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`), and

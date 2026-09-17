@@ -1,9 +1,7 @@
 -- defaultui: the shipped theme, widgets, and default keymaps (DESIGN §6.6,
 -- §8). Runs as the builtin origin via require("zemi.defaultui"); every
 -- registration here is replaceable by user config (origin precedence:
--- user > builtin > plugin > project). The working indicator above the
--- composer is Go-drawn (it animates per frame) and styled by Normal,
--- Comment and Title.
+-- user > builtin > plugin > project).
 
 zemi.ui.theme.register("default", {
   palette = {
@@ -85,6 +83,14 @@ local function fmt_secs(s)
   if not s or s <= 0 then return nil end
   if s >= 60 then return string.format("%dm%02ds", s / 60, s % 60) end
   return string.format("%.1fs", s)
+end
+
+-- fmt_elapsed reads like "42s", "3m 05s", "1h 02m 05s".
+local function fmt_elapsed(s)
+  s = math.floor(s or 0)
+  if s < 60 then return s .. "s" end
+  if s < 3600 then return string.format("%dm %02ds", math.floor(s / 60), s % 60) end
+  return string.format("%dh %02dm %02ds", math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
 end
 
 local function empty() return { { { text = "" } } } end
@@ -239,6 +245,86 @@ zemi.ui.widget.register({
       mode = " " .. mode .. " "
     end
     return { { { text = mode, hl = hl, click = "mode" } } }
+  end,
+})
+
+-- A first idle ctrl+c arms quit; say what the second one does.
+zemi.ui.widget.register({
+  id = "statusline.quit",
+  region = "statusline.left",
+  priority = 0,
+  render = function(ctx)
+    if not ctx.quit_armed then return empty() end
+    return { { { text = "ctrl+c again to quit", hl = "Title" } } }
+  end,
+})
+
+-- The keys of a bound sequence typed so far, waiting for the rest.
+zemi.ui.widget.register({
+  id = "statusline.keys",
+  region = "statusline.left",
+  priority = 95,
+  render = function(ctx)
+    if (ctx.key_seq or "") == "" then return empty() end
+    return { { { text = ctx.key_seq .. " ... ", hl = "Title" } } }
+  end,
+})
+
+-- The altscreen has no scrollbar: while the chat is scrolled up, say how
+-- much is below and how to get back.
+zemi.ui.widget.register({
+  id = "statusline.scroll",
+  region = "statusline.left",
+  priority = 100,
+  render = function(ctx)
+    if (ctx.rows_below or 0) == 0 then return empty() end
+    return { { { text = " ↓ " .. ctx.rows_below .. " · ctrl+end", hl = "Title" } } }
+  end,
+})
+
+-- The working row above the composer while a turn runs: a pulsing bullet,
+-- a shimmering label naming what the agent does, the elapsed time, the
+-- interrupt key and the queue depth. It stays hidden for the first 300ms so
+-- instant turns do not flash it.
+zemi.ui.widget.register({
+  id = "working",
+  region = "working",
+  priority = 10,
+  render = function(ctx)
+    local ag = ctx.agent or {}
+    if not ctx.agent_active or ((ag.elapsed or 0) < 0.3 and not ctx.cancelling) then return {} end
+    local label = "Working"
+    for _, t in ipairs(ag.tools or {}) do
+      if t.status == "run" then label = t.label ~= "" and t.label or ("Running " .. t.name) end
+    end
+    if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label = "Thinking" end
+    local parts = { fmt_elapsed(ag.elapsed) }
+    if ag.retry then
+      label = "Retrying"
+      parts = { "attempt " .. ag.retry.attempt }
+      if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
+      parts[#parts + 1] = "next try in " .. fmt_elapsed(ag.retry.next_in)
+    end
+    if ag.compacting then label = "Compacting" end
+    if ctx.cancelling then label = "Cancelling" end
+    if ctx.editing ~= "" then
+      label = "Editing " .. ctx.editing
+      parts = { "save and close the editor to continue" }
+    end
+    -- esc answers an open prompt, so the row does not offer it
+    if ctx.waiting ~= "" then
+      label = ctx.waiting == "approval" and "Waiting for your approval" or "Waiting for your answer"
+    else
+      parts[#parts + 1] = ctx.cancelling and "ctrl+c quits" or "esc to interrupt"
+    end
+    local queued = #ag.steering - ag.reports
+    if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end
+    local bullet = ctx.pulse and { text = "◦ ", hl = "Comment" } or { text = "• ", hl = "Title" }
+    return { {
+      bullet,
+      { text = label, hl = "Comment", effect = "shimmer" },
+      { text = "  " .. table.concat(parts, " · "), hl = "Comment" },
+    } }
   end,
 })
 

@@ -608,7 +608,7 @@ timeout.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.24.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.25.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -699,6 +699,11 @@ timeout.
   order on one worker goroutine (`App.background`); Go commands stay inline. A turn's
   `turnScope` context (host.go) covers compaction, the model, tools and auto-mode
   screening, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
+- **Widgets read UI flags, never Go-drawn text.** The working row and the quit, key
+  sequence and scroll flags are `defaultui.lua` widgets reading `hostapi.UIState`
+  (`App.uiState`); `onFrame` bumps the frame when that state changes, pulse aside. A new
+  flag goes into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation
+  a widget cannot render at 30 fps is a segment `effect` the UI applies (`shimmer`).
 - **Drag and drop is a paste.** Terminals paste a dropped file's path (escaped, quoted or
   `file://`); `ui/drop.go` turns a paste made only of existing paths into tokens via
   `Host.AttachPath`. Files from outside the project are copied to `<data>/drops` and
