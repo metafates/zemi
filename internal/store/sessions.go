@@ -169,9 +169,10 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 }
 
 // ForkSession copies src into a new top-level session id: its messages
-// under new ids, their checkpoints (a rewind in the fork restores files too)
-// and the summary pointer, in one transaction so a failure leaves no
-// half-copied fork.
+// under new ids, their checkpoints (a rewind in the fork restores files too),
+// its tool calls and its subagents' (on the first message: the fork has no
+// children, and the calls gate memory autonomy) and the summary pointer, in
+// one transaction so a failure leaves no half-copied fork.
 func (s *DB) ForkSession(src *Session, id, title string) error {
 	msgs, err := s.Messages(src.ID)
 	if err != nil {
@@ -185,6 +186,20 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	rows, err := s.db.Query(`SELECT message_id, path, existed, content FROM checkpoints WHERE session_id = ?`, src.ID)
 	cps, err := collect(rows, err, func(r scanner) (c checkpoint, err error) {
 		err = r.Scan(&c.mid, &c.path, &c.existed, &c.content)
+		return
+	})
+	if err != nil {
+		return fmt.Errorf("store: fork session: %w", err)
+	}
+	rows, err = s.db.Query(`SELECT t.message_id, t.tool, t.input_json, t.ok, t.error_kind, t.latency_ms, t.denied, t.decided_by, t.created_at
+		FROM tool_calls t JOIN messages m ON m.id = t.message_id
+		WHERE m.session_id = ? OR m.session_id IN (SELECT id FROM sessions WHERE parent_id = ?)`, src.ID, src.ID)
+	type call struct {
+		ToolCall
+		at int64
+	}
+	calls, err := collect(rows, err, func(r scanner) (c call, err error) {
+		err = r.Scan(&c.MessageID, &c.Tool, &c.InputJSON, &c.OK, &c.ErrorKind, &c.LatencyMS, &c.Denied, &c.DecidedBy, &c.at)
 		return
 	})
 	if err != nil {
@@ -215,6 +230,21 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 				mid, id, c.path, c.existed, c.content, t); err != nil {
 				return fmt.Errorf("store: fork session: %w", err)
 			}
+		}
+	}
+	for _, c := range calls {
+		mid, ok := ids[c.MessageID]
+		if !ok && len(msgs) > 0 {
+			mid = ids[msgs[0].ID]
+		}
+		if mid == "" {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO tool_calls
+			(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			mid, c.Tool, c.InputJSON, c.OK, c.ErrorKind, c.LatencyMS, c.Denied, c.DecidedBy, c.at); err != nil {
+			return fmt.Errorf("store: fork session: %w", err)
 		}
 	}
 	if summary := ids[src.SummaryMessageID]; summary != "" {

@@ -147,7 +147,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 		name         string
 		untrusted    bool
 		tool, inTool string // a tool the session called, one its subagent called
-		stored       bool
+		stored, fork bool
 	}{
 		{name: "trusted, local tools", tool: "bash", inTool: "read", stored: true},
 		{name: "untrusted project", untrusted: true},
@@ -155,6 +155,8 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 		{name: "web search in a subagent", inTool: "web_search"},
 		{name: "mcp tool", tool: "mcp_github_search"},
 		{name: "lua-registered tool", tool: "jira_lookup"},
+		{name: "forked after a fetch", tool: "fetch", fork: true},
+		{name: "forked after a subagent's web search", tool: "agent", inTool: "web_search", fork: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -170,6 +172,11 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			}
 			if tc.inTool != "" {
 				h.recordToolCall(child, tc.inTool, true, "")
+			}
+			if tc.fork {
+				if _, err := h.ForkSession(); err != nil {
+					t.Fatal(err)
+				}
 			}
 			stored, _, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
 			if err != nil || stored != tc.stored {
