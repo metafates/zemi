@@ -368,23 +368,27 @@ func TestOverlayNavigation(t *testing.T) {
 
 // TestOverlayHints: the footer names only keys that act on the selection.
 func TestOverlayHints(t *testing.T) {
-	hints := func(o hostapi.Overlay) string {
+	hints := func(o hostapi.Overlay, filtering bool) string {
 		a := newTestApp(t, t.TempDir())
 		o.Origin = lua.OriginBuiltin
 		a.openOverlay(o)
+		a.overlays[0].active = filtering
 		box := overlayBox(&a.overlays[0], 80, 20)
 		return plainSegs(box[len(box)-2])
 	}
 	for _, c := range []struct {
-		o    hostapi.Overlay
-		want string
+		o         hostapi.Overlay
+		filtering bool
+		want      string
 	}{
-		{hostapi.Overlay{Items: []any{"inert"}}, "esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "enter select · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}}, "enter open · esc close"},
-		{hostapi.Overlay{Body: "text"}, "y copy · esc close"},
+		{hostapi.Overlay{Items: []any{"inert"}}, false, "esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}}, false, "enter open · esc close"},
+		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 30), Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
 	} {
-		if got := strings.Trim(hints(c.o), "│ "); got != c.want {
+		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
 		}
 	}

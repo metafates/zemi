@@ -699,7 +699,7 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 	var body [][]hostapi.Segment
 	var hints []string
 	if len(mp.visible) > 0 {
-		hints = []string{"enter", "switch"}
+		hints = []string{"enter", "select"}
 	}
 	if len(mp.items) == 0 {
 		body = append(body, []hostapi.Segment{{Text: "No models yet. Add a provider in init.lua.", HL: "Comment"}})
@@ -720,10 +720,11 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 			items = append(items, item)
 		}
 		body = mp.filterRows(listRowsW(items, mp.selected, &mp.top, limit, mp.width, boxInner(w)))
-		if len(mp.items) > limit || mp.active {
+		if len(mp.items) > limit && !mp.active {
 			hints = append(hints, "/", "filter")
 		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(append(hints, "esc", "cancel")...))
+	esc := map[bool]string{false: "close", true: "clear"}[mp.active] // esc clears an open filter first
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(append(hints, "esc", esc)...))
 	return hostBox(" Model ", "Host:Title", "", body, w)
 }

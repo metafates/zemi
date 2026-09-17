@@ -413,7 +413,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, "space", "toggle")
 			}
 		}
-		if len(list) > limit || st.active {
+		if len(list) > limit && !st.active {
 			hints = append(hints, "/", "filter")
 		}
 		list = st.filterRows(list)
@@ -432,6 +432,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		if room = max(room, 3); len(body) > room {
 			room--
+			hints = append(hints, "pgup/pgdn", "scroll")
 			st.scroll = min(st.scroll, len(body)-room)
 			n := len(body)
 			body = append(body[st.scroll:st.scroll+room:st.scroll+room], []hostapi.Segment{{Text: fmt.Sprintf("lines %d-%d of %d", st.scroll+1, st.scroll+room, n), HL: "Comment"}})
@@ -447,6 +448,8 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	esc := "close"
 	switch {
+	case st.active: // esc clears an open filter first
+		esc = "clear"
 	case st.back:
 		esc = "back"
 	case st.o.OnSelect != nil:
