@@ -658,8 +658,10 @@ func (h *Host) AgentsCommandsStep() lua.BootStep {
 						return h.ViewAgent(id)
 					case "stop":
 						return h.stopRun(id)
+					case "kill":
+						return h.jobs.Kill(id)
 					}
-					return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id])", sub)
+					return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
 				},
 				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
 			})
@@ -676,6 +678,19 @@ func (h *Host) openAgents() error {
 	defs := h.agentDefs()
 	slices.SortStableFunc(defs, func(a, b AgentDef) int { return cmp.Compare(a.Source, b.Source) })
 	items := h.agentRunItems()
+	// jobs belong to the host, so a server started in an earlier session shows too
+	for _, j := range h.jobs.List() {
+		item := map[string]any{
+			"text":    j.ID,
+			"desc":    j.Status() + " · " + j.Name,
+			"section": "Background jobs (all sessions)",
+			"detail":  j.Name + "\n" + j.Status() + "\n\n" + cmp.Or(outputTail(j.Output()), "(no output)"),
+		}
+		if j.Running() {
+			item["actions"] = []any{map[string]any{"text": "Stop", "run": "agents kill " + j.ID}}
+		}
+		items = append(items, item)
+	}
 	for _, d := range defs {
 		model, tools := cmp.Or(d.Model, "agent.subagent_model or the session model"), "every tool a subagent may use"
 		if d.Small && d.Model == "" {

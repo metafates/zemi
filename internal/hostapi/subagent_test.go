@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -383,5 +384,46 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	props := h.memoryProposals()
 	if len(props) != 1 || props[0].ProvenanceSessionID != sid || len(projectMemories(t, h)) != 0 {
 		t.Fatalf("want one proposal from %s, nothing stored: %+v", sid, props)
+	}
+}
+
+// TestAgentsListsJobs: /agents shows a model's background job with its
+// output and stops it through the Stop action's command.
+func TestAgentsListsJobs(t *testing.T) {
+	h, r := newTestHost(t)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.AgentsCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	id, err := h.jobs.Start(t.TempDir(), []string{"sh", "-c", "echo up; sleep 30"}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := h.jobs.Get(id)
+	for deadline := time.Now().Add(3 * time.Second); j.Output() == "" && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	agents := h.Commands.Lookup("agents")
+	if err := agents.GoFn(h, ""); err != nil || len(ui.opened) != 1 {
+		t.Fatalf("open: %v", err)
+	}
+	var row map[string]any
+	for _, it := range ui.opened[0].Items {
+		if m := it.(map[string]any); m["text"] == id {
+			row = m
+		}
+	}
+	if !strings.Contains(fmt.Sprint(row["detail"]), "up") || !strings.Contains(fmt.Sprint(row["actions"]), "agents kill "+id) {
+		t.Fatalf("job row = %v", row)
+	}
+	if err := agents.GoFn(h, "kill "+id); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(3 * time.Second); j.Running() && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if j.Running() {
+		t.Fatal("job still running after kill")
 	}
 }

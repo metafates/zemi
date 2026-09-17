@@ -60,6 +60,13 @@ func (j *Job) Status() string {
 	return state
 }
 
+// Output is what the job's buffers still hold, stdout then stderr.
+func (j *Job) Output() string {
+	so, _ := j.stdout.Snapshot()
+	se, _ := j.stderr.Snapshot()
+	return so + se
+}
+
 // since returns the output written after the previous read and the exit
 // state: a job that is polled while it runs would otherwise resend its
 // whole buffer every time.
@@ -264,9 +271,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		werr, note := j.werr, j.note
 		j.mu.Unlock()
 		// the whole retained tail: a denial may have been read while it ran
-		so, _ := j.stdout.Snapshot()
-		se, _ := j.stderr.Snapshot()
-		b.WriteString(p.sandboxHint(so+se, werr) + note)
+		b.WriteString(p.sandboxHint(j.Output(), werr) + note)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

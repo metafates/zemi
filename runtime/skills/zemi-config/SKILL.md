@@ -243,6 +243,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   made to its own config are the git log of the config directory.
 - `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),
   `/agents stop [id]` stops a running one (without an id, the one on screen);
+  `/agents` also lists the model's background jobs from every session (`job_start`, a bash
+  command past its timeout) with their output, and `/agents kill <job id>` stops one;
   `/lsp restart <name>`;
   `/mcp restart|sign-in|sign-out <name>`.
 

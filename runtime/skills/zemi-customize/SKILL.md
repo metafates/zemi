@@ -68,7 +68,8 @@ skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on `age
 when set; builtin `general` has everything a subagent may have. The model's `agent` tool also
 takes `background: true`: the report arrives as a later message. `/agents` also lists the
 session's runs (running, background, workflow ones): enter, or a click on an agent's row in
-the chat, shows that run's transcript in the chat, and esc goes back.
+the chat, shows that run's transcript in the chat, and esc goes back. Background jobs
+(`job_start`, bash past its timeout) are listed there too, with a Stop action.
 
 ## Prompt commands (`commands/<name>.md`)
 

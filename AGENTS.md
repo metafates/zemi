@@ -471,6 +471,8 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   `Agent` row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
   session's (live stream and todos hidden); esc or a submit clears it, and so does
   `setTranscript`. Runs the process no longer holds load from their child session.
+  `/agents` also lists `h.jobs` (host-wide, every session) with the output tail and a Stop
+  action (`/agents kill <job id>`).
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, created when
   the pinned environment prompt is built, pads idle a week removed. `fsDefault` allows
   `fs.write` there, `Pipeline.Scratch` lets it pass plan mode, and read jails and
