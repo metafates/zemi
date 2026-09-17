@@ -280,6 +280,10 @@ func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error 
 	}
 	if _, err := h.GlobalDB.GetSkill(name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			// project skills are not stored, so there is no flag to flip
+			if slices.ContainsFunc(h.projectOnlySkills(), func(s skills.Skill) bool { return s.Name == name }) {
+				return fmt.Errorf("skill %q belongs to this project and is on for as long as the project is trusted (/trust)", name)
+			}
 			return fmt.Errorf("no such skill %q", name)
 		}
 		return err
