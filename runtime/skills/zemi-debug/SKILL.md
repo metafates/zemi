@@ -11,7 +11,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    `permissions.lua`, git, ripgrep, the reflector, pending reviews, skills, recent errors,
    MCP servers, language servers and the Lua runtime (problems listed first), plus any rows config added with `zemi.health.register`.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
-   event-handler errors, and recovered panics. The red `! errors` statusline badge means
+   event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
    "Restart <name>" for an MCP server). In every list `/` filters, `y` copies the selected
    row (in a detail view, the whole text) and `Y` copies the whole list, so the user can

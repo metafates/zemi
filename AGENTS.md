@@ -624,7 +624,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   when the target changes, and OSC 22 turns the pointer into a hand where supported. Drag selection and clicks are zemi's own (`internal/ui/mouse.go`):
   compose keeps the last frame's segments, a drag copies their text through OSC 52 plus
   pbcopy/wl-copy/xclip, and a click reads `Segment.Hit` (a Go-only 1-based item index
-  that `listRows` puts on every row of an item, and prompt buttons set) to act on the
+  that `listRows` puts on every row of an item, prompt choices included) to act on the
   topmost chrome. Hover lights the whole item, but only the pointer over the item's
   non-blank or background-painted cells on its row makes it a target: padding, gutters,
   blank rows and section headers never are. Lists scroll at the edge and never recenter,

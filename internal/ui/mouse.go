@@ -1,6 +1,6 @@
 // mouse.go: a drag selects screen text and copies it on release (OSC 52
 // plus the native clipboard tool); a click without a drag acts on what is
-// under it: prompt buttons, list rows, a mode name, the thought line.
+// under it: prompt choices, list rows, a mode name, the thought line.
 // Hovering lights what a click would act on.
 package ui
 
