@@ -172,8 +172,6 @@ func (h *Host) healthChecks() []healthCheck {
 	reflectErr := h.agents.reflectErr
 	h.agents.mu.Unlock()
 	switch {
-	case h.reflectEveryN() == 0:
-		add("warn", "reflector", "disabled (reflector.every_n_sessions = 0)")
 	case reflectErr != "":
 		add("error", "reflector", "last run failed: "+reflectErr)
 	default:

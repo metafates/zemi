@@ -98,7 +98,6 @@ func TestNamespaceVersion(t *testing.T) {
 		local writable = {}
 		for _, s in ipairs(zemi.config.schema()) do writable[s.path] = s.writable end
 		assert(writable["ui.theme"] == true, "ui.theme must be writable")
-		assert(writable["reflector.every_n_sessions"] == false, "host-owned knobs must not look writable")
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
@@ -419,7 +418,7 @@ func TestEmitVetoable(t *testing.T) {
 }
 
 // TestConfigSetGating pins the config write gate: only user config sets,
-// non-writable keys are refused, and a writable key applies to the store.
+// and a writable key applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.ExecuteChunk(context.Background(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
@@ -427,10 +426,6 @@ func TestConfigSetGating(t *testing.T) {
 	}
 	runUser(t, r, `
 		zemi.config.set("memory.autonomy", "auto")
-
-		local ok2, err2 = pcall(zemi.config.set, "reflector.every_n_sessions", 5)
-		assert(not ok2, "non-writable key accepted")
-		assert(tostring(err2):find("not writable", 1, true) ~= nil, "err2=" .. tostring(err2))
 
 		zemi.config.set("ui.composer.history", 42)
 	`)

@@ -1453,8 +1453,7 @@ and not a profile: one tool-less model call over a closed session. With
 no tools it cannot act at all, so its only output is the proposal
 document below. Triggered on `session.close`: `/new`,
 `/resume`, and at startup (once, not on a reload) for the most recent session, so quitting never
-waits on a model call (configurable: every session, every Nth, or manual
-`/reflect`); a session is reflected again only once it has messages the
+waits on a model call (`/reflect` runs it by hand); a session is reflected again only once it has messages the
 reflector has not seen (the seen count persists in kv).
 
 Input: the transcript tail (the last 120 user and assistant messages,

@@ -128,8 +128,6 @@ writable; prefer it over guessing. Common keys:
   without review, except instruction-shaped text, retirements, replacements of the user's
   own memories, and anything from an untrusted project or a session that used `fetch`,
   `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`)
-- `reflector.every_n_sessions` (1, 0 disables), `reflector.timeout_ms`: host-owned; not
-  settable from Lua
 - `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
   reading commands and builds and tests run, the latter sandboxed with the project read-only,
   other commands and MCP calls ask, so the agent investigates and

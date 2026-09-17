@@ -70,31 +70,15 @@ type reflectProposal struct {
 	} `json:"skills"`
 }
 
-// reflectEveryN reads the trigger gate: reflect every N closed sessions,
-// 0 disables.
-func (h *Host) reflectEveryN() int {
-	if n := h.setInt("reflector.every_n_sessions", 1); n >= 0 {
-		return n
-	}
-	return 1
-}
+const reflectTimeout = 2 * time.Minute
 
 // reflectOnClose is the session-close trigger (/new, /resume, startup):
-// the closed session is reflected when the closed-session counter hits
-// the every-N gate and it has messages the reflector has not seen.
+// the closed session is reflected when it has messages the reflector has
+// not seen.
 func (h *Host) reflectOnClose(prevID string) {
-	ag := h.agents
-	ag.mu.Lock()
-	ag.reflected++
-	count := ag.reflected
-	ag.mu.Unlock()
-	if n := h.reflectEveryN(); n == 0 || count%n != 0 {
-		return
+	if h.reflectDue(prevID) {
+		h.runReflectDetached(prevID)
 	}
-	if !h.reflectDue(prevID) {
-		return
-	}
-	h.runReflectDetached(prevID)
 }
 
 // ReflectLastSession runs at startup: the most recent session gets the
@@ -134,11 +118,7 @@ func (h *Host) runReflectDetached(sid string) bool {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
 		return false
 	}
-	ms := h.setInt("reflector.timeout_ms", 120000)
-	if ms <= 0 {
-		ms = 120000
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(ms)*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
 	h.reflecting.Store(true)
 	h.refresh()
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})

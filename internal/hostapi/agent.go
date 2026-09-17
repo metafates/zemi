@@ -149,11 +149,9 @@ type agentHost struct {
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
-	// session cap (memory proposals persist in the store), reflected counts
-	// closed sessions for the reflector every-N gate.
+	// session cap (memory proposals persist in the store).
 	digest     string
 	memAuto    int
-	reflected  int
 	reflectErr string // last reflector run's error, "" after a success (/health)
 
 	// turnMsgID is the stored user message of the running turn; write tools

@@ -596,44 +596,6 @@ func TestReflectTimeout(t *testing.T) {
 	}
 }
 
-// TestReflectGate covers the every-N trigger math: 0 disables, N=2 runs
-// on every second closed session (the counter carries across calls).
-func TestReflectGate(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	if h.reflectEveryN() != 1 {
-		t.Fatalf("default every_n=%d", h.reflectEveryN())
-	}
-	h.Settings.SetHost("reflector.every_n_sessions", 3.0) // config files decode numbers as float64
-	if h.reflectEveryN() != 3 {
-		t.Fatalf("float every_n=%d", h.reflectEveryN())
-	}
-	h.Settings.SetHost("reflector.every_n_sessions", 0)
-	h.reflectOnClose("prev")
-	if h.agents.reflected != 1 {
-		t.Fatalf("counter must bump even when disabled: %d", h.agents.reflected)
-	}
-
-	h.Settings.SetHost("reflector.every_n_sessions", 2)
-	m := reflectStub(t, h, `{"memories":[]}`)
-	closed := seedSession(t, h)
-	seedTranscript(t, h, closed)
-	h.agents.mu.Lock()
-	h.agents.reflected = 0
-	h.agents.mu.Unlock()
-	// The gate returns before a detached run would set reflecting.
-	h.reflectOnClose(closed)
-	if h.reflecting.Load() {
-		t.Fatal("reflected on a non-multiple of 2")
-	}
-	h.reflectOnClose(closed)
-	waitFor(t, func() error {
-		if m.calls.Load() != 1 {
-			return errors.New("reflector did not run on the 2nd close")
-		}
-		return nil
-	})
-}
-
 // TestReflectSerializesRuns pins the one-run-at-a-time rule: a second
 // detached run while one holds the lock is skipped without touching the
 // model.
