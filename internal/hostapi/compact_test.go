@@ -249,7 +249,7 @@ func TestPruneToolOutput(t *testing.T) {
 		{"old output past the kept 40k is cleared", 30_000, 30_000},
 	} {
 		history := []fantasy.Message{toolResult("old", c.oldTokens), toolResult("new", toolKeepTokens)}
-		out, freed := pruneToolOutput(history)
+		out, freed := pruneToolOutput(history, false)
 		if freed != c.wantFreed {
 			t.Errorf("%s: freed %d, want %d", c.name, freed, c.wantFreed)
 		}
@@ -268,7 +268,7 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 		textMessage("old ask"), toolResult("old", 30_000),
 		textMessage("live ask"), toolResult("live", 50_000),
 	}
-	out, freed := pruneToolOutput(history)
+	out, freed := pruneToolOutput(history, false)
 	if freed != 30_000 {
 		t.Fatalf("freed %d tokens, want the old 30000", freed)
 	}
@@ -277,6 +277,22 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 	}
 	if estTokens(out[3]) != 50_000 {
 		t.Fatalf("the running turn's output was pruned to %d tokens", estTokens(out[3]))
+	}
+}
+
+// TestPruneInTurnClearsSubagentOutput: a subagent's whole run is one turn,
+// so clearing its old output cannot wait for a user message that never comes.
+func TestPruneInTurnClearsSubagentOutput(t *testing.T) {
+	history := []fantasy.Message{textMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
+	if _, freed := pruneToolOutput(history, false); freed != 0 {
+		t.Fatalf("a running turn's output was cleared: %d tokens", freed)
+	}
+	out, freed := pruneToolOutput(history, true)
+	if freed != 30_000 || toolText(out[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
+		t.Fatalf("freed %d tokens, old output %q", freed, toolText(out[1].Content[0].(fantasy.ToolResultPart)))
+	}
+	if estTokens(out[2]) != toolKeepTokens {
+		t.Fatalf("the newest output was cleared too: %d tokens", estTokens(out[2]))
 	}
 }
 

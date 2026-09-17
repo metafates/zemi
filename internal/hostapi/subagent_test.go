@@ -12,6 +12,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -172,6 +173,32 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	}
 	if text != "partial finding" {
 		t.Fatalf("partial report = %q", text)
+	}
+}
+
+// TestSubagentSurvivesAFullWindow: a subagent has no summarizer, so a
+// context the provider refuses clears its old tool output and the run goes
+// on instead of throwing everything it read away.
+func TestSubagentSurvivesAFullWindow(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sends := 0
+	model := &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+		if sends++; sends == 1 {
+			return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: &fantasy.ProviderError{StatusCode: 400, Message: "prompt is too long", ContextTooLargeErr: true}}}
+		}
+		return textParts("report")
+	}}
+	runner := agent.NewRunner(model, nil, "sys")
+	runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
+	runner.History = []fantasy.Message{textMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
+	if err := h.sendPruning(context.Background(), runner, "p/m", "go"); err != nil {
+		t.Fatalf("send: %v (streams %d)", err, sends)
+	}
+	if sends != 2 || lastAssistantText(runner.History) != "report" {
+		t.Fatalf("streams %d, last text %q", sends, lastAssistantText(runner.History))
+	}
+	if toolText(runner.History[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
+		t.Fatal("old tool output was kept, so the retry sent the same prompt")
 	}
 }
 

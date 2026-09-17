@@ -252,7 +252,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	window := h.AgentStream().CtxWindow
 	threshold := compactThreshold(window)
 	if reason != compactManual {
-		pruned, freed := pruneToolOutput(history)
+		pruned, freed := pruneToolOutput(history, false)
 		h.agents.mu.Lock()
 		used := h.agents.lastIn - freed
 		h.agents.mu.Unlock()
@@ -445,9 +445,10 @@ func tailStart(history []fantasy.Message, keep int64) int {
 
 // pruneToolOutput clears tool results older than the newest toolKeepTokens
 // of them when that frees at least pruneMinTokens, and returns what it
-// freed. Skill bodies stay: they are instructions, not output. The input
-// history is not modified.
-func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
+// freed. Skill bodies stay: they are instructions, not output. inTurn also
+// clears what the running turn produced, which only a subagent asks for:
+// its whole run is one turn. The input history is not modified.
+func pruneToolOutput(history []fantasy.Message, inTurn bool) ([]fantasy.Message, int64) {
 	skill := map[string]bool{}
 	for _, m := range history {
 		for _, part := range m.Content {
@@ -460,10 +461,12 @@ func pruneToolOutput(history []fantasy.Message) ([]fantasy.Message, int64) {
 	// step Full cut continues from it): it counts against the kept budget
 	// but is never cleared.
 	live := len(history)
-	for i, h := range slices.Backward(history) {
-		if h.Role == fantasy.MessageRoleUser {
-			live = i
-			break
+	if !inTurn {
+		for i, h := range slices.Backward(history) {
+			if h.Role == fantasy.MessageRoleUser {
+				live = i
+				break
+			}
 		}
 	}
 	type loc struct{ msg, part int }

@@ -289,6 +289,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
+	window := h.contextWindow(modelID)
+	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
 
 	sid := ""
 	if h.DB != nil {
@@ -314,9 +316,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
-	err = runner.Send(ctx, prompt)
+	err = h.sendPruning(ctx, runner, modelID, prompt)
 	for next := run.followUp(err); next != ""; next = run.followUp(err) {
-		err = runner.Send(ctx, next)
+		err = h.sendPruning(ctx, runner, modelID, next)
 	}
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
@@ -332,6 +334,30 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		text = "(the agent finished without a reply)"
 	}
 	return text, nil
+}
+
+// sendPruning runs one subagent turn inside the context window: a run that
+// fills it clears its old tool output and goes on, and a cap the model
+// refuses is dropped once. A subagent has no summarizer: its history is its
+// own and only its report leaves the run, so pruning is all it needs.
+func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string) error {
+	for {
+		err := runner.Send(ctx, text)
+		text = "" // history holds the prompt from here on
+		switch {
+		case runner.MaxOutputTokens > 0 && maxTokensRefused(err):
+			capRejected.Store(modelID, true)
+			runner.MaxOutputTokens = 0
+		case contextTooLarge(err) || err == nil && runner.CutShort():
+			history, freed := pruneToolOutput(runner.History, true)
+			if freed == 0 {
+				return err // nothing left to clear: the report is what it has
+			}
+			runner.History = history
+		default:
+			return err
+		}
+	}
 }
 
 func (h *Host) subagentSystem(def AgentDef) string {

@@ -513,8 +513,10 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
   `agent`, `workflow`, `todos`, `question`, `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
-  context estimate. The delegation guidance lives in `delegationPrompt` (prompt.go):
-  without it models rarely delegate.
+  context estimate. They have no summarizer: `sendPruning` clears their own old tool output
+  (`pruneToolOutput` with `inTurn`, since a whole run is one turn) when the window fills or
+  the provider refuses the prompt, and drops a refused output cap once. The delegation
+  guidance lives in `delegationPrompt` (prompt.go): without it models rarely delegate.
 - **Workflows** are Lua scripts (model-written via the `workflow` tool, saved under
   `workflows/`, builtin in `runtime/workflows/`). They run in their **own** gopher-lua
   state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
