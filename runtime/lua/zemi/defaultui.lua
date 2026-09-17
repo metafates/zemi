@@ -276,7 +276,7 @@ zemi.ui.widget.register({
 })
 
 -- While the chat shows an agent run's transcript (/agents, or a click on
--- its row), say whose it is and how to get back.
+-- its row), say whose it is, where a message goes and how to get back.
 zemi.ui.widget.register({
   id = "statusline.view",
   region = "statusline.left",
@@ -284,7 +284,8 @@ zemi.ui.widget.register({
   render = function(ctx)
     local v = ctx.view
     if not v then return empty() end
-    local tail = " · " .. v.status .. " · esc to go back"
+    local send = v.status == "running" and " · enter messages it" or ""
+    local tail = " · " .. v.status .. send .. " · esc to go back"
     return { {
       { text = "viewing " .. v.agent, hl = "Title" },
       { text = ": " .. clip(v.description, math.max(10, math.floor((ctx.width or 80) / 3))) .. tail, hl = "Comment" },
@@ -697,7 +698,7 @@ zemi.ui.widget.register({
     -- returns one blank line instead.
     local ag = ctx.agent or {}
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
-    if ag.active or #tools > 0 or text ~= "" then
+    if ag.active or #tools > 0 or text ~= "" or #queued > 0 then
       local waiting = false
       local ti = 1
       while ti <= #tools do

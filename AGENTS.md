@@ -469,12 +469,18 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   preview.
 - **Background agents** (`agent` with `background: true`) run detached; the report comes
   back through `AgentSend` with the body behind `attachMarker`, which both the live
-  transcript (`startTurn`, `deliverSteering`) and resume cut off.
+  transcript (`startTurn`, `deliverSteering`) and resume cut off. `agent` with `send_to: <run id>`
+  queues its prompt for that run (`MessageAgent`, error when it is not running).
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers
   an `agentRun` whose hooks build a live transcript. `/agents view <id>` (or a click on an
   `Agent` row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the
-  session's (live stream and todos hidden); esc or a submit clears it, and so does
-  `setTranscript`. Runs the process no longer holds load from their child session.
+  session's (live stream and todos hidden, `agent.steering` holds the run's queue); esc clears it,
+  and so does `setTranscript`. A submit while the run is running goes to it through
+  `MessageAgent`, otherwise it clears the view and goes to the session. A run's queue is its
+  `Runner.Steer` (rows join the transcript when delivered); what arrives after its last step
+  boundary becomes one more `Send` (`followUp`), which closes the queue in the same lock when
+  there is nothing left, so a message is never accepted and then dropped. Messages persist in
+  the child session like the prompt. Runs the process no longer holds load from their child session.
   `/agents` also lists `h.jobs` (host-wide, every session) with the output tail and a Stop
   action (`/agents kill <job id>`).
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, created when

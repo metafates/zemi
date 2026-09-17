@@ -43,6 +43,8 @@ type agentRun struct {
 	tr        []ChatMessage  // the prompt, tool rows and replies so far
 	text      string         // reply text streamed since the last row
 	rows      map[string]int // tool call id -> tr index
+	queue     []string       // messages waiting for the next step boundary
+	closed    bool           // past its last step boundary: a message would be lost
 }
 
 type taskReg struct {
@@ -170,6 +172,77 @@ func (run *agentRun) flush() {
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Text: run.text})
 	}
 	run.text = ""
+}
+
+// message queues text for the run's next step boundary (Steer), or for one
+// more turn when it arrives after the last one.
+func (run *agentRun) message(text string) error {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if run.status != "running" || run.closed {
+		return fmt.Errorf("agent %s is not running", run.id)
+	}
+	run.queue = append(run.queue, text)
+	return nil
+}
+
+// queued copies the messages still waiting, oldest first.
+func (run *agentRun) queued() []string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return slices.Clone(run.queue)
+}
+
+// take empties the queue into transcript rows, after the reply they
+// interrupted (run.mu held).
+func (run *agentRun) take() []string {
+	q := run.queue
+	run.queue = nil
+	if len(q) > 0 {
+		run.flush()
+	}
+	for _, m := range q {
+		run.tr = append(run.tr, ChatMessage{Role: "user", Text: m})
+	}
+	return q
+}
+
+// takeQueue hands the queued messages to the runner at a step boundary.
+func (run *agentRun) takeQueue() []string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.take()
+}
+
+// followUp is what the run sends after a turn ended with err: the messages
+// queued after its last step boundary, or "" once it is done, which closes
+// the queue in the same lock so no message is accepted and then dropped.
+func (run *agentRun) followUp(err error) string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if err != nil || len(run.queue) == 0 {
+		run.closed, run.queue = true, nil
+		return ""
+	}
+	return strings.Join(run.take(), "\n\n")
+}
+
+// MessageAgent queues text for a running agent (the agent tool's send_to, or
+// a submit while its transcript is shown); it joins the run at its next step
+// boundary and is stored in the run's child session.
+func (h *Host) MessageAgent(id, text string) error {
+	run := h.tasks.find(id)
+	if run == nil {
+		return fmt.Errorf("no agent %q", id)
+	}
+	if err := run.message(text); err != nil {
+		return err
+	}
+	if h.ViewedAgent() == run.id {
+		h.scrollChat("bottom")
+		h.refresh()
+	}
+	return nil
 }
 
 func (run *agentRun) finish(err error) {

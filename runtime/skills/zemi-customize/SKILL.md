@@ -66,9 +66,11 @@ when choosing an agent, so say when to use it. Read at use, no reload needed. `/
 lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, memory_search,
 skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on `agent.small_model`
 when set; builtin `general` has everything a subagent may have. The model's `agent` tool also
-takes `background: true`: the report arrives as a later message. `/agents` also lists the
+takes `background: true`: the report arrives as a later message, and a call with `send_to`
+set to the run's id sends its `prompt` to the running agent at its next step. `/agents` also lists the
 session's runs (running, background, workflow ones): enter, or a click on an agent's row in
-the chat, shows that run's transcript in the chat, and esc goes back. Background jobs
+the chat, shows that run's transcript in the chat, a message submitted there goes to that
+agent while it runs, and esc goes back. Background jobs
 (`job_start`, bash past its timeout) are listed there too, with a Stop action.
 
 ## Prompt commands (`commands/<name>.md`)

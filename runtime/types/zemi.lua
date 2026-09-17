@@ -226,7 +226,7 @@ function zemi.event.stats() end
 ---@field text string Reply text so far.
 ---@field reasoning string Thinking text so far.
 ---@field tools zemi.ToolCall[]
----@field steering string[] Messages queued mid-turn.
+---@field steering string[] Messages queued mid-turn; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
 ---@field elapsed number Seconds since the turn started.
 
@@ -289,6 +289,7 @@ function zemi.event.stats() end
 ---@field permission_mode_base string
 ---@field agent_active boolean
 ---@field agent zemi.AgentCtx
+---@field view? { id: string, agent: string, description: string, status: string } The agent run the chat shows instead of the session; a submit messages it while it is running.
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]

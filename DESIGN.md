@@ -673,6 +673,11 @@ runner over the same tool pipeline, in a child session recorded with
 `question`, `plan`, `open_in_editor` or `Lua`, so nesting stops at depth 1, and `zemi.agent.run`
 is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
+A running subagent takes messages like the main agent's steering queue
+(§4): the main agent calls `agent` with `send_to` set to a background
+run's id, and the user submits while the chat shows that run. A message
+joins the run at its next step boundary, or starts one more turn of it
+when its last step already began, and is stored in its child session.
 
 `zemi.provider.register` requires a user-owned registration origin: Lua
 from a plugin, a project, or a learned source cannot call it (the

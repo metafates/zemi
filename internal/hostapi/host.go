@@ -850,7 +850,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 		v.RawSetString("status", glua.LString(status))
 		tb.RawSetString("view", v)
 		transcript = run.transcript()
-		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, nil
+		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, run.queued()
 	} else {
 		todoRows = h.todoSnapshot()
 	}

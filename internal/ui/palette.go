@@ -204,8 +204,11 @@ func (a *App) sendMessage(text string) {
 	}
 	a.composer.pushHistory(text, a.historySize())
 	a.clearComposer()
-	if a.host.ViewedAgent() != "" {
-		_ = a.host.ViewAgent("") // messages go to the session, so show it
+	if id := a.host.ViewedAgent(); id != "" {
+		if a.host.MessageAgent(id, text) == nil {
+			return
+		}
+		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
 	}
 	if err := a.host.AgentSend(text); err != nil {
 		a.pushToast("error", "Could not send", err.Error())

@@ -312,7 +312,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
+	runner.Steer = run.takeQueue
 	err = runner.Send(ctx, prompt)
+	for next := run.followUp(err); next != ""; next = run.followUp(err) {
+		err = runner.Send(ctx, next)
+	}
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
@@ -523,7 +527,8 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" stops to ask the user for permission. The subagent cannot see this conversation: the prompt must carry" +
 		" everything it needs, say what to report back and say how to verify the work. Its report is not shown to the user; relay what matters." +
 		" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
-		" as a message, so keep working (or end your turn) meanwhile.\n\nAgents:")
+		" as a message, so keep working (or end your turn) meanwhile. To add to or correct a running background agent's task, call again with" +
+		" send_to set to its id: prompt reaches it at its next step (agent and description are ignored).\n\nAgents:")
 	names := make([]string, 0, len(t.defs))
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -545,6 +550,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run: explore for reading and searching, general only when it must run commands or edit"},
 			"background":  map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"},
 			"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
+			"send_to":     map[string]any{"type": "string", "description": "id of a running background agent: send prompt to it as a message instead of starting an agent"},
 		},
 		Required: []string{"description", "prompt", "agent"},
 		Parallel: true,
@@ -561,6 +567,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		Agent       string `json:"agent"`
 		Background  bool   `json:"background"`
 		Model       string `json:"model"`
+		SendTo      string `json:"send_to"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -570,6 +577,13 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	}
 	if resp, stop, err := t.h.preCheck("agent", call.Input); stop {
 		return resp, err
+	}
+	if in.SendTo != "" {
+		if err := t.h.MessageAgent(in.SendTo, in.Prompt); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		t.h.setToolDetail(call.ID, "message to "+in.SendTo)
+		return fantasy.NewTextResponse("Queued for agent " + in.SendTo + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
 	}
 	def, err := t.h.agentDef(in.Agent)
 	if err != nil {
