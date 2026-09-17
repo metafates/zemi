@@ -50,6 +50,11 @@ func TestHealthChecks(t *testing.T) {
 	if first, last := items[0].(map[string]any), items[len(items)-1].(map[string]any); first["section"] != "Needs attention" || last["section"] != "OK" {
 		t.Fatalf("problems first: %v ... %v", first, last)
 	}
+	for _, it := range items {
+		if m := it.(map[string]any); m["text"] == "store" && m["detail"] != nil {
+			t.Fatalf("a fine short row opens a detail view: %v", m)
+		}
+	}
 }
 
 // TestHealthChecksProfileModel: the model row checks the default profile's

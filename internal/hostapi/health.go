@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -286,7 +287,11 @@ func (h *Host) OpenHealth() error {
 func (h *Host) healthItems() []any {
 	var problems, ok []any
 	for _, c := range h.healthChecks() {
-		item := map[string]any{"text": c.name, "desc": c.detail, "detail": c.detail, "section": "OK"}
+		item := map[string]any{"text": c.name, "desc": c.detail, "section": "OK"}
+		// a detail view that only repeats a short, fine row leads nowhere
+		if c.run != "" || c.level != "ok" || utf8.RuneCountInString(c.detail) > 48 {
+			item["detail"] = c.detail
+		}
 		if c.run != "" {
 			item["actions"] = []any{map[string]any{"text": healthActions[c.run], "run": c.run}}
 		}
