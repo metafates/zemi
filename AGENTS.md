@@ -743,6 +743,8 @@ timeout.
   or another column). `hostapi.WrapSegs` sets both, so a wrapped user prompt, reply or
   code block copies as the text that was written, and `Host.Markdown` renders glamour
   unwrapped (tables aside, they need the width) and wraps it itself for the same reason.
+  Glamour keeps the author's line breaks (`WithPreservedNewLines`), so a reply reads and
+  copies back as it was written and chat.lua renders a user message in one call.
   A click reads `Segment.Hit` (a Go-only 1-based item index
   that `listRows` puts on every row of an item, prompt choices included) to act on the
   topmost chrome, or `Segment.Click`/`Segment.Widget` (a widget's click id) to run that

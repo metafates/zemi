@@ -145,7 +145,8 @@ func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width i
 	rk := fmt.Sprintf("%s|%d", key, width)
 	r := c.renderers[rk]
 	if r == nil {
-		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width)}
+		// a line break the author typed is kept: a reply copies back as it was written
+		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width), glamour.WithPreservedNewLines()}
 		if width == 0 {
 			markDecorations(&cfg)
 			opts = append(opts, glamour.WithChromaFormatter(chromaMarked))

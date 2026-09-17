@@ -360,34 +360,12 @@ zemi.ui.widget.register({
           first = false
         end
       elseif m.role == "user" then
-        -- Markdown like replies, one typed line at a time so line breaks
-        -- stay (glamour joins lines into paragraphs); a code fence renders
-        -- as one block.
+        -- Markdown like replies, keeping the line breaks the user typed.
         gap("user")
-        ---@type string[], string[]?
-        local chunks, fence = {}, nil
-        for l in (m.text .. "\n"):gmatch("(.-)\n") do
-          local marker = l:match("^%s*```") ~= nil
-          if fence then
-            fence[#fence + 1] = l
-            if marker then
-              chunks[#chunks + 1] = table.concat(fence, "\n")
-              fence = nil
-            end
-          elseif marker then
-            fence = { l }
-          else
-            chunks[#chunks + 1] = l
-          end
-        end
-        if fence then chunks[#chunks + 1] = table.concat(fence, "\n") end
-        for _, chunk in ipairs(chunks) do
-          local rendered = chunk:match("%S") and zemi.ui.markdown(chunk, width - 2) or { {} }
-          for _, segs in ipairs(rendered) do
-            local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
-            for _, sg in ipairs(segs) do row[#row + 1] = sg end
-            lines[#lines + 1] = row
-          end
+        for _, segs in ipairs(zemi.ui.markdown(m.text, width - 2)) do
+          local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
+          for _, sg in ipairs(segs) do row[#row + 1] = sg end
+          lines[#lines + 1] = row
         end
       else
         gap("text")
