@@ -157,7 +157,7 @@ func (h *Host) duplicateMemory(m store.Memory) bool {
 		}
 	}
 	for _, o := range h.memoryProposals() {
-		if o.Scope == m.Scope && strings.EqualFold(o.Text, m.Text) {
+		if !o.Forget && o.Scope == m.Scope && strings.EqualFold(o.Text, m.Text) {
 			return true
 		}
 	}

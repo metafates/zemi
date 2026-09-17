@@ -404,9 +404,10 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 // TestReflectForgetThroughReview: an empty text with supersedes retires a
 // memory only through review, even under auto, once per memory; accepting
 // deletes it, rejecting keeps it, accepting after a rewrite keeps the
-// rewrite, and accepting after a move deletes it where it went.
+// rewrite, accepting after a move deletes it where it went, and a pending
+// forget does not block saving its text again.
 func TestReflectForgetThroughReview(t *testing.T) {
-	for _, decide := range []string{"accept", "reject", "rewritten", "moved"} {
+	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "deleted"} {
 		h, r := newTestHostDB(t)
 		h.Settings.SetHost("memory.autonomy", "auto")
 		h.SetProjectTrusted(true)
@@ -462,6 +463,14 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			}
 			want = 0
 			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+				t.Fatal(err)
+			}
+		case "deleted":
+			// the pending forget holds no copy of the text
+			if err := h.DB.DeleteMemory(old.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.Remember("deploy by hand"); err != nil {
 				t.Fatal(err)
 			}
 		}
