@@ -1047,8 +1047,9 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 	// The clusters need a blank cell between them or they read as one word.
 	if leftW+rightW >= w {
 		// Overflow truncates the right cluster first (lowest priority of
-		// the row's real estate goes last, §8).
-		if room := w - leftW - 1; room > 0 {
+		// the row's real estate goes last, §8); under four cells it would
+		// show a stray letter or two, so it goes whole.
+		if room := w - leftW - 1; room >= 4 {
 			right = fitSegs(right, room)
 			rightW = segsWidth(right)
 		} else {
