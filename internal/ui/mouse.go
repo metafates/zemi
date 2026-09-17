@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/win"
 )
 
 type mouseSel struct {
@@ -89,7 +90,7 @@ func (a *App) selectionText() string {
 	var lines []string
 	for y, row := range a.lastRows {
 		if from, to, ok := a.mouse.span(y, a.width); ok {
-			lines = append(lines, strings.TrimRight(plainSegs(truncateSegs(dropCells(row, from), to-from)), " "))
+			lines = append(lines, strings.TrimRight(win.StripPlaceholders(plainSegs(truncateSegs(dropCells(row, from), to-from))), " "))
 		}
 	}
 	return strings.Trim(strings.Join(lines, "\n"), "\n")

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -259,7 +260,13 @@ type hookMsg struct{ inner tea.Msg }
 // tea.Model
 
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(a.frameTickCmd(), a.drainHooksCmd())
+	cmds := []tea.Cmd{a.frameTickCmd(), a.drainHooksCmd()}
+	// the terminal's name says whether windows get kitty images; Terminal.app
+	// prints the query instead of answering it
+	if os.Getenv("TERM_PROGRAM") != "Apple_Terminal" {
+		cmds = append(cmds, tea.RequestTerminalVersion)
+	}
+	return tea.Batch(cmds...)
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -289,6 +296,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
+	case tea.TerminalVersionMsg:
+		// NOTE: an allowlist of terminals known to draw kitty placeholders;
+		// windows opened before the reply get symbols
+		name := strings.ToLower(msg.Name)
+		a.host.Wins.SetKitty(strings.HasPrefix(name, "ghostty") || strings.HasPrefix(name, "kitty"))
 	case tea.FocusMsg:
 		a.focused = true
 	case tea.BlurMsg:
@@ -447,7 +459,11 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
-	return tea.Batch(a.frameTickCmd(), a.renderStaleWidgetsCmd())
+	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	if g := a.host.Wins.TakeGraphics(); g != "" {
+		cmds = append(cmds, tea.Raw(g))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (a *App) uiState() hostapi.UIState {
@@ -834,7 +850,7 @@ func (a *App) Screenshot() string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(strings.TrimRight(ansi.Strip(row), " "))
+		b.WriteString(strings.TrimRight(win.StripPlaceholders(ansi.Strip(row)), " "))
 	}
 	return b.String()
 }

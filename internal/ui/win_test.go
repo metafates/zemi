@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/win"
 )
@@ -89,6 +93,90 @@ func TestWinTitleRowFits(t *testing.T) {
 		if got := plainSegs(row); segsWidth(row) != width || !strings.HasSuffix(got, "× ") {
 			t.Fatalf("width %d: %q is %d cells", width, got, segsWidth(row))
 		}
+	}
+}
+
+func TestKittyHostDetect(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	for name, want := range map[string]bool{"ghostty 1.3.1": true, "kitty(0.42.1)": true, "WezTerm 20240203": false, "tmux 3.5a": false} {
+		a.Update(tea.TerminalVersionMsg{Name: name})
+		if a.host.Wins.Kitty() != want {
+			t.Fatalf("%s: kitty %v", name, !want)
+		}
+	}
+}
+
+// TestImageCellsFollowTheFloat: an image is placeholder cells, so it moves
+// with its float, a float on top covers it, hiding drops it, and closing
+// deletes it from the host.
+func TestImageCellsFollowTheFloat(t *testing.T) {
+	const ph = "\U0010EEEE"
+	a := newTestApp(t, t.TempDir())
+	a.CaptureHooks()
+	defer a.host.Wins.CloseAll()
+	a.host.Wins.SetKitty(true)
+	wn, err := a.host.Wins.Open(win.Spec{Cmd: `printf '\033_Ga=T,f=100,c=3,r=2,q=2;iVBO\033\\'; sleep 5`, Kind: win.KindFloat, Cols: 20, Rows: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for !strings.Contains(fmt.Sprint(wn.Screen().Rows[0]), ph) {
+		if ctx.Err() != nil {
+			t.Fatal("the image never reached the screen")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	// imageAt is the column of the image on the float's first terminal row,
+	// -1 when the row shows none
+	imageAt := func() int {
+		frame := strings.Split(a.Frame(), "\r\n")
+		for _, r := range a.winRects {
+			if r.id != wn.ID {
+				continue
+			}
+			row := ansi.Strip(frame[r.y])
+			if i := strings.Index(row, ph); i >= 0 {
+				return ansi.StringWidth(row[:i])
+			}
+		}
+		return -1
+	}
+	move := func(wn *win.Window, x int) {
+		_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y = x, 4 })
+	}
+	move(wn, 10)
+	if got := imageAt(); got != 12 || !strings.Contains(a.Frame(), "38;5;16m"+ph) {
+		t.Fatalf("image at column %d, want 12 in the host's id color", got)
+	}
+	move(wn, 15)
+	if got := imageAt(); got != 17 {
+		t.Fatalf("moved image at column %d, want 17", got)
+	}
+	top, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat, Cols: 20, Rows: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	move(top, 15)
+	if strings.Contains(a.Frame(), ph) {
+		t.Fatal("the float on top did not cover the image")
+	}
+	a.host.Wins.Close(top.ID)
+	_ = wn.SetLayout(func(l *win.Layout) { l.Hidden = true })
+	if strings.Contains(a.Frame(), ph) {
+		t.Fatal("a hidden window still shows its image")
+	}
+	_ = wn.SetLayout(func(l *win.Layout) { l.Hidden = false })
+	if got := imageAt(); got != 17 {
+		t.Fatalf("shown again, image at column %d", got)
+	}
+	if g := a.host.Wins.TakeGraphics(); !strings.Contains(g, "a=p,U=1,i=16") {
+		t.Fatalf("host got %q", g)
+	}
+	a.host.Wins.Close(wn.ID)
+	if g := a.host.Wins.TakeGraphics(); !strings.Contains(g, "a=d,d=I,i=16") {
+		t.Fatalf("close queued %q", g)
 	}
 }
 
