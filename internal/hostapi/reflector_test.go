@@ -396,10 +396,10 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 
 // TestReflectForgetThroughReview: an empty text with supersedes retires a
 // memory only through review, even under auto, once per memory; accepting
-// deletes it, rejecting keeps it, and accepting after a rewrite keeps the
-// rewrite.
+// deletes it, rejecting keeps it, accepting after a rewrite keeps the
+// rewrite, and accepting after a move deletes it where it went.
 func TestReflectForgetThroughReview(t *testing.T) {
-	for _, decide := range []string{"accept", "reject", "rewritten"} {
+	for _, decide := range []string{"accept", "reject", "rewritten", "moved"} {
 		h, r := newTestHostDB(t)
 		h.Settings.SetHost("memory.autonomy", "auto")
 		h.SetProjectTrusted(true)
@@ -442,9 +442,24 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			if _, err := h.acceptProposal(props[0].ID, ""); err == nil || len(h.memoryProposals()) != 0 {
 				t.Fatalf("stale forget: err %v, proposals %d", err, len(h.memoryProposals()))
 			}
+		case "moved":
+			// a pending suggestion with the same text is no stored copy to merge into
+			if err := h.addProposal(memoryProposal{Memory: store.Memory{Scope: "user", Kind: "fact", Text: "deploy by hand"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
+				t.Fatal(err)
+			}
+			if m, err := h.GlobalDB.GetMemory(old.ID); err != nil || m.Text != "deploy by hand" {
+				t.Fatalf("move lost the memory: %v", err)
+			}
+			want = 0
+			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if got := len(projectMemories(t, h)); got != want {
-			t.Fatalf("%s: memories left %d", decide, got)
+		if all, _ := h.memoryList(true); len(all) != want {
+			t.Fatalf("%s: memories left %d", decide, len(all))
 		}
 	}
 }

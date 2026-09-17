@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -135,7 +136,10 @@ func redactNote(scrubbed bool) string {
 	return ""
 }
 
-var errDuplicateMemory = errors.New("already remembered")
+var (
+	errDuplicateMemory = errors.New("already remembered")
+	errNoMemory        = errors.New("no such memory")
+)
 
 // duplicateMemory reports whether a live memory or pending proposal in the
 // same scope has the same text. Intake collapses whitespace, so a
@@ -329,8 +333,13 @@ func (h *Host) moveMemory(id, from, to string) error {
 		return err
 	}
 	m.Scope = to
-	// a copy already there makes the move a merge
-	if !h.duplicateMemory(*m) {
+	// a stored copy already there makes the move a merge; a pending proposal
+	// with the same text does not, it may yet be dropped
+	live, err := dst.ListMemory(to, false)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) }) {
 		if err := dst.AddMemory(m); err != nil {
 			return err
 		}
@@ -349,18 +358,17 @@ func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 	}
 	var err error
 	if p.Forget {
-		db := h.memoryDB(p.Scope)
-		var m *store.Memory
-		if db == nil {
-			err = errors.New("memory store unavailable")
-		} else if m, err = db.GetMemory(p.Supersedes); err == nil && m.Text != p.Text {
+		// looked up in both scopes: the memory may have moved since
+		db, m, lerr := h.locateMemory(p.Supersedes)
+		switch {
+		case errors.Is(lerr, errNoMemory):
+		case lerr != nil:
+			err = lerr
+		case m.Text != p.Text:
 			// the review showed the old text: forgetting the new one needs a new proposal
 			return nil, errors.New("the memory changed since zemi proposed forgetting it")
-		} else if err == nil {
+		default:
 			err = db.DeleteMemory(p.Supersedes)
-		}
-		if errors.Is(err, store.ErrNotFound) {
-			err = nil
 		}
 	} else {
 		p.Memory.Scope = cmp.Or(scope, p.Memory.Scope)
@@ -458,7 +466,7 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 		}
 		switch len(hits) {
 		case 0:
-			return nil, nil, fmt.Errorf("no such memory %q", id)
+			return nil, nil, fmt.Errorf("%w %q", errNoMemory, id)
 		case 1:
 			id = hits[0]
 		default:
@@ -477,7 +485,7 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 			return nil, nil, err
 		}
 	}
-	return nil, nil, fmt.Errorf("no such memory %q", id)
+	return nil, nil, fmt.Errorf("%w %q", errNoMemory, id)
 }
 
 // supersedeMemory resolves both ids (prefixes allowed) and links them; the
