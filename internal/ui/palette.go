@@ -11,7 +11,8 @@ import (
 // cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
 // "/" as the first character lists the registered commands filtered as you
 // type; up/down navigate, tab accepts, esc closes. Enter runs the typed
-// "/name args" line instead of sending a message. The exact "/reload" is
+// "/name args" line instead of sending a message, or the highlighted
+// command when the typed name is not one. The exact "/reload" is
 // the Go-reserved force-reload trigger and never reaches the command
 // registry (DESIGN §4).
 type cmdPalette struct {

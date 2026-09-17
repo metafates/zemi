@@ -365,6 +365,15 @@ func TestPaletteComplete(t *testing.T) {
 		t.Fatalf("submit: ran=%v text=%q", ran, app.composer.text)
 	}
 
+	// A partial name runs the highlighted command, arguments kept.
+	ran = false
+	app.composer.text, app.composer.cursor = "/ec hi", 3
+	app.updatePalette()
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if !ran || app.composer.text != "" {
+		t.Fatalf("partial submit: ran=%v text=%q", ran, app.composer.text)
+	}
+
 	// An unknown slash line is not sent and keeps the text for fixing.
 	app.composer.text, app.composer.cursor = "/nope", 5
 	app.updatePalette()

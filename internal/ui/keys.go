@@ -185,9 +185,14 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		case "esc":
 			a.palette.close()
 			return nil
+		case "enter":
+			// a typed name that is not a command runs the highlighted one
+			name, args := splitCommand(strings.TrimPrefix(c.text, "/"))
+			if p := &a.palette; p.args == nil && p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil {
+				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
+			}
 		}
-		// enter falls through: it submits the typed "/name args" line
-		// (running the command), tab is what accepts the selection.
+		// enter falls through: it submits the "/name args" line
 	}
 
 	if a.completion.open {
