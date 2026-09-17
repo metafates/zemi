@@ -267,11 +267,12 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) error {
 	case rhs.Command != "":
 		return h.RunCommand(ctx, rhs.Command, "")
 	case rhs.API != "":
-		fn, ok := h.hostActions[rhs.API]
+		name, args, _ := strings.Cut(rhs.API, " ")
+		fn, ok := h.hostActions[name]
 		if !ok || fn == nil {
 			return ErrReserved
 		}
-		return fn(h, "")
+		return fn(h, args)
 	}
 	return nil
 }

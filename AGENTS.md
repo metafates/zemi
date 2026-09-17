@@ -61,8 +61,8 @@ errored; `-p` runs one turn, then reports on stderr how many tool calls the gate
 untrusted project, and at an allow rule when auto already left the call to the user or it
 asked to run outside the sandbox). A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
-checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, errors,
-trust, lsp) plus whatever Lua registered with `zemi.health.register`.
+checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout, errors,
+trust, mcp, lsp) plus whatever Lua registered with `zemi.health.register`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
@@ -421,10 +421,10 @@ reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carrie
 `Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: splits and
 vsplits go where the layout tree has a `windows` slot of their kind (by default vsplits are
 full-height columns beside the main column, splits take rows at the bottom of the stage),
-floats go over everything at their position or centered over the stage. A slot's window takes
+floats (and splits or vsplits the layout has no slot for) go over everything at their position or centered over the stage. A slot's window takes
 its `frac` of the box's cells after separators, else a fill share weighing the same as the
 box's fill nodes (the chat column by default, so cells above the mins split equally); a
-dragged separator or title writes `frac` back against those cells (`winRect.axis`). `Screen()` turns cells into `sgr:` segments so colors reach
+dragged separator (left of the window, or right of it when it has none on the left) or title writes `frac` back against those cells (`winRect.axis`). `Screen()` turns cells into `sgr:` segments so colors reach
 the renderer untouched; during a synchronized update (mode 2026) it returns the screen
 from before, for at most a second. The focused window's cursor is the host's own (`View.Cursor`, in
 the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn
@@ -569,16 +569,31 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
 
 ### Screen layout (internal/hostapi/layout.go, internal/ui/layout.go)
 
-`compose` draws a layout tree (`hostapi.DefaultLayout`, Go-only for now): boxes lay children
-out in a row or column, leaves are a widget region, the composer, the statusline bar, a
-window slot or a spacer. `span` sizes one box per frame from cells, percent, content
-(measured from cached renders, along a column only) and weighted fill, clamped to min and
-max; when the children do not fit it takes cells from fill, then percent, content and
-cells, the last child first. It never fails (`FuzzSpan`). The stage node is where prompts,
-overlays, toasts, popups and centered floats go. A widget renders at its node's width and height
-(`shownWidgets`); a content-sized node's height is the most rows it could get, never its last
-draw, so a widget that pads to `ctx.height` can still shrink. Hit testing
-never reads the tree: it reads the painted segments.
+`zemi.ui.layout.set` hands Go a layout table; `ParseLayout` validates it into immutable
+`hostapi.Layout` data (no closures) behind `Host.layout`, an atomic pointer `compose` reads
+every frame, so drawing never waits on Lua. The shipped `defaultui/layout.lua` sets the
+default, user config may replace it, lower origins are refused. A reload keeps the old
+layout drawn (the spec is plain data, safe across generations); `ForceReload` drops one the
+replay did not set again (`dropStaleLayout`) and `DefaultLayout`, the Go copy of the
+shipped tree, draws. Boxes lay children out in a row or column, leaves are a widget region,
+the composer, the statusline bar, a window slot or a spacer. `span` sizes one box per frame
+from cells, percent, content (measured from cached renders, along a column only) and
+weighted fill, clamped to min and max; when the children do not fit it takes cells from
+fill, then percent, content and cells, the last child first. It never fails (`FuzzSpan`).
+While a box's mins do not fit, its last `collapse` child is hidden. The stage node is where
+prompts, overlays (the whole screen when the stage is under 40 by 12), toasts and centered
+window floats go; completion popups go over the stage's bottom when it is above the
+composer, else beside the composer on the side with more rows (`floatPopup`, `popRect`).
+Lua floats (`paintFloats`) draw in list order and never cover the composer or the Go pills,
+which also float at the bottom-left when the tree has no bar. A widget renders at its node's
+width and height (`shownWidgets`); a content-sized node's height is the most rows it could
+get, never its last draw, so a widget that pads to `ctx.height` can still shrink. Scroll
+state is per region node id (`App.scrolls`); `zemi.ui.scroll.*` actions take the id after a
+space (host actions get the text after the name as their argument) and default to the
+stage's scrolled region (`scrollDef`), and the wheel scrolls the region under the pointer.
+`LayoutRects` publishes the node rects under `frameMu` for `zemi.ui.layout.rects()`. Hit
+testing never reads the tree: it reads the painted segments. `/health` has a `layout` row
+naming widgets in regions the layout does not draw.
 
 ### Rewind, plan mode, composer bridge
 
@@ -593,7 +608,7 @@ never reads the tree: it reads the painted segments.
   prompt section only saves wasted attempts.
 - **Composer bridge**: Lua reads a snapshot the UI publishes (`SetComposerSnapshot` after
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
-  goroutine. Completion popups float over the bottom of the stage (`floatPopup`), they
+  goroutine. Completion popups float over the stage or beside the composer (`floatPopup`), they
   never reserve rows.
 - **System prompt** (prompt.go): `basePrompt` (acting first, tasks, asking, care, tools,
   git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`

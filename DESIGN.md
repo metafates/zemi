@@ -1026,17 +1026,28 @@ configured provider later (`zemi.memory.search` signature does not change).
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped)
   except the Go-only toggle-list reload (`/skills`); Go still draws the box,
   the origin badge, the filter and the hints.
-- **Layout tree** (`internal/ui/layout.go`): boxes (row or col, optional separators)
-  hold leaves: a widget region, the composer, the statusline bar, a window slot, a
-  spacer. Each child claims cells, a percent, its content rows or a weighted fill share,
+- **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
+  over plain data, Go validates it once and solves it every frame on the Update
+  goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
+  separators) hold leaves: a widget region (optionally scrolled, by node id), the
+  composer (exactly one, never hidden), the statusline bar, a window slot, a spacer.
+  Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
-  content and cells, the last child first, down to min and then to 0. The solver is
-  integer arithmetic on the Update goroutine and never fails. The stage node (the chat
-  over the split windows by default) is where prompts, overlays, toasts, completion
-  popups and centered floats go. Widgets render at their node's width and height; a
-  content-sized node gets the most rows it could take (its max or the box's cells), not
-  its last height, which would never let it shrink. The tree is Go's for now
-  (`hostapi.DefaultLayout`).
+  content and cells, the last child first, down to min and then to 0, and hides its last
+  `collapse` child while the mins do not fit. The solver is integer arithmetic and never
+  fails. Floats place a region like a neovim float (relative node, anchor corner,
+  row/col, size) in list order. The shipped `defaultui/layout.lua` sets the default;
+  user config may replace it, plugin, project and learned code may not (a layout can
+  hide what they show). `/reload` keeps drawing the old layout until the replay sets
+  one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
+  Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
+  stage node, or the whole screen when it is under 40 by 12; toasts stack in the stage;
+  completion popups go over the stage's bottom when it is above the composer, else beside
+  the composer on the side with room; Lua floats never cover the composer or the alarm
+  pills, and without a bar the pills float at the bottom-left; windows of a kind with no
+  slot float. Widgets render at their node's width and height; a content-sized node gets
+  the most rows it could take (its max or the box's cells), not its last height, which
+  would never let it shrink.
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message; `View`
   asks each visible region for its cached widget lines; Lua `render` runs

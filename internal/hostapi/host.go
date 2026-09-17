@@ -39,7 +39,12 @@ type UIHooks interface {
 	// Reload replays the boot steps on a fresh generation (/reload).
 	Reload()
 	Refresh()
-	ScrollChat(kind string)
+	// Scroll moves a scrolled region of the layout ("up", "down", "top" or
+	// "bottom"): the node id, or the stage's when id is "".
+	Scroll(kind, id string)
+	// LayoutRects is where the last frame drew each node with an id, plus
+	// "stage" and "composer"; safe from any goroutine.
+	LayoutRects() map[string]Rect
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
@@ -256,6 +261,8 @@ type Host struct {
 
 	modes modeReg // permission modes in tab order
 
+	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
+
 	// luaRules are the rules zemi.permission.rule added: a reload replays
 	// the config that adds them. PurgeGeneration moves them to staleRules,
 	// which stay in Perm until the replay is done so no call runs without
@@ -370,10 +377,10 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			h.ToggleReasoning()
 			return nil
 		},
-		"zemi.ui.scroll.up":          func(h *Host, _ string) error { h.scrollChat("up"); return nil },
-		"zemi.ui.scroll.down":        func(h *Host, _ string) error { h.scrollChat("down"); return nil },
-		"zemi.ui.scroll.top":         func(h *Host, _ string) error { h.scrollChat("top"); return nil },
-		"zemi.ui.scroll.bottom":      func(h *Host, _ string) error { h.scrollChat("bottom"); return nil },
+		"zemi.ui.scroll.up":          func(h *Host, id string) error { h.scroll("up", id); return nil },
+		"zemi.ui.scroll.down":        func(h *Host, id string) error { h.scroll("down", id); return nil },
+		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll("top", id); return nil },
+		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
@@ -424,11 +431,11 @@ func (h *Host) Notify(level, title, body string) {
 	}
 }
 
-// scrollChat routes a transcript scroll request to the UI (no-op before
-// the UI attaches, e.g. headless runs).
-func (h *Host) scrollChat(kind string) {
+// scroll routes a zemi.ui.scroll.* action to the UI (no-op before the UI
+// attaches, e.g. headless runs).
+func (h *Host) scroll(kind, id string) {
 	if ui := h.hooks(); ui != nil {
-		ui.ScrollChat(kind)
+		ui.Scroll(kind, id)
 	}
 }
 
@@ -1150,7 +1157,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.25.0"))
+	api.RawSetString("version", glua.LString("0.26.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1196,6 +1203,7 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
 	// a failed replay keeps the old rules: the last whole config beats part of one
 	if err == nil {
+		h.dropStaleLayout()
 		h.luaRulesMu.Lock()
 		for _, r := range h.staleRules {
 			h.Perm.Remove(r)

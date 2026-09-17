@@ -27,7 +27,7 @@ type winRect struct {
 	id         int
 	x, y, w, h int // the terminal cells
 	titleY     int
-	sepX       int // vsplit: the separator column, -1 otherwise
+	sepX       int // vsplit: the separator column beside it, left or right, -1 when none
 	axis       int // split, vsplit: the cells its frac is a share of
 	float      bool
 }
@@ -62,9 +62,10 @@ func (a *App) shownWins(kind string) []*win.Window {
 }
 
 // floatBox frames a float and places it: cols and rows are what it asked
-// for, capped to the frame; x, y its top-left, centered over the chat
+// for, capped to the frame; x, y its top-left, centered over the stage
 // when unset. It reports the frame's origin and the terminal cells' rect.
-func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostapi.Segment, x0, y0 int, r winRect) {
+func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]hostapi.Segment, x0, y0 int, r winRect) {
+	headerH, chatH := stage.Min.Y, stage.Dy()
 	l := wn.Layout()
 	cols, rows := l.Cols, l.Rows
 	if cols <= 0 {
@@ -391,7 +392,10 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 		if d.x0 >= r.x+r.w-3 {
 			return
 		}
-		d.what = map[string]string{win.KindFloat: "move", win.KindSplit: "split", win.KindVSplit: "vsplit"}[wn.Layout().Kind]
+		d.what = map[string]string{win.KindSplit: "split", win.KindVSplit: "vsplit"}[wn.Layout().Kind]
+		if r.float { // a split with no slot floats too
+			d.what = "move"
+		}
 	}
 	d.moved = true
 	_ = wn.SetLayout(func(l *win.Layout) {
@@ -417,7 +421,11 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 			}
 			l.X, l.Y, l.Cols, l.Rows = bx, by, cols, rows
 		case "vsplit":
-			l.Frac = float64(r.x+r.w-x-1) / float64(max(r.axis, 1))
+			cols := r.x + r.w - x - 1
+			if r.sepX >= r.x+r.w { // the separator is on its right
+				cols = x - r.x
+			}
+			l.Frac = float64(cols) / float64(max(r.axis, 1))
 		case "split":
 			l.Frac = float64(r.y+r.h-y) / float64(max(r.axis, 1))
 		}

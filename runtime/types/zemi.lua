@@ -22,7 +22,8 @@
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
 ---@alias zemi.Scope "user"|"project"
----@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"
+--- The regions the default layout draws; a layout may draw any other name.
+---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
@@ -101,7 +102,9 @@ function zemi.config.reload() end
 zemi.keymap = {}
 
 --- Bind a key or a key sequence. The right-hand side is a function, a
---- command name, or a host action ("zemi.ui.scroll.up"). Keys may be
+--- command name, or a host action ("zemi.ui.scroll.up"), which may take an
+--- argument after a space ("zemi.ui.scroll.up sidebar" scrolls the layout
+--- node with that id; without one, the stage's scrolled region). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
 --- (`<leader>` is the `keymap.leader` setting, ctrl+g by default). Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix
@@ -403,6 +406,115 @@ function zemi.ui.widget.register(spec) end
 ---@return zemi.WidgetInfo[]
 function zemi.ui.widget.list() end
 
+--- A size along the parent box's direction: whole cells, "N%" of the box's
+--- cells after separators, "fill" (a share of what is left, by `weight`) or
+--- "content" (the rows a region, bar or composer draws; in a col only).
+---@alias zemi.Size integer|string
+
+---@alias zemi.LayoutNode
+---| zemi.LayoutBox
+---| zemi.LayoutRegion
+---| zemi.LayoutBar
+---| zemi.LayoutComposer
+---| zemi.LayoutWindows
+---| zemi.LayoutSpacer
+
+--- Fields every node takes. A box too small for its children takes cells
+--- from "fill" children first, then percent, content and cells, the last
+--- child first: down to `min`, then to 0.
+---@class zemi.LayoutBase
+---@field id? string Unique; names the node for rects, scroll actions and float `relative`.
+---@field size? zemi.Size Default: "fill" for a box, a window slot and anything in a row; 1 for a spacer; "content" otherwise.
+---@field weight? integer A "fill" node's share, default 1.
+---@field min? integer
+---@field max? integer
+---@field hidden? boolean Takes no cells and draws nothing.
+---@field collapse? boolean Hidden when its box cannot give every child its `min` (the last collapsing child first), instead of squeezing them.
+---@field stage? boolean Prompts, overlays, toasts, completion popups and centered window floats go over this node (the screen when none, or when it is under 40 by 12 cells). At most one.
+
+--- Children laid out left to right ("row") or top to bottom ("col").
+---@class zemi.LayoutBox: zemi.LayoutBase
+---@field kind "box"
+---@field dir "row"|"col"
+---@field sep? boolean A one-cell separator between children; a window slot's separator drags to resize it.
+---@field children zemi.LayoutNode[]
+
+--- The widgets registered in `region`, stacked by priority. A region is drawn at most once.
+---@class zemi.LayoutRegion: zemi.LayoutBase
+---@field kind "region"
+---@field region zemi.Region
+---@field scroll? "top"|"bottom" Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it; "bottom" follows the tail.
+
+--- One row: the first line of each widget in `left`, then Go's pills (the
+--- focused window, boot failed, stuck, errors), then `right` aligned to the
+--- right edge, truncated first. Without a bar the pills draw over the bottom-left cell.
+---@class zemi.LayoutBar: zemi.LayoutBase
+---@field kind "bar"
+---@field left string Region name.
+---@field right string Region name.
+
+--- zemi's own editor. Exactly one per layout, never hidden.
+---@class zemi.LayoutComposer: zemi.LayoutBase
+---@field kind "composer"
+
+--- Where windows of that kind go: one child per shown window, its `frac`
+--- of the box's cells or an equal fill share. Windows of a kind with no slot
+--- float over the stage.
+---@class zemi.LayoutWindows: zemi.LayoutBase
+---@field kind "windows"
+---@field slot "split"|"vsplit"
+
+---@class zemi.LayoutSpacer: zemi.LayoutBase
+---@field kind "spacer"
+
+--- A region drawn over the tree in list order, like a neovim float: its
+--- `anchor` corner sits at the same corner of the `relative` node, moved
+--- `row` rows down and `col` columns right, kept on screen. It never covers
+--- the composer or the statusline's alarm pills.
+---@class zemi.LayoutFloat
+---@field id? string
+---@field region zemi.Region
+---@field relative? string A node id, "stage" (default) or "screen".
+---@field anchor? "NW"|"NE"|"SW"|"SE" Default "NW".
+---@field row? integer
+---@field col? integer
+---@field width? integer|string Cells, "N%" of the relative node, or "content" (default: its widest row).
+---@field height? integer|string Cells, "N%", or "content" (default: its rows).
+---@field hidden? boolean
+
+---@class zemi.Layout
+---@field root zemi.LayoutBox
+---@field floats? zemi.LayoutFloat[]
+
+--- Cells on the last frame, 0-based.
+---@class zemi.Rect
+---@field x integer
+---@field y integer
+---@field width integer
+---@field height integer
+
+---@class zemi.ui.layout
+zemi.ui.layout = {}
+
+--- Replace the screen layout (DESIGN §8). The shipped UI sets the default
+--- (defaultui/layout.lua) and user config may replace it; plugin, project
+--- and learned code are refused. Raises on a malformed layout: an unknown
+--- kind or field, no composer or two, a region drawn twice, a duplicate id,
+--- a bad size, min over max, more than 64 nodes or 8 levels. `/reload`
+--- keeps the old layout until the replay sets one; a replay that sets none
+--- draws zemi's built-in fallback.
+---@param layout zemi.Layout
+function zemi.ui.layout.set(layout) end
+
+--- The layout table last set, nil when the built-in fallback draws.
+---@return zemi.Layout|nil
+function zemi.ui.layout.get() end
+
+--- Where the last frame drew each node and float with an id, plus "stage"
+--- and "composer".
+---@return table<string, zemi.Rect>
+function zemi.ui.layout.rects() end
+
 ---@class zemi.ui.theme
 zemi.ui.theme = {}
 
@@ -487,7 +599,7 @@ zemi.win = {}
 
 ---@class zemi.WinSpec
 ---@field cmd string Run with sh -c in the project directory.
----@field kind? "split"|"vsplit"|"float" Below the chat (default), beside it, or over it.
+---@field kind? "split"|"vsplit"|"float" In the layout's split (default) or vsplit slot, by default below the chat and beside it, or over it.
 ---@field title? string Default: the command; the program's own title replaces it.
 ---@field cols? integer Float only: requested width.
 ---@field rows? integer Float only: requested height.

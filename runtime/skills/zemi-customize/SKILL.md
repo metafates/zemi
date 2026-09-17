@@ -93,8 +93,53 @@ Registering a widget with a builtin id replaces it; a new id adds one. Builtin i
 `splash`, `chat`, `working` (the activity row above the composer), `statusline.quit`,
 `statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
 `statusline.learn`, `statusline.keys`, `statusline.scroll`, `statusline.info`. Regions: `header`,
-`chat`, `working`, `statusline.left`, `statusline.right`. zemi reloads config on its own when these files
+`chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
 change; `/reload` forces it.
+
+Where things go is a layout tree, `defaultui/layout.lua` by default. `zemi.ui.layout.set`
+in `init.lua` replaces it whole (the types file has every field): boxes (`dir = "row"` or
+`"col"`, `sep`) hold a `region`, the one `composer`, a statusline `bar`, window `slot`s
+and `spacer`s, each sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with
+`min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and
+toasts go. `floats` put a region over the tree. A scrolled region takes keys by id:
+
+```lua
+-- <user config>/init.lua: statusline on top, a todo sidebar left of the chat
+zemi.ui.widget.register({
+  id = "user.todos", region = "sidebar",
+  render = function(ctx)
+    local rows = {}
+    for _, td in ipairs(ctx.todos) do rows[#rows + 1] = { { text = td.content, hl = "Comment" } } end
+    return #rows > 0 and rows or { { { text = "no todos" } } }
+  end,
+})
+local layout = {
+  root = { kind = "box", dir = "col", children = {
+    { kind = "bar", left = "statusline.left", right = "statusline.right" },
+    { kind = "box", dir = "row", sep = true, children = {
+      { kind = "region", id = "sidebar", region = "sidebar", size = 30, min = 20, collapse = true, scroll = "top" },
+      { kind = "box", dir = "col", stage = true, min = 40, children = {
+        { kind = "region", region = "header" },
+        { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
+        { kind = "windows", slot = "split" },
+        { kind = "region", region = "working" },
+        { kind = "composer" },
+      } },
+      { kind = "windows", slot = "vsplit" },
+    } },
+  } },
+}
+zemi.ui.layout.set(layout)
+zemi.keymap.set("<leader>b", function() -- toggle the sidebar
+  local side = layout.root.children[2].children[1]
+  side.hidden = not side.hidden
+  zemi.ui.layout.set(layout)
+end, { desc = "toggle the sidebar" })
+zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the sidebar" })
+```
+
+Keep a `windows` slot of each kind, or windows opened by the model float over the stage.
+Check the result with `zemi.ui.screenshot()` and `zemi.ui.layout.rects()`.
 
 The shipped UI is Lua too: `types/zemi/defaultui/` under the data directory (the system
 prompt names the exact path; rewritten on every start) holds the theme (`theme.lua`), the

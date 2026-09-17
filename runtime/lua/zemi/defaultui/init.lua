@@ -8,10 +8,13 @@ require("zemi.defaultui.statusline")
 require("zemi.defaultui.working")
 require("zemi.defaultui.chat")
 local splash = require("zemi.defaultui.splash")
+require("zemi.defaultui.layout")
 
 -- Default keymap: user config can rebind or zemi.keymap.del these.
 -- Printable keys stay with the composer. The transcript is bottom-anchored, so these keys and the wheel
--- move the viewport; sending snaps back to the tail.
+-- move the viewport; sending snaps back to the tail. A scroll action takes a
+-- node id after a space ("zemi.ui.scroll.up sidebar"); without one it moves
+-- the stage's scrolled region.
 zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "show thinking and every tool call" })
 zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
 zemi.keymap.set("shift+tab", "zemi.permission.mode.prev", { desc = "previous permission mode" })

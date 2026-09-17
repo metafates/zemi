@@ -156,7 +156,7 @@ func (a *App) submitComposer() {
 	if text == "" {
 		return
 	}
-	a.chatFollow = true
+	a.followStage()
 	if strings.HasPrefix(text, "/") {
 		a.runSlashCommand(text)
 		return

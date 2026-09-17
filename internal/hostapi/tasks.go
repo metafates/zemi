@@ -239,7 +239,7 @@ func (h *Host) MessageAgent(id, text string) error {
 		return err
 	}
 	if h.ViewedAgent() == run.id {
-		h.scrollChat("bottom")
+		h.scroll("bottom", "")
 		h.refresh()
 	}
 	return nil
@@ -335,7 +335,7 @@ func (h *Host) ViewAgent(id string) error {
 	h.tMu.Lock()
 	h.view = id
 	h.tMu.Unlock()
-	h.scrollChat("bottom")
+	h.scroll("bottom", "")
 	h.refresh()
 	return nil
 }

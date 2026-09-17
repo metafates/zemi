@@ -34,12 +34,13 @@ func TestHealthLuaChecks(t *testing.T) {
 func TestHealthChecks(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.reflectErr = "reflector: no JSON object in output"
+	runUser(t, h.RT, `zemi.ui.widget.register({ id = "lost", region = "nowhere", render = function() return {} end })`)
 	got := map[string]healthCheck{}
 	for _, c := range h.healthChecks() {
 		got[c.name] = c
 	}
 	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok",
+		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
 	} {
 		if got[name].level != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)

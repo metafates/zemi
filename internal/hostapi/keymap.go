@@ -57,12 +57,14 @@ func (h *Host) keySeq(key string) (string, error) {
 }
 
 // resolveRHS turns a string right-hand side into a command reference or a
-// dotted host-API call, validating at bind time (DESIGN §6.2).
+// dotted host-API call, validating at bind time (DESIGN §6.2). A host call
+// may carry an argument after a space: "zemi.ui.scroll.up sidebar".
 func (h *Host) resolveRHS(s string) (RHS, error) {
 	if cmd := h.Commands.Lookup(s); cmd != nil {
 		return RHS{Command: cmd.Name}, nil
 	}
-	fn, ok := h.hostActions[s]
+	name, _, _ := strings.Cut(s, " ")
+	fn, ok := h.hostActions[name]
 	if !ok {
 		return RHS{}, nil // unknown: empty RHS marks it
 	}

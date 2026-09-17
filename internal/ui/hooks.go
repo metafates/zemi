@@ -220,8 +220,8 @@ func (a *App) publishComposer() {
 	a.host.SetComposerSnapshot(a.composer.text, a.composer.cursor)
 }
 
-// ScrollChat moves the transcript viewport (zemi.ui.scroll.* host
-// actions); posted to the UI goroutine like every other hook.
-func (a *App) ScrollChat(kind string) {
-	a.do(func() { a.applyChatScroll(kind) })
+// Scroll implements hostapi.UIHooks (zemi.ui.scroll.* host actions);
+// posted to the UI goroutine like every other hook.
+func (a *App) Scroll(kind, id string) {
+	a.do(func() { a.applyScroll(kind, id) })
 }

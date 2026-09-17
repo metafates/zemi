@@ -109,30 +109,112 @@ type laid struct {
 	// own last draw could never shrink.
 	rows int
 	sep  bool // a separator column left of it
-	axis int  // a window: the cells its box shares out, what its frac is of
-	kids []laid
+	// sepAfter: a separator column right of it, which a window without
+	// one on its left drags
+	sepAfter bool
+	axis     int // a window: the cells its box shares out, what its frac is of
+	kids     []laid
 }
 
-// layout solves the layout tree for a w by h frame and finds the stage, the
-// whole frame when no node claims it.
-func (a *App) layout(w, h int) (laid, uv.Rectangle) {
-	root := a.solve(hostapi.DefaultLayout, uv.Rect(0, 0, w, h))
-	stage := uv.Rect(0, 0, w, h)
-	var find func(l laid) bool
-	find = func(l laid) bool {
-		if l.node.Stage && l.wn == nil {
-			stage = l.rect
-			return true
+// screenLayout is the layout solved for one frame.
+type screenLayout struct {
+	root  laid
+	stage uv.Rectangle
+	// rects holds every node with an id, "stage", "screen" and "composer"
+	rects map[string]uv.Rectangle
+	// scroll is the scrolled region actions without an id move: the first
+	// inside the stage, else the first in the tree
+	scroll string
+	slots  map[string]bool // window kinds the tree has a slot for
+	bar    bool
+	floats []placedFloat
+}
+
+// placedFloat is a Lua float's region with the cells it renders at and
+// where it goes, before its content is measured.
+type placedFloat struct {
+	f             hostapi.LayoutFloat
+	rel           uv.Rectangle
+	width, height int // render size
+}
+
+// layout solves the layout in force for a w by h frame.
+func (a *App) layout(w, h int) screenLayout {
+	spec := a.host.Layout()
+	screen := uv.Rect(0, 0, w, h)
+	s := screenLayout{root: a.solve(spec.Root, screen), stage: screen, rects: map[string]uv.Rectangle{"screen": screen}, slots: map[string]bool{}}
+	staged := false // the scroll node chosen is inside the stage
+	var walk func(l laid, inStage bool)
+	walk = func(l laid, inStage bool) {
+		n := l.node
+		if l.wn != nil {
+			return
 		}
-		return slices.ContainsFunc(l.kids, find)
+		if n.Stage {
+			s.stage, inStage = l.rect, true
+		}
+		if n.ID != "" {
+			s.rects[n.ID] = l.rect
+		}
+		switch n.Kind {
+		case "composer":
+			s.rects["composer"] = l.rect
+		case "bar":
+			s.bar = true
+		case "region":
+			if n.Scroll != "" && (s.scroll == "" || inStage && !staged) {
+				s.scroll, staged = n.ID, inStage
+			}
+		}
+		for _, k := range l.kids {
+			walk(k, inStage)
+		}
 	}
-	find(root)
-	return root, stage
+	walk(s.root, false)
+	// the solved tree has no node for a slot without a shown window
+	var slots func(n *hostapi.LayoutNode)
+	slots = func(n *hostapi.LayoutNode) {
+		if n.Kind == "windows" && !n.Hidden {
+			s.slots[n.Slot] = true
+		}
+		for _, c := range n.Children {
+			if !c.Hidden {
+				slots(c)
+			}
+		}
+	}
+	slots(spec.Root)
+	s.rects["stage"] = s.stage
+	for _, f := range spec.Floats {
+		rel, ok := s.rects[f.Relative]
+		if f.Hidden || !ok {
+			continue
+		}
+		pf := placedFloat{f: f, rel: rel}
+		pf.width = floatAxis(f.Width, rel.Dx())
+		pf.height = floatAxis(f.Height, rel.Dy())
+		s.floats = append(s.floats, pf)
+	}
+	return s
+}
+
+// floatAxis is a float's render cells along one axis of its relative node:
+// cells, a percent of it, or all of it for content (the content then
+// takes what it draws).
+func floatAxis(sz hostapi.Size, rel int) int {
+	switch sz.Kind {
+	case hostapi.SizeCells:
+		return sz.N
+	case hostapi.SizePercent:
+		return (sz.N*rel + 50) / 100
+	}
+	return rel
 }
 
 // solve places n's children inside r. A windows slot becomes one child per
 // shown window of its kind: its frac of the box's cells, else a fill share
-// weighing the same as its fill siblings.
+// weighing the same as its fill siblings. While the children's mins do not
+// fit, the last collapsing child is hidden for the frame.
 func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	l := laid{node: n, rect: r, rows: r.Dy()}
 	if n.Kind != "box" {
@@ -149,39 +231,58 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	}
 	var items []item
 	for _, c := range n.Children {
-		if c.Kind != "windows" {
+		switch {
+		case c.Hidden:
+		case c.Kind != "windows":
 			items = append(items, item{node: c})
-			continue
-		}
-		for _, wn := range a.shownWins(c.Slot) {
-			items = append(items, item{node: c, wn: wn})
-		}
-	}
-	avail := length
-	if n.Sep {
-		avail -= max(len(items)-1, 0)
-	}
-	avail = max(avail, 0)
-	kids := make([]spanKid, len(items))
-	for i, it := range items {
-		c := it.node
-		if it.wn == nil {
-			kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
-			if c.Size.Kind == hostapi.SizeContent && !row {
-				kids[i].want = a.measure(c, cross)
+		default:
+			for _, wn := range a.shownWins(c.Slot) {
+				items = append(items, item{node: c, wn: wn})
 			}
-			continue
 		}
-		kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeFill}, min: map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]}
-		if f := it.wn.Layout().Frac; f > 0 {
-			kids[i].size = hostapi.Size{Kind: hostapi.SizeCells, N: int(math.Round(f * float64(avail)))}
+	}
+	var sizes []int
+	var kids []spanKid
+	avail := 0
+	for {
+		avail = length
+		if n.Sep {
+			avail -= max(len(items)-1, 0)
 		}
+		avail = max(avail, 0)
+		kids = make([]spanKid, len(items))
+		for i, it := range items {
+			c := it.node
+			if it.wn == nil {
+				kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
+				if c.Size.Kind == hostapi.SizeContent && !row {
+					kids[i].want = a.measure(c, cross)
+				}
+				continue
+			}
+			kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeFill}, min: map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]}
+			if f := it.wn.Layout().Frac; f > 0 {
+				kids[i].size = hostapi.Size{Kind: hostapi.SizeCells, N: int(math.Round(f * float64(avail)))}
+			}
+		}
+		mins, gone := 0, -1
+		for i, it := range items {
+			mins += kids[i].min
+			if it.wn == nil && it.node.Collapse {
+				gone = i
+			}
+		}
+		if mins <= avail || gone < 0 {
+			sizes = span(avail, kids)
+			break
+		}
+		items = slices.Delete(items, gone, gone+1)
 	}
 	pos := r.Min.Y
 	if row {
 		pos = r.Min.X
 	}
-	for i, size := range span(avail, kids) {
+	for i, size := range sizes {
 		if i > 0 && n.Sep {
 			pos++
 		}
@@ -195,6 +296,7 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 		}
 		k.wn, k.axis = items[i].wn, avail
 		k.sep = row && n.Sep && i > 0
+		k.sepAfter = row && n.Sep && i < len(sizes)-1
 		l.kids = append(l.kids, k)
 		pos += size
 	}
@@ -202,8 +304,6 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 }
 
 // measure is the rows a content-sized node draws at width.
-// NOTE: content is measured along a column only; a content node in a row
-// takes no cells.
 func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 	switch n.Kind {
 	case "region":
@@ -229,7 +329,7 @@ func (a *App) shownWidgets() []shownWidget {
 	if a.width <= 0 || a.height <= 0 {
 		return nil
 	}
-	root, _ := a.layout(a.width, a.height)
+	s := a.layout(a.width, a.height)
 	var out []shownWidget
 	add := func(region string, w, h int) {
 		for _, wg := range a.host.Widgets.InRegion(region) {
@@ -249,7 +349,10 @@ func (a *App) shownWidgets() []shownWidget {
 			walk(k)
 		}
 	}
-	walk(root)
+	walk(s.root)
+	for _, f := range s.floats {
+		add(f.f.Region, f.width, f.height)
+	}
 	return out
 }
 
@@ -284,7 +387,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 			rows = append(rows, a.paint(k)...)
 		}
 	case n.Kind == "region" && n.Scroll != "":
-		rows = a.paintChat(n.Region, w, h)
+		rows = a.paintScrolled(n, l.rect)
 	case n.Kind == "region":
 		rows = a.regionLines(n.Region, w)
 		for i, row := range rows {
@@ -303,28 +406,49 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	return rows[:h]
 }
 
-// paintChat draws the scrolled region h rows tall (DESIGN §8 scrollback):
-// follow pins the window to the tail (chatTop may go negative when content
-// is shorter than the viewport, which bottom-anchors it); otherwise chatTop
-// is the absolute first visible row, clamped so content growth or a
-// narrower rewrap never shows blank rows.
-func (a *App) paintChat(region string, w, h int) [][]hostapi.Segment {
-	chat := a.regionLines(region, w)
-	a.chatRows, a.chatViewH = len(chat), h
-	if a.chatFollow {
-		a.chatTop = a.chatRows - h
+// scrollState is where a scrolled region's viewport is (DESIGN §8
+// scrollback). follow pins it to the tail (top may go negative when the
+// content is shorter than the viewport, which bottom-anchors it);
+// otherwise top is the absolute first visible row, clamped so content
+// growth or a narrower rewrap never shows blank rows.
+type scrollState struct {
+	top, rows, viewH int
+	follow, bottom   bool
+	rect             uv.Rectangle // where it was drawn on the last frame
+}
+
+// paintScrolled draws a scrolled region into r.
+func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
+	w, h := r.Dx(), r.Dy()
+	st := a.scrollOf(n)
+	lines := a.regionLines(n.Region, w)
+	st.rows, st.viewH, st.rect = len(lines), h, r
+	a.scrollIDs = append(a.scrollIDs, n.ID)
+	if st.follow {
+		st.top = st.rows - h
 	} else {
-		a.chatTop = min(a.chatTop, max(0, a.chatRows-h))
+		st.top = max(0, min(st.top, st.rows-h))
 	}
 	rows := make([][]hostapi.Segment, h)
 	for i := range rows {
 		var row []hostapi.Segment
-		if j := a.chatTop + i; j >= 0 && j < len(chat) {
-			row = truncateSegs(chat[j], w)
+		if j := st.top + i; j >= 0 && j < len(lines) {
+			row = truncateSegs(lines[j], w)
 		}
 		rows[i] = padSegs(row, w)
 	}
 	return rows
+}
+
+// scrollOf is a scrolled region's state, a "bottom" one following its tail
+// from the start.
+func (a *App) scrollOf(n *hostapi.LayoutNode) *scrollState {
+	st := a.scrolls[n.ID]
+	if st == nil || st.bottom != (n.Scroll == "bottom") {
+		st = &scrollState{follow: n.Scroll == "bottom", bottom: n.Scroll == "bottom"}
+		a.scrolls[n.ID] = st
+	}
+	return st
 }
 
 // paintWindow draws a window a slot expanded into: its title row, then its
@@ -335,10 +459,83 @@ func (a *App) paintWindow(l laid) [][]hostapi.Segment {
 		return nil
 	}
 	sepX := -1
-	if l.sep {
+	switch {
+	case l.sep:
 		sepX = r.Min.X - 1
+	case l.sepAfter:
+		sepX = r.Max.X
 	}
 	l.wn.Resize(r.Dx(), r.Dy()-1)
 	a.winRects = append(a.winRects, winRect{id: l.wn.ID, x: r.Min.X, y: r.Min.Y + 1, w: r.Dx(), h: r.Dy() - 1, titleY: r.Min.Y, sepX: sepX, axis: l.axis})
 	return a.windowRows(l.wn, r.Dx(), r.Dy()-1)
+}
+
+// paintFloats draws the Lua floats over rows in list order, each opaque at
+// its content's size or the size it asked for, and records the ones with
+// an id. The composer and the statusline's alarm pills stay on top: they
+// are how a broken layout gets fixed.
+func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
+	if len(s.floats) == 0 {
+		return
+	}
+	type kept struct {
+		x, y int
+		segs []hostapi.Segment
+	}
+	var keep []kept
+	if c, ok := s.rects["composer"]; ok {
+		for y := c.Min.Y; y < c.Max.Y && y < len(rows); y++ {
+			keep = append(keep, kept{c.Min.X, y, truncateSegs(dropCells(rows[y], c.Min.X), c.Dx())})
+		}
+	}
+	for y, row := range rows {
+		x := 0
+		for _, sg := range row {
+			if sg.Widget == "" && sg.Click != "" { // a Go pill
+				keep = append(keep, kept{x, y, []hostapi.Segment{sg}})
+			}
+			x += segsWidth([]hostapi.Segment{sg})
+		}
+	}
+	for _, pf := range s.floats {
+		f := pf.f
+		lines := a.regionLines(f.Region, pf.width)
+		fw, fh := pf.width, pf.height
+		if f.Width.Kind == hostapi.SizeContent {
+			fw = 0
+			for _, l := range lines {
+				fw = max(fw, segsWidth(l))
+			}
+			fw = min(fw, pf.width)
+		}
+		if f.Height.Kind == hostapi.SizeContent {
+			fh = min(len(lines), pf.height)
+		}
+		if fw <= 0 || fh <= 0 {
+			continue
+		}
+		x, y := pf.rel.Min.X+f.Col, pf.rel.Min.Y+f.Row
+		if strings.HasSuffix(f.Anchor, "E") {
+			x = pf.rel.Max.X - fw + f.Col
+		}
+		if strings.HasPrefix(f.Anchor, "S") {
+			y = pf.rel.Max.Y - fh + f.Row
+		}
+		x, y = max(0, min(x, w-fw)), max(0, min(y, h-fh))
+		box := make([][]hostapi.Segment, fh)
+		for i := range box {
+			var line []hostapi.Segment
+			if i < len(lines) {
+				line = truncateSegs(lines[i], fw)
+			}
+			box[i] = padSegs(line, fw)
+		}
+		placeBox(rows, box, x, y, w)
+		if f.ID != "" {
+			s.rects[f.ID] = uv.Rect(x, y, fw, fh)
+		}
+	}
+	for _, k := range keep {
+		placeBox(rows, [][]hostapi.Segment{k.segs}, k.x, k.y, w)
+	}
 }

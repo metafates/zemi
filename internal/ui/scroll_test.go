@@ -39,7 +39,7 @@ func TestChatScrollKeys(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	if !app.chatFollow {
+	if !app.scrolls["chat"].follow {
 		t.Fatalf("expected tail follow")
 	}
 	if !strings.Contains(app.Frame(), "reply 30") {
@@ -47,7 +47,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if app.chatFollow {
+	if app.scrolls["chat"].follow {
 		t.Fatalf("pgup should leave tail follow")
 	}
 	if strings.Contains(app.Frame(), "reply 30") {
@@ -55,7 +55,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
-	if !app.chatFollow {
+	if !app.scrolls["chat"].follow {
 		t.Fatalf("pgdown into the bottom should re-arm follow")
 	}
 	if !strings.Contains(app.Frame(), "reply 30") {
@@ -63,7 +63,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
-	if app.chatFollow || app.chatTop != 0 {
+	if app.scrolls["chat"].follow || app.scrolls["chat"].top != 0 {
 		t.Fatalf("ctrl+home should pin the first row")
 	}
 	if !strings.Contains(app.Frame(), "message 1") {
@@ -71,7 +71,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd, Mod: tea.ModCtrl})
-	if !app.chatFollow {
+	if !app.scrolls["chat"].follow {
 		t.Fatalf("ctrl+end should re-arm follow")
 	}
 }
@@ -85,13 +85,13 @@ func TestChatScrollWheel(t *testing.T) {
 	app.Frame()
 
 	app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
-	if app.chatFollow {
+	if app.scrolls["chat"].follow {
 		t.Fatalf("wheel up should scroll off the tail")
 	}
 	for range 200 {
 		app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	}
-	if !app.chatFollow {
+	if !app.scrolls["chat"].follow {
 		t.Fatalf("wheel down should re-arm follow at the bottom")
 	}
 }
@@ -106,7 +106,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	app.Frame()
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	top := app.chatTop
+	top := app.scrolls["chat"].top
 	before := app.Frame()
 
 	for i := 31; i <= 35; i++ {
@@ -115,12 +115,12 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	app.renderSync(t)
 	after := app.Frame()
 
-	if app.chatFollow {
+	if app.scrolls["chat"].follow {
 		t.Fatalf("new lines must not yank a scrolled view")
 	}
 	// the chat window must not move; the statusline may, its scroll
 	// indicator counts what is now below
-	if app.chatTop != top || withoutStatus(after) != withoutStatus(before) {
+	if app.scrolls["chat"].top != top || withoutStatus(after) != withoutStatus(before) {
 		t.Fatalf("scrolled frame should stay anchored as content grows")
 	}
 	if !strings.Contains(after, "ctrl+end") {
@@ -142,12 +142,12 @@ func TestChatScrollSubmitFollows(t *testing.T) {
 	app.Frame()
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if app.chatFollow {
+	if app.scrolls["chat"].follow {
 		t.Fatalf("precondition: scrolled off the tail")
 	}
 	app.composer.text = "next question"
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !app.chatFollow {
+	if !app.scrolls["chat"].follow {
 		t.Fatalf("submit should snap back to the tail")
 	}
 }
@@ -162,7 +162,7 @@ func TestChatScrollShortContent(t *testing.T) {
 
 	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyPgUp}, {Code: tea.KeyHome, Mod: tea.ModCtrl}} {
 		press(t, app, key)
-		if !app.chatFollow {
+		if !app.scrolls["chat"].follow {
 			t.Fatalf("short content cannot scroll: %s", key)
 		}
 	}

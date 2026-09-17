@@ -37,7 +37,9 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    padding dropped. Save one before a change and one after and diff them; that is the whole
    loop for UI work: edit config, `zemi.config.reload()`, screenshot, compare. Colors and
    attributes do not survive it, so for a highlight question read the theme with
-   `zemi.ui.theme.get()` instead.
+   `zemi.ui.theme.get()` instead. For a layout question, `zemi.ui.layout.rects()` says
+   where each node with an id, the stage and the composer landed, and `/health` names
+   widgets whose region the layout does not draw.
 
 5. Read the log of the run (reading the log directory asks: MCP and LSP server output is
    logged as written and may hold tokens). One file per start:

@@ -529,7 +529,7 @@ func (t *windowTool) Info() fantasy.ToolInfo {
 		Description: `Run a program in a window inside zemi's screen and keep working while it runs: a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
 
 Actions:
-- open: run cmd; returns the window id. kind split goes below the chat, vsplit is a full-height sidebar, float is over everything.
+- open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
 - set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
 - hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.
 - focus: give the user's keys to the window.
@@ -548,7 +548,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 			"title":      map[string]any{"type": "string"},
 			"hidden":     map[string]any{"type": "boolean"},
 			"focus":      map[string]any{"type": "boolean", "description": "give the user's keys to the window right away"},
-			"frac":       map[string]any{"type": "number", "description": "0.1 to 0.9: a vsplit's share of the columns beside the chat, a split's of the rows under it; unset, the window takes an equal share of what is left"},
+			"frac":       map[string]any{"type": "number", "description": "0.1 to 0.9: a split or vsplit's share of the screen area it sits in (by default the rows of the chat area, the columns of the screen); unset, the window takes an equal share of what is left"},
 			"cols":       map[string]any{"type": "number", "description": "a float's width"},
 			"rows":       map[string]any{"type": "number", "description": "a float's height"},
 			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window; set: a float's left column (-1 centers)"},

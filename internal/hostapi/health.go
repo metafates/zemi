@@ -188,6 +188,20 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "lua", "runtime healthy")
 	}
 
+	// a widget in a region no node draws is the first thing a relayout breaks
+	drawn := h.Layout().Regions()
+	var undrawn []string
+	for _, w := range h.Widgets.List() {
+		if !drawn[w.Region] {
+			undrawn = append(undrawn, w.ID+" ("+w.Region+")")
+		}
+	}
+	if len(undrawn) > 0 {
+		add("warn", "layout", "the layout draws no region for: "+strings.Join(undrawn, ", "))
+	} else {
+		add("ok", "layout", "every widget's region is drawn")
+	}
+
 	h.errs.mu.Lock()
 	nerr := len(h.errs.entries)
 	h.errs.mu.Unlock()

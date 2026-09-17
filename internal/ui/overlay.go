@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -481,18 +482,18 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 
 // spliceBox composites box rows centered over the chat area; what the box
 // does not cover stays visible.
-func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
+func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectangle, w int) [][]hostapi.Segment {
 	if len(rows) == 0 || len(box) == 0 {
 		return rows
 	}
-	chatBottom := min(headerH+chatH, len(rows))
-	bh := min(len(box), chatBottom-headerH)
+	bottom := min(area.Max.Y, len(rows))
+	bh := min(len(box), bottom-area.Min.Y)
 	if bh <= 0 {
 		return rows
 	}
-	y0 := headerH + (chatBottom-headerH-bh)/2
+	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
 	for i := range bh {
-		x0 := max((w-segsWidth(box[i]))/2, 1)
+		x0 := area.Min.X + max((area.Dx()-segsWidth(box[i]))/2, 1)
 		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i])}, x0-1, y0+i, w)
 	}
 	return rows
@@ -501,11 +502,11 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, w, headerH, ch
 // anchorBottom lays box over the bottom rows of the chat area at the left
 // edge, just above the statusline that opened it; what it does not cover
 // stays visible.
-func anchorBottom(rows, box [][]hostapi.Segment, w, headerH, chatH int) [][]hostapi.Segment {
-	bottom := min(headerH+chatH, len(rows))
-	y0 := max(headerH, bottom-len(box))
+func anchorBottom(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) [][]hostapi.Segment {
+	bottom := min(area.Max.Y, len(rows))
+	y0 := max(area.Min.Y, bottom-len(box))
 	for i := y0; i < bottom; i++ {
-		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i-y0])}, 0, i, w)
+		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i-y0])}, area.Min.X, i, w)
 	}
 	return rows
 }

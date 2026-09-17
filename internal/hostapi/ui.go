@@ -53,6 +53,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("widget", widget)
+	tb.RawSetString("layout", h.layoutNamespace(L))
 
 	theme := L.NewTable()
 	theme.RawSetString("register", L.NewFunction(func(L *glua.LState) int {

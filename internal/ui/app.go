@@ -9,6 +9,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -54,13 +55,12 @@ type App struct {
 	histLoaded bool
 	histSeed   []string // the session's own messages, dropped when it changes
 
-	// Chat scrollback (DESIGN §8): chatFollow pins the transcript to the
-	// tail; scrolling up freezes chatTop (the absolute first visible row
-	// of the wrapped chat region) until the user scrolls back or submits.
-	chatFollow bool
-	chatTop    int
-	chatRows   int
-	chatViewH  int
+	// Scrolled regions by layout node id (DESIGN §8 scrollback); scrollDef
+	// is the one scroll actions without an id and the wheel outside every
+	// scrolled region move, scrollIDs the ones drawn on the last frame.
+	scrolls   map[string]*scrollState
+	scrollDef string
+	scrollIDs []string
 
 	completion fileCompleter
 	palette    cmdPalette
@@ -84,6 +84,7 @@ type App struct {
 	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	stage          uv.Rectangle        // where the last frame's stage was
+	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
@@ -121,6 +122,7 @@ type App struct {
 	frameMu   sync.Mutex
 	lastFrame string
 	private   []winRect // editor windows' cells, blank in the screenshot
+	rects     map[string]hostapi.Rect
 
 	program   *tea.Program
 	reload    func()
@@ -146,15 +148,15 @@ type widgetCache struct {
 // host.SetUIHooks(app).
 func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 	return &App{
-		host:       host,
-		log:        log,
-		thm:        themeResolver{host: host, sgr: map[string]uv.Style{}},
-		caches:     map[string]*widgetCache{},
-		timeStr:    "--:--",
-		now:        time.Now,
-		chatFollow: true,
-		focused:    true,
-		hooks:      make(chan tea.Msg, hookQueueSize),
+		host:    host,
+		log:     log,
+		thm:     themeResolver{host: host, sgr: map[string]uv.Style{}},
+		caches:  map[string]*widgetCache{},
+		scrolls: map[string]*scrollState{},
+		timeStr: "--:--",
+		now:     time.Now,
+		focused: true,
+		hooks:   make(chan tea.Msg, hookQueueSize),
 	}
 }
 
@@ -363,7 +365,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
 		if step != 0 && !a.wheelChrome(step) {
-			a.scrollChatRows(step * chatWheelStep)
+			a.scrollRows(a.scrollAt(msg.X, msg.Y), step*chatWheelStep)
 		}
 		return a, nil
 	case editorMsg:
@@ -692,58 +694,78 @@ func (a *App) compose(w, h int) string {
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	}
-	root, stage := a.layout(w, h)
-	a.winRects, a.cursor = a.winRects[:0], nil
-	rows := a.paint(root)
+	lay := a.layout(w, h)
+	stage := lay.stage
+	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
+	rows := a.paint(lay.root)
+	a.paintFloats(rows, &lay, w, h)
 
-	// the popup takes the mouse on the whole rows it covers, windows under it included
-	popTop := floatPopup(rows, append(a.completionRows(), a.paletteRows()...), stage, w)
+	// the popup takes the mouse on the cells it covers, windows under it included
+	pop := a.floatPopup(rows, append(a.completionRows(), a.paletteRows()...), lay, w)
 	for i := range a.winRects {
 		r := &a.winRects[i]
-		if r.x >= stage.Max.X || r.x+r.w <= stage.Min.X {
+		if pop.Empty() || r.x >= pop.Max.X || r.x+r.w <= pop.Min.X {
 			continue
 		}
-		r.h = max(0, min(r.h, popTop-r.y))
-		if r.titleY >= popTop {
+		if r.y < pop.Min.Y {
+			r.h = max(0, min(r.h, pop.Min.Y-r.y))
+		} else if r.y < pop.Max.Y {
+			r.h = 0
+		}
+		if r.titleY >= pop.Min.Y && r.titleY < pop.Max.Y {
 			r.titleY = -1
 		}
 	}
-	for _, wn := range a.shownWins(win.KindFloat) {
-		box, x0, y0, r := a.floatBox(wn, w, h, stage.Min.Y, stage.Dy())
+	for _, wn := range a.host.Wins.List() {
+		// a split or vsplit the layout has no slot for floats
+		if l := wn.Layout(); l.Hidden || l.Kind != win.KindFloat && lay.slots[l.Kind] {
+			continue
+		}
+		box, x0, y0, r := a.floatBox(wn, w, h, stage)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
+	}
+	if pills := a.pills(); !lay.bar && len(pills) > 0 {
+		// without a statusline the alarms still show
+		rows = placeBox(rows, [][]hostapi.Segment{pills}, 0, h-1, w)
 	}
 
 	// Modal chrome goes over everything, windows included: Lua overlays,
 	// then the Go-owned prompts, bottom to top (topChrome must match this
 	// order so input reaches the box drawn on top). What lies under the top
 	// box is dimmed, so no text beside it can pass for its chrome (DESIGN §8).
+	// It centers over the stage, or the screen when the stage is too small
+	// for a prompt.
+	area := stage
+	if area.Dx() < 40 || area.Dy() < 12 {
+		area = uv.Rect(0, 0, w, h)
+	}
 	var modals []func()
 	splice := func(box [][]hostapi.Segment) {
-		modals = append(modals, func() { rows = spliceBox(rows, box, w, stage.Min.Y, stage.Dy()) })
+		modals = append(modals, func() { rows = spliceBox(rows, box, area, w) })
 	}
 	for i := range a.overlays {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
 			continue // a detail view replaces the list it opened from
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := overlayBox(ov, w, stage.Dy())
-			modals = append(modals, func() { rows = anchorBottom(rows, box, w, stage.Min.Y, stage.Dy()) })
+			box := overlayBox(ov, area.Dx(), area.Dy())
+			modals = append(modals, func() { rows = anchorBottom(rows, box, area, w) })
 		} else {
-			splice(overlayBox(ov, w, stage.Dy()))
+			splice(overlayBox(ov, area.Dx(), area.Dy()))
 		}
 	}
 	if a.trust != nil {
-		splice(trustBox(a.trust, w, stage.Dy()))
+		splice(trustBox(a.trust, area.Dx(), area.Dy()))
 	}
 	if a.question != nil {
-		splice(questionBox(a.question, w, stage.Dy()))
+		splice(questionBox(a.question, area.Dx(), area.Dy()))
 	}
 	if a.memReview != nil {
-		splice(a.memReviewBox(w, stage.Dy()))
+		splice(a.memReviewBox(area.Dx(), area.Dy()))
 	}
 	if a.permAsk != nil {
-		splice(a.permBox(a.permAsk, w, stage.Dy()))
+		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
 	}
 	// Toasts stack down from the top of the stage, newest highest,
 	// right-aligned over the rows they cover, one blank row apart. They go
@@ -775,7 +797,7 @@ func (a *App) compose(w, h int) string {
 	}
 	a.cursor = a.placeCursor(a.cursor, len(modals) > 0)
 
-	a.lastRows, a.stage = rows, stage
+	a.lastRows, a.stage, a.popRect = rows, stage, pop
 	a.highlightSelection(rows, w)
 	a.highlightHover(rows)
 
@@ -793,10 +815,23 @@ func (a *App) compose(w, h int) string {
 			private = append(private, r)
 		}
 	}
+	rects := make(map[string]hostapi.Rect, len(lay.rects))
+	for id, r := range lay.rects {
+		if id != "screen" {
+			rects[id] = hostapi.Rect{X: r.Min.X, Y: r.Min.Y, Width: r.Dx(), Height: r.Dy()}
+		}
+	}
 	a.frameMu.Lock()
-	a.lastFrame, a.private = out, private
+	a.lastFrame, a.private, a.rects = out, private, rects
 	a.frameMu.Unlock()
 	return out
+}
+
+// LayoutRects implements hostapi.UIHooks from the last composed frame.
+func (a *App) LayoutRects() map[string]hostapi.Rect {
+	a.frameMu.Lock()
+	defer a.frameMu.Unlock()
+	return a.rects
 }
 
 // Screenshot implements hostapi.UIHooks: the screen as plain text, one
@@ -846,69 +881,101 @@ func dimRows(rows [][]hostapi.Segment) {
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of
-// the stage, left-aligned with it. The rows it covers are blanked to the
-// right of the frame (word fragments beside a dropdown read as garbage); a
-// popup taller than the stage is clipped. It returns the first row the
-// popup covers.
-func floatPopup(rows, popup [][]hostapi.Segment, stage uv.Rectangle, w int) int {
-	bottom := min(stage.Max.Y, len(rows))
+// the stage, left-aligned with it, when the stage is above the composer;
+// otherwise beside the composer on the side with more rows, aligned with
+// it. The rows it covers are blanked to the right of the frame (word
+// fragments beside a dropdown read as garbage); a popup taller than its
+// room is clipped. It returns the cells the popup covers.
+func (a *App) floatPopup(rows, popup [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
 	if len(popup) == 0 {
-		return bottom
+		return uv.Rectangle{}
 	}
-	box := hostBox("", "", "", popup, stage.Dx())
-	y0 := max(stage.Min.Y, bottom-len(box))
-	for i := y0; i < bottom; i++ {
-		placeBox(rows, [][]hostapi.Segment{padSegs(box[i-y0], stage.Dx())}, stage.Min.X, i, w)
+	stage, c := lay.stage, lay.rects["composer"]
+	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, len(rows))
+	up := true
+	if stage.Max.Y > c.Min.Y {
+		x, width, top, bottom = c.Min.X, c.Dx(), 0, c.Min.Y
+		if up = c.Min.Y >= len(rows)-c.Max.Y; !up {
+			top, bottom = c.Max.Y, len(rows)
+		}
 	}
-	return y0
+	box := hostBox("", "", "", popup, width)
+	if up {
+		top = max(top, bottom-len(box))
+	} else {
+		bottom = min(bottom, top+len(box))
+	}
+	for i := top; i < bottom; i++ {
+		placeBox(rows, [][]hostapi.Segment{padSegs(box[i-top], width)}, x, i, w)
+	}
+	return uv.Rect(x, top, width, max(bottom-top, 0))
 }
 
-// rowsBelow counts the transcript rows under the viewport while it is off
-// the tail. The altscreen has no scrollbar, so without it nothing says how
-// far up the reader is, or that a running turn is still filling the bottom.
+// rowsBelow counts the rows under the default scrolled region's viewport
+// while it is off the tail. The altscreen has no scrollbar, so without it
+// nothing says how far up the reader is, or that a running turn is still
+// filling the bottom.
 func (a *App) rowsBelow() int {
-	if a.chatFollow {
+	st := a.scrolls[a.scrollDef]
+	if st == nil || st.follow {
 		return 0
 	}
-	return max(0, a.chatRows-a.chatTop-a.chatViewH)
+	return max(0, st.rows-st.top-st.viewH)
 }
 
-// chatStep is one page of transcript scroll with a one-row overlap, from
-// the last composed chat height (compose runs every frame, so the value is
-// at most one frame stale).
-func (a *App) chatStep() int { return max(a.chatViewH-1, 1) }
+// scrollAt is the scrolled region drawn under (x, y), else the default one.
+func (a *App) scrollAt(x, y int) string {
+	for _, id := range a.scrollIDs {
+		if st := a.scrolls[id]; st != nil && (uv.Position{X: x, Y: y}).In(st.rect) {
+			return id
+		}
+	}
+	return a.scrollDef
+}
 
-// scrollChatRows moves the transcript viewport by n rows (negative =
-// older). Scrolling down re-arms tail follow at the bottom; while
-// scrolled up the view stays anchored as new lines arrive.
-func (a *App) scrollChatRows(n int) {
-	if n > 0 && a.chatFollow {
+// scrollRows moves a scrolled region's viewport by n rows (negative =
+// older). Scrolling down re-arms tail follow at the bottom of a "bottom"
+// region; while scrolled up the view stays anchored as new lines arrive.
+func (a *App) scrollRows(id string, n int) {
+	st := a.scrolls[id]
+	if st == nil || n > 0 && st.follow {
 		return
 	}
-	if n < 0 && a.chatFollow {
-		a.chatFollow = false
-		a.chatTop = max(0, a.chatRows-a.chatViewH)
+	if n < 0 && st.follow {
+		st.follow = false
+		st.top = max(0, st.rows-st.viewH)
 	}
-	a.chatTop = max(0, a.chatTop+n)
-	if a.chatTop+a.chatViewH >= a.chatRows {
-		a.chatFollow = true
-	}
+	st.top = max(0, min(st.top+n, st.rows-st.viewH))
+	st.follow = st.bottom && st.top+st.viewH >= st.rows
 	a.frameGen++
 }
 
-// applyChatScroll maps the zemi.ui.scroll.* host actions onto the
-// viewport (up/down = one page, top/bottom = the ends).
-func (a *App) applyChatScroll(kind string) {
+// followStage pins the default scrolled region back to its tail (a submit).
+func (a *App) followStage() {
+	if st := a.scrolls[a.scrollDef]; st != nil && st.bottom {
+		st.follow = true
+	}
+}
+
+// applyScroll maps the zemi.ui.scroll.* host actions onto a scrolled
+// region, the default one when id is "": up and down move a page with a
+// one-row overlap, top and bottom go to the ends.
+func (a *App) applyScroll(kind, id string) {
+	id = cmp.Or(id, a.scrollDef)
+	st := a.scrolls[id]
+	if st == nil {
+		return
+	}
+	page := max(st.viewH-1, 1)
 	switch kind {
 	case "up":
-		a.scrollChatRows(-a.chatStep())
+		a.scrollRows(id, -page)
 	case "down":
-		a.scrollChatRows(a.chatStep())
+		a.scrollRows(id, page)
 	case "top":
-		a.scrollChatRows(-a.chatRows)
+		a.scrollRows(id, -st.rows)
 	case "bottom":
-		a.chatFollow = true
-		a.frameGen++
+		a.scrollRows(id, st.rows)
 	}
 }
 
@@ -953,18 +1020,15 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	return lines
 }
 
-// statusRow builds the one-row statusline: the focused window, the left
-// region's widgets, the pills that report a broken Lua layer, then the right
-// region's widgets aligned to the right edge (DESIGN §8).
-func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
-	left := a.statuslineSegments(leftRegion)
-	right := a.statuslineSegments(rightRegion)
-
+// pills are the Go-drawn statusline pills: the focused window, then what
+// reports a broken Lua layer (DESIGN §8).
+func (a *App) pills() []hostapi.Segment {
+	var out []hostapi.Segment
 	if wn := a.focusedWin(); wn != nil {
-		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)
+		out = append(out, hostapi.Segment{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"})
 	}
 	pill := func(text, click string) {
-		left = append(left, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError", Click: click})
+		out = append(out, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError", Click: click})
 	}
 	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
@@ -975,6 +1039,21 @@ func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment
 	if a.host.HasUnseenErrors() {
 		pill(" errors: /errors ", "errors")
 	}
+	return out
+}
+
+// statusRow builds the one-row statusline: the focused window, the left
+// region's widgets, the pills that report a broken Lua layer, then the right
+// region's widgets aligned to the right edge (DESIGN §8).
+func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
+	left := a.statuslineSegments(leftRegion)
+	right := a.statuslineSegments(rightRegion)
+	pills := a.pills()
+	if len(pills) > 0 && pills[0].HL == "Host:BtnSel" {
+		left = append([]hostapi.Segment{pills[0], {Text: " "}}, left...)
+		pills = pills[1:]
+	}
+	left = append(left, pills...)
 
 	leftW := segsWidth(left)
 	rightW := segsWidth(right)
