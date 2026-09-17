@@ -242,8 +242,8 @@ func TestCompletionScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js"} {
-		if err := os.WriteFile(filepath.Join(dir, f), nil, 0o600); err != nil {
+	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js", ".gitignore"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("node_modules/\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

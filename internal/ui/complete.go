@@ -2,14 +2,13 @@ package ui
 
 import (
 	"cmp"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // fileCompleter is the composer popup listing project files after the
@@ -25,13 +24,6 @@ type fileCompleter struct {
 
 	scanning bool
 	walkGen  int // bumps so stale scan results are dropped
-}
-
-var scanSkipDirs = map[string]bool{
-	".git": true, ".hg": true, ".svn": true, "node_modules": true,
-	"vendor": true, "target": true, "dist": true, "build": true,
-	".venv": true, "venv": true, "__pycache__": true, ".cache": true,
-	"coverage": true, ".idea": true, ".vscode": true,
 }
 
 const scanMaxFiles = 5000
@@ -194,30 +186,10 @@ func (a *App) completionRows() [][]hostapi.Segment {
 	return listRows(items, f.selected, nil, len(items))
 }
 
-// scanFilesCmd walks the directory tree off the UI goroutine.
+// scanFilesCmd lists the project's files off the UI goroutine.
 func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		var files []string
-		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				if p != dir && (scanSkipDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			rel, err := filepath.Rel(dir, p)
-			if err != nil {
-				return nil
-			}
-			files = append(files, rel)
-			if len(files) >= scanMaxFiles {
-				return filepath.SkipAll
-			}
-			return nil
-		})
+		files := tools.ListFiles(dir, scanMaxFiles)
 		slices.Sort(files)
 		return filesScannedMsg{gen: gen, files: files}
 	}

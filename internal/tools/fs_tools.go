@@ -678,6 +678,27 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(out), nil
 }
 
+// ListFiles lists up to limit files under root, relative to it, in no
+// particular order. Hidden directories like .github are listed only when
+// rg is installed; the walker fallback skips them.
+func ListFiles(root string, limit int) []string {
+	var files []string
+	collect := func(rel string) bool {
+		files = append(files, rel)
+		return len(files) < limit
+	}
+	if !ripgrep(context.Background(), root, collect, "--files") {
+		files = files[:0]
+		walk(context.Background(), root, func(_, rel string) error {
+			if !collect(rel) {
+				return filepath.SkipAll
+			}
+			return nil
+		})
+	}
+	return files
+}
+
 // ruledOut reports whether a deny or ask rule covers reading path: glob
 // and grep are gated on their root only, so each hit meets the read rules.
 func (p *Pipeline) ruledOut() func(path string) bool {
