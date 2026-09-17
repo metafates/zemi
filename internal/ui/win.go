@@ -47,6 +47,8 @@ const (
 	minSplitH  = 4
 	minFloatW  = 20
 	minFloatH  = 3
+	// textFloatW is the widest a text float that asked for no size renders
+	textFloatW = 80
 )
 
 // shownWins lists the windows of one kind that are not hidden, in opening
@@ -68,6 +70,9 @@ func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]ho
 	headerH, chatH := stage.Min.Y, stage.Dy()
 	l := wn.Layout()
 	cols, rows := l.Cols, l.Rows
+	if wn.IsText() && (cols <= 0 || rows <= 0) {
+		cols, rows = a.textFloatSize(wn, cols, rows, w)
+	}
 	if cols <= 0 {
 		cols = w * 4 / 5
 	}
@@ -129,11 +134,64 @@ func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment 
 	return rows
 }
 
-// windowRows draws one window: a title row, then its screen, every row
-// padded to width. Rows the screen lacks come out blank.
+// textFloatSize sizes a text float to its body: it renders the text at the
+// widest column the frame allows and takes the cells it used, so the lines
+// it measures are no wider than the box it asks for. floatBox caps both to
+// the frame.
+func (a *App) textFloatSize(wn *win.Window, cols, rows, w int) (int, int) {
+	lines := a.textLines(wn, max(min(w-4, textFloatW), 2))
+	if cols <= 0 {
+		cols = minFloatW
+		for _, line := range lines {
+			cols = max(cols, segsWidth(line))
+		}
+	}
+	if rows <= 0 {
+		rows = max(len(lines), 1)
+	}
+	return cols, rows
+}
+
+// textLines renders a text window's body at width: markdown through the
+// renderer the chat uses, plain text word-wrapped. Both are cached by
+// (text, width), so a frame that changes neither re-renders nothing.
+func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
+	text, md := wn.Content()
+	if md {
+		return a.host.Markdown(text, width)
+	}
+	var out [][]hostapi.Segment
+	// a tab draws as no cell, so it would lose the text's indentation
+	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
+		out = append(out, hostapi.WrapSegs([]hostapi.Segment{{Text: line}}, width)...)
+	}
+	return out
+}
+
+// textRows draws a text window's body: the rendered lines from its scroll
+// offset, which is clamped to what is left to show.
+func (a *App) textRows(wn *win.Window, width, height int) [][]hostapi.Segment {
+	lines := a.textLines(wn, width)
+	top := wn.Top(max(0, len(lines)-height))
+	rows := make([][]hostapi.Segment, 0, height)
+	for y := range height {
+		var row []hostapi.Segment
+		if i := top + y; i < len(lines) {
+			row = lines[i]
+		}
+		rows = append(rows, padSegs(truncateSegs(row, width), width))
+	}
+	return rows
+}
+
+// windowRows draws one window: a title row, then its screen or text, every
+// row padded to width. Rows the screen lacks come out blank.
 func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment {
 	focused := a.focusWin == wn.ID
 	rows := [][]hostapi.Segment{a.winTitleRow(wn, width, focused)}
+	if wn.IsText() {
+		return append(rows, a.textRows(wn, width, height)...)
+	}
 	scr := wn.Screen()
 	if focused && scr.HasCursor {
 		a.cursor = &tea.Cursor{Position: tea.Position{X: scr.CursorX, Y: scr.CursorY}, Shape: tea.CursorShape(scr.CursorShape), Blink: scr.CursorBlink}

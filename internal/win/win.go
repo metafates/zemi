@@ -3,6 +3,8 @@
 // whose screen the UI draws in a split or a float. Windows outlive turns
 // and config reloads; the UI decides where they go, the Manager only knows
 // what they run and what they show. No cgo: the pty is creack/pty.
+// A text window (OpenText) runs nothing: it holds text the UI renders and
+// re-wraps itself, replaced in place while it shows.
 package win
 
 import (
@@ -29,6 +31,7 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 // Kinds are where a window is laid out.
@@ -55,6 +58,10 @@ type Spec struct {
 	Clipboard bool
 	// Wrap confines the command before it starts; nil = unconfined
 	Wrap func(*exec.Cmd) error
+	// Text and Markdown are the body of a text window (Manager.OpenText),
+	// which runs no program; Cmd, Args, Dir, Env and Wrap are unused there.
+	Text     string
+	Markdown bool
 }
 
 // Layout is where and how big a window shows; the UI reads it every frame
@@ -66,6 +73,18 @@ type Layout struct {
 	Cols   int     // float: requested size, 0 = four fifths of the area
 	Rows   int
 	X, Y   int // float: top-left cell of the frame, -1 = centered
+}
+
+// body is a text window's content: no process, no emulator. The UI renders
+// and wraps it every frame, so a replacement redraws in place and a resize
+// re-wraps.
+// NOTE: the view stays where it is when the text grows; a log-like panel
+// that should follow its tail needs a sticky-bottom flag here.
+type body struct {
+	mu   sync.Mutex
+	text string
+	md   bool
+	top  int // first rendered line shown
 }
 
 // Window is one running program and its screen.
@@ -83,6 +102,7 @@ type Window struct {
 	title atomic.Pointer[string] // the program may rename itself (OSC 0/2)
 
 	m     *Manager
+	body  *body      // text window: what the UI draws; nil for a program
 	mu    sync.Mutex // guards term, w, h, place, up
 	term  *vt.Emulator
 	w, h  int
@@ -158,27 +178,118 @@ const (
 	maxClipboard = 1 << 20
 )
 
+// take checks the layout kind and reserves an id for a new window.
+func (m *Manager) take(spec *Spec) (int, error) {
+	switch spec.Kind {
+	case KindSplit, KindVSplit, KindFloat:
+	case "":
+		spec.Kind = KindSplit
+	default:
+		return 0, fmt.Errorf("window: kind %q is not split, vsplit or float", spec.Kind)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// the editor is exempt: the user's ctrl+g must not fail because the model opened eight
+	if spec.Owner != "editor" && len(slices.DeleteFunc(slices.Clone(m.wins), func(w *Window) bool { return w.Owner == "editor" })) >= maxWindows {
+		return 0, fmt.Errorf("window: %d windows are open, close one first", maxWindows)
+	}
+	m.seq++
+	return m.seq, nil
+}
+
+// OpenText opens a window whose body is text the UI renders (markdown when
+// spec.Markdown), not a program: no pty, no emulator, nothing to exit.
+// SetText replaces it in place.
+func (m *Manager) OpenText(spec Spec) (*Window, error) {
+	id, err := m.take(&spec)
+	if err != nil {
+		return nil, err
+	}
+	w := &Window{
+		m: m, ID: id, Owner: spec.Owner, Origin: spec.Origin,
+		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
+		body:   &body{text: sanitize.String(spec.Text), md: spec.Markdown},
+		w:      cmp.Or(spec.Cols, defaultCols), h: cmp.Or(spec.Rows, defaultRows),
+		done: make(chan struct{}),
+	}
+	w.exit.Store(-1)
+	w.SetTitle(cmp.Or(spec.Title, "text"))
+	m.mu.Lock()
+	m.wins = append(m.wins, w)
+	m.mu.Unlock()
+	return w, nil
+}
+
+// IsText reports a window whose body is text, not a program.
+func (w *Window) IsText() bool { return w.body != nil }
+
+// errText refuses what only a program can take.
+var errText = errors.New("window: this window shows text, not a program")
+
+// Content is a text window's text and whether it renders as markdown.
+func (w *Window) Content() (string, bool) {
+	if w.body == nil {
+		return "", false
+	}
+	w.body.mu.Lock()
+	defer w.body.mu.Unlock()
+	return w.body.text, w.body.md
+}
+
+// SetText replaces a text window's body, or adds to it when add is set.
+func (w *Window) SetText(text string, add bool) error {
+	if w.body == nil {
+		return errText
+	}
+	text = sanitize.String(text)
+	w.body.mu.Lock()
+	defer w.body.mu.Unlock()
+	if add {
+		text = w.body.text + text
+	}
+	w.body.text = text
+	return nil
+}
+
+// maxScroll caps a text window's scroll offset, so end and a long run of
+// page keys stay far from an integer overflow.
+const maxScroll = 1 << 30
+
+// Scroll moves a text window's view by lines; the UI clamps it to the
+// rendered text when it draws.
+func (w *Window) Scroll(lines int) {
+	if w.body == nil {
+		return
+	}
+	w.body.mu.Lock()
+	defer w.body.mu.Unlock()
+	w.body.top = max(0, min(w.body.top+lines, maxScroll))
+}
+
+// Top is the first rendered line to draw, clamped to maxTop and kept
+// there, so text that shrank scrolls back into view.
+func (w *Window) Top(maxTop int) int {
+	if w.body == nil {
+		return 0
+	}
+	w.body.mu.Lock()
+	defer w.body.mu.Unlock()
+	w.body.top = max(0, min(w.body.top, maxTop))
+	return w.body.top
+}
+
 // Open starts spec's command in a new pseudo-terminal. The window starts at
 // the requested or default size; the UI resizes it when it lays it out.
 func (m *Manager) Open(spec Spec) (*Window, error) {
 	if strings.TrimSpace(spec.Cmd) == "" {
 		return nil, errors.New("window: command is required")
 	}
-	switch spec.Kind {
-	case KindSplit, KindVSplit, KindFloat:
-	case "":
-		spec.Kind = KindSplit
-	default:
-		return nil, fmt.Errorf("window: kind %q is not split, vsplit or float", spec.Kind)
+	id, err := m.take(&spec)
+	if err != nil {
+		return nil, err
 	}
 	m.mu.Lock()
-	// the editor is exempt: the user's ctrl+g must not fail because the model opened eight
-	if spec.Owner != "editor" && len(slices.DeleteFunc(slices.Clone(m.wins), func(w *Window) bool { return w.Owner == "editor" })) >= maxWindows {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("window: %d windows are open, close one first", maxWindows)
-	}
-	m.seq++
-	id, colors := m.seq, m.colors
+	colors := m.colors
 	m.mu.Unlock()
 
 	cols, rows := spec.Cols, spec.Rows
@@ -471,6 +582,11 @@ func (m *Manager) CloseAll() {
 
 func (w *Window) kill() {
 	w.once.Do(func() {
+		if w.body != nil {
+			w.exit.Store(0) // nothing ran, but a waiter is done waiting
+			close(w.done)
+			return
+		}
 		if !w.Exited() {
 			proc.Hangup(w.cmd)
 			select {
@@ -519,6 +635,9 @@ func (w *Window) Hidden() bool { return w.Layout().Hidden }
 
 // Focus tells the program it gained or lost focus, when it asked to know.
 func (w *Window) Focus(on bool) {
+	if w.body != nil {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if on {
@@ -530,6 +649,9 @@ func (w *Window) Focus(on bool) {
 
 // ScrollbackText is the last n lines that scrolled off the top.
 func (w *Window) ScrollbackText(n int) string {
+	if w.body != nil {
+		return ""
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	sb := w.term.Scrollback()
@@ -588,6 +710,9 @@ func (w *Window) Resize(cols, rows int) {
 		return
 	}
 	w.w, w.h = cols, rows
+	if w.body != nil {
+		return // the UI re-wraps the text at the new width
+	}
 	w.term.Resize(cols, rows)
 	_ = pty.Setsize(w.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols), X: uint16(cols * cellW), Y: uint16(rows * cellH)})
 }
@@ -601,6 +726,9 @@ func (w *Window) Size() (cols, rows int) {
 
 // SendText types text into the program, as if pasted without bracketing.
 func (w *Window) SendText(text string) error {
+	if w.body != nil {
+		return errText
+	}
 	if w.Exited() {
 		return errors.New("window: the program has exited")
 	}
@@ -611,14 +739,39 @@ func (w *Window) SendText(text string) error {
 }
 
 // SendKey types one key, encoded the way the program asked for (cursor
-// key mode and the like).
+// key mode and the like). A text window scrolls instead.
 func (w *Window) SendKey(k uv.KeyPressEvent) {
+	if w.body != nil {
+		w.scrollKey(k)
+		return
+	}
 	if w.Exited() {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.sendKey(k)
+}
+
+// scrollKey moves a text window's view: arrows a line, page keys a screen,
+// home and end the ends.
+func (w *Window) scrollKey(k uv.KeyPressEvent) {
+	_, rows := w.Size()
+	page := max(rows-1, 1)
+	switch k.Code {
+	case uv.KeyUp:
+		w.Scroll(-1)
+	case uv.KeyDown:
+		w.Scroll(1)
+	case uv.KeyPgUp:
+		w.Scroll(-page)
+	case uv.KeyPgDown, uv.KeySpace:
+		w.Scroll(page)
+	case uv.KeyHome:
+		w.Scroll(-maxScroll)
+	case uv.KeyEnd:
+		w.Scroll(maxScroll)
+	}
 }
 
 func (w *Window) sendKey(k uv.KeyPressEvent) {
@@ -638,6 +791,12 @@ func (w *Window) SendKeys(notation string) error {
 	keys, err := ParseKeys(notation)
 	if err != nil {
 		return err
+	}
+	if w.body != nil {
+		for _, k := range keys {
+			w.scrollKey(k)
+		}
+		return nil
 	}
 	if w.Exited() {
 		return errors.New("window: the program has exited")
@@ -679,8 +838,14 @@ func isMouseMode(m ansi.Mode) bool {
 
 // SendMouse forwards a mouse event at window coordinates. A program that
 // never asked for the mouse gets the wheel as arrow keys on the alternate
-// screen, the way terminals scroll a pager.
+// screen, the way terminals scroll a pager; a text window scrolls.
 func (w *Window) SendMouse(ev uv.MouseEvent) {
+	if w.body != nil {
+		if wheel, ok := ev.(uv.MouseWheelEvent); ok {
+			w.Scroll(map[uv.MouseButton]int{uv.MouseWheelUp: -3, uv.MouseWheelDown: 3}[wheel.Button])
+		}
+		return
+	}
 	if w.Exited() {
 		return
 	}
@@ -705,7 +870,7 @@ func (w *Window) SendMouse(ev uv.MouseEvent) {
 
 // Paste types text with bracketing when the program asked for it.
 func (w *Window) Paste(text string) {
-	if w.Exited() {
+	if w.body != nil || w.Exited() {
 		return
 	}
 	w.mu.Lock()
@@ -715,8 +880,12 @@ func (w *Window) Paste(text string) {
 
 // Screen renders the current screen as styled spans. During a synchronized
 // update it returns the screen from before, for at most a second like Ghostty,
-// so a program that never ends one does not freeze its window.
+// so a program that never ends one does not freeze its window. A text
+// window has none: the UI renders its body itself.
 func (w *Window) Screen() Screen {
+	if w.body != nil {
+		return Screen{}
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.syncSince.IsZero() && time.Since(w.syncSince) < time.Second && w.last.Rows != nil {
@@ -761,8 +930,13 @@ func (w *Window) Screen() Screen {
 	return out
 }
 
-// Text is the screen as plain text, trailing blanks trimmed.
+// Text is the screen as plain text, trailing blanks trimmed, or a text
+// window's body.
 func (w *Window) Text() string {
+	if w.body != nil {
+		text, _ := w.Content()
+		return text
+	}
 	scr := w.Screen()
 	lines := make([]string, len(scr.Rows))
 	for i, row := range scr.Rows {

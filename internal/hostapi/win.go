@@ -41,7 +41,17 @@ func (h *Host) openWindow(spec win.Spec) (*win.Window, error) {
 		// secret-shaped names stay out, as for bash and jobs: the screen is read back
 		spec.Env, _ = perm.ChildEnv(nil)
 	}
-	w, err := h.Wins.Open(spec)
+	return h.openedWindow(h.Wins.Open(spec))
+}
+
+// openTextWindow opens a window the UI renders from text: no program, so no
+// directory, environment or sandbox.
+func (h *Host) openTextWindow(spec win.Spec) (*win.Window, error) {
+	spec.Title = sanitize.String(spec.Title)
+	return h.openedWindow(h.Wins.OpenText(spec))
+}
+
+func (h *Host) openedWindow(w *win.Window, err error) (*win.Window, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +155,9 @@ func windowInfo(w *win.Window) map[string]any {
 		"id": w.ID, "title": w.Title(), "kind": l.Kind, "hidden": l.Hidden, "cmd": w.Cmd, "owner": w.Owner,
 		"cols": cols, "rows": rows, "running": !w.Exited(),
 		"cursor": map[string]any{"x": scr.CursorX, "y": scr.CursorY, "visible": scr.HasCursor},
+	}
+	if w.IsText() {
+		m["text"] = true
 	}
 	if l.Frac > 0 {
 		m["frac"] = l.Frac
@@ -281,6 +294,17 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 			L.Push(glua.LString(w.Text()))
 			return 1
 		}))
+		// set_text(text) and append(text) replace or grow a text window's body
+		setText := func(add bool) glua.LGFunction {
+			return func(L *glua.LState) int {
+				h.refuseWin(L, "set_text", w.ID)
+				err := w.SetText(L.CheckString(2), add)
+				h.refresh()
+				return luaResult(L, err)
+			}
+		}
+		t.RawSetString("set_text", L.NewFunction(setText(false)))
+		t.RawSetString("append", L.NewFunction(setText(true)))
 		// wait_text(want, timeout_ms) blocks the interpreter: keep it short
 		t.RawSetString("wait_text", L.NewFunction(func(L *glua.LState) int {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(L.OptInt(3, 5000))*time.Millisecond)
@@ -381,6 +405,32 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	// text(spec): spec = { text, markdown, kind, title, cols, rows, focus, hidden }
+	tb.RawSetString("text", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.win.text")
+		spec, ok := L.Get(1).(*glua.LTable)
+		if !ok {
+			L.RaiseError("zemi.win.text: spec must be a table")
+		}
+		w, err := h.openTextWindow(win.Spec{
+			Text: rawString(spec, "text"), Markdown: rawBool(spec, "markdown"),
+			Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
+			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"),
+			Owner: "lua", Origin: string(h.RT.CurrentOrigin(L)),
+		})
+		if err != nil {
+			return luaResult(L, err)
+		}
+		if rawBool(spec, "hidden") {
+			_ = h.applyLayout(w, layoutPatch{Hidden: new(true)})
+		}
+		if rawBool(spec, "focus") {
+			h.focusWindow(w.ID)
+		}
+		L.Push(handle(L, w))
+		return 1
+	}))
+
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		if w, ok := h.Wins.Get(L.CheckInt(1)); ok && !h.hiddenWin(L, w) {
 			L.Push(handle(L, w))
@@ -437,8 +487,11 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 						var items []any
 						for _, w := range h.Wins.List() {
 							state := "running"
-							if w.Exited() {
+							switch {
+							case w.Exited():
 								state = fmt.Sprintf("exited %d", w.ExitCode())
+							case w.IsText():
+								state = "text"
 							}
 							// a hidden window cannot take focus: its keys would go nowhere visible
 							actions := []any{map[string]any{"text": "Focus", "run": fmt.Sprintf("win focus %d", w.ID)}, map[string]any{"text": "Hide", "run": fmt.Sprintf("win hide %d", w.ID)}}
@@ -529,6 +582,8 @@ func (t *windowTool) Info() fantasy.ToolInfo {
 		Description: `Run a program in a window inside zemi's screen and keep working while it runs: a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
 
 Actions:
+- text: open a window that shows text instead of a program: with markdown true it renders like the chat (headings, lists, tables, code, colors) and re-wraps when the window resizes. A plan, a checklist, a diff summary or a table stays on screen while you work, and set_text replaces it in place.
+- set_text: replace a text window's body, or add to it with append true.
 - open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
 - set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
 - hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.
@@ -541,9 +596,11 @@ Actions:
 - close: end it. list: the windows you opened.
 A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,
 		Parameters: map[string]any{
-			"action":     map[string]any{"type": "string", "enum": []string{"open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
+			"action":     map[string]any{"type": "string", "enum": []string{"text", "set_text", "open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
 			"id":         map[string]any{"type": "number"},
 			"cmd":        map[string]any{"type": "string", "description": "run with sh -c in the project directory"},
+			"markdown":   map[string]any{"type": "boolean", "description": "text: render the body as markdown"},
+			"append":     map[string]any{"type": "boolean", "description": "set_text: add to the body instead of replacing it"},
 			"kind":       map[string]any{"type": "string", "enum": []string{"split", "vsplit", "float"}, "description": "default split"},
 			"title":      map[string]any{"type": "string"},
 			"hidden":     map[string]any{"type": "boolean"},
@@ -557,7 +614,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 			"wait_ms":    map[string]any{"type": "number", "description": "read waits this long for the program to draw (default 300); with expect, the longest to wait (default 5000)"},
 			"scrollback": map[string]any{"type": "number", "description": "read adds this many lines that scrolled off the top"},
 			"keys":       map[string]any{"type": "string"},
-			"text":       map[string]any{"type": "string"},
+			"text":       map[string]any{"type": "string", "description": "send: what to type; text and set_text: the body to show"},
 			"button":     map[string]any{"type": "string", "enum": []string{"left", "middle", "right", "wheel_up", "wheel_down"}, "description": "default left"},
 			"mkind":      map[string]any{"type": "string", "enum": []string{"click", "press", "release", "move"}, "description": "default click"},
 			"mod":        map[string]any{"type": "string", "description": "ctrl, alt or shift, joined with +"},
@@ -592,6 +649,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		ID      int      `json:"id"`
 		Text    string   `json:"text"`
 		Keys    string   `json:"keys"`
+		MD      bool     `json:"markdown"`
+		Append  bool     `json:"append"`
 		Expect  string   `json:"expect"`
 		Button  string   `json:"button"`
 		MKind   string   `json:"mkind"`
@@ -620,7 +679,52 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		b, _ := json.Marshal(windowInfo(w))
 		return string(b)
 	}
+	// opened places a new window: a subagent's own space stays hidden until
+	// it shows it, and the result names the window.
+	opened := func(w *win.Window) fantasy.ToolResponse {
+		hidden := t.owner != "model"
+		if in.Hidden != nil {
+			hidden = *in.Hidden
+		}
+		if hidden {
+			_ = h.applyLayout(w, layoutPatch{Hidden: &hidden})
+		}
+		if in.Focus && !hidden {
+			h.focusWindow(w.ID)
+		}
+		h.setToolDetail(call.ID, fmt.Sprintf("window %d: %s", w.ID, w.Title()))
+		return fantasy.NewTextResponse("opened " + describe(w))
+	}
 	switch in.Action {
+	case "text", "set_text":
+		// no program runs, so the gate is about what the user's screen shows
+		title := cmp.Or(in.Title, "text")
+		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window.text", Arg: title, Reason: "show text in a window", Preview: in.Text}); v.Decision != perm.Allow {
+			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + v.Reason), nil
+		}
+		if in.Action == "set_text" {
+			w, resp, ok := find()
+			if !ok {
+				return resp, nil
+			}
+			if err := w.SetText(in.Text, in.Append); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			h.refresh()
+			return fantasy.NewTextResponse("shown in " + describe(w)), nil
+		}
+		spec := win.Spec{Text: in.Text, Markdown: in.MD, Kind: in.Kind, Title: title, Owner: t.owner}
+		if in.Cols != nil {
+			spec.Cols = *in.Cols
+		}
+		if in.Rows != nil {
+			spec.Rows = *in.Rows
+		}
+		w, err := h.openTextWindow(spec)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		return opened(w), nil
 	case "open":
 		if strings.TrimSpace(in.Cmd) == "" {
 			return fantasy.NewTextErrorResponse("open needs cmd"), nil
@@ -658,18 +762,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 				h.finishWinGuard(w)
 			}
 		}
-		hidden := t.owner != "model" // a subagent's windows are its own space until shown
-		if in.Hidden != nil {
-			hidden = *in.Hidden
-		}
-		if hidden {
-			_ = h.applyLayout(w, layoutPatch{Hidden: &hidden})
-		}
-		if in.Focus && !hidden {
-			h.focusWindow(w.ID)
-		}
-		h.setToolDetail(call.ID, fmt.Sprintf("window %d: %s", w.ID, w.Title()))
-		return fantasy.NewTextResponse("opened " + describe(w)), nil
+		return opened(w), nil
 	case "set", "hide", "show", "focus":
 		w, resp, ok := find()
 		if !ok {
@@ -818,5 +911,5 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		return fantasy.NewTextResponse(strings.TrimRight(b.String(), "\n")), nil
 	}
-	return fantasy.NewTextErrorResponse("action must be open, set, hide, show, focus, read, keys, mouse, send, wait, close or list"), nil
+	return fantasy.NewTextErrorResponse("action must be text, set_text, open, set, hide, show, focus, read, keys, mouse, send, wait, close or list"), nil
 }

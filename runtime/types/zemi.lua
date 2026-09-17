@@ -1021,7 +1021,7 @@ zemi.ui.reasoning = {}
 function zemi.ui.reasoning.toggle() end
 
 -- ---------------------------------------------------------------------------
--- zemi.win: programs running in windows over the chat
+-- zemi.win: programs and text in windows over the chat
 
 ---@class zemi.win
 zemi.win = {}
@@ -1035,6 +1035,16 @@ zemi.win = {}
 ---@field focus? boolean Give the user's keys to the window at once.
 ---@field hidden? boolean Start off screen (running); show with set({ hidden = false }).
 ---@field on_exit? fun(info: zemi.WinInfo) Runs when the program exits.
+
+---@class zemi.WinTextSpec
+---@field text string The body. Replaced in place by Win:set_text.
+---@field markdown? boolean Render it as markdown (the chat's renderer: headings, lists, tables, code); plain text is only wrapped.
+---@field kind? "split"|"vsplit"|"float" As for zemi.win.open.
+---@field title? string Default: "text".
+---@field cols? integer Float only: requested width; unset, the float sizes to the text.
+---@field rows? integer Float only: requested height; unset, the float sizes to the text.
+---@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it).
+---@field hidden? boolean Start off screen.
 
 ---@class zemi.WinLayout
 ---@field kind? "split"|"vsplit"|"float"
@@ -1060,6 +1070,7 @@ zemi.win = {}
 ---@field x? integer
 ---@field y? integer
 ---@field code? integer Exit code once it exited.
+---@field text? true A text window: it runs no program.
 ---@field cursor { x: integer, y: integer, visible: boolean }
 
 ---@class zemi.Win
@@ -1082,9 +1093,20 @@ function Win:keys(keys) end
 ---@param spec { x: integer, y: integer, kind?: string, button?: string, mod?: string }
 ---@return true|nil, string|nil
 function Win:mouse(spec) end
---- The screen as plain text.
+--- The screen as plain text, or a text window's body.
 ---@return string
 function Win:text() end
+--- Replace a text window's body; it redraws in place and re-wraps on
+--- resize. Returns nil, err for a window running a program.
+--- Raises unless user config, builtin code or the origin that opened the
+--- window calls it.
+---@param text string
+---@return true|nil, string|nil
+function Win:set_text(text) end
+--- Add to a text window's body, as set_text does for the whole of it.
+---@param text string
+---@return true|nil, string|nil
+function Win:append(text) end
 --- Block until the screen shows want (default 5000 ms). Blocks the
 --- interpreter: keep it short, prefer zemi.timer for long waits.
 ---@param want string
@@ -1118,6 +1140,13 @@ function Win:close() end
 ---@param spec zemi.WinSpec
 ---@return zemi.Win|nil, string|nil
 function zemi.win.open(spec) end
+
+--- Open a window whose body is text, not a program: no pty, nothing to
+--- exit, and Win:set_text replaces the text while it shows. A float that
+--- asked for no size takes the cells the text needs, within the frame.
+---@param spec zemi.WinTextSpec
+---@return zemi.Win|nil, string|nil
+function zemi.win.text(spec) end
 
 ---@param id integer
 ---@return zemi.Win|nil

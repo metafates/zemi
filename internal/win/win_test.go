@@ -249,3 +249,50 @@ func TestPasteToIdleProgram(t *testing.T) {
 		t.Fatal("paste or Screen blocked on a program that never reads")
 	}
 }
+
+// TestTextWindow: a text window holds text instead of a program, takes a
+// replacement and an append in place, keeps its scroll inside what is
+// drawn, and refuses what only a program can take.
+func TestTextWindow(t *testing.T) {
+	m := &Manager{}
+	w, err := m.OpenText(Spec{Text: "hello", Markdown: true, Kind: KindFloat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.IsText() || w.Exited() || w.Title() != "text" {
+		t.Fatalf("text window: exited=%v title=%q", w.Exited(), w.Title())
+	}
+	if text, md := w.Content(); text != "hello" || !md {
+		t.Fatalf("content = %q, markdown %v", text, md)
+	}
+	if err := w.SetText("one", false); err != nil {
+		t.Fatal(err)
+	}
+	// an escape sequence in the body must not reach the frame
+	if err := w.SetText("\n\x1b[31mtwo", true); err != nil {
+		t.Fatal(err)
+	}
+	if w.Text() != "one\ntwo" {
+		t.Fatalf("body = %q", w.Text())
+	}
+	if err := w.SendText("x"); err == nil {
+		t.Fatal("a text window took program input")
+	}
+	w.Scroll(5)
+	if top := w.Top(2); top != 2 {
+		t.Fatalf("scroll clamped to %d, want 2", top)
+	}
+	if top := w.Top(9); top != 2 {
+		t.Fatalf("clamping must stick: top %d, want 2", top)
+	}
+	w.SendKey(uv.KeyPressEvent{Code: uv.KeyHome})
+	if top := w.Top(9); top != 0 {
+		t.Fatalf("home scrolled to %d, want 0", top)
+	}
+	m.Close(w.ID)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := w.Wait(ctx); err != nil {
+		t.Fatalf("a closed text window must stop its waiters: %v", err)
+	}
+}

@@ -266,3 +266,60 @@ func TestWinCommandOpensMenu(t *testing.T) {
 		t.Fatalf("opened: %+v", ui.opened)
 	}
 }
+
+// TestWindowTextTool: a text window asks tool.window.text, which manual mode
+// leaves to the user and auto settles on its own; set_text replaces the body
+// in place and only a text window takes it.
+func TestWindowTextTool(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	tool := h.windowTool()
+	run := func(input string) fantasy.ToolResponse {
+		t.Helper()
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "w", Name: "window", Input: input})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		return resp
+	}
+	if resp := run(`{"action":"text","text":"# Plan","markdown":true}`); !resp.IsError {
+		t.Fatalf("manual mode must ask before drawing on the screen: %+v", resp)
+	}
+	if len(ui.asked) != 1 || ui.asked[0].Subject != "tool.window.text" || ui.asked[0].Preview != "# Plan" {
+		t.Fatalf("ask: %+v", ui.asked)
+	}
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	resp := run(`{"action":"text","text":"# Plan","markdown":true,"title":"plan"}`)
+	if resp.IsError || !strings.Contains(resp.Content, `"text":true`) || !strings.Contains(resp.Content, `"title":"plan"`) {
+		t.Fatalf("auto mode settles a text window: %+v", resp)
+	}
+	w, _ := h.Wins.Get(1)
+	if resp := run(`{"action":"set_text","id":1,"text":"\n- done"}`); resp.IsError {
+		t.Fatalf("set_text: %+v", resp)
+	}
+	if resp := run(`{"action":"set_text","id":1,"text":"# Next","append":true}`); resp.IsError || w.Text() != "\n- done# Next" {
+		t.Fatalf("append: %+v body %q", resp, w.Text())
+	}
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
+	if resp := run(`{"action":"open","cmd":"sleep 5"}`); resp.IsError {
+		t.Fatalf("open: %+v", resp)
+	}
+	defer h.Wins.CloseAll()
+	if resp := run(`{"action":"set_text","id":2,"text":"x"}`); !resp.IsError {
+		t.Fatalf("a program window must refuse set_text: %+v", resp)
+	}
+	// Lua opens one too, and only its own origin may write to it
+	runUser(t, r, `
+		local w = assert(zemi.win.text({ text = "hi", markdown = true, title = "lua" }))
+		assert(w:set_text("bye"))
+		assert(w:append(" now"))
+		assert(w:text() == "bye now", w:text())
+		assert(w:info().text == true, "info.text")
+	`)
+	if err := r.ExecuteChunk(t.Context(), `zemi.win.get(3):set_text("x")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "may not set_text") {
+		t.Fatalf("project code wrote to another origin's window: %v", err)
+	}
+}

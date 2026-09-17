@@ -429,7 +429,14 @@ what the screen says.
 ### Windows (internal/win, internal/hostapi/win.go, internal/ui/win.go)
 
 A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go
-emulator (charmbracelet/x/vt). `win.Manager` on the host owns them; they outlive turns and
+emulator (charmbracelet/x/vt), or text (`Manager.OpenText`, `Window.body`): no pty, no
+emulator, the UI renders and wraps the text itself every frame (`App.textRows`, markdown
+through `Host.Markdown`, the renderer and cache the chat uses), so `SetText` replaces the
+body in place, a resize re-wraps it and the segments carry the theme's colors and the
+copy and hover rules. A text window never exits; the keys and the wheel scroll it
+(`Window.Scroll`, `Top` clamps to what is drawn), it refuses program input, and a float
+that asked for no size takes the cells its text needs (`textFloatSize`, at most
+`textFloatW`). `win.Manager` on the host owns them; they outlive turns and
 reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carries a
 `Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: splits and
 vsplits go where the layout tree has a `windows` slot of their kind (by default vsplits are
@@ -457,7 +464,10 @@ for the mouse), and a paste goes to the program with bracketing when it asked. T
 `window` tool gates `open` as `tool.bash` (same rules and modes as bash, and a mode-settled
 open runs sandboxed through `win.Spec.Wrap`, recorded as `Window.Sandboxed`) and
 `keys`/`mouse`/`send` as `tool.window`, `Unsandboxed` (so no mode settles it) unless the
-window runs sandboxed; an exit lands in the next message through `shellNotes`. Subagents get
+window runs sandboxed; an exit lands in the next message through `shellNotes`. Its `text`
+and `set_text` actions (Lua: `zemi.win.text`, `w:set_text`, `w:append`) ask
+`tool.window.text` with the body as preview, which every mode but manual settles (ask.go):
+a text window runs nothing and reads nothing, it only draws sanitized text on the screen. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
 The tool sees only windows it may act on (`windowTool.mine`): the main agent its own and its
 subagents', a subagent its own; the user's, Lua's and editor windows answer "no window".

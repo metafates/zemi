@@ -756,7 +756,7 @@ server errors for any file), `lsp` (definition, references, rename and
 symbols by name), `skill` (loads a SKILL.md body on demand), plus the
 four the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), `window` (a program in a terminal drawn inside
-zemi) and `Lua` (run Lua inside zemi, main agent only, as user origin:
+zemi, or text the UI renders, markdown included, and replaces in place) and `Lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or plan mode, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9).
@@ -997,7 +997,7 @@ commands and `!shell` and a paste reads the clipboard; the same actions are
 `zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`register(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi --health`),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
-`zemi.mcp` (`add`, `list`), `zemi.win` (windows), `zemi.errors` (`list`),
+`zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`),
 and `zemi.permission.mode` (`add`, `remove`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
@@ -1472,7 +1472,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   the sandbox" (headless nobody can answer, so the parameter and the retry
   line are left out and the denial is by `unsandboxed`). Window `keys`,
   `mouse` and `send` settle through a mode only for a window that started
-  sandboxed; input to an unconfined one is `Unsandboxed` and asks. A
+  sandboxed; input to an unconfined one is `Unsandboxed` and asks. A text
+  window (`tool.window.text`) runs nothing and reads nothing, so every mode
+  but manual settles it. A
   confined run that fails with output that looks like a denial
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the live backend's limits and the `sandbox: false`
@@ -1859,7 +1861,8 @@ internal/store/             sqlite schema, user_version migrations and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)
-internal/win/               windows: a pty per program, drawn by a Go terminal emulator
+internal/win/               windows: a pty per program, drawn by a Go terminal emulator,
+                            or text the UI renders and re-wraps
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors

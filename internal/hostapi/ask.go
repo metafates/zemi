@@ -63,6 +63,10 @@ func (h *Host) askHook() tools.Asker {
 		switch {
 		case def.Base == "yolo":
 			return resolved(true, "mode:"+def.Name)
+		case req.Subject == "tool.window.text" && def.Base != "manual":
+			// a text window runs nothing and reads nothing: it draws on the
+			// screen, sanitized, so only manual mode asks about it
+			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
 			// gives its own reason

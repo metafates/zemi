@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/win"
 )
 
@@ -345,5 +346,89 @@ func TestFloatDrag(t *testing.T) {
 	a.Frame()
 	if text, ok := wn.WaitText(ctx, "11 35"); !ok {
 		t.Fatalf("the program never saw 35x11:\n%s", text)
+	}
+}
+
+// TestTextWindowRenders: a text window draws its body through the chat's
+// markdown renderer, a replacement shows in place, the text re-wraps when
+// the window narrows and scrolling moves the view.
+func TestTextWindowRenders(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.OpenText(win.Spec{Text: "# Plan\n\n- one\n- two\n", Markdown: true, Kind: win.KindFloat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	rows := func() [][]hostapi.Segment {
+		a.Frame()
+		i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
+		if i < 0 {
+			t.Fatal("the text window was not drawn")
+		}
+		r := a.winRects[i]
+		if r.w > 40 {
+			t.Fatalf("a float with no size asked for is %d cells wide", r.w)
+		}
+		var out [][]hostapi.Segment
+		for _, row := range a.lastRows[r.y : r.y+r.h] {
+			out = append(out, truncateSegs(dropCells(row, r.x), r.w))
+		}
+		return out
+	}
+	body := func() string {
+		var b strings.Builder
+		for _, row := range rows() {
+			b.WriteString(strings.TrimSpace(plainSegs(row)) + "\n")
+		}
+		return b.String()
+	}
+	if got := body(); !strings.Contains(got, "Plan") || strings.Contains(got, "# Plan") || !strings.Contains(got, "one") {
+		t.Fatalf("markdown body:\n%s", got)
+	}
+	styled := false
+	for _, row := range rows() {
+		for _, s := range row {
+			styled = styled || strings.HasPrefix(s.HL, hostapi.SGRPrefix)
+		}
+	}
+	if !styled {
+		t.Fatal("the renderer's colors did not reach the frame")
+	}
+	if err := wn.SetText("# Next\n\nthe body changed", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := body(); !strings.Contains(got, "Next") || strings.Contains(got, "Plan") {
+		t.Fatalf("set_text did not replace the body:\n%s", got)
+	}
+	// narrow it: one long line has to come back as several
+	if err := wn.SetLayout(func(l *win.Layout) { l.Cols, l.Rows = 24, 6 }); err != nil {
+		t.Fatal(err)
+	}
+	if err := wn.SetText(strings.Repeat("word ", 20), false); err != nil {
+		t.Fatal(err)
+	}
+	lines := 0
+	for _, row := range rows() {
+		if segsWidth(row) != 24 {
+			t.Fatalf("row is %d cells, want 24", segsWidth(row))
+		}
+		if strings.Contains(plainSegs(row), "word") {
+			lines++
+		}
+	}
+	if lines < 4 {
+		t.Fatalf("text wrapped to %d rows in 24 cells", lines)
+	}
+	// scrolling moves the view and stops at the last screenful
+	wn.SetText("l1\n\nl2\n\nl3\n\nl4\n\nl5\n\nl6\n\nl7\n\nl8", false)
+	first := strings.TrimSpace(plainSegs(rows()[0]))
+	wn.Scroll(3)
+	if scrolled := strings.TrimSpace(plainSegs(rows()[0])); scrolled == first {
+		t.Fatalf("scrolling kept the view at %q", first)
+	}
+	wn.Scroll(1000)
+	if got := body(); !strings.Contains(got, "l8") {
+		t.Fatalf("the end of the text is not reachable:\n%s", got)
 	}
 }

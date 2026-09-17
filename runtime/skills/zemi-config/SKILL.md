@@ -153,7 +153,8 @@ guessing. Common keys:
   secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a
   build or test flag that runs code can read it in a trusted project. A command that needs more is retried with `sandbox: false`, which asks the
   user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
-  when the window itself runs sandboxed. Without a sandbox (`/health` sandbox row) they run only commands that just read,
+  when the window itself runs sandboxed; a text window (`tool.window.text`) runs nothing, so
+  every mode but manual settles it. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
   `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
