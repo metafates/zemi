@@ -273,9 +273,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 
 // forceQuit leaves without the app.quit veto.
 func (a *App) forceQuit() {
-	if a.program != nil {
-		go a.program.Quit()
-	}
+	go a.leave()
 }
 
 // interrupt cancels the running turn and hands queued messages back to the

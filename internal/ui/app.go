@@ -188,15 +188,30 @@ func (a *App) Quit() {
 			a.Notify("warn", "Quit blocked", res.Reason)
 			return
 		}
-		if a.program != nil {
-			a.program.Quit()
-		}
+		a.leave()
 	}
 	if a.program != nil {
 		go quit()
 		return
 	}
 	quit()
+}
+
+// leave deletes the windows' images while the host is still on the
+// alternate screen, where ghostty keeps them past the exit, then quits. It
+// runs on a goroutine.
+func (a *App) leave() {
+	if a.program == nil {
+		return
+	}
+	a.host.Wins.CloseAll()
+	if g := a.host.Wins.TakeGraphics(); g != "" {
+		a.program.Send(tea.RawMsg{Msg: g})
+		// NOTE: raw output is written on the next frame and quitting leaves the
+		// alternate screen first, so wait out a frame
+		time.Sleep(50 * time.Millisecond)
+	}
+	a.program.Quit()
 }
 
 // ---------------------------------------------------------------------------
