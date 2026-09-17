@@ -469,12 +469,12 @@ type editorMsg struct {
 func (a *App) openEditor() tea.Cmd {
 	dir, err := a.host.TempDir()
 	if err != nil {
-		a.pushToast("error", "editor", err.Error())
+		a.pushToast("error", "Editor failed", err.Error())
 		return nil
 	}
 	f, err := os.CreateTemp(dir, "zemi-*.md")
 	if err != nil {
-		a.pushToast("error", "editor", err.Error())
+		a.pushToast("error", "Editor failed", err.Error())
 		return nil
 	}
 	path := f.Name()
@@ -484,7 +484,7 @@ func (a *App) openEditor() tea.Cmd {
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		a.pushToast("error", "editor", err.Error())
+		a.pushToast("error", "Editor failed", err.Error())
 		return nil
 	}
 	go func() {

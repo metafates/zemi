@@ -351,7 +351,7 @@ func (a *App) runRHS(b *hostapi.KeyBinding) {
 		default:
 			a.host.RecordError("keymap "+b.Key, err.Error())
 			a.host.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			a.Notify("error", "keymap "+b.Key, err.Error())
+			a.Notify("error", "Keymap "+b.Key+" failed", err.Error())
 		}
 	})
 }
@@ -383,7 +383,7 @@ func (a *App) background(fn func()) {
 	select {
 	case a.work <- fn:
 	default:
-		a.pushToast("warn", "busy", "still running an earlier key or command")
+		a.pushToast("warn", "Busy", "still running an earlier key or command")
 	}
 }
 
@@ -393,13 +393,13 @@ func (a *App) runCommand(name, args string) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
 		a.background(func() {
 			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-				a.Notify("error", "/"+name, err.Error())
+				a.Notify("error", "/"+name+" failed", err.Error())
 			}
 		})
 		return
 	}
 	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-		a.pushToast("error", "/"+name, err.Error())
+		a.pushToast("error", "/"+name+" failed", err.Error())
 	}
 }
 

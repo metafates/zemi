@@ -1642,7 +1642,10 @@ model call (§10.3).
 
 - Every Go->Lua boundary is a `pcall`; errors are logged and show as a
   statusline flag; a `/errors` overlay lists recent handler failures with
-  file:line (from Lua `debug.traceback`).
+  file:line (from Lua `debug.traceback`). A failed reflector run is
+  recorded there instead of toasting. Toasts show at most three body rows
+  and never a stack trace; an error toast cut short is recorded whole in
+  `/errors` and says so.
 - Registration conflicts (duplicate widget id, keymap collision) warn at
   load with origin path, last-writer-wins within one origin, like nvim's
   plugin loading noise but structured. Cross-origin id collisions are

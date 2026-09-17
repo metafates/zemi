@@ -214,12 +214,12 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		head := fmt.Sprintf("Background agent %s (%s) %s.", run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil])
 		if h.AgentSessionID() != run.parent {
 			// the user moved on; do not drop the report into another conversation
-			h.Notify("info", "background agent "+run.id, head+" "+description+"\n"+truncRunes(report, 300))
+			h.Notify("info", "Background agent "+run.id, head+" "+description+"\n"+truncRunes(report, 300))
 			return
 		}
 		// the description is model text, so it stays behind the marker where @ refs do not attach
 		if err := h.AgentSend(head + attachMarker + fmt.Sprintf("\n<agent-report description=%q>\n", description) + truncOutput(report) + "\n</agent-report>\n</attached-files>"); err != nil {
-			h.Notify("error", "background agent "+run.id, err.Error())
+			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})
 	return run.id, nil

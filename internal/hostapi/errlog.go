@@ -31,11 +31,20 @@ type errLog struct {
 	unseen  bool
 }
 
-// RecordError keeps one error (sanitized) and raises the badge.
+// RecordError keeps one error (sanitized) and raises the badge. The same
+// message twice in a row is kept once: a failure recorded where it happens
+// also reaches the UI as a toast, which records a long one.
 func (h *Host) RecordError(source, msg string) {
 	l := &h.errs
 	l.mu.Lock()
-	l.entries = append(l.entries, errEntry{time.Now(), source, sanitize.String(msg)})
+	msg = sanitize.String(msg)
+	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
+		l.unseen = true
+		l.mu.Unlock()
+		h.refresh()
+		return
+	}
+	l.entries = append(l.entries, errEntry{time.Now(), source, msg})
 	if len(l.entries) > errLogMax {
 		l.entries = l.entries[len(l.entries)-errLogMax:]
 	}
@@ -100,7 +109,7 @@ func (h *Host) OpenErrors(args string) error {
 				e.at.Format("15:04:05"), e.source, e.msg)
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
-					h.Notify("error", "agent", err.Error())
+					h.Notify("error", "Could not send", err.Error())
 				}
 			})
 			return nil

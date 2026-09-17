@@ -342,7 +342,7 @@ func (h *Host) skillsCommand(args string) error {
 		if err := h.setSkillEnabled(nil, fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
-		h.Notify("info", "skills", fields[0]+"d "+fields[1])
+		h.Notify("info", "Skills", fields[0]+"d "+fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
 		return h.setSkillEnabled(nil, fields[1], !h.skillsReg.isEnabled(fields[1]))

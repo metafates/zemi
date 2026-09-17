@@ -411,7 +411,7 @@ func (h *Host) handOff(scope *turnScope) {
 	// sending waits on the interpreter, and rewind may be called from Lua
 	h.GoSafe("agent send", func() {
 		if err := h.sendClaimed(scope, queued); err != nil {
-			h.Notify("error", "agent", err.Error())
+			h.Notify("error", "Could not send", err.Error())
 		}
 	})
 }
@@ -1258,7 +1258,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		h.GoSafe("zemi.agent.send", func() {
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
-				h.Notify("error", "agent", err.Error())
+				h.Notify("error", "Could not send", err.Error())
 			}
 		})
 		return 0

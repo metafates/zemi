@@ -98,7 +98,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			}
 			h.GoSafe("command "+name, func() {
 				if err := cmd.GoFn(h, args); err != nil {
-					h.Notify("error", "/"+name, err.Error())
+					h.Notify("error", "/"+name+" failed", err.Error())
 				}
 			})
 			return luaResult(L, nil)

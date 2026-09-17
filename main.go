@@ -151,11 +151,11 @@ func run(args []string) int {
 		if err := host.ForceReload(ctx, steps); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			host.RecordError("reload", err.Error())
-			app.Notify("error", "reload", err.Error())
+			app.Notify("error", "Reload failed", err.Error())
 			return
 		}
 		app.SignalBoot(nil)
-		app.Notify("info", "reload", "config reloaded")
+		app.Notify("info", "Config reloaded", "")
 		host.EmitAsync("config.reloaded", nil)
 	}
 	app.SetReload(reload)
@@ -182,12 +182,12 @@ func run(args []string) int {
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, opts); err != nil {
-			app.Notify("error", "zemi", err.Error())
+			app.Notify("error", "A flag did not apply", err.Error())
 			return
 		}
 		if opts.prompt != "" {
 			if err := host.AgentSend(opts.prompt); err != nil {
-				app.Notify("error", "zemi", err.Error())
+				app.Notify("error", "Could not send the prompt", err.Error())
 			}
 		}
 	}()
@@ -303,7 +303,7 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 						if n == 1 {
 							files = "file"
 						}
-						h.Notify("info", "rewind", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+						h.Notify("info", "Rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 					}
 					return err
 				}},
@@ -333,7 +333,7 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 				{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
 					path, err := h.ExportSession(strings.TrimSpace(args))
 					if err == nil {
-						h.Notify("info", "export", "wrote "+path)
+						h.Notify("info", "Exported", "wrote "+path)
 					}
 					return err
 				}},
@@ -517,7 +517,7 @@ func (tg *trustGate) command(reload func()) func() {
 			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
-				tg.h.Notify("error", "trust", err.Error())
+				tg.h.Notify("error", "Could not save trust", err.Error())
 			}
 			// set before the reload: a boot that fails before the trust step
 			// must not leave the old decision in force

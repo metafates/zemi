@@ -78,7 +78,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.mouse = mouseSel{}
 			return nil
 		}
-		a.pushToast("info", "", "copied to clipboard")
+		a.pushToast("info", "Copied to the clipboard", "")
 		return copyCmd(text)
 	}
 	return nil
@@ -270,7 +270,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			if word == def.Name {
 				return line(lo, hi, func() {
 					if err := a.host.OpenModePicker(); err != nil {
-						a.pushToast("error", "mode", err.Error())
+						a.pushToast("error", "Mode picker failed", err.Error())
 					}
 				})
 			}

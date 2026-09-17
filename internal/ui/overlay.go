@@ -304,7 +304,7 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	case st.o.Body != "":
 		what = "the text"
 	}
-	a.pushToast("info", "copied", what+" to the clipboard")
+	a.pushToast("info", "Copied", what+" to the clipboard")
 	return copyCmd(strings.Join(lines, "\n"))
 }
 

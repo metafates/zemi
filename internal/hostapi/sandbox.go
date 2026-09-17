@@ -351,7 +351,7 @@ func (h *Host) holdTrust(why string) {
 	h.trustHeld.Store(true)
 	h.SetProjectTrusted(false)
 	h.Log.Warn("sandbox", why, nil)
-	h.Notify("warn", "trust", why)
+	h.Notify("warn", "Trust is off", why)
 }
 
 // TrustHeld reports trust held off by holdTrust.

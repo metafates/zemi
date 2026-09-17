@@ -56,7 +56,7 @@ func (h *Host) checkpointFile(path string) {
 		h.Log.Warn("rewind", "file too large to checkpoint", map[string]any{"path": abs, "bytes": len(data)})
 		// say it now: a later rewind reports only the files it restored, and
 		// this one would quietly stay changed
-		h.Notify("warn", "rewind", filepath.Base(abs)+" is too large to checkpoint; a rewind will not restore it")
+		h.Notify("warn", "Rewind", filepath.Base(abs)+" is too large to checkpoint; a rewind will not restore it")
 		return
 	}
 	if err := h.DB.AddCheckpoint(sid, mid, abs, existed, data); err != nil {
@@ -129,9 +129,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	switch {
 	case aged > 0 && len(cps) == 0:
-		h.Notify("warn", "rewind", "the file snapshots for that turn have aged out; the conversation is cut but no file is restored")
+		h.Notify("warn", "Rewind", "the file snapshots for that turn have aged out; the conversation is cut but no file is restored")
 	case aged > 0:
-		h.Notify("warn", "rewind", fmt.Sprintf("file snapshots older than %d days have aged out (%d of those %s); files changed then may not go back to before that turn",
+		h.Notify("warn", "Rewind", fmt.Sprintf("file snapshots older than %d days have aged out (%d of those %s); files changed then may not go back to before that turn",
 			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
 	}
 	var failed []string

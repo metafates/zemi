@@ -35,7 +35,7 @@ func (h *Host) endTurnAfterPanic() {
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()
-	h.Notify("error", "agent", fmt.Sprintf("the turn crashed and was stopped: %v (see /errors)", r))
+	h.Notify("error", "Turn crashed", fmt.Sprintf("the turn crashed and was stopped: %v (see /errors)", r))
 	h.refresh()
 }
 

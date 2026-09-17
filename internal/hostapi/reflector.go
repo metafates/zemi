@@ -149,6 +149,7 @@ func (h *Host) runReflectDetached(sid string) bool {
 		h.agents.mu.Unlock()
 		if err != nil {
 			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
+			h.RecordError("reflector", err.Error())
 			h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
 		}
 	})

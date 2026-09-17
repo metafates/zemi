@@ -187,7 +187,7 @@ func (a *App) runSlashCommand(text string) {
 	name, args := splitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
-		a.pushToast("warn", "command", "not a command: /"+name)
+		a.pushToast("warn", "Not a command", "/"+name)
 		return
 	}
 	a.clearComposer()
@@ -199,7 +199,7 @@ func (a *App) runSlashCommand(text string) {
 func (a *App) sendMessage(text string) {
 	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
 	if res.Denied {
-		a.pushToast("warn", "composer", "blocked: "+res.Reason)
+		a.pushToast("warn", "Message blocked", res.Reason)
 		return
 	}
 	a.composer.pushHistory(text, a.historySize())
@@ -208,7 +208,7 @@ func (a *App) sendMessage(text string) {
 		_ = a.host.ViewAgent("") // messages go to the session, so show it
 	}
 	if err := a.host.AgentSend(text); err != nil {
-		a.pushToast("error", "agent", err.Error())
+		a.pushToast("error", "Could not send", err.Error())
 	}
 }
 

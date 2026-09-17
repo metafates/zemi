@@ -395,7 +395,7 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 					case len(fields) == 0 || fields[0] == "list":
 						wins := h.Wins.List()
 						if len(wins) == 0 {
-							h.Notify("info", "windows", "none open")
+							h.Notify("info", "Windows", "none open")
 							return nil
 						}
 						var lines []string
@@ -409,7 +409,7 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 							}
 							lines = append(lines, fmt.Sprintf("%d %s (%s, %s, %s)", w.ID, w.Title(), w.Kind(), w.Owner, state))
 						}
-						h.Notify("info", "windows", strings.Join(lines, "\n"))
+						h.Notify("info", "Windows", strings.Join(lines, "\n"))
 						return nil
 					case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
 						for _, w := range h.Wins.List() {

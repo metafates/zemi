@@ -7,7 +7,7 @@ import (
 )
 
 // TestErrorLog: recorded errors raise the badge, the log keeps only the
-// newest errLogMax, and opening /errors clears the badge.
+// newest errLogMax, keeps a repeat once, and opening /errors clears the badge.
 func TestErrorLog(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}
@@ -18,13 +18,14 @@ func TestErrorLog(t *testing.T) {
 	if h.HasUnseenErrors() {
 		t.Fatal("fresh host reports errors")
 	}
-	for range errLogMax + 5 {
-		h.RecordError("widget chat", "render failed\x1b[31m")
+	for i := range errLogMax + 5 {
+		h.RecordError("widget chat", fmt.Sprintf("render failed %d\x1b[31m", i))
 	}
+	h.RecordError("toast", fmt.Sprintf("render failed %d", errLogMax+4))
 	if !h.HasUnseenErrors() || len(h.errs.entries) != errLogMax {
 		t.Fatalf("unseen=%v entries=%d", h.HasUnseenErrors(), len(h.errs.entries))
 	}
-	if h.errs.entries[0].msg != "render failed" {
+	if h.errs.entries[0].msg != "render failed 5" {
 		t.Fatalf("message not sanitized: %q", h.errs.entries[0].msg)
 	}
 	h.RecordError("mcp gitlab", "initialize: connection refused")

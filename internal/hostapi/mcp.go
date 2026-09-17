@@ -121,7 +121,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		if errors.Is(err, mcp.ErrAuthRequired) {
 			s.status, s.err = "needs sign-in", ""
 			s.mu.Unlock()
-			h.Notify("info", "mcp", s.name+" needs you to sign in: open /mcp")
+			h.Notify("info", "MCP", s.name+" needs you to sign in: open /mcp")
 			h.refresh()
 			return
 		}
@@ -514,12 +514,12 @@ func (h *Host) signInMCP(name string) error {
 			h.openBrowser(u)
 		})
 		if err != nil {
-			h.Notify("error", "mcp", "signing in to "+name+" failed: "+err.Error())
+			h.Notify("error", "MCP", "signing in to "+name+" failed: "+err.Error())
 			return
 		}
-		h.Notify("info", "mcp", "signed in to "+name)
+		h.Notify("info", "MCP", "signed in to "+name)
 		if err := h.restartMCP(name); err != nil {
-			h.Notify("error", "mcp", err.Error())
+			h.Notify("error", "MCP", err.Error())
 		}
 	})
 	return nil
@@ -533,7 +533,7 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
-	h.Notify("info", "mcp", "signed out of "+name)
+	h.Notify("info", "MCP", "signed out of "+name)
 	return h.restartMCP(name)
 }
 

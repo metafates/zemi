@@ -182,7 +182,7 @@ func (a *App) SignalBoot(err error) {
 func (a *App) Quit() {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.Notify("warn", "quit", "blocked: "+res.Reason)
+			a.Notify("warn", "Quit blocked", res.Reason)
 			return
 		}
 		if a.program != nil {
@@ -324,7 +324,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {
-			a.pushToast("error", "editor", msg.err.Error())
+			a.pushToast("error", "Editor failed", msg.err.Error())
 			return a, nil
 		}
 		text := sanitize.String(msg.text)
@@ -339,7 +339,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
-			a.pushToast("warn", "paste", msg.err.Error())
+			a.pushToast("warn", "Paste failed", msg.err.Error())
 			return a, nil
 		}
 		a.insertToken(msg.token)
@@ -559,10 +559,22 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 type toast struct {
 	level, title, body string
 	expires            time.Time
+	recorded           bool // the whole error is in /errors
 }
 
+// toastRows caps a toast's body: a long error or a stack trace would cover
+// the transcript.
+const toastRows = 3
+
 func (a *App) pushToast(level, title, body string) {
-	a.toasts = append(a.toasts, toast{level, title, body, time.Now().Add(toastTTL)})
+	t := toast{level: level, title: title, body: body, expires: time.Now().Add(toastTTL)}
+	short, _, trace := strings.Cut(body, "stack traceback:")
+	t.body = strings.TrimRight(short, " \t\n")
+	if level == "error" && (trace || strings.Count(t.body, "\n") >= toastRows || len(t.body) > 150) {
+		a.host.RecordError(title, body)
+		t.recorded = true
+	}
+	a.toasts = append(a.toasts, t)
 	if len(a.toasts) > 3 {
 		a.toasts = a.toasts[len(a.toasts)-3:]
 	}
@@ -1020,11 +1032,17 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 	if t.title != "" {
 		body = append(body, truncateSegs([]hostapi.Segment{{Text: t.title, HL: "ToastTitle"}}, inner))
 	}
+	var rows [][]hostapi.Segment
 	if t.body != "" {
 		for l := range strings.SplitSeq(t.body, "\n") {
-			body = append(body, wrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
+			rows = append(rows, wrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
 		}
 	}
+	if len(rows) > toastRows {
+		more := map[bool]string{true: "... full error in /errors", false: "..."}[t.recorded]
+		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Toast"}})
+	}
+	body = append(body, rows...)
 	bw := 0
 	for _, r := range body {
 		bw = max(bw, segsWidth(r))

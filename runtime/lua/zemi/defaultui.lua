@@ -243,7 +243,8 @@ zemi.ui.widget.register({
 })
 
 -- Reflector feedback (§10.3): a blinking badge while a run is active
--- (ctx.pulse is the shared phase), a toast with the outcome when it ends.
+-- (ctx.pulse is the shared phase), a toast with what it learned when it ends
+-- (a failure goes to /errors).
 zemi.ui.widget.register({
   id = "statusline.reflect",
   region = "statusline.left",
@@ -303,10 +304,7 @@ zemi.ui.widget.register({
 })
 
 zemi.event.on("reflector.done", function(ev)
-  if ev.error then
-    zemi.notify.error({ title = "reflect failed", body = ev.error })
-    return
-  end
+  if ev.error then return end
   local parts = {}
   local function add(n, one, many)
     if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. (n == 1 and one or many) end
@@ -317,7 +315,7 @@ zemi.event.on("reflector.done", function(ev)
   add(ev.skills_drafted, "skill drafted, enable it in /skills", "skills drafted, enable them in /skills")
   -- a session with nothing worth keeping ends quietly
   if #parts == 0 then return end
-  zemi.notify({ title = "learned from the last session", body = table.concat(parts, ", ") })
+  zemi.notify({ title = "Learned from the last session", body = table.concat(parts, ", ") })
 end)
 
 -- Statusline right: "model · 24.5k/200k ctx · 45%", falling back to the

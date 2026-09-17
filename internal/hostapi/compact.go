@@ -116,7 +116,7 @@ func (h *Host) compactFailed() {
 	off := ag.compactFails == compactMaxFails
 	ag.mu.Unlock()
 	if off {
-		h.Notify("warn", "compact", fmt.Sprintf("auto compaction is off for this session after %d failed tries: /compact or /new", compactMaxFails))
+		h.Notify("warn", "Auto compaction off", fmt.Sprintf("auto compaction is off for this session after %d failed tries: /compact or /new", compactMaxFails))
 	}
 }
 
@@ -166,7 +166,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.mu.Unlock()
 			imagesRejected.Store(model, true)
 			runner.TextOnly = true
-			h.Notify("info", "agent", model+" does not take images; going on without them (set images = false on its model entry)")
+			h.Notify("info", "Images left out", model+" does not take images; going on without them (set images = false on its model entry)")
 			continue
 		}
 		reason := compactAuto
@@ -229,7 +229,7 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 	}
 	if !errors.Is(err, context.Canceled) {
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error(), "reason": reason})
-		h.Notify("error", "compact", err.Error())
+		h.Notify("error", "Compaction failed", err.Error())
 		if reason != compactManual {
 			h.compactFailed()
 		}

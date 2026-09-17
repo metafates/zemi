@@ -425,7 +425,7 @@ func (h *Host) pickAndStoreModel() {
 	}
 	fired, err := h.Settings.SetQuiet("agent.model", id)
 	if err != nil {
-		h.Notify("error", "model", err.Error())
+		h.Notify("error", "Could not switch the model", err.Error())
 		return
 	}
 	if len(fired) > 0 {
