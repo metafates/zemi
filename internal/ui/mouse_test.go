@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -292,5 +293,26 @@ func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
 	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10), 40)
 	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
+	}
+}
+
+// TestListWindowEndsAfterWholeItem: a scrolled list shows no item cut in
+// half and no header without its first item, and keeps its height.
+func TestListWindowEndsAfterWholeItem(t *testing.T) {
+	more := [][]hostapi.Segment{{{Text: "m1"}}, {{Text: "m2"}}, {{Text: "m3"}}}
+	for _, c := range []struct {
+		name   string
+		items  []listItem
+		limit  int
+		hidden string
+	}{
+		{"header", []listItem{{label: "a", section: "One"}, {label: "b", section: "One"}, {label: "c", section: "Two"}}, 5, "Two"},
+		{"multi-line item", []listItem{{label: "x"}, {more: more}}, 4, "m1"},
+	} {
+		top := 0
+		rows := listRows(c.items, 0, &top, c.limit)
+		if len(rows) != c.limit+1 || strings.Contains(plainSegs(slices.Concat(rows...)), c.hidden) {
+			t.Errorf("%s: %q", c.name, plainSegs(slices.Concat(rows...)))
+		}
 	}
 }

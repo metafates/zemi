@@ -241,8 +241,10 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{} // row -> key column
 	section, selTop, selEnd := "", 0, 0
+	cut := map[int]bool{} // rows a scrolled window may end after
 	for i, it := range items {
 		if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
+			cut[len(rows)] = true
 			rows = append(rows, nil)
 		}
 		start := len(rows)
@@ -290,6 +292,7 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi
 			}
 			rows = append(rows, row)
 		}
+		cut[len(rows)-1] = true
 		if i == sel {
 			selTop, selEnd = start, len(rows)
 		}
@@ -317,7 +320,21 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi
 			top = new(int)
 		}
 		*top = max(min(*top, selTop, len(rows)-limit), min(selEnd-limit, selTop), 0)
-		rows = append(rows[*top:*top+limit:*top+limit], []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
+		// end the window after a whole item, so no item shows cut and no
+		// header shows without its first item; an item taller than the
+		// window is cut anyway
+		end := *top + limit
+		for end > *top+1 && !cut[end-1] {
+			end--
+		}
+		if !cut[end-1] {
+			end = *top + limit
+		}
+		win := slices.Clone(rows[*top:end])
+		for len(win) < limit {
+			win = append(win, padSegs(nil, widest))
+		}
+		rows = append(win, []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
 	}
 	return rows
 }
