@@ -794,28 +794,34 @@ func (a *App) compose(w, h int) string {
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, w, chatH))
 	}
+	// Toasts stack down from the top of the chat area, newest highest,
+	// right-aligned over the chat rows they cover, one blank row apart. They
+	// go over the dimmed rows but under the top box: a toast is not dimmed,
+	// and its text never covers the chrome the user answers.
+	toasts := func() {
+		y := len(header)
+		for _, v := range slices.Backward(a.toasts) {
+			for _, line := range toastBox(v, chatW) {
+				if y >= toastBottom {
+					break
+				}
+				// a blank cell each side, so the text it covers never touches the bar
+				x0 := max(0, chatW-segsWidth(line)-2)
+				rows = placeBox(rows, [][]hostapi.Segment{append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})}, x0, y, w)
+				y++
+			}
+			y++
+		}
+	}
 	for i, place := range modals {
 		if i == len(modals)-1 {
 			dimRows(rows)
+			toasts()
 		}
 		place()
 	}
-
-	// Toasts stack down from the top of the chat area, newest highest,
-	// right-aligned over the chat rows they cover, one blank row apart. They
-	// go over modals too, so feedback for a modal's action is not dimmed.
-	y = len(header)
-	for _, v := range slices.Backward(a.toasts) {
-		for _, line := range toastBox(v, chatW) {
-			if y >= toastBottom {
-				break
-			}
-			// a blank cell each side, so the text it covers never touches the bar
-			x0 := max(0, chatW-segsWidth(line)-2)
-			rows = placeBox(rows, [][]hostapi.Segment{append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})}, x0, y, w)
-			y++
-		}
-		y++
+	if len(modals) == 0 {
+		toasts()
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
