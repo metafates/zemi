@@ -356,7 +356,9 @@ version string together.
 
 `compose` publishes each finished frame under `App.frameMu`; `UIHooks.Screenshot` strips the
 styling and the trailing padding and hands it back, so `zemi.ui.screenshot()` works from the
-interpreter goroutine without either side waiting on the other. It is how the agent debugs
+interpreter goroutine without either side waiting on the other. It is on the Lua tool's
+read-only list, so editor windows (title and cells, from `App.private`) come out blank:
+they hold what the user types. It is how the agent debugs
 its own widgets, themes and layout (see the zemi-debug skill) instead of asking the user
 what the screen says.
 

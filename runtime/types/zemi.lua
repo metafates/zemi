@@ -452,8 +452,8 @@ function zemi.ui.hl(group, spec) end
 function zemi.ui.markdown(text, width) end
 
 --- The drawn screen as plain text, one line per row, styling and trailing
---- padding dropped. This is how zemi reads its own UI instead of asking
---- what the user sees.
+--- padding dropped, an editor window's cells blank. This is how zemi reads
+--- its own UI instead of asking what the user sees.
 ---@return string|nil screen
 ---@return string|nil err
 function zemi.ui.screenshot() end

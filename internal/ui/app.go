@@ -122,6 +122,7 @@ type App struct {
 	// without waiting on the Update goroutine.
 	frameMu   sync.Mutex
 	lastFrame string
+	private   []winRect // editor windows' cells, blank in the screenshot
 
 	program   *tea.Program
 	reload    func()
@@ -877,8 +878,14 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	out := b.String()
+	var private []winRect
+	for _, r := range a.winRects {
+		if wn, ok := a.host.Wins.Get(r.id); ok && wn.Owner == "editor" {
+			private = append(private, r)
+		}
+	}
 	a.frameMu.Lock()
-	a.lastFrame = out
+	a.lastFrame, a.private = out, private
 	a.frameMu.Unlock()
 	return out
 }
@@ -886,10 +893,12 @@ func (a *App) compose(w, h int) string {
 // Screenshot implements hostapi.UIHooks: the screen as plain text, one
 // line per row with the styling and trailing padding dropped. It reads the
 // frame compose published, so the interpreter can ask what zemi looks like
-// without the UI goroutine waiting on it or the other way round.
+// without the UI goroutine waiting on it or the other way round. An editor
+// window holds what the user types, which the Lua tool must not read.
+// NOTE: a float or modal drawn over an editor is blanked where it overlaps.
 func (a *App) Screenshot() string {
 	a.frameMu.Lock()
-	frame := a.lastFrame
+	frame, private := a.lastFrame, a.private
 	a.frameMu.Unlock()
 	if frame == "" {
 		return ""
@@ -899,7 +908,14 @@ func (a *App) Screenshot() string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(strings.TrimRight(win.StripPlaceholders(ansi.Strip(row)), " "))
+		line := win.StripPlaceholders(ansi.Strip(row))
+		for _, r := range private {
+			if i >= r.titleY && i < r.y+r.h { // the title names the file too
+				left := ansi.Truncate(line, r.x, "")
+				line = left + strings.Repeat(" ", r.x-ansi.StringWidth(left)+r.w) + ansi.TruncateLeft(line, r.x+r.w, "")
+			}
+		}
+		b.WriteString(strings.TrimRight(line, " "))
 	}
 	return b.String()
 }
