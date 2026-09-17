@@ -528,6 +528,15 @@ type agentTool struct {
 
 func (h *Host) agentTool() fantasy.AgentTool { return &agentTool{h: h, defs: h.agentDefs()} }
 
+// names lists the agents this tool offers.
+func (t *agentTool) names() []string {
+	out := make([]string, len(t.defs))
+	for i, d := range t.defs {
+		out[i] = d.Name
+	}
+	return out
+}
+
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Launch a subagent for a self-contained task. It works with its own context and tools and returns one final report." +
@@ -537,13 +546,11 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
 		" as a message, so keep working (or end your turn) meanwhile. To add to or correct a running background agent's task, call again with" +
 		" send_to set to its id: prompt reaches it at its next step (agent and description are ignored).\n\nAgents:")
-	names := make([]string, 0, len(t.defs))
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
 		if d.Model != "" {
 			fmt.Fprintf(&b, " (model %s)", d.Model)
 		}
-		names = append(names, d.Name)
 	}
 	models := t.h.modelIDs()
 	if len(models) > 1 {
@@ -553,14 +560,14 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		Name:        "agent",
 		Description: b.String(),
 		Parameters: map[string]any{
-			"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user"},
+			"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user; required unless send_to is set"},
 			"prompt":      map[string]any{"type": "string", "description": "the full task"},
-			"agent":       map[string]any{"type": "string", "enum": names, "description": "agent to run: explore for reading and searching, general only when it must run commands or edit"},
+			"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit; required unless send_to is set"},
 			"background":  map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"},
 			"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
 			"send_to":     map[string]any{"type": "string", "description": "id of a running background agent: send prompt to it as a message instead of starting an agent"},
 		},
-		Required: []string{"description", "prompt", "agent"},
+		Required: []string{"prompt"},
 		Parallel: true,
 	}
 }
@@ -593,10 +600,16 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 		t.h.setToolDetail(call.ID, "message to "+in.SendTo)
 		return fantasy.NewTextResponse("Queued for agent " + in.SendTo + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
 	}
+	if strings.TrimSpace(in.Agent) == "" {
+		// only send_to may leave it out; an omission must not silently run
+		// the agent with the most tools
+		return fantasy.NewTextErrorResponse("agent is required: " + strings.Join(t.names(), ", ")), nil
+	}
 	def, err := t.h.agentDef(in.Agent)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	in.Description = cmp.Or(strings.TrimSpace(in.Description), def.Name)
 	if err := t.h.checkModelID(in.Model); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
