@@ -328,7 +328,8 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			rows[y] = append(r, pad, k)
 			continue
 		}
-		rows[y] = padSegs(r, widest)
+		// a pad segment even when empty, so alignKeys never widens the gutter
+		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r))})
 	}
 	if limit = max(limit, 1); len(rows) > limit {
 		if top == nil {
@@ -492,32 +493,47 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	case req.Preview != "":
 		content = codePanel(req.Preview, inner)
 	}
-	// the model's words sit apart from the chrome, quoted, never in the title
+	// the model's words sit apart from the chrome, quoted, never in the
+	// title, and a few rows at most so they cannot push the command away
 	var words [][]hostapi.Segment
 	if req.Description != "" {
-		words = append(words, wrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner)...)
+		words = append(words, capRows(wrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner), 3, inner)...)
 	}
 	if note, hl := permNote(req.Reason); note != "" {
-		words = append(words, wrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner)...)
+		words = append(words, capRows(wrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner), 3, inner)...)
 	}
 	choices := pa.choices()
 	items := make([]listItem, len(choices))
 	for i, c := range choices {
-		items[i] = listItem{label: c.label, key: c.key}
+		// a label wraps instead of ending in "…": the user approves what it says
+		rows := wrapSegs([]hostapi.Segment{{Text: c.label}}, inner-4-2-len(c.key))
+		items[i] = listItem{label: plainSegs(rows[0]), key: c.key, more: rows[1:]}
 	}
-	list := listRowsW(items, pa.sel, nil, len(items), 0, inner)
+	list := listRowsW(items, pa.sel, nil, math.MaxInt, 0, inner)
+
+	// the choices and the hint always fit: borders, the blank rows around
+	// the list and the hint come first, then a line of the content, then
+	// the words, then the rest of the content
+	fixed := len(head) + len(list) + 5
+	if len(head) > 0 && len(content) > 0 {
+		fixed++ // the blank row between them
+	}
+	if len(words) > 0 {
+		words = capRows(words, chatH-fixed-min(len(content), 2)-1, inner)
+	}
 	tail := [][]hostapi.Segment{blank}
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)
 	}
-	tail = append(append(tail, list...), blank, hintLine("enter", "confirm", "esc", "deny"))
-
-	// borders, a blank row above the content, and the "more" row
-	if room := max(chatH-len(head)-len(tail)-4, 3); len(content) > room {
+	hints := []string{"enter", "confirm", "esc", "deny"}
+	if room := chatH - fixed - len(tail) + 1; len(content) > max(room, 1) {
+		room = max(room-1, 1) // the row that says which lines show
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
-		more := fmt.Sprintf("  %d of %d lines · pgdn for more", pa.scroll+room, len(content))
+		more := fmt.Sprintf("  lines %d-%d of %d", pa.scroll+1, pa.scroll+room, len(content))
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
+		hints = append([]string{"pgup/pgdn", "scroll"}, hints...)
 	}
+	tail = append(append(tail, list...), blank, hintLine(hints...))
 	// panels span the box, and the box fits its content (at least 56 wide):
 	// a padded panel counts by its text, other rows whole as hostBoxW counts them
 	fit := 56
@@ -544,6 +560,24 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		badge = fmt.Sprintf(" 1 of %d ", n+1)
 	}
 	return hostBoxW(" "+title+" ", "Host:Title", badge, body, w, maxW)
+}
+
+// capRows keeps the first n of wrapped rows, ending the last kept one in
+// "…" when rows were dropped.
+func capRows(rows [][]hostapi.Segment, n, w int) [][]hostapi.Segment {
+	if n <= 0 {
+		return nil
+	}
+	if len(rows) <= n {
+		return rows
+	}
+	last := truncateSegs(rows[n-1], w-1)
+	if k := len(last); k > 0 {
+		end := last[k-1]
+		end.Text = strings.TrimRight(end.Text, " ") + "…"
+		last = append(last[:k-1:k-1], end)
+	}
+	return append(rows[:n-1:n-1], last)
 }
 
 // padPanel cuts or extends a panel row to width, keeping its last style.
