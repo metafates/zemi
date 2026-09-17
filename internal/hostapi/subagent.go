@@ -322,6 +322,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
 	text = lastAssistantText(runner.History)
+	if n := run.droppedCount(); n > 0 {
+		text = strings.TrimSpace(fmt.Sprintf("%s\n\n(%d message(s) sent to it were never read: the run ended first)", text, n))
+	}
 	if err != nil {
 		return text, err
 	}

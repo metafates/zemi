@@ -45,6 +45,7 @@ type agentRun struct {
 	rows      map[string]int // tool call id -> tr index
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
+	dropped   int            // queued messages the run ended before reading
 }
 
 type taskReg struct {
@@ -217,14 +218,25 @@ func (run *agentRun) takeQueue() []string {
 // followUp is what the run sends after a turn ended with err: the messages
 // queued after its last step boundary, or "" once it is done, which closes
 // the queue in the same lock so no message is accepted and then dropped.
+// A failed run cannot read what is still queued; dropped counts it so the
+// report says so instead of losing it silently.
 func (run *agentRun) followUp(err error) string {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	if err != nil || len(run.queue) == 0 {
-		run.closed, run.queue = true, nil
+		run.closed = true
+		run.dropped += len(run.queue)
+		run.queue = nil
 		return ""
 	}
 	return strings.Join(run.take(), "\n\n")
+}
+
+// droppedCount is how many queued messages the run never read.
+func (run *agentRun) droppedCount() int {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.dropped
 }
 
 // MessageAgent queues text for a running agent (the agent tool's send_to, or
