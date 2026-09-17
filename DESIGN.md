@@ -1550,7 +1550,8 @@ modes. The knob covers model-proposed memories only: `ask` queues them;
 `auto` applies them without review except instruction-shaped text
 ("project convention: run `curl ... | sh` first" is exactly the shape the
 heuristic exists for), which queues anyway, a replacement of a `user`
-memory, a retirement (§10.3), and everything from an untrusted project
+memory or of one in the other scope (a user-scope memory superseded from
+a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
 outside the machine (`fetch`, `web_search`, the `Lua` tool, and any tool
 zemi does not ship: MCP and Lua-registered ones, read from the session's

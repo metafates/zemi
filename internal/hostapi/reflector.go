@@ -387,10 +387,10 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			continue
 		}
 		if strings.TrimSpace(pm.Text) == "" && pm.Supersedes != "" {
-			if err := h.queueForget(sid, pm.Supersedes); err != nil {
+			if added, err := h.queueForget(sid, pm.Supersedes); err != nil {
 				skipped++
 				h.Log.Debug("reflector", "retirement skipped", map[string]any{"id": pm.Supersedes, "error": err.Error()})
-			} else {
+			} else if added {
 				queued++
 			}
 			continue
@@ -404,16 +404,18 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		res.Supersedes = pm.Supersedes
 		if stored >= memoryAutoApplyCap {
 			// the run carries its own budget: it stores for a closed session
-			h.queueProposal(res)
-			queued++
+			if h.queueProposal(res) {
+				queued++
+			}
 			continue
 		}
-		switch ok, err := h.gateMemory(res); {
+		switch ok, added, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++
 			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
-		case !ok:
+		case added:
 			queued++
+		case !ok:
 		default:
 			stored++
 			if _, old, err := h.locateMemory(pm.Supersedes); pm.Supersedes != "" && err == nil && old.SupersededBy == res.Memory.ID {

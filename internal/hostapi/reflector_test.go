@@ -390,16 +390,18 @@ func TestReflectPromptInstructions(t *testing.T) {
 }
 
 // TestReflectSupersedeThroughReview: a queued supersede links on accept, and
-// replacing a user memory queues even under auto.
+// replacing a user memory or one in the other scope queues even under auto,
+// and the same suggestion again queues and counts nothing.
 func TestReflectSupersedeThroughReview(t *testing.T) {
 	for _, tc := range []struct{ name, autonomy, oldOrigin, scope string }{
 		{"ask queues and links on accept", "ask", learn.OriginLearned, "project"},
 		{"user memory queues under auto", "auto", learn.OriginUser, "project"},
-		{"a replacement in the other scope links too", "ask", learn.OriginLearned, "user"},
+		{"another scope's memory queues under auto", "auto", learn.OriginLearned, "user"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.Settings.SetHost("memory.autonomy", tc.autonomy)
+			h.SetProjectTrusted(true)
 			sid := seedSession(t, h)
 			seedTranscript(t, h, sid)
 			oldID := store.NewID()
@@ -413,6 +415,13 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 			props := h.memoryProposals()
 			if len(props) != 1 || len(projectMemories(t, h)) != 1 {
 				t.Fatalf("want one queued proposal and nothing stored: %d", len(props))
+			}
+			if tc.scope == "user" && !strings.HasSuffix(h.memoryRows()[0].Text, "(replaces project memory "+oldID[:8]+")") {
+				t.Fatalf("review row: %q", h.memoryRows()[0].Text)
+			}
+			again, _ := parseReflectProposal(`{"memories":[{"scope":"` + tc.scope + `","kind":"fact","text":"deploy runs from bin/deploy"}]}`)
+			if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
+				t.Fatalf("a duplicate counted as queued: %d", queued)
 			}
 			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
 				t.Fatalf("accept: %v", err)
@@ -430,7 +439,7 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 // rewrite, accepting after a move deletes it where it went, and a pending
 // forget does not block saving its text again.
 func TestReflectForgetThroughReview(t *testing.T) {
-	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "deleted"} {
+	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "merged", "deleted"} {
 		h, r := newTestHostDB(t)
 		h.Settings.SetHost("memory.autonomy", "auto")
 		h.SetProjectTrusted(true)
@@ -483,6 +492,17 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			}
 			if m, err := h.GlobalDB.GetMemory(old.ID); err != nil || m.Text != "deploy by hand" {
 				t.Fatalf("move lost the memory: %v", err)
+			}
+			want = 0
+			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+				t.Fatal(err)
+			}
+		case "merged":
+			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
+				t.Fatal(err)
 			}
 			want = 0
 			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {

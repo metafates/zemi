@@ -63,15 +63,18 @@ func (h *Host) storeMemory(scope, origin, kind, text string, tags []string) (*le
 }
 
 // queueProposal persists a policy-clean memory for review in its scope's
-// store. The id is assigned here so review decisions travel by id.
-func (h *Host) queueProposal(res *learn.Result) {
+// store, reporting whether it added one. The id is assigned here so review
+// decisions travel by id.
+func (h *Host) queueProposal(res *learn.Result) bool {
 	if h.duplicateMemory(res.Memory) {
 		h.Log.Debug("memory", "duplicate proposal dropped", nil)
-		return
+		return false
 	}
 	if err := h.addProposal(memoryProposal{Memory: res.Memory, Supersedes: res.Supersedes}); err != nil {
 		h.Log.Warn("memory", "proposal dropped", map[string]any{"error": err.Error()})
+		return false
 	}
+	return true
 }
 
 // addProposal persists a proposal in its scope's store as it is.
@@ -96,19 +99,20 @@ func (h *Host) addProposal(p memoryProposal) error {
 // queueForget proposes deleting a stored memory, for the reflector to retire
 // one that stopped being true. Deleting loses data, so it always waits for
 // review, whatever the autonomy.
-func (h *Host) queueForget(sid, id string) error {
+func (h *Host) queueForget(sid, id string) (added bool, err error) {
 	_, old, err := h.locateMemory(id)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, p := range h.memoryProposals() {
 		if p.Forget && p.Supersedes == old.ID {
-			return nil
+			return false, nil
 		}
 	}
 	p := memoryProposal{Memory: *old, Supersedes: old.ID, Forget: true}
 	p.ID, p.ProvenanceSessionID = "", sid
-	return h.addProposal(p)
+	err = h.addProposal(p)
+	return err == nil, err
 }
 
 // applyProposal stores a proposal under auto autonomy and spends one unit
@@ -342,7 +346,8 @@ func (h *Host) moveMemory(id, from, to string) error {
 	if err != nil {
 		return err
 	}
-	switch i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) }); {
+	i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) })
+	switch {
 	case i < 0:
 		err = dst.AddMemory(m)
 	case m.Origin == learn.OriginUser && live[i].Origin != learn.OriginUser:
@@ -351,6 +356,17 @@ func (h *Host) moveMemory(id, from, to string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if i >= 0 {
+		// pending forgets and replacements follow the text to the copy it merged into
+		for _, p := range h.memoryProposals() {
+			if p.Supersedes == id && h.takeProposal(p.ID) != nil {
+				p.Supersedes = live[i].ID
+				if err := h.addProposal(p); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return src.DeleteMemory(id)
 }
@@ -439,7 +455,11 @@ func (h *Host) memoryRows() []MemoryRow {
 		case m.Forget:
 			text = "forget: " + text
 		case m.Supersedes != "":
-			text += " (replaces " + learn.Truncate(m.Supersedes, 8) + ")"
+			what := ""
+			if _, old, err := h.locateMemory(m.Supersedes); err == nil && old.Scope != m.Scope {
+				what = old.Scope + " memory "
+			}
+			text += " (replaces " + what + learn.Truncate(m.Supersedes, 8) + ")"
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
@@ -725,7 +745,7 @@ func (h *Host) proposeMemory(sid, scope, kind, text string, tags []string) (stor
 	if err != nil {
 		return false, "", err
 	}
-	stored, err = h.gateMemory(res)
+	stored, _, err = h.gateMemory(res)
 	return stored, res.Memory.ID, err
 }
 
@@ -770,12 +790,12 @@ func (h *Host) modelEditMemory(sid, id, text string) (string, error) {
 
 // gateMemory is the autonomy gate (DESIGN §10.4): an intake result is
 // stored under auto when policy-clean and within budget, queued otherwise.
-func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
-	if h.memoryAuto(res.Memory.ProvenanceSessionID) && !res.InstructionShaped && !h.replacesUserMemory(res.Supersedes) && h.autoApplyBudgetLeft() {
-		return true, h.applyProposal(res)
+// queued is false for a duplicate.
+func (h *Host) gateMemory(res *learn.Result) (stored, queued bool, err error) {
+	if h.memoryAuto(res.Memory.ProvenanceSessionID) && !res.InstructionShaped && !h.replacementNeedsReview(res) && h.autoApplyBudgetLeft() {
+		return true, false, h.applyProposal(res)
 	}
-	h.queueProposal(res)
-	return false, nil
+	return false, h.queueProposal(res), nil
 }
 
 // memoryAuto reports whether auto autonomy may skip review for what session
@@ -811,14 +831,15 @@ func (h *Host) memoryAuto(sid string) bool {
 	return true
 }
 
-// replacesUserMemory reports whether id names a user-attested memory, which
-// a learned one may replace only through review (DESIGN §10.4).
-func (h *Host) replacesUserMemory(id string) bool {
-	if id == "" {
+// replacementNeedsReview reports whether res supersedes a user-attested
+// memory, or one in the other scope: a user-scope memory superseded from a
+// project is hidden in every project (DESIGN §10.4).
+func (h *Host) replacementNeedsReview(res *learn.Result) bool {
+	if res.Supersedes == "" {
 		return false
 	}
-	_, old, err := h.locateMemory(id)
-	return err == nil && old.Origin == learn.OriginUser
+	_, old, err := h.locateMemory(res.Supersedes)
+	return err == nil && (old.Origin == learn.OriginUser || old.Scope != res.Memory.Scope)
 }
 
 func (h *Host) autoApplyBudgetLeft() bool {
