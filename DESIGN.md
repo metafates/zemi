@@ -538,8 +538,14 @@ zemi.event.on("tool.pre", function(ev)
 zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
-There are no editor modes, so a binding is just a key: the composer is
-always focused and commands are slash commands typed in it. Key notation
+There are no editor modes, so a binding is just a key: the composer has
+the keys unless a focusable layout node does (below), and commands are
+slash commands typed in it. A binding with `{ focus = "<node id>" }` works
+only while that node has the keys, and may be a plain letter there; it
+comes before the global bindings unless a more trusted global binding
+holds the key, and it may not take a key or sequence a more trusted
+global binding holds, so a plugin panel cannot shadow the user's keys.
+Key notation
 matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
 lowercased); a string action in `zemi.keymap.set` resolves to a registered
 command name or a dotted
@@ -902,11 +908,24 @@ UI extensibility contract:
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question/memory overlays) -> the topmost overlay (Lua, or Go-built
-  lists like the mode and model pickers) ->
+  lists like the mode and model pickers) -> a focused window ->
+  a focused layout node (its scoped keymaps, then the global ones; an
+  unbound key does nothing, an unbound esc gives the keys back) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
-  composer (always focused; there are no modes). Overlays capture first,
+  composer (there are no modes). Overlays capture first,
   user maps override defaults, `zemi.keymap.del` unmaps.
+- Focus: a layout region or float with an id and `focusable = true` can
+  take the keys. `zemi.ui.focus.set(id)` (nil for the composer), `get`,
+  `next` and `prev` (drawn focusable nodes in tree then float order, the
+  composer counting as one), the `zemi.ui.focus.*` host actions and a
+  click on the node move it; a click on the composer, focusing a window, a
+  layout without the node, or esc give it back. The focus lives in Go and
+  every key still goes through normal keymap dispatch, so a panel costs no
+  Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
+  composer hides its cursor and popups while a node has the keys. Any
+  origin may move the focus: only a node user or shipped layout marked
+  focusable can take it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, filtered case-insensitively as you type; `up`/`down`
   navigate, `tab` accepts (fills `/name `), `enter` submits the typed

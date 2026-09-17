@@ -91,12 +91,14 @@ function zemi.config.reload() end
 
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
+---@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
 
 ---@class zemi.Keymap
 ---@field key string
 ---@field desc string
 ---@field origin zemi.Origin
----@field rhs string A command, a host action, or "function".
+---@field action string "/command", a host action, or "<function>".
+---@field focus? string The node it is scoped to; nil for a global binding.
 
 ---@class zemi.keymap
 zemi.keymap = {}
@@ -109,18 +111,31 @@ zemi.keymap = {}
 --- (`<leader>` is the `keymap.leader` setting, ctrl+g by default). Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix
 --- or extension of a key sequence) a more trusted origin bound raises.
+--- With `opts.focus` the binding is scoped to a focusable node: while it has
+--- the keys its bindings come first, then the global ones, unless a more
+--- trusted global binding holds the key. It may not take a key a more
+--- trusted global binding holds.
+---
+--- Host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
+--- zemi.ui.scroll.{up,down,top,bottom} [id], zemi.ui.focus.set [id],
+--- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.cycle and
+--- zemi.permission.mode.prev (user config only).
 ---@param key string
 ---@param action string|fun()
 ---@param opts? zemi.KeymapOpts
 function zemi.keymap.set(key, action, opts) end
 
+--- Unbind a key the caller's origin or a less trusted one set; raises when
+--- it is not bound.
 ---@param key string
----@return boolean removed
-function zemi.keymap.del(key) end
+---@param opts? { focus?: string }
+function zemi.keymap.del(key, opts) end
 
+--- The binding a key runs, while `opts.focus` has the keys when given.
 ---@param key string
+---@param opts? { focus?: string }
 ---@return zemi.Keymap|nil
-function zemi.keymap.get(key) end
+function zemi.keymap.get(key, opts) end
 
 ---@return zemi.Keymap[]
 function zemi.keymap.list() end
@@ -317,6 +332,7 @@ function zemi.event.stats() end
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting string "approval" or "answer" while a prompt holds the turn, else "".
+---@field focus string Id of the layout node that has the keys, "" while the composer has them.
 
 ---@class zemi.WidgetSpec
 ---@field id string
@@ -444,6 +460,7 @@ function zemi.ui.widget.list() end
 ---@field kind "region"
 ---@field region zemi.Region
 ---@field scroll? "top"|"bottom" Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it; "bottom" follows the tail.
+---@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
 
 --- One row: the first line of each widget in `left`, then Go's pills (the
 --- focused window, boot failed, stuck, errors), then `right` aligned to the
@@ -481,6 +498,7 @@ function zemi.ui.widget.list() end
 ---@field width? integer|string Cells, "N%" of the relative node, or "content" (default: its widest row).
 ---@field height? integer|string Cells, "N%", or "content" (default: its rows).
 ---@field hidden? boolean
+---@field focusable? boolean Can take the keys, like a region node (needs an id).
 
 ---@class zemi.Layout
 ---@field root zemi.LayoutBox
@@ -514,6 +532,32 @@ function zemi.ui.layout.get() end
 --- and "composer".
 ---@return table<string, zemi.Rect>
 function zemi.ui.layout.rects() end
+
+--- Keyboard focus. The composer has the keys unless a focusable node does.
+--- While a node has them, every key but ctrl+c goes to the keymaps scoped
+--- to it and then the global ones; an unbound key does nothing and an
+--- unbound esc gives the keys back to the composer. Prompts and overlays
+--- still take keys first. A click on a focusable node focuses it, a click
+--- on the composer focuses the composer, and focusing a window unfocuses
+--- the node. A node the frame does not draw gives its keys to the composer.
+---@class zemi.ui.focus
+zemi.ui.focus = {}
+
+--- Give the keys to a focusable node of the layout, or to the composer with
+--- nil. Raises when the layout has no focusable node with that id.
+---@param id? string
+function zemi.ui.focus.set(id) end
+
+--- The focused node's id, nil for the composer.
+---@return string|nil
+function zemi.ui.focus.get() end
+
+--- Move the focus to the next drawn focusable node, the composer counting
+--- as one, in tree order and then float order.
+function zemi.ui.focus.next() end
+
+--- Move the focus back one.
+function zemi.ui.focus.prev() end
 
 ---@class zemi.ui.theme
 zemi.ui.theme = {}

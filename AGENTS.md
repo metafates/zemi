@@ -638,7 +638,7 @@ timeout.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.25.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.27.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -690,12 +690,17 @@ timeout.
   keymaps and cannot be rebound — `/reload` is matched on composer submit (exact,
   case-sensitive, before the command registry is consulted), so no registered command can
   shadow it. Keep them out of any "make everything rebindable" refactor.
-- **No editor modes.** The composer is always focused; commands are slash commands typed in
+- **No editor modes.** The composer has the keys unless a `focusable` layout node does
+  (`Host.Focus`, `zemi.ui.focus`, `App.focusedNode` counts it only while the last frame drew
+  it); commands are slash commands typed in
   the composer (`/quit`, `/help`, `/memory`, ...) with the palette popup for completion
   (`internal/ui/palette.go`). Keymaps are keys or key sequences
   (`zemi.keymap.set("<leader>m", action)`, `del`, `get`, `list`; `<leader>` is the
   `keymap.leader` setting); printable keys stay with the composer, and an open palette or
-  completion popup keeps its keys before keymaps are consulted.
+  completion popup keeps its keys before keymaps are consulted. A focused node takes every
+  key but ctrl+c through `Keymaps.Lookup(focus, key)`: bindings with `{ focus = id }` first
+  unless a more trusted global binding holds the key, then global ones; unbound keys drop and
+  an unbound esc returns the keys. Chrome and overlays still come first.
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeAllMotion` (unless
   `ui.mouse = false`) so the wheel scrolls the transcript (the altscreen buffer has no
   native scrollback) and plain pointer motion drives hover. `App.target` is the one hit

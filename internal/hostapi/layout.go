@@ -39,6 +39,7 @@ type LayoutNode struct {
 
 	Region      string // region: the widgets drawn in it
 	Scroll      string // region: "top" or "bottom" (follows the tail) makes it scrollable
+	Focusable   bool   // region: can take keys (zemi.ui.focus), by its id
 	Left, Right string // bar: the regions of its left and right clusters
 	Slot        string // windows: the kind of window spliced in here, split or vsplit
 
@@ -59,6 +60,7 @@ type LayoutFloat struct {
 	Row, Col      int
 	Width, Height Size // cells, a percent of the relative node, or content
 	Hidden        bool
+	Focusable     bool
 }
 
 // Layout is the screen: the tree, then the floats in drawing order.
@@ -84,6 +86,28 @@ func (l *Layout) Regions() map[string]bool {
 	walk(l.Root)
 	for _, f := range l.Floats {
 		out[f.Region] = true
+	}
+	return out
+}
+
+// Focusables are the ids of the focusable regions and floats, in tree
+// order and then float order: the order focus cycles in.
+func (l *Layout) Focusables() []string {
+	var out []string
+	var walk func(n *LayoutNode)
+	walk = func(n *LayoutNode) {
+		if n.Focusable {
+			out = append(out, n.ID)
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(l.Root)
+	for _, f := range l.Floats {
+		if f.Focusable {
+			out = append(out, f.ID)
+		}
 	}
 	return out
 }
@@ -155,6 +179,7 @@ func (h *Host) layoutNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.ui.layout.set: %s config set the layout; %s code may not replace it", cur.origin, o)
 		}
 		h.layout.Store(&layoutSet{layout: lay, raw: raw, origin: o, gen: h.currentGen()})
+		h.dropStaleFocus()
 		h.refresh()
 		return 0
 	}))
@@ -185,8 +210,93 @@ func (h *Host) layoutNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) dropStaleLayout() {
 	if s := h.layout.Load(); s != nil && s.gen != h.currentGen() {
 		h.layout.CompareAndSwap(s, nil)
+		h.dropStaleFocus()
 		h.refresh()
 	}
+}
+
+// Focus is the id of the layout node taking keys, "" for the composer.
+func (h *Host) Focus() string {
+	if p := h.focus.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// SetFocus gives the keys to a node by id, or to the composer with "". The
+// UI calls it as it is; Lua goes through focusNode, which checks the id.
+func (h *Host) SetFocus(id string) {
+	if h.Focus() != id {
+		h.focus.Store(&id)
+		h.refresh()
+	}
+}
+
+// focusNode moves the focus to a focusable node of the layout in force, or
+// to the composer with "". A focused window lets go of the keys.
+func (h *Host) focusNode(id string) error {
+	if id != "" && !slices.Contains(h.Layout().Focusables(), id) {
+		return fmt.Errorf("the layout has no focusable node %q", id)
+	}
+	h.SetFocus(id)
+	if ui := h.hooks(); id != "" && ui != nil {
+		ui.FocusWindow(0)
+	}
+	return nil
+}
+
+// cycleFocus moves the focus step places through the composer and the
+// focusable nodes the last frame drew.
+func (h *Host) cycleFocus(step int) error {
+	ui := h.hooks()
+	if ui == nil {
+		return nil
+	}
+	drawn := ui.LayoutRects()
+	ids := []string{""}
+	for _, id := range h.Layout().Focusables() {
+		if _, ok := drawn[id]; ok {
+			ids = append(ids, id)
+		}
+	}
+	i := max(slices.Index(ids, h.Focus()), 0)
+	return h.focusNode(ids[((i+step)%len(ids)+len(ids))%len(ids)])
+}
+
+// dropStaleFocus hands the keys back to the composer when the layout in
+// force no longer has the focused node.
+func (h *Host) dropStaleFocus() {
+	if f := h.Focus(); f != "" && !slices.Contains(h.Layout().Focusables(), f) {
+		h.SetFocus("")
+	}
+}
+
+// focusNamespace is zemi.ui.focus: set(id?), get(), next() and prev().
+func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.focus.set")
+		if err := h.focusNode(L.OptString(1, "")); err != nil {
+			L.RaiseError("zemi.ui.focus.set: %v", err)
+		}
+		return 0
+	}))
+	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
+		if f := h.Focus(); f != "" {
+			L.Push(glua.LString(f))
+		} else {
+			L.Push(glua.LNil)
+		}
+		return 1
+	}))
+	for name, step := range map[string]int{"next": 1, "prev": -1} {
+		tb.RawSetString(name, L.NewFunction(func(L *glua.LState) int {
+			h.refuseDuringRender(L, "zemi.ui.focus."+name)
+			_ = h.cycleFocus(step)
+			return 0
+		}))
+	}
+	return tb
 }
 
 // layoutParser checks a layout table as it builds the Go tree.
@@ -319,16 +429,16 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 			err = fmt.Errorf("%s: dir must be \"row\" or \"col\"", at)
 		}
 	case "region":
-		if err = onlyKeys(m, at, append(common, "region", "scroll")...); err == nil {
+		if err = onlyKeys(m, at, append(common, "region", "scroll", "focusable")...); err == nil {
 			err = region("region")
 		}
-		n.Region, n.Scroll = str("region"), str("scroll")
+		n.Region, n.Scroll, n.Focusable = str("region"), str("scroll"), flag("focusable")
 		switch {
 		case err != nil:
 		case n.Scroll != "" && n.Scroll != "top" && n.Scroll != "bottom":
 			err = fmt.Errorf("%s: scroll must be \"top\" or \"bottom\"", at)
-		case n.Scroll != "" && n.ID == "":
-			err = fmt.Errorf("%s: a scrolled region needs an id", at)
+		case (n.Scroll != "" || n.Focusable) && n.ID == "":
+			err = fmt.Errorf("%s: a scrolled or focusable region needs an id", at)
 		}
 	case "bar":
 		if err = onlyKeys(m, at, append(common, "left", "right")...); err == nil {
@@ -410,7 +520,7 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 	if !ok {
 		return LayoutFloat{}, fmt.Errorf("%s: expected a float table", at)
 	}
-	if err := onlyKeys(m, at, "id", "region", "relative", "anchor", "row", "col", "width", "height", "hidden"); err != nil {
+	if err := onlyKeys(m, at, "id", "region", "relative", "anchor", "row", "col", "width", "height", "hidden", "focusable"); err != nil {
 		return LayoutFloat{}, err
 	}
 	f := LayoutFloat{Relative: "stage", Anchor: "NW", Width: Size{Kind: SizeContent}, Height: Size{Kind: SizeContent}}
@@ -441,7 +551,10 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 		}
 	}
 	f.Hidden, _ = m["hidden"].(bool)
+	f.Focusable, _ = m["focusable"].(bool)
 	switch {
+	case f.Focusable && f.ID == "":
+		return f, fmt.Errorf("%s: a focusable float needs an id", at)
 	case f.Region == "":
 		return f, fmt.Errorf("%s: region must name a region", at)
 	case p.regions[f.Region]:

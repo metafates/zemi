@@ -179,7 +179,7 @@ func TestKeySequences(t *testing.T) {
 		assert(zemi.keymap.get("<leader>gs") ~= nil, "get takes the leader form")
 		assert(not pcall(zemi.keymap.set, "g s", "zemi.ui.help"), "printable start refused")
 	`)
-	if !h.Keymaps.IsPrefix("ctrl+g g") || h.Keymaps.IsPrefix("ctrl+g x") {
+	if !h.Keymaps.IsPrefix("", "ctrl+g g") || h.Keymaps.IsPrefix("", "ctrl+g x") {
 		t.Fatal("prefix lookup")
 	}
 }

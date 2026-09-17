@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,8 +16,8 @@ import (
 )
 
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
-// the chrome drawn on top (topChrome), keymaps, then the composer. There
-// are no modes: the composer is always focused.
+// the chrome drawn on top (topChrome), a focused window, a focused layout
+// node's keymaps, then keymaps and the composer.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
@@ -28,12 +29,23 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// A focused node takes every key but ctrl+c: its own keymaps, then the
+	// global ones. Unbound keys do nothing, and an unbound esc gives the
+	// keys back to the composer.
+	if f := a.focusedNode(); top == "" && f != "" && key != "ctrl+c" {
+		if !a.keySequence(key, f) && key == "esc" {
+			a.host.SetFocus("")
+		}
+		a.frameGen++
+		return nil
+	}
+
 	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys (tab accepts even though tab is bound). The composer is Go-drawn,
 	// so typing must not bump the frame generation: that would re-render
 	// every Lua widget on every keystroke.
-	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.open || !a.keySequence(key)) {
+	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.open || !a.keySequence(key, "")) {
 		return a.composerKey(key, msg)
 	}
 	a.frameGen++
@@ -284,11 +296,11 @@ func moveSel(sel *int, n int, key string) bool {
 
 const keySeqTimeout = 1500 * time.Millisecond
 
-// keySequence runs bindings, including multi-key ones ("ctrl+g s"): a key
-// that starts or continues a bound sequence is held until the sequence
-// completes, esc cancels it, and a key that breaks or outlives it is
-// handled on its own.
-func (a *App) keySequence(key string) bool {
+// keySequence runs bindings for focus, including multi-key ones ("ctrl+g
+// s"): a key that starts or continues a bound sequence is held until the
+// sequence completes, esc cancels it, and a key that breaks or outlives it
+// is handled on its own.
+func (a *App) keySequence(key, focus string) bool {
 	seq := key
 	if pending := a.keySeq; len(pending) > 0 {
 		a.keySeq = nil
@@ -299,15 +311,24 @@ func (a *App) keySequence(key string) bool {
 			seq = strings.Join(append(pending, key), " ")
 		}
 	}
-	if b := a.host.Keymaps.Lookup(seq); b != nil {
+	if b := a.host.Keymaps.Lookup(focus, seq); b != nil {
 		a.runRHS(b)
 		return true
 	}
-	if a.host.Keymaps.IsPrefix(seq) {
+	if a.host.Keymaps.IsPrefix(focus, seq) {
 		a.keySeq, a.keySeqAt = strings.Fields(seq), a.now()
 		return true
 	}
-	return seq != key && a.keySequence(key)
+	return seq != key && a.keySequence(key, focus)
+}
+
+// focusedNode is the layout node taking keys: the host's focus while the
+// last frame drew it, else "" (the composer).
+func (a *App) focusedNode() string {
+	if f := a.host.Focus(); f != "" && slices.Contains(a.focusables, f) {
+		return f
+	}
+	return ""
 }
 
 // listMove maps list navigation keys (arrows, k/j, and the nvim-style
@@ -328,6 +349,7 @@ func listMove(key string) int {
 func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
 		err := a.host.RunRHS(context.Background(), b)
+		a.Refresh() // what it changed shows without waiting for another redraw
 		switch {
 		case err == nil:
 		case errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):

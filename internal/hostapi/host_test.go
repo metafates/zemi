@@ -70,7 +70,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.26.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.27.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -98,6 +98,9 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.ui.reasoning.toggle) == "function", "zemi.ui.reasoning.toggle missing")
 		for _, fn in ipairs({ "set", "get", "rects" }) do
 			assert(type(zemi.ui.layout[fn]) == "function", "zemi.ui.layout." .. fn .. " missing")
+		end
+		for _, fn in ipairs({ "set", "get", "next", "prev" }) do
+			assert(type(zemi.ui.focus[fn]) == "function", "zemi.ui.focus." .. fn .. " missing")
 		end
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
@@ -302,7 +305,7 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
 		assert(not pcall(zemi.keymap.del, "tab"), "deleting an unbound key must raise")
 	`)
-	if b := h.Keymaps.Lookup("ctrl+g"); b == nil || b.Origin != lua.OriginUser {
+	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
 	}
 }
@@ -370,7 +373,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("mutation during render: err = %v", err)
 	}
-	if h.Keymaps.Lookup("zz") != nil {
+	if h.Keymaps.Lookup("", "zz") != nil {
 		t.Fatal("refused bind still landed in the keymap registry")
 	}
 

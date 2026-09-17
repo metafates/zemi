@@ -61,6 +61,8 @@ type App struct {
 	scrolls   map[string]*scrollState
 	scrollDef string
 	scrollIDs []string
+	// focusables are the focusable nodes the last frame drew, floats last
+	focusables []string
 
 	completion fileCompleter
 	palette    cmdPalette
@@ -514,7 +516,7 @@ func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
 		Time: a.timeStr, Pulse: a.pulse(),
 		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
-		Cancelling: a.cancelling, Editing: a.editing,
+		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")
@@ -699,9 +701,13 @@ func (a *App) compose(w, h int) string {
 	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
 	rows := a.paint(lay.root)
 	a.paintFloats(rows, &lay, w, h)
+	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
 	// the popup takes the mouse on the cells it covers, windows under it included
-	pop := a.floatPopup(rows, append(a.completionRows(), a.paletteRows()...), lay, w)
+	var pop uv.Rectangle
+	if a.focusedNode() == "" { // the composer's popups follow its keys
+		pop = a.floatPopup(rows, append(a.completionRows(), a.paletteRows()...), lay, w)
+	}
 	for i := range a.winRects {
 		r := &a.winRects[i]
 		if pop.Empty() || r.x >= pop.Max.X || r.x+r.w <= pop.Min.X {

@@ -30,6 +30,7 @@ type RHS struct {
 // KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {
 	Key    string // bubbletea key string: "ctrl+s", "tab", "alt+enter"
+	Focus  string // the layout node id it works in while focused; "" everywhere
 	RHS    RHS
 	Desc   string
 	Origin lua.Origin
@@ -37,85 +38,99 @@ type KeyBinding struct {
 	Gen    Gen
 }
 
-// KeymapRegistry stores one binding per key with origin precedence
-// (user > builtin > plugin > project) and last-writer-wins within one
-// origin (DESIGN §6.2).
+type bindKey struct{ focus, key string }
+
+// KeymapRegistry stores one binding per key and focus with origin
+// precedence (user > builtin > plugin > project) and last-writer-wins
+// within one origin (DESIGN §6.2).
 type KeymapRegistry struct {
 	mu       sync.RWMutex
-	bindings map[string]*KeyBinding
+	bindings map[bindKey]*KeyBinding
 }
 
 func NewKeymapRegistry() *KeymapRegistry {
-	return &KeymapRegistry{bindings: map[string]*KeyBinding{}}
+	return &KeymapRegistry{bindings: map[bindKey]*KeyBinding{}}
 }
 
 // Set binds or rebinds a key; a key bound by a more trusted origin is
-// refused.
+// refused. A focused binding sits over the global ones, so it may not take
+// a key or sequence a more trusted global binding holds.
 func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	if b.Key == "" {
 		return errors.New("keymap: key is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if old := r.bindings[b.Key]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
+	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
 		return fmt.Errorf("keymap: %s is already bound by a %s registration", b.Key, old.Origin)
 	}
 	// a key fires before the longer sequences it starts, so overlapping a
 	// more trusted sequence would take it over (or be dead)
 	for k, old := range r.bindings {
-		if old.Origin.Rank() > b.Origin.Rank() && (strings.HasPrefix(k, b.Key+" ") || strings.HasPrefix(b.Key, k+" ")) {
-			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k, old.Origin)
+		related := k.focus == b.Focus || k.focus == "" || b.Focus == ""
+		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || k.key == b.Key && k.focus == "" && b.Focus != ""
+		if related && overlap && old.Origin.Rank() > b.Origin.Rank() {
+			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k.key, old.Origin)
 		}
 	}
-	r.bindings[b.Key] = b
+	r.bindings[bindKey{b.Focus, b.Key}] = b
 	return nil
 }
 
 // Del unbinds a key set by the same or a less trusted origin, so user
 // config can remove shipped defaults but a plugin cannot remove user keys.
-func (r *KeymapRegistry) Del(origin lua.Origin, key string) error {
+func (r *KeymapRegistry) Del(origin lua.Origin, focus, key string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	switch b := r.bindings[key]; {
+	k := bindKey{focus, key}
+	switch b := r.bindings[k]; {
 	case b == nil:
 		return fmt.Errorf("keymap: %s is not bound", key)
 	case b.Origin.Rank() > origin.Rank():
 		return fmt.Errorf("keymap: %s is bound by a %s registration", key, b.Origin)
 	}
-	delete(r.bindings, key)
+	delete(r.bindings, k)
 	return nil
 }
 
-// Lookup finds the binding for a key.
-func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
+// Lookup finds the binding for a key while focus has the keys: the focused
+// node's own, unless a more trusted global binding holds the key.
+func (r *KeymapRegistry) Lookup(focus, key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.bindings[key]
+	g := r.bindings[bindKey{"", key}]
+	if s := r.bindings[bindKey{focus, key}]; focus != "" && s != nil && (g == nil || s.Origin.Rank() >= g.Origin.Rank()) {
+		return s
+	}
+	return g
 }
 
-// IsPrefix reports whether seq begins a longer bound key sequence.
-func (r *KeymapRegistry) IsPrefix(seq string) bool {
+// IsPrefix reports whether seq begins a longer key sequence bound globally
+// or for focus.
+func (r *KeymapRegistry) IsPrefix(focus, seq string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for k := range r.bindings {
-		if strings.HasPrefix(k, seq+" ") {
+		if (k.focus == "" || k.focus == focus) && strings.HasPrefix(k.key, seq+" ") {
 			return true
 		}
 	}
 	return false
 }
 
-// List returns all bindings sorted by key.
+// List returns all bindings sorted by key, then focus.
 func (r *KeymapRegistry) List() []*KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return slices.SortedFunc(maps.Values(r.bindings), func(a, b *KeyBinding) int { return cmp.Compare(a.Key, b.Key) })
+	return slices.SortedFunc(maps.Values(r.bindings), func(a, b *KeyBinding) int {
+		return cmp.Or(cmp.Compare(a.Key, b.Key), cmp.Compare(a.Focus, b.Focus))
+	})
 }
 
 // Purge drops every binding (replay re-registers on reload).
 func (r *KeymapRegistry) Purge() {
 	r.mu.Lock()
-	r.bindings = map[string]*KeyBinding{}
+	r.bindings = map[bindKey]*KeyBinding{}
 	r.mu.Unlock()
 }
 

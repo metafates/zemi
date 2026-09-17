@@ -138,6 +138,22 @@ end, { desc = "toggle the sidebar" })
 zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the sidebar" })
 ```
 
+A region with an id and `focusable = true` can take the keys, which makes a panel you drive
+from the keyboard: `zemi.ui.focus.set(id)` (or the `zemi.ui.focus.set <id>` host action, or a
+click on it) gives it the keys, `zemi.ui.focus.next`/`zemi.ui.focus.prev` cycle through the
+composer and the drawn focusable nodes, and esc hands the keys back to the composer. Keymaps
+with `{ focus = id }` work only there and may be plain letters; the render ctx says who has
+the keys in `ctx.focus`:
+
+```lua
+local sel = 1
+zemi.keymap.set("<leader>t", "zemi.ui.focus.set sidebar", { desc = "focus the todo sidebar" })
+zemi.keymap.set("j", function() sel = sel + 1 end, { focus = "sidebar" })
+zemi.keymap.set("k", function() sel = math.max(1, sel - 1) end, { focus = "sidebar" })
+-- and add focusable = true to the sidebar node above; its render marks row `sel`
+-- when ctx.focus == "sidebar"
+```
+
 Keep a `windows` slot of each kind, or windows opened by the model float over the stage.
 Check the result with `zemi.ui.screenshot()` and `zemi.ui.layout.rects()`.
 

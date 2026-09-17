@@ -96,6 +96,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		a.frameGen++
 		if !a.mouse.dragged {
 			a.mouse = mouseSel{}
+			a.focusAt(m.X, m.Y)
 			a.click(m.X, m.Y)
 			return a.hover(m.X, m.Y)
 		}
@@ -108,6 +109,25 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		return copyCmd(text)
 	}
 	return nil
+}
+
+// focusAt gives the keys to the focusable node a click lands in (the topmost:
+// floats come last), or to the composer when it lands there.
+func (a *App) focusAt(x, y int) {
+	if a.topChrome() != "" {
+		return
+	}
+	in := func(r hostapi.Rect) bool { return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height }
+	if in(a.rects["composer"]) {
+		a.host.SetFocus("")
+		return
+	}
+	for _, id := range slices.Backward(a.focusables) {
+		if in(a.rects[id]) {
+			a.host.SetFocus(id)
+			return
+		}
+	}
 }
 
 // selectionText is the plain text under the selection, one line per row.
@@ -360,7 +380,9 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
 	a.background(func() {
-		switch err := a.host.ClickWidget(context.Background(), s.Widget, ev); {
+		err := a.host.ClickWidget(context.Background(), s.Widget, ev)
+		a.Refresh()
+		switch {
 		case err == nil, errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
 		default:
 			a.host.RecordError("click on widget "+s.Widget, err.Error())

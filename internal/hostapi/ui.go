@@ -54,6 +54,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	tb.RawSetString("widget", widget)
 	tb.RawSetString("layout", h.layoutNamespace(L))
+	focus := h.focusNamespace(L)
+	tb.RawSetString("focus", focus)
 
 	theme := L.NewTable()
 	theme.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
@@ -329,6 +331,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	sb.FreezeTable(widget, "namespace zemi.ui.widget")
 	sb.FreezeTable(theme, "namespace zemi.ui.theme")
 	sb.FreezeTable(overlay, "namespace zemi.ui.overlay")
+	sb.FreezeTable(focus, "namespace zemi.ui.focus")
 
 	return tb
 }

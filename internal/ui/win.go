@@ -249,6 +249,7 @@ func (a *App) setFocusWin(id int) {
 	a.focusWin = id
 	if wn, ok := a.host.Wins.Get(id); ok {
 		wn.Focus(true)
+		a.host.SetFocus("") // one thing takes the keys
 	}
 }
 

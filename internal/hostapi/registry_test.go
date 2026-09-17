@@ -12,58 +12,81 @@ import (
 // in the host API layer); an empty LFunction satisfies the shape checks.
 var noopFn = &glua.LFunction{}
 
-func bind(key string, origin lua.Origin) *KeyBinding {
-	return &KeyBinding{Key: key, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
+func bind(key, focus string, origin lua.Origin) *KeyBinding {
+	return &KeyBinding{Key: key, Focus: focus, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
 }
 
 // TestKeymapRegistry: set rebinds within and above an origin, lower trust is
-// refused for set and del, del removes the same or less trusted, and list is
-// sorted.
+// refused for set and del, a focused binding cannot take what a more trusted
+// global one holds, lookup prefers the focused binding unless a more trusted
+// global one holds the key, and list is sorted.
 func TestKeymapRegistry(t *testing.T) {
 	r := NewKeymapRegistry()
 	for _, s := range []struct {
-		name   string
-		key    string
-		origin lua.Origin
-		ok     bool
+		name, key, focus string
+		origin           lua.Origin
+		ok               bool
 	}{
-		{"builtin default", "tab", lua.OriginBuiltin, true},
-		{"user overrides builtin", "tab", lua.OriginUser, true},
-		{"project cannot override user", "tab", lua.OriginProject, false},
-		{"builtin cannot override user", "tab", lua.OriginBuiltin, false},
-		{"plugin key", "x", lua.OriginPlugin, true},
-		{"plugin rebinds its own", "x", lua.OriginPlugin, true},
-		{"user sequence", "ctrl+g s", lua.OriginUser, true},
-		{"project cannot bind a user sequence's prefix", "ctrl+g", lua.OriginProject, false},
-		{"project cannot extend a user key", "tab x", lua.OriginProject, false},
-		{"empty key", "", lua.OriginUser, false},
+		{"builtin default", "tab", "", lua.OriginBuiltin, true},
+		{"user overrides builtin", "tab", "", lua.OriginUser, true},
+		{"project cannot override user", "tab", "", lua.OriginProject, false},
+		{"builtin cannot override user", "tab", "", lua.OriginBuiltin, false},
+		{"plugin key", "x", "", lua.OriginPlugin, true},
+		{"plugin rebinds its own", "x", "", lua.OriginPlugin, true},
+		{"user sequence", "ctrl+g s", "", lua.OriginUser, true},
+		{"project cannot bind a user sequence's prefix", "ctrl+g", "", lua.OriginProject, false},
+		{"project cannot extend a user key", "tab x", "", lua.OriginProject, false},
+		{"empty key", "", "", lua.OriginUser, false},
+		{"plugin focused key", "k", "todo", lua.OriginPlugin, true},
+		{"plugin cannot focus-bind a user global key", "tab", "todo", lua.OriginPlugin, false},
+		{"plugin cannot focus-bind a user sequence's prefix", "ctrl+g", "todo", lua.OriginPlugin, false},
+		{"user focused key over its own global one", "tab", "todo", lua.OriginUser, true},
+		{"user global key over a plugin focused one", "k", "", lua.OriginUser, true},
+		{"project focused key in another node", "tab", "tree", lua.OriginProject, false},
 	} {
-		if err := r.Set(bind(s.key, s.origin)); (err == nil) != s.ok {
+		if err := r.Set(bind(s.key, s.focus, s.origin)); (err == nil) != s.ok {
 			t.Fatalf("%s: err=%v", s.name, err)
 		}
 	}
-	if got := r.Lookup("tab"); got.Origin != lua.OriginUser {
-		t.Fatalf("tab origin = %v, want user", got.Origin)
+	for _, l := range []struct {
+		focus, key string
+		want       lua.Origin // "" for no binding
+		wantFocus  string
+	}{
+		{"", "tab", lua.OriginUser, ""},
+		{"todo", "tab", lua.OriginUser, "todo"},
+		{"tree", "tab", lua.OriginUser, ""},
+		{"todo", "k", lua.OriginUser, ""}, // the more trusted global binding wins
+		{"", "j", "", ""},
+	} {
+		got := r.Lookup(l.focus, l.key)
+		if l.want == "" && got != nil || l.want != "" && (got == nil || got.Origin != l.want || got.Focus != l.wantFocus) {
+			t.Fatalf("Lookup(%q, %q) = %+v", l.focus, l.key, got)
+		}
 	}
-	if all := r.List(); len(all) != 3 || all[1].Key != "tab" || all[2].Key != "x" {
+	if !r.IsPrefix("todo", "ctrl+g") || r.IsPrefix("todo", "k") {
+		t.Fatal("IsPrefix should see global sequences from a focused node")
+	}
+	if all := r.List(); len(all) != 6 || all[3].Key != "tab" || all[4].Focus != "todo" {
 		t.Fatalf("List = %+v", all)
 	}
 	for _, d := range []struct {
-		name   string
-		key    string
-		origin lua.Origin
-		ok     bool
+		name, key, focus string
+		origin           lua.Origin
+		ok               bool
 	}{
-		{"plugin cannot delete a user key", "tab", lua.OriginPlugin, false},
-		{"user deletes a plugin key", "x", lua.OriginUser, true},
-		{"deleting twice", "x", lua.OriginUser, false},
-		{"user deletes its own", "tab", lua.OriginUser, true},
+		{"plugin cannot delete a user key", "tab", "", lua.OriginPlugin, false},
+		{"user deletes a plugin key", "x", "", lua.OriginUser, true},
+		{"deleting twice", "x", "", lua.OriginUser, false},
+		{"user deletes its own", "tab", "", lua.OriginUser, true},
+		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false},
+		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true},
 	} {
-		if err := r.Del(d.origin, d.key); (err == nil) != d.ok {
+		if err := r.Del(d.origin, d.focus, d.key); (err == nil) != d.ok {
 			t.Fatalf("%s: err=%v", d.name, err)
 		}
 	}
-	r.Set(bind("q", lua.OriginUser))
+	r.Set(bind("q", "", lua.OriginUser))
 	r.Purge()
 	if len(r.List()) != 0 {
 		t.Fatal("Purge must clear all bindings")

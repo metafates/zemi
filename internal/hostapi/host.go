@@ -262,6 +262,7 @@ type Host struct {
 	modes modeReg // permission modes in tab order
 
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
+	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
 
 	// luaRules are the rules zemi.permission.rule added: a reload replays
 	// the config that adds them. PurgeGeneration moves them to staleRules,
@@ -382,6 +383,9 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll("top", id); return nil },
 		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
+		"zemi.ui.focus.set":          func(h *Host, id string) error { return h.focusNode(id) },
+		"zemi.ui.focus.next":         func(h *Host, _ string) error { return h.cycleFocus(1) },
+		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
@@ -485,6 +489,9 @@ func (h *Host) OpenHelp() {
 		desc := b.Desc
 		if desc == "" {
 			desc = describeRHS(b.RHS)
+		}
+		if b.Focus != "" {
+			desc += " (in " + b.Focus + ")"
 		}
 		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
 	}
@@ -823,6 +830,7 @@ type UIState struct {
 	Cancelling bool   // interrupt sent, turn not finished yet
 	Editing    string // title of the file open in the editor
 	Waiting    string // "approval" or "answer" while a prompt holds the turn
+	Focus      string // the drawn layout node taking keys, "" for the composer
 }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -846,6 +854,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
 	tb.RawSetString("editing", glua.LString(state.Editing))
 	tb.RawSetString("waiting", glua.LString(state.Waiting))
+	tb.RawSetString("focus", glua.LString(state.Focus))
 	tb.RawSetString("version", glua.LString(h.Version))
 	tb.RawSetString("cwd", glua.LString(TildePath(sess.CWD)))
 	tb.RawSetString("project", glua.LString(h.project()))
@@ -1157,7 +1166,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.26.0"))
+	api.RawSetString("version", glua.LString("0.27.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

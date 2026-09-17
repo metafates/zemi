@@ -378,7 +378,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 			p = prefix
 		}
 		segs := []hostapi.Segment{{Text: p, HL: promptHL}}
-		if i == cursorRow {
+		if i == cursorRow && a.focusedNode() == "" { // no cursor while a node has the keys
 			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
 		} else {
 			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})

@@ -128,6 +128,9 @@ type screenLayout struct {
 	slots  map[string]bool // window kinds the tree has a slot for
 	bar    bool
 	floats []placedFloat
+	// focusable is the focusable node and float ids in focus order; a float
+	// that draws nothing gets no rect
+	focusable []string
 }
 
 // placedFloat is a Lua float's region with the cells it renders at and
@@ -165,6 +168,9 @@ func (a *App) layout(w, h int) screenLayout {
 			if n.Scroll != "" && (s.scroll == "" || inStage && !staged) {
 				s.scroll, staged = n.ID, inStage
 			}
+			if n.Focusable {
+				s.focusable = append(s.focusable, n.ID)
+			}
 		}
 		for _, k := range l.kids {
 			walk(k, inStage)
@@ -194,6 +200,9 @@ func (a *App) layout(w, h int) screenLayout {
 		pf.width = floatAxis(f.Width, rel.Dx())
 		pf.height = floatAxis(f.Height, rel.Dy())
 		s.floats = append(s.floats, pf)
+		if f.Focusable {
+			s.focusable = append(s.focusable, f.ID)
+		}
 	}
 	return s
 }

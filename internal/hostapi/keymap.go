@@ -21,9 +21,9 @@ func normalizeKey(key string) string {
 
 // keySeq normalizes a binding key: one key, or a space-separated sequence
 // ("ctrl+x ctrl+s"), where a leading "<leader>" expands to keymap.leader
-// ("<leader>gs" is leader, g, s). A sequence cannot start with a printable
-// key: those belong to the composer.
-func (h *Host) keySeq(key string) (string, error) {
+// ("<leader>gs" is leader, g, s). A global sequence cannot start with a
+// printable key: those belong to the composer.
+func (h *Host) keySeq(key string, focused bool) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
 	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
@@ -50,7 +50,7 @@ func (h *Host) keySeq(key string) (string, error) {
 	for i := range tokens {
 		tokens[i] = normalizeKey(tokens[i])
 	}
-	if len(tokens) > 1 && len([]rune(tokens[0])) == 1 {
+	if len(tokens) > 1 && len([]rune(tokens[0])) == 1 && !focused {
 		return "", fmt.Errorf("a key sequence must start with a non-printable key such as ctrl+g, not %q", tokens[0])
 	}
 	return strings.Join(tokens, " "), nil
@@ -74,19 +74,33 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 	return RHS{API: s}, nil
 }
 
-// keymapNamespace is zemi.keymap: set(key, action, opts?), del(key),
-// get(key) and list(). An action is a function, a command name or a host
-// action; setting a bound key again rebinds it.
+// keymapNamespace is zemi.keymap: set(key, action, opts?), del(key, opts?),
+// get(key, opts?) and list(). An action is a function, a command name or a
+// host action; setting a bound key again rebinds it. opts.focus scopes a
+// binding to a focusable layout node: it works only while that node has the
+// keys, and there it may start with a printable key.
 func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
+	// binding reads the key and opts.focus of a call
+	binding := func(L *glua.LState, what string) (key, focus string, opts *glua.LTable) {
+		opts = L.OptTable(3, nil)
+		if what != "set" {
+			opts = L.OptTable(2, nil)
+		}
+		if opts != nil {
+			focus = rawString(opts, "focus")
+		}
+		key, err := h.keySeq(L.CheckString(1), focus != "")
+		if err != nil && what != "get" {
+			L.RaiseError("zemi.keymap.%s: %v", what, err)
+		}
+		return key, focus, opts
+	}
 
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		key, err := h.keySeq(L.CheckString(1))
-		if err != nil {
-			L.RaiseError("zemi.keymap.set: %v", err)
-		}
+		key, focus, opts := binding(L, "set")
 		h.refuseDuringRender(L, "zemi.keymap.set")
-		b := &KeyBinding{Key: key, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
+		b := &KeyBinding{Key: key, Focus: focus, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
 		switch v := L.Get(2).(type) {
 		case *glua.LFunction:
 			b.RHS = RHS{Fn: v}
@@ -108,7 +122,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		default:
 			L.RaiseError("zemi.keymap.set: action must be a function or a string, got %s", v.Type().String())
 		}
-		if opts := L.OptTable(3, nil); opts != nil {
+		if opts != nil {
 			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
 				b.Desc = string(d)
 			}
@@ -120,20 +134,17 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		key, err := h.keySeq(L.CheckString(1))
-		if err != nil {
-			L.RaiseError("zemi.keymap.del: %v", err)
-		}
+		key, focus, _ := binding(L, "del")
 		h.refuseDuringRender(L, "zemi.keymap.del")
-		if err := h.Keymaps.Del(h.RT.CurrentOrigin(L), key); err != nil {
+		if err := h.Keymaps.Del(h.RT.CurrentOrigin(L), focus, key); err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}
 		return 0
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		key, _ := h.keySeq(L.CheckString(1))
-		if b := h.Keymaps.Lookup(key); b != nil {
+		key, focus, _ := binding(L, "get")
+		if b := h.Keymaps.Lookup(focus, key); b != nil {
 			L.Push(lua.FromGo(L, keymapRow(b)))
 		} else {
 			L.Push(glua.LNil)
@@ -154,7 +165,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 }
 
 // keymapRow is a binding snapshot: key, action ("/cmd", a host action or
-// "<function>"), desc and origin.
+// "<function>"), desc, origin and focus (nil for a global binding).
 func keymapRow(b *KeyBinding) map[string]any {
-	return map[string]any{"key": b.Key, "action": describeRHS(b.RHS), "desc": b.Desc, "origin": string(b.Origin)}
+	row := map[string]any{"key": b.Key, "action": describeRHS(b.RHS), "desc": b.Desc, "origin": string(b.Origin)}
+	if b.Focus != "" {
+		row["focus"] = b.Focus
+	}
+	return row
 }
