@@ -147,7 +147,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 }
 
 // formatOverlayItem renders items without render_item: strings, or
-// {text, fill} maps (help, revisions).
+// {text, fill} maps.
 func formatOverlayItem(item any) string {
 	if m, ok := item.(map[string]any); ok {
 		if s, ok := m["text"].(string); ok {
