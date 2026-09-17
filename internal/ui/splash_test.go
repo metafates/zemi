@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -48,4 +50,28 @@ assert(require("zemi.defaultui") == d, "view not cached")`
 		t.Fatal(err)
 	}
 	runLua(t, app, `assert(require("zemi.defaultui").splash ~= print)`)
+}
+
+// TestSplashFitsShortChat: a short chat drops the recent sessions, then
+// the logo, instead of cutting the logo's top rows.
+func TestSplashFitsShortChat(t *testing.T) {
+	for h, want := range map[int]string{16: "zemi", 17: "███████╗███████╗███╗", 23: "3m ago"} {
+		app, _ := bootAgentApp(t, 80, h)
+		runLua(t, app, `
+local default = require("zemi.defaultui")
+zemi.ui.widget.register({
+  id = "splash", region = "chat", priority = 5,
+  render = function(ctx)
+    ctx.recent = { { ago = "1m ago", title = "a" }, { ago = "2m ago", title = "b" }, { ago = "3m ago", title = "c" } }
+    return default.splash(ctx)
+  end,
+})`)
+		app.renderSync(t)
+		app.Frame() // lays out the chat, so the next render knows its height
+		app.frameGen++
+		app.renderSync(t)
+		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╚══") != (want != "zemi") {
+			t.Fatalf("%d rows: want %q\n%s", h, want, frame)
+		}
+	}
 }

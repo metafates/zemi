@@ -147,7 +147,13 @@ local function splash(ctx)
   local width, rows = ctx.width or 80, {}
   local maxw = math.min(width, 72)
   local function row(segs) rows[#rows + 1] = segs end
-  if width >= 36 then
+  -- a short chat drops the recent sessions first, then the big logo, so
+  -- the bottom-anchored chat never cuts the block's first rows (it shows
+  -- height - 1 of them)
+  local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
+  local extra = #recent > 0 and #recent + 3 or 0
+  if 12 + extra > fit then recent, extra = {}, 0 end
+  if width >= 36 and 12 + extra <= fit then
     for i, l in ipairs(LOGO) do row({ { text = l, hl = "Logo" .. i } }) end
   else
     row({ { text = "zemi", hl = "Title" } })
@@ -164,7 +170,6 @@ local function splash(ctx)
     cwd = "…" .. table.concat(chars, "", #chars - room + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
-  local recent = ctx.recent or {}
   if #recent > 0 then
     row({ { text = "" } })
     row({ { text = "recent", hl = "Title" } })
