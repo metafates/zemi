@@ -95,7 +95,12 @@ func trustBox(tp *trustPrompt, w int) [][]hostapi.Segment {
 	text := func(s, hl string) {
 		body = append(body, wrapSegs([]hostapi.Segment{{Text: s, HL: hl}}, width)...)
 	}
-	text(hostapi.TildePath(tp.root), "Host:Bold")
+	// a long path wraps at its slashes: the user trusts every character
+	var path []hostapi.Segment
+	for _, part := range strings.SplitAfter(hostapi.TildePath(tp.root), "/") {
+		path = append(path, hostapi.Segment{Text: part, HL: "Host:Bold"})
+	}
+	body = append(body, wrapSegs(path, width)...)
 	if rel, err := filepath.Rel(tp.root, tp.cwd); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 		text("Covers the whole repository, not only "+rel+".", "Host:Hint")
 	}

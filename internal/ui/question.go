@@ -245,7 +245,7 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	if qp.reviewing() {
 		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {
-			ans := hostapi.Segment{Text: "  " + qp.states[i].answered, HL: "Host:Value"}
+			ans := hostapi.Segment{Text: "  " + strings.ReplaceAll(qp.states[i].answered, " (Recommended)", ""), HL: "Host:Value"}
 			if qp.states[i].answered == "" {
 				ans = hostapi.Segment{Text: "  not answered", HL: "Host:Warn"}
 			}
