@@ -14,7 +14,8 @@ local chat_cache = {}
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
 -- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
--- reasoning line toggles it; one on an agent's row shows that run.
+-- reasoning line toggles it; one on an agent's row shows that run; one on a
+-- file tool's row opens the file in the user's editor.
 zemi.ui.widget.register({
   id = "chat",
   region = "chat",
@@ -23,8 +24,18 @@ zemi.ui.widget.register({
   ---@param ev zemi.WidgetClick
   on_click = function(ev)
     local run = ev.id:match("^agent:(.+)")
+    local line, path = ev.id:match("^file:(%d+):(.+)$")
     if run then
       assert(zemi.command.run("agents", "view " .. run))
+    elseif path then
+      line = tonumber(line)
+      -- a diff row takes a double click: a single one may start a selection
+      if line > 0 and (ev.clicks or 1) < 2 then return end
+      local function failed(err) zemi.notify.error(tostring(err), "Could not open " .. path) end
+      local ok, err = pcall(zemi.ui.edit, path, { line = line }, function(_, e)
+        if e then failed(e) end
+      end)
+      if not ok then failed(err) end
     elseif ev.id == "reasoning" then
       zemi.ui.reasoning.toggle()
     end
@@ -171,6 +182,9 @@ zemi.ui.widget.register({
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
       lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false }, { text = fmt.clip(summary, width - 4), hl = "Normal" } }
     end
+    -- tools whose input is a file path: their rows open that file
+    ---@type table<string, boolean>
+    local FILE_TOOL = { read = true, write = true, edit = true, multiedit = true }
     ---@param t zemi.defaultui.Tool
     local function add_tool(t)
       local name = tool_name(t)
@@ -198,8 +212,14 @@ zemi.ui.widget.register({
       if t.status == "run" and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
       end
+      -- The file a file tool touched, for the click ids below: line 0 is the
+      -- head row, a diff row carries its own line.
+      local file = FILE_TOOL[name] and ((t.text or t.input or ""):match("^%s*(.-)%s*$")) or ""
+      ---@param n integer
+      ---@return string?
+      local function file_click(n) return file ~= "" and ("file:" .. n .. ":" .. file) or nil end
       -- an agent's rows open its transcript (ids must differ between adjacent rows)
-      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or nil
+      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or file_click(0)
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
       -- under the row: the command a description stands for, then progress
@@ -237,11 +257,12 @@ zemi.ui.widget.register({
             local blank_lead = string.rep(" ", fmt.cells(lead))
             -- the number and +/- are decoration: a copy gives the code
             local parts = fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)
+            local dclick = hunks > 0 and file_click(num) or nil
             for j, part in ipairs(parts) do
               lines[#lines + 1] = {
-                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false },
-                { text = part, hl = style, soft_wrap = j < #parts },
-                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false },
+                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = dclick },
+                { text = part, hl = style, soft_wrap = j < #parts, click = dclick },
+                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = dclick },
               }
             end
           else

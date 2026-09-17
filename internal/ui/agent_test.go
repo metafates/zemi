@@ -730,6 +730,40 @@ func TestDiffRows(t *testing.T) {
 	}
 }
 
+// TestFileRowClickIDs: a file tool's rows carry the id that opens the file,
+// the head row at its top and every diff row at its own line; other tools
+// carry none.
+func TestFileRowClickIDs(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "fix it")
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{Name: "edit", Input: "/w/a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7,2 +7,2 @@\n-old\n+new\n keep"},
+		{Name: "bash", Input: "go test", Status: "ok"},
+	}})
+	app.renderSync(t)
+	_ = app.Frame() // compose fills lastRows
+	click := map[string]string{}
+	for _, row := range app.lastRows {
+		text := strings.Join(strings.Fields(plainSegs(row)), " ")
+		for _, s := range row {
+			if s.Click != "" {
+				click[text] = s.Click
+			}
+		}
+	}
+	for text, want := range map[string]string{
+		"● Edit /w/a.go": "file:0:/w/a.go",
+		"7 - old":        "file:7:/w/a.go",
+		"7 + new":        "file:7:/w/a.go",
+		"8 keep":         "file:8:/w/a.go",
+		"● Run go test":  "",
+	} {
+		if click[text] != want {
+			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
+		}
+	}
+}
+
 // TestToolRows: finished calls that only look around collapse into one
 // line, edits and failures keep their rows, a command shows the model's
 // description with the command under it, and ctrl+o shows every call.

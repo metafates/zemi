@@ -1176,8 +1176,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   `defaultui/statusline.lua`: the mode opens the mode picker, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a reasoning line
-  (`zemi.ui.reasoning.toggle()`) and an agent tool row (`agent:<run id>`,
-  from the row's `run` field, opens that run's transcript). The boot
+  (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
+  from the row's `run` field, opens that run's transcript) and a file
+  tool's rows (`file:<line>:<path>`, `zemi.ui.edit`: the head row opens the
+  file, a diff row opens it at its line on a double click, so a single
+  click can still start a selection). The boot
   failed, stuck and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on boot failed or
   errors opens `/errors`, on stuck reloads.
