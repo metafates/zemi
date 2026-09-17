@@ -209,6 +209,9 @@ func TestHoverTargets(t *testing.T) {
 	overlay := func(app *App) {
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha"}})
 	}
+	keyed := func(app *App) {
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a much longer row than the other", map[string]any{"text": "alpha", "key": "current"}}})
+	}
 	perm := func(app *App) {
 		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
 	}
@@ -230,6 +233,8 @@ func TestHoverTargets(t *testing.T) {
 		{"overlay row text is a target", overlay, "alpha", 1, 1},
 		{"overlay row padding is not a target", overlay, "alpha", 6, 0},
 		{"overlay gutter is not a target", overlay, "beta and", -1, 0},
+		{"gap before the key column is not a target", keyed, "current", -3, 0},
+		{"the key column lights its item", keyed, "current", 1, 1},
 		{"a choice is a target", perm, "No ", 0, 1},
 		{"the gutter left of a choice is not a target", perm, "No ", -2, 0},
 		{"thought line text is a target", thought, "Thought for", 1, 1},
@@ -247,7 +252,11 @@ func TestHoverTargets(t *testing.T) {
 			if !ok {
 				spans = nil
 			}
-			if len(spans) != c.rows {
+			lit := map[int]bool{}
+			for _, sp := range spans {
+				lit[sp.y] = true
+			}
+			if len(lit) != c.rows {
 				t.Fatalf("lit %d rows, want %d: %+v", len(spans), c.rows, spans)
 			}
 			for _, sp := range spans {
