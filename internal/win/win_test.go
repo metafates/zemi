@@ -91,7 +91,7 @@ func TestWindowEnvHasNoHostTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close(w.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	text, ok := w.WaitText(ctx, "END")
 	if !ok || !strings.Contains(text, "HOME=/h") {
