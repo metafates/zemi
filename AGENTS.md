@@ -486,8 +486,9 @@ as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id evicti
   Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
   which re-runs intake and asks (`memory.write`) unless `memoryAuto` holds (autonomy auto,
-  a trusted project, and no `fetch`, `web_search` or `mcp_*` call in the session or its
-  subagents' child sessions, whose tool calls `subagentHooks` records for this), the memory
+  a trusted project, and no `fetch`, `web_search`, `Lua` or non-builtin tool (MCP, `zemi.tool`)
+  call in the session or its subagents' child sessions, whose tool calls `subagentHooks` records
+  for this and `ForkSession` copies), the memory
   is learned and the text is not instruction-shaped. `gateMemory` uses the same check. Ids may be 8-char prefixes.
 - **MCP**: `internal/mcp` is a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies). Servers come from `zemi.mcp.add` (user origin only); they start in the background and stop on `PurgeGeneration`,
