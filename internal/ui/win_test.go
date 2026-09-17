@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/win"
 )
 
@@ -511,5 +512,64 @@ func TestTextPanelSizes(t *testing.T) {
 				t.Fatalf("panel is %d cells, want %d", got, c.want)
 			}
 		})
+	}
+}
+
+// TestFloatStaysOnTheStage: a float is placed and clamped inside the chat
+// stage, so it never covers the composer, the statusline or a layout region
+// beside them, wherever it is dragged.
+func TestFloatStaysOnTheStage(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.OpenText(win.Spec{Text: "hello from a float", Kind: win.KindFloat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	stage := a.layout(a.width, a.height).stage
+	for _, c := range []struct {
+		name string
+		x, y int
+	}{
+		{"centered", -1, -1},
+		{"dragged past the bottom", 0, 100},
+		{"dragged past the right", 100, 0},
+	} {
+		_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y = c.x, c.y })
+		a.Frame()
+		i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
+		if i < 0 {
+			t.Fatalf("%s: the float was not drawn", c.name)
+		}
+		// the box is the cells plus a two-column border and the title and bottom rows
+		r := a.winRects[i]
+		if r.x-2 < stage.Min.X || r.x+r.w+2 > stage.Max.X || r.titleY < stage.Min.Y || r.y+r.h >= stage.Max.Y {
+			t.Fatalf("%s: float %+v leaves the stage %v", c.name, r, stage)
+		}
+	}
+}
+
+// TestDragEndsWhenChromeOpens: chrome that opens mid-drag takes the release,
+// so the drag must end with it instead of following the pointer afterwards.
+func TestDragEndsWhenChromeOpens(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.OpenText(win.Spec{Text: "body", Kind: win.KindFloat, Cols: 20, Rows: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y = 10, 4 })
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	a.Frame()
+	a.Update(tea.MouseClickMsg{X: 14, Y: 4, Button: tea.MouseLeft})
+	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: []any{map[string]any{"text": "a"}}})
+	a.Update(tea.MouseReleaseMsg{X: 14, Y: 4, Button: tea.MouseLeft})
+	if a.winDrag != nil {
+		t.Fatal("the drag outlived the chrome that took its release")
+	}
+	a.overlayKey("esc", "")
+	a.Update(tea.MouseMotionMsg{X: 40, Y: 20, Button: tea.MouseLeft})
+	if l := wn.Layout(); l.X != 10 || l.Y != 4 {
+		t.Fatalf("the float followed the pointer: %+v", l)
 	}
 }

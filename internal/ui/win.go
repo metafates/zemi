@@ -64,25 +64,27 @@ func (a *App) shownWins(kind string) []*win.Window {
 }
 
 // floatBox frames a float and places it: cols and rows are what it asked
-// for, capped to the frame; x, y its top-left, centered over the stage
+// for, capped to the stage; x, y its top-left, centered over the stage
 // when unset. It reports the frame's origin and the terminal cells' rect.
-func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]hostapi.Segment, x0, y0 int, r winRect) {
-	headerH, chatH := stage.Min.Y, stage.Dy()
+// Everything is the stage's, so a float never covers the composer, the
+// statusline or a layout region beside them.
+func (a *App) floatBox(wn *win.Window, stage uv.Rectangle) (box [][]hostapi.Segment, x0, y0 int, r winRect) {
+	sw, sh := stage.Dx(), stage.Dy()
 	l := wn.Layout()
 	cols, rows := l.Cols, l.Rows
 	if wn.IsText() && (cols <= 0 || rows <= 0) {
-		cols, rows = a.textFloatSize(wn, cols, rows, w)
+		cols, rows = a.textFloatSize(wn, cols, rows, sw)
 	}
 	if cols <= 0 {
-		cols = w * 4 / 5
+		cols = sw * 4 / 5
 	}
 	if rows <= 0 {
-		rows = chatH * 4 / 5
+		rows = sh * 4 / 5
 	}
 	if wn.Owner == "editor" && a.focusWin != wn.ID {
-		rows = min(rows, chatH-2) // an editor left for zemi uncovers the composer it gave the keys to
+		rows = min(rows, sh-2) // an editor left for zemi uncovers the composer it gave the keys to
 	}
-	cols, rows = max(min(cols, w-4), 2), max(min(rows, h-3), 1)
+	cols, rows = max(min(cols, sw-4), 2), max(min(rows, sh-3), 1)
 	wn.Resize(cols, rows)
 	// the title row goes into the top border: one frame, not two
 	body := a.windowRows(wn, cols, rows)
@@ -108,12 +110,13 @@ func (a *App) floatBox(wn *win.Window, w, h int, stage uv.Rectangle) (box [][]ho
 	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
 	x0, y0 = l.X, l.Y
 	if x0 < 0 {
-		x0 = max((w-bw)/2, 0)
+		x0 = stage.Min.X + max((sw-bw)/2, 0)
 	}
 	if y0 < 0 {
-		y0 = headerH + max((chatH-len(box))/2, 0)
+		y0 = stage.Min.Y + max((sh-len(box))/2, 0)
 	}
-	x0, y0 = min(x0, max(w-bw, 0)), min(y0, max(h-len(box), 0))
+	x0 = min(max(x0, stage.Min.X), max(stage.Max.X-bw, stage.Min.X))
+	y0 = min(max(y0, stage.Min.Y), max(stage.Max.Y-len(box), stage.Min.Y))
 	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 1, w: cols, h: rows, titleY: y0, sepX: -1, float: true}
 }
 

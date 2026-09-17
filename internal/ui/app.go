@@ -353,7 +353,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
-		if a.topChrome() == "" && a.windowMouse(msg) {
+		if a.topChrome() != "" {
+			a.winDrag = nil // chrome takes the release, so a drag left open would follow the pointer
+		} else if a.windowMouse(msg) {
 			if _, motion := msg.(tea.MouseMotionMsg); motion && a.winDrag == nil {
 				return a, a.setPointer("") // over a window's cells
 			}
@@ -718,7 +720,7 @@ func (a *App) compose(w, h int) string {
 		if l := wn.Layout(); l.Hidden || l.Kind != win.KindFloat && lay.slots[l.Kind] {
 			continue
 		}
-		box, x0, y0, r := a.floatBox(wn, w, h, stage)
+		box, x0, y0, r := a.floatBox(wn, stage)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
 	}
