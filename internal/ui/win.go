@@ -217,7 +217,7 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	if focused {
 		titleHL = "Host:PanelTitle"
 	}
-	var state string
+	state, closeMark := "", " × "
 	switch {
 	case wn.Exited() && focused:
 		state = fmt.Sprintf("exited %d · any key closes", wn.ExitCode())
@@ -225,13 +225,15 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 		state = fmt.Sprintf("exited %d", wn.ExitCode())
 	case focused:
 		state = a.unfocusKey() + " to leave"
-	default:
+	case a.mouseEnabled():
 		state = "click to focus"
+	default: // no clicks reach zemi
+		state, closeMark = "/win to focus", " "
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
-	right := " " + state + " × "
+	right := " " + state + closeMark
 	if ansi.StringWidth(right) > width-4 {
-		right = " × " // a narrow window keeps its close mark where titleClick looks
+		right = closeMark // a narrow window keeps its close mark where titleClick looks
 	}
 	right = ansi.TruncateLeft(right, max(0, ansi.StringWidth(right)-width), "")
 	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
