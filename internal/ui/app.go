@@ -784,7 +784,7 @@ func (a *App) compose(w, h int) string {
 		splice(trustBox(a.trust, w, chatH))
 	}
 	if a.modelPick != nil {
-		splice(pickBox(a.modelPick, w))
+		splice(pickBox(a.modelPick, w, chatH))
 	}
 	if a.question != nil {
 		splice(questionBox(a.question, w, chatH))

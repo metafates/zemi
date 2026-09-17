@@ -749,8 +749,9 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 	return rows
 }
 
-func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
-	const limit = 12
+func pickBox(mp *modelPickPrompt, w, h int) [][]hostapi.Segment {
+	// borders, the blank row, the hint, the counter and the filter line
+	limit := min(max(h-6, 3), 12)
 	var body [][]hostapi.Segment
 	var hints []string
 	if len(mp.visible) > 0 {

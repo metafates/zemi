@@ -445,3 +445,16 @@ func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
 		t.Fatalf("descriptions at %d and %d:\n%s\n%s", a, b, plainSegs(rows[1]), plainSegs(rows[2]))
 	}
 }
+
+func TestModelPickerFitsShortScreen(t *testing.T) {
+	a, _ := bootAgentApp(t, 80, 16)
+	models := make([]hostapi.ModelOption, 30)
+	for i := range models {
+		models[i] = hostapi.ModelOption{ID: fmt.Sprintf("p/model-%d", i), Display: fmt.Sprintf("p/model-%d", i)}
+	}
+	a.openModelPick(models, "", make(chan modelPick, 1))
+	a.renderSync(t)
+	if f := ansi.Strip(a.Frame()); !strings.Contains(f, "esc close") || !strings.Contains(f, "╰") {
+		t.Fatalf("the picker's hint or bottom border is cut:\n%s", f)
+	}
+}
