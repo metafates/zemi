@@ -37,14 +37,21 @@ func clickAt(app *App, x, y int) {
 	app.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 }
 
+// dragTo presses at (x0, y0), moves to (x1, y1) and releases there; the cmd
+// is the release's, which copies a text selection.
+func dragTo(app *App, x0, y0, x1, y1 int) tea.Cmd {
+	app.Update(tea.MouseClickMsg{X: x0, Y: y0, Button: tea.MouseLeft})
+	app.Update(tea.MouseMotionMsg{X: x1, Y: y1, Button: tea.MouseLeft})
+	_, cmd := app.Update(tea.MouseReleaseMsg{X: x1, Y: y1, Button: tea.MouseLeft})
+	return cmd
+}
+
 func TestMouseDragCopies(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "hello there, world")
 	app.renderSync(t)
 	x, y := findCell(t, app, "hello there")
-	app.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-	app.Update(tea.MouseMotionMsg{X: x + 10, Y: y, Button: tea.MouseLeft})
-	if _, cmd := app.Update(tea.MouseReleaseMsg{X: x + 10, Y: y, Button: tea.MouseLeft}); cmd == nil {
+	if dragTo(app, x, y, x+10, y) == nil {
 		t.Fatal("release after a drag should copy")
 	}
 	if got := app.selectionText(); got != "hello there" {
@@ -443,9 +450,7 @@ func TestSelectionRejoinsWrappedText(t *testing.T) {
 		if y1 <= y0 {
 			t.Fatalf("%q did not wrap", from)
 		}
-		app.Update(tea.MouseClickMsg{X: 0, Y: y0, Button: tea.MouseLeft})
-		app.Update(tea.MouseMotionMsg{X: app.width - 1, Y: y1, Button: tea.MouseLeft})
-		app.Update(tea.MouseReleaseMsg{X: app.width - 1, Y: y1, Button: tea.MouseLeft})
+		dragTo(app, 0, y0, app.width-1, y1)
 		return app.selectionText()
 	}
 	if got := dragRows("please", "every call"); got != prompt {

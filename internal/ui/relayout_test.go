@@ -189,9 +189,7 @@ func TestVsplitLeftDrag(t *testing.T) {
 	if r.x != 0 || r.sepX != r.w {
 		t.Fatalf("vsplit %+v should sit left with its separator on the right", r)
 	}
-	app.Update(tea.MouseClickMsg{X: r.sepX, Y: 10, Button: tea.MouseLeft})
-	app.Update(tea.MouseMotionMsg{X: r.sepX + 10, Y: 10, Button: tea.MouseLeft})
-	app.Update(tea.MouseReleaseMsg{X: r.sepX + 10, Y: 10, Button: tea.MouseLeft})
+	dragTo(app, r.sepX, 10, r.sepX+10, 10)
 	app.Frame()
 	if got := app.winRects[0]; got.sepX != r.sepX+10 {
 		t.Fatalf("separator at %d after dragging it from %d by 10", got.sepX, r.sepX)

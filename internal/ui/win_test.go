@@ -81,9 +81,7 @@ func TestSplitDragFollowsPointer(t *testing.T) {
 			if kind == win.KindSplit {
 				to = [2]int{from[0], from[1] - 5}
 			}
-			a.Update(tea.MouseClickMsg{X: from[0], Y: from[1], Button: tea.MouseLeft})
-			a.Update(tea.MouseMotionMsg{X: to[0], Y: to[1], Button: tea.MouseLeft})
-			a.Update(tea.MouseReleaseMsg{X: to[0], Y: to[1], Button: tea.MouseLeft})
+			dragTo(a, from[0], from[1], to[0], to[1])
 			a.Frame()
 			if got := edge(); got != to {
 				t.Fatalf("edge at %v after dragging from %v to %v", got, from, to)
@@ -158,9 +156,7 @@ func TestWindowDragCopies(t *testing.T) {
 			r = rr
 		}
 	}
-	a.Update(tea.MouseClickMsg{X: r.x, Y: r.y, Button: tea.MouseLeft})
-	a.Update(tea.MouseMotionMsg{X: r.x + 4, Y: r.y, Button: tea.MouseLeft})
-	a.Update(tea.MouseReleaseMsg{X: r.x + 4, Y: r.y, Button: tea.MouseLeft})
+	dragTo(a, r.x, r.y, r.x+4, r.y)
 	if a.focusWin != 0 || a.selectionText() != "hello" {
 		t.Fatalf("drag: focus=%d selection=%q", a.focusWin, a.selectionText())
 	}
@@ -375,9 +371,7 @@ func TestFloatDrag(t *testing.T) {
 	} {
 		_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y, l.Cols, l.Rows = 10, 4, 30, 8 })
 		a.Frame()
-		a.Update(tea.MouseClickMsg{X: c.from[0], Y: c.from[1], Button: tea.MouseLeft})
-		a.Update(tea.MouseMotionMsg{X: c.to[0], Y: c.to[1], Button: tea.MouseLeft})
-		a.Update(tea.MouseReleaseMsg{X: c.to[0], Y: c.to[1], Button: tea.MouseLeft})
+		dragTo(a, c.from[0], c.from[1], c.to[0], c.to[1])
 		if l := wn.Layout(); [4]int{l.X, l.Y, l.Cols, l.Rows} != c.want {
 			t.Errorf("%s: layout %+v, want %v", c.name, l, c.want)
 		}
