@@ -239,7 +239,7 @@ zemi.ui.widget.register({
           old = tonumber(a) --[[@as integer]]
           new = tonumber(b) --[[@as integer]]
         elseif dl ~= "" and dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++" then
-          local num, style = nil, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
+          local num, style = 0, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
           -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
           -- assignments whose right side names a left-side target stay split.
           if kind == "-" then
