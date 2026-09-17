@@ -227,11 +227,13 @@ type listItem struct {
 // moves only when the selection leaves it and a click never moves the item
 // under the pointer (nil for a list that never scrolls).
 func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segment {
-	return listRowsW(items, sel, top, limit, 0)
+	return listRowsW(items, sel, top, limit, 0, 0)
 }
 
-// listRowsW is listRows padded to at least minW cells.
-func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi.Segment {
+// listRowsW is listRows padded to at least minW cells and, when maxW is
+// set, cut to at most maxW: a long label gives way to its description, and
+// a key column always shows.
+func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]hostapi.Segment {
 	labelW := 0
 	for _, it := range items {
 		labelW = max(labelW, ansi.StringWidth(it.label))
@@ -258,7 +260,13 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi
 		}
 		var itemRows [][]hostapi.Segment
 		if it.label != "" || len(it.more) == 0 {
-			row := []hostapi.Segment{{Text: it.label, HL: hl}}
+			label := it.label
+			if maxW > 0 {
+				// the marker and the gap take 2 cells each, a key 2 more
+				room := maxW - 4 - ansi.StringWidth(it.desc) - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
+				label = ansi.Truncate(label, max(room, labelW), "…")
+			}
+			row := []hostapi.Segment{{Text: label, HL: hl}}
 			if it.desc != "" {
 				gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(it.label))+2)
 				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
@@ -301,11 +309,13 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi
 	// the visible window keeps its width while scrolling.
 	widest := minW
 	for y, r := range rows {
-		n := segsWidth(r)
-		if k, ok := keys[y]; ok {
-			n += 2 + ansi.StringWidth(k.Text)
+		k, ok := keys[y]
+		kw := map[bool]int{true: 2 + ansi.StringWidth(k.Text)}[ok]
+		if maxW > 0 && segsWidth(r)+kw > maxW {
+			r = ellipsizeSegs(r, maxW-kw)
+			rows[y] = r
 		}
-		widest = max(widest, n)
+		widest = max(widest, segsWidth(r)+kw)
 	}
 	for y, r := range rows {
 		if k, ok := keys[y]; ok {
@@ -716,7 +726,7 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 			}
 			items = append(items, item)
 		}
-		body = mp.filterRows(listRowsW(items, mp.selected, &mp.top, limit, mp.width))
+		body = mp.filterRows(listRowsW(items, mp.selected, &mp.top, limit, mp.width, boxInner(w)))
 		if len(mp.items) > limit || mp.active {
 			hints = append(hints, "/", "filter")
 		}

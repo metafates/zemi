@@ -400,3 +400,17 @@ func TestOverlayFilterKeepsWidth(t *testing.T) {
 		}
 	}
 }
+
+// TestOverlayLongLabelKeepsDescAndKey: a label too long for the box is cut
+// before its description, and the key column stays.
+func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 20)
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{
+		map[string]any{"text": "Done. The fixture path moved, so the test binary exits 1", "desc": "now · 2 messages", "key": "current"},
+		map[string]any{"text": "please run bash", "desc": "1m ago · 18 messages · and a first line that runs far past the edge"},
+	}})
+	box := fmt.Sprint(overlayBox(&app.overlays[0], 60, 20))
+	if !strings.Contains(box, "now") || !strings.Contains(box, "current") || !strings.Contains(box, "…") {
+		t.Fatalf("box: %s", box)
+	}
+}

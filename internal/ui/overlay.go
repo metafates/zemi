@@ -385,7 +385,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		for _, i := range st.visible {
 			items = append(items, st.items[i])
 		}
-		list = listRowsW(items, st.selected, &st.top, limit, st.width)
+		list = listRowsW(items, st.selected, &st.top, limit, st.width, boxInner(w))
 		if len(st.visible) > 0 {
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {
