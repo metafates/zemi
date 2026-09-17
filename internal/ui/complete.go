@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -12,7 +11,7 @@ import (
 )
 
 // fileCompleter is the composer popup listing project files after the
-// trigger character (default "@"). The file list is scanned off the UI
+// "@" that starts a word. The file list is scanned off the UI
 // goroutine and fuzzy-ranked client-side.
 type fileCompleter struct {
 	open     bool
@@ -28,19 +27,10 @@ type fileCompleter struct {
 
 const scanMaxFiles = 5000
 
-// completeTrigger reads the configured trigger character; a config value
-// that is not exactly one rune falls back to "@".
-func (a *App) completeTrigger() string {
-	if s := a.cfgStr("ui.completion.trigger"); utf8.RuneCountInString(s) == 1 {
-		return s
-	}
-	return "@"
-}
-
 func (a *App) completionEnabled() bool { return a.cfgBool("ui.completion.files", true) }
 
 // updateCompletion recomputes the completion state after a composer edit:
-// the token is the text between a trigger char that starts a word and the
+// the token is the text between an "@" that starts a word and the
 // cursor; anything else closes the popup. The returned cmd launches a
 // file scan when the popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
@@ -50,12 +40,11 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	r := a.composer.runes()
 	cur := a.composer.cursor
-	trigger := a.completeTrigger()
 	i := cur
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	if i == cur || string(r[i]) != trigger {
+	if i == cur || r[i] != '@' {
 		a.completion.close()
 		return nil
 	}

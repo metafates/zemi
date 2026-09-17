@@ -124,7 +124,7 @@ writable; prefer it over guessing. Common keys:
 - `ui.notify` (true): terminal notification when zemi is unfocused and a turn ends or a
   prompt waits
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
-- `ui.completion.files`, `ui.completion.trigger`, `ui.completion.max_items`
+- `ui.completion.files`, `ui.completion.max_items`
 - `memory.digest_lines`
 - `memory.autonomy` (`ask`): `auto` stores memories the model or the reflector propose
   without review, except instruction-shaped text, retirements, replacements of the user's
