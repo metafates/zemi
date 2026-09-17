@@ -29,6 +29,7 @@
 ---@class zemi.Segment
 ---@field text string
 ---@field hl? string
+---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
@@ -308,6 +309,15 @@ function zemi.event.stats() end
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[]
 ---@field priority? integer Higher draws first within a region.
 ---@field wrap? boolean Word-wrap instead of truncating.
+---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.
+
+---@class zemi.WidgetClick
+---@field id string The segment's `click` id.
+---@field button "left"|"right"|"middle"
+---@field clicks integer Presses on the same cell within 400 ms, counting this one.
+---@field mods { shift: boolean, ctrl: boolean, alt: boolean }
+---@field x integer Screen column, 0-based.
+---@field y integer Screen row, 0-based.
 
 ---@class zemi.WidgetInfo
 ---@field id string

@@ -721,6 +721,10 @@ type Segment struct {
 	Text string
 	HL   string
 	Hit  int // Go chrome only: 1-based index of the clickable item this text belongs to
+	// Click is the id a click passes to the on_click of Widget; a Go
+	// statusline pill sets it with no Widget
+	Click  string
+	Widget string
 }
 
 // RenderWidget runs a widget's Lua render for the given width and returns
@@ -760,10 +764,30 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width int, state UIS
 	if len(linesAny) == 0 || linesAny[0] == nil {
 		return nil, nil
 	}
-	return convertSegments(linesAny[0])
+	return convertSegments(linesAny[0], w.ID)
 }
 
-func convertSegments(v any) ([][]Segment, error) {
+// ClickWidget runs the on_click of widget id with ev under the widget's
+// origin, like a keymap. The handler is looked up at click time because the
+// frame that drew the id may predate a reload.
+func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) error {
+	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		w := h.Widgets.Get(id)
+		if w == nil || w.OnClick == nil || w.Gen != h.currentGen() {
+			return nil, lua.ErrReloaded
+		}
+		defer h.RT.PushFrame(L, w.Origin, w.Path)()
+		base := L.GetTop()
+		L.Push(w.OnClick)
+		L.Push(lua.FromGo(L, ev))
+		err := L.PCall(1, 0, nil)
+		L.SetTop(base)
+		return nil, err
+	})
+	return err
+}
+
+func convertSegments(v any, widget string) ([][]Segment, error) {
 	rows, ok := v.([]any)
 	if !ok {
 		return nil, fmt.Errorf("widget render must return a list of lines, got %T", v)
@@ -786,6 +810,9 @@ func convertSegments(v any) ([][]Segment, error) {
 				}
 				if hl, ok := c["hl"].(string); ok {
 					seg.HL = hl
+				}
+				if id, ok := c["click"].(string); ok && id != "" {
+					seg.Click, seg.Widget = id, widget
 				}
 				line = append(line, seg)
 			default:
@@ -1119,7 +1146,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.23.0"))
+	api.RawSetString("version", glua.LString("0.24.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -874,7 +874,7 @@ UI extensibility contract:
   `composer.change`/`composer.submit`, reads and edits the draft through
   `zemi.composer` (§6.7), and registers decoration widgets around it,
   but cannot replace it in v1.
-- Widgets return lines of `{ text, hl }` segments; Go measures, wraps
+- Widgets return lines of `{ text, hl, click }` segments; Go measures, wraps
   (opt-in per widget), styles, and diffs via bubbletea v2. No lipgloss in
   Lua; highlight names only. Rich text goes through
   `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
@@ -883,6 +883,15 @@ UI extensibility contract:
   `Markdown*` groups; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes.
+- Clicks: a segment's `click` is a plain string id and the widget spec
+  carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
+  the shape of neovim's statusline `%N@Func@`. Render stays pure data, so
+  cached frames hold no closures from an old generation; the handler is
+  looked up by widget id at click time, dropped after a reload, and runs
+  on the UI worker under the widget's origin like a keymap, so a plugin
+  widget can open nothing a plugin keymap could not. An id without a
+  handler draws no hover and does nothing. Ids from model text must not
+  become command arguments: use host ids.
 - Themes: palettes map names to colors; `hl` groups reference palette
   names or raw hex; Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed).

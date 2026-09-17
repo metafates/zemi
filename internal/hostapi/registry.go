@@ -211,6 +211,7 @@ type Widget struct {
 	Region   string
 	Priority int
 	Render   *glua.LFunction
+	OnClick  *glua.LFunction
 	Wrap     bool
 	Origin   lua.Origin
 	Path     string

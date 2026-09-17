@@ -70,7 +70,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.23.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.24.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -517,5 +517,55 @@ func TestStoresByScope(t *testing.T) {
 	defer pdb.Close()
 	if _, err := pdb.GetSession("s1"); err != nil {
 		t.Fatalf("session not in the project store: %v", err)
+	}
+}
+
+func TestClickWidget(t *testing.T) {
+	const widget = `zemi.ui.widget.register({
+		id = "w", region = "statusline.left",
+		render = function() return {{{ text = "go", click = "probe" }, { text = " plain" }}} end,
+		on_click = function(ev) assert(zemi.command.run(ev.id, ev.button)) end,
+	})`
+	for _, tc := range []struct {
+		name    string
+		origin  lua.Origin
+		stale   bool
+		wantErr string
+	}{
+		{"user handler runs with the id", lua.OriginUser, false, ""},
+		{"project handler keeps its origin", lua.OriginProject, false, "project code may not run /probe"},
+		{"reload drops the click", lua.OriginUser, true, "reloaded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			ran := make(chan string, 1)
+			h.Commands.Add(&Command{Name: "probe", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
+			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
+				t.Fatal(err)
+			}
+			lines, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, UIState{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := lines[0]; got[0].Click != "probe" || got[0].Widget != "w" || got[1].Click != "" || got[1].Widget != "" {
+				t.Fatalf("segments = %+v", got)
+			}
+			if tc.stale {
+				h.gen.Add(1)
+			}
+			err = h.ClickWidget(t.Context(), "w", map[string]any{"id": "probe", "button": "left"})
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if args := <-ran; args != "left" {
+				t.Fatalf("command args = %q", args)
+			}
+		})
 	}
 }
