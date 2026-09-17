@@ -69,13 +69,11 @@ func (h *Host) workflows() []Workflow {
 			}
 			path := filepath.Join(dir, e.Name())
 			if !skills.ValidName(name) {
-				h.Log.Warn("workflows", path+": name must match [a-z0-9][a-z0-9-]*", nil)
 				h.RecordErrorOnce("workflows", path+": name must match [a-z0-9][a-z0-9-]*")
 				continue
 			}
 			src, err := readRegularFile(path)
 			if err != nil {
-				h.Log.Warn("workflows", err.Error(), nil)
 				h.RecordErrorOnce("workflows", err.Error())
 				continue
 			}

@@ -134,7 +134,6 @@ func (h *Host) loadAgentDir(dir, source string) []AgentDef {
 		}
 		d, err := parseAgentFile(filepath.Join(dir, e.Name()), source)
 		if err != nil {
-			h.Log.Warn("agents", err.Error(), nil)
 			h.RecordErrorOnce("agents", err.Error())
 			continue
 		}

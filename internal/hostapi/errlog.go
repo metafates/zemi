@@ -51,9 +51,9 @@ func (h *Host) RecordError(source, msg string) {
 	h.refresh()
 }
 
-// RecordErrorOnce records an error unless the list already holds it.
-// Skills, agents and workflows are re-discovered on every turn and
-// reload, and a badge that comes back for one broken file is noise.
+// RecordErrorOnce logs and records an error unless the list already holds
+// it. Skills, agents and workflows are re-discovered on every turn and
+// reload, and one broken file must not refill the badge or the log.
 func (h *Host) RecordErrorOnce(source, msg string) {
 	msg = sanitize.String(msg)
 	l := &h.errs
@@ -61,6 +61,7 @@ func (h *Host) RecordErrorOnce(source, msg string) {
 	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.source == source && e.msg == msg })
 	l.mu.Unlock()
 	if !dup {
+		h.Log.Warn(source, msg, nil)
 		h.RecordError(source, msg)
 	}
 }
