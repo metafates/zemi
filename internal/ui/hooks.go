@@ -136,7 +136,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		"language servers, which can build the project",
 		"auto mode edits, builds and tests without asking",
 	} {
-		add(2, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: s, HL: "Host:Value"})
+		add(2, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: s, HL: "Host:Value"})
 	}
 	add(1)
 	text("Without trust, zemi asks before anything but reads.", "Host:Hint")
