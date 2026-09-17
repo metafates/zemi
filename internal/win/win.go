@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -406,7 +407,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		var ee *exec.ExitError
 		switch {
 		case errors.As(err, &ee):
-			w.exit.Store(int32(ee.ExitCode()))
+			w.exit.Store(int32(exitCode(ee)))
 		case err != nil:
 			w.exit.Store(-2)
 		default:
@@ -704,8 +705,17 @@ func (w *Window) Wait(ctx context.Context) error {
 }
 
 // ExitCode is the exit status: -1 while running, -2 when the process could
-// not be waited for.
+// not be waited for, 128+signal when a signal ended it.
 func (w *Window) ExitCode() int { return int(w.exit.Load()) }
+
+// exitCode reads the status a signalled process ended with as the shell
+// does, since ExitError.ExitCode is then -1, which marks a running window.
+func exitCode(ee *exec.ExitError) int {
+	if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return ee.ExitCode()
+}
 
 // Resize sets the terminal size (the pty and the emulator); a no-op when
 // unchanged. Callers pass the cells the layout gives the window.

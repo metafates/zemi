@@ -180,6 +180,22 @@ func TestWindowKillsOnClose(t *testing.T) {
 	}
 }
 
+func TestSignalledWindowExits(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: "kill -9 $$", Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if err := w.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !w.Exited() || w.ExitCode() != 128+9 {
+		t.Fatalf("exited %v code %d", w.Exited(), w.ExitCode())
+	}
+}
+
 func TestWindowEnvHasNoHostTerminal(t *testing.T) {
 	m := &Manager{}
 	env := []string{"TERM_PROGRAM=ghostty", "GHOSTTY_BIN_DIR=/x", "TMUX=/t,1,0", "TMUX_PANE=%1", "LC_TERMINAL=iTerm2", "HOME=/h", "PATH=" + os.Getenv("PATH")}
