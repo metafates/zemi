@@ -35,6 +35,7 @@ type MemoryRow struct {
 	Text   string
 	Tags   []string
 	Queued bool   // proposal awaiting review, not yet stored
+	Forget bool   // proposal to forget a stored memory, which stays in its scope
 	Action string // set by the review screen: accept, reject, delete or ""
 }
 
@@ -262,14 +263,11 @@ func (h *Host) openMemoryReview() {
 				continue
 			}
 			accepted++
-		case old.Queued && r.Scope != old.Scope:
-			// a forget proposal names a memory in its own scope; it cannot move
-			if p := h.takeProposal(r.ID); p != nil && !p.Forget {
+		case old.Queued && r.Scope != old.Scope && !old.Forget:
+			if p := h.takeProposal(r.ID); p != nil {
 				p.Memory.Scope = r.Scope
 				h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
 				moved++
-			} else if p != nil {
-				_ = h.addProposal(*p)
 			}
 		case old.Queued:
 		case r.Action == "delete":
@@ -421,7 +419,7 @@ func (h *Host) memoryRows() []MemoryRow {
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: text, Tags: m.Tags, Queued: true,
+			Text: text, Tags: m.Tags, Queued: true, Forget: m.Forget,
 		})
 	}
 	list, _ := h.memoryList(false)
