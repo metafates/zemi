@@ -132,6 +132,20 @@ func TestToolPreOnce(t *testing.T) {
 	}
 }
 
+// TestVetoShape pins the zemi.Veto table runtime/types/zemi.lua documents.
+func TestVetoShape(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.event.on("permission.request", function() return { decision = "deny", reason = "nope" } end)
+		zemi.event.on("tool.pre", function() return { decision = "halt", reason = "stop" } end)`)
+	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied || res.Reason != "nope" {
+		t.Errorf("permission.request = %+v, want denied with reason nope", res)
+	}
+	if d, reason, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
+		t.Errorf("tool.pre = %q %q, want halt stop", d, reason)
+	}
+}
+
 // TestHotRuntimeVetoesFailClosed: while the runtime is hot the deny hooks
 // cannot run, so permission.request and tool.pre deny and app.quit proceeds.
 func TestHotRuntimeVetoesFailClosed(t *testing.T) {
