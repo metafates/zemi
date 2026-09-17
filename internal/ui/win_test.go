@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,29 +16,77 @@ import (
 	"github.com/metafates/zemi/internal/win"
 )
 
-// TestShares: fixed shares hold, the rest split what is left with the
-// main area, and the main area keeps its minimum.
-func TestShares(t *testing.T) {
-	m := &win.Manager{}
-	var wins []*win.Window
-	for _, f := range []float64{0, 0.5, 0} {
-		w, err := m.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit})
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = w.SetLayout(func(l *win.Layout) { l.Frac = f })
-		wins = append(wins, w)
+// TestVsplitShares: a vsplit's frac is of the row's cells after the
+// separators, the others share what is left with the main column, cells
+// above their mins split equally, and on a narrow screen the windows give
+// way before the main column goes below its min.
+func TestVsplitShares(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		width    int
+		fracs    []float64
+		wantMain int
+		wantWins []int
+	}{
+		{"frac and equal shares", 200, []float64{0, 0.5, 0}, 40, []int{29, 99, 29}},
+		{"narrow: windows shrink first", 60, []float64{0, 0.5, 0}, 30, []int{7, 20}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			defer a.host.Wins.CloseAll()
+			for _, f := range c.fracs {
+				w, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit})
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = w.SetLayout(func(l *win.Layout) { l.Frac = f })
+			}
+			a.width, a.height = c.width, 30
+			a.Frame()
+			var wins []int
+			for _, r := range a.winRects {
+				wins = append(wins, r.w)
+			}
+			if a.stage.Dx() != c.wantMain || !slices.Equal(wins, c.wantWins) {
+				t.Fatalf("main %d, windows %v; want %d, %v", a.stage.Dx(), wins, c.wantMain, c.wantWins)
+			}
+		})
 	}
-	defer m.CloseAll()
-	got := shares(wins, 200, 20, 30)
-	if got[1] != 100 || got[0] != 23 || got[2] != 23 {
-		t.Fatalf("shares %v", got)
-	}
-	if got := shares(wins, 50, 20, 30); got[0]+got[1]+got[2] > 60 {
-		t.Fatalf("tight frame: %v", got)
-	}
-	if shares(nil, 100, 20, 30) != nil {
-		t.Fatal("no windows, no shares")
+}
+
+// TestSplitDragFollowsPointer: dragging a vsplit's separator or a split's
+// title leaves it under the pointer, since frac is written against the
+// cells the slot's box shares out.
+func TestSplitDragFollowsPointer(t *testing.T) {
+	for _, kind := range []string{win.KindVSplit, win.KindSplit} {
+		t.Run(kind, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			defer a.host.Wins.CloseAll()
+			if _, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: kind}); err != nil {
+				t.Fatal(err)
+			}
+			a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+			a.Frame()
+			edge := func() [2]int {
+				r := a.winRects[0]
+				if kind == win.KindVSplit {
+					return [2]int{r.sepX, 10}
+				}
+				return [2]int{r.x + 2, r.titleY}
+			}
+			from := edge()
+			to := [2]int{from[0] - 10, from[1]}
+			if kind == win.KindSplit {
+				to = [2]int{from[0], from[1] - 5}
+			}
+			a.Update(tea.MouseClickMsg{X: from[0], Y: from[1], Button: tea.MouseLeft})
+			a.Update(tea.MouseMotionMsg{X: to[0], Y: to[1], Button: tea.MouseLeft})
+			a.Update(tea.MouseReleaseMsg{X: to[0], Y: to[1], Button: tea.MouseLeft})
+			a.Frame()
+			if got := edge(); got != to {
+				t.Fatalf("edge at %v after dragging from %v to %v", got, from, to)
+			}
+		})
 	}
 }
 

@@ -28,6 +28,7 @@ type winRect struct {
 	x, y, w, h int // the terminal cells
 	titleY     int
 	sepX       int // vsplit: the separator column, -1 otherwise
+	axis       int // split, vsplit: the cells its frac is a share of
 	float      bool
 }
 
@@ -47,42 +48,6 @@ const (
 	minFloatW  = 20
 	minFloatH  = 3
 )
-
-// shares divides total cells between the windows of a slot and their
-// siblings: a window with a Frac gets that share, the rest split what is
-// left with the siblings equally, and the siblings keep at least minMain.
-func shares(wins []*win.Window, total, minWin, minMain int) []int {
-	if len(wins) == 0 {
-		return nil
-	}
-	out := make([]int, len(wins))
-	fixed, auto := 0, 0
-	for i, wn := range wins {
-		if f := wn.Layout().Frac; f > 0 {
-			out[i] = max(minWin, int(f*float64(total)))
-			fixed += out[i]
-		} else {
-			auto++
-		}
-	}
-	each := max(minWin, (total-fixed-minMain)/(auto+1))
-	for i := range wins {
-		if out[i] == 0 {
-			out[i] = each
-		}
-	}
-	// squeeze windows, last first, until the main area fits
-	for i := len(out) - 1; i >= 0; i-- {
-		sum := 0
-		for _, x := range out {
-			sum += x
-		}
-		if over := sum - (total - minMain); over > 0 {
-			out[i] = max(minWin, out[i]-over)
-		}
-	}
-	return out
-}
 
 // shownWins lists the windows of one kind that are not hidden, in opening
 // order.
@@ -452,9 +417,9 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 			}
 			l.X, l.Y, l.Cols, l.Rows = bx, by, cols, rows
 		case "vsplit":
-			l.Frac = float64(r.x+r.w-x-1) / float64(max(a.width, 1))
+			l.Frac = float64(r.x+r.w-x-1) / float64(max(r.axis, 1))
 		case "split":
-			l.Frac = float64(r.y+r.h-y) / float64(max(a.stage.Dy(), 1))
+			l.Frac = float64(r.y+r.h-y) / float64(max(r.axis, 1))
 		}
 	})
 }

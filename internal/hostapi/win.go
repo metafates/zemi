@@ -548,7 +548,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 			"title":      map[string]any{"type": "string"},
 			"hidden":     map[string]any{"type": "boolean"},
 			"focus":      map[string]any{"type": "boolean", "description": "give the user's keys to the window right away"},
-			"frac":       map[string]any{"type": "number", "description": "a split or vsplit's share of the screen, 0.1 to 0.9"},
+			"frac":       map[string]any{"type": "number", "description": "0.1 to 0.9: a vsplit's share of the columns beside the chat, a split's of the rows under it; unset, the window takes an equal share of what is left"},
 			"cols":       map[string]any{"type": "number", "description": "a float's width"},
 			"rows":       map[string]any{"type": "number", "description": "a float's height"},
 			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window; set: a float's left column (-1 centers)"},

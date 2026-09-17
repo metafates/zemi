@@ -421,8 +421,10 @@ reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carrie
 `Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: splits and
 vsplits go where the layout tree has a `windows` slot of their kind (by default vsplits are
 full-height columns beside the main column, splits take rows at the bottom of the stage),
-floats go over everything at their position or centered over the stage; `shares` sizes a
-slot's windows so their siblings keep their min. `Screen()` turns cells into `sgr:` segments so colors reach
+floats go over everything at their position or centered over the stage. A slot's window takes
+its `frac` of the box's cells after separators, else a fill share weighing the same as the
+box's fill nodes (the chat column by default, so cells above the mins split equally); a
+dragged separator or title writes `frac` back against those cells (`winRect.axis`). `Screen()` turns cells into `sgr:` segments so colors reach
 the renderer untouched; during a synchronized update (mode 2026) it returns the screen
 from before, for at most a second. The focused window's cursor is the host's own (`View.Cursor`, in
 the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn

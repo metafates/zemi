@@ -62,7 +62,7 @@ type Spec struct {
 type Layout struct {
 	Kind   string
 	Hidden bool    // keeps running, takes no space
-	Frac   float64 // split, vsplit: share of the axis, 0 = an equal share
+	Frac   float64 // split, vsplit: share of its layout box's cells, 0 = a fill share
 	Cols   int     // float: requested size, 0 = four fifths of the area
 	Rows   int
 	X, Y   int // float: top-left cell of the frame, -1 = centered

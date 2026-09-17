@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -108,6 +109,7 @@ type laid struct {
 	// own last draw could never shrink.
 	rows int
 	sep  bool // a separator column left of it
+	axis int  // a window: the cells its box shares out, what its frac is of
 	kids []laid
 }
 
@@ -129,7 +131,8 @@ func (a *App) layout(w, h int) (laid, uv.Rectangle) {
 }
 
 // solve places n's children inside r. A windows slot becomes one child per
-// shown window of its kind, sized by shares so the siblings keep their min.
+// shown window of its kind: its frac of the box's cells, else a fill share
+// weighing the same as its fill siblings.
 func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	l := laid{node: n, rect: r, rows: r.Dy()}
 	if n.Kind != "box" {
@@ -142,42 +145,37 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	}
 	type item struct {
 		node *hostapi.LayoutNode
-		wins []*win.Window
-		i    int
+		wn   *win.Window
 	}
 	var items []item
-	mainMin := 0
 	for _, c := range n.Children {
 		if c.Kind != "windows" {
 			items = append(items, item{node: c})
-			mainMin += c.Min
 			continue
 		}
-		wins := a.shownWins(c.Slot)
-		for i := range wins {
-			items = append(items, item{node: c, wins: wins, i: i})
+		for _, wn := range a.shownWins(c.Slot) {
+			items = append(items, item{node: c, wn: wn})
 		}
 	}
 	avail := length
 	if n.Sep {
 		avail -= max(len(items)-1, 0)
 	}
+	avail = max(avail, 0)
 	kids := make([]spanKid, len(items))
-	var cells []int
 	for i, it := range items {
 		c := it.node
-		if it.wins == nil {
+		if it.wn == nil {
 			kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
 			if c.Size.Kind == hostapi.SizeContent && !row {
 				kids[i].want = a.measure(c, cross)
 			}
 			continue
 		}
-		minWin := map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]
-		if it.i == 0 {
-			cells = shares(it.wins, max(avail, 0), minWin, mainMin)
+		kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeFill}, min: map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]}
+		if f := it.wn.Layout().Frac; f > 0 {
+			kids[i].size = hostapi.Size{Kind: hostapi.SizeCells, N: int(math.Round(f * float64(avail)))}
 		}
-		kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeCells, N: cells[it.i]}, min: minWin}
 	}
 	pos := r.Min.Y
 	if row {
@@ -195,9 +193,7 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 		if c := items[i].node; c.Size.Kind == hostapi.SizeContent && !row {
 			k.rows = kids[i].clamp(avail)
 		}
-		if items[i].wins != nil {
-			k.wn = items[i].wins[items[i].i]
-		}
+		k.wn, k.axis = items[i].wn, avail
 		k.sep = row && n.Sep && i > 0
 		l.kids = append(l.kids, k)
 		pos += size
@@ -343,6 +339,6 @@ func (a *App) paintWindow(l laid) [][]hostapi.Segment {
 		sepX = r.Min.X - 1
 	}
 	l.wn.Resize(r.Dx(), r.Dy()-1)
-	a.winRects = append(a.winRects, winRect{id: l.wn.ID, x: r.Min.X, y: r.Min.Y + 1, w: r.Dx(), h: r.Dy() - 1, titleY: r.Min.Y, sepX: sepX})
+	a.winRects = append(a.winRects, winRect{id: l.wn.ID, x: r.Min.X, y: r.Min.Y + 1, w: r.Dx(), h: r.Dy() - 1, titleY: r.Min.Y, sepX: sepX, axis: l.axis})
 	return a.windowRows(l.wn, r.Dx(), r.Dy()-1)
 }

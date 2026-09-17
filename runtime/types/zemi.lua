@@ -498,7 +498,7 @@ zemi.win = {}
 ---@class zemi.WinLayout
 ---@field kind? "split"|"vsplit"|"float"
 ---@field hidden? boolean
----@field frac? number A split or vsplit's share of the screen, 0.1 to 0.9.
+---@field frac? number 0.1 to 0.9: a split or vsplit's share of the cells of the layout box its slot is in (separators excluded); unset, an equal share of what is left with that box's fill nodes.
 ---@field cols? integer A float's width.
 ---@field rows? integer A float's height.
 ---@field x? integer A float's left column, -1 centers.
