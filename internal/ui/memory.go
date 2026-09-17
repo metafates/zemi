@@ -1,7 +1,8 @@
 // memory.go is the Go-owned memory screen (DESIGN §8, §10.4): fixed
 // chrome, no Lua participates in drawing or answering it. Suggestions from
 // the reflector come first (a keeps one, d drops it), then what zemi
-// remembers (d forgets); s moves a row between this project and everywhere.
+// remembers (d forgets); s moves a row between this project and everywhere,
+// e closes the screen to edit a row in the user's editor.
 // A key acts at once and u undoes; the edited rows reach the host when the
 // screen closes.
 package ui
@@ -14,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -40,7 +42,9 @@ func (a *App) ReviewMemories(items []hostapi.MemoryRow) []hostapi.MemoryRow {
 	// screen edits a copy
 	rows := slices.Clone(items)
 	a.await(func() tea.Cmd {
-		a.memReview = &memReviewPrompt{items: rows, answer: ch}
+		// the host reopens the screen after an edit, on the edited row
+		sel := max(0, slices.IndexFunc(rows, func(r hostapi.MemoryRow) bool { return r.ID == a.memEdited }))
+		a.memReview, a.memEdited = &memReviewPrompt{items: rows, sel: sel, answer: ch}, ""
 		return nil
 	})
 	return <-ch
@@ -54,6 +58,17 @@ func (a *App) answerMemReview() {
 		mr.answer <- append(mr.items, mr.gone...)
 	}
 	a.frameGen++
+}
+
+// editMemory hands the selected row to the host for editing.
+func (a *App) editMemory() {
+	mr := a.memReview
+	if mr == nil || mr.sel >= len(mr.items) || mr.items[mr.sel].Forget {
+		return
+	}
+	mr.items[mr.sel].Edit = true
+	a.memEdited = mr.items[mr.sel].ID
+	a.answerMemReview()
 }
 
 // suggested reports whether a row still waits in the Suggested section.
@@ -140,6 +155,9 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 		}
 		info := []string{it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+		if it.Updated != 0 {
+			info = append(info, strings.TrimPrefix(learn.Age(it.Updated, a.now()), " · "))
+		}
 		for _, t := range it.Tags {
 			info = append(info, "#"+t)
 		}
@@ -174,7 +192,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 			hints = append(hints, "d", "forget")
 		}
 		if !it.Forget {
-			hints = append(hints, "s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"])
+			hints = append(hints, "s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"], "e", "edit")
 		}
 	}
 	if len(mr.undo) > 0 {

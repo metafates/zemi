@@ -391,7 +391,9 @@ what the screen says.
   anything that does not decode as a fantasy message.
 - **Proposals persist.** Memory proposals live in the scope DB's `proposals` table until
   `/memory` (a/d/s, the edited rows come back with `Action` and `Scope`; a scope move adds
-  before it deletes) or `zemi.learn.decide`; `refreshPending` caches the
+  before it deletes; `e` returns a row with `Edit`, and after the other marks apply
+  `editMemory` opens its raw text through `EditFile`, re-runs intake as user origin keeping
+  the id (an edited suggestion is stored), and `openMemoryReview` shows the screen again) or `zemi.learn.decide`; `refreshPending` caches the
   statusline counts.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
   the latest session (once per process, not on a reload, when that session is the open one), never on quit; `reflectDue` compares the message count with kv

@@ -1498,8 +1498,13 @@ startup, since the session still has unseen messages.
   statusline shows how many wait for `/memory`. In `/memory`, `a` accepts
   a proposal, `d` rejects one or deletes a stored memory, `s` moves one
   between this project and everywhere (a stored memory is added to the
-  other store before it is deleted from its own), `u` undoes the last
-  mark, and esc or `q` closes the screen and applies the marks.
+  other store before it is deleted from its own), `e` edits one in the
+  user's editor (the marks apply first; the saved text passes intake again
+  as user origin with the same scope, kind and tags and keeps the id, an
+  edited suggestion is stored, empty or unchanged text changes nothing,
+  and the screen reopens on that row), `u` undoes the last mark, and esc
+  or `q` closes the screen and applies the marks. Stored rows show their
+  age.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (500 chars), kind from a fixed enum, provenance required, tags scrubbed
   like text, and

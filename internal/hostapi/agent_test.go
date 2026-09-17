@@ -516,6 +516,7 @@ type fakeUI struct {
 	reloads      int
 	screenshot   string
 	copied       string
+	edit         func(path string) // what the user does in the editor
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -527,7 +528,10 @@ func (f *fakeUI) Refresh()                         {}
 func (f *fakeUI) ScrollChat(kind string)           {}
 func (f *fakeUI) AgentEvent(ev AgentEvent)         {}
 func (f *fakeUI) ComposerEdit(string, string, int) {}
-func (f *fakeUI) EditFile(context.Context, EditRequest) (string, error) {
+func (f *fakeUI) EditFile(_ context.Context, req EditRequest) (string, error) {
+	if f.edit != nil {
+		f.edit(req.Path)
+	}
 	return "fullscreen", nil
 }
 func (f *fakeUI) FocusWindow(int)  {}

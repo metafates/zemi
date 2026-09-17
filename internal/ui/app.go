@@ -76,6 +76,7 @@ type App struct {
 	permQueue []*permAskPrompt
 	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
+	memEdited string // the row the next memory screen opens on
 
 	mouse          mouseSel
 	hovering       bool

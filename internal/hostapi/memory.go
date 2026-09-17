@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -29,15 +30,17 @@ const memoryAutoApplyCap = 20
 // MemoryRow is one review-overlay row: a queued proposal or a stored
 // memory from either scope.
 type MemoryRow struct {
-	ID     string
-	Scope  string // "user" or "project"
-	Kind   string
-	Origin string // "user" or "learned"
-	Text   string
-	Tags   []string
-	Queued bool   // proposal awaiting review, not yet stored
-	Forget bool   // proposal to forget a stored memory, which stays in its scope
-	Action string // set by the review screen: accept, reject, delete or ""
+	ID      string
+	Scope   string // "user" or "project"
+	Kind    string
+	Origin  string // "user" or "learned"
+	Text    string
+	Tags    []string
+	Queued  bool   // proposal awaiting review, not yet stored
+	Forget  bool   // proposal to forget a stored memory, which stays in its scope
+	Updated int64  // last write of a stored memory, unix ms
+	Action  string // set by the review screen: accept, reject, delete or ""
+	Edit    bool   // set by the review screen: open this row in the editor, then reopen
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -156,7 +159,7 @@ func (h *Host) duplicateMemory(m store.Memory) bool {
 	}
 	live, _ := db.ListMemory(m.Scope, false)
 	for _, o := range live {
-		if strings.EqualFold(o.Text, m.Text) {
+		if o.ID != m.ID && strings.EqualFold(o.Text, m.Text) {
 			return true
 		}
 	}
@@ -239,23 +242,36 @@ func (h *Host) memoryCommand(args string) error {
 // openMemoryReview shows pending proposals plus stored memories from both
 // scopes in the Go-owned review overlay and applies the decisions by row
 // id: accepted proposals are stored, rejected ones dropped, deleted
-// memories removed from their scope's DB.
+// memories removed from their scope's DB. A row marked for editing opens
+// in the user's editor after the other decisions apply, then the screen
+// opens again.
 func (h *Host) openMemoryReview() {
 	ui := h.hooks()
 	if ui == nil {
 		h.Notify("warn", "Memory review unavailable", "")
 		return
 	}
+	for h.reviewMemoriesOnce(ui) {
+	}
+}
+
+// reviewMemoriesOnce runs the screen once and reports whether a row was
+// edited, so the caller shows it again.
+func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 	rows := h.memoryRows()
 	was := map[string]MemoryRow{}
 	for _, r := range rows {
 		was[r.ID] = r
 	}
 	var accepted, rejected, deleted, moved int
+	edit := ""
 	for _, r := range ui.ReviewMemories(rows) {
 		old, ok := was[r.ID]
 		if !ok {
 			continue
+		}
+		if r.Edit {
+			edit = r.ID
 		}
 		if r.Scope != "user" {
 			r.Scope = "project"
@@ -305,6 +321,108 @@ func (h *Host) openMemoryReview() {
 	if len(parts) > 0 {
 		h.Notify("info", "Memory updated", strings.Join(parts, ", "))
 	}
+	if edit != "" {
+		h.editMemory(ui, edit)
+	}
+	return edit != ""
+}
+
+// editMemory opens a memory or a pending suggestion in the user's editor
+// and saves what comes back through rewriteMemory; a failure is a toast.
+func (h *Host) editMemory(ui UIHooks, id string) {
+	scrubbed, err := func() (bool, error) {
+		text, err := h.editableMemory(id)
+		if err != nil {
+			return false, err
+		}
+		dir, err := h.TempDir()
+		if err != nil {
+			return false, err
+		}
+		f, err := os.CreateTemp(dir, "memory-*.md")
+		if err != nil {
+			return false, err
+		}
+		defer os.Remove(f.Name())
+		_, err = f.WriteString(text + "\n")
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err == nil {
+			_, err = ui.EditFile(context.Background(), EditRequest{Path: f.Name(), Title: "the memory"})
+		}
+		if err != nil {
+			return false, err
+		}
+		b, err := os.ReadFile(f.Name())
+		if err != nil {
+			return false, err
+		}
+		return h.rewriteMemory(id, string(b))
+	}()
+	switch {
+	case err != nil:
+		h.Notify("warn", "Memory not changed", err.Error())
+	case scrubbed:
+		h.Notify("info", "Memory updated", "secrets redacted")
+	}
+}
+
+// editableMemory is the raw text of a pending suggestion or stored memory.
+func (h *Host) editableMemory(id string) (string, error) {
+	for _, p := range h.memoryProposals() {
+		if p.ID == id {
+			return p.Text, nil
+		}
+	}
+	_, m, err := h.locateMemory(id)
+	if err != nil {
+		return "", err
+	}
+	return m.Text, nil
+}
+
+// rewriteMemory saves the user's edit of a memory: intake runs again as
+// user origin with the same scope, kind and tags, and the memory keeps its
+// id. An edited suggestion is stored as the user's own. Empty or unchanged
+// text changes nothing, and so does a refusal.
+func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
+	if strings.TrimSpace(text) == "" {
+		return false, nil
+	}
+	for _, p := range h.memoryProposals() {
+		if p.ID != id || p.Forget {
+			continue
+		}
+		res, err := h.storeMemory(p.Scope, learn.OriginUser, p.Kind, text, p.Tags)
+		if err != nil || res.Memory.Text == p.Text {
+			return false, err
+		}
+		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
+		if h.takeProposal(id) == nil {
+			return false, fmt.Errorf("no such proposal %q", id)
+		}
+		if err := h.storeProposal(res); err != nil {
+			if qerr := h.addProposal(p); qerr != nil {
+				h.Log.Warn("memory", "proposal dropped", map[string]any{"error": qerr.Error()})
+			}
+			return false, err
+		}
+		return res.Scrubbed, nil
+	}
+	db, m, err := h.locateMemory(id)
+	if err != nil {
+		return false, err
+	}
+	res, err := h.storeMemory(m.Scope, learn.OriginUser, m.Kind, text, m.Tags)
+	if err != nil || res.Memory.Text == m.Text {
+		return false, err
+	}
+	res.Memory.ID = m.ID
+	if h.duplicateMemory(res.Memory) {
+		return false, errDuplicateMemory
+	}
+	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, learn.OriginUser)
 }
 
 // takeProposal removes one pending memory proposal by id and returns it,
@@ -470,7 +588,7 @@ func (h *Host) memoryRows() []MemoryRow {
 	for _, m := range list {
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Kind: m.Kind, Origin: m.Origin,
-			Text: m.Text, Tags: m.Tags,
+			Text: m.Text, Tags: m.Tags, Updated: m.UpdatedAt,
 		})
 	}
 	return rows

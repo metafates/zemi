@@ -51,7 +51,8 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 		{ID: "m1", Scope: "project", Kind: "gotcha", Origin: "learned",
 			Text: "the fts join needs m-qualified columns", Queued: true},
 		{ID: "m2", Scope: "user", Kind: "preference", Origin: "user",
-			Text: "the user prefers short replies", Tags: []string{"style"}},
+			Text: "the user prefers short replies", Tags: []string{"style"},
+			Updated: app.now().Add(-12 * 24 * time.Hour).UnixMilli()},
 	}
 	done := openReview(t, app, items)
 
@@ -81,6 +82,33 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	if app.memReview != nil {
 		t.Fatal("overlay should be closed")
 	}
+}
+
+// TestMemoryReviewEdit: e hands the row back for editing and the screen
+// the host opens next starts on it; a forget suggestion has no text to edit.
+func TestMemoryReviewEdit(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 16)
+	rows := []hostapi.MemoryRow{
+		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+		{ID: "m2", Scope: "project", Kind: "fact", Origin: "user", Text: "other"},
+	}
+	done := openReview(t, app, rows)
+	app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if app.memReview == nil {
+		t.Fatal("e closed the screen on a forget suggestion")
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if got := <-done; !got[1].Edit || got[0].Edit || got[2].Edit {
+		t.Fatalf("edit rows: %+v", got)
+	}
+	done = openReview(t, app, rows)
+	if app.memReview.sel != 1 {
+		t.Fatalf("reopened on row %d", app.memReview.sel)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	<-done
 }
 
 // TestMemoryReviewDropAccepted: a suggestion kept and then dropped was

@@ -144,6 +144,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.markMemory("drop")
 		case "s":
 			a.markMemory("scope")
+		case "e":
+			a.editMemory()
 		case "u":
 			a.undoMemory()
 		case "esc", "q":

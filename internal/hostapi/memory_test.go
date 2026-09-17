@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -509,6 +510,53 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	h.openMemoryReview()
 	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 2 {
 		t.Fatalf("kept suggestion not stored everywhere: %+v", live)
+	}
+}
+
+// TestEditMemory: e in /memory saves the editor's text as the user's own,
+// in place; empty, unchanged or refused text changes nothing.
+func TestEditMemory(t *testing.T) {
+	for _, tc := range []struct {
+		name, row, text string
+		want            string // "" when nothing may change
+	}{
+		{"stored reworded", "m1", "deploy with make ship", "deploy with make ship"},
+		{"stored unchanged", "m1", "deploy   by hand\n", ""},
+		{"empty file", "m1", "\n", ""},
+		{"secret blob refused", "m1", "AKIAIOSFODNN7EXAMPLE", ""},
+		{"duplicate of another memory", "m1", "Other note", ""},
+		{"suggestion reworded is kept as yours", "p1", "deploy with make ship", "deploy with make ship"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			seedSession(t, h)
+			for _, m := range []*store.Memory{
+				{ID: "m1", Scope: "project", Kind: "gotcha", Text: "deploy by hand", Tags: []string{"ops"}, ProvenanceSessionID: "seed", Origin: learn.OriginLearned},
+				{ID: "m2", Scope: "project", Kind: "fact", Text: "other note", ProvenanceSessionID: "seed", Origin: learn.OriginLearned},
+			} {
+				if err := h.DB.AddMemory(m); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := memoryProposal{Memory: store.Memory{ID: "p1", Scope: "project", Kind: "gotcha", Text: "suggested note", Tags: []string{"ops"}, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}}
+			if err := h.addProposal(p); err != nil {
+				t.Fatal(err)
+			}
+			ui := &fakeUI{edit: func(path string) { _ = os.WriteFile(path, []byte(tc.text), 0o600) }}
+			h.editMemory(ui, tc.row)
+
+			m, err := h.DB.GetMemory(tc.row)
+			switch {
+			case tc.want == "" && tc.row == "m1":
+				if m.Text != "deploy by hand" || m.Origin != learn.OriginLearned {
+					t.Fatalf("changed: %+v", m)
+				}
+			case err != nil || m.Text != tc.want || m.Origin != learn.OriginUser || m.Kind != "gotcha" || !slices.Equal(m.Tags, []string{"ops"}):
+				t.Fatalf("edited: %+v, %v", m, err)
+			case tc.row == "p1" && len(h.memoryProposals()) != 0:
+				t.Fatal("the edited suggestion is still queued")
+			}
+		})
 	}
 }
 
