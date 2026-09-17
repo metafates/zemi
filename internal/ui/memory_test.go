@@ -93,6 +93,37 @@ func TestMemoryReviewDropAccepted(t *testing.T) {
 	}
 }
 
+// TestMemoryReviewForgetAndWrap: a forget suggestion offers "a forget",
+// keeping it leaves Remembered alone, and keeping the last suggestion goes
+// back to the first one left.
+func TestMemoryReviewForgetAndWrap(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 16)
+	done := make(chan []hostapi.MemoryRow, 1)
+	go func() {
+		done <- app.ReviewMemories([]hostapi.MemoryRow{
+			{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+			{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+			{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+		})
+	}()
+	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a forget · d keep") {
+		t.Fatalf("forget hints:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "forget: note") || !strings.Contains(frame, "Remembered (1)") {
+		t.Fatalf("a kept forget shows under Remembered:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}) // back on s1
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := reviewAnswer(t, done); len(got) != 2 || got["s1"] != "accept project" || got["f1"] != "accept project" {
+		t.Fatalf("decisions = %v", got)
+	}
+}
+
 // TestMemoryReviewScopeToggle: s moves a row between this project and
 // everywhere, u takes it back, and the answer carries the new scope.
 func TestMemoryReviewScopeToggle(t *testing.T) {

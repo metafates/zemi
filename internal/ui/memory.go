@@ -79,10 +79,16 @@ func (a *App) markMemory(key string) {
 	case "keep":
 		it.Action = "accept"
 		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
-		at := rememberedAt(mr.items)
-		mr.items = slices.Insert(mr.items, at, it)
-		if at <= mr.sel {
-			mr.sel++ // the row moved past the cursor; stay on the next suggestion
+		if it.Forget {
+			mr.gone = append(mr.gone, it) // a kept forget remembers nothing
+		} else if at := rememberedAt(mr.items); at <= mr.sel {
+			mr.items = slices.Insert(mr.items, at, it)
+			mr.sel++ // the row moved past the cursor
+		} else {
+			mr.items = slices.Insert(mr.items, at, it)
+		}
+		if n := rememberedAt(mr.items); mr.sel >= n && n > 0 {
+			mr.sel = 0 // past the last suggestion: back to the first one left
 		}
 	default:
 		// a suggestion kept a moment ago was never stored, so dropping it
@@ -158,6 +164,8 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	if mr.sel < len(mr.items) {
 		it := mr.items[mr.sel]
 		switch {
+		case suggested(it) && it.Forget:
+			hints = append(hints, "a", "forget", "d", "keep")
 		case suggested(it):
 			hints = append(hints, "a", "keep", "d", "drop")
 		case it.Queued:
