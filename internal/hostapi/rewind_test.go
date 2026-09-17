@@ -68,6 +68,17 @@ func TestRewind(t *testing.T) {
 	if read(edited) != "v2" || read(created) != "x" {
 		t.Fatalf("turns did not write: %q %q", read(edited), read(created))
 	}
+	// each prompt counts the files a rewind to it restores, later turns' too
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.OpenRewind(); err != nil || len(ui.opened) != 1 {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"1 file", "2 files"} {
+		if desc := ui.opened[0].Items[i].(map[string]any)["desc"].(string); !strings.HasSuffix(desc, want) {
+			t.Fatalf("prompt %d: %q, want %s", i, desc, want)
+		}
+	}
 
 	for _, c := range []struct {
 		prompt           int

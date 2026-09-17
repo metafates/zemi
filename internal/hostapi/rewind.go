@@ -193,20 +193,24 @@ func (h *Host) OpenRewind() error {
 	if err != nil {
 		return err
 	}
-	counts, _ := h.DB.CheckpointCounts(sid)
+	paths, _ := h.DB.CheckpointPaths(sid)
+	restored := map[string]bool{} // what rewinding to this prompt restores: its files and every later prompt's
 	var items []any
 	for _, row := range slices.Backward(rows) {
+		for _, p := range paths[row.ID] {
+			restored[perm.FoldCase(p)] = true
+		}
 		text, ok := userText(row)
 		if !ok {
 			continue
 		}
-		n := counts[row.ID]
-		desc, effect := ago(row.CreatedAt), "Rewinding removes this prompt and everything after it and puts it back in the composer."
-		if n > 0 {
+		desc, effect := ago(row.CreatedAt), "Rewinding removes this prompt and everything after it and puts the prompt back in the composer."
+		if n := len(restored); n > 0 {
 			files := fmt.Sprintf("%d %s", n, plural(n, "file", "files"))
 			desc += " · " + files
-			effect = "Rewinding removes this prompt and everything after it, restores " + files + " to how they were before it, and puts the prompt back in the composer. Changes made by commands are not undone."
+			effect = "Rewinding removes this prompt and everything after it, restores " + files + " to " + plural(n, "how it was", "how they were") + " before it, and puts the prompt back in the composer."
 		}
+		effect += " Changes made by commands are not undone."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,

@@ -86,10 +86,10 @@ func TestRetentionSweep(t *testing.T) {
 	if msgs, _ := db.Messages("old"); len(msgs) != 1 {
 		t.Fatalf("messages of a kept session = %+v", msgs)
 	}
-	if counts, err := db.CheckpointCounts("new"); err != nil || len(counts) != 0 {
+	if counts, err := db.CheckpointPaths("new"); err != nil || len(counts) != 0 {
 		t.Fatalf("aged checkpoints survived: %+v %v", counts, err)
 	}
-	if counts, err := db.CheckpointCounts("old"); err != nil || len(counts) != 1 {
+	if counts, err := db.CheckpointPaths("old"); err != nil || len(counts) != 1 {
 		t.Fatalf("a checkpoint inside the window was dropped: %+v %v", counts, err)
 	}
 }
@@ -249,7 +249,7 @@ func TestForkSession(t *testing.T) {
 	if len(msgs) != 2 || msgs[0].ID == summary.ID || fork.SummaryMessageID != msgs[0].ID {
 		t.Fatalf("messages = %+v, summary %q", msgs, fork.SummaryMessageID)
 	}
-	if counts, err := db.CheckpointCounts("s2"); err != nil || counts[msgs[0].ID] != 1 {
+	if counts, err := db.CheckpointPaths("s2"); err != nil || len(counts[msgs[0].ID]) != 1 {
 		t.Fatalf("checkpoints = %+v, %v", counts, err)
 	}
 }

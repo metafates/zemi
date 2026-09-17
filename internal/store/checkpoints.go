@@ -51,24 +51,19 @@ func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) 
 	}), err
 }
 
-// CheckpointCounts maps each user message id of a session to the number of
-// files its turn changed.
-func (s *DB) CheckpointCounts(sessionID string) (map[string]int, error) {
-	rows, err := s.db.Query(`SELECT message_id, COUNT(*) FROM checkpoints WHERE session_id = ? GROUP BY message_id`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]int{}
-	for rows.Next() {
-		var id string
-		var n int
-		if err := rows.Scan(&id, &n); err != nil {
-			return nil, err
+// CheckpointPaths maps each user message id of a session to the paths its
+// turn snapshotted.
+func (s *DB) CheckpointPaths(sessionID string) (map[string][]string, error) {
+	rows, err := s.db.Query(`SELECT message_id, path FROM checkpoints WHERE session_id = ?`, sessionID)
+	out := map[string][]string{}
+	_, err = collect(rows, err, func(r scanner) (id string, err error) {
+		var path string
+		if err = r.Scan(&id, &path); err == nil {
+			out[id] = append(out[id], path)
 		}
-		out[id] = n
-	}
-	return out, rows.Err()
+		return
+	})
+	return out, err
 }
 
 // TruncateMessages deletes messageID and every later message of the session
