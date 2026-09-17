@@ -30,7 +30,8 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    - Autonomy (`memory.autonomy = "auto"` in user config) stores proposed memories without
      review, except instruction-shaped text, retirements, replacements of the user's own
      memories, and anything from an untrusted project or a session that used `fetch`,
-     `web_search` or an MCP tool (itself or through a subagent).
+     `web_search`, the `Lua` tool or a tool zemi does not ship, MCP and `zemi.tool` ones
+     included (itself or through a subagent).
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
    session start (new memories apply from the next session or compaction). The digest
    (`memory.digest_lines`, 12 by default) favors memories about the session's first

@@ -774,8 +774,9 @@ func (h *Host) gateMemory(res *learn.Result) (stored bool, err error) {
 
 // memoryAuto reports whether auto autonomy may skip review for what session
 // sid wrote. It may not in an untrusted project, or when the session or one
-// of its subagents read text from outside the machine (fetch, web_search, an
-// MCP tool), where an injected memory would come from.
+// of its subagents read text from outside the machine (fetch, web_search, a
+// Lua or MCP tool, any tool zemi does not ship), where an injected memory
+// would come from.
 // NOTE: a bash command the user approved can fetch too and is not seen here.
 func (h *Host) memoryAuto(sid string) bool {
 	if h.setStr("memory.autonomy") != "auto" || !h.ProjectTrusted() || h.DB == nil {
@@ -789,13 +790,14 @@ func (h *Host) memoryAuto(sid string) bool {
 	for _, c := range children {
 		sids = append(sids, c.ID)
 	}
+	local := h.builtinToolNames()
 	for _, id := range sids {
 		stats, err := h.DB.ToolCallStats(id)
 		if err != nil {
 			return false
 		}
 		for _, s := range stats {
-			if s.Tool == "fetch" || s.Tool == "web_search" || strings.HasPrefix(s.Tool, "mcp_") {
+			if s.Tool == "fetch" || s.Tool == "web_search" || s.Tool == "Lua" || !slices.Contains(local, s.Tool) {
 				return false
 			}
 		}

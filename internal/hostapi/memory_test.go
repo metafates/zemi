@@ -154,6 +154,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 		{name: "fetch in the session", tool: "fetch"},
 		{name: "web search in a subagent", inTool: "web_search"},
 		{name: "mcp tool", tool: "mcp_github_search"},
+		{name: "lua-registered tool", tool: "jira_lookup"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)

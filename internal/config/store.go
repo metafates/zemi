@@ -77,7 +77,7 @@ func (s *Store) defineDefaults() {
 		{Path: "reflector.model", Kind: "string", Default: "", UserWritable: true, Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
 		{Path: "compact.model", Kind: "string", Default: "", UserWritable: true, Desc: "model that writes compaction summaries (provider/model; empty uses agent.model)"},
 		{Path: "reflector.timeout_ms", Kind: "int", Default: 120000, Desc: "reflector run timeout in milliseconds"},
-		{Path: "memory.autonomy", Kind: "string", Default: "ask", UserWritable: true, Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search or an MCP tool"},
+		{Path: "memory.autonomy", Kind: "string", Default: "ask", UserWritable: true, Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, UserWritable: true, Desc: "memory digest lines in the system prompt"},
 	}
 	for _, def := range defaults {

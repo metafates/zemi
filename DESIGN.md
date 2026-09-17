@@ -1550,8 +1550,9 @@ modes. The knob covers model-proposed memories only: `ask` queues them;
 heuristic exists for), which queues anyway, a replacement of a `user`
 memory, a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
-outside the machine (`fetch`, `web_search`, an `mcp_*` tool, read from
-the session's `tool_calls`), since injected memories come from there.
+outside the machine (`fetch`, `web_search`, the `Lua` tool, and any tool
+zemi does not ship: MCP and Lua-registered ones, read from the session's
+`tool_calls`), since injected memories come from there.
 The same conditions decide whether `memory_update` and `memory_forget`
 apply at once or ask. Known ceiling: a command the user let run
 unconfined can fetch too, and that is not seen.
