@@ -38,15 +38,11 @@ func (h *Host) RecordError(source, msg string) {
 	l := &h.errs
 	l.mu.Lock()
 	msg = sanitize.String(msg)
-	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
-		l.unseen = true
-		l.mu.Unlock()
-		h.refresh()
-		return
-	}
-	l.entries = append(l.entries, errEntry{time.Now(), source, msg})
-	if len(l.entries) > errLogMax {
-		l.entries = l.entries[len(l.entries)-errLogMax:]
+	if n := len(l.entries); n == 0 || l.entries[n-1].msg != msg {
+		l.entries = append(l.entries, errEntry{time.Now(), source, msg})
+		if len(l.entries) > errLogMax {
+			l.entries = l.entries[len(l.entries)-errLogMax:]
+		}
 	}
 	l.unseen = true
 	l.mu.Unlock()
