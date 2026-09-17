@@ -60,7 +60,9 @@ same step list and skip only the TUI: `--health` prints `HealthRows()` and exits
 errored; `-p` runs one turn, then reports on stderr how many tool calls the gate denied
 (nobody can answer an ask headless, so `deniedHint` points at `--mode auto`, at `--trust` in an
 untrusted project, and at an allow rule when auto already left the call to the user or it
-asked to run outside the sandbox). A headless run in a project with no saved trust decision runs untrusted
+asked to run outside the sandbox); it also drops the tools that need a user
+(`headlessExcluded`: window, question, plan, open_in_editor), which could only refuse.
+A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
 checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout, errors,
 trust, mcp, lsp) plus whatever Lua registered with `zemi.health.register`.

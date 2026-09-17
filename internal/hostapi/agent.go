@@ -250,6 +250,10 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool())
 }
 
+// headlessExcluded needs a user at a terminal: with no UI hooks these tools
+// can only refuse, so a print run does not pay for their schemas every step.
+var headlessExcluded = map[string]bool{"window": true, "question": true, "plan": true, "open_in_editor": true}
+
 // profileTools selects the tool set: profile names filter the builtin set;
 // Lua-registered tools are always included (the pipeline gates them).
 func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
@@ -257,8 +261,12 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	if p != nil && len(p.Tools) > 0 {
 		want = p.Tools
 	}
+	var skip map[string]bool
+	if h.hooks() == nil {
+		skip = headlessExcluded
+	}
 	pipe := h.PipelineFor()
-	out := filterTools(h.builtinTools(pipe), want, nil)
+	out := filterTools(h.builtinTools(pipe), want, skip)
 	out = append(out, h.luaFantasyTools(pipe)...)
 	return append(out, h.mcpFantasyTools(pipe)...)
 }

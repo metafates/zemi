@@ -965,3 +965,28 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 		}
 	}
 }
+
+// TestHeadlessToolsetDropsPrompts: a print run has nobody to answer a
+// question, approve a plan, open an editor or watch a window, so those
+// schemas never ship with it.
+func TestHeadlessToolsetDropsPrompts(t *testing.T) {
+	h, _ := newTestHost(t)
+	names := func() map[string]bool {
+		out := map[string]bool{}
+		for _, tool := range h.profileTools(nil) {
+			out[tool.Info().Name] = true
+		}
+		return out
+	}
+	for name := range headlessExcluded {
+		if names()[name] {
+			t.Errorf("headless toolset still ships %q", name)
+		}
+	}
+	h.SetUIHooks(&fakeUI{})
+	for name := range headlessExcluded {
+		if !names()[name] {
+			t.Errorf("the TUI toolset lost %q", name)
+		}
+	}
+}
