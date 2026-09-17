@@ -719,32 +719,6 @@ func (a *App) compose(w, h int) string {
 	rows = append(rows, compRows...)
 	rows = append(rows, padSegs(nil, w), a.statusRow(w))
 
-	// Lua overlays, then the Go-owned chrome, bottom to top; topChrome must
-	// match this order so input reaches the box drawn on top.
-	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
-	for i := range a.overlays {
-		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			rows = anchorBottom(rows, overlayBox(ov, w), w, len(header), chatH)
-		} else {
-			splice(overlayBox(ov, w))
-		}
-	}
-	if a.trust != nil {
-		splice(trustBox(a.trust, w))
-	}
-	if a.modelPick != nil {
-		splice(pickBox(a.modelPick, w))
-	}
-	if a.question != nil {
-		splice(questionBox(a.question, w, chatH))
-	}
-	if a.memReview != nil {
-		splice(a.memReviewBox(w, chatH))
-	}
-	if a.permAsk != nil {
-		splice(a.permBox(a.permAsk, w, chatH))
-	}
-
 	// join the vsplit columns: a separator, then the window, full height
 	x := w
 	for i, wn := range vsplits {
@@ -766,6 +740,44 @@ func (a *App) compose(w, h int) string {
 		box, x0, y0, r := a.floatBox(wn, w, h, len(header), chatH)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
+	}
+
+	// Modal chrome goes over everything, windows included: Lua overlays,
+	// then the Go-owned prompts, bottom to top (topChrome must match this
+	// order so input reaches the box drawn on top). What lies under the top
+	// box is dimmed, so no text beside it can pass for its chrome (DESIGN §8).
+	var modals []func()
+	splice := func(box [][]hostapi.Segment) {
+		modals = append(modals, func() { rows = spliceBox(rows, box, w, len(header), chatH) })
+	}
+	for i := range a.overlays {
+		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
+			box := overlayBox(ov, w)
+			modals = append(modals, func() { rows = anchorBottom(rows, box, w, len(header), chatH) })
+		} else {
+			splice(overlayBox(ov, w))
+		}
+	}
+	if a.trust != nil {
+		splice(trustBox(a.trust, w))
+	}
+	if a.modelPick != nil {
+		splice(pickBox(a.modelPick, w))
+	}
+	if a.question != nil {
+		splice(questionBox(a.question, w, chatH))
+	}
+	if a.memReview != nil {
+		splice(a.memReviewBox(w, chatH))
+	}
+	if a.permAsk != nil {
+		splice(a.permBox(a.permAsk, w, chatH))
+	}
+	for i, place := range modals {
+		if i == len(modals)-1 {
+			dimRows(rows)
+		}
+		place()
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
@@ -805,6 +817,18 @@ func (a *App) Screenshot() string {
 		b.WriteString(strings.TrimRight(ansi.Strip(row), " "))
 	}
 	return b.String()
+}
+
+// dimRows repaints rows in one fixed color. It copies each row: rows share
+// slices with widget caches.
+func dimRows(rows [][]hostapi.Segment) {
+	for i, r := range rows {
+		out := make([]hostapi.Segment, len(r))
+		for j, s := range r {
+			out[j] = hostapi.Segment{Text: s.Text, HL: "Host:Dim"}
+		}
+		rows[i] = out
+	}
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of

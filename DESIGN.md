@@ -1056,9 +1056,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   may restyle the frame via theme groups only. The security-relevant
   chrome (answer keys, subject, badge) renders in fixed host colors no
   theme group can change; Go draws it itself and Lua text never renders
-  inside that chrome, so a widget cannot fake a permission prompt. While
-  a permission overlay is active, plugin overlays and widget regions are
-  hidden until it resolves; at any other time a plugin overlay carries a
+  inside that chrome, so a widget cannot fake a permission prompt. Modal
+  chrome (overlays and prompts) draws over everything, windows included,
+  and while one is open everything outside the top box, plugin overlays and
+  widget regions too, is dimmed in a fixed host color; at any other time a plugin overlay carries a
   Go-stamped `plugin:<path>` origin badge.
 - **Sanitization**: every model-influenced string is sanitized by Go at
   the cell boundary before it reaches any widget: tool output, assistant

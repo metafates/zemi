@@ -628,7 +628,9 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   topmost chrome. Hover lights the whole item, but only the pointer over the item's
   non-blank or background-painted cells on its row makes it a target: padding, gutters,
   blank rows and section headers never are. Lists scroll at the edge and never recenter,
-  so a click does not move the item under the pointer. Helpers that rebuild segments must carry `Hit`. Composer
+  so a click does not move the item under the pointer. Modal chrome is spliced after
+  windows, and everything outside the top box is repainted `Host:Dim` (`dimRows`); the
+  palette and completion popups are not modal. Helpers that rebuild segments must carry `Hit`. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
   scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui.lua`.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua

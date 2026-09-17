@@ -48,6 +48,7 @@ var hostStyles = map[string]uv.Style{
 	"Host:Selection":   {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c)},
 	"Host:Hover":       {Fg: rgb(0xe6e9f5), Bg: rgb(0x2d3452)},
 	"Host:BtnHover":    {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c), Attrs: uv.AttrBold},
+	"Host:Dim":         {Fg: rgb(0x3b4261)},
 }
 
 // trustPrompt is the Go-owned project trust overlay (DESIGN §5, §8): the

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/win"
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
@@ -208,5 +210,50 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	}
 	if len(app.palette.args) != 1 || app.palette.args[0] != "bob" {
 		t.Fatalf("palette args %v", app.palette.args)
+	}
+}
+
+// TestModalDimsBackground: a modal dims what lies under it; the palette is
+// not modal and does not.
+func TestModalDimsBackground(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	host.AppendMessage("user", "hello there")
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a"}})
+	hl := func() string {
+		app.renderSync(t)
+		app.Frame()
+		for _, row := range app.lastRows {
+			for _, s := range row {
+				if strings.Contains(s.Text, "hello") {
+					return s.HL
+				}
+			}
+		}
+		t.Fatal("hello not on screen")
+		return ""
+	}
+	if got := hl(); got != "Host:Dim" {
+		t.Fatalf("under an overlay: %q", got)
+	}
+	app.overlays = nil
+	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if got := hl(); got == "Host:Dim" {
+		t.Fatal("the palette dimmed the transcript")
+	}
+}
+
+// TestPermissionOverFloat: a float window never covers the permission
+// prompt.
+func TestPermissionOverFloat(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	defer host.Wins.CloseAll()
+	if _, err := host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat}); err != nil {
+		t.Fatal(err)
+	}
+	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
+	findCell(t, app, "make deploy")
+	x, y := findCell(t, app, " No ")
+	if _, _, ok := app.target(x, y); !ok {
+		t.Fatal("the No button under a float is not a target")
 	}
 }
