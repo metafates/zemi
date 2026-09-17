@@ -865,8 +865,8 @@ zemi.ui.theme.set("tokyonight")
 UI extensibility contract:
 
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
-  `statusline`) and window slots that Go solves and paints every frame (§8), plus an
-  overlay stack. The shipped chat and statusline are default Lua registrations
+  `statusline`, or any name) and window slots that Lua sets with `zemi.ui.layout.set`
+  and Go solves and paints every frame (§8), plus an overlay stack. The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/defaultui/` (one module per part), replaceable by id. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a

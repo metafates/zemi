@@ -313,7 +313,7 @@ function zemi.event.stats() end
 ---@field agents_running integer
 ---@field quit_armed boolean A second ctrl+c quits.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.
----@field rows_below integer Transcript rows under a scrolled-up chat; 0 when it follows the tail.
+---@field rows_below integer Rows under the stage's scrolled region (the chat by default) while it is scrolled up; 0 when it follows the tail.
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting string "approval" or "answer" while a prompt holds the turn, else "".
