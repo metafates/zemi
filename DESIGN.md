@@ -935,7 +935,9 @@ UI extensibility contract:
   the fixed `Host:Hover` (§8). Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed). `zemi.ui.hl_get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
-  (same or less trusted origin), shipped ones included.
+  (same or less trusted origin), shipped ones included. `zemi.ui.hl` and
+  `zemi.ui.theme.set` are user or shipped code only: an override and the
+  active theme sit above every other theme, the user's own included.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question/memory overlays) -> the topmost overlay (Lua, or Go-built
@@ -955,9 +957,9 @@ UI extensibility contract:
   every key still goes through normal keymap dispatch, so a panel costs no
   Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
   composer hides its cursor and popups while a node has the keys. The
-  `zemi.ui.focus.*` calls are user or shipped code only, like setting the
-  layout: a focused node takes every key, so a lower origin could route
-  the user's typing to its own keymaps. A key the user presses still runs
+  `zemi.ui.focus.*` calls and the keys that bind them are user or shipped
+  code only, like setting the layout: a focused node takes every key, so a
+  lower origin could route the user's typing to its own keymaps. A key the user presses still runs
   whatever bound it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, filtered case-insensitively as you type; `up`/`down`

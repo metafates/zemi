@@ -942,6 +942,7 @@ zemi.ui.theme = {}
 ---@param spec zemi.ThemeSpec
 function zemi.ui.theme.register(name, spec) end
 
+--- Make a registered theme the active one. User or builtin origin only.
 ---@param name string
 function zemi.ui.theme.set(name) end
 
@@ -985,6 +986,7 @@ function zemi.ui.edit(path, opts, on_done) end
 
 --- Change one highlight group on top of the active theme, and any theme
 --- set later. `zemi.ui.theme.register` builds a whole theme instead.
+--- User or builtin origin only.
 ---@param group string
 ---@param spec zemi.HLSpec
 function zemi.ui.hl(group, spec) end

@@ -208,6 +208,9 @@ func TestHighlightOverride(t *testing.T) {
 		zemi.ui.hl("U", { underline = false })
 		assert(zemi.ui.hl_get("U").underline == false, "underline = false reads back")
 		assert(not pcall(zemi.ui.hl, "X", { underline = "wavy" }), "an unknown underline kind raises")
+		assert(not pcall(zemi.ui.hl, "X", "blue") and not pcall(zemi.ui.hl, "X"), "a spec that is not a table raises")
+		assert(not pcall(zemi.ui.theme.register, "bogus", "nope"), "a theme that is not a table raises")
+		assert(zemi.ui.hl_get("X") == nil, "a refused spec sets nothing")
 	`)
 	theme := h.Themes.Get("t")
 	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {

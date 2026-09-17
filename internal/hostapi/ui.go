@@ -73,8 +73,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	theme.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.theme.register")
 		name := L.CheckString(1)
-		spec := luaToGoChecked(L, 2, "zemi.ui.theme.register")
-		m, _ := spec.(map[string]any)
+		m := tableArg(L, 2, "zemi.ui.theme.register")
 		t := &Theme{
 			Name:    name,
 			Palette: map[string]string{},
@@ -104,6 +103,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.theme.set")
+		h.refuseBelowUser(L, "ui.theme.set") // it also writes the user-only ui.theme setting
 		name := L.CheckString(1)
 		if h.Themes.Get(name) == nil {
 			L.RaiseError("zemi.ui.theme.set: unknown theme %q", name)
@@ -314,10 +314,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// { link = "Group" }. theme.register builds a whole theme.
 	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.hl")
+		// an override sits above every theme, the user's own included
+		h.refuseBelowUser(L, "ui.hl")
 		group := L.CheckString(1)
-		v := luaToGoChecked(L, 2, "zemi.ui.hl")
-		m, _ := v.(map[string]any)
-		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", m))
+		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", tableArg(L, 2, "zemi.ui.hl")))
 		h.refresh()
 		return 0
 	}))
@@ -427,6 +427,16 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	sb.FreezeTable(focus, "namespace zemi.ui.focus")
 
 	return tb
+}
+
+// tableArg reads argument n as a table; anything else raises (DESIGN §6.0),
+// since a missing spec would otherwise read as an empty one.
+func tableArg(L *glua.LState, n int, where string) map[string]any {
+	m, ok := luaToGoChecked(L, n, where).(map[string]any)
+	if !ok {
+		L.RaiseError("%s: argument %d must be a table", where, n)
+	}
+	return m
 }
 
 // hlSpec reads a group table; misuse raises (DESIGN §6.0).
