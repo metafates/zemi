@@ -1108,7 +1108,7 @@ function Win:text() end
 function Win:set_text(text) end
 --- Add to a text window's body, as set_text does for the whole of it. The
 --- view follows the end unless the user scrolled up; set_text goes back to
---- the top.
+--- the top. A body past 256 KB drops its oldest lines.
 ---@param text string
 ---@return true|nil, string|nil
 function Win:append(text) end

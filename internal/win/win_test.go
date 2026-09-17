@@ -385,4 +385,12 @@ func TestTextTailFollows(t *testing.T) {
 			t.Fatalf("%s: view starts at line %d, want %d", c.name, got, c.want)
 		}
 	}
+	// a trail keeps only its newest lines, whole
+	for range 4 {
+		_ = w.SetText(strings.Repeat("a line of a trail\n", 5000), true)
+	}
+	text, _ := w.Content()
+	if len(text) > maxBody || !strings.HasPrefix(text, "a line of a trail\n") {
+		t.Fatalf("body is %d bytes, starts %q", len(text), text[:min(len(text), 30)])
+	}
 }

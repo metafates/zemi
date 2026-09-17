@@ -589,7 +589,7 @@ Open it before the work starts and set_text it as results land. Do not open one 
 
 Actions:
 - text: open a panel showing text instead of a program: with markdown true it renders like the chat (headings, lists, tables, code, colors) and re-wraps when the window resizes. A panel nobody sized fits its body, up to half the area it sits in, so a five-line table takes five lines.
-- set_text: replace a panel's body, or add to it with append true: rewrite the whole body when the numbers change, append for a running trail, which keeps the panel on its newest lines.
+- set_text: replace a panel's body, or add to it with append true: rewrite the whole body when the numbers change, append for a running trail, which keeps the panel on its newest lines (a body past 256 KB drops its oldest ones).
 - open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
 - set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
 - hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.

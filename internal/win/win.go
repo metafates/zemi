@@ -252,9 +252,20 @@ func (w *Window) SetText(text string, add bool) error {
 	} else {
 		w.body.top, w.body.tail = 0, false
 	}
+	// a trail a turn keeps appending to would grow without end, and the UI
+	// re-wraps the whole body every frame
+	if len(text) > maxBody {
+		if _, rest, ok := strings.Cut(text[len(text)-maxBody:], "\n"); ok {
+			text = rest
+		}
+	}
 	w.body.text = text
 	return nil
 }
+
+// maxBody caps a text window's body; appending past it drops the oldest
+// lines, which is what a tail panel wants anyway.
+const maxBody = 256 << 10
 
 // maxScroll caps a text window's scroll offset, so end and a long run of
 // page keys stay far from an integer overflow.

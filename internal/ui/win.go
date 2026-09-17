@@ -170,8 +170,9 @@ func (a *App) textSpan(wn *win.Window, row bool, cross, avail int) int {
 }
 
 // textLines renders a text window's body at width: markdown through the
-// renderer the chat uses, plain text word-wrapped. Both are cached by
-// (text, width), so a frame that changes neither re-renders nothing.
+// renderer the chat uses, which caches by (text, width), so a frame that
+// changes neither re-runs glamour; plain text is wrapped again every frame,
+// which costs nothing next to it.
 func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 	text, md := wn.Content()
 	if md {
