@@ -230,12 +230,16 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 			return s:upper()
 		end })
 		zemi.ui.select({ 1 }, { format_item = function(n) return "#" .. n end }, function() end)
+		zemi.ui.overlay.open({ id = "d", body = "text", empty = "none", items = { { text = "a", actions = { { text = "Go", fill = "x" } } } } })
 	`)
+	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["actions"].([]any)) != 1 {
+		t.Fatalf("detail overlay: %+v", d)
+	}
 	var got []string
 	for _, o := range ui.opened {
 		got = append(got, strings.Join(o.ItemText, ","))
 	}
-	if strings.Join(got, ";") != "A,b;#1" {
+	if strings.Join(got, ";") != "A,b;#1;" {
 		t.Fatalf("rendered items: %q", got)
 	}
 }
