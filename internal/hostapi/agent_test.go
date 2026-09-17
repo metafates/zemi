@@ -771,6 +771,18 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 }
 
+// TestSendWithoutModelLeavesNoSession: a send that cannot resolve a model
+// fails before it creates a session row.
+func TestSendWithoutModelLeavesNoSession(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if err := h.AgentSend("hi"); err == nil || !strings.Contains(err.Error(), "no model configured") {
+		t.Fatalf("AgentSend = %v, want no model configured", err)
+	}
+	if list, err := h.DB.ListSessions(10); err != nil || len(list) != 0 {
+		t.Fatalf("sessions = %v, %v; want none", list, err)
+	}
+}
+
 // TestTurnPricedWithProfileModel: a turn records the model it was built
 // with, so a profile's turn is not priced off the session default.
 func TestTurnPricedWithProfileModel(t *testing.T) {

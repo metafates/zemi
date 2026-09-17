@@ -341,6 +341,10 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	if err != nil {
 		return fail(err)
 	}
+	// before the session row, so a send that cannot run leaves no empty session
+	if _, err := h.resolveModel(p); err != nil {
+		return fail(err)
+	}
 	if err := h.ensureSession(p, text); err != nil {
 		return fail(err)
 	}
