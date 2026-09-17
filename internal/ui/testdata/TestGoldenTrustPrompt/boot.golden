@@ -5,10 +5,10 @@
 [38;2;59;66;97m     [m │ [38;2;107;115;148mCovers the whole repository, not only services/api.[m              │ [38;2;59;66;97m     [m
 [38;2;59;66;97m     [m │                                                                  │ [38;2;59;66;97m     [m
 [38;2;59;66;97m     [m │ Trusting lets this repository run code and steer zemi:           │ [38;2;59;66;97m     [m
-[38;2;59;66;97m     [m │ [38;2;192;202;245m  .zemi config: init.lua, agents, commands and workflows[m         │ [38;2;59;66;97m     [m
-[38;2;59;66;97m     [m │ [38;2;192;202;245m  AGENTS.md and CLAUDE.md instructions[m                           │ [38;2;59;66;97m     [m
-[38;2;59;66;97m     [m │ [38;2;192;202;245m  language servers, which can build the project[m                  │ [38;2;59;66;97m     [m
-[38;2;59;66;97m     [m │ [38;2;192;202;245m  auto mode edits, builds and tests without asking[m               │ [38;2;59;66;97m     [m
+[38;2;59;66;97m     [m │   [38;2;192;202;245m.zemi config: init.lua, agents, commands and workflows[m         │ [38;2;59;66;97m     [m
+[38;2;59;66;97m     [m │   [38;2;192;202;245mAGENTS.md and CLAUDE.md instructions[m                           │ [38;2;59;66;97m     [m
+[38;2;59;66;97m     [m │   [38;2;192;202;245mlanguage servers, which can build the project[m                  │ [38;2;59;66;97m     [m
+[38;2;59;66;97m     [m │   [38;2;192;202;245mauto mode edits, builds and tests without asking[m               │ [38;2;59;66;97m     [m
 [38;2;59;66;97m     [m │                                                                  │ [38;2;59;66;97m     [m
 [38;2;59;66;97m     [m │ [38;2;107;115;148mWithout trust, zemi asks before anything but reads.[m              │ [38;2;59;66;97m     [m
 [38;2;59;66;97m     [m │                                                                  │ [38;2;59;66;97m     [m

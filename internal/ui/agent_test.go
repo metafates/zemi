@@ -459,14 +459,19 @@ func TestTrustAnswers(t *testing.T) {
 }
 
 // TestGoldenTrustPrompt pins the trust prompt at boot, started below the
-// repository root, and as /trust shows it with the current decision.
+// repository root, as /trust shows it with the current decision, and
+// started outside the root with too little room for the whole box.
 func TestGoldenTrustPrompt(t *testing.T) {
-	for _, c := range []struct{ name, cwd, state string }{
-		{"boot", "/code/acme/services/api", ""},
-		{"command", "/code/acme", "trusted"},
+	for _, c := range []struct {
+		name, cwd, state string
+		w, h             int
+	}{
+		{"boot", "/code/acme/services/api", "", 80, 24},
+		{"command", "/code/acme", "trusted", 80, 24},
+		{"worktree on a short screen", "/code/acme-wt", "", 60, 16},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			app, _ := bootAgentApp(t, 80, 24)
+			app, _ := bootAgentApp(t, c.w, c.h)
 			go app.AskTrust("/code/acme", c.cwd, c.state)
 			waitPrompt(t, app, func() bool { return app.trust != nil })
 			app.renderSync(t)
