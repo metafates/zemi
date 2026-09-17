@@ -7,6 +7,7 @@ require (
 	charm.land/fantasy v0.43.2
 	charm.land/glamour/v2 v2.0.1
 	github.com/aymanbagabas/go-udiff v0.4.1
+	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f
@@ -45,7 +46,6 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250904123553-b4e2667e5ad5 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect

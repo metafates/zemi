@@ -21,6 +21,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
@@ -106,6 +107,8 @@ type App struct {
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
 	quitArmed  time.Time // a second idle ctrl+c before this quits
+	kittyTerm  bool      // the terminal named itself one that draws kitty placeholders
+	colors     colorprofile.Profile
 
 	bootErr       error
 	streamPending atomic.Bool // a stream agentEventMsg is queued
@@ -316,7 +319,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// NOTE: an allowlist of terminals known to draw kitty placeholders;
 		// windows opened before the reply get symbols
 		name := strings.ToLower(msg.Name)
-		a.host.Wins.SetKitty(strings.HasPrefix(name, "ghostty") || strings.HasPrefix(name, "kitty"))
+		a.kittyTerm = strings.HasPrefix(name, "ghostty") || strings.HasPrefix(name, "kitty")
+		a.host.Wins.SetKitty(a.kittyTerm && a.colors >= colorprofile.ANSI256)
+	case tea.ColorProfileMsg:
+		// a placeholder names its image by color, which NO_COLOR drops
+		a.colors = msg.Profile
+		a.host.Wins.SetKitty(a.kittyTerm && a.colors >= colorprofile.ANSI256)
 	case tea.FocusMsg:
 		a.focused = true
 	case tea.BlurMsg:

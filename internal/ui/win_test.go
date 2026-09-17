@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/win"
@@ -98,11 +99,16 @@ func TestWinTitleRowFits(t *testing.T) {
 
 func TestKittyHostDetect(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
+	a.Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI256})
 	for name, want := range map[string]bool{"ghostty 1.3.1": true, "kitty(0.42.1)": true, "WezTerm 20240203": false, "tmux 3.5a": false} {
 		a.Update(tea.TerminalVersionMsg{Name: name})
 		if a.host.Wins.Kitty() != want {
 			t.Fatalf("%s: kitty %v", name, !want)
 		}
+	}
+	a.Update(tea.TerminalVersionMsg{Name: "ghostty 1.3.1"})
+	if a.Update(tea.ColorProfileMsg{Profile: colorprofile.ASCII}); a.host.Wins.Kitty() {
+		t.Fatal("NO_COLOR drops the placeholder colors, yet images stay on")
 	}
 }
 
