@@ -52,7 +52,12 @@ func (j *Job) Running() bool {
 func (j *Job) Status() string {
 	state := "running"
 	if !j.Running() {
+		// ExitCode is -1 when a signal ended the process: /agents kill, an
+		// interrupt or the OS, never a status the command chose
 		state = fmt.Sprintf("exited (%d)", j.code)
+		if j.code < 0 {
+			state = "killed"
+		}
 		if j.err != "" {
 			state += " " + j.err
 		}
