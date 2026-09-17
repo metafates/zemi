@@ -180,9 +180,13 @@ func (w *Window) kittyCommand(k map[string]string, data []byte) {
 	if cols <= 0 || rows <= 0 {
 		return
 	}
-	w.m.queue(fmt.Sprintf("\x1b_Ga=p,U=1,i=%d,c=%d,r=%d,q=2\x1b\\", h, cols, rows))
+	// one fixed placement id: a re-place replaces the last one, where a host
+	// would add another and keep drawing the first size
+	w.m.queue(fmt.Sprintf("\x1b_Ga=p,U=1,i=%d,p=1,c=%d,r=%d,q=2\x1b\\", h, cols, rows))
 	if k["U"] != "1" { // with U=1 the program writes its own placeholders
-		w.place += w.placeholders(key, cols, rows, k["C"] == "1")
+		// assigned, not appended: an APC that ends without ESC \ is never
+		// flushed, and must not pile up screens of placeholders
+		w.place = w.placeholders(key, cols, rows, k["C"] == "1")
 	}
 }
 
@@ -266,7 +270,7 @@ func (m *Manager) transmit(w *Window, key uint32, k map[string]string, data []by
 			h = i
 		}
 	}
-	ring := len(m.slots) - firstImageID
+	reused, ring := h != 0, len(m.slots)-firstImageID
 	for i := 0; i < ring && h == 0; i++ {
 		if c := firstImageID + (m.next+i)%ring; m.slots[c].win == 0 {
 			h = c
@@ -276,7 +280,9 @@ func (m *Manager) transmit(w *Window, key uint32, k map[string]string, data []by
 		h = firstImageID + m.next
 		m.deleteSlot(h)
 	}
-	m.next = (h - firstImageID + 1) % ring
+	if !reused { // a resent image is not a new one: eviction stays oldest-first
+		m.next = (h - firstImageID + 1) % ring
+	}
 	if key == 0 {
 		key = 1<<23 | uint32(h)
 	}
