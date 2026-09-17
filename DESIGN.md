@@ -841,7 +841,8 @@ zemi.ui.widget.register({
 zemi.ui.overlay.open({
   id = "model-picker", title = "Model",
   items = zemi.model.list(),
-  render_item = function(m) return m.display end,
+  render_item = function(m) return m.display end,  -- or a line of segments
+  selected = 2, anchor = "bottom",                 -- 1-based; over the statusline
   on_select = function(m) zemi.model.set(m.id) end,
 })
 
@@ -1019,7 +1020,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`), and
   the context-window percent, warning colors past 80%/95%).
-  Overlays float, centered or anchored.
+  Overlays float, centered or anchored (`anchor = "bottom"`: bottom-left
+  of the chat, over the statusline that opened it). A Lua overlay has
+  every field a Go-built menu uses (`anchor`, `selected`, `render_item`
+  rows of `{ text, hl }` segments; a `click` or `effect` there is dropped)
+  except the Go-only toggle-list reload (`/skills`); Go still draws the box,
+  the origin badge, the filter and the hints.
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message; `View`
   asks each visible region for its cached widget lines; Lua `render` runs

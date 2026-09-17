@@ -123,6 +123,13 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
+			Anchor: rawString(tb, "anchor"),
+		}
+		if o.Anchor != "" && o.Anchor != "bottom" {
+			L.RaiseError("zemi.ui.overlay.open: anchor must be \"bottom\" or nil, got %q", o.Anchor)
+		}
+		if n, ok := tb.RawGetString("selected").(glua.LNumber); ok {
+			o.Selected = int(n) - 1
 		}
 		if v := tb.RawGetString("items"); v != glua.LNil {
 			items, err := lua.ToGo(v)
@@ -334,19 +341,34 @@ func hlSpec(m map[string]any) HLSpec {
 }
 
 // renderItems runs an overlay's render_item here on the interpreter, so the
-// UI goroutine never waits on the queue to draw the rows. A failing item
-// falls back to its plain value.
-func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []any) []string {
-	out := make([]string, len(items))
+// UI goroutine never waits on the queue to draw the rows. render_item
+// returns a string or one line of segments; a failing item falls back to its
+// plain value.
+func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []any) [][]Segment {
+	out := make([][]Segment, len(items))
 	for i, item := range items {
 		base := L.GetTop()
 		L.Push(fn)
 		L.Push(lua.FromGo(L, item))
-		if err := L.PCall(1, 1, nil); err != nil {
+		err := L.PCall(1, 1, nil)
+		if err == nil {
+			switch v := L.Get(-1).(type) {
+			case *glua.LTable:
+				var line any
+				if line, err = lua.ToGo(v); err == nil {
+					var rows [][]Segment
+					if rows, err = convertSegments([]any{line}, ""); err == nil {
+						out[i] = rows[0]
+					}
+				}
+			case *glua.LNilType:
+			default:
+				out[i] = []Segment{{Text: v.String()}}
+			}
+		}
+		if err != nil {
 			h.Log.Debug("ui", "overlay render_item failed", map[string]any{"id": id, "error": err.Error()})
-			out[i] = fmt.Sprint(item)
-		} else if v := L.Get(-1); v != glua.LNil {
-			out[i] = v.String()
+			out[i] = []Segment{{Text: fmt.Sprint(item)}}
 		}
 		L.SetTop(base)
 	}

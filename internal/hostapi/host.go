@@ -76,7 +76,7 @@ type Overlay struct {
 	Origin   lua.Origin
 	Path     string
 	Items    []any
-	ItemText []string // render_item's line per item, rendered when it opened
+	ItemText [][]Segment // render_item's row per item, rendered when it opened
 	OnSelect *glua.LFunction
 	OnClose  *glua.LFunction
 	Gen      Gen

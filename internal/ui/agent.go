@@ -182,6 +182,7 @@ type listItem struct {
 	key, keyHL  string // right-aligned column; keyHL defaults to Host:HintKey
 	section     string // a change of section starts with a header row
 	more        [][]hostapi.Segment
+	segs        []hostapi.Segment // the label styled; label keeps its plain text
 }
 
 // listRows is the one list renderer (palette, completion, pickers,
@@ -226,29 +227,8 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 		if i == sel {
 			hl, marker = "Host:Bold", hostapi.Segment{Text: "› ", HL: "Host:Title"}
 		}
-		var itemRows [][]hostapi.Segment
-		if it.label != "" || len(it.more) == 0 {
-			label := it.label
-			if maxW > 0 {
-				// the marker and the gap take 2 cells each, a key 2 more
-				room := maxW - 4 - ansi.StringWidth(it.desc) - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
-				cutW := max(room, labelW)
-				if it.desc != "" && ansi.StringWidth(label) > room {
-					cutW = labelW // a cut label keeps its description in the column
-				}
-				label = ansi.Truncate(label, cutW, "…")
-			}
-			row := []hostapi.Segment{{Text: label, HL: hl}}
-			if it.desc != "" {
-				gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(label))+2)
-				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
-			}
-			if it.key != "" {
-				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: cmp.Or(it.keyHL, "Host:HintKey"), Hit: hit}
-			}
-			itemRows = append(itemRows, row)
-		}
-		for _, r := range it.more {
+		// segments without hl take the row's, and inline colors bold with it
+		styled := func(r []hostapi.Segment) []hostapi.Segment {
 			row := make([]hostapi.Segment, 0, len(r))
 			for _, s := range r {
 				switch {
@@ -259,7 +239,38 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 				}
 				row = append(row, s)
 			}
+			return row
+		}
+		var itemRows [][]hostapi.Segment
+		if it.label != "" || len(it.more) == 0 {
+			label, cutW := it.label, -1
+			if maxW > 0 {
+				// the marker and the gap take 2 cells each, a key 2 more
+				room := maxW - 4 - ansi.StringWidth(it.desc) - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
+				cutW = max(room, labelW)
+				if it.desc != "" && ansi.StringWidth(label) > room {
+					cutW = labelW // a cut label keeps its description in the column
+				}
+				label = ansi.Truncate(label, cutW, "…")
+			}
+			row := []hostapi.Segment{{Text: label, HL: hl}}
+			if it.segs != nil {
+				row = styled(it.segs)
+				if cutW >= 0 {
+					row = ellipsizeSegs(row, cutW)
+				}
+			}
+			if it.desc != "" {
+				gap := strings.Repeat(" ", max(0, labelW-segsWidth(row))+2)
+				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
+			}
+			if it.key != "" {
+				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: cmp.Or(it.keyHL, "Host:HintKey"), Hit: hit}
+			}
 			itemRows = append(itemRows, row)
+		}
+		for _, r := range it.more {
+			itemRows = append(itemRows, styled(r))
 		}
 		for j, r := range itemRows {
 			g := hostapi.Segment{Text: "  "}

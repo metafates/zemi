@@ -228,15 +228,30 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 		end })
 		zemi.ui.select({ 1 }, { format_item = function(n) return "#" .. n end }, function() end)
 		zemi.ui.overlay.open({ id = "d", body = "text", empty = "none", items = { { text = "a", actions = { { text = "Go", fill = "x" } } } } })
+		zemi.ui.overlay.open({ id = "s", anchor = "bottom", selected = 2, items = { "x", "y" }, render_item = function(s)
+			return { { text = s, hl = "Title" }, { text = "!" } }
+		end })
+		assert(not pcall(zemi.ui.overlay.open, { id = "t", anchor = "top" }), "an unknown anchor must raise")
 	`)
+	if s := ui.opened[3]; s.Anchor != "bottom" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
+		t.Fatalf("segment overlay: %+v", s)
+	}
 	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["actions"].([]any)) != 1 {
 		t.Fatalf("detail overlay: %+v", d)
 	}
 	var got []string
 	for _, o := range ui.opened {
-		got = append(got, strings.Join(o.ItemText, ","))
+		var rows []string
+		for _, segs := range o.ItemText {
+			var row string
+			for _, seg := range segs {
+				row += seg.Text
+			}
+			rows = append(rows, row)
+		}
+		got = append(got, strings.Join(rows, ","))
 	}
-	if strings.Join(got, ";") != "A,b;#1;" {
+	if strings.Join(got, ";") != "A,b;#1;;x!,y!" {
 		t.Fatalf("rendered items: %q", got)
 	}
 }

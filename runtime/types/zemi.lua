@@ -375,13 +375,15 @@ function zemi.event.stats() end
 ---@field body? string text above the items; with no items a read-only view
 ---@field empty? string the line shown when there are no items
 ---@field items? (zemi.OverlayItem|any)[]
----@field render_item? fun(item: any): string
+---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
+---@field selected? integer 1-based item selected when it opens.
+---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
 ---@field on_select? fun(item: any)
 ---@field on_close? fun()
 
 ---@class zemi.SelectOpts
 ---@field prompt? string
----@field format_item? fun(item: any): string
+---@field format_item? fun(item: any): string|zemi.Line
 
 ---@class zemi.InputOpts
 ---@field prompt? string

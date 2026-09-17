@@ -459,3 +459,22 @@ func TestOverlayFitsShortScreen(t *testing.T) {
 		t.Fatalf("the overlay's hint or bottom border is cut:\n%s", f)
 	}
 }
+
+// TestOverlaySegmentLabel: a render_item row keeps its colors, takes the
+// row's style where it sets none, cuts with an ellipsis, and loses a click
+// id, which would otherwise act as Go chrome.
+func TestOverlaySegmentLabel(t *testing.T) {
+	app, _ := bootAgentApp(t, 40, 20)
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginPlugin, Items: []any{"a", "b"}, Selected: 1, ItemText: [][]hostapi.Segment{
+		{{Text: "red", HL: "ToastErr", Click: "reload"}, {Text: " plain"}},
+		{{Text: "a label far too long for a forty cell wide box", HL: "Title"}},
+	}})
+	rows := overlayBox(&app.overlays[0], 40, 20)
+	first, second := rows[1], rows[2]
+	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Normal" {
+		t.Fatalf("first row: %+v", first)
+	}
+	if !strings.Contains(plainSegs(second), "…") || second[2].HL != "Title" {
+		t.Fatalf("selected row: %+v", second)
+	}
+}

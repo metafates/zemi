@@ -18,7 +18,7 @@ import (
 // Go-built hostapi.Overlay) plus local list selection.
 type overlayState struct {
 	o     hostapi.Overlay
-	items []listItem // render_item's line when given, else the item's text
+	items []listItem // render_item's row when given, else the item's text
 	texts []string   // what the filter matches and y copies, per item
 	listFilter
 	input  composerState // text of an input overlay
@@ -134,8 +134,12 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			return strings.Join(strings.Fields(sanitize.String(s)), " ")
 		}
 		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: field("key"), section: field("section")}
-		if i < len(o.ItemText) {
-			it.label = o.ItemText[i]
+		if i < len(o.ItemText) && o.ItemText[i] != nil {
+			// only text and hl: a click id or effect here would act as Go chrome's
+			for _, seg := range o.ItemText[i] {
+				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: seg.HL})
+			}
+			it.label = plainSegs(it.segs)
 		}
 		it.label = strings.Join(strings.Fields(sanitize.String(it.label)), " ") // a newline would break the box
 		st.items = append(st.items, it)
@@ -145,6 +149,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	st.refilter()
 	return st
 }
+
+var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 // formatOverlayItem renders items without render_item: strings, or
 // {text, fill} maps.
