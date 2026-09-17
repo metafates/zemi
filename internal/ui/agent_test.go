@@ -541,7 +541,7 @@ func TestPromptKeyGrace(t *testing.T) {
 func TestPromptWaitsOnFullQueue(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
 	for len(app.testQueue) < cap(app.testQueue) {
-		app.Refresh()
+		app.do(func() {})
 	}
 	done := make(chan string, 1)
 	go func() { done <- app.AskTrust("/proj", "/proj", "") }()

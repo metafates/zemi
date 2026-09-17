@@ -543,6 +543,12 @@ function zemi.ui.layout.rects() end
 ---@class zemi.ui.focus
 zemi.ui.focus = {}
 
+--- Render every widget again on the next frame. Keymaps, clicks, one-shot
+--- timers, job, http, window and agent callbacks and event handlers redraw
+--- on their own when they return; a repeating timer or a widget fed by
+--- other state calls this. Raises inside render.
+function zemi.ui.redraw() end
+
 --- Give the keys to a focusable node of the layout, or to the composer with
 --- nil. Raises when the layout has no focusable node with that id.
 ---@param id? string

@@ -322,6 +322,14 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 1
 	}))
 
+	// redraw() renders every widget again on the next frame: for state a
+	// repeating timer or code outside a callback changed.
+	tb.RawSetString("redraw", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.redraw")
+		h.refresh()
+		return 0
+	}))
+
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.help")
 		h.OpenHelp()
@@ -407,6 +415,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 			h.emitSync(L, h.Events.Handlers(name), name, payload, "host")
 			return nil, nil
 		})
+		h.refresh()
 		if err != nil {
 			h.Log.Debug("events", "async emit dropped", map[string]any{"event": name, "error": err.Error()})
 		}

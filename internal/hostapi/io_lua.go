@@ -279,6 +279,9 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 						}
 						return nil, nil
 					})
+					if !repeat {
+						h.refresh() // a repeating timer redraws itself with zemi.ui.redraw
+					}
 					if err != nil && !isQuietLuaErr(err) {
 						h.Log.Warn("lua", "timer callback failed", map[string]any{"error": err.Error()})
 						h.RecordError("zemi.timer", err.Error())
@@ -705,6 +708,7 @@ func (h *Host) callLuaAsync(at luaCaller, fn *glua.LFunction, args ...any) {
 		}
 		return nil, L.PCall(len(args), 0, nil)
 	})
+	h.refresh() // what the callback changed shows without waiting for another redraw
 	if err != nil && !isQuietLuaErr(err) {
 		h.Log.Warn("lua", "callback failed", map[string]any{"error": err.Error()})
 		h.RecordError("lua callback", err.Error())

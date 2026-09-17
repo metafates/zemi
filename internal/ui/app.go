@@ -115,8 +115,9 @@ type App struct {
 	kittyTerm  bool      // the terminal named itself one that draws kitty placeholders
 	colors     colorprofile.Profile
 
-	bootErr       error
-	streamPending atomic.Bool // a stream agentEventMsg is queued
+	bootErr        error
+	streamPending  atomic.Bool // a stream agentEventMsg is queued
+	refreshPending atomic.Bool // a Refresh is queued
 
 	// the last composed frame, published for Screenshot: reading a
 	// snapshot is what lets any goroutine ask what the screen says

@@ -1068,7 +1068,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.
 - **Rendering loop**: the state generation is bumped at most once per
-  renderer tick, not per tea message; `View`
+  renderer tick, not per tea message (a refresh from any goroutine waits in
+  the hook queue at most once); keymaps, widget clicks, one-shot timers,
+  async Lua callbacks (job, http, window, agent) and async event handlers
+  bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
+  repeating timer calls it itself, so an idle tick costs nothing); `View`
   asks each visible region for its cached widget lines; Lua `render` runs
   only when invalidated: v1 re-renders on every generation change (cheap:
   render is pure and cached by `(id, width, height, generation)`), plus resize

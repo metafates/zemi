@@ -193,8 +193,16 @@ func (a *App) CloseLuaOverlays() {
 	})
 }
 
-// Refresh invalidates the widget caches (state changed outside Update).
-func (a *App) Refresh() { a.do(func() {}) }
+// Refresh invalidates the widget caches (state changed outside Update). At
+// most one waits in the hook queue: Lua callbacks may call it by the hundred.
+func (a *App) Refresh() {
+	if a.refreshPending.Swap(true) {
+		return
+	}
+	if !a.dispatch(uiFunc(func() tea.Cmd { a.refreshPending.Store(false); return nil })) {
+		a.refreshPending.Store(false)
+	}
+}
 
 // ComposerEdit posts a zemi.composer edit to the UI goroutine.
 func (a *App) ComposerEdit(op, text string, cursor int) {
