@@ -297,14 +297,11 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	if len(lines) == 0 {
 		return nil
 	}
-	what := "the row"
-	switch {
-	case all:
-		what = fmt.Sprintf("%d lines", len(lines))
-	case st.o.Body != "":
-		what = "the text"
+	title := "Copied to the clipboard"
+	if all {
+		title = fmt.Sprintf("Copied %d lines to the clipboard", len(lines))
 	}
-	a.pushToast("info", "Copied", what+" to the clipboard")
+	a.pushToast("info", title, "")
 	return copyCmd(strings.Join(lines, "\n"))
 }
 
