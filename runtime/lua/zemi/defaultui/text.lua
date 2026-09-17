@@ -1,4 +1,6 @@
--- Formatting helpers the default widgets share.
+-- Formatting helpers the default widgets share:
+-- require("zemi.defaultui.text").
+---@class zemi.defaultui.text
 local M = {}
 
 --- A token count as "812", "24.5k" or "1.2M"; nil for none.
@@ -48,6 +50,7 @@ function M.cells(s)
 end
 
 --- A pattern matching one UTF-8 character.
+---@type string
 M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 
 --- Text cut to room cells, ending with an ellipsis when it cuts.
@@ -57,6 +60,7 @@ M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 function M.clip(text, room)
   if M.cells(text) <= room then return text end
   if room < 1 then return "" end
+  ---@type string[]
   local chars = {}
   for ch in text:gmatch(M.UTF8_CHAR) do
     if #chars == room - 1 then break end
@@ -70,6 +74,7 @@ end
 ---@param room integer
 ---@return string[]
 function M.chunks(text, room)
+  ---@type string[], string[]
   local out, cur = {}, {}
   for ch in text:gmatch(M.UTF8_CHAR) do
     if #cur >= room and #cur > 0 then

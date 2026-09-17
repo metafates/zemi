@@ -2,9 +2,12 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -148,4 +151,93 @@ func trimLast(path string) string {
 		return path[:i]
 	}
 	return path
+}
+
+// The names below live in Go and in hand-kept annotations; LuaLS cannot see
+// the Go side, so these tests keep the two in step.
+
+func TestTypesEventNames(t *testing.T) {
+	assertSameNames(t, "zemi.EventName", annotatedAlias(t, "zemi.EventName"), slices.Collect(maps.Keys(eventCatalogue)))
+}
+
+func TestTypesHostActions(t *testing.T) {
+	h, _ := newTestHost(t)
+	var live []string
+	for name, fn := range h.hostActions {
+		if fn != nil { // zemi.reload is Go-reserved, never a keymap action
+			live = append(live, name)
+		}
+	}
+	assertSameNames(t, "zemi.HostAction", annotatedAlias(t, "zemi.HostAction"), live)
+}
+
+// TestTypesWidgetCtx: every key a render's ctx holds is annotated, and every
+// annotated field that is not optional reads non-nil (the lazy ones too).
+func TestTypesWidgetCtx(t *testing.T) {
+	h, r := newTestHost(t)
+	var fields strings.Builder
+	for _, m := range regexp.MustCompile(`(?m)^---@field ([a-z_]+)(\??) `).FindAllStringSubmatch(annotatedClass(t, "zemi.WidgetCtx"), -1) {
+		fmt.Fprintf(&fields, "%s = %t, ", m[1], m[2] == "?")
+	}
+	runUser(t, r, `
+		local fields = { `+fields.String()+` }
+		zemi.ui.widget.register({ id = "types", region = "header", render = function(ctx)
+			local raw = {}
+			for k in pairs(ctx) do raw[#raw + 1] = k end
+			for _, k in ipairs(raw) do
+				assert(fields[k] ~= nil, "zemi.WidgetCtx does not annotate ctx." .. k)
+			end
+			for k, optional in pairs(fields) do
+				assert(optional or ctx[k] ~= nil, "zemi.WidgetCtx annotates ctx." .. k .. ", which ctx does not set")
+			end
+			return {}
+		end })`)
+	if _, err := h.RenderWidget(t.Context(), h.Widgets.Get("types"), 40, 10, UIState{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// annotatedClass is the block of `---@field` lines under `---@class name`.
+func annotatedClass(t *testing.T, name string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(typesSource(t), "---@class "+name+"\n")
+	if !ok {
+		t.Fatalf("runtime/types/zemi.lua has no class %s", name)
+	}
+	var b strings.Builder
+	for line := range strings.SplitSeq(rest, "\n") {
+		if !strings.HasPrefix(line, "---@field ") {
+			break
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
+// annotatedAlias is the quoted members of `---@alias name` and its `---|` lines.
+func annotatedAlias(t *testing.T, name string) []string {
+	t.Helper()
+	_, rest, ok := strings.Cut(typesSource(t), "---@alias "+name+"\n")
+	if !ok {
+		t.Fatalf("runtime/types/zemi.lua has no alias %s", name)
+	}
+	var out []string
+	for line := range strings.SplitSeq(rest, "\n") {
+		if !strings.HasPrefix(line, "---|") {
+			break
+		}
+		for _, m := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(line, -1) {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+func assertSameNames(t *testing.T, what string, annotated, live []string) {
+	t.Helper()
+	slices.Sort(annotated)
+	slices.Sort(live)
+	if !slices.Equal(annotated, live) {
+		t.Errorf("%s annotates %v\nzemi has %v", what, annotated, live)
+	}
 }

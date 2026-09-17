@@ -9,7 +9,7 @@ local function run_click(ev)
 end
 
 --- Separates statusline groups with a dot.
----@param segs zemi.Segment[]
+---@param segs zemi.Line
 local function dot(segs)
   if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment" } end
 end
@@ -149,7 +149,11 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
+    ---@type zemi.Line
     local segs = {}
+    ---@param n integer?
+    ---@param what string
+    ---@param cmd string The command a click runs, also shown after the count.
     local function add(n, what, cmd)
       if (n or 0) == 0 then return end
       dot(segs)
@@ -164,7 +168,11 @@ zemi.ui.widget.register({
 
 zemi.event.on("reflector.done", function(ev)
   if ev.error then return end
+  ---@type string[]
   local parts = {}
+  ---@param n integer?
+  ---@param one string
+  ---@param many string
   local function add(n, one, many)
     if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. (n == 1 and one or many) end
   end
@@ -189,7 +197,11 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
+    ---@type zemi.Line
     local segs = {}
+    ---@param text string
+    ---@param hl string
+    ---@param click? string The command a click runs; /usage by default.
     local function add(text, hl, click)
       dot(segs)
       segs[#segs + 1] = { text = text, hl = hl, click = click or "usage" }

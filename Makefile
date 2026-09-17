@@ -1,6 +1,8 @@
 GO_FILES = $(shell git ls-files '*.go')
 
-.PHONY: all build run test race vet fmt golden check install clean
+.PHONY: all build run test race vet fmt golden luals check install clean
+
+LUALS ?= lua-language-server
 
 all: check build
 
@@ -26,7 +28,16 @@ fmt:
 golden:
 	go test ./internal/ui -update
 
-check: vet test
+# type-check runtime/ Lua against runtime/types; skipped without the binary
+luals:
+	@if command -v $(LUALS) >/dev/null; then \
+		tmp=$$(mktemp -d); \
+		$(LUALS) --check=$(CURDIR)/runtime --configpath=$(CURDIR)/runtime/.luarc.json --checklevel=Warning \
+			--check_format=pretty --logpath=$$tmp --metapath=$$tmp/meta; \
+		st=$$?; rm -rf $$tmp; exit $$st; \
+	else echo "luals: $(LUALS) not installed, skipped"; fi
+
+check: vet test luals
 	@out=$$(gofmt -l $(GO_FILES)); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 install:

@@ -67,8 +67,10 @@ Check a widget, theme or layout change by reading the screen back with
 
 zemi writes LuaLS annotations for this whole API to `~/.local/share/zemi/types/zemi.lua`
 on every start, and a `~/.config/zemi/.luarc.json` pointing at them the first time. Read
-that file when you need an exact signature, field name or return shape - it is generated
-from the surface Go registers and a test fails when the two drift. Do not edit it: the
+that file when you need an exact signature, field name or return shape - tests fail when it
+drifts from the surface Go registers. Each event's payload is a `zemi.ev.*` class that
+`zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`,
+`dofile`, ...) are marked deprecated, so the editor flags them. Do not edit it: the
 next start overwrites it. Next to it, `types/zemi/defaultui/` is the shipped default UI
 (theme, widgets, keymaps, one module each) and `types/zemi/util.lua` the helpers: real source, readable
 without asking, the reference for how a widget is written.
@@ -202,7 +204,9 @@ reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `to
 `memory.written`, `skill.learned`, `config.reloaded` (after /reload or a config file
 change), `reflector.start`, `reflector.done`, `job.exit`, `win.open`, `win.exit`, `win.close` (windows
 opened with `zemi.win` or the window tool), `lsp.request` (server, path, kind
-`diagnostics` after a write or `tool`), and your own `user.*` names.
+`diagnostics` after a write or `tool`), and your own `user.*` names. A vetoable handler vetoes
+by returning `{ decision = "deny", reason = "..." }` (`tool.pre` also takes `"halt"`, and
+`"rewrite"` with `input`); any other return lets the event through.
 
 Every event is recorded whether or not anything listens: `zemi.event.log({ name, limit })`
 returns the last 500 newest first, each the table a handler would have seen plus `at` and

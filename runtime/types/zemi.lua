@@ -13,6 +13,171 @@
 --- raises; a runtime failure of a synchronous call returns `nil, err`;
 --- asynchronous work reports through its callback or handle.
 
+-- ---------------------------------------------------------------------------
+-- The sandboxed standard library. The .luarc.json zemi writes turns off
+-- LuaLS's own basic, io, os and debug libraries, so these are the globals an
+-- editor offers; string, table, math, coroutine and require are LuaLS's.
+
+_G = {}
+
+---@type string
+_VERSION = "Lua 5.1"
+
+---@generic T
+---@param v? T
+---@param message? any
+---@return T
+function assert(v, message, ...) end
+
+---@param opt? "collect"|"stop"|"restart"|"count"|"step"
+---@param arg? integer
+---@return any
+function collectgarbage(opt, arg) end
+
+---@param message any
+---@param level? integer
+function error(message, level) end
+
+---@param object any
+---@return table|nil metatable
+function getmetatable(object) end
+
+---@generic T: table, V
+---@param t T
+---@return fun(table: V[], i?: integer): integer, V
+---@return T
+---@return integer i
+function ipairs(t) end
+
+--- Compile a chunk; it runs under the caller's origin.
+---@param func fun(): string?
+---@param chunkname? string
+---@return function? fn
+---@return string? err
+function load(func, chunkname) end
+
+--- Compile a string; it runs under the caller's origin.
+---@param text string
+---@param chunkname? string
+---@return function? fn
+---@return string? err
+function loadstring(text, chunkname) end
+
+---@generic K, V
+---@param table table<K, V>
+---@param index? K
+---@return K?
+---@return V?
+function next(table, index) end
+
+---@generic T: table, K, V
+---@param t T
+---@return fun(table: table<K, V>, index?: K): K, V
+---@return T
+function pairs(t) end
+
+---@param f function
+---@return boolean ok
+---@return any ...
+function pcall(f, ...) end
+
+--- Writes to zemi's log file, tagged with the caller's origin.
+function print(...) end
+
+---@param table table
+---@param index any
+---@return any
+function rawget(table, index) end
+
+---@param index integer|"#"
+---@return any
+function select(index, ...) end
+
+---@generic T: table
+---@param table T
+---@param metatable? table
+---@return T
+function setmetatable(table, metatable) end
+
+---@param e any
+---@param base? integer
+---@return number?
+function tonumber(e, base) end
+
+---@param v any
+---@return string
+function tostring(v) end
+
+---@alias type "nil"|"number"|"string"|"boolean"|"table"|"function"|"thread"|"userdata"
+
+---@param v any
+---@return type
+function type(v) end
+
+---@generic T
+---@param list T[]
+---@param i? integer
+---@param j? integer
+---@return T ...
+function unpack(list, i, j) end
+
+---@param f function
+---@param msgh function
+---@return boolean ok
+---@return any ...
+function xpcall(f, msgh) end
+
+---@param proxy boolean|userdata
+---@return userdata
+function newproxy(proxy) end
+
+---@deprecated The sandbox removes dofile; use require.
+function dofile(...) end
+
+---@deprecated The sandbox removes loadfile; use require.
+function loadfile(...) end
+
+---@deprecated The sandbox removes getfenv.
+function getfenv(...) end
+
+---@deprecated The sandbox removes setfenv.
+function setfenv(...) end
+
+---@deprecated The sandbox removes rawset: zemi tables are frozen.
+function rawset(...) end
+
+---@deprecated The sandbox removes rawequal.
+function rawequal(...) end
+
+---@deprecated The sandbox removes module; return a table from the file instead.
+function module(...) end
+
+---@class sandbox.os
+os = {}
+
+--- Seconds since zemi started.
+---@return number
+function os.clock() end
+
+--- Unix seconds now, or of the date `t` describes.
+---@param t? { year: integer, month: integer, day: integer, hour?: integer, min?: integer, sec?: integer }
+---@return integer
+function os.time(t) end
+
+--- The date as text in a strftime `format` ("%c" by default; a leading "!"
+--- means UTC), or as a table with "*t".
+---@param format? string
+---@param time? integer Unix seconds; now by default.
+---@return string|{ year: integer, month: integer, day: integer, hour: integer, min: integer, sec: integer, wday: integer, yday: integer, isdst: boolean }
+function os.date(format, time) end
+
+---@class sandbox.debug
+debug = {}
+
+---@param msg? string
+---@return string
+function debug.traceback(msg) end
+
 ---@alias zemi.Origin
 ---| "user"     # ~/.config/zemi
 ---| "builtin"  # shipped with zemi
@@ -100,6 +265,27 @@ function zemi.config.reload() end
 ---@field action string "/command", a host action, or "<function>".
 ---@field focus? string The node it is scoped to; nil for a global binding.
 
+--- The host actions a keymap may name; some take an argument after a space.
+---@alias zemi.HostAction
+---| "zemi.ui.help"
+---| "zemi.ui.reasoning.toggle"
+---| "zemi.ui.scroll.up"
+---| "zemi.ui.scroll.down"
+---| "zemi.ui.scroll.top"
+---| "zemi.ui.scroll.bottom"
+---| "zemi.ui.focus.set"
+---| "zemi.ui.focus.next"
+---| "zemi.ui.focus.prev"
+---| "zemi.model.pick"
+---| "zemi.composer.submit"
+---| "zemi.composer.insert"
+---| "zemi.composer.history_prev"
+---| "zemi.composer.history_next"
+---| "zemi.composer.paste"
+---| "zemi.composer.edit"
+---| "zemi.permission.mode.cycle"
+---| "zemi.permission.mode.prev"
+
 ---@class zemi.keymap
 zemi.keymap = {}
 
@@ -123,7 +309,7 @@ zemi.keymap = {}
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.cycle and
 --- zemi.permission.mode.prev (user config only).
 ---@param key string
----@param action string|fun()
+---@param action zemi.HostAction|string|fun()
 ---@param opts? zemi.KeymapOpts
 function zemi.keymap.set(key, action, opts) end
 
@@ -187,10 +373,134 @@ function zemi.command.list() end
 -- ---------------------------------------------------------------------------
 -- zemi.event
 
+---@alias zemi.EventName
+---| "app.ready" | "app.quit" | "config.reloaded"
+---| "session.new" | "session.open" | "session.close"
+---| "agent.start" | "agent.finish" | "agent.error" | "agent.assemble"
+---| "agent.subagent.start" | "agent.subagent.finish"
+---| "agent.text_delta" | "agent.reasoning_delta"
+---| "tool.pre" | "tool.post" | "tool.denied"
+---| "permission.request" | "permission.resolved"
+---| "ui.resize" | "ui.theme" | "overlay.open" | "overlay.close"
+---| "composer.change" | "composer.submit"
+---| "memory.written" | "skill.learned" | "reflector.start" | "reflector.done"
+---| "job.exit" | "win.open" | "win.exit" | "win.close" | "lsp.request"
+
 --- The payload every handler receives, plus the event's own fields.
 ---@class zemi.Event
 ---@field name string
 ---@field from string "host" or the origin that emitted it.
+
+-- NOTE: the payload classes are kept by hand from the EmitAsync and
+-- EmitVetoable calls in internal/; only the event names are pinned by a test.
+
+---@class zemi.ev.Session: zemi.Event
+---@field id string
+---@field title? string Not on session.close.
+
+---@class zemi.ev.Text: zemi.Event
+---@field text string agent.start: the message; the deltas: the new text.
+
+---@class zemi.ev.AgentError: zemi.Event
+---@field error string
+
+---@class zemi.ev.Assemble: zemi.Event
+---@field cwd string
+
+---@class zemi.ev.Subagent: zemi.Event
+---@field agent string
+---@field session string The run's child session.
+---@field description? string agent.subagent.start only.
+---@field error? string agent.subagent.finish only: "" when it succeeded.
+
+---@class zemi.ev.ToolPost: zemi.Event
+---@field tool string
+---@field input table
+---@field ok boolean
+---@field output string At most 4096 characters.
+
+---@class zemi.ev.ToolDenied: zemi.Event
+---@field tool string
+---@field subject string
+---@field arg string
+---@field by string Who decided, such as "user" or "mode:auto".
+---@field reason string
+
+---@class zemi.ev.PermissionRequest: zemi.Event
+---@field subject string
+---@field arg string
+---@field reason? string
+---@field post_hoc? boolean A Lua API call already refused for want of an ask; a veto changes nothing.
+
+---@class zemi.ev.PermissionResolved: zemi.Event
+---@field subject string
+---@field arg string
+---@field decision "allow"|"deny"
+---@field by string
+
+---@class zemi.ev.Resize: zemi.Event
+---@field width integer
+---@field height integer
+
+---@class zemi.ev.Theme: zemi.Event
+---@field theme string
+
+---@class zemi.ev.Overlay: zemi.Event
+---@field id string
+---@field title? string overlay.open only.
+
+---@class zemi.ev.ComposerChange: zemi.Event
+---@field text string
+---@field cursor integer
+
+---@class zemi.ev.ComposerSubmit: zemi.Event
+---@field text string
+
+---@class zemi.ev.MemoryWritten: zemi.Event
+---@field id string
+---@field scope zemi.Scope
+---@field kind zemi.MemoryKind
+---@field origin "user"|"learned"
+---@field text string
+
+---@class zemi.ev.SkillLearned: zemi.Event
+---@field name string
+---@field session string
+
+---@class zemi.ev.ReflectorStart: zemi.Event
+---@field session string
+
+---@class zemi.ev.ReflectorDone: zemi.Event
+---@field session string
+---@field error? string Set when the run failed, and then no counts are.
+---@field stored? integer
+---@field queued? integer Proposals waiting in /memory.
+---@field superseded? integer
+---@field skipped? integer
+---@field skills_drafted? integer
+
+---@class zemi.ev.JobExit: zemi.Event
+---@field id integer
+---@field cmd string
+---@field code integer
+
+---@class zemi.ev.Win: zemi.Event
+---@field id integer
+---@field cmd? string win.open and win.exit.
+---@field title? string win.open and win.exit.
+---@field kind? string win.open only.
+---@field code? integer win.exit only.
+
+---@class zemi.ev.LspRequest: zemi.Event
+---@field server string
+---@field path string
+---@field kind "diagnostics"|"tool"
+
+--- What a vetoable handler returns to veto: `decision = "deny"` with a
+--- reason. Any other return lets the event through.
+---@class zemi.Veto
+---@field decision "deny"
+---@field reason? string
 
 ---@class zemi.EventOpts
 ---@field id? string Name the handler so `zemi.event.off` can drop it.
@@ -201,12 +511,36 @@ zemi.event = {}
 
 --- Subscribe to an event. Vetoable events (`permission.request`,
 --- `app.quit`, `composer.submit`, `tool.pre`) give the handler 50 ms and
---- then take their logged default; return `{ deny = true, reason = "..." }`
---- to veto one.
----@param name string
+--- then take their logged default; return `{ decision = "deny", reason = "..." }`
+--- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride).
+--- `app.quit` vetoes from project or learned code are ignored.
+---@param name zemi.EventName|string A catalogued name or `user.*`; anything else raises.
 ---@param fn fun(ev: zemi.Event): any
 ---@param opts? zemi.EventOpts
 ---@return string id
+---@overload fun(name: "session.new"|"session.open"|"session.close", fn: (fun(ev: zemi.ev.Session): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.start"|"agent.text_delta"|"agent.reasoning_delta", fn: (fun(ev: zemi.ev.Text): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.error", fn: (fun(ev: zemi.ev.AgentError): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.assemble", fn: (fun(ev: zemi.ev.Assemble): string|{ title?: string, text: string }|nil), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.subagent.start"|"agent.subagent.finish", fn: (fun(ev: zemi.ev.Subagent): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "tool.pre", fn: (fun(ev: zemi.ToolPreEvent): zemi.ToolVeto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "tool.post", fn: (fun(ev: zemi.ev.ToolPost): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "tool.denied", fn: (fun(ev: zemi.ev.ToolDenied): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "permission.request", fn: (fun(ev: zemi.ev.PermissionRequest): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "permission.resolved", fn: (fun(ev: zemi.ev.PermissionResolved): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "ui.theme", fn: (fun(ev: zemi.ev.Theme): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "overlay.open"|"overlay.close", fn: (fun(ev: zemi.ev.Overlay): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "skill.learned", fn: (fun(ev: zemi.ev.SkillLearned): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "job.exit", fn: (fun(ev: zemi.ev.JobExit): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "win.open"|"win.exit"|"win.close", fn: (fun(ev: zemi.ev.Win): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "lsp.request", fn: (fun(ev: zemi.ev.LspRequest): any), opts?: zemi.EventOpts): string
 function zemi.event.on(name, fn, opts) end
 
 ---@param id string
@@ -258,7 +592,7 @@ function zemi.event.stats() end
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status string "run", "ok" or "err".
+---@field status "run"|"ok"|"err"
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -268,11 +602,11 @@ function zemi.event.stats() end
 
 --- One transcript entry.
 ---@class zemi.TranscriptRow
----@field role string "user" or "assistant".
----@field kind string "", "reasoning", "tool", "compact" or "error".
+---@field role "user"|"assistant"
+---@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"error"
 ---@field text string
 ---@field tool string
----@field status string
+---@field status string Tool and shell rows: "run", "ok" or "err"; error rows: "cancelled" for an interrupt.
 ---@field label string
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".
@@ -283,9 +617,14 @@ function zemi.event.stats() end
 ---@field thought number
 ---@field elapsed number
 
+---@class zemi.RecentSession
+---@field id string
+---@field title string
+---@field ago string "now", "5m ago", "2d ago".
+
 ---@class zemi.Todo
 ---@field content string
----@field status string "pending", "in_progress" or "completed".
+---@field status "pending"|"in_progress"|"done"
 ---@field active_form string
 
 ---@class zemi.Usage
@@ -324,7 +663,7 @@ function zemi.event.stats() end
 ---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
----@field recent table[] Recent sessions, only while the transcript is empty.
+---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
@@ -1195,8 +1534,16 @@ function zemi.permission.mode.list() end
 ---@field tool string
 ---@field input table
 
+--- What a `tool.pre` handler returns: "deny" refuses the call, "halt" also
+--- ends the turn, "rewrite" merges `input` into the call's input (ignored
+--- for project and learned code). nil lets the call through.
+---@class zemi.ToolVeto
+---@field decision "deny"|"halt"|"rewrite"
+---@field reason? string
+---@field input? table
+
 ---@class zemi.ToolOverride
----@field pre fun(ev: zemi.ToolPreEvent): table|nil Return `{ decision = "deny"|"halt", reason = ... }`, or `{ decision = "rewrite", input = ... }` to merge fields into the input. Not available to project or learned code.
+---@field pre fun(ev: zemi.ToolPreEvent): zemi.ToolVeto? Not available to project or learned code.
 
 ---@class zemi.ToolInfo
 ---@field name string

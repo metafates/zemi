@@ -573,7 +573,7 @@ Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 Event catalogue (v1, each emitted on the interpreter thread):
 
 - app: `app.ready`, `app.quit` (vetoable), `config.reloaded`
-- session: `session.new`, `session.open`, `session.close` (with summary stats)
+- session: `session.new`, `session.open`, `session.close`
 - agent turn: `agent.start`, `agent.finish`, `agent.error`
 - subagents: `agent.subagent.start`, `agent.subagent.finish`
 - prompt: `agent.assemble` (returns a section to add, §10.7)
@@ -585,6 +585,11 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - learn: `memory.written`, `skill.learned`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `win.open`, `win.exit`, `win.close`, `lsp.request`
+
+A handler vetoes by returning `{ decision = "deny", reason = "..." }`; `tool.pre`
+also takes `"halt"` and `"rewrite"` with `input`. Each payload is a `zemi.ev.*`
+class in `runtime/types/zemi.lua`, picked by the event name through overloads
+of `zemi.event.on`.
 
 Every emission is recorded whether or not a handler exists: `zemi.event.log()` holds the
 last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "version": "Lua 5.1",
+    "builtin": {
+      "basic": "disable",
+      "io": "disable",
+      "os": "disable",
+      "debug": "disable",
+      "utf8": "disable"
+    }
+  },
+  "workspace": {
+    "library": [
+      "types"
+    ],
+    "ignoreDir": [
+      "workflows"
+    ],
+    "checkThirdParty": false
+  },
+  "diagnostics": {
+    "unusedLocalExclude": [
+      "_*"
+    ]
+  }
+}

@@ -159,8 +159,9 @@ Check the result with `zemi.ui.screenshot()` and `zemi.ui.layout.rects()`.
 
 The shipped UI is Lua too: `types/zemi/defaultui/` under the data directory (the system
 prompt names the exact path; rewritten on every start) holds the theme (`theme.lua`), the
-widgets (`statusline.lua`, `working.lua`, `chat.lua`, `splash.lua`) and the default keymaps
-(`init.lua`). Read it before changing one: copy the widget you want to alter into
+widgets (`statusline.lua`, `working.lua`, `chat.lua`, `splash.lua`, sharing `text.lua`), the
+default keymaps (`keymaps.lua`) and the layout (`layout.lua`), each typed with LuaLS
+annotations. Read it before changing one: copy the widget you want to alter into
 `init.lua` under the same id and change what you need, or `require("zemi.defaultui")` to
 build on its splash.
 Try a change live with the Lua tool first (it asks once and lasts until the next reload), screenshot, then

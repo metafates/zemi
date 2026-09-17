@@ -85,8 +85,11 @@ func (h *Host) ensureLuarc(typesDir string) error {
 		return nil
 	}
 	data, err := json.MarshalIndent(map[string]any{
-		"$schema":   "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-		"runtime":   map[string]any{"version": "Lua 5.1"},
+		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+		// the sandbox's own basic, os and debug are described in zemi.lua
+		"runtime": map[string]any{"version": "Lua 5.1", "builtin": map[string]string{
+			"basic": "disable", "io": "disable", "os": "disable", "debug": "disable", "utf8": "disable",
+		}},
 		"workspace": map[string]any{"library": []string{typesDir}, "checkThirdParty": false},
 		"telemetry": map[string]any{"enable": false},
 	}, "", "  ")

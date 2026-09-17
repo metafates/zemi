@@ -1,7 +1,9 @@
 -- The splash that fills the empty chat until the first message.
 local fmt = require("zemi.defaultui.text")
+---@class zemi.defaultui.splash
 local M = {}
 
+---@type string[]
 local LOGO = {
   "███████╗███████╗███╗   ███╗██╗",
   "╚══███╔╝██╔════╝████╗ ████║██║",
@@ -18,8 +20,10 @@ local LOGO = {
 function M.render(ctx)
   -- the block is at most 72 cells wide, so long paths clip instead of
   -- pushing the logo against the left edge
+  ---@type integer, zemi.Line[]
   local width, rows = ctx.width or 80, {}
   local maxw = math.min(width, 72)
+  ---@param segs zemi.Line
   local function row(segs) rows[#rows + 1] = segs end
   -- a short chat drops the recent sessions first, then the big logo, so
   -- the bottom-anchored chat never cuts the block's first rows (it shows
@@ -39,6 +43,7 @@ function M.render(ctx)
   local cwd, room = ctx.cwd or "", maxw - 10
   if fmt.cells(cwd) > room and room > 1 then
     -- keep the tail: the project name is at the end
+    ---@type string[]
     local chars = {}
     for ch in cwd:gmatch(fmt.UTF8_CHAR) do chars[#chars + 1] = ch end
     cwd = "…" .. table.concat(chars, "", #chars - room + 2)
@@ -56,6 +61,7 @@ function M.render(ctx)
   end
   row({ { text = "" } })
   local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "tab", "permission mode" } }
+  ---@type zemi.Line
   local tip = {}
   for i, t in ipairs(tips) do
     if i > 1 then tip[#tip + 1] = { text = "   " } end
@@ -68,6 +74,7 @@ function M.render(ctx)
   -- clipping to the width so a narrow window never wraps the logo.
   local widest = 0
   for i, r in ipairs(rows) do
+    ---@type integer, zemi.Line
     local n, clipped = 0, {}
     for _, seg in ipairs(r) do
       local left = maxw - n
@@ -80,6 +87,7 @@ function M.render(ctx)
     widest = math.max(widest, n)
   end
   local pad = string.rep(" ", math.max(0, math.floor((width - widest) / 2)))
+  ---@type zemi.Line[]
   local out = {}
   local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
   for _ = 1, top do out[#out + 1] = { { text = "" } } end
@@ -98,6 +106,8 @@ zemi.ui.widget.register({
   id = "splash",
   region = "chat",
   priority = 5,
+  ---@param ctx zemi.WidgetCtx
+  ---@return zemi.Line[]
   render = function(ctx)
     if ctx.transcript_count > 0 or ctx.agent_active then return fmt.empty() end
     return M.render(ctx)

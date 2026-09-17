@@ -1,8 +1,13 @@
+-- The chat widget: the transcript, the live turn and the todo list.
 local fmt = require("zemi.defaultui.text")
+
+-- A tool row: a settled transcript row or a call of the live turn.
+---@alias zemi.defaultui.Tool zemi.TranscriptRow|zemi.ToolCall
 
 -- Rows of the settled transcript, kept across frames: while a reply
 -- streams the widget renders many times a second and only the live turn
 -- changes. One entry, replaced whenever its key changes.
+---@type table<string, { lines: zemi.Line[], prev: string? }>
 local chat_cache = {}
 
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
@@ -28,15 +33,20 @@ zemi.ui.widget.register({
   ---@return zemi.Line[]
   render = function(ctx)
     local width = ctx.width or 80
+    ---@type zemi.Line[]
     local lines = {}
     local function blank() lines[#lines + 1] = { { text = "" } } end
     -- Blocks are separated by one blank line: the user's message, a run of
     -- activity (thinking and tools), the reply, its stats.
+    ---@type string?
     local prev
+    ---@param block "user"|"activity"|"text"|"stats"
     local function gap(block)
       if prev then blank() end
       prev = block
     end
+    ---@param segs zemi.Line
+    ---@return boolean
     local function has_text(segs)
       for _, sg in ipairs(segs) do
         if (sg.text or ""):match("%S") then return true end
@@ -44,6 +54,8 @@ zemi.ui.widget.register({
       return false
     end
     -- A reply: its first line carries the bullet, the rest indent under it.
+    ---@param text string
+    ---@param mark boolean Put the bullet on the first line with text.
     local function add_markdown(text, mark)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
         local lead = "  "
@@ -56,7 +68,11 @@ zemi.ui.widget.register({
     -- Reasoning is a quiet aside: "✻ Thought for 4.2s" once done, the text
     -- under a thin bar with ctrl+o. While the model thinks, its last lines
     -- show (tail), so the wait is not a blank screen.
+    ---@param text string
+    ---@param room integer
+    ---@return string[]
     local function wrap_words(text, room)
+      ---@type string[]
       local out = {}
       for para in (text .. "\n"):gmatch("(.-)\n") do
         local cur = ""
@@ -73,6 +89,10 @@ zemi.ui.widget.register({
       while #out > 0 and out[#out] == "" do out[#out] = nil end
       return out
     end
+    ---@param label string
+    ---@param hint string? The expand hint after the label.
+    ---@param text string
+    ---@param tail integer? Show only the last this many lines while collapsed.
     local function add_reasoning(label, hint, text, tail)
       local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning" }, { text = label, hl = "AgentReason", click = "reasoning" } }
       if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning" } end
@@ -89,6 +109,7 @@ zemi.ui.widget.register({
     -- calls that only look around collapse into one line ("Read 3 files,
     -- ran 2 commands"); edits, agents, questions and failures keep their
     -- own rows, and ctrl+o shows every call.
+    ---@type table<string, string>
     local VERB = {
       read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
       fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
@@ -96,6 +117,8 @@ zemi.ui.widget.register({
       diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",
       agent = "Agent", workflow = "Workflow",
     }
+    -- a verb, then the singular and plural noun; a verb alone never counts
+    ---@type table<string, { [1]: string, [2]: string?, [3]: string? }>
     local COUNT = {
       read = { "read", "file", "files" }, glob = { "searched for", "pattern", "patterns" },
       grep = { "searched for", "pattern", "patterns" }, web_search = { "searched the web for", "query", "queries" },
@@ -105,17 +128,25 @@ zemi.ui.widget.register({
       job_start = { "started", "job", "jobs" }, job_read = { "checked", "job", "jobs" },
       job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
     }
+    ---@param t zemi.defaultui.Tool
+    ---@return string
     local function tool_name(t) return t.tool or t.name or "?" end
+    ---@param t zemi.defaultui.Tool
+    ---@return boolean
     local function collapsible(t)
       if t.kind ~= nil and t.kind ~= "tool" then return false end
       return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil
     end
+    ---@param s string
+    ---@return string
     local function relpath(s)
       local cwd = ctx.cwd or ""
       if cwd == "" then return s end
       return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
     end
+    ---@param group zemi.defaultui.Tool[]
     local function add_group(group)
+      ---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
       local order, seen = {}, {}
       for _, t in ipairs(group) do
         local c = COUNT[tool_name(t)]
@@ -126,6 +157,7 @@ zemi.ui.widget.register({
         end
         seen[key].n = seen[key].n + 1
       end
+      ---@type string[]
       local parts = {}
       for _, key in ipairs(order) do
         local c, n = seen[key].c, seen[key].n
@@ -135,6 +167,7 @@ zemi.ui.widget.register({
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
       lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk" }, { text = fmt.clip(summary, width - 4), hl = "Normal" } }
     end
+    ---@param t zemi.defaultui.Tool
     local function add_tool(t)
       local name = tool_name(t)
       local mark, hl = ctx.pulse and "◦ " or "● ", "AgentToolRun"
@@ -146,6 +179,9 @@ zemi.ui.widget.register({
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""
       -- expanded rows wrap (the widget wraps), collapsed ones stay one line
+      ---@param text string
+      ---@param room integer
+      ---@return string
       local function fit(text, room) return ctx.show_reasoning and text or fmt.clip(text, room) end
       local head = { { text = mark, hl = hl } }
       if label ~= "" then
@@ -176,8 +212,8 @@ zemi.ui.widget.register({
         if a then
           if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment" } } end
           hunks = hunks + 1
-          old = tonumber(a)
-          new = tonumber(b)
+          old = tonumber(a) --[[@as integer]]
+          new = tonumber(b) --[[@as integer]]
         elseif dl ~= "" and dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++" then
           local num, style = nil, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
           -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
@@ -192,12 +228,12 @@ zemi.ui.widget.register({
           end
           if style then
             -- without a hunk header this is the input-only preview ("- old", "+ new"): no numbers
-            local head = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
-            local room = math.max(width - fmt.cells(head), 1)
-            local blank_head = string.rep(" ", fmt.cells(head))
+            local lead = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
+            local room = math.max(width - fmt.cells(lead), 1)
+            local blank_lead = string.rep(" ", fmt.cells(lead))
             for j, part in ipairs(fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)) do
               lines[#lines + 1] = {
-                { text = j == 1 and head or blank_head, hl = style .. "Num" },
+                { text = j == 1 and lead or blank_lead, hl = style .. "Num" },
                 { text = part .. string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style },
               }
             end
@@ -218,8 +254,12 @@ zemi.ui.widget.register({
       end
     end
     -- rows from i on: a collapsed group or one call; returns the next index
+    ---@param list zemi.defaultui.Tool[]
+    ---@param i integer
+    ---@return integer
     local function add_tools(list, i)
       if collapsible(list[i]) then
+        ---@type zemi.defaultui.Tool[]
         local group = {}
         while i <= #list and collapsible(list[i]) do
           group[#group + 1] = list[i]
@@ -296,6 +336,7 @@ zemi.ui.widget.register({
         -- stay (glamour joins lines into paragraphs); a code fence renders
         -- as one block.
         gap("user")
+        ---@type string[], string[]?
         local chunks, fence = {}, nil
         for l in (m.text .. "\n"):gmatch("(.-)\n") do
           local marker = l:match("^%s*```") ~= nil
@@ -323,6 +364,7 @@ zemi.ui.widget.register({
       else
         gap("text")
         add_markdown(m.text, true)
+        ---@type string[]
         local parts = {}
         local telapsed, tout = fmt.secs(m.elapsed), fmt.tokens(m.out)
         if telapsed then parts[#parts + 1] = telapsed end
@@ -335,6 +377,7 @@ zemi.ui.widget.register({
       i = next_i
     end
     if key and not cached then
+      ---@type zemi.Line[]
       local snap = {}
       for n, l in ipairs(lines) do snap[n] = l end
       chat_cache = { [key] = { lines = snap, prev = prev } }
@@ -374,19 +417,19 @@ zemi.ui.widget.register({
     end
     if open then
       blank()
-      for i, td in ipairs(todos) do
-        if i > 12 then
+      for n, td in ipairs(todos) do
+        if n > 12 then
           lines[#lines + 1] = { { text = "… " .. (#todos - 12) .. " more", hl = "Comment" } }
           break
         end
-        local mark, hl, text = "☐ ", "Normal", td.content
+        local mark, hl, item = "☐ ", "Normal", td.content
         if td.status == "done" then
           mark, hl = "☑ ", "Comment"
         elseif td.status == "in_progress" then
           mark, hl = "◼ ", "TodoActive"
-          if (td.active_form or "") ~= "" then text = td.active_form end
+          if (td.active_form or "") ~= "" then item = td.active_form end
         end
-        lines[#lines + 1] = { { text = mark, hl = hl }, { text = text, hl = hl } }
+        lines[#lines + 1] = { { text = mark, hl = hl }, { text = item, hl = hl } }
       end
     end
     return #lines > 0 and lines or fmt.empty()

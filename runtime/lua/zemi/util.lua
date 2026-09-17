@@ -1,12 +1,17 @@
 -- zemi.util: small helpers Lua authors reach for (after neovim's vim.split,
 -- vim.trim, vim.tbl_*, vim.validate and vim.inspect).
 -- local util = require("zemi.util")
+---@class zemi.util
 local M = {}
 
+---@param b integer A byte.
+---@return boolean
 local function is_space(b)
   return b == 32 or (b >= 9 and b <= 13)
 end
 
+---@param s string
+---@return string
 function M.trim(s)
   local i, j = 1, #s
   while i <= j and is_space(s:byte(i)) do i = i + 1 end
@@ -14,17 +19,27 @@ function M.trim(s)
   return s:sub(i, j)
 end
 
+---@param s string
+---@param prefix string
+---@return boolean
 function M.startswith(s, prefix)
   return s:sub(1, #prefix) == prefix
 end
 
+---@param s string
+---@param suffix string
+---@return boolean
 function M.endswith(s, suffix)
   return suffix == "" or s:sub(-#suffix) == suffix
 end
 
--- split(s, sep): plain (not pattern) separator; keeps empty fields.
+--- Split on a plain (not pattern) separator, keeping empty fields.
+---@param s string
+---@param sep string
+---@return string[]
 function M.split(s, sep)
   if sep == "" then error("zemi.util.split: empty separator", 2) end
+  ---@type string[], integer
   local out, i = {}, 1
   while true do
     local j = s:find(sep, i, true)
@@ -37,7 +52,10 @@ function M.split(s, sep)
   end
 end
 
--- keys(t): sorted keys, so iteration order is stable.
+--- The keys, sorted so iteration order is stable.
+---@generic K
+---@param t table<K, any>
+---@return K[]
 function M.keys(t)
   local out = {}
   for k in pairs(t) do out[#out + 1] = k end
@@ -45,12 +63,20 @@ function M.keys(t)
   return out
 end
 
+---@generic T, U
+---@param list T[]
+---@param fn fun(v: T, i: integer): U
+---@return U[]
 function M.map(list, fn)
   local out = {}
   for i, v in ipairs(list) do out[i] = fn(v, i) end
   return out
 end
 
+---@generic T
+---@param list T[]
+---@param fn fun(v: T, i: integer): boolean
+---@return T[]
 function M.filter(list, fn)
   local out = {}
   for i, v in ipairs(list) do
@@ -59,6 +85,9 @@ function M.filter(list, fn)
   return out
 end
 
+---@param list any[]
+---@param value any
+---@return boolean
 function M.contains(list, value)
   for _, v in ipairs(list) do
     if v == value then return true end
@@ -66,7 +95,9 @@ function M.contains(list, value)
   return false
 end
 
--- extend(...): shallow merge into a new table; later tables win.
+--- A shallow merge into a new table; later tables win.
+---@param ... table?
+---@return table
 function M.extend(...)
   local out = {}
   for i = 1, select("#", ...) do
@@ -75,7 +106,11 @@ function M.extend(...)
   return out
 end
 
--- get(t, k1, k2, ...): nested lookup that stops at the first non-table.
+--- A nested lookup (`get(t, "a", "b")` is t.a.b) that stops at the first
+--- non-table.
+---@param t any
+---@param ... any Keys.
+---@return any
 function M.get(t, ...)
   for i = 1, select("#", ...) do
     if type(t) ~= "table" then return nil end
@@ -84,8 +119,12 @@ function M.get(t, ...)
   return t
 end
 
--- validate(name, value, kind, optional): raise a caller-attributed error
--- when value is not of kind (nil passes when optional).
+--- Raise a caller-attributed error when value is not of kind (nil passes
+--- when optional).
+---@param name string
+---@param value any
+---@param kind type
+---@param optional? boolean
 function M.validate(name, value, kind, optional)
   if value == nil and optional then return end
   if type(value) ~= kind then
@@ -93,15 +132,23 @@ function M.validate(name, value, kind, optional)
   end
 end
 
--- inspect(v, depth): one-line readable form; cycles and depth are bounded.
+--- A one-line readable form; cycles and depth (4 by default) are bounded.
+---@param v any
+---@param depth? integer
+---@return string
 function M.inspect(v, depth)
+  ---@type integer, table<table, true>
   local limit, seen = depth or 4, {}
+  ---@param x any
+  ---@param d integer
+  ---@return string
   local function go(x, d)
     if type(x) == "string" then return '"' .. (x:gsub('"', '\\"')) .. '"' end
     if type(x) ~= "table" then return tostring(x) end
     if seen[x] then return "<cycle>" end
     if d > limit then return "{...}" end
     seen[x] = true
+    ---@type string[], integer
     local parts, n = {}, #x
     for i = 1, n do parts[#parts + 1] = go(x[i], d + 1) end
     for _, k in ipairs(M.keys(x)) do

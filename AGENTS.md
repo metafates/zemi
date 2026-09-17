@@ -30,7 +30,8 @@ A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 
 No CI, no lint config; `make check` is what a change has to pass:
 
 ```
-make check              # go vet ./... + go test ./... + a gofmt check, all must be clean
+make check              # go vet ./... + go test ./... + make luals + a gofmt check, all must be clean
+make luals              # lua-language-server over runtime/ (runtime/.luarc.json); prints a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make test               # full suite (~20s, all pure Go, no network, CGO not needed)
 make race               # go test -race ./internal/...
@@ -349,8 +350,20 @@ of `runtime/lua/` to `<data>/types/` on every start, and writes `<config>/.luarc
 when there is none. It is never loaded by the interpreter — a description, not code. Three
 tests keep it honest: `TestTypesCoverAPI` (every member `Sandbox.NamespaceMembers` reports
 is annotated), `TestTypesDeclareNothingExtra` (no annotation for a member zemi dropped) and
-`TestTypesParse`. Growing the Lua API means updating it, `TestNamespaceVersion` and the
+`TestTypesParse`. `TestTypesEventNames`, `TestTypesHostActions` and `TestTypesWidgetCtx` pin
+the `zemi.EventName` and `zemi.HostAction` aliases to `eventCatalogue` and `hostActions`, and
+`zemi.WidgetCtx` to the keys a render's ctx holds; the `zemi.ev.*` payload classes are kept by
+hand. Growing the Lua API means updating it, `TestNamespaceVersion` and the
 version string together.
+
+zemi.lua also describes the sandbox's globals (`os`, `debug` and the base functions, with
+`---@deprecated` stubs for the ones it strips), since `runtime/.luarc.json` and the
+`.luarc.json` zemi writes turn off LuaLS's own `basic`, `io`, `os` and `debug`: LuaLS flags a
+deprecated global only when every definition of it is deprecated. `make luals` checks
+`runtime/` at Warning level (workflows excluded: they run with their own globals), so
+every helper in `runtime/lua` carries `---@param`/`---@return` and inline widget callbacks
+take their types from `zemi.WidgetSpec`. Known ceiling: with no CI, the check runs only on
+machines that have lua-language-server.
 
 ### UI screenshots
 
@@ -723,7 +736,7 @@ timeout.
   does nothing. Helpers that rebuild segments must copy the segment (`Hit`, `Click`,
   `Widget`); only `dimRows` drops them, because dimmed rows are not targets. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —
-  scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui/init.lua`.
+  scroll uses `pgup`/`pgdown`/`ctrl+home`/`ctrl+end`, bound in `defaultui/keymaps.lua`.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua
   jobs, MCP and LSP servers, git). A child runs in its own session: no controlling terminal
   (nothing can read the TUI's keys or hang on a password prompt) and its own process group,
