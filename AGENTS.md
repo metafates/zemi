@@ -431,7 +431,7 @@ OSC 52 writes reach the host clipboard (`Manager.TakeClipboard`, sent through `c
 only from a window whose `Spec.Clipboard` is set: the editor and `zemi.win.open` from user or builtin
 code outside the Lua tool, never a window the model drives, which could plant a command the user
 pastes; those windows also list 52 in DA1. A read is never answered. A focused window (`App.focusWin`) takes every key, ctrl+c
-included, until `ui.window.unfocus`; a press on a title or separator starts a `winDrag`
+included, until `ui.window.unfocus`, and hears the host terminal's focus in and out; a press on a title or separator starts a `winDrag`
 (move a float, resize a vsplit or split), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
 for the mouse), and a paste goes to the program with bracketing when it asked. The model's

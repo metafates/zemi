@@ -335,10 +335,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.host.Wins.SetHostColor(11, msg.Color)
 	case tea.CursorColorMsg:
 		a.host.Wins.SetHostColor(12, msg.Color)
-	case tea.FocusMsg:
-		a.focused = true
-	case tea.BlurMsg:
-		a.focused = false
+	case tea.FocusMsg, tea.BlurMsg:
+		_, a.focused = msg.(tea.FocusMsg)
+		// the focused window's program hears it, so nvim reloads files changed meanwhile
+		if wn := a.focusedWin(); wn != nil {
+			wn.Focus(a.focused)
+		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
