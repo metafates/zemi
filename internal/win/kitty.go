@@ -118,17 +118,18 @@ func (w *Window) graphics(data []byte) bool {
 // and the keys it names reach the host: a file path (t=f, t=t, t=s) would
 // have the unsandboxed host terminal read it on the program's behalf.
 func (w *Window) kittyCommand(k map[string]string, data []byte) {
-	var key uint32
-	// NOTE: ids past 24 bits are dropped, the fg of a placeholder holds 24
+	var id uint32
 	if s := k["i"]; s != "" {
-		n, err := strconv.ParseUint(s, 10, 24)
+		n, err := strconv.ParseUint(s, 10, 32)
 		if err != nil || n == 0 {
 			return
 		}
-		key = uint32(n)
+		id = uint32(n)
 	}
+	// NOTE: a placeholder's fg carries the low 24 bits, so the slot is keyed
+	// by them and two ids that share them collide within one window
+	key := id & 0xFFFFFF
 	// kitty answers only commands with an id; q=1 hides OK, q=2 everything
-	id := key
 	reply := func(msg string) {
 		if id == 0 || k["q"] == "2" || k["q"] == "1" && msg == "OK" {
 			return

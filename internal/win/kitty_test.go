@@ -57,6 +57,11 @@ func TestKittyGraphics(t *testing.T) {
 			gfx:  []string{apc("a=p,U=1,i=16,p=1,c=3,r=2,q=2")}, placed: true,
 		},
 		{
+			name: "a 32-bit id keys placeholders by its low 24 bits",
+			out:  apc("a=T,U=1,i=262955020,f=100,c=3,r=2;iVBO") + "\x1b[38;2;172;96;12m" + cells(0, 3) + "\r\n" + cells(1, 3) + "\x1b[0m\r\nEND",
+			gfx:  []string{apc("a=p,U=1,i=16,p=1,c=3,r=2,q=2")}, reply: apc("i=262955020;OK"), placed: true,
+		},
+		{
 			name: "file transmission is refused",
 			out:  apc("a=T,t=f,i=4,c=1,r=1;L2V0Yy9wYXNzd2Q=") + "END",
 			text: "END", reply: apc("i=4;EINVAL:only direct transmission"),
