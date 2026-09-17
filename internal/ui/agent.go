@@ -207,8 +207,17 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			labelW = max(labelW, ansi.StringWidth(it.label))
 		}
 	}
-	// descriptions line up in one column unless a long label would push them far out
-	labelW = min(labelW, 24)
+	// descriptions line up in one column unless a long label would push them
+	// far out: as far as the widest row leaves room, 24 cells when unbounded
+	column := 24
+	if maxW > 0 {
+		right := 0
+		for _, it := range items {
+			right = max(right, ansi.StringWidth(it.desc)+map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""])
+		}
+		column = max(column, maxW-4-right)
+	}
+	labelW = min(labelW, column)
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{} // row -> key column
 	section, selTop, selEnd := "", 0, 0
