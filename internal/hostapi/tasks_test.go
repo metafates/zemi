@@ -155,3 +155,27 @@ func TestMessageAgent(t *testing.T) {
 	run("model at a step boundary", true, viaTool)
 	run("user after the last step", false, viaView)
 }
+
+// TestQueueDroppedOnFailure: the run's queue reaches a turn that follows,
+// and a failure counts what is left instead of losing it silently.
+func TestQueueDroppedOnFailure(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		err      error
+		wantNext string
+		wantDrop int
+	}{
+		{"a finished turn takes the queue", nil, "also this", 0},
+		{"a failed turn drops it", errors.New("boom"), "", 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			run := &agentRun{status: "running", rows: map[string]int{}}
+			if err := run.message("also this"); err != nil {
+				t.Fatal(err)
+			}
+			if next := run.followUp(c.err); next != c.wantNext || run.droppedCount() != c.wantDrop {
+				t.Fatalf("next %q, dropped %d", next, run.droppedCount())
+			}
+		})
+	}
+}
