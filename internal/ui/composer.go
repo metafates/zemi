@@ -364,7 +364,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	prefix := "> "
 	cont := "  "
 	// one cell stays free for the cursor mark at the end of a full row
-	cursorRow, cursorCol, rows := a.wrapComposer(w - len(prefix) - 1)
+	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - len(prefix) - 1)
 	start := max(0, cursorRow-composerMaxRows+1)
 	// The prompt takes the permission mode's color.
 	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
@@ -383,6 +383,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		} else {
 			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})
 		}
+		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
 	if hidden := len(rows) - len(out); hidden > 0 {
@@ -414,8 +415,9 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 
 // wrapComposer splits the text into visual rows of at most w cells, on
 // newlines and after the last space that fits (a word longer than a row is
-// split), and reports the cursor's row and rune column.
-func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
+// split), and reports the cursor's row and rune column plus which rows wrap
+// onto the next rather than ending at a newline.
+func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune, soft []bool) {
 	w = max(w, 1)
 	r := []rune(a.composer.text)
 	for i, x := range r {
@@ -454,8 +456,9 @@ func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune) {
 			cursorRow, cursorCol = n, cur-sp.s
 		}
 		rows = append(rows, r[sp.s:sp.e])
+		soft = append(soft, n < len(spans)-1 && spans[n+1].s == sp.e)
 	}
-	return cursorRow, cursorCol, rows
+	return cursorRow, cursorCol, rows, soft
 }
 
 // editorMsg carries the draft an external editor saved.

@@ -144,22 +144,25 @@ func TestWrapComposer(t *testing.T) {
 		w, cursor  int
 		rows       string
 		row, col   int
+		soft       string // one mark per row: ~ wraps onto the next, . ends
 	}{
-		{"empty", "", 8, 0, "", 0, 0},
-		{"breaks after space", "hello world", 8, 6, "hello |world", 1, 0},
-		{"splits long word", "abcdefghij", 4, 4, "abcd|efgh|ij", 1, 0},
-		{"cursor before newline", "a\nb", 8, 1, "a|b", 0, 1},
-		{"wide runes by cell", "你好世界", 5, 4, "你好|世界", 1, 2},
-		{"tab takes a cell", "a\tbc", 3, 3, "a |bc", 1, 1},
+		{"empty", "", 8, 0, "", 0, 0, "."},
+		{"breaks after space", "hello world", 8, 6, "hello |world", 1, 0, "~."},
+		{"splits long word", "abcdefghij", 4, 4, "abcd|efgh|ij", 1, 0, "~~."},
+		{"cursor before newline", "a\nb", 8, 1, "a|b", 0, 1, ".."},
+		{"wide runes by cell", "你好世界", 5, 4, "你好|世界", 1, 2, "~."},
+		{"tab takes a cell", "a\tbc", 3, 3, "a |bc", 1, 1, "~."},
 	} {
 		app.composer.text, app.composer.cursor = c.text, c.cursor
-		row, col, rows := app.wrapComposer(c.w)
+		row, col, rows, soft := app.wrapComposer(c.w)
 		var got []string
-		for _, r := range rows {
+		marks := ""
+		for i, r := range rows {
 			got = append(got, string(r))
+			marks += map[bool]string{true: "~", false: "."}[soft[i]]
 		}
-		if strings.Join(got, "|") != c.rows || row != c.row || col != c.col {
-			t.Errorf("%s: rows %q cursor %d,%d", c.name, got, row, col)
+		if strings.Join(got, "|") != c.rows || row != c.row || col != c.col || marks != c.soft {
+			t.Errorf("%s: rows %q cursor %d,%d soft %q", c.name, got, row, col, marks)
 		}
 	}
 }
