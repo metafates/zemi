@@ -238,6 +238,10 @@ type SkillInfo struct {
 	Path string
 }
 
+// SkillMaxOut caps a skill body; every shipped skill fits it whole
+// (TestBuiltinSkillsFitTheSkillTool).
+const SkillMaxOut = 64000
+
 func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	if p.Skills == nil {
 		return fantasy.NewTextErrorResponse("skills unavailable"), nil
@@ -255,7 +259,13 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-			return fantasy.NewTextResponse(TruncOut("Skill directory: "+s.Path+"\n\n"+body, 10000)), nil
+			// the body is the whole procedure, loaded once: a cut leaves the
+			// model acting on half of it, so say where the rest is
+			out := TruncOut("Skill directory: "+s.Path+"\n\n"+body, SkillMaxOut)
+			if strings.HasSuffix(out, "(truncated)") {
+				out += "\nRead the rest with the read tool: " + path
+			}
+			return fantasy.NewTextResponse(out), nil
 		}
 	}
 	slices.Sort(known)

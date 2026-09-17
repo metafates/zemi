@@ -72,20 +72,40 @@ func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
 	}
 }
 
+// TestBuiltinSkillsFitTheSkillTool: a body over the tool's cap reaches the
+// model cut in half, which is half a procedure.
+func TestBuiltinSkillsFitTheSkillTool(t *testing.T) {
+	for dir, body := range builtinSkillBodies(t) {
+		if len(body) > tools.SkillMaxOut {
+			t.Errorf("%s is %d bytes, the skill tool sends %d", dir, len(body), tools.SkillMaxOut)
+		}
+	}
+}
+
 // skillsText is every builtin SKILL.md joined.
 func skillsText(t *testing.T) string {
 	t.Helper()
 	var b strings.Builder
+	for _, body := range builtinSkillBodies(t) {
+		b.WriteString(body)
+	}
+	return b.String()
+}
+
+// builtinSkillBodies is every embedded skill file by path.
+func builtinSkillBodies(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
 	err := fs.WalkDir(runtime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		data, err := fs.ReadFile(runtime.Skills, path)
-		b.Write(data)
+		out[path] = string(data)
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return b.String()
+	return out
 }
