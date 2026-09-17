@@ -159,7 +159,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		rows = append(rows, r.segs)
 	}
 	rows = append(rows, alignKeys(list, width)...)
-	return hostBox(" Trust this project? ", "Host:Title", "", rows, w)
+	return hostBox(" Trust this "+what+"? ", "Host:Title", "", rows, w)
 }
 
 // ---------------------------------------------------------------------------
