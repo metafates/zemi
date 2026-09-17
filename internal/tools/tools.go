@@ -38,7 +38,8 @@ type Request struct {
 	// what gets checked and shown, this only helps the user read it
 	Description string
 	// Unsandboxed is the model's sandbox: false, input to a window that runs
-	// unconfined, or a Lua tool script that widens what zemi allows: no mode
+	// unconfined, a Lua tool script that widens what zemi allows, or a model
+	// memory edit zemi does not apply on its own: no mode
 	// settles the request, the user answers it
 	Unsandboxed bool
 }

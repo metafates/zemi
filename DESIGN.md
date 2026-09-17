@@ -1554,7 +1554,7 @@ outside the machine (`fetch`, `web_search`, the `Lua` tool, and any tool
 zemi does not ship: MCP and Lua-registered ones, read from the session's
 `tool_calls`), since injected memories come from there.
 The same conditions decide whether `memory_update` and `memory_forget`
-apply at once or ask. Known ceiling: a command the user let run
+apply at once or ask the user, whatever the permission mode. Known ceiling: a command the user let run
 unconfined can fetch too, and that is not seen.
 
 ### 10.5 Skills

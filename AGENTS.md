@@ -485,7 +485,7 @@ as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id evicti
   It runs on the interpreter (10s ceiling), in a wrapper env whose `print` is captured.
   Main agent only.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`,
-  which re-runs intake and asks (`memory.write`) unless `memoryAuto` holds (autonomy auto,
+  which re-runs intake and asks the user (`memory.write` as `Unsandboxed`, so no mode settles it) unless `memoryAuto` holds (autonomy auto,
   a trusted project, and no `fetch`, `web_search`, `Lua` or non-builtin tool (MCP, `zemi.tool`)
   call in the session or its subagents' child sessions, whose tool calls `subagentHooks` records
   for this and `ForkSession` copies), the memory

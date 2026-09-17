@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"charm.land/fantasy"
 	"context"
 	"encoding/json"
 	"errors"
@@ -141,7 +142,7 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 
 // TestMemoryAutoQueuesOutsideText: auto autonomy still queues in an
 // untrusted project and in a session that it or a subagent fed text from
-// outside the machine.
+// outside the machine, and there a model's memory edit asks even in auto mode.
 func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -181,6 +182,21 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			stored, _, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
 			if err != nil || stored != tc.stored {
 				t.Fatalf("stored = %v, want %v (%v)", stored, tc.stored, err)
+			}
+			// the edit auto autonomy does not apply goes to the user, not the auto mode screener
+			h.modelFn = func() (fantasy.LanguageModel, error) { return &promptStub{resp: "SAFE"}, nil }
+			if err := h.SetPermMode("auto"); err != nil {
+				t.Fatal(err)
+			}
+			res, err := h.storeMemory("project", learn.OriginLearned, "fact", "tests run with make test", nil)
+			if err == nil {
+				err = h.applyProposal(res)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := h.modelEditMemory(h.AgentSessionID(), res.Memory.ID, "tests run with go test"); (err == nil) != tc.stored {
+				t.Fatalf("edit err = %v, want applied %v", err, tc.stored)
 			}
 		})
 	}
