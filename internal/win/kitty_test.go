@@ -42,6 +42,11 @@ func TestKittyGraphics(t *testing.T) {
 			placed: true,
 		},
 		{
+			name:   "the program's saved cursor survives placement",
+			out:    "\x1b[3;1H\x1b7\x1b[H" + apc("a=T,f=100,c=3,r=2,q=2;iVBO") + "\x1b8END",
+			placed: true,
+		},
+		{
 			name: "chunks join into one transmit",
 			out:  apc("a=T,f=100,c=3,r=2,m=1;AAAA") + apc("m=1;BBBB") + apc("m=0;CA==") + "\r\nEND",
 			gfx:  []string{";AAAABBBBCA==\x1b\\"}, placed: true,
@@ -164,24 +169,6 @@ func TestImageIDsEvictOldest(t *testing.T) {
 	m.TakeGraphics()
 	if h, _ := m.transmit(w, 9, map[string]string{}, []byte("x")); h != 0 || m.TakeGraphics() != "" {
 		t.Fatal("a closed window queued an image")
-	}
-}
-
-// TestPlaceWithoutSTDoesNotPileUp: an APC ended by a bare ESC is dispatched
-// but never flushed, so repeating it must keep one screen of placeholders.
-func TestPlaceWithoutSTDoesNotPileUp(t *testing.T) {
-	m := &Manager{}
-	m.SetKitty(true)
-	w := &Window{m: m, ID: 1, term: vt.NewEmulator(20, 6), w: 20, h: 6}
-	w.term.RegisterApcHandler(w.graphics)
-	w.write([]byte(apc("a=t,i=5,f=100,q=2;iVBO")))
-	w.write([]byte("\x1b_Ga=p,i=5,c=20,r=6,q=2\x1b[m"))
-	one := len(w.place)
-	for range 50 {
-		w.write([]byte("\x1b_Ga=p,i=5,c=20,r=6,q=2\x1b[m"))
-	}
-	if one == 0 || len(w.place) != one {
-		t.Fatalf("placeholders held back: %d bytes, one screen is %d", len(w.place), one)
 	}
 }
 

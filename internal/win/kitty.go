@@ -184,48 +184,40 @@ func (w *Window) kittyCommand(k map[string]string, data []byte) {
 	// would add another and keep drawing the first size
 	w.m.queue(fmt.Sprintf("\x1b_Ga=p,U=1,i=%d,p=1,c=%d,r=%d,q=2\x1b\\", h, cols, rows))
 	if k["U"] != "1" { // with U=1 the program writes its own placeholders
-		// assigned, not appended: an APC that ends without ESC \ is never
-		// flushed, and must not pile up screens of placeholders
 		w.place = w.placeholders(key, cols, rows, k["C"] == "1")
 	}
 }
 
-// placeholders is the text that draws an image of cols x rows cells at the
-// cursor, moving the cursor after it the way kitty does unless noMove.
-func (w *Window) placeholders(key uint32, cols, rows int, noMove bool) string {
-	x0 := w.term.CursorPosition().X
-	rows = min(rows, w.h)
-	drawn := min(cols, w.w-x0)
-	var b strings.Builder
-	// make room first, scrolling like the lines kitty would index
-	b.WriteString(strings.Repeat("\n", rows-1))
-	if rows > 1 {
-		fmt.Fprintf(&b, "\x1b[%dA", rows-1)
-	}
-	fmt.Fprintf(&b, "\x1b7\x1b[0;38;2;%d;%d;%dm", key>>16&0xff, key>>8&0xff, key&0xff)
-	for r := range rows {
-		if r > 0 {
-			fmt.Fprintf(&b, "\x1b[B\x1b[%dG", x0+1)
+// placeholders draws an image of cols x rows cells at the cursor, moving
+// the cursor after it the way kitty does unless noMove. It sets the cells
+// directly, so the program's pen and saved cursor stay as it left them.
+func (w *Window) placeholders(key uint32, cols, rows int, noMove bool) func() {
+	return func() {
+		x0 := w.term.CursorPosition().X
+		rows := min(rows, w.h)
+		drawn := min(cols, w.w-x0)
+		if rows > 1 { // make room first, scrolling like the lines kitty would index
+			fmt.Fprintf(w.term, "%s\x1b[%dA", strings.Repeat("\n", rows-1), rows-1)
 		}
-		for c := range drawn {
-			b.WriteRune(kitty.Placeholder)
-			b.WriteRune(kitty.Diacritic(r))
-			b.WriteRune(kitty.Diacritic(c))
+		y0 := w.term.CursorPosition().Y
+		st := uv.Style{Fg: color.RGBA{uint8(key >> 16), uint8(key >> 8), uint8(key), 0xff}}
+		for r := range rows {
+			for c := range drawn {
+				w.term.SetCell(x0+c, y0+r, &uv.Cell{Content: string([]rune{kitty.Placeholder, kitty.Diacritic(r), kitty.Diacritic(c)}), Width: 1, Style: st})
+			}
+		}
+		if noMove {
+			return
+		}
+		if rows > 1 {
+			fmt.Fprintf(w.term, "\x1b[%dB", rows-1)
+		}
+		if x0+cols >= w.w {
+			fmt.Fprint(w.term, "\r\n")
+		} else {
+			fmt.Fprintf(w.term, "\x1b[%dG", x0+cols+1)
 		}
 	}
-	b.WriteString("\x1b8") // cursor and pen as the program left them
-	if noMove {
-		return b.String()
-	}
-	if rows > 1 {
-		fmt.Fprintf(&b, "\x1b[%dB", rows-1)
-	}
-	if x0+cols >= w.w {
-		b.WriteString("\r\n")
-	} else {
-		fmt.Fprintf(&b, "\x1b[%dG", x0+cols+1)
-	}
-	return b.String()
 }
 
 // placeholderCell maps a placeholder cell to its host image: the fg the

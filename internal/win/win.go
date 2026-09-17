@@ -79,7 +79,7 @@ type Window struct {
 	mu    sync.Mutex // guards term, w, h, place, up
 	term  *vt.Emulator
 	w, h  int
-	place string  // image placeholders to write after the graphics command
+	place func()  // draws image placeholders after the graphics command
 	up    *upload // a chunked image in progress
 	gone  bool    // closed, so it may queue no images; guarded by m.gmu
 
@@ -277,9 +277,9 @@ func (w *Window) write(p []byte) {
 			i = len(p)
 		}
 		_, _ = w.term.Write(p[:i])
-		if w.place != "" && p[i-1] == '\\' {
-			_, _ = w.term.WriteString(w.place)
-			w.place = ""
+		if w.place != nil && p[i-1] == '\\' {
+			w.place()
+			w.place = nil
 		}
 		p = p[i:]
 	}
