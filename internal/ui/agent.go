@@ -94,7 +94,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	// Every field carries model input: strip escapes before the chrome.
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
-	req.Description = sanitize.String(req.Description)
+	req.Description, req.Always = sanitize.String(req.Description), sanitize.String(req.Always)
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
