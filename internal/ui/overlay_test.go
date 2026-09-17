@@ -31,7 +31,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 		}
 		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark, "fill": "picked"}}
 	}
-	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() []any { on = !on; return items() }})
+	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() ([]any, [][]hostapi.Segment) { on = !on; return items(), nil }})
 	a.overlayKey("ctrl+j", "")
 	for _, key := range []string{"space", "enter"} {
 		wasOn := on
@@ -316,7 +316,7 @@ func TestOverlayNavigation(t *testing.T) {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
 			}},
 		{"a run action in a toggle list rebuilds the list",
-			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() []any { reloads++; return []any{detail()} }},
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() ([]any, [][]hostapi.Segment) { reloads++; return []any{detail()}, nil }},
 			[]string{"enter", "enter"},
 			func(a *App) string {
 				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
@@ -476,5 +476,36 @@ func TestOverlaySegmentLabel(t *testing.T) {
 	}
 	if !strings.Contains(plainSegs(second), "…") || second[2].HL != "Title" {
 		t.Fatalf("selected row: %+v", second)
+	}
+}
+
+// TestLuaOverlayReload: a Lua overlay with reload stays open on space and
+// enter, runs on_select, then shows the items reload returns, rendered
+// again, and keeps its items when reload fails.
+func TestLuaOverlayReload(t *testing.T) {
+	app, host := bootAgentApp(t, 60, 16)
+	runLua(t, app, `
+local on = { a = false, b = false }
+local function items()
+  return { { text = "a", on = on.a }, { text = "b", on = on.b } }
+end
+zemi.ui.overlay.open({ id = "toggles", title = "Toggles", items = items(),
+  render_item = function(it) return (it.on and "[x] " or "[ ] ") .. it.text end,
+  on_select = function(it) on[it.text] = not on[it.text] end,
+  reload = function()
+    if on.a and on.b then error("boom") end
+    return items()
+  end })`)
+	pressKeys(app, "j", "space")
+	for app.Pump() {
+	}
+	if len(app.overlays) != 1 || app.overlays[0].items[1].label != "[x] b" || app.overlays[0].selected != 1 {
+		t.Fatalf("after space: %d overlays, %+v", len(app.overlays), app.overlays[0].items)
+	}
+	pressKeys(app, "k", "enter")
+	for app.Pump() {
+	}
+	if len(app.overlays) != 1 || app.overlays[0].items[0].label != "[ ] a" || !host.HasUnseenErrors() {
+		t.Fatalf("a failed reload should keep the items and record the error: %+v", app.overlays[0].items)
 	}
 }

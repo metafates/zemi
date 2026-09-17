@@ -406,6 +406,7 @@ function zemi.event.stats() end
 ---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
 ---@field on_select? fun(item: any)
 ---@field on_close? fun()
+---@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Both run off the key path; an error keeps the old items.
 
 ---@class zemi.SelectOpts
 ---@field prompt? string

@@ -153,8 +153,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				o.Items = list
 			}
 		}
-		if fn, ok := tb.RawGetString("render_item").(*glua.LFunction); ok {
-			o.ItemText = h.renderItems(L, o.ID, fn, o.Items)
+		render, _ := tb.RawGetString("render_item").(*glua.LFunction)
+		if render != nil {
+			o.ItemText = h.renderItems(L, o.ID, render, o.Items)
+		}
+		if fn, ok := tb.RawGetString("reload").(*glua.LFunction); ok {
+			o.Reload = h.luaReload(o, fn, render)
 		}
 		if fn, ok := tb.RawGetString("on_select").(*glua.LFunction); ok {
 			o.OnSelect = fn
@@ -422,6 +426,47 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 		L.SetTop(base)
 	}
 	return out
+}
+
+// luaReload is a Lua overlay's reload: fn() returns the new items, which
+// render_item renders again, under the overlay's origin. A failure or a
+// stale generation keeps the items the overlay has.
+func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [][]Segment) {
+	return func() ([]any, [][]Segment) {
+		items, text := o.Items, o.ItemText
+		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			if h.staleOverlay(o) {
+				return nil, lua.ErrReloaded
+			}
+			defer h.RT.PushFrame(L, o.Origin, o.Path)()
+			base := L.GetTop()
+			defer L.SetTop(base)
+			L.Push(fn)
+			if err := L.PCall(0, 1, nil); err != nil {
+				return nil, err
+			}
+			v, err := lua.ToGo(L.Get(-1))
+			if err != nil {
+				return nil, err
+			}
+			list, ok := v.([]any)
+			if m, isMap := v.(map[string]any); isMap && len(m) == 0 {
+				list, ok = nil, true // Lua's {} marshals as an empty map
+			}
+			if !ok {
+				return nil, fmt.Errorf("reload must return a list of items, got %T", v)
+			}
+			items, text = list, nil
+			if render != nil {
+				text = h.renderItems(L, o.ID, render, list)
+			}
+			return nil, nil
+		})
+		if err != nil && !isQuietLuaErr(err) {
+			h.RecordError("overlay "+o.ID+" reload", err.Error())
+		}
+		return items, text
+	}
 }
 
 // cancelWith is an overlay on_close that calls cb(nil), the vim.ui cancel shape.

@@ -215,20 +215,35 @@ func (a *App) detailAction(idx int) {
 		return
 	case fill == "" && a.overlays[pi].o.Reload != nil:
 		a.runOverlayRow(d.o, idx)
-		a.reloadOverlay(&a.overlays[pi])
+		a.reloadOverlay(a.overlays[pi].o, -1)
 	default:
 		a.cancelOverlay(a.overlays[pi].o)
 		a.runOverlayRow(d.o, idx)
 	}
 }
 
-// reloadOverlay rebuilds a toggle list's items, keeping selection and filter.
-func (a *App) reloadOverlay(st *overlayState) {
-	f, o := st.listFilter, st.o
-	o.Items = o.Reload()
-	*st = a.overlayState(o)
-	st.listFilter = f
-	st.refilter()
+// reloadOverlay runs the on_select of item idx (-1 for none) of a toggle
+// list and rebuilds its items, both on the worker, then swaps the items in
+// while it is still open, keeping selection and filter.
+func (a *App) reloadOverlay(o hostapi.Overlay, idx int) {
+	a.background(func() {
+		if idx >= 0 && o.OnSelect != nil {
+			a.host.SelectOverlay(context.Background(), o, idx)
+		}
+		items, text := o.Reload()
+		a.do(func() {
+			i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == o.ID && st.o.Gen == o.Gen && !st.back })
+			if i < 0 {
+				return
+			}
+			st := &a.overlays[i]
+			f, next := st.listFilter, st.o
+			next.Items, next.ItemText = items, text
+			*st = a.overlayState(next)
+			st.listFilter = f
+			st.refilter()
+		})
+	})
 }
 
 // closeOverlayByID closes an overlay and the detail views over it.
@@ -280,7 +295,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.detailAction(idx)
 		case o.Reload != nil:
 			a.runOverlayRow(o, idx)
-			a.reloadOverlay(st)
+			a.reloadOverlay(o, idx)
 		case verb == "":
 		default:
 			a.closeOverlayByID(o.ID)

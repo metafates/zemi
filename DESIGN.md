@@ -1055,9 +1055,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   Overlays float, centered or anchored (`anchor = "bottom"`: bottom-left
   of the chat, over the statusline that opened it). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, `render_item`
-  rows of `{ text, hl }` segments; a `click` or `effect` there is dropped)
-  except the Go-only toggle-list reload (`/skills`); Go still draws the box,
-  the origin badge, the filter and the hints.
+  rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
+  and the toggle-list `reload` `/skills` uses: a function returning the
+  items, run with `on_select` on the UI worker after enter or space while
+  the list stays open); Go still draws the box, the origin badge, the
+  filter and the hints.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional

@@ -422,8 +422,9 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 // list stays open, enter opens its detail.
 func (h *Host) openSkills() {
 	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), Reload: h.skillItems,
-			Empty: "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(),
+			Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
+			Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
 	}
 }
 

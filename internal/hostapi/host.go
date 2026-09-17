@@ -100,9 +100,10 @@ type Overlay struct {
 	Input   bool
 	Default string
 
-	// Reload makes a Go-built list a toggle list: enter and space run the
-	// row's "run" command and rebuild the items, keeping the overlay open.
-	Reload func() []any
+	// Reload makes a list a toggle list: enter and space run the row's "run"
+	// command or on_select and rebuild the items, keeping the overlay open.
+	// It runs on the UI worker, never on the key path.
+	Reload func() (items []any, text [][]Segment)
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
@@ -1227,7 +1228,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.32.0"))
+	api.RawSetString("version", glua.LString("0.33.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
