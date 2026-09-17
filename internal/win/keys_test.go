@@ -30,13 +30,28 @@ func TestParseKeys(t *testing.T) {
 			t.Errorf("%q must fail", bad)
 		}
 	}
-	if got := modifiedSpecial(uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModCtrl}); got != "\x1b[1;5A" {
-		t.Fatalf("ctrl+up: %q", got)
-	}
-	if got := modifiedSpecial(uv.KeyPressEvent{Code: uv.KeyPgDown, Mod: uv.ModShift}); got != "\x1b[6;2~" {
-		t.Fatalf("shift+pgdn: %q", got)
-	}
-	if got := modifiedSpecial(uv.KeyPressEvent{Code: uv.KeyUp}); got != "" {
-		t.Fatalf("bare key must fall to vt: %q", got)
+}
+
+func TestLegacyKey(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		k    uv.KeyPressEvent
+		want string
+	}{
+		{"shifted text", uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModShift}, "A"},
+		{"alt+shift+a", uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModAlt | uv.ModShift}, "\x1bA"},
+		{"shift+enter", uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModShift}, "\r"},
+		{"ctrl+alt+enter", uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModCtrl | uv.ModAlt}, "\x1b\r"},
+		{"ctrl+/", uv.KeyPressEvent{Code: '/', Mod: uv.ModCtrl}, "\x1f"},
+		{"ctrl+2", uv.KeyPressEvent{Code: '2', Mod: uv.ModCtrl}, "\x00"},
+		{"ctrl+up", uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModCtrl}, "\x1b[1;5A"},
+		{"shift+pgdn", uv.KeyPressEvent{Code: uv.KeyPgDown, Mod: uv.ModShift}, "\x1b[6;2~"},
+		{"bare enter is vt's", uv.KeyPressEvent{Code: uv.KeyEnter}, ""},
+		{"bare up is vt's", uv.KeyPressEvent{Code: uv.KeyUp}, ""},
+		{"ctrl+a is vt's", uv.KeyPressEvent{Code: 'a', Mod: uv.ModCtrl}, ""},
+	} {
+		if got := legacyKey(c.k); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }

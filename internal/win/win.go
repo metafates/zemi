@@ -552,8 +552,7 @@ func (w *Window) SendText(text string) error {
 }
 
 // SendKey types one key, encoded the way the program asked for (cursor
-// key mode and the like). Printable keys go as their text so shifted and
-// composed characters survive; modified special keys go in xterm form.
+// key mode and the like).
 func (w *Window) SendKey(k uv.KeyPressEvent) {
 	if w.Exited() {
 		return
@@ -564,12 +563,9 @@ func (w *Window) SendKey(k uv.KeyPressEvent) {
 }
 
 func (w *Window) sendKey(k uv.KeyPressEvent) {
-	switch seq := modifiedSpecial(k); {
-	case k.Text != "" && k.Mod&(uv.ModCtrl|uv.ModAlt|uv.ModMeta) == 0:
-		w.term.SendText(k.Text)
-	case seq != "":
+	if seq := legacyKey(k); seq != "" {
 		w.term.SendText(seq)
-	default:
+	} else {
 		w.term.SendKey(k)
 	}
 }

@@ -88,6 +88,28 @@ done:
 	return uv.KeyPressEvent{}, fmt.Errorf("keys: unknown key <%s>; names are esc, cr, tab, bs, space, del, up, down, left, right, home, end, pgup, pgdn, f1-f12, lt, with c-, a-, s- modifiers", orig)
 }
 
+// ctrlBytes are the control bytes xterm sends for ctrl with a digit or /,
+// which vt drops.
+var ctrlBytes = map[rune]string{'/': "\x1f", '2': "\x00", '3': "\x1b", '4': "\x1c", '5': "\x1d", '6': "\x1e", '7': "\x1f", '8': "\x7f"}
+
+// legacyKey encodes the keys vt gets wrong the xterm way; "" leaves k to vt.
+// Printable keys go as their text so shifted and composed characters survive.
+func legacyKey(k uv.KeyPressEvent) string {
+	esc := ""
+	if k.Mod&uv.ModAlt != 0 {
+		esc = "\x1b"
+	}
+	switch rest := k.Mod &^ uv.ModAlt; {
+	case k.Text != "" && rest&(uv.ModCtrl|uv.ModMeta) == 0:
+		return esc + k.Text
+	case k.Code == uv.KeyEnter && rest != 0:
+		return esc + "\r" // a legacy terminal cannot tell shift or ctrl+enter from enter
+	case rest == uv.ModCtrl && ctrlBytes[k.Code] != "":
+		return esc + ctrlBytes[k.Code]
+	}
+	return modifiedSpecial(k)
+}
+
 // modifiedSpecial encodes a special key with ctrl, shift or alt the xterm
 // way (vt only knows the bare keys); "" when k is not one.
 func modifiedSpecial(k uv.KeyPressEvent) string {
