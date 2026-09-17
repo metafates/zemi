@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -231,5 +232,50 @@ func TestWindowHostCursor(t *testing.T) {
 	}
 	if c := a.View().Cursor; c != nil {
 		t.Fatalf("a float covers the cursor, yet it shows at %+v", c)
+	}
+}
+
+// TestFloatDrag: a float's title moves it and its border and corners resize
+// it, kept at its minimum and on screen, and the program sees the new size.
+// The float's box starts at 10,4 with 30x8 cells at 12,5: the left border is
+// column 10, the right 43, the bottom row 13.
+func TestFloatDrag(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	a.CaptureHooks()
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.Open(win.Spec{Cmd: `trap 'stty size' WINCH; echo ready; while :; do sleep 0.05; done`, Kind: win.KindFloat, Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if text, ok := wn.WaitText(ctx, "ready"); !ok {
+		t.Fatalf("no trap:\n%s", text)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	for _, c := range []struct {
+		name     string
+		from, to [2]int
+		want     [4]int // x, y, cols, rows
+	}{
+		{"title moves", [2]int{20, 4}, [2]int{25, 6}, [4]int{15, 6, 30, 8}},
+		{"left edge stops at the minimum width, right edge kept", [2]int{10, 8}, [2]int{70, 8}, [4]int{20, 4, 20, 8}},
+		{"right edge stops at the screen", [2]int{42, 8}, [2]int{79, 8}, [4]int{10, 4, 66, 8}},
+		{"top-left corner", [2]int{10, 4}, [2]int{5, 2}, [4]int{5, 2, 35, 10}},
+		{"bottom stops at the minimum height", [2]int{20, 13}, [2]int{20, 0}, [4]int{10, 4, 30, 3}},
+		{"bottom-right corner", [2]int{43, 13}, [2]int{48, 16}, [4]int{10, 4, 35, 11}},
+	} {
+		_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y, l.Cols, l.Rows = 10, 4, 30, 8 })
+		a.Frame()
+		a.Update(tea.MouseClickMsg{X: c.from[0], Y: c.from[1], Button: tea.MouseLeft})
+		a.Update(tea.MouseMotionMsg{X: c.to[0], Y: c.to[1], Button: tea.MouseLeft})
+		a.Update(tea.MouseReleaseMsg{X: c.to[0], Y: c.to[1], Button: tea.MouseLeft})
+		if l := wn.Layout(); [4]int{l.X, l.Y, l.Cols, l.Rows} != c.want {
+			t.Errorf("%s: layout %+v, want %v", c.name, l, c.want)
+		}
+	}
+	a.Frame()
+	if text, ok := wn.WaitText(ctx, "11 35"); !ok {
+		t.Fatalf("the program never saw 35x11:\n%s", text)
 	}
 }

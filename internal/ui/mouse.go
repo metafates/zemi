@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -142,24 +143,26 @@ func (a *App) hover(x, y int) tea.Cmd {
 	if ok {
 		key = fmt.Sprint(spans)
 	}
-	if key == a.hoverKey {
-		return nil
+	if key != a.hoverKey {
+		a.hoverKey = key
+		a.frameGen++
 	}
-	a.hoverKey = key
-	a.frameGen++
-	if ok == a.pointerHand {
-		return nil
+	shape := a.edgeShape(x, y)
+	if shape == "" && ok {
+		shape = "pointer"
 	}
-	a.pointerHand = ok
-	return tea.Raw(pointerShape(ok))
+	return a.setPointer(shape)
 }
 
-// pointerShape is OSC 22; terminals without it ignore the sequence.
-func pointerShape(hand bool) string {
-	if hand {
-		return "\x1b]22;pointer\x07"
+// setPointer sets the pointer shape with OSC 22, "" for the default, when it
+// changed; terminals without OSC 22 ignore the sequence.
+func (a *App) setPointer(shape string) tea.Cmd {
+	shape = cmp.Or(shape, "default")
+	if shape == a.pointer {
+		return nil
 	}
-	return "\x1b]22;default\x07"
+	a.pointer = shape
+	return tea.Raw("\x1b]22;" + shape + "\x07")
 }
 
 // click acts on the topmost thing under (x, y).

@@ -3,8 +3,8 @@
 // splits take rows at the bottom of the chat, floats sit over everything.
 // A focused window gets every key, the unfocus key (ui.window.unfocus)
 // gives them back; a click on a window focuses it, its × closes it, and
-// dragging a float's title moves it, a vsplit's separator or a split's
-// title resizes it.
+// dragging a float's title moves it, a float's border or corner, a vsplit's
+// separator or a split's title resizes it.
 // NOTE: the layout is a fixed order (main, vsplits left to right, splits
 // top to bottom), not a tree; zellij-style nesting is the upgrade path.
 package ui
@@ -31,14 +31,16 @@ type winRect struct {
 	x, y, w, h int // the terminal cells
 	titleY     int
 	sepX       int // vsplit: the separator column, -1 otherwise
+	float      bool
 }
 
 // winDrag is a mouse drag in progress on a window's chrome.
 type winDrag struct {
 	id     int
-	what   string // "move", "vsplit", "split" or "title" (a press that may become a drag)
+	what   string // "move", "resize", "vsplit", "split" or "title" (a press that may become a drag)
+	edge   string // resize: the float's edges that follow the pointer (floatEdge)
 	x0, y0 int    // where the press landed
-	fx, fy int    // float: position when the drag began
+	r0     winRect
 	moved  bool
 }
 
@@ -47,6 +49,8 @@ const (
 	minSplitH  = 4
 	minMainW   = 30
 	minChatH   = 3
+	minFloatW  = 20
+	minFloatH  = 3
 )
 
 // winColumns decides the vsplit columns for a frame of width w: mainW is
@@ -165,7 +169,7 @@ func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostap
 		y0 = headerH + max((chatH-len(box))/2, 0)
 	}
 	x0, y0 = min(x0, max(w-bw, 0)), min(y0, max(h-len(box), 0))
-	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 1, w: cols, h: rows, titleY: y0, sepX: -1}
+	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 1, w: cols, h: rows, titleY: y0, sepX: -1, float: true}
 }
 
 // placeBox writes box at x0, y0 over rows, clipped to the frame.
@@ -231,8 +235,7 @@ func (a *App) placeCursor(c *tea.Cursor, modal bool) *tea.Cursor {
 	c.X, c.Y = r.x+c.X, r.y+c.Y
 	for _, o := range a.winRects[i+1:] {
 		// a float's box is its cells plus a two-column border and the title and bottom rows
-		if wn, ok := a.host.Wins.Get(o.id); ok && wn.Kind() == win.KindFloat &&
-			c.X >= o.x-2 && c.X < o.x+o.w+2 && c.Y >= o.titleY && c.Y <= o.y+o.h {
+		if o.float && c.X >= o.x-2 && c.X < o.x+o.w+2 && c.Y >= o.titleY && c.Y <= o.y+o.h {
 			return nil
 		}
 	}
@@ -329,9 +332,9 @@ func (a *App) windowKey(key string, msg uv.KeyPressEvent) bool {
 }
 
 // windowMouse handles a mouse event on window chrome or cells and reports
-// whether one took it. Chrome: a press on a title or separator starts a
-// drag (move a float, resize a vsplit or split); a release without motion
-// on a title focuses, on its × closes. Cells: a click focuses and the
+// whether one took it. Chrome: a press on a title, separator or float border
+// starts a drag (move a float, resize a float, vsplit or split); a release
+// without motion on a title focuses, on its × closes. Cells: a click focuses and the
 // event is forwarded; the wheel goes to the window under the pointer,
 // motion only to the focused one.
 func (a *App) windowMouse(msg tea.Msg) bool {
@@ -364,17 +367,14 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 	for _, r := range slices.Backward(a.winRects) {
 		onTitle := m.Y == r.titleY && m.X >= r.x && m.X < r.x+r.w
 		onSep := r.sepX >= 0 && m.X == r.sepX && m.Y >= r.titleY && m.Y < r.y+r.h
-		if _, click := msg.(tea.MouseClickMsg); click && m.Button == tea.MouseLeft && (onTitle || onSep) {
-			d := &winDrag{id: r.id, x0: m.X, y0: m.Y, what: "title"}
-			if onSep {
+		edge := floatEdge(r, m.X, m.Y)
+		if _, click := msg.(tea.MouseClickMsg); click && m.Button == tea.MouseLeft && (onTitle || onSep || edge != "") {
+			d := &winDrag{id: r.id, x0: m.X, y0: m.Y, what: "title", edge: edge, r0: r}
+			switch {
+			case onSep:
 				d.what = "vsplit"
-			}
-			if wn, ok := a.host.Wins.Get(r.id); ok {
-				l := wn.Layout()
-				d.fx, d.fy = l.X, l.Y
-				if l.X < 0 || l.Y < 0 { // centered: pin where it is
-					d.fx, d.fy = r.x-2, r.titleY
-				}
+			case edge != "":
+				d.what = "resize"
 			}
 			a.winDrag = d
 			return true
@@ -429,8 +429,9 @@ func (a *App) titleClick(id, x int) {
 	}
 }
 
-// dragWindow applies a drag: a float moves by the pointer's travel, a
-// vsplit's width follows the separator, a split's height its title. The
+// dragWindow applies a drag: a float moves by the pointer's travel or its
+// dragged edges follow it, kept on screen and at least minFloatW by minFloatH;
+// a vsplit's width follows the separator, a split's height its title. The
 // × corner never starts a drag, so a slipped click still closes.
 func (a *App) dragWindow(d *winDrag, x, y int) {
 	wn, ok := a.host.Wins.Get(d.id)
@@ -457,13 +458,68 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 	_ = wn.SetLayout(func(l *win.Layout) {
 		switch d.what {
 		case "move":
-			l.X, l.Y = max(0, d.fx+x-d.x0), max(0, d.fy+y-d.y0)
+			l.X, l.Y = max(0, d.r0.x-2+x-d.x0), max(0, d.r0.titleY+y-d.y0)
+		case "resize":
+			// the box is the cells plus two columns each side and a row above and below
+			bx, by, cols, rows := d.r0.x-2, d.r0.titleY, d.r0.w, d.r0.h
+			if strings.Contains(d.edge, "r") {
+				cols = min(max(cols+x-d.x0, minFloatW), a.width-bx-4)
+			}
+			if strings.Contains(d.edge, "l") {
+				dx := max(min(x-d.x0, max(cols-minFloatW, 0)), -bx)
+				bx, cols = bx+dx, cols-dx
+			}
+			if strings.Contains(d.edge, "b") {
+				rows = min(max(rows+y-d.y0, minFloatH), a.height-by-2)
+			}
+			if strings.Contains(d.edge, "t") {
+				dy := max(min(y-d.y0, max(rows-minFloatH, 0)), -by)
+				by, rows = by+dy, rows-dy
+			}
+			l.X, l.Y, l.Cols, l.Rows = bx, by, cols, rows
 		case "vsplit":
 			l.Frac = float64(r.x+r.w-x-1) / float64(max(a.width, 1))
 		case "split":
 			l.Frac = float64(r.y+r.h-y) / float64(max(a.chatAreaH, 1))
 		}
 	})
+}
+
+// floatEdge names the edges of float r's border at (x, y) that a drag
+// there resizes, "t", "b", "l" and "r" joined ("bl" for a corner); "" off the
+// border. The title row between the corners moves the float instead.
+func floatEdge(r winRect, x, y int) string {
+	if !r.float || x < r.x-2 || x > r.x+r.w+1 || y < r.titleY || y > r.y+r.h {
+		return ""
+	}
+	e := ""
+	switch {
+	case y == r.titleY && (x < r.x || x >= r.x+r.w):
+		e = "t"
+	case y == r.y+r.h:
+		e = "b"
+	}
+	switch {
+	case x < r.x:
+		e += "l"
+	case x >= r.x+r.w:
+		e += "r"
+	}
+	return e
+}
+
+// edgeShape is the OSC 22 pointer for a floatEdge, "" for none.
+func (a *App) edgeShape(x, y int) string {
+	for _, r := range slices.Backward(a.winRects) {
+		if e := floatEdge(r, x, y); e != "" {
+			return map[string]string{"l": "ew-resize", "r": "ew-resize", "b": "ns-resize",
+				"tl": "nwse-resize", "br": "nwse-resize", "tr": "nesw-resize", "bl": "nesw-resize"}[e]
+		}
+		if y >= r.titleY && y < r.y+r.h && x >= r.x && x < r.x+r.w {
+			return "" // a window drawn over the border
+		}
+	}
+	return ""
 }
 
 // FocusWindow implements hostapi.UIHooks.

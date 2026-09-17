@@ -81,8 +81,8 @@ type App struct {
 	mouse          mouseSel
 	hovering       bool
 	hoverX, hoverY int
-	hoverKey       string // what the pointer is over, to redraw only on change
-	pointerHand    bool
+	hoverKey       string              // what the pointer is over, to redraw only on change
+	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	lastChatBottom int
 
@@ -354,6 +354,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
 		if a.topChrome() == "" && a.windowMouse(msg) {
+			if _, motion := msg.(tea.MouseMotionMsg); motion && a.winDrag == nil {
+				return a, a.setPointer("") // over a window's cells
+			}
 			return a, nil
 		}
 		return a, a.handleMouse(msg)
