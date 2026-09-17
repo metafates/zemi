@@ -30,8 +30,8 @@ const (
 	maxCells     = 297 // the diacritic table: rows and columns of one image
 	maxUpload    = 32 << 20
 	maxQueued    = 64 << 20 // sequences waiting for the UI to write them
-	// NOTE: a guess at the host's cell size for images sent without c and r;
-	// the host's CSI 16 t reply is the upgrade.
+	// NOTE: a guess at the host's cell size, for images sent without c and r
+	// and as the pty's pixel size; the host's CSI 16 t reply is the upgrade.
 	cellW, cellH = 10, 20
 )
 

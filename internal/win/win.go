@@ -213,7 +213,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 			return nil, fmt.Errorf("window: the sandbox failed, so the command did not run: %w", err)
 		}
 	}
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols), X: uint16(cols * cellW), Y: uint16(rows * cellH)})
 	if err != nil {
 		return nil, fmt.Errorf("window: %w", err)
 	}
@@ -490,7 +490,7 @@ func (w *Window) Resize(cols, rows int) {
 	}
 	w.w, w.h = cols, rows
 	w.term.Resize(cols, rows)
-	_ = pty.Setsize(w.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
+	_ = pty.Setsize(w.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols), X: uint16(cols * cellW), Y: uint16(rows * cellH)})
 }
 
 // Size is the current terminal size.
