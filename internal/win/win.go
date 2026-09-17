@@ -44,7 +44,7 @@ type Spec struct {
 	Title  string
 	Cols   int // requested size, 0 = the layout's choice
 	Rows   int
-	Owner  string // who opened it: "model", "user" or "lua"
+	Owner  string // who opened it: "model", "agent:<name>", "user", "lua" or "editor"
 	Origin string // the Lua origin that opened a "lua" window
 	// Wrap confines the command before it starts; nil = unconfined
 	Wrap func(*exec.Cmd) error
@@ -152,7 +152,8 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		return nil, fmt.Errorf("window: kind %q is not split, vsplit or float", spec.Kind)
 	}
 	m.mu.Lock()
-	if len(m.wins) >= maxWindows {
+	// the editor is exempt: the user's ctrl+g must not fail because the model opened eight
+	if spec.Owner != "editor" && len(slices.DeleteFunc(slices.Clone(m.wins), func(w *Window) bool { return w.Owner == "editor" })) >= maxWindows {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("window: %d windows are open, close one first", maxWindows)
 	}

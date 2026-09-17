@@ -481,7 +481,7 @@ zemi.win = {}
 ---@field title string
 ---@field kind string
 ---@field cmd string
----@field owner string "model", "lua", or "agent:<name>" for a subagent's window.
+---@field owner string "model", "lua", "editor", or "agent:<name>" for a subagent's window.
 ---@field cols integer
 ---@field rows integer
 ---@field running boolean

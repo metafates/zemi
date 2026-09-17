@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,16 @@ func (h *Host) refuseWin(L *glua.LState, what string, id int) {
 	if w, ok := h.Wins.Get(id); ok && o != lua.OriginUser && o != lua.OriginBuiltin && w.Origin != string(o) {
 		L.RaiseError("zemi.win.%s: %s code may not %s window %d", what, o, what, id)
 	}
+}
+
+// hiddenWin reports whether Lua code may not see w: an editor window holds
+// what the user types, so only user config sees it, never the Lua tool.
+func (h *Host) hiddenWin(L *glua.LState, w *win.Window) bool {
+	if w.Owner != "editor" {
+		return false
+	}
+	tool, _ := h.modelLuaRun(L)
+	return tool || h.RT.CurrentOrigin(L) != lua.OriginUser
 }
 
 func (h *Host) focusWindow(id int) {
@@ -347,7 +358,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		if w, ok := h.Wins.Get(L.CheckInt(1)); ok {
+		if w, ok := h.Wins.Get(L.CheckInt(1)); ok && !h.hiddenWin(L, w) {
 			L.Push(handle(L, w))
 			return 1
 		}
@@ -358,7 +369,9 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		var out []any
 		for _, w := range h.Wins.List() {
-			out = append(out, windowInfo(w))
+			if !h.hiddenWin(L, w) {
+				out = append(out, windowInfo(w))
+			}
 		}
 		L.Push(lua.FromGo(L, out))
 		return 1
@@ -473,6 +486,13 @@ func (h *Host) windowToolFor(name string, pipe *tools.Pipeline) fantasy.AgentToo
 	return &windowTool{h: h, owner: "agent:" + name, pipe: pipe}
 }
 
+// mine reports whether the tool may act on w: the main agent on its own and
+// its subagents' windows, a subagent on its own. The user's, Lua's and the
+// editor's windows are not the model's to read or close.
+func (t *windowTool) mine(w *win.Window) bool {
+	return w.Owner == t.owner || t.owner == "model" && strings.HasPrefix(w.Owner, "agent:")
+}
+
 func (t *windowTool) gate() *tools.Pipeline {
 	if t.pipe != nil {
 		return t.pipe
@@ -495,7 +515,7 @@ Actions:
 - mouse: click, press, release or move at a cell, or scroll with button wheel_up or wheel_down.
 - send: raw text, as a paste without bracketing; prefer keys.
 - wait: block until the program exits.
-- close: end it. list: every window.
+- close: end it. list: the windows you opened.
 A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,
 		Parameters: map[string]any{
 			"action":     map[string]any{"type": "string", "enum": []string{"open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
@@ -568,7 +588,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	}
 	find := func() (*win.Window, fantasy.ToolResponse, bool) {
 		w, ok := h.Wins.Get(in.ID)
-		if !ok {
+		if !ok || !t.mine(w) {
 			return nil, fantasy.NewTextErrorResponse(fmt.Sprintf("no window %d (list shows the open ones)", in.ID)), false
 		}
 		return w, fantasy.ToolResponse{}, true
@@ -759,12 +779,13 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		return fantasy.NewTextResponse("exited: " + describe(w)), nil
 	case "close":
-		if !h.closeWindow(in.ID) {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("no window %d", in.ID)), nil
+		if _, resp, ok := find(); !ok {
+			return resp, nil
 		}
+		h.closeWindow(in.ID)
 		return fantasy.NewTextResponse("closed"), nil
 	case "list":
-		wins := h.Wins.List()
+		wins := slices.DeleteFunc(h.Wins.List(), func(w *win.Window) bool { return !t.mine(w) })
 		if len(wins) == 0 {
 			return fantasy.NewTextResponse("no windows open"), nil
 		}

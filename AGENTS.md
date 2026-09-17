@@ -431,6 +431,10 @@ open runs sandboxed through `win.Spec.Wrap`, recorded as `Window.Sandboxed`) and
 `keys`/`mouse`/`send` as `tool.window`, `Unsandboxed` (so no mode settles it) unless the
 window runs sandboxed; an exit lands in the next message through `shellNotes`. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
+The tool sees only windows it may act on (`windowTool.mine`): the main agent its own and its
+subagents', a subagent its own; the user's, Lua's and editor windows answer "no window".
+Editor windows (owner `editor`) are also hidden from `zemi.win.get`/`list` below user origin
+and from the Lua tool (`hiddenWin`), and do not count toward the 8-window limit.
 Input to a program queues and a `writeLoop` goroutine feeds the pty, because the emulator
 writes under the screen lock and a program that does not read stdin must not wedge it.
 A window's env drops the host terminal's identity (`hostTermEnv`: `TERM_PROGRAM`, `GHOSTTY_*`,

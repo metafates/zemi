@@ -139,7 +139,7 @@ func TestWindowInputSettling(t *testing.T) {
 		{"unconfined", nil, true},
 		{"sandboxed", func(*exec.Cmd) error { return nil }, false},
 	} {
-		w, err := h.openWindow(win.Spec{Cmd: "cat >/dev/null", Owner: "user", Wrap: c.wrap})
+		w, err := h.openWindow(win.Spec{Cmd: "cat >/dev/null", Owner: "model", Wrap: c.wrap})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,6 +156,56 @@ func TestWindowInputSettling(t *testing.T) {
 		}
 		h.Wins.Close(w.ID)
 	}
+}
+
+// TestWindowOwnership: the window tool acts only on the model's windows and
+// its subagents', and an editor window is hidden from Lua below user config
+// and from the Lua tool.
+func TestWindowOwnership(t *testing.T) {
+	h, r := newTestHost(t)
+	h.SetUIHooks(&fakeUI{})
+	h.Perm.Add(perm.Rule{Subject: "tool.window", Pattern: "*", Decision: perm.Allow})
+	open := func(owner string) int {
+		w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: owner})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { h.Wins.Close(w.ID) })
+		return w.ID
+	}
+	editor, user, model, sub := open("editor"), open("user"), open("model"), open("agent:explore")
+	for _, c := range []struct {
+		tool    fantasy.AgentTool
+		id      int
+		allowed bool
+	}{
+		{h.windowTool(), editor, false},
+		{h.windowTool(), user, false},
+		{h.windowTool(), sub, true},
+		{h.windowToolFor("explore", nil), model, false},
+		{h.windowToolFor("explore", nil), sub, true},
+	} {
+		for _, action := range []string{`"read","wait_ms":1`, `"keys","keys":"x"`, `"mouse"`, `"send","text":"x"`, `"hide"`, `"wait","timeout_ms":1`} {
+			resp, _ := c.tool.Run(t.Context(), fantasy.ToolCall{Input: fmt.Sprintf(`{"action":%s,"id":%d}`, action, c.id)})
+			if hidden := strings.Contains(resp.Content, "no window"); hidden == c.allowed {
+				t.Errorf("window %d %s: %+v", c.id, action, resp)
+			}
+		}
+	}
+	if resp, _ := h.windowTool().Run(t.Context(), fantasy.ToolCall{Input: fmt.Sprintf(`{"action":"close","id":%d}`, editor)}); !resp.IsError {
+		t.Fatalf("the model closed the editor: %+v", resp)
+	}
+	if resp, _ := h.windowTool().Run(t.Context(), fantasy.ToolCall{Input: `{"action":"list"}`}); strings.Contains(resp.Content, `"owner":"editor"`) || strings.Contains(resp.Content, `"owner":"user"`) {
+		t.Fatalf("list shows others' windows: %+v", resp)
+	}
+	see := fmt.Sprintf(`assert(zemi.win.get(%d) == nil and #zemi.win.list() == 3, "editor visible")`, editor)
+	if err := r.ExecuteChunk(t.Context(), see, "p.lua", lua.OriginProject); err != nil {
+		t.Error(err)
+	}
+	if _, err := h.runModelLua(t.Context(), see, luaToolChunk); err != nil {
+		t.Error(err)
+	}
+	runUser(t, r, fmt.Sprintf(`assert(zemi.win.get(%d) and #zemi.win.list() == 4, "user config sees the editor")`, editor))
 }
 
 // TestWinNamespace: zemi.win from user Lua, gated as a job, with secret-shaped
