@@ -228,7 +228,7 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
-`/usage`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
+`/usage`, `/copy`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 `/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:
 
@@ -236,7 +236,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   return to their state before it, the conversation is cut there and the prompt comes back
   in the composer. Bash changes are not undone. Lua: `zemi.session.rewind(id)`.
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
-  markdown (default `zemi-<id>.md`); `/init` writes or updates AGENTS.md.
+  markdown (default `zemi-<id>.md`); `/copy` puts the last reply's raw markdown on
+  the clipboard (a drag copies the wrapped screen rows); `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
 - Settings and their values: `zemi.config.get(path)` with the Lua tool; the changes zemi
   made to its own config are the git log of the config directory.

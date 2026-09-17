@@ -19,6 +19,26 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// CopyLastReply puts the live session's last reply, as the model wrote it,
+// on the clipboard: a drag copies rendered, wrapped screen rows.
+func (h *Host) CopyLastReply() error {
+	sid, ui := h.AgentSessionID(), h.hooks()
+	if sid == "" || h.DB == nil || ui == nil {
+		return errors.New("no reply to copy")
+	}
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		return err
+	}
+	history, _ := historyFrom(rows)
+	text := lastAssistantText(history)
+	if text == "" {
+		return errors.New("no reply to copy")
+	}
+	ui.Copy(sanitize.String(text))
+	return nil
+}
+
 // ExportSession writes the live session as markdown to path ("" picks
 // zemi-<id>.md in the project) and returns the path written.
 func (h *Host) ExportSession(path string) (string, error) {

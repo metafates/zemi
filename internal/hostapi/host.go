@@ -56,6 +56,8 @@ type UIHooks interface {
 	EditFile(ctx context.Context, req EditRequest) (mode string, err error)
 	// FocusWindow gives the user's keys to a window (0 = back to zemi).
 	FocusWindow(id int)
+	// Copy puts text on the clipboard and says so.
+	Copy(text string)
 }
 
 // EditRequest is one editor handoff: an absolute path, a 1-based line to

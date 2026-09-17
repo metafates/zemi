@@ -375,6 +375,14 @@ func wordSpan(text string, x int) (from, to int) {
 	return cells[i].col, cells[j].col + cells[j].w
 }
 
+// Copy implements hostapi.UIHooks (/copy).
+func (a *App) Copy(text string) {
+	a.dispatch(uiFunc(func() tea.Cmd {
+		a.pushToast("info", "Copied to the clipboard", "")
+		return copyCmd(text)
+	}))
+}
+
 // copyCmd sets the clipboard through the terminal (works over ssh) and the
 // local clipboard tool (for terminals without OSC 52).
 func copyCmd(text string) tea.Cmd {

@@ -338,6 +338,9 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 					}
 					return err
 				}},
+				{Name: "copy", Desc: "copy the last reply to the clipboard", GoFn: func(h *hostapi.Host, _ string) error {
+					return h.CopyLastReply()
+				}},
 				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
 					_, err := h.ForkSession()
 					return err

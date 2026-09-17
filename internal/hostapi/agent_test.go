@@ -516,6 +516,7 @@ type fakeUI struct {
 	closedLua    int
 	reloads      int
 	screenshot   string
+	copied       string
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -530,7 +531,8 @@ func (f *fakeUI) ComposerEdit(string, string, int) {}
 func (f *fakeUI) EditFile(context.Context, EditRequest) (string, error) {
 	return "fullscreen", nil
 }
-func (f *fakeUI) FocusWindow(int) {}
+func (f *fakeUI) FocusWindow(int)  {}
+func (f *fakeUI) Copy(text string) { f.copied = text }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)

@@ -11,7 +11,8 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// TestExportAndFork: a finished exchange exports as markdown, and a fork
+// TestExportAndFork: a finished exchange exports as markdown, /copy takes
+// the reply, and a fork
 // switches to a new session holding the same conversation.
 func TestExportAndFork(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -30,6 +31,12 @@ func TestExportAndFork(t *testing.T) {
 	md, _ := os.ReadFile(path)
 	if !strings.Contains(string(md), "## You\n\nping") || !strings.Contains(string(md), "## zemi\n\npong") {
 		t.Fatalf("export:\n%s", md)
+	}
+
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.CopyLastReply(); err != nil || ui.copied != "pong" {
+		t.Fatalf("copy = %q, %v", ui.copied, err)
 	}
 
 	orig := h.AgentSessionID()
