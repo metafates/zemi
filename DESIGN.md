@@ -956,9 +956,11 @@ zemi.skills.list(); zemi.skills.enable("local-integration")
 
 The rest of the installed surface (`internal/hostapi/host.go` holds the
 list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
-`insert`, `submit`, over a snapshot the UI publishes and edits it
-applies on its own goroutine; edits from user config only, since a
-submitted line reaches slash commands and `!shell`), `zemi.health` (`register(name, fn)`,
+`insert`, `submit`, `history_prev`, `history_next`, `paste`, `edit`, over
+a snapshot the UI publishes and edits it applies on its own goroutine;
+edits from user config only, since a submitted line reaches slash
+commands and `!shell` and a paste reads the clipboard; the same actions are
+`zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`register(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi --health`),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.win` (windows), `zemi.errors` (`list`),

@@ -53,7 +53,8 @@ type UIHooks interface {
 	Screenshot() string
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
-	// "set" (cursor -1 = end), "insert" or "submit".
+	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
+	// "history_next", "paste" or "edit".
 	ComposerEdit(op, text string, cursor int)
 	// EditFile opens a file in the user's editor and blocks until it exits;
 	// it returns where the editor ran ("window"). Never call it on the UI
@@ -383,6 +384,12 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll("top", id); return nil },
 		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
+		"zemi.composer.submit":       composerAction("submit"),
+		"zemi.composer.insert":       composerAction("insert"),
+		"zemi.composer.history_prev": composerAction("history_prev"),
+		"zemi.composer.history_next": composerAction("history_next"),
+		"zemi.composer.paste":        composerAction("paste"),
+		"zemi.composer.edit":         composerAction("edit"),
 		"zemi.ui.focus.set":          func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next":         func(h *Host, _ string) error { return h.cycleFocus(1) },
 		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
@@ -397,6 +404,17 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	b, err := sandbox.Probe()
 	h.sandbox.Store(&sandboxProbe{b, err})
 	return h
+}
+
+// composerAction is a zemi.composer.* host action: op, with the text after
+// the action's name for insert.
+func composerAction(op string) func(h *Host, args string) error {
+	return func(h *Host, args string) error {
+		if ui := h.hooks(); ui != nil {
+			ui.ComposerEdit(op, args, 0)
+		}
+		return nil
+	}
 }
 
 func (h *Host) hooks() UIHooks {
@@ -1207,7 +1225,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.30.0"))
+	api.RawSetString("version", glua.LString("0.31.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

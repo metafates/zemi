@@ -64,7 +64,10 @@ func (h *Host) SetComposerSnapshot(text string, cursor int) {
 
 // composerNamespace is zemi.composer: get() -> { text, cursor } (cursor is
 // a 0-based character offset), set(text [, cursor]), insert(text) at the
-// cursor, submit() as if enter was pressed. Edits apply on the UI goroutine.
+// cursor, submit() as if enter was pressed, history_prev() and
+// history_next() through sent messages, paste() the clipboard's image or
+// text, and edit() the draft in the user's editor. Edits apply on the UI
+// goroutine.
 func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	edit := func(what string, op func(L *glua.LState) (string, int)) *glua.LFunction {
@@ -92,9 +95,9 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("insert", edit("insert", func(L *glua.LState) (string, int) {
 		return L.CheckString(1), 0
 	}))
-	tb.RawSetString("submit", edit("submit", func(L *glua.LState) (string, int) {
-		return "", 0
-	}))
+	for _, op := range []string{"submit", "history_prev", "history_next", "paste", "edit"} {
+		tb.RawSetString(op, edit(op, func(L *glua.LState) (string, int) { return "", 0 }))
+	}
 	return tb
 }
 

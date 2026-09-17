@@ -116,7 +116,9 @@ zemi.keymap = {}
 --- trusted global binding holds the key. It may not take a key a more
 --- trusted global binding holds.
 ---
---- Host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
+--- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
+--- zemi.composer.insert <text> (these user config only),
+--- zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom} [id], zemi.ui.focus.set [id],
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.cycle and
 --- zemi.permission.mode.prev (user config only).
@@ -1078,6 +1080,22 @@ function zemi.composer.insert(text) end
 
 --- Submit the draft, as if enter was pressed. User or builtin origin only.
 function zemi.composer.submit() end
+
+--- The previous sent message, like up on a one-line draft. User or builtin
+--- origin only.
+function zemi.composer.history_prev() end
+
+--- The next sent message, back to an empty draft past the newest. User or
+--- builtin origin only.
+function zemi.composer.history_next() end
+
+--- Paste the clipboard: an image becomes an attachment token, text is
+--- inserted (ctrl+v). User or builtin origin only.
+function zemi.composer.paste() end
+
+--- Open the draft in the user's editor (ctrl+g when no keymap starts with
+--- it). User or builtin origin only.
+function zemi.composer.edit() end
 
 -- ---------------------------------------------------------------------------
 -- zemi.permission

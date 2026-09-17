@@ -113,10 +113,12 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 				L.RaiseError("zemi.keymap.set: %q is neither a command nor a host action", string(v))
 			}
 			// Loosening permissions is the user's call: a plugin or project
-			// key must not flip the mode on an innocent-looking press.
-			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode") &&
+			// key must not flip the mode on an innocent-looking press, nor
+			// submit, fill or paste the clipboard into the composer, whose
+			// line reaches slash commands and !shell.
+			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode" || strings.HasPrefix(rhs.API, "zemi.composer.")) &&
 				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
-				L.RaiseError("zemi.keymap.set: only user config may bind permission mode changes")
+				L.RaiseError("zemi.keymap.set: only user config may bind permission mode or composer actions")
 			}
 			b.RHS = rhs
 		default:

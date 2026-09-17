@@ -207,7 +207,8 @@ func (a *App) Refresh() {
 // ComposerEdit posts a zemi.composer edit to the UI goroutine.
 func (a *App) ComposerEdit(op, text string, cursor int) {
 	text = sanitize.String(text)
-	a.do(func() {
+	a.dispatch(uiFunc(func() tea.Cmd {
+		var cmd tea.Cmd
 		switch op {
 		case "set":
 			a.composer.text, a.composer.cursor = text, cursor
@@ -218,9 +219,19 @@ func (a *App) ComposerEdit(op, text string, cursor int) {
 			a.composer.insert(text)
 		case "submit":
 			a.submitComposer()
+		case "history_prev":
+			a.seedHistory()
+			a.composer.histPrev()
+		case "history_next":
+			a.composer.histNext()
+		case "paste":
+			cmd = a.pasteClipboard()
+		case "edit":
+			cmd = a.openEditor()
 		}
 		a.publishComposer()
-	})
+		return cmd
+	}))
 }
 
 // publishComposer hands the draft to the host for zemi.composer.get.
