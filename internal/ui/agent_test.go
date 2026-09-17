@@ -896,3 +896,21 @@ func TestPermTitle(t *testing.T) {
 		}
 	}
 }
+
+// TestPermBoxFitsShortScreen: the choices and the hint always fit, so a
+// wrapped choice and a preview too tall for the screen cannot cut the box's
+// bottom border or the row that says how to answer and scroll.
+func TestPermBoxFitsShortScreen(t *testing.T) {
+	app, host := bootAgentApp(t, 60, 18)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 4 * time.Second})
+	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{
+		Tool: "bash", Subject: "tool.bash",
+		Arg:    "go test ./internal/ui/... -run X\necho a\necho b\necho c",
+		Always: "allow `go test` and 3 more",
+	}}
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "enter confirm") || !strings.Contains(frame, "╰") || !strings.Contains(frame, "lines 1-1 of 4") {
+		t.Fatalf("the prompt is cut:\n%s", frame)
+	}
+}

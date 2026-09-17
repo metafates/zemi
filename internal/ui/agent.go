@@ -444,13 +444,31 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)
 	}
+	// a wrapped choice takes two rows plus a blank separator, so on a short
+	// screen the separators go first: the box never outgrows the stage, and
+	// what is being approved keeps a line and the row that says there is more
+	want := min(len(content), 2)
+	if n := fixed + len(tail) - 1 + want - chatH; n > 0 {
+		list = slices.DeleteFunc(list, func(r []hostapi.Segment) bool {
+			blank := n > 0 && strings.TrimSpace(plainSegs(r)) == ""
+			if blank {
+				n--
+			}
+			return blank
+		})
+		fixed = len(head) + len(list) + 5
+	}
 	hints := []string{"enter", "confirm"}
-	if room := chatH - fixed - len(tail) + 1; len(content) > max(room, 1) {
-		room = max(room-1, 1) // the row that says which lines show
-		pa.scroll = max(0, min(pa.scroll, len(content)-room))
-		more := fmt.Sprintf("  lines %d-%d of %d", pa.scroll+1, pa.scroll+room, len(content))
-		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
-		hints = append(hints, "pgup/pgdn", "scroll")
+	if room := chatH - fixed - len(tail) + 1; len(content) > room {
+		room-- // the row that says which lines show
+		if room < 1 {
+			content = nil // nothing left to show it in: the choices come first
+		} else {
+			pa.scroll = max(0, min(pa.scroll, len(content)-room))
+			more := fmt.Sprintf("  lines %d-%d of %d", pa.scroll+1, pa.scroll+room, len(content))
+			content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
+			hints = append(hints, "pgup/pgdn", "scroll")
+		}
 	}
 	tail = append(append(tail, list...), blank, hintLine(inner, append(hints, "esc", "deny")...))
 	// panels span the box, and the box fits its content (at least 56 wide):
