@@ -162,6 +162,7 @@ func TestWrapSegs(t *testing.T) {
 		{"short line passes through", []Segment{{Text: "hi"}}, 10, "hi"},
 		{"word wrap", []Segment{{Text: "hello world foo"}}, 11, "hello |world foo"},
 		{"hard split", []Segment{{Text: "abcdefgh"}}, 4, "abcd|efgh"},
+		{"hard split over many rows", []Segment{{Text: "  ✗ "}, {Text: "abcdefghijklmnopqrstuvwx"}}, 12, "  ✗ abcdefgh|    ijklmnop|    qrstuvwx"},
 		{"segments wrap apart", []Segment{{Text: "one two "}, {Text: "three", HL: "B"}}, 7, "one |two |three"},
 		{"gutter hangs", []Segment{{Text: "  ✗ "}, {Text: "network: cannot resolve the gateway host"}}, 22, "  ✗ network: cannot |    resolve the |    gateway host"},
 		{"decoration hangs", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "a user message that wraps"}}, 12, "▌ a user |  message |  that wraps"},

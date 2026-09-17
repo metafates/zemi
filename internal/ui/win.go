@@ -169,20 +169,35 @@ func (a *App) textSpan(wn *win.Window, row bool, cross, avail int) int {
 	return want
 }
 
+// wrapped is one text window's last wrapped body. A frame sizes a panel
+// and then draws it, and the solver may size it more than once, so without
+// this a long body is wrapped several times per frame.
+type wrapped struct {
+	text  string
+	width int
+	lines [][]hostapi.Segment
+}
+
 // textLines renders a text window's body at width: markdown through the
-// renderer the chat uses, which caches by (text, width), so a frame that
-// changes neither re-runs glamour; plain text is wrapped again every frame,
-// which costs nothing next to it.
+// renderer the chat uses, plain text through the wrap cache. Both key on
+// (text, width), so a frame that changes neither does no work.
 func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 	text, md := wn.Content()
 	if md {
 		return a.host.Markdown(text, width)
+	}
+	if c, ok := a.wrapText[wn.ID]; ok && c.width == width && c.text == text {
+		return c.lines
 	}
 	var out [][]hostapi.Segment
 	// a tab draws as no cell, so it would lose the text's indentation
 	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
 		out = append(out, hostapi.WrapSegs([]hostapi.Segment{{Text: line}}, width)...)
 	}
+	if a.wrapText == nil {
+		a.wrapText = map[int]wrapped{}
+	}
+	a.wrapText[wn.ID] = wrapped{text, width, out}
 	return out
 }
 

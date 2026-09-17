@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -392,5 +393,12 @@ func TestTextTailFollows(t *testing.T) {
 	text, _ := w.Content()
 	if len(text) > maxBody || !strings.HasPrefix(text, "a line of a trail\n") {
 		t.Fatalf("body is %d bytes, starts %q", len(text), text[:min(len(text), 30)])
+	}
+	// one unbroken line has no line to drop, and the cap still holds
+	for range 4 {
+		_ = w.SetText(strings.Repeat("é", 100_000), true)
+	}
+	if text, _ = w.Content(); len(text) > maxBody || !utf8.ValidString(text) {
+		t.Fatalf("body is %d bytes, valid=%v", len(text), utf8.ValidString(text))
 	}
 }

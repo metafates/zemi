@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -209,7 +210,7 @@ func (m *Manager) OpenText(spec Spec) (*Window, error) {
 	w := &Window{
 		m: m, ID: id, Owner: spec.Owner, Origin: spec.Origin,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
-		body:   &body{text: sanitize.String(spec.Text), md: spec.Markdown},
+		body:   &body{text: capBody(sanitize.String(spec.Text)), md: spec.Markdown},
 		w:      cmp.Or(spec.Cols, defaultCols), h: cmp.Or(spec.Rows, defaultRows),
 		done: make(chan struct{}),
 	}
@@ -252,15 +253,26 @@ func (w *Window) SetText(text string, add bool) error {
 	} else {
 		w.body.top, w.body.tail = 0, false
 	}
-	// a trail a turn keeps appending to would grow without end, and the UI
-	// re-wraps the whole body every frame
-	if len(text) > maxBody {
-		if _, rest, ok := strings.Cut(text[len(text)-maxBody:], "\n"); ok {
-			text = rest
-		}
-	}
-	w.body.text = text
+	w.body.text = capBody(text)
 	return nil
+}
+
+// capBody keeps the last maxBody bytes of a body: a trail a turn keeps
+// appending to would grow without end, and the UI re-wraps the whole body
+// when it changes. It drops the partial first line, or, when the tail holds
+// no line break at all, the partial first rune.
+func capBody(text string) string {
+	if len(text) <= maxBody {
+		return text
+	}
+	text = text[len(text)-maxBody:]
+	if _, rest, ok := strings.Cut(text, "\n"); ok {
+		text = rest
+	}
+	for len(text) > 0 && !utf8.RuneStart(text[0]) {
+		text = text[1:]
+	}
+	return text
 }
 
 // maxBody caps a text window's body; appending past it drops the oldest

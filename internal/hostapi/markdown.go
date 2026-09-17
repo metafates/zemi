@@ -435,11 +435,11 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 	// add places text with seg's fields, splitting it over rows
 	add := func(text string, seg Segment) {
 		piece := func(t string) Segment { seg.Text = t; return seg }
+		tw := ansi.StringWidth(text)
 		for {
 			if width >= w {
 				flush()
 			}
-			tw := ansi.StringWidth(text)
 			if tw <= w-width {
 				place(piece(text))
 				width += tw
@@ -458,8 +458,19 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 			whole := piece(cut)
 			whole.Soft = false
 			place(whole)
-			text = strings.TrimPrefix(text, cut)
 			flush()
+			// the rest is split in one pass: taking a row off the front at a
+			// time re-measured everything after it per row, so a single long
+			// line cost seconds a frame
+			rest := strings.Split(ansi.Hardwrap(strings.TrimPrefix(text, cut), max(w-indent, 1), true), "\n")
+			for _, r := range rest[:len(rest)-1] {
+				hard := piece(r)
+				hard.Soft = false
+				place(hard)
+				flush()
+			}
+			text = rest[len(rest)-1]
+			tw = ansi.StringWidth(text)
 		}
 	}
 	for _, seg := range line {
