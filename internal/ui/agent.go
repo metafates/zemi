@@ -243,13 +243,13 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{} // row -> key column
 	section, selTop, selEnd := "", 0, 0
-	cut := map[int]bool{} // rows a scrolled window may end after
+	cut, starts := map[int]bool{}, map[int]bool{} // rows a scrolled window may end after, and start at
 	for i, it := range items {
 		if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
-			cut[len(rows)] = true
 			rows = append(rows, nil)
 		}
 		start := len(rows)
+		starts[start] = true
 		if it.section != section && it.section != "" {
 			rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
 		}
@@ -330,9 +330,12 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			top = new(int)
 		}
 		*top = max(min(*top, selTop, len(rows)-limit), min(selEnd-limit, selTop), 0)
-		// end the window after a whole item, so no item shows cut and no
-		// header shows without its first item; an item taller than the
-		// window is cut anyway
+		for *top < selTop && !starts[*top] {
+			*top++
+		}
+		// start and end the window on whole items, so no item shows cut, no
+		// blank separator shows at an edge and no header shows without its
+		// first item; an item taller than the window is cut anyway
 		end := *top + limit
 		for end > *top+1 && !cut[end-1] {
 			end--

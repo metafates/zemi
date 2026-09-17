@@ -297,7 +297,8 @@ func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
 }
 
 // TestListWindowEndsAfterWholeItem: a scrolled list shows no item cut in
-// half and no header without its first item, and keeps its height.
+// half, starts on an item and shows no header without its first item, and
+// keeps its height.
 func TestListWindowEndsAfterWholeItem(t *testing.T) {
 	more := [][]hostapi.Segment{{{Text: "m1"}}, {{Text: "m2"}}, {{Text: "m3"}}}
 	for _, c := range []struct {
@@ -313,6 +314,16 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 		rows := listRows(c.items, 0, &top, c.limit)
 		if len(rows) != c.limit+1 || strings.Contains(plainSegs(slices.Concat(rows...)), c.hidden) {
 			t.Errorf("%s: %q", c.name, plainSegs(slices.Concat(rows...)))
+		}
+	}
+	// scrolling down, every window starts on an item's first row
+	items := slices.Repeat([]listItem{{label: "item", more: more[:1]}}, 5)
+	for _, limit := range []int{4, 6, 7} {
+		top := 0
+		for sel := range items {
+			if rows := listRows(items, sel, &top, limit); !strings.Contains(plainSegs(rows[0]), "item") {
+				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, plainSegs(rows[0]))
+			}
 		}
 	}
 }
