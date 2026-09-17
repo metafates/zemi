@@ -3,9 +3,11 @@ package win
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ParseKeys reads neovim key notation: plain characters are typed as they
@@ -135,4 +137,74 @@ func modifiedSpecial(k uv.KeyPressEvent) string {
 		return fmt.Sprintf("\x1b[%d;%d~", n, m)
 	}
 	return "" // vt encodes the rest itself, shift+tab included
+}
+
+// screen indexes per-screen state: 0 main, 1 alternate.
+func (w *Window) screen() int {
+	if w.term.IsAltScreen() {
+		return 1
+	}
+	return 0
+}
+
+// trackKittyKeys follows the kitty keyboard protocol's flag 1 (disambiguate)
+// per screen, the way zellij does; other flags are ignored.
+// NOTE: one bool, not the protocol's stack, so a pop after two pushes turns
+// it off; a stack per screen is the upgrade.
+func (w *Window) trackKittyKeys() {
+	on := func(p ansi.Params) bool { n, _, _ := p.Param(0, 0); return n&1 != 0 }
+	w.term.RegisterCsiHandler(ansi.Command('>', 0, 'u'), func(p ansi.Params) bool {
+		w.kittyKeys[w.screen()] = on(p)
+		return true
+	})
+	w.term.RegisterCsiHandler(ansi.Command('<', 0, 'u'), func(ansi.Params) bool {
+		w.kittyKeys[w.screen()] = false
+		return true
+	})
+	w.term.RegisterCsiHandler(ansi.Command('=', 0, 'u'), func(p ansi.Params) bool {
+		k := &w.kittyKeys[w.screen()]
+		switch mode, _, _ := p.Param(1, 1); mode {
+		case 1:
+			*k = on(p)
+		case 2:
+			*k = *k || on(p)
+		case 3:
+			*k = *k && !on(p)
+		}
+		return true
+	})
+	w.term.RegisterCsiHandler(ansi.Command('?', 0, 'u'), func(ansi.Params) bool {
+		flags := 0
+		if w.kittyKeys[w.screen()] {
+			flags = 1
+		}
+		_, _ = fmt.Fprintf(w.term.InputPipe(), "\x1b[?%du", flags)
+		return true
+	})
+}
+
+// kittyKey encodes k as CSI u for a program that turned on flag 1; "" keeps
+// the legacy bytes, which the flag keeps for unmodified text, enter, tab and
+// backspace, shifted text and functional keys such as arrows.
+func kittyKey(k uv.KeyPressEvent) string {
+	mods := k.Mod & (uv.ModShift | uv.ModAlt | uv.ModCtrl | uv.ModMeta | uv.ModHyper | uv.ModSuper)
+	switch {
+	case k.Code >= uv.KeyExtended:
+		return ""
+	case k.Code == uv.KeyEscape:
+	case mods == 0, mods == uv.ModShift && k.Text != "":
+		return ""
+	}
+	// kitty numbers super 8 and meta 32, uv the other way round
+	m := int(mods &^ (uv.ModMeta | uv.ModSuper))
+	if mods&uv.ModSuper != 0 {
+		m |= 8
+	}
+	if mods&uv.ModMeta != 0 {
+		m |= 32
+	}
+	if m == 0 {
+		return "\x1b[27u"
+	}
+	return fmt.Sprintf("\x1b[%d;%du", unicode.ToLower(k.Code), m+1)
 }

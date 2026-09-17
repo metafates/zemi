@@ -32,25 +32,39 @@ func TestParseKeys(t *testing.T) {
 	}
 }
 
-func TestLegacyKey(t *testing.T) {
+func TestKeyEncoding(t *testing.T) {
 	for _, c := range []struct {
-		name string
-		k    uv.KeyPressEvent
-		want string
+		name  string
+		kitty bool // the program turned on kitty keyboard flag 1
+		k     uv.KeyPressEvent
+		want  string
 	}{
-		{"shifted text", uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModShift}, "A"},
-		{"alt+shift+a", uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModAlt | uv.ModShift}, "\x1bA"},
-		{"shift+enter", uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModShift}, "\r"},
-		{"ctrl+alt+enter", uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModCtrl | uv.ModAlt}, "\x1b\r"},
-		{"ctrl+/", uv.KeyPressEvent{Code: '/', Mod: uv.ModCtrl}, "\x1f"},
-		{"ctrl+2", uv.KeyPressEvent{Code: '2', Mod: uv.ModCtrl}, "\x00"},
-		{"ctrl+up", uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModCtrl}, "\x1b[1;5A"},
-		{"shift+pgdn", uv.KeyPressEvent{Code: uv.KeyPgDown, Mod: uv.ModShift}, "\x1b[6;2~"},
-		{"bare enter is vt's", uv.KeyPressEvent{Code: uv.KeyEnter}, ""},
-		{"bare up is vt's", uv.KeyPressEvent{Code: uv.KeyUp}, ""},
-		{"ctrl+a is vt's", uv.KeyPressEvent{Code: 'a', Mod: uv.ModCtrl}, ""},
+		{"shifted text", false, uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModShift}, "A"},
+		{"alt+shift+a", false, uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModAlt | uv.ModShift}, "\x1bA"},
+		{"shift+enter", false, uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModShift}, "\r"},
+		{"ctrl+alt+enter", false, uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModCtrl | uv.ModAlt}, "\x1b\r"},
+		{"ctrl+/", false, uv.KeyPressEvent{Code: '/', Mod: uv.ModCtrl}, "\x1f"},
+		{"ctrl+2", false, uv.KeyPressEvent{Code: '2', Mod: uv.ModCtrl}, "\x00"},
+		{"ctrl+up", false, uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModCtrl}, "\x1b[1;5A"},
+		{"shift+pgdn", false, uv.KeyPressEvent{Code: uv.KeyPgDown, Mod: uv.ModShift}, "\x1b[6;2~"},
+		{"bare enter is vt's", false, uv.KeyPressEvent{Code: uv.KeyEnter}, ""},
+		{"bare up is vt's", false, uv.KeyPressEvent{Code: uv.KeyUp}, ""},
+		{"ctrl+a is vt's", false, uv.KeyPressEvent{Code: 'a', Mod: uv.ModCtrl}, ""},
+		{"kitty esc", true, uv.KeyPressEvent{Code: uv.KeyEscape}, "\x1b[27u"},
+		{"kitty ctrl+i", true, uv.KeyPressEvent{Code: 'i', Mod: uv.ModCtrl}, "\x1b[105;5u"},
+		{"kitty alt+shift+a", true, uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModAlt | uv.ModShift}, "\x1b[97;4u"},
+		{"kitty shift+enter", true, uv.KeyPressEvent{Code: uv.KeyEnter, Mod: uv.ModShift}, "\x1b[13;2u"},
+		{"kitty shift+tab", true, uv.KeyPressEvent{Code: uv.KeyTab, Mod: uv.ModShift}, "\x1b[9;2u"},
+		{"kitty super+s", true, uv.KeyPressEvent{Code: 's', Mod: uv.ModSuper}, "\x1b[115;9u"},
+		{"kitty keeps plain enter", true, uv.KeyPressEvent{Code: uv.KeyEnter}, ""},
+		{"kitty keeps shifted text", true, uv.KeyPressEvent{Code: 'a', Text: "A", Mod: uv.ModShift | uv.ModCapsLock}, ""},
+		{"kitty keeps ctrl+up", true, uv.KeyPressEvent{Code: uv.KeyUp, Mod: uv.ModCtrl}, ""},
 	} {
-		if got := legacyKey(c.k); got != c.want {
+		got := legacyKey(c.k)
+		if c.kitty {
+			got = kittyKey(c.k)
+		}
+		if got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}

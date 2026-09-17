@@ -7,6 +7,7 @@ package win
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -92,6 +93,7 @@ type Window struct {
 	cmd          *exec.Cmd
 	cursorHidden atomic.Bool
 	cursorStyle  int         // the last DECSCUSR parameter, 0 to 6; guarded by mu
+	kittyKeys    [2]bool     // kitty keyboard flag 1 on the main and alt screen; guarded by mu
 	mouseOn      atomic.Bool // the program asked for mouse reports
 	done         chan struct{}
 	exit         atomic.Int32 // exit code, -1 while running
@@ -193,7 +195,8 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		}
 		return false
 	})
-	w.term.RegisterEscHandler('c', func() bool { w.cursorStyle = 0; return false })
+	w.term.RegisterEscHandler('c', func() bool { w.cursorStyle, w.kittyKeys = 0, [2]bool{}; return false })
+	w.trackKittyKeys()
 	w.exit.Store(-1)
 	w.SetTitle(spec.Title)
 	if spec.Title == "" {
@@ -202,6 +205,11 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	// callbacks run inside term.Write, under mu: they must not take it
 	w.term.SetCallbacks(vt.Callbacks{
 		CursorVisibility: func(visible bool) { w.cursorHidden.Store(!visible) },
+		AltScreen: func(on bool) {
+			if on {
+				w.kittyKeys[1] = false
+			}
+		},
 		EnableMode: func(m ansi.Mode) {
 			if isMouseMode(m) {
 				w.mouseOn.Store(true)
@@ -563,7 +571,11 @@ func (w *Window) SendKey(k uv.KeyPressEvent) {
 }
 
 func (w *Window) sendKey(k uv.KeyPressEvent) {
-	if seq := legacyKey(k); seq != "" {
+	seq := legacyKey(k)
+	if w.kittyKeys[w.screen()] {
+		seq = cmp.Or(kittyKey(k), seq)
+	}
+	if seq != "" {
 		w.term.SendText(seq)
 	} else {
 		w.term.SendKey(k)

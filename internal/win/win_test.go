@@ -87,6 +87,25 @@ func TestColorQueries(t *testing.T) {
 	}
 }
 
+// TestKittyKeyboardFlag: the program queries, pushes and pops flag 1, and
+// esc reaches it as CSI 27 u only while the flag is on.
+func TestKittyKeyboardFlag(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: `stty raw -echo; printf '\033[?u\033[>1u\033[?u'; head -c 10 | tr '\033' E; printf ' A\r\n'; head -c 5 | tr '\033' E; printf '\033[<u B\r\n'; head -c 1 | tr '\033' E; printf ' C'; sleep 5`, Env: os.Environ(), Cols: 40, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(w.ID)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	for _, want := range []string{"E[?0uE[?1u A", "E[27u B", "E C"} {
+		if text, ok := w.WaitText(ctx, want); !ok {
+			t.Fatalf("want %q:\n%s", want, text)
+		}
+		w.SendKey(uv.KeyPressEvent{Code: uv.KeyEscape})
+	}
+}
+
 func TestWindowKillsOnClose(t *testing.T) {
 	m := &Manager{}
 	w, err := m.Open(Spec{Cmd: "sleep 30", Env: os.Environ()})
