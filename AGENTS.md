@@ -460,7 +460,9 @@ included, until `ui.window.unfocus`, and hears the host terminal's focus in and 
 `winDrag` (move a float; resize a float, kept on screen and at least `minFloatW` by `minFloatH`, a vsplit
 or a split; `edgeShape` sets the OSC 22 resize pointer over a float's border), a release without motion focuses or closes on
 ×, mouse events inside are forwarded (wheel becomes arrows for programs that never asked
-for the mouse), and a paste goes to the program with bracketing when it asked. The model's
+for the mouse), and a paste goes to the program with bracketing when it asked, as does
+`SendText` of several lines (the trailing newline outside the brackets, so it still
+submits, but an editor's auto-indent never sees the lines one by one). The model's
 `window` tool gates `open` as `tool.bash` (same rules and modes as bash, and a mode-settled
 open runs sandboxed through `win.Spec.Wrap`, recorded as `Window.Sandboxed`) and
 `keys`/`mouse`/`send` as `tool.window`, `Unsandboxed` (so no mode settles it) unless the

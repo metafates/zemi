@@ -591,7 +591,7 @@ Actions:
 - read: the screen as text plus the cursor. Always read after acting before deciding the next step.
 - keys: press keys in neovim notation, e.g. "ihello<esc>:wq<cr>" or "<c-b>:q<cr>".
 - mouse: click, press, release or move at a cell, or scroll with button wheel_up or wheel_down.
-- send: raw text, as a paste without bracketing; prefer keys.
+- send: raw text; several lines go in as one bracketed paste, so an editor does not re-indent them. Prefer keys.
 - wait: block until the program exits.
 - close: end it. list: the windows you opened.
 A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,

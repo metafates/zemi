@@ -724,7 +724,10 @@ func (w *Window) Size() (cols, rows int) {
 	return w.w, w.h
 }
 
-// SendText types text into the program, as if pasted without bracketing.
+// SendText types text into the program. Text with a line break in it goes
+// in as a paste, bracketed when the program asked for that, or an editor's
+// auto-indent mangles every line after the first; a trailing newline stays
+// outside the brackets so it still submits.
 func (w *Window) SendText(text string) error {
 	if w.body != nil {
 		return errText
@@ -734,7 +737,13 @@ func (w *Window) SendText(text string) error {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.term.SendText(text)
+	body := strings.TrimRight(text, "\r\n")
+	if !strings.ContainsAny(body, "\r\n") {
+		w.term.SendText(text)
+		return nil
+	}
+	w.term.Paste(body)
+	w.term.SendText(text[len(body):])
 	return nil
 }
 

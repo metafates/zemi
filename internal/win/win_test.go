@@ -250,6 +250,47 @@ func TestPasteToIdleProgram(t *testing.T) {
 	}
 }
 
+// TestSendTextPastesLines: one line types as it is, several lines go in as
+// one paste, bracketed when the program asked for that.
+func TestSendTextPastesLines(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		mode    string
+		send    string
+		bytes   int
+		bracket bool
+	}{
+		{"several lines, program wants brackets", `\033[?2004h`, "one\ntwo\n", 20, true},
+		{"several lines, program wants none", "", "one\ntwo\n", 8, false},
+		{"one line types raw", `\033[?2004h`, "one\n", 4, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := &Manager{}
+			defer m.CloseAll()
+			cmd := fmt.Sprintf(`stty raw -echo; printf '%sRDY\r\n'; head -c %d | tr '\033' E; printf ' END'; sleep 5`, c.mode, c.bytes)
+			w, err := m.Open(Spec{Cmd: cmd, Env: os.Environ(), Cols: 40, Rows: 6})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			if text, ok := w.WaitText(ctx, "RDY"); !ok {
+				t.Fatalf("program never started:\n%s", text)
+			}
+			if err := w.SendText(c.send); err != nil {
+				t.Fatal(err)
+			}
+			text, ok := w.WaitText(ctx, "END")
+			if !ok {
+				t.Fatalf("program never read it all:\n%s", text)
+			}
+			if !strings.Contains(text, "one") || strings.Contains(text, "E[200~") != c.bracket {
+				t.Fatalf("bracketed=%v:\n%s", c.bracket, text)
+			}
+		})
+	}
+}
+
 // TestTextWindow: a text window holds text instead of a program, takes a
 // replacement and an append in place, keeps its scroll inside what is
 // drawn, and refuses what only a program can take.
