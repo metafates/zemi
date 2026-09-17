@@ -153,21 +153,24 @@ func (a *App) questionKey(key, text string) {
 		st.typing = true
 		st.input.insert(text)
 	case q.Multi && key == "space":
+		// the marks are the answer, so leaving the tab with tab keeps them
 		st.picked[st.sel] = !st.picked[st.sel]
+		st.answered = st.marked(q)
 	case q.Multi && key == "enter":
-		var labels []string
-		for i, o := range q.Options {
-			if st.picked[i] {
-				labels = append(labels, o.Label)
-			}
-		}
-		if len(labels) == 0 {
-			labels = []string{q.Options[st.sel].Label}
-		}
-		a.answerQuestion(strings.Join(labels, ", "))
+		a.answerQuestion(cmp.Or(st.marked(q), q.Options[st.sel].Label))
 	case key == "enter":
 		a.answerQuestion(q.Options[st.sel].Label)
 	}
+}
+
+func (st *qState) marked(q tools.Question) string {
+	var labels []string
+	for i, o := range q.Options {
+		if st.picked[i] {
+			labels = append(labels, o.Label)
+		}
+	}
+	return strings.Join(labels, ", ")
 }
 
 func (a *App) reviewKey(key string) {

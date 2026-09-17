@@ -126,6 +126,7 @@ func TestQuestionBatch(t *testing.T) {
 		return q
 	}
 	qs := []tools.Question{pick("a", "a2"), pick("b", "b2")}
+	qs[1].Multi = true
 	tab, back := tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab, Mod: uv.ModShift}
 	for _, c := range []struct {
 		name string
@@ -136,6 +137,8 @@ func TestQuestionBatch(t *testing.T) {
 		{"a question can be changed from review", []any{"enter", "enter", "k", "k", "enter", "j", "enter", "enter"}, questionResult{[]string{"a2", "b"}, true}},
 		{"tab skips a question, it submits unanswered", []any{tab, "enter", "enter"}, questionResult{[]string{"", "b"}, true}},
 		{"going back keeps the typed answer", []any{"j", "j", "hi", "enter", back, " there", "enter", tab, "enter"}, questionResult{[]string{"hi there", ""}, true}},
+		{"marks count when tab leaves the question", []any{tab, "space", "j", "space", tab, "enter"}, questionResult{[]string{"", "b, b2"}, true}},
+		{"unmarking everything unanswers it", []any{tab, "space", "space", tab, "enter"}, questionResult{[]string{"", ""}, true}},
 		{"esc on review dismisses", []any{"enter", "enter", "esc"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
