@@ -203,9 +203,9 @@ func (a *App) detailAction(idx int) {
 	m, _ := d.o.Items[idx].(map[string]any)
 	run, _ := m["run"].(string)
 	fill, _ := m["fill"].(string)
-	pi := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID+"#detail" == d.o.ID })
+	pi := len(a.overlays) - 1 // the parent: a detail view opens right on top of it
 	switch {
-	case run == "" && fill == "" || pi < 0:
+	case run == "" && fill == "":
 		return
 	case fill == "" && a.overlays[pi].o.Reload != nil:
 		a.runOverlayRow(d.o, idx)
