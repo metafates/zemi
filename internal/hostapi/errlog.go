@@ -32,13 +32,15 @@ type errLog struct {
 }
 
 // RecordError keeps one error (sanitized) and raises the badge. The same
-// message twice in a row is kept once: a failure recorded where it happens
+// message twice in a row is kept once, at the later time: a failure recorded where it happens
 // also reaches the UI as a toast, which records a long one.
 func (h *Host) RecordError(source, msg string) {
 	l := &h.errs
 	l.mu.Lock()
 	msg = sanitize.String(msg)
-	if n := len(l.entries); n == 0 || l.entries[n-1].msg != msg {
+	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
+		l.entries[n-1].at = time.Now() // the badge is back, so the row says when
+	} else {
 		l.entries = append(l.entries, errEntry{time.Now(), source, msg})
 		if len(l.entries) > errLogMax {
 			l.entries = l.entries[len(l.entries)-errLogMax:]

@@ -622,10 +622,10 @@ func (h *Host) LSPCommandsStep() lua.BootStep {
 						if p == nil && tries == 0 {
 							return fmt.Errorf("no language server %q", name)
 						}
-						if p == nil {
-							return nil // capped out earlier; the counter is clear now
+						if p != nil { // else it capped out earlier; the counter is clear now
+							p.close()
 						}
-						p.close()
+						h.Notify("info", "LSP", name+" starts again on the next file it serves")
 						return nil
 					}
 					ui := h.hooks()

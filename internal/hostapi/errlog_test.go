@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestErrorLog: recorded errors raise the badge, the log keeps only the
-// newest errLogMax, keeps a repeat once, and opening /errors clears the badge.
+// newest errLogMax, keeps a repeat once at its later time, and opening /errors clears the badge.
 func TestErrorLog(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}
@@ -21,8 +22,9 @@ func TestErrorLog(t *testing.T) {
 	for i := range errLogMax + 5 {
 		h.RecordError("widget chat", fmt.Sprintf("render failed %d\x1b[31m", i))
 	}
+	h.errs.entries[errLogMax-1].at = time.Time{}
 	h.RecordError("toast", fmt.Sprintf("render failed %d", errLogMax+4))
-	if !h.HasUnseenErrors() || len(h.errs.entries) != errLogMax {
+	if !h.HasUnseenErrors() || len(h.errs.entries) != errLogMax || h.errs.entries[errLogMax-1].at.IsZero() {
 		t.Fatalf("unseen=%v entries=%d", h.HasUnseenErrors(), len(h.errs.entries))
 	}
 	if h.errs.entries[0].msg != "render failed 5" {

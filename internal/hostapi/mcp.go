@@ -395,7 +395,12 @@ func (h *Host) MCPCommandsStep() lua.BootStep {
 					case "":
 						return h.openMCP()
 					case "restart":
-						return h.restartMCP(strings.TrimSpace(name))
+						name = strings.TrimSpace(name)
+						if err := h.restartMCP(name); err != nil {
+							return err
+						}
+						h.Notify("info", "MCP", "restarting "+name)
+						return nil
 					case "sign-in":
 						return h.signInMCP(strings.TrimSpace(name))
 					case "sign-out":
