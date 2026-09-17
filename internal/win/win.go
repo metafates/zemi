@@ -6,6 +6,7 @@
 package win
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 
@@ -73,9 +75,13 @@ type Window struct {
 
 	title atomic.Pointer[string] // the program may rename itself (OSC 0/2)
 
-	mu   sync.Mutex // guards term, w, h
-	term *vt.Emulator
-	w, h int
+	m     *Manager
+	mu    sync.Mutex // guards term, w, h, place, up
+	term  *vt.Emulator
+	w, h  int
+	place string  // image placeholders to write after the graphics command
+	up    *upload // a chunked image in progress
+	gone  bool    // closed, so it may queue no images; guarded by m.gmu
 
 	ptmx         *os.File
 	inMu         sync.Mutex // guards in: input waiting for the program to read
@@ -111,6 +117,13 @@ type Manager struct {
 	wins   []*Window
 	seq    int
 	OnExit func(w *Window) // runs on the wait goroutine after the program exits
+
+	kitty atomic.Bool // the host terminal draws kitty placeholders (kitty.go)
+	// gmu guards the image state; lock order is w.mu, then gmu
+	gmu   sync.Mutex
+	gfx   strings.Builder
+	slots [256]imgSlot // by host image id
+	next  int
 }
 
 // hostTermEnv names the host terminal's identity. A window is its own
@@ -155,12 +168,13 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin, Sandboxed: spec.Wrap != nil,
+		m: m, ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin, Sandboxed: spec.Wrap != nil,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),
 	}
 	w.term.SetScrollbackSize(2000)
+	w.term.RegisterApcHandler(w.graphics)
 	w.exit.Store(-1)
 	w.SetTitle(spec.Title)
 	if spec.Title == "" {
@@ -190,6 +204,9 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 	env := slices.DeleteFunc(slices.Clone(spec.Env), func(kv string) bool {
 		return slices.ContainsFunc(hostTermEnv, func(p string) bool { return strings.HasPrefix(kv, p) })
 	})
+	if m.kitty.Load() {
+		env = append(env, "TERM_PROGRAM=ghostty") // what image tools read as kitty graphics with placeholders
+	}
 	cmd.Env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
 	if spec.Wrap != nil {
 		if err := spec.Wrap(cmd); err != nil {
@@ -240,13 +257,31 @@ func (w *Window) readLoop() {
 	for {
 		n, err := w.ptmx.Read(buf)
 		if n > 0 {
-			w.mu.Lock()
-			_, _ = w.term.Write(buf[:n])
-			w.mu.Unlock()
+			w.write(buf[:n])
 		}
 		if err != nil {
 			return
 		}
+	}
+}
+
+// write feeds output in pieces ending at a backslash, so image placeholders
+// land right after the ST of their graphics command and before what follows.
+// Writing them earlier, between ST's ESC and backslash, would garble both.
+func (w *Window) write(p []byte) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for len(p) > 0 {
+		i := bytes.IndexByte(p, '\\') + 1
+		if i == 0 {
+			i = len(p)
+		}
+		_, _ = w.term.Write(p[:i])
+		if w.place != "" && p[i-1] == '\\' {
+			_, _ = w.term.WriteString(w.place)
+			w.place = ""
+		}
+		p = p[i:]
 	}
 }
 
@@ -323,6 +358,7 @@ func (m *Manager) Close(id int) bool {
 	if w == nil {
 		return false
 	}
+	m.dropImages(w)
 	w.kill()
 	return true
 }
@@ -405,7 +441,7 @@ func (w *Window) ScrollbackText(n int) string {
 		for _, c := range sb.Line(i) {
 			b.WriteString(c.Content)
 		}
-		lines = append(lines, strings.TrimRight(b.String(), " "))
+		lines = append(lines, strings.TrimRight(StripPlaceholders(b.String()), " "))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -597,10 +633,14 @@ func (w *Window) Screen() Screen {
 			if text == "" {
 				continue // the tail of a wide cell
 			}
-			if cur == nil || !c.Style.Equal(&curStyle) {
-				row = append(row, Span{SGR: sgrParams(c.Style)})
+			style := c.Style
+			if strings.HasPrefix(text, string(kitty.Placeholder)) {
+				text, style = w.placeholderCell(text, style)
+			}
+			if cur == nil || !style.Equal(&curStyle) {
+				row = append(row, Span{SGR: sgrParams(style)})
 				cur = &row[len(row)-1]
-				curStyle = c.Style
+				curStyle = style
 			}
 			cur.Text += text
 		}
@@ -621,7 +661,7 @@ func (w *Window) Text() string {
 		for _, s := range row {
 			b.WriteString(s.Text)
 		}
-		lines[i] = strings.TrimRight(b.String(), " ")
+		lines[i] = strings.TrimRight(StripPlaceholders(b.String()), " ")
 	}
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
 }
