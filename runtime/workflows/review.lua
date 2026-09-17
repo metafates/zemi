@@ -1,7 +1,8 @@
--- Review uncommitted changes (or the diff against args, a git ref) from three
--- angles in parallel, then keep only the findings that hold up in the code.
+-- Review uncommitted changes (or everything since the merge base with args, a
+-- git ref) from three angles in parallel, then keep only the findings that hold
+-- up in the code.
 local base = type(args) == "string" and args ~= "" and args or nil
-local diff = base and ("git diff " .. base) or "git diff HEAD"
+local diff = base and ("git diff --merge-base " .. base) or "git diff HEAD"
 
 -- One agent reads the changes, so the reviewers can stay read-only and
 -- never stop to ask for permission.
@@ -9,6 +10,7 @@ phase("collect changes")
 local changes, err = agent(
   "List the changes in this repository: run `git status --short` and `" .. diff .. "`. "
     .. "For every changed file give its path and a precise summary of each change with line numbers. "
+    .. "Read each untracked (??) file from git status in full and summarize it as a new file. "
     .. "Do not review or judge anything.",
   { agent = "general", description = "collect changes" }
 )
