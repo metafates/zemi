@@ -13,6 +13,7 @@ func TestSanitize(t *testing.T) {
 		{"bidi override alone is stripped", "a\u202eb", "ab", "ab"},
 		{"encoded c1 csi becomes space", "a\u009bb", "a b", "a b"},
 		{"raw c1 byte becomes space", "a\x9bb", "a b", "a b"},
+		{"image placeholder becomes space", "a\U0010EEEE\u0305b", "a \u0305b", "a \u0305b"},
 		{"em dash and wide runes kept", "a \u2014 \u4e16", "a \u2014 \u4e16", "a \u2014 \u4e16"},
 		{"zero width space kept", "a\u200bb", "a\u200bb", "a\u200bb"},
 		{"bidi isolates and marks stripped", "a\u2066b\u2069\u200fc", "abc", "abc"},

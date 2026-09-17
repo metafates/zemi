@@ -9,7 +9,8 @@ import (
 )
 
 // String removes ANSI escape sequences (CSI, OSC, other C1 controls) and
-// collapses C0 controls other than newline and tab into spaces. Runes are
+// collapses C0 controls other than newline and tab, and kitty image
+// placeholders, into spaces. Runes are
 // preserved otherwise, including wide characters.
 func String(s string) string {
 	if !needsWork(s) {
@@ -24,7 +25,8 @@ func String(s string) string {
 		}
 		r, size := utf8.DecodeRuneInString(s[i:])
 		switch {
-		case r == utf8.RuneError && size <= 1, r < 0x20 && r != '\n' && r != '\t', r >= 0x7f && r < 0xa0:
+		case r == utf8.RuneError && size <= 1, r < 0x20 && r != '\n' && r != '\t', r >= 0x7f && r < 0xa0, r == 0x10eeee:
+			// a kitty image placeholder draws whichever image its color names
 			b.WriteByte(' ')
 		case unicode.Is(unicode.Bidi_Control, r), r >= 0xe0000 && r <= 0xe007f, r >= 0xfff9 && r <= 0xfffb, r == 0xad:
 			// bidi controls reorder text; tag and annotation runes hide it. A soft

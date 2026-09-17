@@ -436,7 +436,8 @@ reach bubbletea), and writes placeholder cells into the emulator right after the
 (`Window.write`). The cells are text, so moving, clipping, hiding and scrolling need nothing
 image-specific; `Screen()` maps a cell's fg to the window's own host id (another window's or
 an unknown id renders blank), and `Text`, scrollback, selection copy and screenshots read them
-as blanks. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id eviction queue `d=I`, and quitting sends them before leaving the alternate screen (`App.leave`)
+as blanks. Everywhere else `sanitize.String` blanks placeholders (`windowRows` keeps them), so
+model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphics()` with `tea.Raw`; close and id eviction queue `d=I`, and quitting sends them before leaving the alternate screen (`App.leave`)
 (eviction takes the sending window's own oldest image first, so one window's churn cannot blank another's).
 
 ### Subagents, workflows, background tasks, MCP (internal/hostapi: subagent.go, workflow.go, tasks.go, mcp.go; internal/mcp)

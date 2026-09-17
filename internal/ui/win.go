@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi/kitty"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -198,7 +199,12 @@ func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment 
 				if sp.SGR != "" {
 					hl = hostapi.SGRPrefix + sp.SGR
 				}
-				row = append(row, hostapi.Segment{Text: sanitize.String(sp.Text), HL: hl})
+				// placeholders survive: Screen keeps only the window's own images
+				parts := strings.Split(sp.Text, string(kitty.Placeholder))
+				for i, p := range parts {
+					parts[i] = sanitize.String(p)
+				}
+				row = append(row, hostapi.Segment{Text: strings.Join(parts, string(kitty.Placeholder)), HL: hl})
 			}
 		}
 		row = padSegs(truncateSegs(row, width), width)
