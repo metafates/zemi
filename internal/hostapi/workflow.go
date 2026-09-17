@@ -724,14 +724,11 @@ func (h *Host) openWorkflows() error {
 	}
 	var items []any
 	for _, w := range h.workflows() {
-		desc := w.Source
-		if d := strings.Join(strings.Fields(w.Description), " "); d != "" {
-			desc += " · " + d
-		}
 		items = append(items, map[string]any{
-			"text":   w.Name,
-			"desc":   desc,
-			"detail": strings.TrimLeft(w.Description+"\n\npath: "+TildePath(w.Path), "\n"),
+			"text":    w.Name,
+			"desc":    w.Description,
+			"section": sourceSection(w.Source),
+			"detail":  strings.TrimLeft(w.Description+"\n\npath: "+TildePath(w.Path), "\n"),
 			"actions": []any{
 				map[string]any{"text": "Run", "run": "workflow " + w.Name},
 				map[string]any{"text": "Run with arguments", "fill": "/workflow " + w.Name + " "},

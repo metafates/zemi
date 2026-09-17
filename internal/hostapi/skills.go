@@ -392,8 +392,17 @@ func (h *Host) openSkills() {
 	}
 }
 
+// sourceSection names a list section after where its rows come from.
+func sourceSection(source string) string {
+	if source == "" {
+		return ""
+	}
+	return strings.ToUpper(source[:1]) + source[1:]
+}
+
 func (h *Host) skillItems() []any {
 	all := h.skillsReg.list()
+	slices.SortStableFunc(all, func(a, b skills.Skill) int { return cmp.Compare(a.Source, b.Source) })
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
@@ -405,7 +414,8 @@ func (h *Host) skillItems() []any {
 		items = append(items, map[string]any{
 			"text":    s.Name,
 			"key":     key,
-			"desc":    string(s.Source) + " · " + s.Description,
+			"desc":    s.Description,
+			"section": sourceSection(string(s.Source)),
 			"detail":  fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md"))),
 			"actions": actions,
 			"run":     toggle,
