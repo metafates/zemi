@@ -1041,8 +1041,8 @@ zemi.win = {}
 ---@field markdown? boolean Render it as markdown (the chat's renderer: headings, lists, tables, code); plain text is only wrapped.
 ---@field kind? "split"|"vsplit"|"float" As for zemi.win.open.
 ---@field title? string Default: "text".
----@field cols? integer Float only: requested width; unset, the float sizes to the text.
----@field rows? integer Float only: requested height; unset, the float sizes to the text.
+---@field cols? integer Float only: requested width; unset, the window sizes to the text.
+---@field rows? integer Float only: requested height; unset, the window sizes to the text.
 ---@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it).
 ---@field hidden? boolean Start off screen.
 
@@ -1103,7 +1103,9 @@ function Win:text() end
 ---@param text string
 ---@return true|nil, string|nil
 function Win:set_text(text) end
---- Add to a text window's body, as set_text does for the whole of it.
+--- Add to a text window's body, as set_text does for the whole of it. The
+--- view follows the end unless the user scrolled up; set_text goes back to
+--- the top.
 ---@param text string
 ---@return true|nil, string|nil
 function Win:append(text) end
@@ -1142,8 +1144,8 @@ function Win:close() end
 function zemi.win.open(spec) end
 
 --- Open a window whose body is text, not a program: no pty, nothing to
---- exit, and Win:set_text replaces the text while it shows. A float that
---- asked for no size takes the cells the text needs, within the frame.
+--- exit, and Win:set_text replaces the text while it shows. One nobody
+--- sized takes the cells the text needs, at most half the box it sits in.
 ---@param spec zemi.WinTextSpec
 ---@return zemi.Win|nil, string|nil
 function zemi.win.text(spec) end

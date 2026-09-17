@@ -152,6 +152,20 @@ func (a *App) textFloatSize(wn *win.Window, cols, rows, w int) (int, int) {
 	return cols, rows
 }
 
+// textSpan is the cells a text panel wants along its box's axis: for a
+// split the rendered lines plus its title row, for a vsplit the width of
+// its longest line. The solver caps both.
+func (a *App) textSpan(wn *win.Window, row bool, cross, avail int) int {
+	if !row {
+		return len(a.textLines(wn, max(cross, 2))) + 1
+	}
+	want := minVsplitW
+	for _, line := range a.textLines(wn, max(min(avail, textFloatW), 2)) {
+		want = max(want, segsWidth(line))
+	}
+	return want
+}
+
 // textLines renders a text window's body at width: markdown through the
 // renderer the chat uses, plain text word-wrapped. Both are cached by
 // (text, width), so a frame that changes neither re-renders nothing.
@@ -257,8 +271,8 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 		state = a.unfocusKey() + " to leave"
 	case a.mouseEnabled():
 		state = "click to focus"
-	default: // no clicks reach zemi
-		state, closeMark = "/win to focus", " "
+	default: // no clicks reach zemi, so the × would not act
+		state, closeMark = "/win to focus or close", " "
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
 	right := " " + state + closeMark

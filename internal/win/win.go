@@ -78,13 +78,13 @@ type Layout struct {
 // body is a text window's content: no process, no emulator. The UI renders
 // and wraps it every frame, so a replacement redraws in place and a resize
 // re-wraps.
-// NOTE: the view stays where it is when the text grows; a log-like panel
-// that should follow its tail needs a sticky-bottom flag here.
 type body struct {
-	mu   sync.Mutex
-	text string
-	md   bool
-	top  int // first rendered line shown
+	mu     sync.Mutex
+	text   string
+	md     bool
+	top    int  // first rendered line shown
+	maxTop int  // the last top the UI could draw, from Top
+	tail   bool // follow the end as the text grows
 }
 
 // Window is one running program and its screen.
@@ -236,7 +236,9 @@ func (w *Window) Content() (string, bool) {
 	return w.body.text, w.body.md
 }
 
-// SetText replaces a text window's body, or adds to it when add is set.
+// SetText replaces a text window's body, or adds to it when add is set. A
+// replacement shows from the top; an append follows the end when the view
+// was already there, so a growing log stays on its newest lines.
 func (w *Window) SetText(text string, add bool) error {
 	if w.body == nil {
 		return errText
@@ -245,7 +247,9 @@ func (w *Window) SetText(text string, add bool) error {
 	w.body.mu.Lock()
 	defer w.body.mu.Unlock()
 	if add {
-		text = w.body.text + text
+		text, w.body.tail = w.body.text+text, w.body.top >= w.body.maxTop
+	} else {
+		w.body.top, w.body.tail = 0, false
 	}
 	w.body.text = text
 	return nil
@@ -256,7 +260,7 @@ func (w *Window) SetText(text string, add bool) error {
 const maxScroll = 1 << 30
 
 // Scroll moves a text window's view by lines; the UI clamps it to the
-// rendered text when it draws.
+// rendered text when it draws. Scrolling to the end follows it again.
 func (w *Window) Scroll(lines int) {
 	if w.body == nil {
 		return
@@ -264,6 +268,7 @@ func (w *Window) Scroll(lines int) {
 	w.body.mu.Lock()
 	defer w.body.mu.Unlock()
 	w.body.top = max(0, min(w.body.top+lines, maxScroll))
+	w.body.tail = w.body.top >= w.body.maxTop
 }
 
 // Top is the first rendered line to draw, clamped to maxTop and kept
@@ -274,6 +279,10 @@ func (w *Window) Top(maxTop int) int {
 	}
 	w.body.mu.Lock()
 	defer w.body.mu.Unlock()
+	w.body.maxTop = maxTop
+	if w.body.tail {
+		w.body.top = maxTop
+	}
 	w.body.top = max(0, min(w.body.top, maxTop))
 	return w.body.top
 }

@@ -270,8 +270,15 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 				continue
 			}
 			kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeFill}, min: map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]}
-			if f := it.wn.Layout().Frac; f > 0 {
+			switch f := it.wn.Layout().Frac; {
+			case f > 0:
 				kids[i].size = hostapi.Size{Kind: hostapi.SizeCells, N: int(math.Round(f * float64(avail)))}
+			case it.wn.IsText():
+				// a panel nobody sized takes what its text needs, at most half
+				// the box: a five-line result is not half the screen
+				kids[i].size = hostapi.Size{Kind: hostapi.SizeContent}
+				kids[i].want = a.textSpan(it.wn, row, cross, avail)
+				kids[i].max = max(avail/2, kids[i].min)
 			}
 		}
 		mins, gone := 0, -1

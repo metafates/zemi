@@ -434,9 +434,12 @@ emulator, the UI renders and wraps the text itself every frame (`App.textRows`, 
 through `Host.Markdown`, the renderer and cache the chat uses), so `SetText` replaces the
 body in place, a resize re-wraps it and the segments carry the theme's colors and the
 copy and hover rules. A text window never exits; the keys and the wheel scroll it
-(`Window.Scroll`, `Top` clamps to what is drawn), it refuses program input, and a float
-that asked for no size takes the cells its text needs (`textFloatSize`, at most
-`textFloatW`). `win.Manager` on the host owns them; they outlive turns and
+(`Window.Scroll`, `Top` clamps to what is drawn and follows the end while `body.tail` holds,
+which an append keeps and a scroll up drops, so a growing log stays on its newest lines and a
+replacement starts at the top), it refuses program input, and one that
+asked for no size fits its body: a float takes the cells its text needs (`textFloatSize`, at
+most `textFloatW`), a split or vsplit with no `frac` asks the solver for `textSpan` cells,
+capped at half its box, so a five-line result is not half the screen. `win.Manager` on the host owns them; they outlive turns and
 reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carries a
 `Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: splits and
 vsplits go where the layout tree has a `windows` slot of their kind (by default vsplits are

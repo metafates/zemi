@@ -432,3 +432,46 @@ func TestTextWindowRenders(t *testing.T) {
 		t.Fatalf("the end of the text is not reachable:\n%s", got)
 	}
 }
+
+// TestTextPanelSizes: a text split or vsplit nobody sized takes the cells
+// its body needs, never more than half its box, and a frac still wins.
+func TestTextPanelSizes(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		kind string
+		text string
+		frac float64
+		want int
+	}{
+		{"short split", win.KindSplit, "pass 3\nfail 0\ntook 1.2s", 0, 4},
+		{"long split caps at half", win.KindSplit, strings.Repeat("line\n", 40), 0, 13},
+		{"frac wins", win.KindSplit, "pass 3", 0.8, 21},
+		{"short vsplit", win.KindVSplit, "pass 3\nfail 0", 0, minVsplitW},
+		{"wide vsplit caps at half", win.KindVSplit, strings.Repeat("x", 90), 0, 39},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			defer a.host.Wins.CloseAll()
+			wn, err := a.host.Wins.OpenText(win.Spec{Text: c.text, Kind: c.kind})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.frac > 0 {
+				_ = wn.SetLayout(func(l *win.Layout) { l.Frac = c.frac })
+			}
+			a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+			a.Frame()
+			i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
+			if i < 0 {
+				t.Fatal("the panel was not drawn")
+			}
+			got := a.winRects[i].h + 1 // the rect is the body; the title row is its own
+			if c.kind == win.KindVSplit {
+				got = a.winRects[i].w
+			}
+			if got != c.want {
+				t.Fatalf("panel is %d cells, want %d", got, c.want)
+			}
+		})
+	}
+}

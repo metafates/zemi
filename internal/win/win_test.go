@@ -323,8 +323,13 @@ func TestTextWindow(t *testing.T) {
 	if top := w.Top(2); top != 2 {
 		t.Fatalf("scroll clamped to %d, want 2", top)
 	}
-	if top := w.Top(9); top != 2 {
-		t.Fatalf("clamping must stick: top %d, want 2", top)
+	// the view sits at the end, so it follows text that grew
+	if top := w.Top(9); top != 9 {
+		t.Fatalf("top %d, want the end at 9", top)
+	}
+	w.Scroll(-3)
+	if top, stuck := w.Top(4), w.Top(9); top != 4 || stuck != 4 {
+		t.Fatalf("clamping must stick: top %d then %d, want 4", top, stuck)
 	}
 	w.SendKey(uv.KeyPressEvent{Code: uv.KeyHome})
 	if top := w.Top(9); top != 0 {
@@ -335,5 +340,33 @@ func TestTextWindow(t *testing.T) {
 	defer cancel()
 	if err := w.Wait(ctx); err != nil {
 		t.Fatalf("a closed text window must stop its waiters: %v", err)
+	}
+}
+
+// TestTextTailFollows: an appended panel stays on its newest lines, a
+// replacement goes back to the top, and a view the user scrolled up stays
+// put until they scroll back to the end.
+func TestTextTailFollows(t *testing.T) {
+	var m Manager
+	w, err := m.OpenText(Spec{Text: "l1\nl2\nl3\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the UI draws three lines and Top reports the first one it shows
+	draw := func(lines int) int { return w.Top(max(lines-3, 0)) }
+	draw(3)
+	for _, c := range []struct {
+		name string
+		do   func() int
+		want int
+	}{
+		{"append follows", func() int { _ = w.SetText("l4\nl5\n", true); return draw(5) }, 2},
+		{"scrolled up stays", func() int { w.Scroll(-2); _ = w.SetText("l6\n", true); return draw(6) }, 0},
+		{"scrolled back follows", func() int { w.Scroll(99); draw(6); _ = w.SetText("l7\n", true); return draw(7) }, 4},
+		{"replacement starts at the top", func() int { _ = w.SetText("a\nb\nc\nd\ne\n", false); return draw(5) }, 0},
+	} {
+		if got := c.do(); got != c.want {
+			t.Fatalf("%s: view starts at line %d, want %d", c.name, got, c.want)
+		}
 	}
 }
