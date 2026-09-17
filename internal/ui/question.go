@@ -256,7 +256,7 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 		}
 		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, len(items)*3+1)...)
 		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
-		body = append(body, blank, hintLine("enter", enter, "shift+tab", "back", "esc", "cancel"))
+		body = append(body, blank, hintLine(boxInner(w), "enter", enter, "shift+tab", "back", "esc", "cancel"))
 		return box()
 	}
 
@@ -298,6 +298,6 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	default:
 		hints = slices.Concat([]string{"enter", "answer"}, tabs, []string{"esc", "cancel"})
 	}
-	body = append(body, blank, hintLine(hints...))
+	body = append(body, blank, hintLine(boxInner(w), hints...))
 	return box()
 }

@@ -390,7 +390,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		badge += " "
 	}
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
+		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine(boxInner(w), "enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
 	// borders, the blank row, the hint, the counter and the filter line, and
@@ -463,7 +463,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	case st.o.OnSelect != nil:
 		esc = "cancel"
 	}
-	body = append(append(body, list...), nil, hintLine(append(hints, "esc", esc)...))
+	body = append(append(body, list...), nil, hintLine(boxInner(w), append(hints, "esc", esc)...))
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 }
 

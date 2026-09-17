@@ -180,7 +180,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	if len(mr.undo) > 0 {
 		hints = append(hints, "u", "undo")
 	}
-	lines = append(lines, nil, padSegs(hintLine(append(hints, "esc", "close")...), widest))
+	lines = append(lines, nil, padSegs(hintLine(boxInner(w), append(hints, "esc", "close")...), widest))
 	return hostBox(" Memory ", "Host:Title", "", lines, w)
 }
 

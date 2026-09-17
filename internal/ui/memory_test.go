@@ -31,6 +31,16 @@ func reviewAnswer(t *testing.T, done chan []hostapi.MemoryRow) map[string]string
 	}
 }
 
+// openReview opens the memory screen on rows and returns the channel its
+// answer arrives on.
+func openReview(t *testing.T, app *App, rows []hostapi.MemoryRow) chan []hostapi.MemoryRow {
+	t.Helper()
+	done := make(chan []hostapi.MemoryRow, 1)
+	go func() { done <- app.ReviewMemories(rows) }()
+	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	return done
+}
+
 // TestGoldenMemoryReviewOverlay pins the Go-owned memory screen (DESIGN §8,
 // §10.4): a keeps the suggestion, d forgets the stored memory, u undoes,
 // and closing hands the decisions back by row id.
@@ -43,9 +53,7 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 		{ID: "m2", Scope: "user", Kind: "preference", Origin: "user",
 			Text: "the user prefers short replies", Tags: []string{"style"}},
 	}
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() { done <- app.ReviewMemories(items) }()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, items)
 
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
@@ -80,11 +88,7 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 // that does not exist.
 func TestMemoryReviewDropAccepted(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() {
-		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "learned", Text: "note", Queued: true}})
-	}()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "learned", Text: "note", Queued: true}})
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -98,15 +102,11 @@ func TestMemoryReviewDropAccepted(t *testing.T) {
 // back to the first one left.
 func TestMemoryReviewForgetAndWrap(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() {
-		done <- app.ReviewMemories([]hostapi.MemoryRow{
-			{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
-			{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-			{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
-		})
-	}()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, []hostapi.MemoryRow{
+		{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+	})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a forget · d keep") {
@@ -128,14 +128,10 @@ func TestMemoryReviewForgetAndWrap(t *testing.T) {
 // everywhere, u takes it back, and the answer carries the new scope.
 func TestMemoryReviewScopeToggle(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() {
-		done <- app.ReviewMemories([]hostapi.MemoryRow{
-			{ID: "m2", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
-			{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
-		})
-	}()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, []hostapi.MemoryRow{
+		{ID: "m2", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+	})
 	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // m2, the suggestion, goes everywhere
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "fact · everywhere · learned") || !strings.Contains(frame, "s only this project") {
@@ -156,14 +152,34 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 	}
 }
 
+// TestMemoryReviewScopeFixed: s leaves a suggestion that forgets or
+// replaces a memory in that memory's scope, and on a narrow screen the
+// hint gives up its middle keys before esc.
+func TestMemoryReviewScopeFixed(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 20)
+	done := openReview(t, app, []hostapi.MemoryRow{
+		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "r1", Scope: "project", Kind: "fact", Origin: "learned", Text: "new note (replaces m1)", Queued: true, Replaces: true},
+		{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+	})
+	for range 3 {
+		app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "s only this project · esc close") {
+		t.Fatalf("narrow hint:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := reviewAnswer(t, done); len(got) != 1 || got["s1"] != " user" {
+		t.Fatalf("answer = %v", got)
+	}
+}
+
 // TestMemoryReviewUndoAll: undoing every action closes with no decisions.
 func TestMemoryReviewUndoAll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() {
-		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"}})
-	}()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"}})
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -174,9 +190,7 @@ func TestMemoryReviewUndoAll(t *testing.T) {
 
 func TestMemoryReviewEmpty(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() { done <- app.ReviewMemories(nil) }()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, nil)
 
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
@@ -197,9 +211,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	}
 	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned",
 		Text: "run **go test** before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() { done <- app.ReviewMemories(items) }()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	done := openReview(t, app, items)
 
 	app.renderSync(t)
 	first := app.Frame()

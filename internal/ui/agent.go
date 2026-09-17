@@ -525,15 +525,15 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)
 	}
-	hints := []string{"enter", "confirm", "esc", "deny"}
+	hints := []string{"enter", "confirm"}
 	if room := chatH - fixed - len(tail) + 1; len(content) > max(room, 1) {
 		room = max(room-1, 1) // the row that says which lines show
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
 		more := fmt.Sprintf("  lines %d-%d of %d", pa.scroll+1, pa.scroll+room, len(content))
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
-		hints = append([]string{"pgup/pgdn", "scroll"}, hints...)
+		hints = append(hints, "pgup/pgdn", "scroll")
 	}
-	tail = append(append(tail, list...), blank, hintLine(hints...))
+	tail = append(append(tail, list...), blank, hintLine(inner, append(hints, "esc", "deny")...))
 	// panels span the box, and the box fits its content (at least 56 wide):
 	// a padded panel counts by its text, other rows whole as hostBoxW counts them
 	fit := 56
@@ -642,14 +642,19 @@ func permNote(reason string) (string, string) {
 	return reason, "Host:Hint"
 }
 
-// hintLine is a footer of key/label pairs: "enter confirm · esc deny".
-func hintLine(pairs ...string) []hostapi.Segment {
+// hintLine is a footer of key/label pairs: "enter confirm · esc deny". The
+// pairs before the last give way, nearest to it first, until the line fits
+// w cells, so the last one (esc) always shows.
+func hintLine(w int, pairs ...string) []hostapi.Segment {
 	var out []hostapi.Segment
 	for i := 0; i+1 < len(pairs); i += 2 {
 		if i > 0 {
 			out = append(out, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
 		}
 		out = append(out, hostapi.Segment{Text: pairs[i], HL: "Host:HintKey"}, hostapi.Segment{Text: " " + pairs[i+1], HL: "Host:Hint"})
+	}
+	if n := len(pairs); n >= 4 && segsWidth(out) > w {
+		return hintLine(w, append(pairs[:n-4:n-4], pairs[n-2:]...)...)
 	}
 	return out
 }
@@ -771,6 +776,6 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 		}
 	}
 	esc := map[bool]string{false: "close", true: "clear"}[mp.active] // esc clears an open filter first
-	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(append(hints, "esc", esc)...))
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(boxInner(w), append(hints, "esc", esc)...))
 	return hostBox(" Model ", "Host:Title", "", body, w)
 }
