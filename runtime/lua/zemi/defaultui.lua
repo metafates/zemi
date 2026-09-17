@@ -296,7 +296,7 @@ zemi.ui.widget.register({
       segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title" }
       segs[#segs + 1] = { text = " " .. cmd, hl = "Comment" }
     end
-    add(ctx.pending_memory, "learned", "/memory")
+    add(ctx.pending_memory, "to review", "/memory")
     if #segs == 0 then return empty() end
     return { segs }
   end,

@@ -181,7 +181,7 @@ func (h *Host) healthChecks() []healthCheck {
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add("warn", "learning", fmt.Sprintf("%d memories wait in /memory", mem))
+		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "suggestion", "suggestions")))
 		out[len(out)-1].run = "memory"
 	} else {
 		add("ok", "learning", "nothing waiting for review")
