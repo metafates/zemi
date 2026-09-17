@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -320,7 +321,6 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 
 	// First open: two rows, the queued proposal first. Mark nothing.
-	ui.reviewDecisions = nil
 	h.openMemoryReview()
 	if len(ui.reviewItems) != 1 || len(ui.reviewItems[0]) != 2 {
 		t.Fatalf("review rows: %+v", ui.reviewItems)
@@ -335,17 +335,31 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 		t.Fatalf("no-mark review changed the store: %d rows", len(rows))
 	}
 
-	// Second open: accept the proposal, delete the remembered note.
-	ui.reviewDecisions = map[string]string{
-		ui.reviewItems[0][0].ID: "accept",
-		ui.reviewItems[0][1].ID: "delete",
+	// Second open: move the remembered note everywhere, keep the proposal here.
+	moved := slices.Clone(ui.reviewItems[0])
+	moved[1].Scope = "user"
+	ui.reviewResult = moved
+	h.openMemoryReview()
+	if rows := projectMemories(t, h); len(rows) != 0 {
+		t.Fatalf("moved note still in the project: %+v", rows)
 	}
+	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 1 || rows[0].ID != moved[1].ID {
+		t.Fatalf("moved note not in the user store: %+v", rows)
+	}
+
+	// Third open: accept the proposal, delete the moved note.
+	ui.reviewResult = slices.Clone(ui.reviewItems[1])
+	ui.reviewResult[0].Action = "accept"
+	ui.reviewResult[1].Action = "delete"
 	h.openMemoryReview()
 	if queued := len(h.memoryProposals()); queued != 0 {
 		t.Fatalf("proposals left: %d", queued)
 	}
 	if rows := projectMemories(t, h); len(rows) != 1 || rows[0].Text != "queued proposal text" {
 		t.Fatalf("after accept+delete: %+v", rows)
+	}
+	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 0 {
+		t.Fatalf("delete missed the user store: %+v", rows)
 	}
 }
 
@@ -356,7 +370,7 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	if err := h.DB.AddProposal(&store.Proposal{ID: "p1", Kind: "memory", Payload: string(payload)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.acceptProposal("p1"); err == nil {
+	if _, err := h.acceptProposal("p1", ""); err == nil {
 		t.Fatal("accept stored a memory without origin")
 	}
 	if props := h.memoryProposals(); len(props) != 1 || props[0].ID != "p1" {

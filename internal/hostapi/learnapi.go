@@ -46,7 +46,7 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			h.Notify("info", "learn", "proposal rejected")
 			return luaResult(L, nil)
 		}
-		res, err := h.acceptProposal(id)
+		res, err := h.acceptProposal(id, "")
 		if err != nil {
 			return luaResult(L, err)
 		}

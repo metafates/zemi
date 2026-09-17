@@ -42,7 +42,7 @@ type UIHooks interface {
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	PickModel(items []ModelOption, current string) (string, bool)
-	ReviewMemories(items []MemoryRow) map[string]string // row id -> accept, reject or delete
+	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string

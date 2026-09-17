@@ -12,11 +12,18 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// reviewAnswer waits for the host-side answer of a memory review.
-func reviewAnswer(t *testing.T, done chan map[string]string) map[string]string {
+// reviewAnswer waits for the host-side answer of a memory review and
+// returns the rows that changed as id -> "action scope".
+func reviewAnswer(t *testing.T, done chan []hostapi.MemoryRow) map[string]string {
 	t.Helper()
 	select {
-	case got := <-done:
+	case rows := <-done:
+		got := map[string]string{}
+		for _, r := range rows {
+			if r.Action != "" || r.Scope != "project" {
+				got[r.ID] = r.Action + " " + r.Scope
+			}
+		}
 		return got
 	case <-time.After(2 * time.Second):
 		t.Fatal("review answer not delivered")
@@ -36,7 +43,7 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 		{ID: "m2", Scope: "user", Kind: "preference", Origin: "user",
 			Text: "the user prefers short replies", Tags: []string{"style"}},
 	}
-	done := make(chan map[string]string, 1)
+	done := make(chan []hostapi.MemoryRow, 1)
 	go func() { done <- app.ReviewMemories(items) }()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 
@@ -60,7 +67,7 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := reviewAnswer(t, done); len(got) != 2 || got["m1"] != "accept" || got["m2"] != "delete" {
+	if got := reviewAnswer(t, done); len(got) != 2 || got["m1"] != "accept project" || got["m2"] != "delete user" {
 		t.Fatalf("decisions = %v", got)
 	}
 	if app.memReview != nil {
@@ -73,7 +80,7 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 // that does not exist.
 func TestMemoryReviewDropAccepted(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan map[string]string, 1)
+	done := make(chan []hostapi.MemoryRow, 1)
 	go func() {
 		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "learned", Text: "note", Queued: true}})
 	}()
@@ -81,15 +88,47 @@ func TestMemoryReviewDropAccepted(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := reviewAnswer(t, done); got["m1"] != "reject" {
+	if got := reviewAnswer(t, done); got["m1"] != "reject project" {
 		t.Fatalf("decisions = %v", got)
+	}
+}
+
+// TestMemoryReviewScopeToggle: s moves a row between this project and
+// everywhere, u takes it back, and the answer carries the new scope.
+func TestMemoryReviewScopeToggle(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 16)
+	done := make(chan []hostapi.MemoryRow, 1)
+	go func() {
+		done <- app.ReviewMemories([]hostapi.MemoryRow{
+			{ID: "m2", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+			{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+		})
+	}()
+	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // m2, the suggestion, goes everywhere
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "fact · everywhere · learned") || !strings.Contains(frame, "s only this project") {
+		t.Fatalf("toggled scope not shown:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // m1 goes everywhere
+	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // and back
+	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // does not close
+	if app.memReview == nil {
+		t.Fatal("enter closed the memory screen")
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := reviewAnswer(t, done); len(got) != 1 || got["m2"] != "accept user" {
+		t.Fatalf("answer = %v", got)
 	}
 }
 
 // TestMemoryReviewUndoAll: undoing every action closes with no decisions.
 func TestMemoryReviewUndoAll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan map[string]string, 1)
+	done := make(chan []hostapi.MemoryRow, 1)
 	go func() {
 		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"}})
 	}()
@@ -104,7 +143,7 @@ func TestMemoryReviewUndoAll(t *testing.T) {
 
 func TestMemoryReviewEmpty(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan map[string]string, 1)
+	done := make(chan []hostapi.MemoryRow, 1)
 	go func() { done <- app.ReviewMemories(nil) }()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 
@@ -127,7 +166,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	}
 	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned",
 		Text: "run **go test** before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
-	done := make(chan map[string]string, 1)
+	done := make(chan []hostapi.MemoryRow, 1)
 	go func() { done <- app.ReviewMemories(items) }()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 

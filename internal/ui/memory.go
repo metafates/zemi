@@ -1,11 +1,13 @@
 // memory.go is the Go-owned memory screen (DESIGN §8, §10.4): fixed
 // chrome, no Lua participates in drawing or answering it. Suggestions from
 // the reflector come first (a keeps one, d drops it), then what zemi
-// remembers (d forgets). A key acts at once and u undoes; the decisions
-// reach the host by row id when the screen closes.
+// remembers (d forgets); s moves a row between this project and everywhere.
+// A key acts at once and u undoes; the edited rows reach the host when the
+// screen closes.
 package ui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -15,14 +17,15 @@ import (
 )
 
 type memReviewPrompt struct {
-	items   []hostapi.MemoryRow
-	sel     int
-	top     int               // first row shown
-	actions map[string]string // row id -> accept | reject | delete
-	undo    []memUndo
-	answer  chan map[string]string
+	items  []hostapi.MemoryRow
+	gone   []hostapi.MemoryRow // dropped rows, still answered
+	sel    int
+	top    int // first row shown
+	undo   []memUndo
+	answer chan []hostapi.MemoryRow
 }
 
+// memUndo is a row as it was before a key changed it, and where it was.
 type memUndo struct {
 	at   int
 	item hostapi.MemoryRow
@@ -30,59 +33,63 @@ type memUndo struct {
 
 // ReviewMemories implements hostapi.UIHooks: blocks the caller (the
 // host's review goroutine) until the screen closes.
-func (a *App) ReviewMemories(items []hostapi.MemoryRow) map[string]string {
-	ch := make(chan map[string]string, 1)
+func (a *App) ReviewMemories(items []hostapi.MemoryRow) []hostapi.MemoryRow {
+	ch := make(chan []hostapi.MemoryRow, 1)
 	// the caller keeps reading its own slice after this returns, so the
 	// screen edits a copy
 	rows := slices.Clone(items)
 	a.await(func() tea.Cmd {
-		a.memReview = &memReviewPrompt{items: rows, actions: map[string]string{}, answer: ch}
+		a.memReview = &memReviewPrompt{items: rows, answer: ch}
 		return nil
 	})
 	return <-ch
 }
 
-// answerMemReview closes the screen and hands back what was done.
+// answerMemReview closes the screen and hands back every row as edited.
 func (a *App) answerMemReview() {
 	mr := a.memReview
 	a.memReview = nil
 	if mr != nil && mr.answer != nil {
-		mr.answer <- mr.actions
+		mr.answer <- append(mr.items, mr.gone...)
 	}
 	a.frameGen++
 }
 
+// suggested reports whether a row still waits in the Suggested section.
+func suggested(r hostapi.MemoryRow) bool { return r.Queued && r.Action != "accept" }
+
 // markMemory acts on the selected row: keep moves a suggestion into
 // Remembered so the screen shows what zemi will know without reopening it;
 // drop rejects a suggestion or forgets a memory, taking the row off the
-// list. The host applies the decisions by id when the screen closes.
-func (a *App) markMemory(keep bool) {
+// list; scope flips between this project and everywhere.
+func (a *App) markMemory(key string) {
 	mr := a.memReview
 	if mr == nil || mr.sel >= len(mr.items) {
 		return
 	}
 	it := mr.items[mr.sel]
-	switch {
-	case keep && !it.Queued:
+	if key == "keep" && !suggested(it) {
 		return
-	case keep:
-		mr.actions[it.ID] = "accept"
-	case it.Queued, mr.actions[it.ID] == "accept":
-		// dropping a row accepted a moment ago drops the suggestion; it
-		// was never stored, so there is nothing to forget
-		mr.actions[it.ID] = "reject"
-	default:
-		mr.actions[it.ID] = "delete"
 	}
 	mr.undo = append(mr.undo, memUndo{mr.sel, it})
-	mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
-	if keep {
-		it.Queued = false
+	switch key {
+	case "scope":
+		mr.items[mr.sel].Scope = map[bool]string{true: "project", false: "user"}[it.Scope == "user"]
+		return
+	case "keep":
+		it.Action = "accept"
+		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
 		at := rememberedAt(mr.items)
 		mr.items = slices.Insert(mr.items, at, it)
 		if at <= mr.sel {
 			mr.sel++ // the row moved past the cursor; stay on the next suggestion
 		}
+	default:
+		// a suggestion kept a moment ago was never stored, so dropping it
+		// rejects it; there is nothing to forget
+		it.Action = map[bool]string{true: "reject", false: "delete"}[it.Queued]
+		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
+		mr.gone = append(mr.gone, it)
 	}
 	mr.sel = max(0, min(mr.sel, len(mr.items)-1))
 }
@@ -90,7 +97,7 @@ func (a *App) markMemory(keep bool) {
 // rememberedAt is where the Remembered section starts: suggestions come
 // first, so an accepted row lands right after the last of them.
 func rememberedAt(items []hostapi.MemoryRow) int {
-	if i := slices.IndexFunc(items, func(r hostapi.MemoryRow) bool { return !r.Queued }); i >= 0 {
+	if i := slices.IndexFunc(items, func(r hostapi.MemoryRow) bool { return !suggested(r) }); i >= 0 {
 		return i
 	}
 	return len(items)
@@ -103,11 +110,9 @@ func (a *App) undoMemory() {
 	}
 	u := mr.undo[len(mr.undo)-1]
 	mr.undo = mr.undo[:len(mr.undo)-1]
-	delete(mr.actions, u.item.ID)
-	// an accepted row is still on the list, one section down
-	if i := slices.IndexFunc(mr.items, func(r hostapi.MemoryRow) bool { return r.ID == u.item.ID }); i >= 0 {
-		mr.items = slices.Delete(mr.items, i, i+1)
-	}
+	other := func(r hostapi.MemoryRow) bool { return r.ID == u.item.ID }
+	mr.items = slices.DeleteFunc(mr.items, other)
+	mr.gone = slices.DeleteFunc(mr.gone, other)
 	mr.items = slices.Insert(mr.items, min(u.at, len(mr.items)), u.item)
 	mr.sel = u.at
 }
@@ -116,10 +121,15 @@ func (a *App) undoMemory() {
 // kind, scope, origin and tags under it.
 func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	mr := a.memReview
+	n := rememberedAt(mr.items)
+	sections := map[bool]string{
+		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
+		false: fmt.Sprintf("Remembered (%d)", len(mr.items)-n),
+	}
 	items := make([]listItem, 0, len(mr.items))
 	for _, it := range mr.items {
 		var meta []hostapi.Segment
-		if mr.actions[it.ID] == "accept" {
+		if it.Action == "accept" {
 			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 		}
 		info := []string{it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
@@ -128,7 +138,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		}
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
 		items = append(items, listItem{
-			section: map[bool]string{true: "Suggested by zemi", false: "Remembered"}[it.Queued],
+			section: sections[suggested(it)],
 			// the markdown rows are cached: append to a copy
 			more: append(slices.Clip(a.host.Markdown(it.Text, boxInner(w)-2)), meta),
 		})
@@ -136,7 +146,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	// borders, the blank row, the hint and the counter take five rows
 	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))
 	if len(mr.items) == 0 {
-		lines = append(lines, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})
+		lines = append(lines, []hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}})
 	}
 	// the hint pads to the list, so changing hints never resizes the box
 	widest := 0
@@ -146,19 +156,21 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 
 	var hints []string
 	if mr.sel < len(mr.items) {
-		switch it := mr.items[mr.sel]; {
-		case it.Queued:
+		it := mr.items[mr.sel]
+		switch {
+		case suggested(it):
 			hints = append(hints, "a", "keep", "d", "drop")
-		case mr.actions[it.ID] == "accept":
+		case it.Queued:
 			hints = append(hints, "d", "drop")
 		default:
 			hints = append(hints, "d", "forget")
 		}
+		hints = append(hints, "s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"])
 	}
 	if len(mr.undo) > 0 {
 		hints = append(hints, "u", "undo")
 	}
-	lines = append(lines, nil, padSegs(hintLine(append(hints, "esc", "done")...), widest))
+	lines = append(lines, nil, padSegs(hintLine(append(hints, "esc", "close")...), widest))
 	return hostBox(" Memory ", "Host:Title", "", lines, w)
 }
 

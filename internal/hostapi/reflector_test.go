@@ -353,7 +353,7 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 			if len(props) != 1 || len(projectMemories(t, h)) != 1 {
 				t.Fatalf("want one queued proposal and nothing stored: %d", len(props))
 			}
-			if _, err := h.acceptProposal(props[0].ID); err != nil {
+			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
 				t.Fatalf("accept: %v", err)
 			}
 			if old, _ := h.DB.GetMemory(oldID); old.SupersededBy != props[0].ID {

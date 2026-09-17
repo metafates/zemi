@@ -201,7 +201,7 @@ func TestFilterKeys(t *testing.T) {
 func TestHoverTargets(t *testing.T) {
 	long := "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
 	memories := func(app *App) {
-		app.memReview = &memReviewPrompt{actions: map[string]string{}, items: []hostapi.MemoryRow{
+		app.memReview = &memReviewPrompt{items: []hostapi.MemoryRow{
 			{ID: "a", Scope: "user", Kind: "fact", Origin: "user", Text: "short one", Queued: true},
 			{ID: "b", Scope: "user", Kind: "fact", Origin: "user", Text: long},
 		}}

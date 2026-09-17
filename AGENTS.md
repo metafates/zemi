@@ -384,7 +384,8 @@ what the screen says.
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message.
 - **Proposals persist.** Memory proposals live in the scope DB's `proposals` table until
-  `/memory` (a/d, decisions by row id) or `zemi.learn.decide`; `refreshPending` caches the
+  `/memory` (a/d/s, the edited rows come back with `Action` and `Scope`; a scope move adds
+  before it deletes) or `zemi.learn.decide`; `refreshPending` caches the
   statusline counts.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for
   the latest session, never on quit; `reflectDue` compares the message count with kv

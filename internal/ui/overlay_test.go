@@ -120,7 +120,7 @@ func TestTopChromeTakesInput(t *testing.T) {
 	}
 
 	a.openModelPick(make([]hostapi.ModelOption, 3), "", make(chan modelPick, 1))
-	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3), actions: map[string]string{}}
+	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3)}
 	a.wheelChrome(1)
 	if a.memReview.sel != 1 || a.modelPick.selected != 0 {
 		t.Fatalf("wheel: memory sel=%d picker sel=%d", a.memReview.sel, a.modelPick.selected)

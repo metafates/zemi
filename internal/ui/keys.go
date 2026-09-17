@@ -139,12 +139,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		switch key {
 		case "a", "y":
-			a.markMemory(true)
+			a.markMemory("keep")
 		case "d", "x", "backspace", "delete":
-			a.markMemory(false)
+			a.markMemory("drop")
+		case "s":
+			a.markMemory("scope")
 		case "u":
 			a.undoMemory()
-		case "esc", "q", "enter":
+		case "esc", "q":
 			a.answerMemReview()
 		}
 	case "question":

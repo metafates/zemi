@@ -7,7 +7,7 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
 
 ## The loop
 
-1. **Capture.** `/memory <note>` stores a project fact immediately. You (the agent)
+1. **Capture.** `/memory <note>` stores a project fact immediately (`s` in `/memory` makes it apply everywhere). You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
    `decision`) and one specific fact (up to 500 characters); under the default autonomy it
    is queued for the user's review. `memory_search` finds earlier memories. `memory_update`
@@ -18,9 +18,9 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
    - `/memory`: every memory whole, rendered as markdown, with its kind, scope, origin and
-     tags under it; a bar marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
-     forgets a stored memory, `u` undoes the last mark; enter, esc or `q` closes the screen
-     and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
+     tags under it; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
+     forgets a stored memory, `s` moves it between this project and everywhere, `u` undoes
+     the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
    - `/skills`: drafted skills start disabled; space toggles, enter opens one (Enable or Disable, Use now),
      or `/skills enable|disable <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model

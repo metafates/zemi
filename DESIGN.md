@@ -1488,8 +1488,10 @@ startup, since the session still has unseen messages.
 - Pending memory proposals persist in their scope's store (`proposals`
   table) until accepted or rejected, so restarts never lose them; the
   statusline shows how many wait for `/memory`. In `/memory`, `a` accepts
-  a proposal, `d` rejects one or deletes a stored memory, `u` undoes the
-  last mark, and enter, esc or `q` closes the screen and applies the marks.
+  a proposal, `d` rejects one or deletes a stored memory, `s` moves one
+  between this project and everywhere (a stored memory is added to the
+  other store before it is deleted from its own), `u` undoes the last
+  mark, and esc or `q` closes the screen and applies the marks.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (500 chars), kind from a fixed enum, provenance required, tags scrubbed
   like text, and

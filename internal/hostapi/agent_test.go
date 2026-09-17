@@ -468,22 +468,22 @@ func TestStoreBackedState(t *testing.T) {
 
 // fakeUI is a UIHooks stub driving the host-side overlay paths in tests.
 type fakeUI struct {
-	askAllowed      bool
-	askBy           string
-	asked           []PermRequest
-	pickID          string
-	pickOK          bool
-	pickItems       []ModelOption
-	reviewItems     [][]MemoryRow
-	reviewDecisions map[string]string
-	qAsked          []tools.Question
-	qAnswer         string
-	qOK             bool
-	opened          []Overlay
-	closed          []string
-	closedLua       int
-	reloads         int
-	screenshot      string
+	askAllowed   bool
+	askBy        string
+	asked        []PermRequest
+	pickID       string
+	pickOK       bool
+	pickItems    []ModelOption
+	reviewItems  [][]MemoryRow
+	reviewResult []MemoryRow
+	qAsked       []tools.Question
+	qAnswer      string
+	qOK          bool
+	opened       []Overlay
+	closed       []string
+	closedLua    int
+	reloads      int
+	screenshot   string
 }
 
 func (f *fakeUI) Notify(level, title, body string) {}
@@ -510,9 +510,9 @@ func (f *fakeUI) PickModel(items []ModelOption, current string) (string, bool) {
 	return f.pickID, f.pickOK
 }
 
-func (f *fakeUI) ReviewMemories(items []MemoryRow) map[string]string {
+func (f *fakeUI) ReviewMemories(items []MemoryRow) []MemoryRow {
 	f.reviewItems = append(f.reviewItems, items)
-	return f.reviewDecisions
+	return f.reviewResult
 }
 
 func (f *fakeUI) Screenshot() string { return f.screenshot }

@@ -5,6 +5,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,7 +34,8 @@ type MemoryRow struct {
 	Origin string // "user" or "learned"
 	Text   string
 	Tags   []string
-	Queued bool // proposal awaiting review, not yet stored
+	Queued bool   // proposal awaiting review, not yet stored
+	Action string // set by the review screen: accept, reject, delete or ""
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -168,7 +170,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "memory", "remembered"+redactNote(res.Scrubbed))
+	h.Notify("info", "memory", "remembered for this project"+redactNote(res.Scrubbed)+". s in /memory makes it apply everywhere.")
 	return nil
 }
 
@@ -212,31 +214,54 @@ func (h *Host) openMemoryReview() {
 		return
 	}
 	rows := h.memoryRows()
-	decisions := ui.ReviewMemories(rows)
-	var accepted, rejected, deleted int
+	was := map[string]MemoryRow{}
 	for _, r := range rows {
-		switch decisions[r.ID] {
-		case "accept":
-			if _, err := h.acceptProposal(r.ID); err != nil {
+		was[r.ID] = r
+	}
+	var accepted, rejected, deleted, moved int
+	for _, r := range ui.ReviewMemories(rows) {
+		old, ok := was[r.ID]
+		if !ok {
+			continue
+		}
+		if r.Scope != "user" {
+			r.Scope = "project"
+		}
+		switch {
+		case old.Queued && r.Action == "reject":
+			if h.takeProposal(r.ID) != nil {
+				rejected++
+			}
+		case old.Queued && r.Action == "accept":
+			if _, err := h.acceptProposal(r.ID, r.Scope); err != nil {
 				h.Log.Warn("memory", "accept failed", map[string]any{"id": r.ID, "error": err.Error()})
 				continue
 			}
 			accepted++
-		case "reject":
-			if h.takeProposal(r.ID) != nil {
-				rejected++
+		case old.Queued && r.Scope != old.Scope:
+			if res := h.takeProposal(r.ID); res != nil {
+				res.Memory.Scope = r.Scope
+				h.queueProposal(res)
+				moved++
 			}
-		case "delete":
-			if db := h.memoryDB(r.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
+		case old.Queued:
+		case r.Action == "delete":
+			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
 				deleted++
 			}
+		case r.Scope != old.Scope:
+			if err := h.moveMemory(r.ID, old.Scope, r.Scope); err != nil {
+				h.Log.Warn("memory", "move failed", map[string]any{"id": r.ID, "error": err.Error()})
+				continue
+			}
+			moved++
 		}
 	}
 	var parts []string
 	for _, c := range []struct {
 		n    int
 		what string
-	}{{accepted, "accepted"}, {rejected, "rejected"}, {deleted, "deleted"}} {
+	}{{accepted, "accepted"}, {rejected, "rejected"}, {deleted, "deleted"}, {moved, "moved"}} {
 		if c.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.what))
 		}
@@ -267,13 +292,36 @@ func (h *Host) takeProposal(id string) *learn.Result {
 	return nil
 }
 
-// acceptProposal stores a pending proposal. A store failure other than a
-// duplicate puts it back in the queue, so the decision can be made again.
-func (h *Host) acceptProposal(id string) (*learn.Result, error) {
+// moveMemory stores a memory in the other scope, then deletes it from the
+// old one; a failed add leaves it where it was.
+func (h *Host) moveMemory(id, from, to string) error {
+	src, dst := h.memoryDB(from), h.memoryDB(to)
+	if src == nil || dst == nil {
+		return errors.New("memory store unavailable")
+	}
+	m, err := src.GetMemory(id)
+	if err != nil {
+		return err
+	}
+	m.Scope = to
+	// a copy already there makes the move a merge
+	if !h.duplicateMemory(*m) {
+		if err := dst.AddMemory(m); err != nil {
+			return err
+		}
+	}
+	return src.DeleteMemory(id)
+}
+
+// acceptProposal stores a pending proposal, in scope when one is given. A
+// store failure other than a duplicate puts it back in the queue, so the
+// decision can be made again.
+func (h *Host) acceptProposal(id, scope string) (*learn.Result, error) {
 	res := h.takeProposal(id)
 	if res == nil {
 		return nil, fmt.Errorf("no such proposal %q", id)
 	}
+	res.Memory.Scope = cmp.Or(scope, res.Memory.Scope)
 	if err := h.storeProposal(res); err != nil {
 		if !errors.Is(err, errDuplicateMemory) {
 			h.queueProposal(res)
