@@ -137,7 +137,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		if i < len(o.ItemText) {
 			it.label = o.ItemText[i]
 		}
-		it.label = sanitize.String(it.label)
+		it.label = strings.Join(strings.Fields(sanitize.String(it.label)), " ") // a newline would break the box
 		st.items = append(st.items, it)
 		st.texts = append(st.texts, strings.TrimSpace(it.label+"  "+it.desc))
 	}

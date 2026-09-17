@@ -343,6 +343,11 @@ func TestOverlayNavigation(t *testing.T) {
 		{"a read-only body scrolls by line",
 			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down", "pgdown"},
 			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].scroll == 11] }},
+		{"a multi-line label stays on one row",
+			hostapi.Overlay{Items: []any{"fix: empty input\n\nThe parser crashed."}}, nil,
+			func(a *App) string {
+				return map[bool]string{false: "label kept its newlines"}[a.overlays[0].items[0].label == "fix: empty input The parser crashed."]
+			}},
 		{"Selected picks the first item",
 			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2}, nil,
 			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] }},
