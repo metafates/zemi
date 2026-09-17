@@ -396,7 +396,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out string) {
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 	// memoryAuto reads the child's tools: a web agent's report is outside text
-	s.h.recordToolCall(s.sid, name, ok, out)
+	s.h.recordToolCall(s.sid, name, ok)
 }
 
 func (s *subagentHooks) StepStart() {

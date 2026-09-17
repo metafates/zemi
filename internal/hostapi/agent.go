@@ -667,7 +667,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	}
 	ag.mu.Unlock()
 	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id})
-	s.h.recordToolCall(s.h.AgentSessionID(), name, ok, output)
+	s.h.recordToolCall(s.h.AgentSessionID(), name, ok)
 }
 
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
@@ -867,12 +867,12 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 
 // recordToolCall stores one tool telemetry row in session sid (each tool
 // call gets its own "tool" message row so tool_calls.message_id stays a
-// real FK).
-func (h *Host) recordToolCall(sid, name string, ok bool, output string) {
+// real FK). The output is not kept: the history row already holds it.
+func (h *Host) recordToolCall(sid, name string, ok bool) {
 	if h.DB == nil || sid == "" {
 		return
 	}
-	parts, _ := json.Marshal(map[string]any{"tool": name, "output": output})
+	parts, _ := json.Marshal(map[string]any{"tool": name})
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	tc := &store.ToolCall{Tool: name, InputJSON: "{}", OK: ok}
 	if !ok {

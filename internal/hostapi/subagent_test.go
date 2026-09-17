@@ -363,7 +363,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	h.Settings.SetHost("memory.autonomy", "auto")
 	h.SetProjectTrusted(true)
 	sid := seedSession(t, h)
-	h.recordToolCall(sid, "fetch", true, "")
+	h.recordToolCall(sid, "fetch", true)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 			if toolResult {
