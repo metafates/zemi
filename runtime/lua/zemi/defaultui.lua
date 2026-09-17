@@ -320,11 +320,14 @@ zemi.ui.widget.register({
     local queued = #ag.steering - ag.reports
     if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end
     local bullet = ctx.pulse and { text = "◦ ", hl = "Comment" } or { text = "• ", hl = "Title" }
-    return { {
-      bullet,
-      { text = label, hl = "Comment", effect = "shimmer" },
-      { text = "  " .. table.concat(parts, " · "), hl = "Comment" },
-    } }
+    return {
+      {
+        bullet,
+        { text = label, hl = "Comment", effect = "shimmer" },
+        { text = "  " .. table.concat(parts, " · "), hl = "Comment" },
+      },
+      { { text = "" } }, -- a blank row between it and the composer
+    }
   end,
 })
 

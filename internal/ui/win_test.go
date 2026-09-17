@@ -194,7 +194,9 @@ func TestWidgetWidthIsMainColumn(t *testing.T) {
 	if _, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, mainW := a.winColumns(a.width); a.widgetWidth() != mainW || mainW >= 120 {
+	a.height = 30
+	a.Frame()
+	if mainW := a.winRects[0].x - 1; a.widgetWidth() != mainW || mainW >= 120 {
 		t.Fatalf("widget width %d, main column %d", a.widgetWidth(), mainW)
 	}
 }

@@ -864,9 +864,9 @@ zemi.ui.theme.set("tokyonight")
 
 UI extensibility contract:
 
-- The screen is a stack: regions (`header`, `chat`, `working`, `composer`, `statusline`)
-  composed by Go with ultraviolet constraints, plus an overlay
-  stack. The shipped chat and statusline are default Lua registrations
+- The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
+  `statusline`) and window slots that Go solves and paints every frame (§8), plus an
+  overlay stack. The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/defaultui.lua`, replaceable by id. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a
@@ -1009,7 +1009,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   widget while a turn runs: pulsing bullet, shimmering label naming the
   current activity, elapsed time, interrupt key, queue depth; it reads
   `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`,
-  and a blank row follows it), composer (3..8 rows, textarea grows), statusline
+  and it ends with a blank row), composer (1..8 rows plus a "+n lines" row), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
@@ -1026,6 +1026,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped)
   except the Go-only toggle-list reload (`/skills`); Go still draws the box,
   the origin badge, the filter and the hints.
+- **Layout tree** (`internal/ui/layout.go`): boxes (row or col, optional separators)
+  hold leaves: a widget region, the composer, the statusline bar, a window slot, a
+  spacer. Each child claims cells, a percent, its content rows or a weighted fill share,
+  clamped to min and max; a box too small takes cells from fill first, then percent,
+  content and cells, the last child first, down to min and then to 0. The solver is
+  integer arithmetic on the Update goroutine and never fails. The stage node (the chat
+  over the split windows by default) is where prompts, overlays, toasts, completion
+  popups and centered floats go. The tree is Go's for now (`hostapi.DefaultLayout`).
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message; `View`
   asks each visible region for its cached widget lines; Lua `render` runs
@@ -1126,7 +1134,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   sanitized the same way, and the log sink collapses C0 control bytes
   (newlines included: one record, one line) and strips C1, so a `tail -f`
   of the log cannot execute escape sequences or forge entries.
-- **Golden tests**: headless mode renders regions into ultraviolet buffers;
+- **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
 

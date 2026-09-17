@@ -418,11 +418,11 @@ what the screen says.
 A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go
 emulator (charmbracelet/x/vt). `win.Manager` on the host owns them; they outlive turns and
 reloads (only Lua `on_exit` callbacks are generation-tagged). Each window carries a
-`Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: vsplits are
-full-height columns beside the main column (compose lays the main column out at `mainW`
-and joins the columns at the end), splits take rows at the bottom of the chat area,
-floats go over everything at their position or centered; `shares` divides an axis so the
-main area keeps its minimum. `Screen()` turns cells into `sgr:` segments so colors reach
+`Layout` (kind, hidden, frac, cols/rows, x/y) that the UI reads per frame: splits and
+vsplits go where the layout tree has a `windows` slot of their kind (by default vsplits are
+full-height columns beside the main column, splits take rows at the bottom of the stage),
+floats go over everything at their position or centered over the stage; `shares` sizes a
+slot's windows so their siblings keep their min. `Screen()` turns cells into `sgr:` segments so colors reach
 the renderer untouched; during a synchronized update (mode 2026) it returns the screen
 from before, for at most a second. The focused window's cursor is the host's own (`View.Cursor`, in
 the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn
@@ -565,6 +565,17 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send`
   and `zemi.command.run` of host commands go through `GoSafe`.
 
+### Screen layout (internal/hostapi/layout.go, internal/ui/layout.go)
+
+`compose` draws a layout tree (`hostapi.DefaultLayout`, Go-only for now): boxes lay children
+out in a row or column, leaves are a widget region, the composer, the statusline bar, a
+window slot or a spacer. `span` sizes one box per frame from cells, percent, content
+(measured from cached renders, along a column only) and weighted fill, clamped to min and
+max; when the children do not fit it takes cells from fill, then percent, content and
+cells, the last child first. It never fails (`FuzzSpan`). The stage node is where prompts,
+overlays, toasts, popups and centered floats go; widgets render at its width. Hit testing
+never reads the tree: it reads the painted segments.
+
 ### Rewind, plan mode, composer bridge
 
 - **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a
@@ -578,8 +589,8 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   prompt section only saves wasted attempts.
 - **Composer bridge**: Lua reads a snapshot the UI publishes (`SetComposerSnapshot` after
   key and paste handling) and edits through `UIHooks.ComposerEdit`, applied on the UI
-  goroutine. Completion popups float over the chat (`floatPopup`), they never reserve
-  rows.
+  goroutine. Completion popups float over the bottom of the stage (`floatPopup`), they
+  never reserve rows.
 - **System prompt** (prompt.go): `basePrompt` (acting first, tasks, asking, care, tools,
   git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`
   for every profile, plan mode, the per-session pinned `environmentPrompt`, instruction

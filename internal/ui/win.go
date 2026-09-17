@@ -1,12 +1,9 @@
-// win.go lays out and draws windows (internal/win): vsplits are full-height
-// columns beside the main column (header, chat, composer, statusline),
-// splits take rows at the bottom of the chat, floats sit over everything.
+// win.go draws windows (internal/win): the layout tree's slots place vsplits
+// and splits (layout.go), floats sit over everything.
 // A focused window gets every key, the unfocus key (ui.window.unfocus)
 // gives them back; a click on a window focuses it, its × closes it, and
 // dragging a float's title moves it, a float's border or corner, a vsplit's
 // separator or a split's title resizes it.
-// NOTE: the layout is a fixed order (main, vsplits left to right, splits
-// top to bottom), not a tree; zellij-style nesting is the upgrade path.
 package ui
 
 import (
@@ -47,27 +44,13 @@ type winDrag struct {
 const (
 	minVsplitW = 20
 	minSplitH  = 4
-	minMainW   = 30
-	minChatH   = 3
 	minFloatW  = 20
 	minFloatH  = 3
 )
 
-// winColumns decides the vsplit columns for a frame of width w: mainW is
-// what the main column keeps.
-func (a *App) winColumns(w int) (vsplits []*win.Window, widths []int, mainW int) {
-	vsplits = a.shownWins(win.KindVSplit)
-	widths = shares(vsplits, w-len(vsplits), minVsplitW, minMainW)
-	mainW = w - len(vsplits)
-	for _, x := range widths {
-		mainW -= x
-	}
-	return vsplits, widths, mainW
-}
-
-// shares divides total cells between the windows and the main area: a
-// window with a Frac gets that share, the rest split what is left with
-// the main area equally, and the main area keeps at least minMain.
+// shares divides total cells between the windows of a slot and their
+// siblings: a window with a Frac gets that share, the rest split what is
+// left with the siblings equally, and the siblings keep at least minMain.
 func shares(wins []*win.Window, total, minWin, minMain int) []int {
 	if len(wins) == 0 {
 		return nil
@@ -99,18 +82,6 @@ func shares(wins []*win.Window, total, minWin, minMain int) []int {
 		}
 	}
 	return out
-}
-
-// winRowsLayout decides the splits inside a chat area chatH rows tall:
-// chatTop is what the chat viewport keeps.
-func (a *App) winRowsLayout(chatH int) (splits []*win.Window, heights []int, chatTop int) {
-	splits = a.shownWins(win.KindSplit)
-	heights = shares(splits, chatH, minSplitH, minChatH)
-	chatTop = chatH
-	for _, x := range heights {
-		chatTop -= x
-	}
-	return splits, heights, max(chatTop, 1)
 }
 
 // shownWins lists the windows of one kind that are not hidden, in opening
@@ -483,7 +454,7 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 		case "vsplit":
 			l.Frac = float64(r.x+r.w-x-1) / float64(max(a.width, 1))
 		case "split":
-			l.Frac = float64(r.y+r.h-y) / float64(max(a.chatAreaH, 1))
+			l.Frac = float64(r.y+r.h-y) / float64(max(a.stage.Dy(), 1))
 		}
 	})
 }

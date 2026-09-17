@@ -83,7 +83,7 @@ type App struct {
 	hoverKey       string              // what the pointer is over, to redraw only on change
 	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
-	lastChatBottom int
+	stage          uv.Rectangle        // where the last frame's stage was
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
@@ -94,9 +94,8 @@ type App struct {
 	winRects []winRect // where windows were drawn on the last frame
 	// cursor is the host cursor: the focused window's, nil hides it. windowRows
 	// sets it in window cells and compose places it on the frame.
-	cursor    *tea.Cursor
-	winDrag   *winDrag // a drag on window chrome in progress
-	chatAreaH int      // the chat area's height on the last frame (splits resize against it)
+	cursor  *tea.Cursor
+	winDrag *winDrag // a drag on window chrome in progress
 
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
@@ -581,14 +580,14 @@ func (a *App) visibleWidgets() []*hostapi.Widget {
 	return out
 }
 
-// widgetWidth is the main column's width: compose draws widgets beside any
+// widgetWidth is the stage's width: compose draws widgets beside any
 // vsplits, so rendering at the terminal width would wrap every line twice.
 func (a *App) widgetWidth() int {
 	if a.width <= 0 {
 		return 80
 	}
-	_, _, w := a.winColumns(a.width)
-	return w
+	_, stage := a.layout(a.width, a.height)
+	return stage.Dx()
 }
 
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
@@ -711,110 +710,27 @@ func (a *App) drainHooksCmd() tea.Cmd {
 // compose (pure: reads caches and Go-side state only)
 
 func (a *App) compose(w, h int) string {
-	// vsplits are full-height columns beside the main column; everything
-	// below lays the main column out at mainW and the columns join at the
-	// end, floats over all of it.
-	vsplits, vwidths, mainW := a.winColumns(w)
-	full := w
-	w = mainW
-	// The default UI registers no header; the region stays for Lua.
-	header := a.regionLines("header", w)
-
-	compRows := a.composerRows(w)
-	compPopup := a.completionRows()
-	palPopup := a.paletteRows()
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	}
-	working := a.regionLines("working", w)
-	if len(working) > 0 {
-		working = append(working, padSegs(nil, w))
-	}
-	// + statusline + composer, the working row with a blank row under it, a
-	// blank row that keeps the input off the conversation and one above the
-	// statusline; popups float over the chat (floatPopup), so opening one
-	// never moves the transcript
-	chatH := max(h-len(header)-1-len(compRows)-len(working)-2, 1)
-
-	// Splits take rows at the bottom of the chat area; the viewport is
-	// what is left.
-	splits, sheights, chatViewH := a.winRowsLayout(chatH)
-	a.chatAreaH = chatH
-	chat := a.regionLines("chat", w)
-
-	// Chat scrollback (§8): follow pins the window to the tail (chatTop
-	// may go negative when content is shorter than the viewport, which
-	// bottom-anchors it); otherwise chatTop is the absolute first visible
-	// row, clamped so content growth or a narrower rewrap never shows
-	// blank rows.
-	a.chatRows = len(chat)
-	if a.chatViewH != chatViewH {
-		a.frameGen++ // widgets read the height (the splash centers on it)
-	}
-	a.chatViewH = chatViewH
-	if a.chatFollow {
-		a.chatTop = a.chatRows - chatViewH
-	} else {
-		a.chatTop = min(a.chatTop, max(0, a.chatRows-chatViewH))
-	}
-
-	rows := make([][]hostapi.Segment, 0, h)
-	rows = append(rows, header...)
-
+	root, stage := a.layout(w, h)
 	a.winRects, a.cursor = a.winRects[:0], nil
-	for i := range chatViewH {
-		var row []hostapi.Segment
-		if j := a.chatTop + i; j >= 0 && j < len(chat) {
-			row = truncateSegs(chat[j], w)
-		}
-		rows = append(rows, padSegs(row, w))
-	}
-	y := len(header) + chatViewH
-	for i, wn := range splits {
-		sh := sheights[i]
-		wn.Resize(w, sh-1)
-		a.winRects = append(a.winRects, winRect{id: wn.ID, x: 0, y: y + 1, w: w, h: sh - 1, titleY: y, sepX: -1})
-		rows = append(rows, a.windowRows(wn, w, sh-1)...)
-		y += sh
-	}
-
-	toastBottom := len(rows)
+	rows := a.paint(root)
 
 	// the popup takes the mouse on the whole rows it covers, windows under it included
-	popTop := floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
+	popTop := floatPopup(rows, append(a.completionRows(), a.paletteRows()...), stage, w)
 	for i := range a.winRects {
 		r := &a.winRects[i]
+		if r.x >= stage.Max.X || r.x+r.w <= stage.Min.X {
+			continue
+		}
 		r.h = max(0, min(r.h, popTop-r.y))
 		if r.titleY >= popTop {
 			r.titleY = -1
 		}
 	}
-
-	rows = append(rows, padSegs(nil, w))
-	// The working row renders above the composer.
-	rows = append(rows, working...)
-	rows = append(rows, compRows...)
-	rows = append(rows, padSegs(nil, w), a.statusRow(w))
-
-	// join the vsplit columns: a separator, then the window, full height
-	x := w
-	for i, wn := range vsplits {
-		vw := vwidths[i]
-		wn.Resize(vw, h-1)
-		a.winRects = append(a.winRects, winRect{id: wn.ID, x: x + 1, y: 1, w: vw, h: h - 1, titleY: 0, sepX: x})
-		col := a.windowRows(wn, vw, h-1)
-		for j := range rows {
-			line := append(padSegs(rows[j], x), hostapi.Segment{Text: "│", HL: "Comment"})
-			if j < len(col) {
-				line = append(line, col[j]...)
-			}
-			rows[j] = line
-		}
-		x += vw + 1
-	}
-	chatW, w := w, full
 	for _, wn := range a.shownWins(win.KindFloat) {
-		box, x0, y0, r := a.floatBox(wn, w, h, len(header), chatH)
+		box, x0, y0, r := a.floatBox(wn, w, h, stage.Min.Y, stage.Dy())
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
 	}
@@ -825,43 +741,43 @@ func (a *App) compose(w, h int) string {
 	// box is dimmed, so no text beside it can pass for its chrome (DESIGN §8).
 	var modals []func()
 	splice := func(box [][]hostapi.Segment) {
-		modals = append(modals, func() { rows = spliceBox(rows, box, w, len(header), chatH) })
+		modals = append(modals, func() { rows = spliceBox(rows, box, w, stage.Min.Y, stage.Dy()) })
 	}
 	for i := range a.overlays {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
 			continue // a detail view replaces the list it opened from
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := overlayBox(ov, w, chatH)
-			modals = append(modals, func() { rows = anchorBottom(rows, box, w, len(header), chatH) })
+			box := overlayBox(ov, w, stage.Dy())
+			modals = append(modals, func() { rows = anchorBottom(rows, box, w, stage.Min.Y, stage.Dy()) })
 		} else {
-			splice(overlayBox(ov, w, chatH))
+			splice(overlayBox(ov, w, stage.Dy()))
 		}
 	}
 	if a.trust != nil {
-		splice(trustBox(a.trust, w, chatH))
+		splice(trustBox(a.trust, w, stage.Dy()))
 	}
 	if a.question != nil {
-		splice(questionBox(a.question, w, chatH))
+		splice(questionBox(a.question, w, stage.Dy()))
 	}
 	if a.memReview != nil {
-		splice(a.memReviewBox(w, chatH))
+		splice(a.memReviewBox(w, stage.Dy()))
 	}
 	if a.permAsk != nil {
-		splice(a.permBox(a.permAsk, w, chatH))
+		splice(a.permBox(a.permAsk, w, stage.Dy()))
 	}
-	// Toasts stack down from the top of the chat area, newest highest,
-	// right-aligned over the chat rows they cover, one blank row apart. They
-	// go over the dimmed rows but under the top box: a toast is not dimmed,
-	// and its text never covers the chrome the user answers.
+	// Toasts stack down from the top of the stage, newest highest,
+	// right-aligned over the rows they cover, one blank row apart. They go
+	// over the dimmed rows but under the top box: a toast is not dimmed, and
+	// its text never covers the chrome the user answers.
 	toasts := func() {
-		y := len(header)
+		y := stage.Min.Y
 		for _, v := range slices.Backward(a.toasts) {
-			for _, line := range toastBox(v, chatW) {
-				if y >= toastBottom {
+			for _, line := range toastBox(v, stage.Dx()) {
+				if y >= stage.Max.Y {
 					break
 				}
-				x0 := max(0, chatW-segsWidth(line)-2)
+				x0 := max(stage.Min.X, stage.Max.X-segsWidth(line)-2)
 				rows = placeBox(rows, [][]hostapi.Segment{margined(line)}, x0, y, w)
 				y++
 			}
@@ -880,7 +796,7 @@ func (a *App) compose(w, h int) string {
 	}
 	a.cursor = a.placeCursor(a.cursor, len(modals) > 0)
 
-	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
+	a.lastRows, a.stage = rows, stage
 	a.highlightSelection(rows, w)
 	a.highlightHover(rows)
 
@@ -951,19 +867,19 @@ func dimRows(rows [][]hostapi.Segment) {
 }
 
 // floatPopup frames a completion popup and lays it over the bottom rows of
-// the chat area, left-aligned with the composer. The rows it covers are
-// blanked to the right of the frame (word fragments beside a dropdown read
-// as garbage); a popup taller than the chat is clipped. It returns the
-// first row the popup covers.
-func floatPopup(rows, popup [][]hostapi.Segment, w, headerH, chatH int) int {
-	bottom := min(headerH+chatH, len(rows))
+// the stage, left-aligned with it. The rows it covers are blanked to the
+// right of the frame (word fragments beside a dropdown read as garbage); a
+// popup taller than the stage is clipped. It returns the first row the
+// popup covers.
+func floatPopup(rows, popup [][]hostapi.Segment, stage uv.Rectangle, w int) int {
+	bottom := min(stage.Max.Y, len(rows))
 	if len(popup) == 0 {
 		return bottom
 	}
-	box := hostBox("", "", "", popup, w)
-	y0 := max(headerH, bottom-len(box))
+	box := hostBox("", "", "", popup, stage.Dx())
+	y0 := max(stage.Min.Y, bottom-len(box))
 	for i := y0; i < bottom; i++ {
-		rows[i] = padSegs(box[i-y0], w)
+		placeBox(rows, [][]hostapi.Segment{padSegs(box[i-y0], stage.Dx())}, stage.Min.X, i, w)
 	}
 	return y0
 }
@@ -1058,11 +974,12 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	return lines
 }
 
-// statusRow builds the one-row statusline: the focused window, left
-// widgets, the pills that report a broken Lua layer, then right widgets aligned to the right edge (DESIGN §8).
-func (a *App) statusRow(w int) []hostapi.Segment {
-	left := a.statuslineSegments("statusline.left")
-	right := a.statuslineSegments("statusline.right")
+// statusRow builds the one-row statusline: the focused window, the left
+// region's widgets, the pills that report a broken Lua layer, then the right
+// region's widgets aligned to the right edge (DESIGN §8).
+func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
+	left := a.statuslineSegments(leftRegion)
+	right := a.statuslineSegments(rightRegion)
 
 	if wn := a.focusedWin(); wn != nil {
 		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)

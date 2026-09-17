@@ -194,8 +194,8 @@ func TestModeSwitchQuiet(t *testing.T) {
 			bottom = i
 		}
 	}
-	if bottom != a.lastChatBottom-1 {
-		t.Fatalf("picker ends on row %d, want the last chat row %d", bottom, a.lastChatBottom-1)
+	if bottom != a.stage.Max.Y-1 {
+		t.Fatalf("picker ends on row %d, want the last chat row %d", bottom, a.stage.Max.Y-1)
 	}
 }
 
