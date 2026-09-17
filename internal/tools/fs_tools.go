@@ -755,6 +755,11 @@ func walk(ctx context.Context, root string, fn func(path, rel string) error) err
 	if real, err := filepath.EvalSymlinks(root); err == nil {
 		root = real
 	}
+	// the handler below drops errors so an unreadable subdirectory is skipped,
+	// and a missing root would read as no matches
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		return fmt.Errorf("no such directory: %s", root)
+	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()

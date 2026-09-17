@@ -311,6 +311,13 @@ func TestGlobAndGrep(t *testing.T) {
 				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
 			}
 		}
+		// a mistyped path must say so instead of reading as an empty tree
+		for _, tool := range []fantasy.AgentTool{glob, grep} {
+			resp := call(t, tool, `{"path":"`+filepath.Join(dir, "nope")+`","pattern":"x"}`)
+			if !resp.IsError || !strings.Contains(resp.Content, "no such directory") {
+				t.Errorf("rg=%q missing root: %+v", bin, resp)
+			}
+		}
 	}
 }
 
