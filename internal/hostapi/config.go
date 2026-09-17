@@ -61,6 +61,48 @@ func (h *Host) purgeWatches() {
 	}
 }
 
+// cfgReplayed records a boot-time write of path and reports whether the
+// previous boot wrote the same value at the same point in that key's
+// sequence, so there is nothing to apply and a value picked at runtime
+// stays. The first write that differs makes the key's later writes apply
+// too, config setting one key twice included.
+func (h *Host) cfgReplayed(path string, v any) bool {
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	if gen := h.currentGen(); gen != h.cfgGen {
+		if h.cfgNow == nil {
+			h.cfgNow = map[string][]any{}
+		}
+		h.cfgGen, h.cfgPrev = gen, h.cfgNow
+		h.cfgNow = map[string][]any{}
+	}
+	i := len(h.cfgNow[path])
+	h.cfgNow[path] = append(h.cfgNow[path], v)
+	if i < len(h.cfgPrev[path]) && reflect.DeepEqual(h.cfgPrev[path][i], v) {
+		return true
+	}
+	h.cfgPrev[path] = nil // diverged: every later write of this key applies
+	return false
+}
+
+// cfgSettle runs after a replay: a key whose every write matched the last
+// boot but whose config now writes it fewer times ends at a value nothing
+// applied, so its last write is applied here. Like a skipped write it
+// notifies no watcher: within one boot the value never changed.
+func (h *Host) cfgSettle() {
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	for path, now := range h.cfgNow {
+		prev := h.cfgPrev[path]
+		if len(now) == 0 || len(prev) == 0 || reflect.DeepEqual(now[len(now)-1], prev[len(prev)-1]) {
+			continue
+		}
+		if _, err := h.Settings.SetQuiet(path, now[len(now)-1]); err != nil {
+			h.Log.Warn("config", "settle failed", map[string]any{"path": path, "error": err.Error()})
+		}
+	}
+}
+
 func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
@@ -107,16 +149,12 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		// a replay writing what the last load wrote keeps what /model, the
 		// mode cycle, /effort or a flag picked since; an edited value wins
-		booting := h.RT.Booting()
-		if last, ok := h.cfgWritten.Load(path); booting && ok && reflect.DeepEqual(last, v) {
+		if h.RT.Booting() && h.cfgReplayed(path, v) {
 			return 0
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
-		}
-		if booting {
-			h.cfgWritten.Store(path, v)
 		}
 		h.deliverFired(L, fired)
 		return 0

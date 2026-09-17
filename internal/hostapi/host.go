@@ -187,12 +187,16 @@ type Host struct {
 	trEpoch atomic.Int64
 
 	watches *watchReg
-	// cfgWritten holds the value each zemi.config.set wrote during the last
-	// boot, so a reload that writes the same value keeps a runtime pick
-	cfgWritten sync.Map
-	agents     *agentHost
-	luaTools   *toolReg
-	stops      *stopReg
+	// cfgPrev and cfgNow hold, per key, the values zemi.config.set wrote
+	// during the previous boot and during this one, in order: a replay
+	// writing the same sequence keeps a runtime pick made since (config.go)
+	cfgMu    sync.Mutex
+	cfgGen   Gen
+	cfgPrev  map[string][]any
+	cfgNow   map[string][]any
+	agents   *agentHost
+	luaTools *toolReg
+	stops    *stopReg
 
 	// memReview serializes the /memory review overlay; the hook runs off
 	// the UI goroutine.
@@ -1301,6 +1305,7 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
 	// a failed replay keeps the old rules: the last whole config beats part of one
 	if err == nil {
+		h.cfgSettle()
 		h.dropStaleLayout()
 		h.luaRulesMu.Lock()
 		for _, r := range h.staleRules {

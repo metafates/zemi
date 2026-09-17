@@ -150,7 +150,8 @@ func TestPermissionRuleValidation(t *testing.T) {
 }
 
 // TestReloadKeepsRuntimePicks: a reload whose config writes what the last
-// load wrote keeps a value picked at runtime; an edited config value wins.
+// load wrote keeps a value picked at runtime, config writing one key
+// several times included; an edited config value wins.
 func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
@@ -159,12 +160,24 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		t.Fatal(err)
 	}
 	initLua := filepath.Join(dir, "init.lua")
-	for _, c := range []struct{ name, config, pick, want string }{
-		{"first load applies config", "p/a", "", "p/a"},
-		{"unchanged config keeps a pick", "p/a", "p/b", "p/b"},
-		{"edited config wins over a pick", "p/c", "p/b", "p/c"},
+	for _, c := range []struct {
+		name       string
+		config     []string // what init.lua sets agent.model to, in order
+		pick, want string
+	}{
+		{"first load applies config", []string{"p/a"}, "", "p/a"},
+		{"unchanged config keeps a pick", []string{"p/a"}, "p/b", "p/b"},
+		{"edited config wins over a pick", []string{"p/c"}, "p/b", "p/c"},
+		{"a second set of the same key applies", []string{"p/c", "p/d"}, "", "p/d"},
+		{"an unchanged double set keeps a pick", []string{"p/c", "p/d"}, "p/e", "p/e"},
+		{"editing the second set wins", []string{"p/c", "p/f"}, "p/e", "p/f"},
+		{"dropping the second set wins", []string{"p/c"}, "p/e", "p/c"},
 	} {
-		if err := os.WriteFile(initLua, []byte(`zemi.config.set("agent.model", "`+c.config+`")`), 0o600); err != nil {
+		src := ""
+		for _, v := range c.config {
+			src += `zemi.config.set("agent.model", "` + v + `")` + "\n"
+		}
+		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if c.pick != "" {
