@@ -8,7 +8,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 ## First look
 
 1. Ask the user to run `/health`. It checks the model and its API key, the stores,
-   `permissions.lua`, git, ripgrep, the reflector, pending reviews, skills, recent errors,
+   git, ripgrep, the reflector, pending reviews, skills, recent errors,
    MCP servers, language servers and the Lua runtime (problems listed first), plus any rows config added with `zemi.health.register`.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
    event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
@@ -49,7 +49,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
    Each line is `time LEVEL source message key=value...`. Sources worth grepping:
    `agent`, `reflector`, `memory`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`,
-   `config-repo`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`.
+   `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`.
    A recovered panic logs its full stack under source `panic`.
 
 ## Common failures
@@ -59,7 +59,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "no model configured" | no provider or `agent.model`: see zemi-config (`zemi.provider.register`) |
 | 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
-| boot error "permissions.lua refused" | the file was edited by hand; restore it from the git history of `~/.config/zemi` or delete it (permanent rules are lost) |
+| boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule` call in init.lua; the rule applies on every start without it |
 | `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
@@ -78,7 +78,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 
 - `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals,
-  skill enabled state (`skills`), permanent-rule commits (`config_revisions`), `kv`.
+  skill enabled state (`skills`), `kv`.
 - `~/.local/state/zemi/projects/<hash>/zemi.db` (per project): `sessions`, `messages`,
   project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
   `/rewind` restores).

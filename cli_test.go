@@ -134,7 +134,7 @@ func TestDeniedHint(t *testing.T) {
 }
 
 // TestConfigFingerprint: edits to config files change the fingerprint,
-// zemi's own permissions.lua and git data do not.
+// git data does not.
 func TestConfigFingerprint(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) {
@@ -148,10 +148,9 @@ func TestConfigFingerprint(t *testing.T) {
 	}
 	write("init.lua", "-- one")
 	base := configFingerprint(dir)
-	write("permissions.lua", "return {}")
 	write(".git/index", "x")
 	if configFingerprint(dir) != base {
-		t.Fatal("zemi-owned files changed the fingerprint")
+		t.Fatal("git data changed the fingerprint")
 	}
 	write("init.lua", "-- two!")
 	if configFingerprint(dir) == base {

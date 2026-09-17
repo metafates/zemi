@@ -28,16 +28,6 @@ const (
 	Deny  Decision = "deny"
 )
 
-// Scope is a rule's lifetime (DESIGN §6.1): session rules live in memory
-// until the session ends; permanent rules survive restarts and are
-// serialized into permissions.lua (Go-generated data, the store's dump).
-type Scope string
-
-const (
-	ScopeSession   Scope = "session"
-	ScopePermanent Scope = "permanent"
-)
-
 // Rule is one permission rule. Pattern is a glob over the operation
 // argument (path, url, normalized command segment). NotMatch is an
 // optional runtime exclusion: an argument matching Pattern but also
@@ -48,7 +38,6 @@ type Rule struct {
 	Decision  Decision `json:"decision"`  // allow | ask | deny
 	NotMatch  string   `json:"not_match"` // optional exclusion glob
 	Principal string   `json:"principal"` // empty = any principal
-	Scope     Scope    `json:"scope"`     // empty = session
 }
 
 // Store holds rules in evaluation order; lookups re-sort by specificity.

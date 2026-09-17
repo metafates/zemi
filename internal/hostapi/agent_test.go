@@ -92,6 +92,11 @@ func TestPermissionRuleValidation(t *testing.T) {
 	})`, "does not match pattern")
 
 	runExpectErr(t, r, `zemi.permission.rule({
+		subject = "tool.bash", pattern = "git status", decision = "allow",
+		match = "git status", scope = "permanent",
+	})`, "a rule in init.lua applies on every start")
+
+	runExpectErr(t, r, `zemi.permission.rule({
 		subject = "tool.bash", pattern = "git *", decision = "allow",
 		not_match = "git push*", match = "git status",
 	})`, "needs both examples")
@@ -131,21 +136,15 @@ func TestPermissionRuleValidation(t *testing.T) {
 		t.Fatalf("rm -rf: %v (%s)", out.Decision, out.Reason)
 	}
 
-	// A reload replays config, so its rules go; an "always" answer and
-	// permissions.lua keep theirs.
+	// A reload replays config, so its rules go; an "always" answer keeps its.
 	always := perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
 	h.Perm.Add(always)
-	permanent := perm.Rule{Subject: "fs.read", Pattern: "/p/*", Decision: perm.Deny, Scope: perm.ScopePermanent}
-	h.Dirs.ConfigHome = t.TempDir()
-	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), permDump([]perm.Rule{permanent}), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	for range 2 {
-		if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), h.PermissionsLoadStep()}); err != nil {
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := h.Perm.Rules(); !slices.Equal(got, []perm.Rule{always, permanent}) {
+	if got := h.Perm.Rules(); !slices.Equal(got, []perm.Rule{always}) {
 		t.Fatalf("rules after reload: %+v", got)
 	}
 }

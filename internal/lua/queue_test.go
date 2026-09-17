@@ -523,7 +523,7 @@ func TestReloadWaitsForBoot(t *testing.T) {
 // with no dispatcher, so requests fail fast until a reload succeeds.
 func TestQueueDoAfterFailedBoot(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})
-	fail := BootStep{Name: "fail", Run: func(context.Context, *Runtime, *Generation) error { return errors.New("bad permissions.lua") }}
+	fail := BootStep{Name: "fail", Run: func(context.Context, *Runtime, *Generation) error { return errors.New("bad config") }}
 	if err := r.Boot(context.Background(), []BootStep{fail}); err == nil {
 		t.Fatal("boot with a failing step succeeded")
 	}

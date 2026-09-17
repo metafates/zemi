@@ -51,7 +51,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"tool.bash", "ls && sed -n 1,5p main.go", true, true},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false, false},
-		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "permissions.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "init.lua"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".zemi", "init.lua"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "pkg", ".zemi", "init.lua"), false, false},
 		{"fs.read", secret, false, false},
@@ -342,7 +342,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 		arg, shown string
 		screened   bool
 	}{
-		{"cfg/permissions.lua", filepath.Join(perm.RealPath(h.Dirs.ConfigHome), "permissions.lua"), false},
+		{"cfg/init.lua", filepath.Join(perm.RealPath(h.Dirs.ConfigHome), "init.lua"), false},
 		{"gl/hooks/post-checkout", filepath.Join(".git", "hooks", "post-checkout"), false},
 		{"out/x.go", filepath.Join(outside, "x.go"), false},
 	} {

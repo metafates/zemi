@@ -9,8 +9,8 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`, background jobs, todos,
   structured questions, skills and memory.
 - Asks before anything risky. Edits show their diff in the permission prompt; `a`
-  (always) stores an exact rule, and permanent rules live in a generated
-  `permissions.lua` that is versioned with git. `tab` switches the mode shown at the left
+  (always) allows the same kind of action until zemi exits, and rules in `init.lua` apply
+  on every start. `tab` switches the mode shown at the left
   of the statusline: `manual`, `plan` (the agent investigates and proposes; file changes
   are refused and every command asks), `auto` (a model approves routine actions, you get
   the rest) or `yolo`.
@@ -136,8 +136,7 @@ and `args` plus Lua's string, table and math libraries, with no file or network 
    enabled skills appear as an index the model loads on demand.
 
 Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
-reversible (`/memory`, `/skills disable <name>`; permanent permission rules are
-commits in the config directory, `git revert` undoes one).
+reversible (`/memory`, `/skills disable <name>`).
 
 zemi also knows itself: builtin skills (`zemi-config`, `zemi-customize`, `zemi-debug`,
 `zemi-lua`, `zemi-learning`, `zemi-worktrees`) teach the agent where zemi's files live, how
@@ -172,7 +171,7 @@ changed.
 go install github.com/metafates/zemi@latest
 ```
 
-Requires Go 1.27. No CGO. `git` is optional (config changes are versioned when present), and
+Requires Go 1.27. No CGO. `git` is optional (without it the prompt has no git status), and
 so is `ripgrep` (`glob` and `grep` use `rg` when installed and fall back to a Go walker).
 
 ## Configure
@@ -196,7 +195,7 @@ Instructions reach the model from `~/.config/zemi/AGENTS.md` (yours, every proje
 `ZEMI.md` and `AGENTS.md` in each directory from the repository root down to where you
 started zemi; a directory with neither contributes its `CLAUDE.md`.
 
-Run `zemi` in your project. `/health` checks the model key, the store, `permissions.lua`,
+Run `zemi` in your project. `/health` checks the model key, the store,
 git, ripgrep and the reflector; `zemi --health` runs the same checks without the TUI.
 
 ## Command line
@@ -270,7 +269,7 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 
 | Path | Contents |
 | --- | --- |
-| `~/.config/zemi/` | `init.lua`, `permissions.lua`, `.luarc.json`, authored `skills/`, `agents/`, `commands/`, `workflows/` (a git repo) |
+| `~/.config/zemi/` | `init.lua`, `.luarc.json`, authored `skills/`, `agents/`, `commands/`, `workflows/` |
 | `~/.local/share/zemi/` | plugins, learned `skills/`, `types/` (LuaLS annotations for `zemi.*`) |
 | `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
 | `~/.cache/zemi/` | sandboxed language servers' caches and build output |

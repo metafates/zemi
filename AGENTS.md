@@ -61,7 +61,7 @@ errored; `-p` runs one turn, then reports on stderr how many tool calls the gate
 untrusted project, and at an allow rule when auto already left the call to the user or it
 asked to run outside the sandbox). A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
-checks (store, model, permissions, git, ripgrep, sandbox, reflector, learning, skills, lua, errors,
+checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, errors,
 trust, lsp) plus whatever Lua registered with `zemi.health.register`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
@@ -75,9 +75,8 @@ the mode cycle and `-m`/`--mode` survive a reload until the config changes that 
 ## Architecture and control flow
 
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in `main.go`) — order
-matters and permissions sit early so no userland code runs before the permanent store loads:
-host namespaces (`zemi.*`) -> `PermissionsLoadStep` (reads `permissions.lua`, fail-closed) ->
-builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
+matters:
+host namespaces (`zemi.*`) -> builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
 workflow (+ `/review`), mcp, lsp and window commands ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/`) ->
 project trust (`trustGate.step`, before any config that can start an MCP server) ->
@@ -103,8 +102,6 @@ the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project 
 the Lua tool's ask, and what auto and plan mode settle (see below). `Host.git` switches off
 fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a
 sandboxed command can plant a nested repo whose config zemi's own checks would run.
-`EnsureConfigRepo()` runs in `main` before the step list is built, not after it, so the
-config git repo exists before any step can commit a revision (see "Permanent rules" below).
 
 ### The concurrency rules (DESIGN §4) — violate these and things deadlock or corrupt
 
@@ -556,30 +553,17 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   pass `tools.SchemaProperties(schema)` and a non-nil `Required`
   (`TestToolSchemasAreProperties`); strict providers reject anything else.
 
-### Permanent rules + permissions.lua (internal/hostapi/permissions.go, repo.go)
+### Permission rules and config
 
-DESIGN §6.1: `permissions.lua` at `ConfigHome` is **data, not code** — Go generates it via
-`permDump()` (versioned `return { version = 1, rules = {...} }`) and reads it back with
-`parsePermissionsDump()`, a strict hand-written parser that never evaluates Lua and accepts
-only the exact generated shape (whitelisted string fields, no function calls, no concat,
-bad file = boot error with empty permanent store). Only `user` origin may create allow or
-permanent rules (project may tighten only); the gate lives at the `zemi.permission.rule`
-namespace closure, same off-interpreter-`OriginHost` reasoning as skills. Adding a permanent
-rule: `permRegenerate()` (tmp file + rename, 0600) then `commitConfigRevision()` — a
-one-line commit ("the keypress is the review", §6.1) recorded in the global-DB
-`config_revisions` table (row lands BEFORE the git commit — crash leaves a pending row,
-the fail-closed direction). Git is the audit trail, files + DB are the source of truth;
-missing git degrades to log warnings. Git helpers shell out to the `git` binary (no git
-library in go.mod), run with `GIT_CONFIG_NOSYSTEM=1` and a 15s timeout.
-
-Skill proposals always wait for review (DESIGN §10.4). The reflector
-proposes memories and skills only; there is no config-patch pipeline and
-no `/config` command (the agent edits config files directly). The overlay's
-"always" answer adds session rules only; permanent rules come only from
-`zemi.permission.rule{ scope = "permanent" }` in user config.
-Every applied revision records its config-repo commit SHA
-(`config_revisions.commit_sha`); undoing one is `git revert` in the
-config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
+Every rule lives in memory: `zemi.permission.rule` in config adds it again on each boot, and
+an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git commits
+(`scope = "permanent"` raises and points at init.lua). Only `user` origin may add allow rules
+(project may tighten only); the gate lives at the `zemi.permission.rule` namespace closure,
+same off-interpreter-`OriginHost` reasoning as skills. Skill proposals always wait for review
+(DESIGN §10.4). The reflector proposes memories and skills only; there is no config-patch
+pipeline and no `/config` command (the agent edits config files directly). `Host.git` shells
+out to the `git` binary (no git library in go.mod), with `GIT_CONFIG_NOSYSTEM=1` and a 15s
+timeout.
 
 ## Testing patterns
 
@@ -588,7 +572,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.22.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.23.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -599,8 +583,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
 - Skills/permissions tests: `newTestHostSkills(t)` boots namespaces + skills steps;
   `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting (for testing discovery of
   files that must exist first) — every `Boot` builds a fresh generation, so steps sharing
-  state must be passed in ONE call. Permanent-rule tests guard git presence with
-  `exec.LookPath("git")` and clean the dump via temp `ConfigHome`.
+  state must be passed in ONE call.
 - Agent-turn tests stub the model with `reflectStub` (sets `h.modelFn`; answers Generate and
   Stream with `TextContent` like real providers) and wait with `waitIdle`.
 - End to end, drive the real binary in tmux against a fake OpenAI-compatible server: point
@@ -616,8 +599,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   were last squared with the code, so they read correctly today; when they drift again,
   trust the tree. Shipped: M0-M3, plus subagents, workflows, MCP and LSP out of M5, and a
   pile of things no milestone named (permission modes, rewind, scratchpads, the `Lua` tool,
-  print mode). Not built: M4 evals (no `zemi.eval`, and `config_revisions.eval_ok` is a dead
-  column), the plugin manager, embeddings.
+  print mode). Not built: M4 evals (no `zemi.eval`), the plugin manager, embeddings.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request
   class. Anything that adds a runtime-mutable member to a namespace must go through the

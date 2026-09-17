@@ -878,18 +878,17 @@ function zemi.composer.submit() end
 ---@class zemi.RuleSpec
 ---@field subject string "tool.bash", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>".
 ---@field pattern string Glob over the subject's argument.
----@field decision zemi.Decision Allow and permanent rules need user config.
+---@field decision zemi.Decision Allow rules need user config.
 ---@field match? string An argument the rule must match; checked at registration.
 ---@field not_match? string A glob that falls through and forces an ask.
 ---@field not_match_example? string An argument `not_match` must catch.
----@field scope? "session"|"permanent"
+---@field scope? "session" The only scope: a rule lasts until zemi exits, and init.lua adds it again on the next start.
 
 ---@class zemi.Rule
 ---@field subject string
 ---@field pattern string
 ---@field decision zemi.Decision
 ---@field not_match string
----@field scope string
 
 ---@class zemi.PermModeSpec
 ---@field base? string The mode this one starts from.
@@ -906,8 +905,8 @@ function zemi.composer.submit() end
 ---@class zemi.permission
 zemi.permission = {}
 
---- Add a permission rule. Any origin may add deny and ask rules; allow and
---- permanent rules need user config. Ordering is deny > ask > allow, then
+--- Add a permission rule. Any origin may add deny and ask rules; allow rules
+--- need user config. Ordering is deny > ask > allow, then
 --- fewest wildcards, then longest literal prefix.
 ---@param spec zemi.RuleSpec
 function zemi.permission.rule(spec) end

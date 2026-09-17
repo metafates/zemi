@@ -12,7 +12,7 @@ editor: from `init.lua` against a stable host API.
 
 The learning system runs through the same extensibility surface: the agent
 improves by writing the same Lua that a user would write, through the same
-reviewed, versioned pipeline.
+reviewed pipeline.
 
 Prior art studied: `charmbracelet/crush` (local checkout), `charm.land/fantasy`,
 neovim's Lua architecture, pi, opencode, codex, hermes-agent.
@@ -28,9 +28,10 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
    memory writes all flow through one gate, used by both model-invoked tools
    and Lua code. Learned rules may tighten permissions automatically but never
    loosen them without explicit approval.
-3. **Configuration is code, versioned as code.** `~/.config/zemi` is a git
-   repo. Structural self-modifications are commits, reviewed as diffs,
-   revertible as diffs.
+3. **Configuration is code.** `~/.config/zemi` holds Lua and markdown the
+   user owns; zemi never commits to it, and versioning it is the user's
+   choice. Structural changes are file edits, reviewed as diffs through the
+   permission gate.
 4. **Learning is typed and reviewable.** The agent stores facts, procedures,
    and structural changes as distinct, inspectable objects with provenance.
    No opaque "the model got better" hand-waving.
@@ -257,14 +258,13 @@ which is what makes those terminate.
 Directories (XDG):
 
 ```
-~/.config/zemi/           config (git repo)
+~/.config/zemi/           config
   init.lua                entry point, runs on every start
   lua/**/*.lua            user modules, require()-able
   skills/<name>/          authored skills (enabled by default)
   agents/<name>.md        subagent definitions (§6.3)
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
-  permissions.lua         Go-generated rule dump (data, not code; §6.1)
 ~/.local/share/zemi/      data
   site/pack/*/start/*/    plugins: plugin/*.lua loaded, lua/ require()-able
   skills/<name>/SKILL.md  learned skills (start disabled)
@@ -321,9 +321,8 @@ git calls switch off `core.fsmonitor`, hooks and repository filter
 drivers: a sandboxed command can plant a nested repository whose config
 would otherwise run unconfined on zemi's next `git status`.
 
-Load order is a list of boot steps, and the permanent permission store
-loads early so no userland code runs before it: host `zemi.*` namespaces
--> `permissions.lua` (fail-closed) -> builtin commands -> the memory,
+Load order is a list of boot steps: host `zemi.*` namespaces
+-> builtin commands -> the memory,
 reflector, skills, agents, workflow, mcp, lsp and window commands -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
@@ -492,34 +491,27 @@ pick would loosen permissions silently.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project, plugin and learned code may not, and the
 model's `Lua` tool asks before any such call. Persistent config changes are edits to
-files in the config repo (the user's, or the agent's through the
-permission-gated file tools); the one commit zemi makes itself is the
-permanent-rule commit below.
+files in the config dir (the user's, or the agent's through the
+permission-gated file tools); zemi makes no commits.
 
-Permission rules are data with one API, two scopes, and an optional
-principal:
+Permission rules are data with one API and an optional principal:
 
 ```lua
 zemi.permission.rule{ subject = "tool.bash", pattern = "make *",
-                      decision = "deny", match = "make check",
-                      scope = "session" }
+                      decision = "deny", match = "make check" }
 ```
 
 Lua rules carry no principal, so they match every principal (§9); rules
 stored by an `always` answer are scoped to the `model` principal, so a
-model tool call cannot ride a rule meant for the user. `scope =
-"session"` lives in memory until the session ends; `scope = "permanent"`
-is added to the rule store and committed by Go as a one-line commit (the
-user's own config line is the review). `permissions.lua` is not code: Go generates it from the rule
-store on every change (a stable, versioned serialization of the permanent
-rules only; the store is the source of truth and the file is its dump;
-session rules live in memory and never touch the file), loads it
-at boot as data, and refuses file content that is not rule data with a
-boot error that leaves the store empty (fail-closed; the user fixes or
-deletes the file), so nothing can smuggle executable Lua
-under the guise of a permission patch. Origins: user config may add any
-rule; plugin, project, and learned origins may add only session-scope
-deny/ask rules. Overlay `always` answers (§8) append session rules to
+model tool call cannot ride a rule meant for the user. Every rule lives
+in memory until zemi exits; a rule meant to last is a line in `init.lua`,
+which adds it again on every boot and a reload replays. There is no rule
+file: an earlier `scope = "permanent"` dumped rules to a generated
+`permissions.lua` and committed it to a config git repo, but nothing ever
+removed a dumped rule, so an allow rule deleted from `init.lua` stayed in
+force. That scope now raises with a pointer to `init.lua`, and a leftover
+`permissions.lua` is not read. Origins: user config may add any rule;
+plugin, project, and learned origins may add only deny/ask rules. Overlay `always` answers (§8) append session rules to
 the same store, so rules never live in `zemi.state` or the DB, and no
 Lua can forge one. Only the user's own config and `always` answers
 write allow rules (the widening direction; plugin, project, and learned
@@ -955,18 +947,13 @@ checkpoints(message_id, session_id, path, existed, content, created_at)
                                                                 -- pre-turn file content for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
 skills(name, path, source, enabled, created_at)                 -- source: authored|builtin|learned
-config_revisions(id, created_at, title, changes_json, paths_json, status, applied_by,
-                 eval_ok, commit_sha)
-                                                                -- paths_json: paths the revision wrote
-                                                                -- commit_sha: its config-repo commit
-                                                                -- eval_ok: dead column, evals never shipped
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
 DBs at `~/.local/state/zemi/projects/<hash of project root>/zemi.db`. The
-global DB holds user-scope memory, skills, kv and all `config_revisions`
-(the permanent-rule commits to the one global config repo); a project DB
+global DB holds user-scope memory, skills and kv (an older
+`config_revisions` table is left in place, unused); a project DB
 holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and
 project-scope memory. Opening a store sweeps checkpoints older than 30
@@ -1048,7 +1035,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
-  check, problems first: store, model key, permissions.lua, git, ripgrep,
+  check, problems first: store, model key, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
@@ -1072,10 +1059,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   hands the composer back); up and down move, enter answers the
   highlighted one. The overlay writes session rules only: `always`
   adds allow rules to the rule store (§6.1), scoped to the
-  `model` principal, with the prefix-glob patterns §6.2 lists. Permanent
-  rules never come from the overlay; they are written by
-  `zemi.permission.rule{ scope = "permanent" }` in the user's own
-  config. The overlay
+  `model` principal, with the prefix-glob patterns §6.2 lists. Lasting
+  rules never come from the overlay; they are `zemi.permission.rule`
+  lines in the user's own config. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
   may restyle the frame via theme groups only. The security-relevant
   chrome (answer keys, subject, badge) renders in fixed host colors no
@@ -1169,7 +1155,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   bash call runs in a fresh `sh -c` process: no fd, cwd, or env state
   persists between calls. Defaults: `fs.read` inside the jail is allow,
   `fs.write` is ask. Config ships conservative defaults; prompts during a
-  session add session-scope or permanent rules. Evaluation order: `deny`
+  session add session rules. Evaluation order: `deny`
   beats `ask` beats `allow` regardless of registration order; within one
   decision the most specific pattern wins (fewest wildcards, then the
   longest literal prefix). `not_match` is a runtime exclusion guard on
@@ -1371,14 +1357,13 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`<state>/projects/<hash>/scratch/<session id>`, §5) is outside it but
   is the one path model `fs.write` allows by default (`fsDefault`;
   `zemi.fs` cannot write there); the read jail is wider: project
-  roots, the config repo, the project's `.zemi`, both skills dirs, that
+  roots, the config dir, the project's `.zemi`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI). `site/pack` and the rest of the state dir are never
   write roots, so an approved `fs.write` cannot plant plugin code that
-  auto-loads at the next boot. The config repo is read-only to Lua: of
-  zemi's own code only Go writes there, so `zemi.fs.write`
-  cannot author `permissions.lua` (which is Go-generated data anyway,
-  §6.1). The model's `read`, `write`, `edit` and `multiedit` get their
+  auto-loads at the next boot. The config dir is read-only to Lua: of
+  zemi's own code only Go writes there, so `zemi.fs.write` cannot
+  author `init.lua`. The model's `read`, `write`, `edit` and `multiedit` get their
   path resolved once before the gate and open exactly that path, walking
   it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
   sandboxed command swaps for a symlink after the check fails the open.
@@ -1429,17 +1414,14 @@ configured provider later (`zemi.memory.search` signature does not change).
    to supersede.
 2. **Procedures (skills)**: reusable recipes. A SKILL.md plus optional
    `zemi-skill.lua` that registers tools/commands when enabled. Authored
-   skills live in the config repo (`~/.config/zemi/skills/`) and start
+   skills live in the config dir (`~/.config/zemi/skills/`) and start
    enabled; learned skills go to `~/.local/share/zemi/skills/` with
-   `source = learned` and start disabled. That directory is not a git
-   repo: the config home is the only tree zemi git-initializes, so a
-   learned skill is tracked by its `skills` row and its file, not by a
-   commit.
+   `source = learned` and start disabled, tracked by their `skills` row
+   and file.
 3. **Structure (config)**: profiles, prompt sections, permission rules,
    keymaps, widgets. The learning loop proposes none of it: these are
-   edits to files in the config git repo, made by the user or by the agent
-   through the permission-gated file tools, and the only commit zemi makes
-   itself is a permanent permission rule (§6.1).
+   edits to files in the config dir, made by the user or by the agent
+   through the permission-gated file tools (§6.1).
 
 Skills pass **capture -> distill -> propose -> review -> enable**. Memory
 enters through the intake policy below (its review queue is the verify
@@ -1502,7 +1484,7 @@ data; accepting one deletes the memory, rejecting keeps it.
 The reflector is constrained by prompt and by pipeline: it can only emit
 proposals; application is a separate, reviewed step. Memories go through
 the intake policy (§10.4) into the store; there is no reflector scratch
-directory and no path into the config repo. Skill drafts are body only,
+directory and no path into the config dir. Skill drafts are body only,
 never Lua: Go sanitizes and scrubs the description and body with the
 memory scrubber, writes them under the data dir's `skills/`, and they stay
 disabled until the user enables them in `/skills`. The reflector runs
@@ -1578,7 +1560,7 @@ skills/
 ```
 
 Discovery merges three sources, the higher-trust one winning a name
-clash: authored (config repo) over builtin (zemi's own, embedded
+clash: authored (config dir) over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync, enabled by default) over learned (data dir). The model sees name +
 description in context and the full body on demand through the `skill`
@@ -1591,13 +1573,12 @@ to commands and widgets per §10.4 (authored skills may also register
 tools). Skills installed from
 outside the user's own hands (plugin manager, M5) land disabled until
 reviewed, like plugins; authored skills written by the user in their own
-config repo start enabled.
+config dir start enabled.
 
 ### 10.6 Evals
 
 None of this is built. There is no `zemi.eval`, no mock provider, no
-headless eval run and no CI gate, and `config_revisions.eval_ok` is a
-dead column; the auto-apply paths that read an eval verdict below never
+headless eval run and no CI gate; the auto-apply paths that read an eval verdict below never
 get one. What follows is the intended shape (M4, §13).
 
 - Suites live in `~/.config/zemi/evals/*.lua` and register cases:
@@ -1626,7 +1607,7 @@ built-ins with scripted stubs; `expect` receives a transcript object
   added by a revision is routed to the mandatory review path (§10.4);
   eval code never auto-applies.
 - The reflector may propose eval cases too ("I keep failing at X, add a
-  regression case"), but eval files are code in the config repo: same review
+  regression case"), but eval files are code in the config dir: same review
   path.
 
 ### 10.7 Context assembly (how learning reaches the model)
@@ -1675,8 +1656,8 @@ index, or the untrusted-content framing.
   from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
-the host-only proposal channel (§10.3), skills quarantine (§10.5), the user-only config.set and the
-Go-generated `permissions.lua` (§6.1), and the reflector's tool-less
+the host-only proposal channel (§10.3), skills quarantine (§10.5), the user-only config.set and allow rules
+(§6.1), and the reflector's tool-less
 model call (§10.3).
 
 ## 11. Error handling and observability
@@ -1714,7 +1695,7 @@ internal/lua/               interpreter thread, sandbox, origins, marshal, requi
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,
                             agent runs, memory, reflector, skills hosting,
-                            permissions + modes + permanent-rule commits, mcp and
+                            permissions + modes, mcp and
                             lsp wiring, rewind, scratchpads, health, export
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
@@ -1741,8 +1722,8 @@ runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin o
 
 Status: M0-M3 shipped, and M3's config revision pipeline was later dropped
 (the reflector proposes memories and skills only). M4 was never built: no eval harness, no mock
-provider, no eval CI, no `zemi.eval`, and `config_revisions.eval_ok` is
-a dead column. M5 shipped in part: subagents, workflows, the MCP client
+provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
+`permissions.lua` dump and the config git repo were dropped too (§6.1). M5 shipped in part: subagents, workflows, the MCP client
 and the LSP client are in; the plugin manager and embeddings-backed
 search are not. Shipped outside every milestone: permission modes (§9),
 workflows, rewind and checkpoints, per-session scratchpads, background

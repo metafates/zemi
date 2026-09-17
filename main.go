@@ -101,13 +101,11 @@ func run(args []string) int {
 		host.SetUIHooks(app)
 		quit, trust.ask = app.Quit, app.AskTrust
 	}
-	host.EnsureConfigRepo()
 
 	// reload is set before boot starts; /trust calls it after boot
 	var reload func()
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
-		host.PermissionsLoadStep(),
 		builtinCommandsStep(host, quit, trust.command(func() { reload() })),
 		host.MemoryCommandsStep(),
 		host.ReflectorCommandsStep(),
@@ -245,7 +243,7 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 }
 
 // configFingerprint summarizes config trees by path, size and modification
-// time, skipping git data and the permissions.lua zemi writes itself.
+// time, skipping git data.
 func configFingerprint(roots ...string) string {
 	sum := sha256.New()
 	for _, root := range roots {
@@ -258,7 +256,7 @@ func configFingerprint(roots ...string) string {
 				return nil
 			case d.IsDir() && d.Name() == ".git":
 				return filepath.SkipDir
-			case d.IsDir() || d.Name() == "permissions.lua":
+			case d.IsDir():
 				return nil
 			}
 			if info, err := d.Info(); err == nil {

@@ -134,18 +134,6 @@ CREATE TABLE IF NOT EXISTS proposals (
 	created_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS config_revisions (
-	id TEXT PRIMARY KEY,
-	created_at INTEGER NOT NULL,
-	title TEXT NOT NULL,
-	changes_json TEXT NOT NULL DEFAULT '',
-	paths_json TEXT NOT NULL DEFAULT '[]',
-	status TEXT NOT NULL DEFAULT 'pending',
-	applied_by TEXT NOT NULL DEFAULT '',
-	eval_ok INTEGER,
-	commit_sha TEXT NOT NULL DEFAULT ''
-);
-
 CREATE TABLE IF NOT EXISTS memory (
 	id TEXT PRIMARY KEY,
 	scope TEXT NOT NULL,

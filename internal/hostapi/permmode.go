@@ -324,7 +324,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
-		// write there (permissions.lua, init.lua, .zemi/) changes what zemi allows
+		// write there (init.lua, .zemi/) changes what zemi allows
 		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case "tool.bash":
 		return h.settledCommand(req.Arg)

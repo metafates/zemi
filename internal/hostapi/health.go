@@ -1,5 +1,5 @@
 // health.go is /health (after neovim's :checkhealth): one row per check,
-// so a piece failing quietly (no API key, a refused permissions.lua, a
+// so a piece failing quietly (no API key, a missing sandbox, a
 // reflector that keeps erroring) is visible in one place.
 package hostapi
 
@@ -135,21 +135,10 @@ func (h *Host) healthChecks() []healthCheck {
 		add("ok", "model", id)
 	}
 
-	if h.permanentRulesPath() != "" {
-		switch rules, err := h.readPermanentRules(); {
-		case err != nil:
-			add("error", "permissions", err.Error())
-		case len(rules) == 0:
-			add("ok", "permissions", "no permanent rules yet")
-		default:
-			add("ok", "permissions", fmt.Sprintf("%d permanent rules", len(rules)))
-		}
-	}
-
 	if _, err := exec.LookPath("git"); err != nil {
-		add("warn", "git", "not found; config changes are not versioned")
+		add("warn", "git", "not found; the prompt has no git status and git commands that print file content ask")
 	} else {
-		add("ok", "git", "config changes are versioned")
+		add("ok", "git", "found")
 	}
 
 	// internal/tools resolves rg the same way at init, in this process.
