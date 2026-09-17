@@ -526,7 +526,8 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
 - **Background agents** (`agent` with `background: true`) run detached; the report comes
   back through `AgentSend` with the body behind `attachMarker`, which both the live
   transcript (`startTurn`, `deliverSteering`) and resume cut off. `agent` with `send_to: <run id>`
-  queues its prompt for that run (`MessageAgent`, error when it is not running).
+  queues its prompt for that run (`MessageAgent`, error when it is not running); a run that
+  ends before reading it counts it (`followUp`) and the report says so.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers
   an `agentRun` whose hooks build a live transcript. `/agents view <id>` (or a click on an
   `Agent` row, whose `run` id the agent tool puts on the stream row) sets `Host.view`, and `widgetCtxTable` renders that transcript instead of the

@@ -689,7 +689,9 @@ A running subagent takes messages like the main agent's steering queue
 (§4): the main agent calls `agent` with `send_to` set to a background
 run's id, and the user submits while the chat shows that run. A message
 joins the run at its next step boundary, or starts one more turn of it
-when its last step already began, and is stored in its child session.
+when its last step already began, and is stored in its child session. A
+run that fails or is cancelled cannot read what is still queued, so its
+report says how many messages it never read.
 
 `zemi.provider.register` requires a user-owned registration origin: Lua
 from a plugin, a project, or a learned source cannot call it (the
