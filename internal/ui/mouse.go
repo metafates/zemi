@@ -145,25 +145,27 @@ func (a *App) selectionText() string {
 func (a *App) highlightSelection(rows [][]hostapi.Segment, w int) {
 	for y := range rows {
 		if from, to, ok := a.mouse.span(y, w); ok {
-			rows[y] = restyle(rows[y], from, to, func(string) string { return "Host:Selection" })
+			rows[y] = restyle(rows[y], from, to, func(s *hostapi.Segment) { s.HL, s.Over = "Host:Selection", "" })
 		}
 	}
 }
 
-// restyle maps the highlight of cells [from, to) of a row.
-func restyle(row []hostapi.Segment, from, to int, hl func(string) string) []hostapi.Segment {
+// restyle changes the style of cells [from, to) of a row.
+func restyle(row []hostapi.Segment, from, to int, style func(*hostapi.Segment)) []hostapi.Segment {
 	mid := truncateSegs(dropCells(row, from), to-from)
 	mid = append([]hostapi.Segment(nil), mid...)
 	for i := range mid {
 		if !strings.ContainsRune(mid[i].Text, kitty.Placeholder) { // its color names the image
-			mid[i].HL = hl(mid[i].HL)
+			style(&mid[i])
 		}
 	}
 	out := append(append([]hostapi.Segment{}, truncateSegs(row, from)...), mid...)
 	return append(out, dropCells(row, to)...)
 }
 
-// highlightHover lights what a click under the pointer would act on.
+// highlightHover lights what a click under the pointer would act on: the
+// theme's HoverItem over a list row, its Hover over inline targets, and a
+// fixed style no theme reaches over a Go prompt's choices (DESIGN §8).
 func (a *App) highlightHover(rows [][]hostapi.Segment) {
 	if !a.hovering || a.mouse.pressed || a.mouse.dragged {
 		return
@@ -172,8 +174,14 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 	if !ok {
 		return
 	}
+	style := func(s *hostapi.Segment) { s.Over = "Hover" }
+	if top := a.topChrome(); top == "perm" || top == "trust" {
+		style = func(s *hostapi.Segment) { s.HL = "Host:Hover" }
+	} else if rest := dropCells(rows[a.hoverY], a.hoverX); len(rest) > 0 && rest[0].Hit > 0 {
+		style = func(s *hostapi.Segment) { s.Over = "HoverItem" }
+	}
 	for _, sp := range spans {
-		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(string) string { return "Host:Hover" })
+		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, style)
 	}
 }
 
@@ -261,6 +269,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
+	closing, onClose := a.winCloseAt(x, y)
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
@@ -298,6 +307,8 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
+	case top == "" && onClose:
+		return []cellSpan{{y, closing.x + closing.w - 2, closing.x + closing.w - 1}}, func() { a.titleClick(closing.id, x) }, true
 	case under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go statusline pill names its command

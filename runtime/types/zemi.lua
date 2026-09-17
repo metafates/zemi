@@ -701,14 +701,22 @@ function zemi.event.stats() end
 ---@field priority integer
 ---@field origin zemi.Origin
 
+---@alias zemi.Underline "none"|"single"|"double"|"curl"|"dotted"|"dashed"
+
+--- A highlight group. The hover groups `Hover` (clickable widget segments,
+--- statusline pills, window close marks) and `HoverItem` (list rows) draw
+--- over the text's own style: keys left out keep it, false and "NONE" clear it.
 ---@class zemi.HLSpec
 ---@field link? string Draw as this group instead; the other fields are then ignored. Chains longer than 8 or cycles draw unstyled.
----@field fg? string Hex ("#7aa2f7") or a palette name.
+---@field fg? string Hex ("#7aa2f7"), a palette name, or "NONE".
 ---@field bg? string
+---@field sp? string Underline color.
 ---@field bold? boolean
 ---@field italic? boolean
----@field underline? boolean
+---@field underline? boolean|zemi.Underline true is "single", false "none".
 ---@field reverse? boolean
+---@field brighten? number Hover groups: mix the fg this far (-1..1) toward white, or toward black on a lighter background.
+---@field replace? boolean Hover groups: draw as this group alone instead of over the text's style.
 
 ---@class zemi.ThemeSpec
 ---@field palette? table<string, string>
@@ -978,10 +986,10 @@ function zemi.ui.edit(path, opts, on_done) end
 function zemi.ui.hl(group, spec) end
 
 --- How a group draws under the active theme: links followed, palette names
---- resolved to hex, false attributes and unset colors left out. Nil when
+--- resolved to hex, keys the group leaves unset left out. Nil when
 --- nothing defines the group.
 ---@param group string
----@return { fg?: string, bg?: string, bold?: boolean, italic?: boolean, underline?: boolean, reverse?: boolean }|nil
+---@return zemi.HLSpec|nil
 function zemi.ui.hl_get(group) end
 
 --- Render markdown into widget rows of at most `width` cells.

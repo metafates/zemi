@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -20,31 +21,107 @@ func (t themeResolver) style(hl string) uv.Style {
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
 		return t.sgrStyle(params)
 	}
-	if hl == "" || t.host == nil {
-		return uv.Style{}
-	}
-	theme := t.host.Themes.Get(t.host.ActiveThemeName())
-	if theme == nil {
-		return uv.Style{}
-	}
-	spec, ok := t.host.Themes.Group(theme, hl)
+	spec, theme, ok := t.group(hl)
 	if !ok {
 		return uv.Style{}
 	}
-	st := uv.Style{Fg: colorValue(spec.Fg, theme), Bg: colorValue(spec.Bg, theme)}
-	if spec.Bold {
-		st.Attrs |= uv.AttrBold
+	return drawOver(uv.Style{}, spec, theme)
+}
+
+// group is the active theme's spec for a group.
+func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
+	if hl == "" || t.host == nil {
+		return hostapi.HLSpec{}, nil, false
 	}
-	if spec.Italic {
-		st.Attrs |= uv.AttrItalic
+	theme := t.host.Themes.Get(t.host.ActiveThemeName())
+	if theme == nil {
+		return hostapi.HLSpec{}, nil, false
 	}
-	if spec.Underline {
-		st.Underline = uv.UnderlineSingle
+	spec, ok := t.host.Themes.Group(theme, hl)
+	return spec, theme, ok
+}
+
+// hover draws a hover group ("Hover", "HoverItem") over base, the text's
+// own style. A theme without the group still underlines, so a target
+// never goes unmarked.
+func (t themeResolver) hover(base uv.Style, group string) uv.Style {
+	spec, theme, ok := t.group(group)
+	if !ok {
+		spec = hostapi.HLSpec{Underline: "single"}
 	}
-	if spec.Reverse {
-		st.Attrs |= uv.AttrReverse
+	if spec.Replace {
+		base = uv.Style{}
+	}
+	st := drawOver(base, spec, theme)
+	if spec.Brighten != 0 {
+		fg := st.Fg
+		if fg == nil { // the terminal's own fg: brighten Normal instead
+			fg = t.style("Normal").Fg
+		}
+		if k := spec.Brighten; fg != nil {
+			if st.Bg != nil && luma(st.Bg) > luma(fg) { // dark text on a light fill: brighter reads as darker
+				k = -k
+			}
+			st.Fg = brighten(fg, k)
+		}
 	}
 	return st
+}
+
+// drawOver sets the keys spec sets on base and keeps the rest.
+func drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
+	set := func(dst *color.Color, ref string) {
+		switch {
+		case ref == "NONE":
+			*dst = nil
+		case ref != "":
+			if c := colorValue(ref, theme); c != nil {
+				*dst = c
+			}
+		}
+	}
+	set(&st.Fg, spec.Fg)
+	set(&st.Bg, spec.Bg)
+	set(&st.UnderlineColor, spec.Sp)
+	for _, a := range []struct {
+		on   *bool
+		attr uint8
+	}{{spec.Bold, uv.AttrBold}, {spec.Italic, uv.AttrItalic}, {spec.Reverse, uv.AttrReverse}} {
+		switch {
+		case a.on == nil:
+		case *a.on:
+			st.Attrs |= a.attr
+		default:
+			st.Attrs &^= a.attr
+		}
+	}
+	if u, ok := underlines[spec.Underline]; ok {
+		st.Underline = u
+	}
+	return st
+}
+
+var underlines = map[string]uv.Underline{
+	"none": uv.UnderlineNone, "single": uv.UnderlineSingle, "double": uv.UnderlineDouble,
+	"curl": uv.UnderlineCurly, "dotted": uv.UnderlineDotted, "dashed": uv.UnderlineDashed,
+}
+
+func luma(c color.Color) float64 {
+	r, g, b, _ := c.RGBA()
+	return 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
+}
+
+// brighten mixes c by k toward white, or toward black when k is negative.
+func brighten(c color.Color, k float64) color.Color {
+	r, g, b, _ := c.RGBA()
+	mix := func(v uint32) uint8 {
+		x := float64(v >> 8)
+		if k > 0 {
+			return uint8(x + (255-x)*k + 0.5)
+		}
+		return uint8(x*(1+k) + 0.5)
+	}
+	return ansi.RGBColor{R: mix(r), G: mix(g), B: mix(b)}
 }
 
 // sgrStyle decodes inline SGR params (zemi.ui.markdown output), cached

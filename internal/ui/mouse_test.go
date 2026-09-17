@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -236,29 +238,40 @@ func TestHoverTargets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	window := func(app *App) {
+		app.CaptureHooks()
+		if _, err := app.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat}); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(app.host.Wins.CloseAll)
+	}
 	for _, c := range []struct {
 		name string
 		open func(app *App)
 		text string // hovered text
 		dx   int    // cell offset from where text starts
 		rows int    // rows lit, 0 = not a target
+		lit  string // the hover group, or the fixed prompt style
 	}{
-		{"memory text row lights the whole item", memories, "sigma", 1, 3},
-		{"right of memory text is not a target", memories, "sigma", 40, 0},
-		{"the selected memory is not a target", memories, "short one", 1, 0},
-		{"memory section header is not a target", memories, "Remembered", 1, 0},
-		{"overlay row text is a target", overlay, "alpha", 1, 1},
-		{"overlay row padding is not a target", overlay, "alpha", 6, 0},
-		{"overlay gutter is not a target", overlay, "beta and", -1, 0},
-		{"gap before the key column is not a target", keyed, "current", -3, 0},
-		{"the key column lights its item", keyed, "current", 1, 1},
-		{"a choice is a target", perm, "No ", 0, 1},
-		{"the gutter left of a choice is not a target", perm, "No ", -2, 0},
-		{"thought line text is a target", thought, "Thought for", 1, 1},
-		{"right of the thought line is not a target", thought, "Thought for", 60, 0},
-		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1},
-		{"a widget click id without a handler is not", widgets, "noclick", 1, 0},
-		{"the space right of a widget click id is not", widgets, "clickme", 7, 0},
+		{"memory text row lights the whole item", memories, "sigma", 1, 3, "HoverItem"},
+		{"right of memory text is not a target", memories, "sigma", 40, 0, ""},
+		{"the selected memory is not a target", memories, "short one", 1, 0, ""},
+		{"memory section header is not a target", memories, "Remembered", 1, 0, ""},
+		{"overlay row text is a target", overlay, "alpha", 1, 1, "HoverItem"},
+		{"overlay row padding is not a target", overlay, "alpha", 6, 0, ""},
+		{"overlay gutter is not a target", overlay, "beta and", -1, 0, ""},
+		{"gap before the key column is not a target", keyed, "current", -3, 0, ""},
+		{"the key column lights its item", keyed, "current", 1, 1, "HoverItem"},
+		{"a prompt choice keeps the fixed hover", perm, "No ", 0, 1, "Host:Hover"},
+		{"the gutter left of a choice is not a target", perm, "No ", -2, 0, ""},
+		{"thought line text is a target", thought, "Thought for", 1, 1, "Hover"},
+		{"right of the thought line is not a target", thought, "Thought for", 60, 0, ""},
+		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
+		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
+		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
+		{"a window's close mark is a target", window, "×", 0, 1, "Hover"},
+		{"the cell right of the close mark closes too", window, "×", 1, 1, "Hover"},
+		{"a window's title is not", window, "sleep", 0, 0, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 80, 24)
@@ -280,8 +293,8 @@ func TestHoverTargets(t *testing.T) {
 				t.Fatalf("lit %d rows, want %d: %+v", len(spans), c.rows, spans)
 			}
 			for _, sp := range spans {
-				if lit := dropCells(app.lastRows[sp.y], sp.lo); len(lit) == 0 || !strings.Contains(lit[0].HL, "Hover") {
-					t.Fatalf("row %d not lit: %+v", sp.y, app.lastRows[sp.y])
+				if lit := dropCells(app.lastRows[sp.y], sp.lo); len(lit) == 0 || cmp.Or(lit[0].Over, lit[0].HL) != c.lit {
+					t.Fatalf("row %d not lit with %s: %+v", sp.y, c.lit, app.lastRows[sp.y])
 				}
 			}
 		})
@@ -379,5 +392,37 @@ func TestFloatEdgePointer(t *testing.T) {
 		if got != "\x1b]22;"+c.want+"\x07" {
 			t.Errorf("%d,%d: %q, want %s", c.x, c.y, got, c.want)
 		}
+	}
+}
+
+// TestHoverStyle: a hover group draws over the text's own style.
+func TestHoverStyle(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	base := uv.Style{Fg: rgb(0x9098a0), Bg: rgb(0x243427), Attrs: uv.AttrBold}
+	for _, c := range []struct {
+		name  string
+		group string
+		spec  *hostapi.HLSpec // nil: the group is not set
+		want  uv.Style
+	}{
+		{"unset keys keep the base", "Hover", &hostapi.HLSpec{Underline: "curl", Sp: "#ff0000"},
+			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineCurly, UnderlineColor: rgb(0xff0000)}},
+		{"false and NONE clear", "HoverItem", &hostapi.HLSpec{Bold: new(false), Bg: "NONE"}, uv.Style{Fg: base.Fg}},
+		{"replace drops the base", "Hover", &hostapi.HLSpec{Replace: true, Fg: "#ffffff"}, uv.Style{Fg: rgb(0xffffff)}},
+		{"brighten mixes the text's fg toward white", "Hover", &hostapi.HLSpec{Brighten: 0.5},
+			uv.Style{Fg: rgb(0xc8ccd0), Bg: base.Bg, Attrs: uv.AttrBold}},
+		{"brighten darkens text on a lighter fill", "Hover", &hostapi.HLSpec{Brighten: 0.5, Bg: "#ffffff"},
+			uv.Style{Fg: rgb(0x484c50), Bg: rgb(0xffffff), Attrs: uv.AttrBold}},
+		{"a theme without the group still underlines", "HoverNope", nil,
+			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if c.spec != nil {
+				app.host.Themes.SetHL(c.group, *c.spec)
+			}
+			if got := app.thm.hover(base, c.group); !got.Equal(&c.want) {
+				t.Fatalf("got %+v, want %+v", got, c.want)
+			}
+		})
 	}
 }

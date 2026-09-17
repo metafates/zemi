@@ -416,16 +416,21 @@ func (r *EventRegistry) Purge() {
 	r.mu.Unlock()
 }
 
-// HLSpec is one highlight group definition from a theme.
+// HLSpec is one highlight group definition from a theme. Unset fields
+// matter to the hover groups, which draw over the text's own style: nil
+// attributes and empty colors keep what is under them.
 type HLSpec struct {
-	Link      string // another group this one draws as; the other fields are ignored
-	Fg        string
-	Bg        string
-	Bold      bool
-	Italic    bool
-	Underline bool
-	Reverse   bool
+	Link         string // another group this one draws as; the other fields are ignored
+	Fg, Bg, Sp   string // hex, a palette name, or "NONE" (no color, clearing one under a hover)
+	Bold, Italic *bool
+	Reverse      *bool
+	Underline    string  // "", or one of UnderlineKinds
+	Brighten     float64 // hover groups: mix the drawn fg this far toward white, negative toward black
+	Replace      bool    // hover groups: draw as this group alone, not over the text's style
 }
+
+// UnderlineKinds are the underline values a group takes; "none" removes one.
+var UnderlineKinds = []string{"none", "single", "double", "curl", "dotted", "dashed"}
 
 // Theme is a palette + highlight group set registered from Lua.
 type Theme struct {

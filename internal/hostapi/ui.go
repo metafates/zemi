@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -92,7 +93,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if hl, ok := m["hl"].(map[string]any); ok {
 			for k, v := range hl {
 				if spec, ok := v.(map[string]any); ok {
-					t.HL[k] = hlSpec(spec)
+					t.HL[k] = hlSpec(L, "zemi.ui.theme.register", spec)
 				}
 			}
 		}
@@ -302,15 +303,15 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	// hl(group, spec) changes one highlight group on top of the active theme
-	// (and any theme set later): { fg, bg, bold, italic, underline, reverse },
-	// colors as hex or palette names, or { link = "Group" }. theme.register
-	// builds a whole theme.
+	// (and any theme set later): { fg, bg, sp, bold, italic, underline,
+	// reverse, brighten, replace }, colors as hex or palette names, or
+	// { link = "Group" }. theme.register builds a whole theme.
 	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.hl")
 		group := L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.ui.hl")
 		m, _ := v.(map[string]any)
-		h.Themes.SetHL(group, hlSpec(m))
+		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", m))
 		h.refresh()
 		return 0
 	}))
@@ -333,10 +334,32 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			}
 			return ref
 		}
-		L.Push(lua.FromGo(L, map[string]any{
-			"fg": color(spec.Fg), "bg": color(spec.Bg), "bold": spec.Bold, "italic": spec.Italic,
-			"underline": spec.Underline, "reverse": spec.Reverse,
-		}))
+		flag := func(b *bool) any {
+			if b == nil {
+				return nil
+			}
+			return *b
+		}
+		out := map[string]any{
+			"fg": color(spec.Fg), "bg": color(spec.Bg), "sp": color(spec.Sp),
+			"bold": flag(spec.Bold), "italic": flag(spec.Italic), "reverse": flag(spec.Reverse),
+		}
+		switch spec.Underline {
+		case "":
+		case "none":
+			out["underline"] = false
+		case "single":
+			out["underline"] = true
+		default:
+			out["underline"] = spec.Underline
+		}
+		if spec.Brighten != 0 {
+			out["brighten"] = spec.Brighten
+		}
+		if spec.Replace {
+			out["replace"] = true
+		}
+		L.Push(lua.FromGo(L, out))
 		return 1
 	}))
 
@@ -400,13 +423,36 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	return tb
 }
 
-func hlSpec(m map[string]any) HLSpec {
-	return HLSpec{
-		Link: strField(m, "link"),
-		Fg:   strField(m, "fg"), Bg: strField(m, "bg"),
-		Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
-		Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
+// hlSpec reads a group table; misuse raises (DESIGN §6.0).
+func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
+	flag := func(key string) *bool {
+		if b, ok := m[key].(bool); ok {
+			return &b
+		}
+		return nil
 	}
+	spec := HLSpec{
+		Link: strField(m, "link"),
+		Fg:   strField(m, "fg"), Bg: strField(m, "bg"), Sp: strField(m, "sp"),
+		Bold: flag("bold"), Italic: flag("italic"), Reverse: flag("reverse"),
+		Replace: boolField(m, "replace"),
+	}
+	switch u := m["underline"].(type) {
+	case nil:
+	case bool:
+		spec.Underline = map[bool]string{true: "single", false: "none"}[u]
+	case string:
+		if !slices.Contains(UnderlineKinds, u) {
+			L.RaiseError("%s: underline %q is not one of %s", where, u, strings.Join(UnderlineKinds, ", "))
+		}
+		spec.Underline = u
+	default:
+		L.RaiseError("%s: underline must be a boolean or a string", where)
+	}
+	if b, ok := m["brighten"].(float64); ok {
+		spec.Brighten = max(-1, min(b, 1))
+	}
+	return spec
 }
 
 // renderItems runs an overlay's render_item here on the interpreter, so the

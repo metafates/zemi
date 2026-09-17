@@ -201,9 +201,16 @@ func TestHighlightOverride(t *testing.T) {
 		zemi.ui.hl("A", { link = "B" })
 		zemi.ui.hl("B", { link = "A" })
 		assert(zemi.ui.hl_get("A") == nil and zemi.ui.hl_get("Nope") == nil, "a cycle or an unset group")
+		zemi.ui.hl("Hover", { underline = "curl", sp = "accent", bold = false, brighten = 0.3, replace = true })
+		local hv = zemi.ui.hl_get("Hover")
+		assert(hv.underline == "curl" and hv.sp == "#123456" and hv.bold == false and hv.italic == nil
+			and hv.brighten == 0.3 and hv.replace, zemi.json.encode(hv))
+		zemi.ui.hl("U", { underline = false })
+		assert(zemi.ui.hl_get("U").underline == false, "underline = false reads back")
+		assert(not pcall(zemi.ui.hl, "X", { underline = "wavy" }), "an unknown underline kind raises")
 	`)
 	theme := h.Themes.Get("t")
-	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || !s.Bold {
+	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
 		t.Fatalf("Title = %+v", s)
 	}
 	if s, _ := h.Themes.Group(theme, "Comment"); s.Fg != "#777777" {

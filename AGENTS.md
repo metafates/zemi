@@ -651,7 +651,7 @@ timeout.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.34.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.35.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -724,7 +724,10 @@ timeout.
   that `listRows` puts on every row of an item, prompt choices included) to act on the
   topmost chrome, or `Segment.Click`/`Segment.Widget` (a widget's click id) to run that
   widget's `on_click` on the background worker (`Host.ClickWidget`, generation-checked).
-  A click id with no widget is a Go statusline pill naming its command (`errors`, `reload`). Hover lights the whole item, but only the pointer over the item's
+  A click id with no widget is a Go statusline pill naming its command (`errors`, `reload`); a window's " × " corner is a target too (`winCloseAt`).
+  Hover sets `Segment.Over` to the theme group `HoverItem` (a `Hit` row) or `Hover`, which
+  `renderSegs` draws over the segment's own style (`themeResolver.hover`); trust and
+  permission choices take the fixed `Host:Hover` instead (§8). Hover lights the whole item, but only the pointer over the item's
   non-blank or background-painted cells on its row makes it a target: padding, gutters,
   blank rows and section headers never are. Lists scroll at the edge and never recenter,
   so a click does not move the item under the pointer. Modal chrome is spliced after

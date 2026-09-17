@@ -349,6 +349,24 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 	return false
 }
 
+// winCloseAt is the window whose " × " corner (titleClick) is at (x, y),
+// unless a later window covers it.
+func (a *App) winCloseAt(x, y int) (winRect, bool) {
+	for _, r := range slices.Backward(a.winRects) {
+		if y == r.titleY && x >= r.x+r.w-3 && x < r.x+r.w {
+			return r, true
+		}
+		lo, hi := r.x, r.x+r.w
+		if r.float { // its border
+			lo, hi = lo-2, hi+2
+		}
+		if x >= lo && x < hi && y >= r.titleY && y <= r.y+r.h {
+			break
+		}
+	}
+	return winRect{}, false
+}
+
 // titleClick is a click on a window's title row: its × closes, the rest
 // focuses.
 func (a *App) titleClick(id, x int) {

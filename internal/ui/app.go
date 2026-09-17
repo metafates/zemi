@@ -1137,6 +1137,13 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return a.thm.style(hl)
 }
 
+func (a *App) segStyle(hl, over string) uv.Style {
+	if over == "" {
+		return a.hlStyle(hl)
+	}
+	return a.thm.hover(a.hlStyle(hl), over)
+}
+
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
@@ -1146,12 +1153,12 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		}
 		if s.Effect == "shimmer" {
 			for _, r := range a.shimmer(s, a.now(), a.cfgBool("ui.animations", true)) {
-				st := a.hlStyle(r.HL)
+				st := a.segStyle(r.HL, s.Over)
 				b.WriteString(st.Styled(r.Text))
 			}
 			continue
 		}
-		st := a.hlStyle(s.HL)
+		st := a.segStyle(s.HL, s.Over)
 		b.WriteString(st.Styled(s.Text))
 	}
 	out := b.String()

@@ -155,22 +155,23 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 			return
 		}
 		fg, bg := theme.hex(spec.Fg), theme.hex(spec.Bg)
-		fmt.Fprintf(&key, ";%s=%s/%s/%t%t%t", group, fg, bg, spec.Bold, spec.Italic, spec.Underline)
+		bold, italic := spec.Bold != nil && *spec.Bold, spec.Italic != nil && *spec.Italic
+		underline := spec.Underline != "" && spec.Underline != "none"
+		fmt.Fprintf(&key, ";%s=%s/%s/%t%t%t", group, fg, bg, bold, italic, underline)
 		if fg != "" {
 			p.Color = &fg
 		}
 		if bg != "" {
 			p.BackgroundColor = &bg
 		}
-		yes := true
-		if spec.Bold {
-			p.Bold = &yes
+		if bold {
+			p.Bold = new(true)
 		}
-		if spec.Italic {
-			p.Italic = &yes
+		if italic {
+			p.Italic = new(true)
 		}
-		if spec.Underline {
-			p.Underline = &yes
+		if underline {
+			p.Underline = new(true)
 		}
 	}
 	apply(&cfg.Document.StylePrimitive, "Normal")

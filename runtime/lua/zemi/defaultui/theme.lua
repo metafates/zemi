@@ -62,6 +62,9 @@ zemi.ui.theme.register("default", {
     Logo5 = { fg = "#ac9ef3", bold = true },
     Logo6 = { fg = "#bb9af7", bold = true },
     SplashKey = { fg = "fg", bold = true },
+    -- hover draws over the text's own style: keys left out keep it
+    Hover = { underline = true, brighten = 0.25 },
+    HoverItem = { fg = "accent" },
   },
 })
 zemi.ui.theme.set("default")

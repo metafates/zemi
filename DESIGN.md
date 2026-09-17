@@ -913,7 +913,15 @@ UI extensibility contract:
   smuggle a sequence into the terminal.
 - Themes: palettes map names to colors; `hl` groups reference palette
   names or raw hex, or `link` to another group (neovim's `link`, followed
-  8 deep, a cycle draws unstyled); Go resolves to the terminal's colorprofile
+  8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
+  color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
+  `curl`, `dotted`, `dashed`). Hover draws the theme's `Hover` (widget click
+  segments, statusline pills, a window's close mark) or `HoverItem` (list rows,
+  menus, memory items) over the text's own style: keys a hover group leaves out
+  keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
+  (toward black on a lighter fill) and `replace` draws the group alone. A theme
+  without the group underlines. The trust and permission prompts' choices keep
+  the fixed `Host:Hover` (§8). Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed). `zemi.ui.hl_get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
   (same or less trusted origin), shipped ones included.

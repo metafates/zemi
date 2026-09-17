@@ -753,6 +753,7 @@ type Segment struct {
 	Click  string
 	Widget string
 	Effect string // "shimmer": the UI animates the text, blending hl toward Normal
+	Over   string // Go only: a hover group drawn over HL
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
@@ -1246,7 +1247,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.34.0"))
+	api.RawSetString("version", glua.LString("0.35.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
