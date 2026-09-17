@@ -227,8 +227,11 @@ func (w *Window) placeholders(key uint32, cols, rows int, noMove bool) func() {
 
 // placeholderCell maps a placeholder cell to its host image: the fg the
 // program wrote names its own key, so a window shows only images it sent.
-// A placeholder with no image becomes a blank.
+// A placeholder with no image, or joined after another rune, becomes a blank.
 func (w *Window) placeholderCell(text string, st uv.Style) (string, uv.Style) {
+	if !strings.HasPrefix(text, string(kitty.Placeholder)) {
+		return " ", uv.Style{}
+	}
 	var key uint32
 	switch c := st.Fg.(type) {
 	case nil:
@@ -334,7 +337,7 @@ func (m *Manager) deleteImages(w *Window, key uint32, free bool) {
 		}
 		if free {
 			m.deleteSlot(h)
-		} else {
+		} else if m.gfx.Len() <= maxQueued {
 			fmt.Fprintf(&m.gfx, "\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", h)
 		}
 	}
@@ -374,7 +377,9 @@ func (m *Manager) pixels(h int) (int, int) {
 func (m *Manager) queue(s string) {
 	m.gmu.Lock()
 	defer m.gmu.Unlock()
-	m.gfx.WriteString(s)
+	if m.gfx.Len() <= maxQueued {
+		m.gfx.WriteString(s)
+	}
 }
 
 // atoi reads a small non-negative number; anything else is 0.

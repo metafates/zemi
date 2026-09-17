@@ -73,6 +73,11 @@ func TestKittyGraphics(t *testing.T) {
 			text: "   END",
 		},
 		{
+			name: "a placeholder joined after a prepend rune is blank",
+			out:  "\x1b[38;5;16m\u0d4e" + cells(0, 1) + "\x1b[0mEND",
+			text: " END",
+		},
+		{
 			name: "delete frees the image and blanks its cells",
 			out:  apc("a=T,i=7,f=100,c=3,r=2,q=2;iVBO") + apc("a=d,d=I,i=7,q=2") + "\r\nEND",
 			gfx:  []string{apc("a=d,d=I,i=16,q=2")}, text: "\n\nEND",

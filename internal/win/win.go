@@ -637,7 +637,7 @@ func (w *Window) Screen() Screen {
 				text = " " // a combining mark vt did not join: keep the columns aligned
 			}
 			style := c.Style
-			if strings.HasPrefix(text, string(kitty.Placeholder)) {
+			if strings.ContainsRune(text, kitty.Placeholder) {
 				text, style = w.placeholderCell(text, style)
 			}
 			if cur == nil || !style.Equal(&curStyle) {
