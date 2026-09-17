@@ -168,7 +168,8 @@ func formatOverlayItem(item any) string {
 }
 
 // enterVerb names what enter does on item idx: "open" its detail view,
-// "select" it, "back" from a detail view, or "" when it does nothing.
+// the overlay's own verb ("select" by default), "back" from a detail view,
+// or "" when it does nothing.
 func (st *overlayState) enterVerb(idx int) string {
 	m, _ := st.o.Items[idx].(map[string]any)
 	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
@@ -176,7 +177,7 @@ func (st *overlayState) enterVerb(idx int) string {
 	case has("detail") || m["actions"] != nil:
 		return "open"
 	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil:
-		return "select"
+		return cmp.Or(st.o.Verb, "select")
 	case st.back:
 		return "back"
 	}

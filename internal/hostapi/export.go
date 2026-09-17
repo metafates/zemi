@@ -98,7 +98,7 @@ func copyPicker(blocks []codeBlock) Overlay {
 	}
 	items = append(items, map[string]any{"text": "Whole reply", "run": "copy reply"})
 	rows = append(rows, nil)
-	return Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Items: items, ItemText: rows}
+	return Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Items: items, ItemText: rows, Verb: "copy"}
 }
 
 type codeBlock struct{ lang, text string }

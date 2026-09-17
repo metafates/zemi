@@ -90,10 +90,12 @@ type Overlay struct {
 
 	// Body is text above the items; with no items the overlay is a
 	// read-only view. Empty is the line shown when there are no items and
-	// no body. Selected is the item selected when it opens.
+	// no body. Selected is the item selected when it opens. Verb names what
+	// enter does to a row, when "select" does not say it.
 	Body     string
 	Empty    string
 	Selected int
+	Verb     string
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
