@@ -271,6 +271,9 @@ type Host struct {
 	// config, instructions and language servers load only when it is set,
 	// and auto and plan mode settle less without it.
 	projectTrusted atomic.Bool
+	// project is the trust root, ~-shortened, found once: widgets read it
+	// every frame and finding it walks the disk
+	project func() string
 
 	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
@@ -340,6 +343,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.Perm.Default = h.fsDefault
 	h.Wins.OnExit = h.windowExited
+	h.project = sync.OnceValue(func() string { return TildePath(h.Dirs.TrustRoot()) })
 	if dirs.StateHome != "" {
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
 	}
@@ -800,6 +804,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LT
 	tb.RawSetString("height", glua.LNumber(state.Height))
 	tb.RawSetString("version", glua.LString(h.Version))
 	tb.RawSetString("cwd", glua.LString(TildePath(sess.CWD)))
+	tb.RawSetString("project", glua.LString(h.project()))
+	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	stream := h.AgentStream()
 	if stream.Profile == "" {
 		stream.Profile = "default"
@@ -1096,7 +1102,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.20.0"))
+	api.RawSetString("version", glua.LString("0.21.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

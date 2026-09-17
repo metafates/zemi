@@ -151,7 +151,7 @@ local function splash(ctx)
   local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
   row({ { text = ver .. "a coding agent that learns how you work", hl = "Comment" } })
   row({ { text = "" } })
-  row({ { text = "model    ", hl = "Comment" }, { text = (ctx.model ~= "" and ctx.model) or "none: /health explains", hl = "Normal" } })
+  row({ { text = "model    ", hl = "Comment" }, { text = (ctx.model ~= "" and ctx.model) or "none yet: add a provider in init.lua", hl = "Normal" } })
   local cwd, room = ctx.cwd or "", maxw - 10
   if cells(cwd) > room and room > 1 then
     -- keep the tail: the project name is at the end
@@ -227,18 +227,17 @@ zemi.ui.widget.register({
   end,
 })
 
--- Then the working directory (tail kept when long, so the right cluster
--- always fits), then the reflector badge.
+-- Then the project: its path when short, else its name (the splash has
+-- the whole path), and whether it is untrusted.
 zemi.ui.widget.register({
   id = "statusline.cwd",
   region = "statusline.left",
   priority = 10,
   render = function(ctx)
-    local cwd, room = ctx.cwd or "", math.floor((ctx.width or 80) / 3)
-    if #cwd > room and room > 1 then
-      cwd = "…" .. cwd:sub(-(room - 1)):gsub("^[\128-\191]+", "")
-    end
-    return { { { text = cwd, hl = "Comment" } } }
+    local p = ctx.project or ctx.cwd or ""
+    if cells(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
+    if ctx.trusted == false then p = p == "" and "untrusted" or p .. " · untrusted" end
+    return { { { text = p, hl = "Comment" } } }
   end,
 })
 
@@ -276,10 +275,10 @@ zemi.ui.widget.register({
   render = function(ctx)
     local v = ctx.view
     if not v then return empty() end
-    local tail = " · " .. v.status .. " · esc back"
+    local tail = " · " .. v.status .. " · esc to go back"
     return { {
-      { text = "◂ " .. v.agent, hl = "Title" },
-      { text = " " .. clip(v.description, math.max(10, math.floor((ctx.width or 80) / 3))) .. tail, hl = "Comment" },
+      { text = "viewing " .. v.agent, hl = "Title" },
+      { text = ": " .. clip(v.description, math.max(10, math.floor((ctx.width or 80) / 3))) .. tail, hl = "Comment" },
     } }
   end,
 })

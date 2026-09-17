@@ -976,7 +976,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 		pill(" stuck: /reload ")
 	}
 	if a.host.HasUnseenErrors() {
-		pill(" ! errors /errors ")
+		pill(" errors: /errors ")
 	}
 
 	if n := a.rowsBelow(); n > 0 {

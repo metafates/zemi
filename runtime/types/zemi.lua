@@ -280,6 +280,8 @@ function zemi.event.stats() end
 ---@field time string "15:04".
 ---@field version string
 ---@field cwd string
+---@field project string The repository root trust is decided for, ~-shortened.
+---@field trusted boolean Whether the user trusts this project (/trust).
 ---@field model string
 ---@field profile string
 ---@field effort string

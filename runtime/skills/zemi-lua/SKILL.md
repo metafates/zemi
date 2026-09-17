@@ -169,7 +169,8 @@ only `agent(prompt, { agent, description })` -> text or nil, err, `parallel({ fn
 results, errs, `phase(name)`, `log(...)` (alias `print`), `json.encode/decode`, `args`, and
 Lua's string, table and math libraries. `agent` and `parallel` cannot run inside `pcall`.
 
-Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `model`, `profile`,
+Widget `ctx` carries `width`, `height`, `time`, `version`, `cwd`, `project` (the trust
+root, `~`-shortened), `trusted`, `model`, `profile`,
 `effort`, `permission_mode`, `permission_mode_base`, `agent_active`, `transcript`,
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
 `thought`, `elapsed`), `todos` (`content`, `status`, `active_form`), `view` (the agent run
