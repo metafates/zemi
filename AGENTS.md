@@ -731,7 +731,14 @@ timeout.
   keeps an orphan holding stdout from blocking `Wait`; `proc.Buffer` caps output. A plain
   `exec.Command` here is a bug: a cancelled `sh -c` pipeline once hung the turn forever.
 - **The key loop never waits on Lua.** Keymap right-hand sides and Lua commands run in
-  order on one worker goroutine (`App.background`); Go commands stay inline. A turn's
+  order on one worker goroutine (`App.background`); Go commands stay inline. Lua
+  completion sources (`zemi.composer.complete`, dropped when the draft moved on; stale rows
+  narrow by prefix meanwhile) and a toggle list's `Overlay.Reload` run on the worker too. Keymaps, clicks,
+  one-shot timers, `callLuaAsync` callbacks and `EmitAsync` handlers call `refresh` when
+  they return; `App.Refresh` keeps at most one hook queued (`refreshPending`), so a test
+  that needs a full queue fills it with `app.do`. A render's ctx builds `transcript`,
+  `agent`, `todos` and `recent` on first read (`widgetCtxTable`, `BenchmarkWidgetCtx`):
+  keep new expensive fields lazy. A turn's
   `turnScope` context (host.go) covers compaction, the model, tools and auto-mode
   screening, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
 - **Widgets read UI flags, never Go-drawn text.** The working row and the quit, key
