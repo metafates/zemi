@@ -123,7 +123,6 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	}
 	saved, what := "saved for this repository", "repository"
 	if hostapi.TrustUnsaved(tp.root) {
-		text("Trust for your home directory or / lasts this run only.", "Host:Hint")
 		saved, what = "this run only", "directory"
 	}
 	if tp.state != "" {
