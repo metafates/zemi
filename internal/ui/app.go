@@ -768,6 +768,9 @@ func (a *App) compose(w, h int) string {
 		modals = append(modals, func() { rows = spliceBox(rows, box, w, len(header), chatH) })
 	}
 	for i := range a.overlays {
+		if i+1 < len(a.overlays) && a.overlays[i+1].back {
+			continue // a detail view replaces the list it opened from
+		}
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
 			box := overlayBox(ov, w, chatH)
 			modals = append(modals, func() { rows = anchorBottom(rows, box, w, len(header), chatH) })

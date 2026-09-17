@@ -633,7 +633,7 @@ config directory. `sweepPendingRevisions` runs in `PermissionsLoadStep`.
   windows, and everything outside the top box is repainted `Host:Dim` (`dimRows`); the
   palette and completion popups are not modal. Overlays (`internal/ui/overlay.go`) are data:
   an item with `detail` or `actions` pushes a detail view (`<id>#detail`, the parent's
-  origin, esc pops it), `Body` is text above the items, `Empty` the line for none, and the
+  origin, drawn in place of the list, esc pops it), `Body` is text above the items, `Empty` the line for none, and the
   hint line lists only keys that act on the selection (`enterVerb`); enter on an inert row
   does nothing. Helpers that rebuild segments must carry `Hit`. Composer
   editing keys (`ctrl+u`, `ctrl+k`, `ctrl+w`, `home`/`end`, ...) stay with the composer —

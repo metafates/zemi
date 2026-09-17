@@ -1044,7 +1044,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
-  with its full text and the actions as a list, so a restart, a
+  in place of the list with its full text and the actions as a list, so a restart, a
   multi-agent run or a rewind is never one stray enter; esc goes back.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command

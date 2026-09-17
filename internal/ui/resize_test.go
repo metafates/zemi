@@ -47,6 +47,19 @@ func TestGoldenOverlayDetail(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.renderSync(t)
 	golden.RequireEqual(t, regexp.MustCompile(`\d\d:\d\d:\d\d`).ReplaceAllString(app.Frame(), "12:00:00"))
+
+	// a detail view shorter than its list replaces it rather than sitting on it
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if err := host.OpenHealth(); err != nil {
+		t.Fatal(err)
+	}
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); strings.Count(frame, "╭") != 1 {
+		t.Fatalf("the list shows around its detail view:\n%s", frame)
+	}
 }
 
 // TestOverlayWidthStableWhileScrolling: a list longer than its window
