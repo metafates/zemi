@@ -122,16 +122,18 @@ type ChatMessage struct {
 	Detail string // tool rows: subagent or workflow progress summary
 	Run    string // agent tool rows: the run id
 	Diff   string // file tool rows: the applied change as "- "/"+ " lines
-	Output string // tool rows: the last lines of the result (outputTail)
+	Output string // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
 }
 
-// outputTail keeps the last 10 lines of a tool result, each capped at 300
-// runes and sanitized, for the transcript row.
-func outputTail(s string) string {
+// shortOutput keeps 10 lines of a tool result for the transcript row, each
+// capped at 300 runes and sanitized: the first three, which say what went
+// wrong, and the last six, with a row counting what fell out between them.
+func shortOutput(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	if len(lines) > 10 {
-		lines = lines[len(lines)-10:]
+	if n := len(lines) - 9; n > 0 {
+		cut := append([]string{fmt.Sprintf("... %d more lines", n)}, lines[len(lines)-6:]...)
+		lines = append(lines[:3:3], cut...)
 	}
 	for i, l := range lines {
 		lines[i] = sanitize.String(truncRunes(l, 300))

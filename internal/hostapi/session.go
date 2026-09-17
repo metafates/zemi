@@ -19,7 +19,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -276,7 +275,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok"})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
-					tr[i].Output = outputTail(agent.ToolOutput(p.Output))
+					tr[i].Output = shortOutput(agent.ToolOutput(p.Output))
 					if p.Output.GetType() == fantasy.ToolResultContentTypeError {
 						tr[i].Status = "err"
 					}
@@ -326,7 +325,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			return
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
-		title := sanitize.String(learn.Truncate(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
+		title := sanitize.String(truncRunes(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
 		if title == "" {
 			return
 		}

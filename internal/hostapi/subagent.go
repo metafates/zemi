@@ -424,7 +424,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out string) {
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		run.tr[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
-		run.tr[i].Output = outputTail(out)
+		run.tr[i].Output = shortOutput(out)
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
@@ -747,7 +747,7 @@ func (h *Host) openAgents() error {
 			"text":    j.ID,
 			"desc":    j.Status() + " · " + j.Name,
 			"section": "Background jobs (all sessions)",
-			"detail":  j.Name + "\n" + j.Status() + "\n\n" + cmp.Or(outputTail(j.Output()), "(no output)"),
+			"detail":  j.Name + "\n" + j.Status() + "\n\n" + cmp.Or(shortOutput(j.Output()), "(no output)"),
 		}
 		if j.Running() {
 			item["actions"] = []any{map[string]any{"text": "Stop", "run": "agents kill " + j.ID}}

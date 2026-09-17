@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -596,5 +597,22 @@ func TestClickWidget(t *testing.T) {
 				t.Fatalf("command args = %q", args)
 			}
 		})
+	}
+}
+
+// TestShortOutput: a long result keeps its first lines, which say what
+// failed, and its last ones, with the drop counted between them.
+func TestShortOutput(t *testing.T) {
+	var lines []string
+	for i := range 30 {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	got := shortOutput(strings.Join(lines, "\n") + "\n")
+	want := "line 0\nline 1\nline 2\n... 21 more lines\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29"
+	if got != want {
+		t.Errorf("got:\n%s", got)
+	}
+	if got := shortOutput("a\nb"); got != "a\nb" {
+		t.Errorf("short output changed: %q", got)
 	}
 }

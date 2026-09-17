@@ -64,7 +64,7 @@ type StreamTool struct {
 	Detail  string // live progress line (subagents, workflows)
 	Run     string // agent tool: the run id, so the row can open its transcript
 	Diff    string // file tools: the change as "- "/"+ " lines
-	Output  string // the last lines of the result (outputTail)
+	Output  string // the last lines of the result (shortOutput)
 	Name    string
 	Input   string
 	Status  string // "run", "ok", "err"
@@ -664,7 +664,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
 			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
-			ag.tools[i].Output = outputTail(output)
+			ag.tools[i].Output = shortOutput(output)
 			if !ok {
 				ag.tools[i].Diff = "" // the change did not happen
 			}
@@ -835,6 +835,18 @@ func toolSummary(input string) string {
 		}
 		return cmd
 	}
+	// the window and lsp tools name what they do in "action"; without it a
+	// window row would read as the whole panel body it is about to show
+	if action, ok := m["action"].(string); ok && action != "" {
+		for _, k := range []string{"cmd", "keys", "title", "symbol", "path", "id"} {
+			if v, ok := m[k]; ok {
+				if s := fmt.Sprint(v); s != "" {
+					return action + " " + s
+				}
+			}
+		}
+		return action
+	}
 	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s
@@ -909,7 +921,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		name = p.Name
 	}
 	first, _, _ := strings.Cut(strings.TrimSpace(firstText), "\n")
-	title := learn.Truncate(first, 60)
+	title := truncRunes(first, 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err

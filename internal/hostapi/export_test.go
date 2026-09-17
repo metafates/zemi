@@ -166,6 +166,10 @@ func TestToolSummary(t *testing.T) {
 		`{"id":"job-1"}`: "job-1",
 		`{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`: "Which color? +1 more",
 		`{"plan":"\n# Goal\n\n1. write x.txt"}`:                                         "Goal",
+		`{"action":"text","title":"Results","text":"# Build\n| a | b |"}`:               "text Results",
+		`{"action":"keys","id":3,"keys":"hello<cr>"}`:                                   "keys hello<cr>",
+		`{"action":"close","id":2}`:                                                     "close 2",
+		`{"action":"definition","path":"/p/a.go","symbol":"Run"}`:                       "definition Run",
 	} {
 		if got := toolSummary(in); got != want {
 			t.Errorf("toolSummary(%s) = %q, want %q", in, got, want)
