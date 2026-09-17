@@ -210,3 +210,20 @@ func TestToastCap(t *testing.T) {
 		t.Fatal("the long error was not recorded")
 	}
 }
+
+func TestFitSegs(t *testing.T) {
+	right := []hostapi.Segment{{Text: "fake/fake-1"}, {Text: " · "}, {Text: "15/200.0k ctx"}, {Text: " · "}, {Text: "8%"}}
+	for _, c := range []struct {
+		w    int
+		want string
+	}{
+		{40, "fake/fake-1 · 15/200.0k ctx · 8%"},
+		{30, "fake/fake-1 · 15/200.0k ctx"},
+		{20, "fake/fake-1"},
+		{8, "fake/fa…"},
+	} {
+		if got := plainSegs(fitSegs(right, c.w)); got != c.want {
+			t.Errorf("w %d: %q, want %q", c.w, got, c.want)
+		}
+	}
+}

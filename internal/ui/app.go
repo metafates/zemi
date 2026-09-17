@@ -1016,7 +1016,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 		// Overflow truncates the right cluster first (lowest priority of
 		// the row's real estate goes last, §8).
 		if room := w - leftW - 1; room > 0 {
-			right = truncateSegs(right, room)
+			right = fitSegs(right, room)
 			rightW = segsWidth(right)
 		} else {
 			left = truncateSegs(left, w)
@@ -1105,6 +1105,21 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		out = ansi.Truncate(out, w, "")
 	}
 	return out
+}
+
+// fitSegs drops whole segments from the end, and a " · " left dangling,
+// until segs fit w cells; a first segment alone too wide ends in "…".
+func fitSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
+	for len(segs) > 1 && segsWidth(segs) > w {
+		segs = segs[:len(segs)-1]
+		if n := len(segs); n > 1 && strings.TrimSpace(segs[n-1].Text) == "·" {
+			segs = segs[:n-1]
+		}
+	}
+	if segsWidth(segs) > w {
+		return ellipsizeSegs(segs, w)
+	}
+	return segs
 }
 
 func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
