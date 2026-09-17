@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,7 +29,7 @@ func TestEditorScript(t *testing.T) {
 
 // TestEditFileWindow: the editor runs in a focused float on the path, the
 // window closes on exit and gives the focus back, and a failed exit is an
-// error.
+// error. A cancel returns at once and the window closes when the editor exits.
 func TestEditFileWindow(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.CaptureHooks()
@@ -36,17 +37,21 @@ func TestEditFileWindow(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
 		code    string
+		cancel  bool
 		wantErr bool
-	}{{"0", false}, {"3", true}} {
+	}{{"0", false, false}, {"3", false, true}, {"0", true, true}} {
 		script := filepath.Join(dir, "ed"+c.code)
 		if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 0.2\necho edited >\"$1\"\nexit "+c.code+"\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		a.host.Settings.SetQuiet("editor.command", script)
 		path := filepath.Join(dir, "f.txt")
+		_ = os.Remove(path)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := a.EditFile(t.Context(), hostapi.EditRequest{Path: path, Title: "f.txt"})
+			_, err := a.EditFile(ctx, hostapi.EditRequest{Path: path, Title: "f.txt"})
 			done <- err
 		}()
 		var err error
@@ -64,10 +69,16 @@ func TestEditFileWindow(t *testing.T) {
 				}
 				if wn := a.focusedWin(); wn != nil && wn.Owner == "editor" && wn.Title() == "Edit f.txt" {
 					focused = true
+					if c.cancel {
+						cancel()
+					}
 				}
 			}
 		}
-		for a.Pump() {
+		for deadline := time.Now().Add(3 * time.Second); len(a.host.Wins.List()) > 0 && time.Now().Before(deadline); {
+			if !a.Pump() {
+				time.Sleep(5 * time.Millisecond)
+			}
 		}
 		if b, _ := os.ReadFile(path); string(b) != "edited\n" || !focused || (err != nil) != c.wantErr {
 			t.Errorf("exit %s: file %q, focused %v, err %v", c.code, b, focused, err)

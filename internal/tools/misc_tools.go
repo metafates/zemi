@@ -210,7 +210,10 @@ func runOpenInEditor(ctx context.Context, p *Pipeline, input map[string]any) (fa
 		if created {
 			_ = os.Remove(path)
 		}
-		return stopTurn("The editor did not run: " + err.Error() + ". Stop and wait for the user."), nil
+		if ctx.Err() != nil {
+			return stopTurn("Interrupted while the file was open in the editor, which stays open for the user. Stop and wait for the user."), nil
+		}
+		return stopTurn("The editor failed: " + err.Error() + ". Stop and wait for the user."), nil
 	}
 	fi, err := os.Stat(path)
 	if err != nil {

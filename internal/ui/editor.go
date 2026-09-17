@@ -63,18 +63,18 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 		a.setFocusWin(w.ID)
 		return nil
 	})
-	if err := w.Wait(ctx); err != nil {
-		a.await(func() tea.Cmd { a.editing = ""; return nil })
-		return "window", err
-	}
-	a.await(func() tea.Cmd {
-		a.editing = ""
+	closeWin := func() {
 		if a.focusWin == w.ID {
 			a.setFocusWin(prev)
 		}
 		a.host.CloseWindow(w.ID)
-		return nil
-	})
+	}
+	if err := w.Wait(ctx); err != nil {
+		a.await(func() tea.Cmd { a.editing = ""; return nil })
+		go func() { <-w.Done(); a.do(closeWin) }()
+		return "window", err
+	}
+	a.await(func() tea.Cmd { a.editing = ""; closeWin(); return nil })
 	if code := w.ExitCode(); code != 0 {
 		return "window", fmt.Errorf("the editor exited with code %d", code)
 	}
