@@ -633,6 +633,9 @@ func (w *Window) Screen() Screen {
 			if text == "" {
 				continue // the tail of a wide cell
 			}
+			if c.Width == 0 {
+				text = " " // a combining mark vt did not join: keep the columns aligned
+			}
 			style := c.Style
 			if strings.HasPrefix(text, string(kitty.Placeholder)) {
 				text, style = w.placeholderCell(text, style)

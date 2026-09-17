@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/charmbracelet/x/vt"
 )
@@ -37,7 +38,7 @@ func TestKittyGraphics(t *testing.T) {
 		{
 			name:   "direct transmit and place moves the cursor below",
 			out:    apc("a=T,f=100,c=3,r=2,q=2;iVBO") + "\r\nEND",
-			gfx:    []string{apc("a=t,i=16,q=2,f=100,m=0;iVBO"), apc("a=p,U=1,i=16,c=3,r=2,q=2")},
+			gfx:    []string{apc("a=t,i=16,q=2,f=100,m=0;iVBO"), apc("a=p,U=1,i=16,p=1,c=3,r=2,q=2")},
 			placed: true,
 		},
 		{
@@ -48,7 +49,7 @@ func TestKittyGraphics(t *testing.T) {
 		{
 			name: "program placeholders map to the host id",
 			out:  apc("a=T,U=1,i=5,f=100,c=3,r=2,q=2;iVBO") + "\x1b[38;5;5m" + cells(0, 3) + "\r\n" + cells(1, 3) + "\x1b[0m\r\nEND",
-			gfx:  []string{apc("a=p,U=1,i=16,c=3,r=2,q=2")}, placed: true,
+			gfx:  []string{apc("a=p,U=1,i=16,p=1,c=3,r=2,q=2")}, placed: true,
 		},
 		{
 			name: "file transmission is refused",
@@ -142,7 +143,8 @@ func TestKittyGraphics(t *testing.T) {
 }
 
 // TestImageIDsEvictOldest: past the 240 host ids the oldest image is
-// deleted before its id is reused, and a closed window queues nothing.
+// deleted before its id is reused, resent or not, and a closed window
+// queues nothing.
 func TestImageIDsEvictOldest(t *testing.T) {
 	m := &Manager{}
 	w := &Window{m: m, ID: 1}
@@ -152,9 +154,47 @@ func TestImageIDsEvictOldest(t *testing.T) {
 	if g := m.TakeGraphics(); !strings.Contains(g, apc("a=d,d=I,i=16,q=2")) || m.hostID(1, 241) != 16 || m.hostID(1, 1) != 0 {
 		t.Fatal("the oldest id was not evicted and reused")
 	}
+	// resending an image keeps its id and leaves the oldest next in line
+	m.transmit(w, 100, map[string]string{}, []byte("x"))
+	m.transmit(w, 999, map[string]string{}, []byte("x"))
+	if m.hostID(1, 100) == 0 || m.hostID(1, 2) != 0 || m.hostID(1, 101) == 0 {
+		t.Fatal("a resent image moved eviction off the oldest")
+	}
 	m.dropImages(w)
 	m.TakeGraphics()
 	if h, _ := m.transmit(w, 9, map[string]string{}, []byte("x")); h != 0 || m.TakeGraphics() != "" {
 		t.Fatal("a closed window queued an image")
+	}
+}
+
+// TestPlaceWithoutSTDoesNotPileUp: an APC ended by a bare ESC is dispatched
+// but never flushed, so repeating it must keep one screen of placeholders.
+func TestPlaceWithoutSTDoesNotPileUp(t *testing.T) {
+	m := &Manager{}
+	m.SetKitty(true)
+	w := &Window{m: m, ID: 1, term: vt.NewEmulator(20, 6), w: 20, h: 6}
+	w.term.RegisterApcHandler(w.graphics)
+	w.write([]byte(apc("a=t,i=5,f=100,q=2;iVBO")))
+	w.write([]byte("\x1b_Ga=p,i=5,c=20,r=6,q=2\x1b[m"))
+	one := len(w.place)
+	for range 50 {
+		w.write([]byte("\x1b_Ga=p,i=5,c=20,r=6,q=2\x1b[m"))
+	}
+	if one == 0 || len(w.place) != one {
+		t.Fatalf("placeholders held back: %d bytes, one screen is %d", len(w.place), one)
+	}
+}
+
+// TestZeroWidthCellKeepsColumns: a combining mark vt leaves in its own cell
+// still takes a column, so the rest of the row does not shift left.
+func TestZeroWidthCellKeepsColumns(t *testing.T) {
+	w := &Window{term: vt.NewEmulator(10, 2), w: 10, h: 2}
+	w.term.Write([]byte("abe\u0301\x1b[2;1H"))
+	n := 0
+	for _, sp := range w.Screen().Rows[0] {
+		n += ansi.StringWidth(sp.Text)
+	}
+	if n != 10 {
+		t.Fatalf("row 0 is %d cells: %+v", n, w.Screen().Rows[0])
 	}
 }
