@@ -719,22 +719,7 @@ func (a *App) compose(w, h int) string {
 		y += sh
 	}
 
-	// Toasts stack down from the top of the chat area, newest highest,
-	// right-aligned over the chat rows they cover, one blank row apart.
-	y, bottom := len(header), len(rows)
-	for _, v := range slices.Backward(a.toasts) {
-		for _, line := range toastBox(v, w) {
-			if y >= bottom {
-				break
-			}
-			x0 := max(0, w-segsWidth(line)-1)
-			// cut one cell short of the toast so the text it covers never
-			// touches the bar and reads as part of it
-			rows[y] = append(padSegs(truncateSegs(rows[y], max(0, x0-1)), x0), line...)
-			y++
-		}
-		y++
-	}
+	toastBottom := len(rows)
 
 	// the popup takes the mouse on the whole rows it covers, windows under it included
 	popTop := floatPopup(rows, append(compPopup, palPopup...), w, len(header), chatH)
@@ -768,7 +753,7 @@ func (a *App) compose(w, h int) string {
 		}
 		x += vw + 1
 	}
-	w = full
+	chatW, w := w, full
 	for _, wn := range a.shownWins(win.KindFloat) {
 		box, x0, y0, r := a.floatBox(wn, w, h, len(header), chatH)
 		a.winRects = append(a.winRects, r)
@@ -814,6 +799,23 @@ func (a *App) compose(w, h int) string {
 			dimRows(rows)
 		}
 		place()
+	}
+
+	// Toasts stack down from the top of the chat area, newest highest,
+	// right-aligned over the chat rows they cover, one blank row apart. They
+	// go over modals too, so feedback for a modal's action is not dimmed.
+	y = len(header)
+	for _, v := range slices.Backward(a.toasts) {
+		for _, line := range toastBox(v, chatW) {
+			if y >= toastBottom {
+				break
+			}
+			// a blank cell each side, so the text it covers never touches the bar
+			x0 := max(0, chatW-segsWidth(line)-2)
+			rows = placeBox(rows, [][]hostapi.Segment{append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})}, x0, y, w)
+			y++
+		}
+		y++
 	}
 
 	a.lastRows, a.lastChatBottom = rows, len(header)+chatH
