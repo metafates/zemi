@@ -150,6 +150,38 @@ func TestPermissionRuleValidation(t *testing.T) {
 	}
 }
 
+// TestReloadKeepsRuntimePicks: a reload whose config writes what the last
+// load wrote keeps a value picked at runtime; an edited config value wins.
+func TestReloadKeepsRuntimePicks(t *testing.T) {
+	dir, log := t.TempDir(), logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	initLua := filepath.Join(dir, "init.lua")
+	for _, c := range []struct{ name, config, pick, want string }{
+		{"first load applies config", "p/a", "", "p/a"},
+		{"unchanged config keeps a pick", "p/a", "p/b", "p/b"},
+		{"edited config wins over a pick", "p/c", "p/b", "p/c"},
+	} {
+		if err := os.WriteFile(initLua, []byte(`zemi.config.set("agent.model", "`+c.config+`")`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if c.pick != "" {
+			if _, err := h.Settings.SetQuiet("agent.model", c.pick); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := h.Settings.Get("agent.model"); got != c.want {
+			t.Errorf("%s: agent.model = %v, want %s", c.name, got, c.want)
+		}
+	}
+}
+
 // TestReloadKeepsUserVetoes: while a reload replays config, tool calls are
 // still checked against the old Lua rules and wait for the tool.pre handlers
 // to come back instead of passing without them.

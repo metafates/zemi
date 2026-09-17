@@ -61,7 +61,8 @@ zemi.config = {}
 function zemi.config.get(path) end
 
 --- Write a setting. User config only; raises for an unknown path, a wrong
---- kind, or a host-owned knob.
+--- kind, or a host-owned knob. A reload that writes the same value as the last
+--- load leaves the setting alone, so a runtime pick (/model, /effort) stays.
 ---@param path string
 ---@param value any
 function zemi.config.set(path, value) end

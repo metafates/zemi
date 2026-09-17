@@ -68,7 +68,9 @@ A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) b
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
 files, one per launch. Config reload is not fsnotify: `watchConfig` walks the config trees
 once a second and reloads when the fingerprint (path, size, mtime) moved and no turn is
-active; an untrusted project's `.zemi` is not watched.
+active; an untrusted project's `.zemi` is not watched. A replayed `zemi.config.set` that
+writes what the last boot wrote is skipped (`Host.cfgWritten`), so `/model`, `/effort`,
+the mode cycle and `-m`/`--mode` survive a reload until the config changes that key.
 
 ## Architecture and control flow
 

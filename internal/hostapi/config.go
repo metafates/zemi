@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"reflect"
 	"sync"
 
 	"github.com/metafates/zemi/internal/config"
@@ -106,9 +107,18 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
 		}
+		// a replay writing what the last load wrote keeps what /model, the
+		// mode cycle, /effort or a flag picked since; an edited value wins
+		booting := h.RT.Booting()
+		if last, ok := h.cfgWritten.Load(path); booting && ok && reflect.DeepEqual(last, v) {
+			return 0
+		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
+		}
+		if booting {
+			h.cfgWritten.Store(path, v)
 		}
 		h.deliverFired(L, fired)
 		return 0

@@ -80,6 +80,8 @@ interactively.
 ## Settings
 
 `zemi.config.get(path)`, `zemi.config.set(path, value)`, `zemi.config.watch(path, fn)`.
+A reload keeps a value picked at runtime (`/model`, `/effort`, the mode cycle, `-m`) unless
+init.lua now sets that key to a different value.
 `zemi.config.schema()` lists every key with kind, default, description and whether it is
 writable; prefer it over guessing. Common keys:
 

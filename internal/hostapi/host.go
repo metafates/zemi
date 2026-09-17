@@ -176,10 +176,13 @@ type Host struct {
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
 
-	watches  *watchReg
-	agents   *agentHost
-	luaTools *toolReg
-	stops    *stopReg
+	watches *watchReg
+	// cfgWritten holds the value each zemi.config.set wrote during the last
+	// boot, so a reload that writes the same value keeps a runtime pick
+	cfgWritten sync.Map
+	agents     *agentHost
+	luaTools   *toolReg
+	stops      *stopReg
 
 	// memReview serializes the /memory review overlay; the hook runs off
 	// the UI goroutine.
