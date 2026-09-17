@@ -512,6 +512,26 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	}
 }
 
+// TestMoveMergeKeepsUserOrigin: moving a user's memory onto a learned copy
+// of the same text leaves that copy user-attested.
+func TestMoveMergeKeepsUserOrigin(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	if err := h.Remember("deploy by hand"); err != nil {
+		t.Fatal(err)
+	}
+	learned := &store.Memory{Scope: "user", Kind: "fact", Text: "Deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
+	if err := h.GlobalDB.AddMemory(learned); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.moveMemory(projectMemories(t, h)[0].ID, "project", "user"); err != nil {
+		t.Fatal(err)
+	}
+	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 1 || live[0].Origin != learn.OriginUser || len(projectMemories(t, h)) != 0 {
+		t.Fatalf("merge: %+v", live)
+	}
+}
+
 func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	// no origin: the store refuses the row, after the proposal was taken

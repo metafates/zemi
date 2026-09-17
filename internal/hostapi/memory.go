@@ -342,10 +342,15 @@ func (h *Host) moveMemory(id, from, to string) error {
 	if err != nil {
 		return err
 	}
-	if !slices.ContainsFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) }) {
-		if err := dst.AddMemory(m); err != nil {
-			return err
-		}
+	switch i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) }); {
+	case i < 0:
+		err = dst.AddMemory(m)
+	case m.Origin == learn.OriginUser && live[i].Origin != learn.OriginUser:
+		// the copy left behind keeps the user's attestation (DESIGN §10.4)
+		err = dst.UpdateMemoryText(live[i].ID, live[i].Text, learn.OriginUser)
+	}
+	if err != nil {
+		return err
 	}
 	return src.DeleteMemory(id)
 }
