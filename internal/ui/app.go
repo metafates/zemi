@@ -722,12 +722,12 @@ func (a *App) compose(w, h int) string {
 	// Lua overlays, then the Go-owned chrome, bottom to top; topChrome must
 	// match this order so input reaches the box drawn on top.
 	splice := func(box [][]hostapi.Segment) { rows = spliceBox(rows, box, w, len(header), chatH) }
-	for _, ov := range a.overlays {
-		if ov.o.Anchor == "bottom" {
+	for i := range a.overlays {
+		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
 			rows = anchorBottom(rows, overlayBox(ov, w), w, len(header), chatH)
-			continue
+		} else {
+			splice(overlayBox(ov, w))
 		}
-		splice(overlayBox(ov, w))
 	}
 	if a.trust != nil {
 		splice(trustBox(a.trust, w))

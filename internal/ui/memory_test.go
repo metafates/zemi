@@ -139,7 +139,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"tail-marker", "run go test before", "make golden", "gotcha · this project · learned · #db", "13 of 13"} {
+	for _, want := range []string{"tail-marker", "run go test before", "make golden", "gotcha · this project · learned · #db", "13/13"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("frame lacks %q:\n%s", want, frame)
 		}

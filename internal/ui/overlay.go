@@ -32,6 +32,7 @@ type listFilter struct {
 	query    string
 	visible  []int
 	selected int
+	top      int // first row shown
 }
 
 func (f *listFilter) apply(texts []string) {
@@ -260,7 +261,7 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
 // §8).
-func overlayBox(st overlayState, w int) [][]hostapi.Segment {
+func overlayBox(st *overlayState, w int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
@@ -278,7 +279,7 @@ func overlayBox(st overlayState, w int) [][]hostapi.Segment {
 	for _, i := range st.visible {
 		items = append(items, listItem{label: st.itemText[i]})
 	}
-	body := st.filterRows(listRows(items, st.selected, 10, "Title"))
+	body := st.filterRows(listRows(items, st.selected, &st.top, 10))
 	hints := hintLine("enter", "select", "y", "copy", "/", "filter", "esc", "close")
 	if st.o.Reload != nil {
 		hints = hintLine("space", "toggle", "y", "copy", "/", "filter", "esc", "close")

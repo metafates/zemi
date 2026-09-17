@@ -7,6 +7,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -119,8 +120,12 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 	if !a.hovering || a.mouse.pressed || a.mouse.dragged {
 		return
 	}
-	if from, to, _, ok := a.target(a.hoverX, a.hoverY); ok {
-		rows[a.hoverY] = restyle(rows[a.hoverY], from, to, func(hl string) string {
+	spans, _, ok := a.target(a.hoverX, a.hoverY)
+	if !ok {
+		return
+	}
+	for _, sp := range spans {
+		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(hl string) string {
 			switch hl {
 			case "Host:BtnSel", "Host:BtnNo":
 				return hl
@@ -136,10 +141,10 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 // changes, and supporting terminals show a hand over clickable things.
 func (a *App) hover(x, y int) tea.Cmd {
 	a.hovering, a.hoverX, a.hoverY = true, x, y
-	from, to, _, ok := a.target(x, y)
+	spans, _, ok := a.target(x, y)
 	key := ""
 	if ok {
-		key = fmt.Sprint(y, from, to)
+		key = fmt.Sprint(spans)
 	}
 	if key == a.hoverKey {
 		return nil
@@ -163,47 +168,45 @@ func pointerShape(hand bool) string {
 
 // click acts on the topmost thing under (x, y).
 func (a *App) click(x, y int) {
-	if _, _, act, ok := a.target(x, y); ok {
+	if _, act, ok := a.target(x, y); ok {
 		act()
 		a.publishComposer()
 	}
 	a.frameGen++
 }
 
-// target finds what a click at (x, y) would do: the cells [from, to) of
-// row y that act, and the action. Clicks and hover share it, so a
-// highlight always means a click does something. A list row is selected by
-// the first click and opened by a click on the selected row.
-func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
+// cellSpan is the cells [lo, hi) of screen row y.
+type cellSpan struct{ y, lo, hi int }
+
+// target finds what a click at (x, y) would do: the cells that act, over
+// every row of the item, and the action. Clicks and hover share it, so a
+// highlight always means a click does something. The pointer must be over
+// the item's own cells on its row: padding, gutters and blank rows are not
+// targets. A list item is selected by the first click and opened by a click
+// on the selected item.
+func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	if y < 0 || y >= len(a.lastRows) {
-		return 0, 0, nil, false
+		return nil, nil, false
 	}
 	row := a.lastRows[y]
 	hit := 0
 	if rest := dropCells(row, x); len(rest) > 0 {
 		hit = rest[0].Hit
 	}
-	hitSpan := func() (int, int) {
-		col, lo, hi := 0, -1, 0
-		for _, s := range row {
-			w := ansi.StringWidth(s.Text)
-			if s.Hit == hit {
-				if lo < 0 {
-					lo = col
-				}
-				hi = col + w
-			}
-			col += w
-		}
-		return lo, hi
-	}
-	// list selects the row on the first click and opens it on the second
-	list := func(n int, sel *int, open func()) (int, int, func(), bool) {
+	item := func(n int) ([]cellSpan, bool) {
 		if hit <= 0 || hit > n {
-			return 0, 0, nil, false
+			return nil, false
 		}
-		lo, hi := hitSpan()
-		return lo, hi, func() {
+		spans := a.itemSpans(y, hit)
+		return spans, slices.ContainsFunc(spans, func(s cellSpan) bool { return s.y == y && s.lo <= x && x < s.hi })
+	}
+	// with nothing to open, the selected item is not a target
+	list := func(n int, sel *int, open func()) ([]cellSpan, func(), bool) {
+		spans, ok := item(n)
+		if !ok || (open == nil && *sel == hit-1) {
+			return nil, nil, false
+		}
+		return spans, func() {
 			if *sel == hit-1 {
 				open()
 			} else {
@@ -211,21 +214,25 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 			}
 		}, true
 	}
+	// line is a one-row target over the cells [lo, hi) of row y
+	line := func(lo, hi int, act func()) ([]cellSpan, func(), bool) {
+		return []cellSpan{{y, lo, hi}}, act, lo <= x && x < hi
+	}
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
 		choices := pa.choices()
-		if hit <= 0 || hit > len(choices) || (a.program != nil && a.now().Sub(pa.opened) < permGrace) {
-			return 0, 0, nil, false
+		spans, ok := item(len(choices))
+		if !ok || (a.program != nil && a.now().Sub(pa.opened) < permGrace) {
+			return nil, nil, false
 		}
-		lo, hi := hitSpan()
 		c := choices[hit-1]
-		return lo, hi, func() { a.choosePerm(c) }, true
+		return spans, func() { a.choosePerm(c) }, true
 	case top == "trust", top == "question":
-		return 0, 0, nil, false
+		return nil, nil, false
 	case top == "memReview":
 		mr := a.memReview
-		return list(len(mr.items), &mr.sel, func() {})
+		return list(len(mr.items), &mr.sel, nil)
 	case top == "modelPick":
 		mp := a.modelPick
 		return list(len(mp.visible), &mp.selected, func() { a.answerPick(mp.items[mp.visible[mp.selected]].ID, true) })
@@ -234,12 +241,12 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		return list(len(st.visible), &st.selected, func() { a.overlayKey("enter", "") })
 	case y < a.lastChatBottom && a.completion.open && len(a.completion.matches) > 0:
 		f := &a.completion
-		lo, hi, _, ok := list(len(f.matches), &f.selected, nil)
-		return lo, hi, func() { f.selected = hit - 1; a.acceptCompletion() }, ok
+		spans, ok := item(len(f.matches))
+		return spans, func() { f.selected = hit - 1; a.acceptCompletion() }, ok
 	case y < a.lastChatBottom && a.palette.open:
 		p := &a.palette
-		lo, hi, _, ok := list(p.count(), &p.selected, nil)
-		return lo, hi, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
+		spans, ok := item(p.count())
+		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
 	case y >= a.lastChatBottom:
 		// the statusline mode pill opens the picker
 		text := plainSegs(row)
@@ -250,17 +257,18 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 		word := ansi.Cut(text, lo, hi)
 		for _, def := range a.host.PermModeList() {
 			if word == def.Name {
-				return lo, hi, func() {
+				return line(lo, hi, func() {
 					if err := a.host.OpenModePicker(); err != nil {
 						a.pushToast("error", "mode", err.Error())
 					}
-				}, true
+				})
 			}
 		}
 	default:
 		text := plainSegs(row)
+		end := ansi.StringWidth(strings.TrimRight(text, " "))
 		if before, _, ok := strings.Cut(text, "✻ Th"); ok && (strings.Contains(text, "✻ Thought") || strings.Contains(text, "✻ Thinking")) {
-			return ansi.StringWidth(before), ansi.StringWidth(strings.TrimRight(text, " ")), a.host.ToggleReasoning, true
+			return line(ansi.StringWidth(before), end, a.host.ToggleReasoning)
 		}
 		// an agent tool row ("● Agent <description> · 4s") opens that run's transcript
 		for _, mark := range []string{"● Agent ", "◦ Agent "} {
@@ -270,11 +278,59 @@ func (a *App) target(x, y int) (from, to int, act func(), ok bool) {
 			}
 			desc, _, _ := strings.Cut(strings.TrimRight(text[i+len(mark):], " "), " · ")
 			if id := a.host.AgentRunNamed(strings.TrimSuffix(desc, "…")); id != "" {
-				return ansi.StringWidth(text[:i]), ansi.StringWidth(strings.TrimRight(text, " ")), func() { _ = a.host.ViewAgent(id) }, true
+				return line(ansi.StringWidth(text[:i]), end, func() { _ = a.host.ViewAgent(id) })
 			}
 		}
 	}
-	return 0, 0, nil, false
+	return nil, nil, false
+}
+
+// itemSpans is the cells of item hit on the contiguous rows around y that
+// carry it. Blank ends of a segment are dropped unless painted: a button's
+// padding is part of the button.
+// NOTE: only the top chrome box takes input, so contiguity scopes an item;
+// two boxes stacked edge to edge with the same ids would merge (bound by the
+// box's columns if that ever happens).
+func (a *App) itemSpans(y, hit int) []cellSpan {
+	carries := func(y int) bool {
+		return y >= 0 && y < len(a.lastRows) && slices.ContainsFunc(a.lastRows[y], func(s hostapi.Segment) bool { return s.Hit == hit })
+	}
+	for carries(y - 1) {
+		y--
+	}
+	var spans []cellSpan
+	for ; carries(y); y++ {
+		col, lo, hi := 0, -1, 0
+		for _, s := range a.lastRows[y] {
+			w := ansi.StringWidth(s.Text)
+			if s.Hit == hit {
+				from, to := col, col+w
+				if !a.painted(s.HL) {
+					from += w - ansi.StringWidth(strings.TrimLeft(s.Text, " "))
+					to -= w - ansi.StringWidth(strings.TrimRight(s.Text, " "))
+				}
+				if from < to {
+					if lo < 0 {
+						lo = from
+					}
+					hi = to
+				}
+			}
+			col += w
+		}
+		if lo >= 0 {
+			spans = append(spans, cellSpan{y, lo, hi})
+		}
+	}
+	return spans
+}
+
+// painted reports whether hl has a background.
+func (a *App) painted(hl string) bool {
+	if st, ok := fixedStyle(hl); ok {
+		return st.Bg != nil
+	}
+	return a.thm.style(hl).Bg != nil
 }
 
 func plainSegs(segs []hostapi.Segment) string {

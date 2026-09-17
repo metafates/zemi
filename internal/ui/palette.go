@@ -20,6 +20,7 @@ type cmdPalette struct {
 	args     []string // argument candidates once the cursor is past "/name "
 	argStart int      // rune index where the argument under the cursor starts
 	selected int
+	top      int // first row shown
 }
 
 func (p *cmdPalette) count() int {
@@ -84,7 +85,7 @@ func (a *App) updatePalette() {
 
 func (p *cmdPalette) close() {
 	p.open = false
-	p.selected = 0
+	p.selected, p.top = 0, 0
 	p.matches, p.args = nil, nil
 }
 
@@ -131,12 +132,12 @@ func (a *App) paletteRows() [][]hostapi.Segment {
 	}
 	items := make([]listItem, 0, p.count())
 	for _, c := range p.matches {
-		items = append(items, listItem{"/" + c.Name, c.Desc})
+		items = append(items, listItem{label: "/" + c.Name, desc: c.Desc})
 	}
 	for _, s := range p.args {
 		items = append(items, listItem{label: s})
 	}
-	return listRows(items, p.selected, 8, "Title")
+	return listRows(items, p.selected, &p.top, 8)
 }
 
 // clearComposer empties the draft and closes both popups.

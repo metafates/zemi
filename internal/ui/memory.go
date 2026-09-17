@@ -6,7 +6,6 @@
 package ui
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -18,7 +17,7 @@ import (
 type memReviewPrompt struct {
 	items   []hostapi.MemoryRow
 	sel     int
-	top     int               // first line of the scrolled window
+	top     int               // first row shown
 	actions map[string]string // row id -> accept | reject | delete
 	undo    []memUndo
 	answer  chan map[string]string
@@ -114,40 +113,12 @@ func (a *App) undoMemory() {
 }
 
 // memReviewBox shows every memory whole, rendered as markdown, with its
-// kind, scope, origin and tags under it. The layout does not depend on the
-// selection (a bar marks it), so moving never resizes or reflows the box;
-// the window scrolls to keep the selected memory in view.
+// kind, scope, origin and tags under it.
 func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	mr := a.memReview
-	width := min(w-4, 100) - 6
-	var lines [][]hostapi.Segment
-	selTop, selEnd := 0, 0
-	section := ""
-	for i, it := range mr.items {
-		if s := map[bool]string{true: "Suggested by zemi", false: "Remembered"}[it.Queued]; s != section {
-			if section != "" {
-				lines = append(lines, nil)
-			}
-			section = s
-			lines = append(lines, []hostapi.Segment{{Text: s, HL: "Host:Title"}})
-		} else {
-			lines = append(lines, nil)
-		}
-		bar, hl := hostapi.Segment{Text: "  "}, "Host:Value"
-		if i == mr.sel {
-			bar, hl, selTop = hostapi.Segment{Text: "▌ ", HL: "Host:HintKey"}, "Host:Bold", len(lines)
-		}
-		for _, l := range a.host.Markdown(it.Text, width) {
-			row := []hostapi.Segment{bar}
-			for _, s := range l {
-				if s.HL == "" {
-					s.HL = hl
-				}
-				row = append(row, s)
-			}
-			lines = append(lines, hitRow(row, i+1))
-		}
-		meta := []hostapi.Segment{bar}
+	items := make([]listItem, 0, len(mr.items))
+	for _, it := range mr.items {
+		var meta []hostapi.Segment
 		if mr.actions[it.ID] == "accept" {
 			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 		}
@@ -156,27 +127,21 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 			info = append(info, "#"+t)
 		}
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
-		lines = append(lines, hitRow(meta, i+1))
-		if i == mr.sel {
-			selEnd = len(lines)
-		}
+		items = append(items, listItem{
+			section: map[bool]string{true: "Suggested by zemi", false: "Remembered"}[it.Queued],
+			// the markdown rows are cached: append to a copy
+			more: append(slices.Clip(a.host.Markdown(it.Text, boxInner(w)-2)), meta),
+		})
 	}
+	// borders, the blank row, the hint and the counter take five rows
+	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))
 	if len(mr.items) == 0 {
 		lines = append(lines, []hostapi.Segment{{Text: "Nothing here. /memory <note> saves one.", HL: "Host:Hint"}})
 	}
-
-	// the widest line of the whole list sizes the box, so scrolling keeps its width
+	// the hint pads to the list, so changing hints never resizes the box
 	widest := 0
 	for _, l := range lines {
 		widest = max(widest, segsWidth(l))
-	}
-	badge := ""
-	// borders, the blank row and the hint take four rows
-	if room := max(chatH-4, 3); len(lines) > room {
-		mr.top = min(mr.top, selTop, len(lines)-room)
-		mr.top = max(mr.top, min(selEnd-room, selTop), 0)
-		lines = lines[mr.top : mr.top+room]
-		badge = fmt.Sprintf(" %d of %d ", mr.sel+1, len(mr.items))
 	}
 
 	var hints []string
@@ -194,7 +159,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		hints = append(hints, "u", "undo")
 	}
 	lines = append(lines, nil, padSegs(hintLine(append(hints, "esc", "done")...), widest))
-	return hostBox(" Memory ", "Host:Title", badge, lines, w)
+	return hostBox(" Memory ", "Host:Title", "", lines, w)
 }
 
 func memScope(it hostapi.MemoryRow) string {
@@ -202,12 +167,4 @@ func memScope(it hostapi.MemoryRow) string {
 		return "everywhere"
 	}
 	return "this project"
-}
-
-// hitRow makes every cell of a row click to item hit.
-func hitRow(row []hostapi.Segment, hit int) []hostapi.Segment {
-	for i := range row {
-		row[i].Hit = hit
-	}
-	return row
 }

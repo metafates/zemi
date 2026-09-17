@@ -30,6 +30,7 @@ type qState struct {
 	picked   map[int]bool // multi-select marks
 	typing   bool
 	input    composerState
+	top      int    // first option row shown
 	answered string // "" until answered
 }
 
@@ -236,23 +237,16 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	}
 	if qp.reviewing() {
 		body = append(body, []hostapi.Segment{{Text: "Review your answers", HL: "Host:Bold"}}, blank)
+		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {
-			marker, hl := "  ", "Normal"
-			if i == qp.reviewSel {
-				marker, hl = "› ", "Host:Bold"
+			ans := hostapi.Segment{Text: "  " + qp.states[i].answered, HL: "Host:Value"}
+			if qp.states[i].answered == "" {
+				ans = hostapi.Segment{Text: "  not answered", HL: "Host:Warn"}
 			}
-			body = append(body, []hostapi.Segment{{Text: marker + strings.ReplaceAll(q.Question, "\n", " "), HL: hl}})
-			if ans := qp.states[i].answered; ans != "" {
-				body = append(body, []hostapi.Segment{{Text: "    " + ans, HL: "Host:Value"}})
-			} else {
-				body = append(body, []hostapi.Segment{{Text: "    not answered", HL: "Host:Warn"}})
-			}
+			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
-		submit := hostapi.Segment{Text: " Submit answers ", HL: "Host:Btn"}
-		if qp.reviewSel == len(qp.qs) {
-			submit.HL = "Host:BtnSel"
-		}
-		body = append(body, blank, []hostapi.Segment{submit}, blank,
+		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, len(items)*3+1)...)
+		body = append(body, blank,
 			hintLine("↑↓", "move", "enter", "submit or edit", "←", "back", "esc", "dismiss"))
 		return hostBox(title, "Host:Title", "", body, w)
 	}
@@ -269,13 +263,13 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 		if q.Multi {
 			label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + label
 		}
-		items = append(items, listItem{label, opt.Description})
+		items = append(items, listItem{label: label, desc: opt.Description})
 	}
 	other := q.Other
 	if other == "" {
 		other = "Type your own answer"
 	}
-	items = append(items, listItem{other, ""})
+	items = append(items, listItem{label: other})
 	// borders, the blank row and the hint take four rows, typing one more
 	limit := chatH - len(body) - 4
 	if st.typing {
@@ -284,7 +278,7 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	if len(items) > limit {
 		limit = max(limit-1, 3) // the i/n counter row
 	}
-	body = append(body, listRows(items, st.sel, min(limit, len(items)), "Host:Bold")...)
+	body = append(body, listRows(items, st.sel, &st.top, limit)...)
 	var hints []string
 	switch {
 	case st.typing:

@@ -191,7 +191,7 @@ func (a *App) completionRows() [][]hostapi.Segment {
 	for _, m := range f.matches {
 		items = append(items, listItem{label: m})
 	}
-	return listRows(items, f.selected, len(items), "Title")
+	return listRows(items, f.selected, nil, len(items))
 }
 
 // scanFilesCmd walks the directory tree off the UI goroutine.

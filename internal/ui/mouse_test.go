@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,5 +193,94 @@ func TestFilterKeys(t *testing.T) {
 		if !f.edit(c.key, "", []string{"a"}) || f.query != c.want {
 			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
 		}
+	}
+}
+
+// TestHoverTargets: hover and click act on whole items, and only with the
+// pointer over the item's own cells.
+func TestHoverTargets(t *testing.T) {
+	long := "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
+	memories := func(app *App) {
+		app.memReview = &memReviewPrompt{actions: map[string]string{}, items: []hostapi.MemoryRow{
+			{ID: "a", Scope: "user", Kind: "fact", Origin: "user", Text: "short one", Queued: true},
+			{ID: "b", Scope: "user", Kind: "fact", Origin: "user", Text: long},
+		}}
+	}
+	overlay := func(app *App) {
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"alpha", "beta and a much longer row"}})
+	}
+	perm := func(app *App) {
+		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
+	}
+	thought := func(app *App) {
+		app.host.AppendMessage("user", "why?")
+		app.host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
+	}
+	for _, c := range []struct {
+		name string
+		open func(app *App)
+		text string // hovered text
+		dx   int    // cell offset from where text starts
+		rows int    // rows lit, 0 = not a target
+	}{
+		{"memory text row lights the whole item", memories, "sigma", 1, 3},
+		{"right of memory text is not a target", memories, "sigma", 40, 0},
+		{"the selected memory is not a target", memories, "short one", 1, 0},
+		{"memory section header is not a target", memories, "Remembered", 1, 0},
+		{"overlay row text is a target", overlay, "alpha", 1, 1},
+		{"overlay row padding is not a target", overlay, "alpha", 6, 0},
+		{"overlay gutter is not a target", overlay, "beta and", -1, 0},
+		{"button padding is part of the button", perm, " No ", 0, 1},
+		{"thought line text is a target", thought, "Thought for", 1, 1},
+		{"right of the thought line is not a target", thought, "Thought for", 60, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 24)
+			c.open(app)
+			app.renderSync(t)
+			x, y := findCell(t, app, c.text)
+			app.Update(tea.MouseMotionMsg{X: x + c.dx, Y: y})
+			app.renderSync(t)
+			app.Frame()
+			spans, _, ok := app.target(x+c.dx, y)
+			if !ok {
+				spans = nil
+			}
+			if len(spans) != c.rows {
+				t.Fatalf("lit %d rows, want %d: %+v", len(spans), c.rows, spans)
+			}
+			for _, sp := range spans {
+				if lit := dropCells(app.lastRows[sp.y], sp.lo); len(lit) == 0 || !strings.Contains(lit[0].HL, "Hover") {
+					t.Fatalf("row %d not lit: %+v", sp.y, app.lastRows[sp.y])
+				}
+			}
+		})
+	}
+}
+
+// TestClickScrolledListOpensSameItem: the first click selects, and the list
+// stays put so the second click opens the same item.
+func TestClickScrolledListOpensSameItem(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 30)
+	var items []any
+	for i := range 30 {
+		items = append(items, map[string]any{"text": fmt.Sprintf("item %02d", i), "fill": fmt.Sprintf("item %02d", i)})
+	}
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: items})
+	x, y := findCell(t, app, "item 08")
+	clickAt(app, x+1, y)
+	app.Frame()
+	clickAt(app, x+1, y)
+	if app.composer.text != "item 08" {
+		t.Fatalf("composer = %q", app.composer.text)
+	}
+}
+
+// TestBoxEllipsisOnlyOnLongRows: a long row ends in an ellipsis, a short row
+// padded to its width does not.
+func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
+	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10), 40)
+	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
+		t.Fatalf("short %q, long %q", short, long)
 	}
 }

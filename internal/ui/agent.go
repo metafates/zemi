@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -195,9 +196,9 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 }
 
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
-// when one is close.
+// when one is close. Trailing blanks are padding and cut without one.
 func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
-	if segsWidth(segs) <= w || w < 2 {
+	if w < 2 || ansi.StringWidth(strings.TrimRight(plainSegs(segs), " ")) <= w {
 		return truncateSegs(segs, w)
 	}
 	out := truncateSegs(segs, w-1)
@@ -211,50 +212,109 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return out
 }
 
-type listItem struct{ label, desc string }
+// listItem is one selectable entry of a list.
+type listItem struct {
+	label, desc string
+	key, keyHL  string // right-aligned column; keyHL defaults to Host:HintKey
+	section     string // a change of section starts with a header row
+	more        [][]hostapi.Segment
+}
 
 // listRows is the one list renderer (palette, completion, pickers,
-// overlays): a window of at most limit rows kept around sel, "› " and
-// selHL on the selected row, dim descriptions, and an "i/n" counter once
-// the list scrolls.
-func listRows(items []listItem, sel, limit int, selHL string) [][]hostapi.Segment {
-	// Every row pads to the widest item in the whole list, so a box sized
-	// from the visible window keeps its width while scrolling.
-	widest, labelW := 0, 0
+// overlays, memory, questions). The selected item gets "› " and bold text
+// on all its rows; descriptions stay dim. more rows, wrapped by the caller,
+// follow the label (or replace it when the label is empty). Every row of an
+// item carries its 1-based Hit. Past limit rows the list scrolls with an
+// "i/n" counter; top is the first row shown, kept across frames so the list
+// moves only when the selection leaves it and a click never moves the item
+// under the pointer (nil for a list that never scrolls).
+func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segment {
+	labelW := 0
 	for _, it := range items {
 		labelW = max(labelW, ansi.StringWidth(it.label))
 	}
 	// descriptions line up in one column unless a long label would push them far out
 	labelW = min(labelW, 24)
-	itemWidth := func(it listItem) int {
-		n := ansi.StringWidth(it.label)
-		if it.desc != "" {
-			n = max(n, labelW) + 2 + ansi.StringWidth(it.desc)
-		}
-		return n
-	}
-	for _, it := range items {
-		widest = max(widest, itemWidth(it))
-	}
-	start := max(0, min(sel-limit/2, len(items)-limit))
 	var rows [][]hostapi.Segment
-	for i := start; i < len(items) && i < start+limit; i++ {
-		marker, hl := "  ", "Normal"
+	keys := map[int]hostapi.Segment{} // row -> key column
+	section, selTop, selEnd := "", 0, 0
+	for i, it := range items {
+		if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
+			rows = append(rows, nil)
+		}
+		start := len(rows)
+		if it.section != section && it.section != "" {
+			rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
+		}
+		section = it.section
+		hit, hl, marker := i+1, "Normal", hostapi.Segment{Text: "  "}
 		if i == sel {
-			marker, hl = "› ", selHL
+			hl, marker = "Host:Bold", hostapi.Segment{Text: "› ", HL: "Host:Title"}
 		}
-		row := []hostapi.Segment{{Text: marker + items[i].label, HL: hl, Hit: i + 1}}
-		if items[i].desc != "" {
-			gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(items[i].label))+2)
-			row = append(row, hostapi.Segment{Text: gap + items[i].desc, HL: "Comment", Hit: i + 1})
+		var itemRows [][]hostapi.Segment
+		if it.label != "" || len(it.more) == 0 {
+			row := []hostapi.Segment{{Text: it.label, HL: hl}}
+			if it.desc != "" {
+				gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(it.label))+2)
+				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
+			}
+			if it.key != "" {
+				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: cmp.Or(it.keyHL, "Host:HintKey"), Hit: hit}
+			}
+			itemRows = append(itemRows, row)
 		}
-		if pad := widest - itemWidth(items[i]); pad > 0 {
-			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad), Hit: i + 1})
+		for _, r := range it.more {
+			row := make([]hostapi.Segment, 0, len(r))
+			for _, s := range r {
+				switch {
+				case s.HL == "":
+					s.HL = hl
+				case i == sel && strings.HasPrefix(s.HL, hostapi.SGRPrefix):
+					s.HL += ";1" // markdown text is colored inline: bold it the same way
+				}
+				row = append(row, s)
+			}
+			itemRows = append(itemRows, row)
 		}
-		rows = append(rows, row)
+		for j, r := range itemRows {
+			g := hostapi.Segment{Text: "  "}
+			if j == 0 {
+				g = marker
+			}
+			row := append([]hostapi.Segment{g}, r...)
+			for k := range row {
+				row[k].Hit = hit
+			}
+			rows = append(rows, row)
+		}
+		if i == sel {
+			selTop, selEnd = start, len(rows)
+		}
 	}
-	if len(items) > limit {
-		rows = append(rows, []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
+	// Every row pads to the widest of the whole list, so a box sized from
+	// the visible window keeps its width while scrolling.
+	widest := 0
+	for y, r := range rows {
+		n := segsWidth(r)
+		if k, ok := keys[y]; ok {
+			n += 2 + ansi.StringWidth(k.Text)
+		}
+		widest = max(widest, n)
+	}
+	for y, r := range rows {
+		if k, ok := keys[y]; ok {
+			pad := hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r)-ansi.StringWidth(k.Text)), Hit: k.Hit}
+			rows[y] = append(r, pad, k)
+			continue
+		}
+		rows[y] = padSegs(r, widest)
+	}
+	if limit = max(limit, 1); len(rows) > limit {
+		if top == nil {
+			top = new(int)
+		}
+		*top = max(min(*top, selTop, len(rows)-limit), min(selEnd-limit, selTop), 0)
+		rows = append(rows[*top:*top+limit:*top+limit], []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
 	}
 	return rows
 }
@@ -618,9 +678,9 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 			if !it.HasKey {
 				desc = strings.TrimSpace(desc + "  (no api key)")
 			}
-			items = append(items, listItem{it.ID, desc})
+			items = append(items, listItem{label: it.ID, desc: desc})
 		}
-		body = mp.filterRows(listRows(items, mp.selected, 12, "Host:Bold"))
+		body = mp.filterRows(listRows(items, mp.selected, &mp.top, 12))
 	}
 	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("enter", "pick", "/", "filter", "esc", "cancel"))
 	return hostBox(" Select model ", "Host:Title", "", body, w)
