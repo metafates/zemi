@@ -125,7 +125,7 @@ func TestImageCellsFollowTheFloat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	for !strings.Contains(fmt.Sprint(wn.Screen().Rows[0]), ph) {
 		if ctx.Err() != nil {
@@ -143,8 +143,8 @@ func TestImageCellsFollowTheFloat(t *testing.T) {
 				continue
 			}
 			row := ansi.Strip(frame[r.y])
-			if i := strings.Index(row, ph); i >= 0 {
-				return ansi.StringWidth(row[:i])
+			if before, _, ok := strings.Cut(row, ph); ok {
+				return ansi.StringWidth(before)
 			}
 		}
 		return -1
