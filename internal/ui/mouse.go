@@ -263,9 +263,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	case top == "memReview":
 		mr := a.memReview
 		return list(len(mr.items), &mr.sel, nil)
-	case top == "modelPick":
-		mp := a.modelPick
-		return list(len(mp.visible), &mp.selected, func() { a.answerPick(mp.items[mp.visible[mp.selected]].ID, true) })
 	case top == "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()

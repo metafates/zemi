@@ -364,9 +364,11 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 				{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
 					return h.CompactNow(args)
 				}},
-				{Name: "model", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
-					h.OpenModelPicker()
-					return nil
+				{Name: "model", NArgs: "?", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
+					if args = strings.TrimSpace(args); args == "" {
+						return h.OpenModelPicker()
+					}
+					return h.SetModel(args)
 				}},
 				{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {

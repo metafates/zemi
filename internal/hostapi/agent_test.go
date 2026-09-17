@@ -502,9 +502,6 @@ type fakeUI struct {
 	askAllowed   bool
 	askBy        string
 	asked        []PermRequest
-	pickID       string
-	pickOK       bool
-	pickItems    []ModelOption
 	reviewItems  [][]MemoryRow
 	reviewResult []MemoryRow
 	qAsked       []tools.Question
@@ -540,11 +537,6 @@ func (f *fakeUI) Copy(text string) { f.copied = text }
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)
 	return f.askAllowed, f.askBy
-}
-
-func (f *fakeUI) PickModel(items []ModelOption, current string) (string, bool) {
-	f.pickItems = items
-	return f.pickID, f.pickOK
 }
 
 func (f *fakeUI) ReviewMemories(items []MemoryRow) []MemoryRow {
@@ -591,32 +583,6 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	}
 	if len(ui.asked) != 1 {
 		t.Fatalf("ruled re-check must not ask: %+v", ui.asked)
-	}
-}
-
-// TestModelPickStores drives zemi.model.pick through the fake UI: the
-// picked id is stored in agent.model; a cancelled pick stores nothing.
-func TestModelPickStores(t *testing.T) {
-	h, r := newTestHost(t)
-	ui := &fakeUI{pickID: "myllm/main", pickOK: true}
-	h.SetUIHooks(ui)
-
-	runUser(t, r, `
-		zemi.provider.register({
-			id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1",
-			models = { { id = "main", display = "Main" } },
-		})
-		local id = zemi.model.pick()
-		assert(id == "myllm/main", "picked=" .. tostring(id))
-	`)
-	if v, ok := h.Settings.Get("agent.model"); !ok || v != "myllm/main" {
-		t.Fatalf("agent.model=%v ok=%v", v, ok)
-	}
-
-	ui.pickID, ui.pickOK = "", false
-	runUser(t, r, `assert(zemi.model.pick() == nil, "cancel must return nil")`)
-	if v, _ := h.Settings.Get("agent.model"); v != "myllm/main" {
-		t.Fatalf("cancel changed agent.model to %v", v)
 	}
 }
 

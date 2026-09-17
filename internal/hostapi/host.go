@@ -42,7 +42,6 @@ type UIHooks interface {
 	ScrollChat(kind string)
 	AgentEvent(ev AgentEvent)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
-	PickModel(items []ModelOption, current string) (string, bool)
 	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
@@ -375,7 +374,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.down":        func(h *Host, _ string) error { h.scrollChat("down"); return nil },
 		"zemi.ui.scroll.top":         func(h *Host, _ string) error { h.scrollChat("top"); return nil },
 		"zemi.ui.scroll.bottom":      func(h *Host, _ string) error { h.scrollChat("bottom"); return nil },
-		"zemi.model.pick":            func(h *Host, _ string) error { h.pickAndStoreModel(); return nil },
+		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
@@ -431,32 +430,6 @@ func (h *Host) scrollChat(kind string) {
 	if ui := h.hooks(); ui != nil {
 		ui.ScrollChat(kind)
 	}
-}
-
-// OpenModelPicker opens the Go-owned model picker overlay without blocking
-// the caller, so the UI goroutine may call it (the /model slash command);
-// the chosen model is stored when the user answers.
-func (h *Host) OpenModelPicker() { h.GoSafe("model picker", h.pickAndStoreModel) }
-
-// pickAndStoreModel blocks on the picker, so it must run off the UI and
-// interpreter goroutines; the config watches it fires go through the queue.
-func (h *Host) pickAndStoreModel() {
-	id, ok := h.pickModel()
-	if !ok {
-		return
-	}
-	fired, err := h.Settings.SetQuiet("agent.model", id)
-	if err != nil {
-		h.Notify("error", "Could not switch the model", err.Error())
-		return
-	}
-	if len(fired) > 0 {
-		_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			h.deliverFired(L, fired)
-			return nil, nil
-		})
-	}
-	h.refresh()
 }
 
 // Session returns a snapshot of the session state.

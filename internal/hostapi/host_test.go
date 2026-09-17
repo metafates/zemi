@@ -453,23 +453,28 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 	}
 }
 
-func TestModelPickerFiresWatches(t *testing.T) {
+func TestSetModelFiresWatches(t *testing.T) {
 	h, r := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{pickID: "p/m", pickOK: true})
-	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.put("picked", nv) end)`)
+	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.put("picked", nv) end)
+		zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
 	check := func(want string) {
 		t.Helper()
-		if v, _ := h.GlobalDB.GetKV("picked"); v != `"`+want+`"` {
-			t.Fatalf("agent.model watch saw %q, want %q", v, want)
+		for range 200 {
+			if v, _ := h.GlobalDB.GetKV("picked"); v == `"`+want+`"` {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
+		t.Fatalf("agent.model watch never saw %q", want)
 	}
-	h.pickAndStoreModel()
+	if err := h.SetModel("p/m"); err != nil {
+		t.Fatal(err)
+	}
 	check("p/m")
-	h.SetUIHooks(&fakeUI{pickID: "p/n", pickOK: true})
-	runUser(t, r, `zemi.model.pick()`)
-	check("p/n")
-	runUser(t, r, `zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "o" } } })
-		zemi.model.set("p/o")`)
+	if h.SetModel("p/nope") == nil {
+		t.Fatal("an unknown model was stored")
+	}
+	runUser(t, r, `zemi.model.set("p/o")`)
 	check("p/o")
 }
 

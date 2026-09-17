@@ -251,57 +251,41 @@ func TestPermissionBoxFits(t *testing.T) {
 	}
 }
 
-// TestGoldenModelPicker pins the Go-owned model picker; enter returns the
-// selected id and stores it, esc cancels.
+// TestGoldenModelPicker pins the model picker: zemi.model.pick returns at
+// once, so the interpreter stays free while it is open, and enter runs /model <id>.
 func TestGoldenModelPicker(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-
-	items := []hostapi.ModelOption{
-		{ID: "anthropic/claude-sonnet-4-5", Display: "Claude Sonnet 4.5", HasKey: true},
-		{ID: "anthropic/claude-haiku-4-5", Display: "Claude Haiku 4.5"},
-		{ID: "openai/gpt-5", Display: "GPT-5", HasKey: true},
-	}
-	done := make(chan struct{})
-	var picked string
-	var ok bool
+	app, host := bootAgentApp(t, 70, 16)
+	runLua(t, app, `
+		zemi.provider.register({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
+			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })
+		zemi.provider.register({ id = "openai", kind = "openai_compat", base_url = "http://x", models = { { id = "gpt-5", display = "GPT-5" } } })
+		zemi.model.set("anthropic/claude-sonnet-4-5")`)
+	done := make(chan error, 1)
 	go func() {
-		picked, ok = app.PickModel(items, "anthropic/claude-sonnet-4-5")
-		close(done)
+		done <- host.RT.ExecuteChunk(context.Background(), `zemi.model.pick()`, "test.lua", lua.OriginUser)
 	}()
-	waitPrompt(t, app, func() bool { return app.modelPick != nil })
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("zemi.model.pick holds the interpreter while the picker is open")
+	}
+	for app.Pump() {
+	}
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> haiku
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> gpt-5
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
+	var ran string // main.go owns /model
+	host.Commands.Add(&hostapi.Command{Name: "model", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil }})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	<-done
-	if !ok || picked != "openai/gpt-5" {
-		t.Fatalf("picked=%q ok=%v", picked, ok)
-	}
-	// Storing agent.model is the host's zemi.model.pick action (covered in
-	// hostapi); the picker's job is the selection asserted above.
-}
-
-// TestModelPickerCancel covers esc on the picker: no selection.
-func TestModelPickerCancel(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-
-	done := make(chan struct{})
-	var picked string
-	var ok bool
-	go func() {
-		picked, ok = app.PickModel([]hostapi.ModelOption{
-			{ID: "openai/gpt-5", Display: "GPT-5", HasKey: true},
-		}, "")
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.modelPick != nil })
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	<-done
-	if ok || picked != "" {
-		t.Fatalf("cancel returned %q ok=%v", picked, ok)
+	if ran != "openai/gpt-5" {
+		t.Fatalf("enter ran /model %q", ran)
 	}
 }
 

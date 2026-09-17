@@ -702,8 +702,7 @@ function zemi.model.list() end
 ---@param id string
 function zemi.model.set(id) end
 
---- Open the model picker and switch to the chosen model.
----@return string|nil id nil when cancelled.
+--- Open the model picker and return at once; choosing a model runs `/model <id>`.
 function zemi.model.pick() end
 
 -- ---------------------------------------------------------------------------

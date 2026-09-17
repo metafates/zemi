@@ -654,7 +654,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 
 zemi.model.list()                    -- { { id = "anthropic/...", ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")
-zemi.model.pick()                    -- picker over the registered models
+zemi.model.pick()                    -- open the picker (returns at once)
 
 zemi.provider.register({
   id = "myllm",
@@ -896,8 +896,9 @@ UI extensibility contract:
   names or raw hex; Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed).
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
-  trigger -> Go-owned chrome (trust prompt, permission asks, model
-  picker, question/memory overlays) -> active Lua overlay ->
+  trigger -> Go-owned chrome (trust prompt, permission asks,
+  question/memory overlays) -> the topmost overlay (Lua, or Go-built
+  lists like the mode and model pickers) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
   composer (always focused; there are no modes). Overlays capture first,
@@ -1213,7 +1214,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `zemi.state.get`, `zemi.log`, list/introspection calls) and
   UI-shaping host APIs (`zemi.state.put`, `zemi.notify`, `zemi.timer`,
   `zemi.ui.*`, `zemi.keymap`, `zemi.command`,
-  `zemi.model.pick` (the M1 picker)) are allow; `fs.read`
+  `zemi.model.pick`) are allow; `fs.read`
   inside the jail is allow except secret-shaped paths (matched
   case-insensitively on the resolved path: `.env`, `.env.*`, `.envrc`,
   `*.pem`, `*.key`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*` but not their

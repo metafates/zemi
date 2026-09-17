@@ -56,13 +56,6 @@ type PermRequest struct {
 	Description string
 }
 
-// ModelOption is one picker row.
-type ModelOption struct {
-	ID      string
-	Display string
-	HasKey  bool
-}
-
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {
 	ID      string
@@ -1165,38 +1158,60 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.model.pick")
-		id, ok := h.pickModel()
-		if !ok {
-			L.Push(glua.LNil)
-			return 1
-		}
-		fired, err := h.Settings.SetQuiet("agent.model", id)
-		if err != nil {
-			L.RaiseError("zemi.model.pick: %v", err)
-			return 0
-		}
-		h.deliverFired(L, fired)
-		L.Push(glua.LString(id))
-		return 1
+		_ = h.OpenModelPicker() // headless there is nothing to pick with
+		return 0
 	}))
 	return tb
 }
 
-// pickModel opens the Go-owned model picker overlay (DESIGN §8).
-func (h *Host) pickModel() (string, bool) {
+// OpenModelPicker lists the registered models; enter runs /model <id>.
+func (h *Host) OpenModelPicker() error {
 	ui := h.hooks()
 	if ui == nil {
-		return "", false
+		return errors.New("no UI")
 	}
-	var items []ModelOption
+	cur, sel := h.setStr("agent.model"), 0
+	var items []any
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
-			items = append(items, ModelOption{
-				ID: s.ID + "/" + m.ID, Display: m.Display, HasKey: h.Providers.HasKey(s.ID),
-			})
+			id := s.ID + "/" + m.ID
+			item := map[string]any{"text": id, "run": "model " + id}
+			if m.Display != id {
+				item["desc"] = m.Display
+			}
+			switch {
+			case id == cur:
+				item["key"], sel = "current", len(items)
+			case !h.Providers.HasKey(s.ID):
+				item["key"] = "no API key"
+			}
+			items = append(items, item)
 		}
 	}
-	return ui.PickModel(items, h.setStr("agent.model"))
+	ui.OpenOverlay(Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet. Add a provider in init.lua."})
+	return nil
+}
+
+// SetModel switches agent.model (/model <id>) from any goroutine: the
+// config watches it fires run later on the interpreter queue.
+func (h *Host) SetModel(id string) error {
+	if _, ok := h.modelSpec(id); !ok {
+		return fmt.Errorf("unknown model %q", id)
+	}
+	fired, err := h.Settings.SetQuiet("agent.model", id)
+	if err != nil {
+		return err
+	}
+	if len(fired) > 0 {
+		h.GoSafe("model watches", func() {
+			_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+				h.deliverFired(L, fired)
+				return nil, nil
+			})
+		})
+	}
+	h.refresh()
+	return nil
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {

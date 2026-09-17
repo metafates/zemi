@@ -70,11 +70,9 @@ type App struct {
 	toasts   []toast
 
 	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
-	// (with a queue for concurrent asks), the model picker and the memory
-	// review overlay.
+	// (with a queue for concurrent asks) and the memory review overlay.
 	permAsk   *permAskPrompt
 	permQueue []*permAskPrompt
-	modelPick *modelPickPrompt
 	memReview *memReviewPrompt
 	memEdited string // the row the next memory screen opens on
 
@@ -247,11 +245,6 @@ func (a *App) do(fn func()) { a.dispatch(uiFunc(func() tea.Cmd { fn(); return ni
 type permAnswer struct {
 	ok bool
 	by string
-}
-
-type modelPick struct {
-	id string
-	ok bool
 }
 
 // cfgBool reads a bool config key with a fallback.
@@ -823,9 +816,6 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.trust != nil {
 		splice(trustBox(a.trust, w, chatH))
-	}
-	if a.modelPick != nil {
-		splice(pickBox(a.modelPick, w, chatH))
 	}
 	if a.question != nil {
 		splice(questionBox(a.question, w, chatH))

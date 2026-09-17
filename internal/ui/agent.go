@@ -1,5 +1,5 @@
 // agent.go is the Go-owned agent chrome (DESIGN §6.3, §8): permission
-// prompt, model picker, working row, and the shared box and list renderers.
+// prompt, working row, and the shared box and list renderers.
 // Their chrome uses fixed "Host:*" styles no theme group can restyle, and
 // no Lua participates in drawing or answering them.
 package ui
@@ -67,14 +67,6 @@ func (a *App) choosePerm(c permChoice) {
 	}
 }
 
-type modelPickPrompt struct {
-	items   []hostapi.ModelOption
-	current string
-	texts   []string // filter text per item: id and display name
-	answer  chan modelPick
-	listFilter
-}
-
 // AgentEvent implements hostapi.UIHooks (called from the turn goroutine).
 // Stream events only invalidate the frame, so one waits in the queue at a
 // time: a token per message would crowd out hooks that carry state.
@@ -118,34 +110,6 @@ func (a *App) answerPerm(ok bool, by string) {
 	if len(a.permQueue) > 0 {
 		a.permAsk, a.permQueue = a.permQueue[0], a.permQueue[1:]
 		a.permAsk.opened = a.now()
-	}
-	a.frameGen++
-}
-
-// PickModel implements hostapi.UIHooks: blocks until the user picks a
-// model or cancels (ok=false on cancel).
-func (a *App) PickModel(items []hostapi.ModelOption, current string) (string, bool) {
-	ch := make(chan modelPick, 1)
-	a.await(func() tea.Cmd { a.openModelPick(items, current, ch); return nil })
-	res := <-ch
-	return res.id, res.ok
-}
-
-func (a *App) openModelPick(items []hostapi.ModelOption, current string, answer chan modelPick) {
-	mp := &modelPickPrompt{items: items, current: current, answer: answer}
-	mp.selected = max(0, slices.IndexFunc(items, func(it hostapi.ModelOption) bool { return it.ID == current }))
-	for _, it := range items {
-		mp.texts = append(mp.texts, it.ID+" "+it.Display)
-	}
-	mp.apply(mp.texts)
-	a.modelPick = mp
-}
-
-func (a *App) answerPick(id string, ok bool) {
-	mp := a.modelPick
-	a.modelPick = nil
-	if mp != nil && mp.answer != nil {
-		mp.answer <- modelPick{id: id, ok: ok}
 	}
 	a.frameGen++
 }
@@ -747,40 +711,4 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		}
 	}
 	return rows
-}
-
-func pickBox(mp *modelPickPrompt, w, h int) [][]hostapi.Segment {
-	// borders, the blank row, the hint, the counter and the filter line
-	limit := min(max(h-6, 3), 12)
-	var body [][]hostapi.Segment
-	var hints []string
-	if len(mp.visible) > 0 {
-		hints = []string{"enter", "select"}
-	}
-	if len(mp.items) == 0 {
-		body = append(body, []hostapi.Segment{{Text: "No models yet. Add a provider in init.lua.", HL: "Comment"}})
-	} else {
-		items := make([]listItem, 0, len(mp.visible))
-		for _, i := range mp.visible {
-			it := mp.items[i]
-			item := listItem{label: it.ID}
-			if it.Display != it.ID {
-				item.desc = it.Display
-			}
-			switch {
-			case it.ID == mp.current:
-				item.key, item.keyHL = "current", "Host:Hint"
-			case !it.HasKey:
-				item.key, item.keyHL = "no API key", "Host:Warn"
-			}
-			items = append(items, item)
-		}
-		body = mp.filterRows(listRowsW(items, mp.selected, &mp.top, limit, mp.width, boxInner(w)))
-		if len(mp.items) > limit && !mp.active {
-			hints = append(hints, "/", "filter")
-		}
-	}
-	esc := map[bool]string{false: "close", true: "clear"}[mp.active] // esc clears an open filter first
-	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(boxInner(w), append(hints, "esc", esc)...))
-	return hostBox(" Model ", "Host:Title", "", body, w)
 }

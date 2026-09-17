@@ -123,33 +123,11 @@ func TestTopChromeTakesInput(t *testing.T) {
 		t.Fatal("n should deny the permission prompt drawn over the trust prompt")
 	}
 
-	a.openModelPick(make([]hostapi.ModelOption, 3), "", make(chan modelPick, 1))
+	a.openOverlay(hostapi.Overlay{Items: []any{"a", "b", "c"}})
 	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3)}
 	a.wheelChrome(1)
-	if a.memReview.sel != 1 || a.modelPick.selected != 0 {
-		t.Fatalf("wheel: memory sel=%d picker sel=%d", a.memReview.sel, a.modelPick.selected)
-	}
-}
-
-// TestModelPickerFilter: typing narrows the picker by id or display name
-// and enter picks the highlighted match.
-func TestModelPickerFilter(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	answer := make(chan modelPick, 1)
-	a.openModelPick([]hostapi.ModelOption{
-		{ID: "anthropic/claude-sonnet", Display: "Sonnet"},
-		{ID: "openai/gpt-5", Display: "GPT-5"},
-		{ID: "deepseek/deepseek-chat", Display: "DeepSeek V3"},
-	}, "", answer)
-	for _, r := range "/v3" {
-		a.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
-	}
-	if n := len(a.modelPick.visible); n != 1 {
-		t.Fatalf("v3 matches %d models", n)
-	}
-	a.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := <-answer; !got.ok || got.id != "deepseek/deepseek-chat" {
-		t.Fatalf("picked %+v", got)
+	if a.memReview.sel != 1 || a.overlays[0].selected != 0 {
+		t.Fatalf("wheel: memory sel=%d overlay sel=%d", a.memReview.sel, a.overlays[0].selected)
 	}
 }
 
@@ -469,15 +447,15 @@ func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
 	}
 }
 
-func TestModelPickerFitsShortScreen(t *testing.T) {
+func TestOverlayFitsShortScreen(t *testing.T) {
 	a, _ := bootAgentApp(t, 80, 16)
-	models := make([]hostapi.ModelOption, 30)
-	for i := range models {
-		models[i] = hostapi.ModelOption{ID: fmt.Sprintf("p/model-%d", i), Display: fmt.Sprintf("p/model-%d", i)}
+	items := make([]any, 30)
+	for i := range items {
+		items[i] = fmt.Sprintf("p/model-%d", i)
 	}
-	a.openModelPick(models, "", make(chan modelPick, 1))
+	a.openOverlay(hostapi.Overlay{Title: "Model", Items: items})
 	a.renderSync(t)
 	if f := ansi.Strip(a.Frame()); !strings.Contains(f, "esc close") || !strings.Contains(f, "╰") {
-		t.Fatalf("the picker's hint or bottom border is cut:\n%s", f)
+		t.Fatalf("the overlay's hint or bottom border is cut:\n%s", f)
 	}
 }

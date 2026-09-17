@@ -124,8 +124,8 @@ sandboxed command can plant a nested repo whose config zemi's own checks would r
    Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or anything it
    calls) — bubbletea v2's `p.msgs` channel is unbuffered and `Send` blocks until the event
    loop receives, so the loop would wait on itself (the `/quit` hang). Wrap such calls in a
-   goroutine, like `App.Quit` and `OpenModelPicker` do. Blocking hooks (`PickModel`,
-   `AskPermission`, `AskTrust`) must only ever run on non-UI goroutines. Stream events only
+   goroutine, like `App.Quit` does. Blocking hooks (`AskPermission`, `AskTrust`,
+   `AskQuestion`, `ReviewMemories`) must only ever run on non-UI goroutines. Stream events only
    invalidate the frame, so at most one waits in the hook queue (`streamPending`).
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast**
    (~10 ms). Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`.
