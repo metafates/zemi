@@ -135,6 +135,30 @@ func TestClipboard(t *testing.T) {
 	}
 }
 
+// TestSynchronizedOutput: mode 2026 reports as known, and a window shows the
+// screen from before an update until it ends or a second passes.
+func TestSynchronizedOutput(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: `stty raw -echo; printf '\033[?2026$p'; head -c 11 | tr '\033' E; head -c 1 >/dev/null; printf '\033[?2026h X'; sleep 5`, Env: os.Environ(), Cols: 40, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(w.ID)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if text, ok := w.WaitText(ctx, "E[?2026;2$y"); !ok {
+		t.Fatalf("mode report:\n%s", text)
+	}
+	w.SendKey(uv.KeyPressEvent{Code: 'x', Text: "x"})
+	time.Sleep(300 * time.Millisecond)
+	if text := w.Text(); strings.Contains(text, "X") {
+		t.Fatalf("drew inside the update:\n%s", text)
+	}
+	if text, ok := w.WaitText(ctx, "X"); !ok {
+		t.Fatalf("an update never ended must show after a second:\n%s", text)
+	}
+}
+
 func TestWindowKillsOnClose(t *testing.T) {
 	m := &Manager{}
 	w, err := m.Open(Spec{Cmd: "sleep 30", Env: os.Environ()})

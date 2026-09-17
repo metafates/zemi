@@ -421,7 +421,8 @@ full-height columns beside the main column (compose lays the main column out at 
 and joins the columns at the end), splits take rows at the bottom of the chat area,
 floats go over everything at their position or centered; `shares` divides an axis so the
 main area keeps its minimum. `Screen()` turns cells into `sgr:` segments so colors reach
-the renderer untouched. The focused window's cursor is the host's own (`View.Cursor`, in
+the renderer untouched; during a synchronized update (mode 2026) it returns the screen
+from before, for at most a second. The focused window's cursor is the host's own (`View.Cursor`, in
 the shape and blink the program set with DECSCUSR), hidden under a modal or a float drawn
 over it. OSC 10, 11 and 12 queries answer with the colors the host terminal reported
 (`Manager.SetHostColor`), so an editor picks a theme that matches. Keys go the xterm way (`legacyKey`),

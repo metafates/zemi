@@ -98,6 +98,8 @@ type Window struct {
 	cursorHidden atomic.Bool
 	cursorStyle  int         // the last DECSCUSR parameter, 0 to 6; guarded by mu
 	kittyKeys    [2]bool     // kitty keyboard flag 1 on the main and alt screen; guarded by mu
+	syncSince    time.Time   // when the program began a synchronized update (mode 2026); guarded by mu
+	last         Screen      // the last screen rendered, shown during that update; guarded by mu
 	mouseOn      atomic.Bool // the program asked for mouse reports
 	done         chan struct{}
 	exit         atomic.Int32 // exit code, -1 while running
@@ -193,6 +195,8 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),
 	}
 	w.term.SetScrollbackSize(2000)
+	// known modes report reset instead of unrecognized, so nvim wraps its redraws in 2026
+	_, _ = w.term.Write([]byte(ansi.ResetModeSynchronizedOutput))
 	w.setColors(colors)
 	w.term.RegisterApcHandler(w.graphics)
 	// vt keeps the cursor style per screen and has no getter; terminals keep one
@@ -232,10 +236,16 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 			if isMouseMode(m) {
 				w.mouseOn.Store(true)
 			}
+			if m == ansi.ModeSynchronizedOutput && w.syncSince.IsZero() {
+				w.syncSince = time.Now()
+			}
 		},
 		DisableMode: func(m ansi.Mode) {
 			if isMouseMode(m) {
 				w.mouseOn.Store(false)
+			}
+			if m == ansi.ModeSynchronizedOutput {
+				w.syncSince = time.Time{}
 			}
 		},
 		Title: func(t string) {
@@ -703,10 +713,15 @@ func (w *Window) Paste(text string) {
 	w.term.Paste(text)
 }
 
-// Screen renders the current screen as styled spans.
+// Screen renders the current screen as styled spans. During a synchronized
+// update it returns the screen from before, for at most a second like Ghostty,
+// so a program that never ends one does not freeze its window.
 func (w *Window) Screen() Screen {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if !w.syncSince.IsZero() && time.Since(w.syncSince) < time.Second && w.last.Rows != nil {
+		return w.last
+	}
 	cols, rows := w.w, w.h
 	out := Screen{Rows: make([][]Span, rows)}
 	for y := range rows {
@@ -742,6 +757,7 @@ func (w *Window) Screen() Screen {
 	out.CursorX, out.CursorY = pos.X, pos.Y
 	out.HasCursor = !w.cursorHidden.Load()
 	out.CursorShape, out.CursorBlink = (max(w.cursorStyle, 1)-1)/2, w.cursorStyle%2 == 1 || w.cursorStyle == 0
+	w.last = out
 	return out
 }
 
