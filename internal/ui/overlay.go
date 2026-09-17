@@ -121,7 +121,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Every string here is Lua's (or a model's, through a Go builder):
 	// sanitize like widget text.
-	o.Title, o.Body, o.Empty = sanitize.String(o.Title), sanitize.String(o.Body), sanitize.String(o.Empty)
+	o.Title, o.Body, o.Empty = strings.Join(strings.Fields(sanitize.String(o.Title)), " "), sanitize.String(o.Body), sanitize.String(o.Empty)
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
@@ -422,7 +422,9 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		list = st.filterRows(list)
 	case st.o.Body == "":
-		list = wrapSegs([]hostapi.Segment{{Text: cmp.Or(st.o.Empty, "Nothing here."), HL: "Comment"}}, boxInner(w))
+		for l := range strings.SplitSeq(cmp.Or(st.o.Empty, "Nothing here."), "\n") {
+			list = append(list, wrapSegs([]hostapi.Segment{{Text: l, HL: "Comment"}}, boxInner(w))...)
+		}
 	}
 	var body [][]hostapi.Segment
 	if st.o.Body != "" {

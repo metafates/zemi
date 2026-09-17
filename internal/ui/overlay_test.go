@@ -363,6 +363,16 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				return map[bool]string{false: "label kept its newlines"}[a.overlays[0].items[0].label == "fix: empty input The parser crashed."]
 			}},
+		{"a newline in the title or empty text adds no terminal line",
+			hostapi.Overlay{Title: "a\nb", Empty: "p\nq"}, nil,
+			func(a *App) string {
+				for _, row := range overlayBox(&a.overlays[0], 80, 20) {
+					if strings.Contains(plainSegs(row), "\n") {
+						return fmt.Sprintf("row %q holds a newline", plainSegs(row))
+					}
+				}
+				return ""
+			}},
 		{"Selected picks the first item",
 			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2}, nil,
 			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] }},
