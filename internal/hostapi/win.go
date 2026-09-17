@@ -579,11 +579,17 @@ func (t *windowTool) gate() *tools.Pipeline {
 func (t *windowTool) Info() fantasy.ToolInfo {
 	info := fantasy.ToolInfo{
 		Name: "window",
-		Description: `Run a program in a window inside zemi's screen and keep working while it runs: a TUI app you built, a dev server's log, a test watcher, a REPL. The window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
+		Description: `Run a program in a window inside zemi's screen, or pin a panel of text over it, and keep working while it stays up: a TUI app you built, a dev server's log, a test watcher, a REPL, a table of results you keep current. A window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
+
+A text panel is for what the user should be able to watch while you work, and what you will keep up to date:
+- benchmark or test numbers, rewritten as each run finishes, so old and new stay side by side
+- the few lines that matter out of a long build, log or migration, refreshed as it goes
+- the plan or checklist you are working through, ticked off step by step
+Open it before the work starts and set_text it as results land. Do not open one for something you can just say: a result stated once belongs in your reply, and a panel that never changes only steals rows from the chat. Close it when the thing it watches is done.
 
 Actions:
-- text: open a window that shows text instead of a program: with markdown true it renders like the chat (headings, lists, tables, code, colors) and re-wraps when the window resizes. A plan, a checklist, a diff summary or a table stays on screen while you work, and set_text replaces it in place.
-- set_text: replace a text window's body, or add to it with append true.
+- text: open a panel showing text instead of a program: with markdown true it renders like the chat (headings, lists, tables, code, colors) and re-wraps when the window resizes. A panel nobody sized fits its body, up to half the area it sits in, so a five-line table takes five lines.
+- set_text: replace a panel's body, or add to it with append true: rewrite the whole body when the numbers change, append for a running trail, which keeps the panel on its newest lines.
 - open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
 - set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
 - hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.

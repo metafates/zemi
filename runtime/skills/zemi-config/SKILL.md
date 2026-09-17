@@ -283,7 +283,14 @@ windows the model opened: the user's, Lua's and the editor's are not its to read
 Subagents have the tool too; their windows open hidden until shown. The user drags a float by its title, resizes it by
 its border or a corner, a vsplit by its separator and a split by its title. The user clicks a window to type into it and presses
 `ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it. Use it to show a TUI
-you built, a log, a REPL, then read it back to see what the user sees. Images (`chafa x.png`)
+you built, a log, a REPL, then read it back to see what the user sees.
+`text` opens a panel that shows text instead of a program (`markdown` renders it like the chat),
+and `set_text` rewrites it in place while the work runs: benchmark or test numbers refreshed as
+each run finishes, the handful of lines that matter out of a long build or log, the checklist
+being ticked off. A panel nobody gave a `frac`, `cols` or `rows` fits its body, at most half the
+area it sits in, and re-wraps when the user resizes; panels survive `/reload` and a new session.
+Nothing you can simply say in a reply is worth a panel, and one that stops changing is worth
+closing. Images (`chafa x.png`)
 show as pixels when zemi runs directly in Ghostty or kitty, and as colored symbols elsewhere
 (tmux and NO_COLOR included); a window's text reads an image's cells as blanks.
 `open_in_editor` opens a file in the user's editor (`editor.command`) and waits
