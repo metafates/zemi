@@ -72,9 +72,13 @@ zemi.ui.theme.set("default")
 
 local function fmt_tokens(n)
   if not n or n <= 0 then return nil end
-  if n >= 1000000 then return string.format("%.1fM", n / 1000000) end
-  if n >= 1000 then return string.format("%.1fk", n / 1000) end
-  return string.format("%d", n)
+  local s = string.format("%d", n)
+  if n >= 1000000 then
+    s = string.format("%.1fM", n / 1000000)
+  elseif n >= 1000 then
+    s = string.format("%.1fk", n / 1000)
+  end
+  return (s:gsub("%.0([kM])$", "%1"))
 end
 
 local function fmt_secs(s)
@@ -345,7 +349,7 @@ zemi.ui.widget.register({
     end
     if used or total then
       local pct = tonumber(cx.pct or 0) or 0
-      if pct > 0 then
+      if pct >= 1 then
         local hl = pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
         add(string.format("%d%%", pct), hl)
       end

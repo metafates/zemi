@@ -138,9 +138,9 @@ func (h *Host) OpenUsage() error {
 	fmtTok := func(n int64) string {
 		switch {
 		case n >= 1_000_000:
-			return fmt.Sprintf("%.1fM", float64(n)/1e6)
+			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
 		case n >= 1000:
-			return fmt.Sprintf("%.1fk", float64(n)/1e3)
+			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
 		}
 		return fmt.Sprint(n)
 	}
@@ -154,7 +154,11 @@ func (h *Host) OpenUsage() error {
 	}
 	lines := []string{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
-		lines = append(lines, fmt.Sprintf("%-12s %6s of %s tokens (%d%%)", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow), s.LastIn*100/s.CtxWindow))
+		line := fmt.Sprintf("%-12s %6s of %s tokens", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow))
+		if pct := s.LastIn * 100 / s.CtxWindow; pct > 0 {
+			line += fmt.Sprintf(" (%d%%)", pct)
+		}
+		lines = append(lines, line)
 	}
 	y, m, d := time.Now().Date()
 	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
