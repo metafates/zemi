@@ -51,7 +51,7 @@ var luaReadOnly = map[string]bool{
 	"permission.mode.list": true, "permission.rules": true, "provider.list": true,
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
 	"skills.list": true, "state.get": true, "tool.list": true,
-	"ui.focus.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.screenshot": true, "ui.theme.get": true, "ui.widget.list": true,
+	"ui.focus.get": true, "ui.hl_get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.screenshot": true, "ui.theme.get": true, "ui.widget.list": true,
 	"win.get": true, "win.list": true, "win:text": true, "win:wait_text": true, "win:info": true,
 	"workflow.list": true, "job:wait": true, "http:wait": true,
 }

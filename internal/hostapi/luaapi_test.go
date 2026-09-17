@@ -185,13 +185,22 @@ func TestKeySequences(t *testing.T) {
 }
 
 // TestHighlightOverride: zemi.ui.hl changes one group of the active theme
-// and leaves the others as the theme defines them.
+// and leaves the others as the theme defines them; links resolve through
+// overrides and the theme, a cycle resolves to nothing, and hl_get reads
+// the resolved group.
 func TestHighlightOverride(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.ui.theme.register("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" } } })
+		zemi.ui.theme.register("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" }, Link = { link = "Title", fg = "#000000" } } })
 		zemi.ui.theme.set("t")
+		assert(zemi.ui.hl_get("Link").fg == "#123456", "a theme link to a palette color")
 		zemi.ui.hl("Title", { fg = "#ffffff", bold = true })
+		zemi.ui.hl("Mine", { link = "Link" })
+		local mine = zemi.ui.hl_get("Mine")
+		assert(mine.fg == "#ffffff" and mine.bold and mine.bg == nil, zemi.json.encode(mine))
+		zemi.ui.hl("A", { link = "B" })
+		zemi.ui.hl("B", { link = "A" })
+		assert(zemi.ui.hl_get("A") == nil and zemi.ui.hl_get("Nope") == nil, "a cycle or an unset group")
 	`)
 	theme := h.Themes.Get("t")
 	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || !s.Bold {
@@ -200,6 +209,17 @@ func TestHighlightOverride(t *testing.T) {
 	if s, _ := h.Themes.Group(theme, "Comment"); s.Fg != "#777777" {
 		t.Fatalf("Comment = %+v", s)
 	}
+}
+
+// TestWidgetDel: a widget is removed by its own origin or a more trusted
+// one, and del reports whether there was one.
+func TestWidgetDel(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.ui.widget.register({ id = "w", region = "header", render = function() return {} end })`)
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.del("w")`, "p.lua", lua.OriginProject); err == nil || h.Widgets.Get("w") == nil {
+		t.Fatalf("project code removed a user widget: %v", err)
+	}
+	runUser(t, r, `assert(zemi.ui.widget.del("w") == true and zemi.ui.widget.del("w") == false)`)
 }
 
 // TestPurgeStopsLuaJobs: a reload stops the jobs Lua started, which would

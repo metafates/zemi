@@ -357,6 +357,7 @@ function zemi.event.stats() end
 ---@field origin zemi.Origin
 
 ---@class zemi.HLSpec
+---@field link? string Draw as this group instead; the other fields are then ignored. Chains longer than 8 or cycles draw unstyled.
 ---@field fg? string Hex ("#7aa2f7") or a palette name.
 ---@field bg? string
 ---@field bold? boolean
@@ -418,6 +419,11 @@ zemi.ui.widget = {}
 --- same origin replaces it; a lower-trust origin is refused.
 ---@param spec zemi.WidgetSpec
 function zemi.ui.widget.register(spec) end
+
+--- Remove a widget the caller's origin or a less trusted one registered.
+---@param id string
+---@return boolean removed false when no widget has that id
+function zemi.ui.widget.del(id) end
 
 ---@return zemi.WidgetInfo[]
 function zemi.ui.widget.list() end
@@ -618,6 +624,13 @@ function zemi.ui.edit(path, opts, on_done) end
 ---@param group string
 ---@param spec zemi.HLSpec
 function zemi.ui.hl(group, spec) end
+
+--- How a group draws under the active theme: links followed, palette names
+--- resolved to hex, false attributes and unset colors left out. Nil when
+--- nothing defines the group.
+---@param group string
+---@return { fg?: string, bg?: string, bold?: boolean, italic?: boolean, underline?: boolean, reverse?: boolean }|nil
+function zemi.ui.hl_get(group) end
 
 --- Render markdown into widget rows of at most `width` cells.
 ---@param text string

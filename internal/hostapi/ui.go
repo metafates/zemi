@@ -44,6 +44,16 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		h.refresh()
 		return 0
 	}))
+	widget.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.widget.del")
+		ok, err := h.Widgets.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
+		if err != nil {
+			L.RaiseError("zemi.ui.widget.del: %v", err)
+		}
+		h.refresh()
+		L.Push(glua.LBool(ok))
+		return 1
+	}))
 	widget.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
 		for _, w := range h.Widgets.List() {
@@ -288,7 +298,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	// hl(group, spec) changes one highlight group on top of the active theme
 	// (and any theme set later): { fg, bg, bold, italic, underline, reverse },
-	// colors as hex or palette names. theme.register builds a whole theme.
+	// colors as hex or palette names, or { link = "Group" }. theme.register
+	// builds a whole theme.
 	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.hl")
 		group := L.CheckString(1)
@@ -297,6 +308,31 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		h.Themes.SetHL(group, hlSpec(m))
 		h.refresh()
 		return 0
+	}))
+
+	// hl_get(group) is how the group draws under the active theme, links
+	// followed and palette names resolved to hex, or nil when nothing sets it.
+	tb.RawSetString("hl_get", L.NewFunction(func(L *glua.LState) int {
+		theme := h.Themes.Get(h.ActiveThemeName())
+		spec, ok := h.Themes.Group(theme, L.CheckString(1))
+		if !ok {
+			L.Push(glua.LNil)
+			return 1
+		}
+		color := func(ref string) any {
+			if theme != nil && ref != "" && !strings.HasPrefix(ref, "#") {
+				ref = theme.Palette[ref]
+			}
+			if ref == "" {
+				return nil
+			}
+			return ref
+		}
+		L.Push(lua.FromGo(L, map[string]any{
+			"fg": color(spec.Fg), "bg": color(spec.Bg), "bold": spec.Bold, "italic": spec.Italic,
+			"underline": spec.Underline, "reverse": spec.Reverse,
+		}))
+		return 1
 	}))
 
 	reasoning := L.NewTable()
@@ -346,7 +382,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 func hlSpec(m map[string]any) HLSpec {
 	return HLSpec{
-		Fg: strField(m, "fg"), Bg: strField(m, "bg"),
+		Link: strField(m, "link"),
+		Fg:   strField(m, "fg"), Bg: strField(m, "bg"),
 		Bold: boolField(m, "bold"), Italic: boolField(m, "italic"),
 		Underline: boolField(m, "underline"), Reverse: boolField(m, "reverse"),
 	}

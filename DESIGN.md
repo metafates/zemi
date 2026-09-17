@@ -903,8 +903,11 @@ UI extensibility contract:
   handler draws no hover and does nothing. Ids from model text must not
   become command arguments: use host ids.
 - Themes: palettes map names to colors; `hl` groups reference palette
-  names or raw hex; Go resolves to the terminal's colorprofile
-  (truecolor/256/16, downgrading as needed).
+  names or raw hex, or `link` to another group (neovim's `link`, followed
+  8 deep, a cycle draws unstyled); Go resolves to the terminal's colorprofile
+  (truecolor/256/16, downgrading as needed). `zemi.ui.hl_get(group)` reads
+  a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
+  (same or less trusted origin), shipped ones included.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question/memory overlays) -> the topmost overlay (Lua, or Go-built

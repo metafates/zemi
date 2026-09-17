@@ -259,6 +259,22 @@ func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	return w, nil
 }
 
+// Remove drops a widget, refusing one registered by a more trusted origin
+// than the caller; it reports whether one was removed.
+func (r *WidgetRegistry) Remove(id string, caller lua.Origin) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, ok := r.widgets[id]
+	if !ok {
+		return false, nil
+	}
+	if w.Origin.Rank() > caller.Rank() {
+		return false, fmt.Errorf("widget %q belongs to %s config", id, w.Origin)
+	}
+	delete(r.widgets, id)
+	return true, nil
+}
+
 func (r *WidgetRegistry) Get(id string) *Widget {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -402,6 +418,7 @@ func (r *EventRegistry) Purge() {
 
 // HLSpec is one highlight group definition from a theme.
 type HLSpec struct {
+	Link      string // another group this one draws as; the other fields are ignored
 	Fg        string
 	Bg        string
 	Bold      bool
@@ -437,15 +454,25 @@ func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
 	r.overrides[group] = spec
 }
 
-// Group resolves a highlight group: an override first, then the theme's.
+// maxHLLinks bounds a chain of linked groups, so a cycle resolves to nothing.
+const maxHLLinks = 8
+
+// Group resolves a highlight group, following links: an override first,
+// then the theme's (t may be nil).
 func (r *ThemeRegistry) Group(t *Theme, group string) (HLSpec, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if s, ok := r.overrides[group]; ok {
-		return s, true
+	for range maxHLLinks {
+		s, ok := r.overrides[group]
+		if !ok && t != nil {
+			s, ok = t.HL[group]
+		}
+		if !ok || s.Link == "" {
+			return s, ok
+		}
+		group = s.Link
 	}
-	s, ok := t.HL[group]
-	return s, ok
+	return HLSpec{}, false
 }
 
 func NewThemeRegistry() *ThemeRegistry {
