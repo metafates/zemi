@@ -103,6 +103,10 @@ type laid struct {
 	node *hostapi.LayoutNode
 	wn   *win.Window // the window a slot expanded into
 	rect uv.Rectangle
+	// rows is the height its widgets render at: the rect's, or for a
+	// content node the most it could get, since a height taken from its
+	// own last draw could never shrink.
+	rows int
 	sep  bool // a separator column left of it
 	kids []laid
 }
@@ -127,7 +131,7 @@ func (a *App) layout(w, h int) (laid, uv.Rectangle) {
 // solve places n's children inside r. A windows slot becomes one child per
 // shown window of its kind, sized by shares so the siblings keep their min.
 func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
-	l := laid{node: n, rect: r}
+	l := laid{node: n, rect: r, rows: r.Dy()}
 	if n.Kind != "box" {
 		return l
 	}
@@ -188,6 +192,9 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 			kr = uv.Rect(pos, r.Min.Y, size, cross)
 		}
 		k := a.solve(items[i].node, kr)
+		if c := items[i].node; c.Size.Kind == hostapi.SizeContent && !row {
+			k.rows = kids[i].clamp(avail)
+		}
 		if items[i].wins != nil {
 			k.wn = items[i].wins[items[i].i]
 		}
@@ -211,6 +218,43 @@ func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 		return 1
 	}
 	return 0
+}
+
+// shownWidget is a widget of a region the layout draws, with the cells it
+// renders at.
+type shownWidget struct {
+	*hostapi.Widget
+	width, height int
+}
+
+// shownWidgets lists the widgets of every region the layout draws; widgets
+// of other regions cost no render.
+func (a *App) shownWidgets() []shownWidget {
+	if a.width <= 0 || a.height <= 0 {
+		return nil
+	}
+	root, _ := a.layout(a.width, a.height)
+	var out []shownWidget
+	add := func(region string, w, h int) {
+		for _, wg := range a.host.Widgets.InRegion(region) {
+			out = append(out, shownWidget{wg, w, h})
+		}
+	}
+	var walk func(l laid)
+	walk = func(l laid) {
+		switch l.node.Kind {
+		case "region":
+			add(l.node.Region, l.rect.Dx(), l.rows)
+		case "bar":
+			add(l.node.Left, l.rect.Dx(), 1)
+			add(l.node.Right, l.rect.Dx(), 1)
+		}
+		for _, k := range l.kids {
+			walk(k)
+		}
+	}
+	walk(root)
+	return out
 }
 
 // paint draws a solved node: exactly one row per cell of height, a row box
@@ -270,11 +314,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 // narrower rewrap never shows blank rows.
 func (a *App) paintChat(region string, w, h int) [][]hostapi.Segment {
 	chat := a.regionLines(region, w)
-	a.chatRows = len(chat)
-	if a.chatViewH != h {
-		a.frameGen++ // widgets read the height (the splash centers on it)
-	}
-	a.chatViewH = h
+	a.chatRows, a.chatViewH = len(chat), h
 	if a.chatFollow {
 		a.chatTop = a.chatRows - h
 	} else {

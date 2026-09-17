@@ -187,17 +187,34 @@ func TestImageCellsFollowTheFloat(t *testing.T) {
 	}
 }
 
-func TestWidgetWidthIsMainColumn(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
+// TestWidgetSizes: widgets render at their node's width, beside a vsplit,
+// and a content-sized node's height is the most rows it could get, not its
+// last draw: a widget padding to ctx.height would otherwise never shrink.
+func TestWidgetSizes(t *testing.T) {
+	a, _ := bootAgentApp(t, 120, 30)
 	defer a.host.Wins.CloseAll()
-	a.width = 120
+	runLua(t, a, `zemi.ui.widget.register({ id = "head", region = "header", render = function(ctx)
+		local rows = {}
+		for i = 1, ctx.height do rows[i] = { "x" } end
+		return rows
+	end })`)
 	if _, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit}); err != nil {
 		t.Fatal(err)
 	}
-	a.height = 30
-	a.Frame()
-	if mainW := a.winRects[0].x - 1; a.widgetWidth() != mainW || mainW >= 120 {
-		t.Fatalf("widget width %d, main column %d", a.widgetWidth(), mainW)
+	for range 2 {
+		a.renderSync(t)
+		a.Frame()
+	}
+	mainW := a.winRects[0].x - 1
+	got := map[string][2]int{}
+	for _, w := range a.shownWidgets() {
+		got[w.ID] = [2]int{w.width, w.height}
+	}
+	want := map[string][2]int{"head": {mainW, 30}, "splash": {mainW, a.stage.Dy()}, "statusline.info": {mainW, 1}}
+	for id, size := range want {
+		if got[id] != size {
+			t.Errorf("%s renders at %v, want %v (main column %d of 120)", id, got[id], size, mainW)
+		}
 	}
 }
 

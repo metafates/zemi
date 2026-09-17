@@ -85,13 +85,12 @@ zemi.ui.widget.register({
 // goroutine (the frame loop is not running in tests) and fills the caches.
 func (a *App) renderSync(tb testing.TB) {
 	gen := a.frameGen
-	for _, w := range a.visibleWidgets() {
-		width := a.widgetWidth()
-		lines, err := a.host.RenderWidget(context.Background(), w, width, a.uiState())
+	for _, w := range a.shownWidgets() {
+		lines, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, a.uiState())
 		if err != nil {
 			tb.Fatalf("render widget %s: %v", w.ID, err)
 		}
-		a.caches[w.ID] = &widgetCache{lines: lines, width: width, gen: gen}
+		a.caches[w.ID] = &widgetCache{lines: lines, width: w.width, height: w.height, gen: gen}
 	}
 }
 

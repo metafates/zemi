@@ -223,7 +223,7 @@ Contracts that make this safe:
 - **Widget render is pure.** `render(ctx)` must not call mutating APIs; it
   runs against a capability-masked namespace where mutators raise (caught,
   logged, widget keeps its last-good lines). Go caches rendered lines keyed
-  by `(widget id, width, generation)`; the generation is a global frame
+  by `(widget id, width, height, generation)`; the generation is a global frame
   counter bumped at most once per renderer tick, so in v1 "invalidated"
   means any generation change: each visible widget renders once per frame
   and the cache only dedupes repeat `View` calls within a frame (per-widget
@@ -1033,12 +1033,15 @@ configured provider later (`zemi.memory.search` signature does not change).
   content and cells, the last child first, down to min and then to 0. The solver is
   integer arithmetic on the Update goroutine and never fails. The stage node (the chat
   over the split windows by default) is where prompts, overlays, toasts, completion
-  popups and centered floats go. The tree is Go's for now (`hostapi.DefaultLayout`).
+  popups and centered floats go. Widgets render at their node's width and height; a
+  content-sized node gets the most rows it could take (its max or the box's cells), not
+  its last height, which would never let it shrink. The tree is Go's for now
+  (`hostapi.DefaultLayout`).
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message; `View`
   asks each visible region for its cached widget lines; Lua `render` runs
   only when invalidated: v1 re-renders on every generation change (cheap:
-  render is pure and cached by `(id, width, generation)`), plus resize
+  render is pure and cached by `(id, width, height, generation)`), plus resize
   dependency-declared invalidation is opt-in later.
 - **Chat transcript**: messages are stored as content blocks (text, tool
   call, tool result, reasoning); tool output is sanitized before render

@@ -315,12 +315,12 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		go func() {
 			defer close(rendered)
-			h.RenderWidget(context.Background(), w, 40, UIState{})
+			h.RenderWidget(context.Background(), w, 40, 10, UIState{})
 		}()
 		time.Sleep(50 * time.Millisecond) // the render is now queued behind this request
 		h.renderMu.Lock()
 		defer h.renderMu.Unlock()
-		if h.renderSize != 0 {
+		if h.rendering {
 			t.Error("render guard raised while the render only waited in the queue")
 		}
 		return nil, nil
@@ -363,7 +363,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		t.Fatalf("widgets not registered (mutating=%v clean=%v)", mutating, clean)
 	}
 
-	if _, err := h.RenderWidget(context.Background(), mutating, 40, UIState{}); err == nil ||
+	if _, err := h.RenderWidget(context.Background(), mutating, 40, 10, UIState{}); err == nil ||
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("mutation during render: err = %v", err)
 	}
@@ -371,7 +371,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		t.Fatal("refused bind still landed in the keymap registry")
 	}
 
-	lines, err := h.RenderWidget(context.Background(), clean, 40, UIState{})
+	lines, err := h.RenderWidget(context.Background(), clean, 40, 10, UIState{})
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
@@ -564,7 +564,7 @@ func TestClickWidget(t *testing.T) {
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}
-			lines, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, UIState{})
+			lines, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
 			if err != nil {
 				t.Fatal(err)
 			}

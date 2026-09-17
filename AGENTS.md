@@ -573,7 +573,9 @@ window slot or a spacer. `span` sizes one box per frame from cells, percent, con
 (measured from cached renders, along a column only) and weighted fill, clamped to min and
 max; when the children do not fit it takes cells from fill, then percent, content and
 cells, the last child first. It never fails (`FuzzSpan`). The stage node is where prompts,
-overlays, toasts, popups and centered floats go; widgets render at its width. Hit testing
+overlays, toasts, popups and centered floats go. A widget renders at its node's width and height
+(`shownWidgets`); a content-sized node's height is the most rows it could get, never its last
+draw, so a widget that pads to `ctx.height` can still shrink. Hit testing
 never reads the tree: it reads the painted segments.
 
 ### Rewind, plan mode, composer bridge

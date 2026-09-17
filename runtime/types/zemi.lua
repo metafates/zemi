@@ -282,8 +282,8 @@ function zemi.event.stats() end
 --- What a widget's render function is given. Everything is a snapshot:
 --- render must be pure and finish in about 10 ms.
 ---@class zemi.WidgetCtx
----@field width integer
----@field height integer Rows the chat region has.
+---@field width integer Cells of the layout node drawing the widget's region.
+---@field height integer Rows of that node; for a content-sized node, the most it could get.
 ---@field time string "15:04".
 ---@field version string
 ---@field cwd string

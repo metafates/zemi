@@ -131,10 +131,10 @@ type App struct {
 // widgetCache holds the last-good rendered lines of one widget keyed by
 // (id); the frame they were rendered at gates reuse (DESIGN §4, §8).
 type widgetCache struct {
-	lines [][]hostapi.Segment
-	width int
-	gen   int64
-	err   string // last recorded render error; a repeat is not recorded again
+	lines         [][]hostapi.Segment
+	width, height int
+	gen           int64
+	err           string // last recorded render error; a repeat is not recorded again
 
 	// wrapped holds the lines re-wrapped for wrapW cells: compose runs
 	// every frame and wrapping the transcript is its biggest cost.
@@ -226,11 +226,11 @@ func (a *App) leave() {
 type frameTickMsg struct{}
 
 type widgetRenderedMsg struct {
-	id    string
-	lines [][]hostapi.Segment
-	width int
-	gen   int64
-	err   error
+	id            string
+	lines         [][]hostapi.Segment
+	width, height int
+	gen           int64
+	err           error
 }
 
 type agentEventMsg struct{ ev hostapi.AgentEvent }
@@ -510,7 +510,7 @@ func (a *App) onFrame() tea.Cmd {
 
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
-		Time: a.timeStr, Pulse: a.pulse(), Height: a.chatViewH,
+		Time: a.timeStr, Pulse: a.pulse(),
 		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing,
 	}
@@ -545,7 +545,7 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 			c = &widgetCache{}
 			a.caches[msg.id] = c
 		}
-		c.gen, c.width = msg.gen, msg.width
+		c.gen, c.width, c.height = msg.gen, msg.width, msg.height
 		if !isTolerableRenderErr(msg.err) && c.err != msg.err.Error() {
 			c.err = msg.err.Error()
 			a.host.RecordError("widget "+msg.id, c.err)
@@ -560,7 +560,7 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 	if c := a.caches[msg.id]; c != nil && c.gen > msg.gen {
 		return
 	}
-	a.caches[msg.id] = &widgetCache{lines: msg.lines, width: msg.width, gen: msg.gen}
+	a.caches[msg.id] = &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
 }
 
 // isTolerableRenderErr reports failures the UI expects under load (hot
@@ -569,34 +569,13 @@ func isTolerableRenderErr(err error) bool {
 	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
-// visibleWidgets lists the widgets of every region composed into the frame.
-func (a *App) visibleWidgets() []*hostapi.Widget {
-	var out []*hostapi.Widget
-	out = append(out, a.host.Widgets.InRegion("header")...)
-	out = append(out, a.host.Widgets.InRegion("chat")...)
-	out = append(out, a.host.Widgets.InRegion("working")...)
-	out = append(out, a.host.Widgets.InRegion("statusline.left")...)
-	out = append(out, a.host.Widgets.InRegion("statusline.right")...)
-	return out
-}
-
-// widgetWidth is the stage's width: compose draws widgets beside any
-// vsplits, so rendering at the terminal width would wrap every line twice.
-func (a *App) widgetWidth() int {
-	if a.width <= 0 {
-		return 80
-	}
-	_, stage := a.layout(a.width, a.height)
-	return stage.Dx()
-}
-
 // renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
 // is missing or stale for the current frame generation.
 func (a *App) renderStaleWidgetsCmd() tea.Cmd {
-	gen, width, st := a.frameGen, a.widgetWidth(), a.uiState()
+	gen, st := a.frameGen, a.uiState()
 	var cmds []tea.Cmd
-	for _, w := range a.visibleWidgets() {
-		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == width {
+	for _, w := range a.shownWidgets() {
+		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == w.width && c.height == w.height {
 			continue
 		}
 		// One render per widget in flight: at 30 fps a slow widget would
@@ -609,8 +588,8 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 		}
 		a.pending[w.ID] = gen
 		cmds = append(cmds, func() tea.Msg {
-			lines, err := a.host.RenderWidget(context.Background(), w, width, st)
-			return widgetRenderedMsg{id: w.ID, lines: lines, width: width, gen: gen, err: err}
+			lines, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
+			return widgetRenderedMsg{id: w.ID, lines: lines, width: w.width, height: w.height, gen: gen, err: err}
 		})
 	}
 	return tea.Batch(cmds...)

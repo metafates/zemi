@@ -168,8 +168,8 @@ type Host struct {
 
 	gen atomic.Int64
 
-	renderMu   sync.Mutex
-	renderSize int
+	renderMu  sync.Mutex
+	rendering bool
 
 	tMu     sync.Mutex
 	session *Session
@@ -702,26 +702,26 @@ type Segment struct {
 	Effect string // "shimmer": the UI animates the text, blending hl toward Normal
 }
 
-// RenderWidget runs a widget's Lua render for the given width and returns
-// sanitized segment lines (DESIGN §6.6, §8).
-func (h *Host) RenderWidget(ctx context.Context, w *Widget, width int, state UIState) ([][]Segment, error) {
+// RenderWidget runs a widget's Lua render at the cells its layout node gives
+// it and returns sanitized segment lines (DESIGN §6.6, §8).
+func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) ([][]Segment, error) {
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		// The purity guard is raised on the interpreter goroutine, only
 		// while render runs: raised before Do, it also refused Lua that ran
 		// while this render merely waited in the queue (boot code behind
 		// the trust prompt).
 		h.renderMu.Lock()
-		h.renderSize = width
+		h.rendering = true
 		h.renderMu.Unlock()
 		defer func() {
 			h.renderMu.Lock()
-			h.renderSize = 0
+			h.rendering = false
 			h.renderMu.Unlock()
 		}()
 		defer h.RT.PushFrame(L, w.Origin, w.Path)()
 		base := L.GetTop()
 		L.Push(w.Render)
-		L.Push(h.widgetCtxTable(L, width, state))
+		L.Push(h.widgetCtxTable(L, width, height, state))
 		if err := L.PCall(1, 1, nil); err != nil {
 			L.SetTop(base)
 			return nil, err
@@ -807,9 +807,8 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
-	Time   string
-	Pulse  bool // shared blink phase for running markers
-	Height int  // chat viewport rows at the last frame (0 before the first)
+	Time  string
+	Pulse bool // shared blink phase for running markers
 
 	QuitArmed  bool   // a second ctrl+c quits
 	KeySeq     string // keys of a bound sequence typed so far
@@ -827,13 +826,13 @@ func TildePath(p string) string {
 	return p
 }
 
-func (h *Host) widgetCtxTable(L *glua.LState, width int, state UIState) *glua.LTable {
+func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) *glua.LTable {
 	sess := h.Session()
 	tb := L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("pulse", glua.LBool(state.Pulse))
-	tb.RawSetString("height", glua.LNumber(state.Height))
+	tb.RawSetString("height", glua.LNumber(height))
 	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
 	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
 	tb.RawSetString("rows_below", glua.LNumber(state.RowsBelow))
@@ -1066,9 +1065,9 @@ func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
 
 func (h *Host) refuseDuringRender(L *glua.LState, what string) {
 	h.renderMu.Lock()
-	w := h.renderSize
+	rendering := h.rendering
 	h.renderMu.Unlock()
-	if w != 0 {
+	if rendering {
 		L.RaiseError("zemi: %s is not allowed during widget render (render must be pure)", what)
 	}
 }
