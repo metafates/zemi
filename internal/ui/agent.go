@@ -386,17 +386,6 @@ func (a *App) shimmer(seg hostapi.Segment, now time.Time, animate bool) []hostap
 	return out
 }
 
-func fmtElapsed(d time.Duration) string {
-	s := int(d.Seconds())
-	switch {
-	case s < 60:
-		return fmt.Sprintf("%ds", s)
-	case s < 3600:
-		return fmt.Sprintf("%dm %02ds", s/60, s%60)
-	}
-	return fmt.Sprintf("%dh %02dm %02ds", s/3600, s/60%60, s%60)
-}
-
 // permBox draws the permission prompt: what the tool wants to do, the
 // command or the diff it would apply, the model's own words and the choices.
 func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
