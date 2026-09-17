@@ -497,14 +497,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for i, c := range choices {
 		items[i] = listItem{label: c.label, key: c.key}
 	}
-	list := listRows(items, pa.sel, nil, len(items))
-	if segsWidth(list[0]) > inner {
-		// a narrow box keeps the labels, which say what is approved; the keys still work
-		for i := range items {
-			items[i].key = ""
-		}
-		list = listRows(items, pa.sel, nil, len(items))
-	}
+	list := listRowsW(items, pa.sel, nil, len(items), 0, inner)
 	tail := [][]hostapi.Segment{blank}
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)

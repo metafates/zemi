@@ -188,7 +188,7 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 }
 
 // TestPermissionTellNarrow: at 30 columns the box keeps its right border
-// and the labels over the key column, down moves between them, and "t"
+// and the key column beside cut labels, down moves between them, and "t"
 // denies the open ask and the queued one.
 func TestPermissionTellNarrow(t *testing.T) {
 	app, _ := bootAgentApp(t, 30, 30)
