@@ -200,8 +200,8 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewLongList: memories read whole and rendered as markdown,
-// the window scrolls to the selection, and the box keeps its place.
+// TestMemoryReviewLongList: memories read whole and as plain text, so
+// markdown cannot hide part of one, the window scrolls to the selection, and the box keeps its place.
 func TestMemoryReviewLongList(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 24)
 	var items []hostapi.MemoryRow
@@ -209,7 +209,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Kind: "fact", Origin: "user", Text: "short note"})
 	}
 	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned",
-		Text: "run **go test** before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
+		Text: "run **go test** <!-- hidden --> before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
 	done := openReview(t, app, items)
 
 	app.renderSync(t)
@@ -220,7 +220,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"tail-marker", "run go test before", "make golden", "gotcha · this project · learned · #db", "13/13"} {
+	for _, want := range []string{"tail-marker", "run **go test** <!-- hidden --> before", "`make golden`", "gotcha · this project · learned · #db", "13/13"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("frame lacks %q:\n%s", want, frame)
 		}

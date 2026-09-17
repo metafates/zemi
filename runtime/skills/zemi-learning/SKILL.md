@@ -19,7 +19,7 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    the session showed are no longer true (they wait for review as `forget:` rows).
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
-   - `/memory`: every memory whole, rendered as markdown, with its kind, scope, origin and
+   - `/memory`: every memory whole, as plain text, with its kind, scope, origin and
      tags under it; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
      forgets a stored memory, `s` moves it between this project and everywhere, `u` undoes
      the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.

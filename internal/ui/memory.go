@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 type memReviewPrompt struct {
@@ -123,8 +124,8 @@ func (a *App) undoMemory() {
 	mr.sel = u.at
 }
 
-// memReviewBox shows every memory whole, rendered as markdown, with its
-// kind, scope, origin and tags under it.
+// memReviewBox shows every memory whole, as plain text since markdown could
+// hide part of what gets stored, with its kind, scope, origin and tags under it.
 func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	mr := a.memReview
 	n := rememberedAt(mr.items)
@@ -145,8 +146,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
 		items = append(items, listItem{
 			section: sections[suggested(it)],
-			// the markdown rows are cached: append to a copy
-			more: append(slices.Clip(a.host.Markdown(it.Text, boxInner(w)-2)), meta),
+			more:    append(wrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2), meta),
 		})
 	}
 	// borders, the blank row, the hint and the counter take five rows
