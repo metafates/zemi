@@ -1075,7 +1075,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   the hook queue at most once); keymaps, widget clicks, one-shot timers,
   async Lua callbacks (job, http, window, agent) and async event handlers
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
-  repeating timer calls it itself, so an idle tick costs nothing); `View`
+  repeating timer calls it itself, so an idle tick costs nothing). A
+  render's ctx builds `transcript`, `agent`, `todos` and `recent` on first
+  read: over a 500-row transcript a widget that reads only scalars renders
+  in 25 µs instead of 1 ms (`BenchmarkWidgetCtx`); `View`
   asks each visible region for its cached widget lines; Lua `render` runs
   only when invalidated: v1 re-renders on every generation change (cheap:
   render is pure and cached by `(id, width, height, generation)`), plus resize

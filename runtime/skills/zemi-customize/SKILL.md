@@ -174,7 +174,7 @@ local default = require("zemi.defaultui")
 zemi.ui.widget.register({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
-    if #ctx.transcript > 0 or ctx.agent_active then return { { { text = "" } } } end
+    if ctx.transcript_count > 0 or ctx.agent_active then return { { { text = "" } } } end
     local rows = default.splash(ctx)
     for i, row in ipairs(rows) do
       if row[2] and row[2].hl == "Logo6" then -- after the last logo row

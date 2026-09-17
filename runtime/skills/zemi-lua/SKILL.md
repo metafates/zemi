@@ -136,7 +136,7 @@ zemi.ui.overlay.open({
 -- Widget
 zemi.ui.widget.register({
   id = "statusline.turns", region = "statusline.right", priority = 5,
-  render = function(ctx) return { { { text = #ctx.transcript .. " msgs", hl = "Comment" } } } end,
+  render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Comment" } } } end,
 })
 
 -- Background work

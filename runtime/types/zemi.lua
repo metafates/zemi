@@ -298,7 +298,10 @@ function zemi.event.stats() end
 ---@field pct number
 
 --- What a widget's render function is given. Everything is a snapshot:
---- render must be pure and finish in about 10 ms.
+--- render must be pure and finish in about 10 ms. `transcript`, `agent`,
+--- `todos` and `recent` are built on first read, so a widget that does not
+--- read them does not pay for them; kept past the render, a ctx reads nil
+--- for the ones render did not read.
 ---@class zemi.WidgetCtx
 ---@field width integer Cells of the layout node drawing the widget's region.
 ---@field height integer Rows of that node; for a content-sized node, the most it could get.
@@ -316,6 +319,7 @@ function zemi.event.stats() end
 ---@field agent zemi.AgentCtx
 ---@field view? { id: string, agent: string, description: string, status: string } The agent run the chat shows instead of the session; a submit messages it while it is running.
 ---@field transcript zemi.TranscriptRow[]
+---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent table[] Recent sessions, only while the transcript is empty.

@@ -735,7 +735,9 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 		defer h.RT.PushFrame(L, w.Origin, w.Path)()
 		base := L.GetTop()
 		L.Push(w.Render)
-		L.Push(h.widgetCtxTable(L, width, height, state))
+		ctxTb, done := h.widgetCtxTable(L, width, height, state)
+		defer done()
+		L.Push(ctxTb)
 		if err := L.PCall(1, 1, nil); err != nil {
 			L.SetTop(base)
 			return nil, err
@@ -841,9 +843,14 @@ func TildePath(p string) string {
 	return p
 }
 
-func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) *glua.LTable {
+// widgetCtxTable builds a render's ctx. The fields that copy the transcript,
+// the live turn, todos or recent sessions are built on first read, so a
+// widget that never reads them does not pay for them (a statusline widget
+// over a long session renders 50 times faster), and read nil once the
+// render returned, so a ctx kept in an upvalue pins nothing. done ends it.
+func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
 	sess := h.Session()
-	tb := L.NewTable()
+	tb = L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("pulse", glua.LBool(state.Pulse))
@@ -878,7 +885,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	// session's live turn and todos stay out of it.
 	run := h.viewedRun()
 	transcript := sess.Transcript
-	var todoRows []store.Todo
 	if run != nil {
 		status, _, _, _ := run.state()
 		v := L.NewTable()
@@ -889,20 +895,70 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		tb.RawSetString("view", v)
 		transcript = run.transcript()
 		stream.Text, stream.Reasoning, stream.Tools, stream.Steering, stream.Reports = "", "", nil, run.queued(), 0
-	} else {
-		todoRows = h.todoSnapshot()
 	}
-	todos := L.NewTable()
-	for _, td := range todoRows {
-		row := L.NewTable()
-		row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
-		row.RawSetString("status", glua.LString(td.Status))
-		row.RawSetString("active_form", glua.LString(sanitize.String(td.ActiveForm)))
-		todos.Append(row)
-	}
-	tb.RawSetString("todos", todos)
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
+	tb.RawSetString("transcript_count", glua.LNumber(len(transcript)))
+	// 0 while an agent run is shown: its rows mutate in place as the run
+	// goes, so the chat widget must not cache them.
+	epoch := h.trEpoch.Load()
+	if run != nil {
+		epoch = 0
+	}
+	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
+
+	lazy := map[string]func(L *glua.LState) glua.LValue{
+		"todos": func(L *glua.LState) glua.LValue {
+			todos := L.NewTable()
+			if run != nil {
+				return todos
+			}
+			for _, td := range h.todoSnapshot() {
+				row := L.NewTable()
+				row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
+				row.RawSetString("status", glua.LString(td.Status))
+				row.RawSetString("active_form", glua.LString(sanitize.String(td.ActiveForm)))
+				todos.Append(row)
+			}
+			return todos
+		},
+		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
+		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
+		"recent": func(L *glua.LState) glua.LValue {
+			if len(sess.Transcript) > 0 {
+				return glua.LNil
+			}
+			recent := L.NewTable()
+			for _, r := range h.recentSessions() {
+				row := L.NewTable()
+				row.RawSetString("id", glua.LString(r.ID))
+				row.RawSetString("title", glua.LString(sanitize.String(r.Title)))
+				row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
+				recent.Append(row)
+			}
+			return recent
+		},
+	}
+	live := true
+	mt := L.NewTable()
+	mt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
+		key, _ := L.Get(2).(glua.LString)
+		build := lazy[string(key)]
+		if !live || build == nil {
+			L.Push(glua.LNil)
+			return 1
+		}
+		v := build(L)
+		L.CheckTable(1).RawSetString(string(key), v)
+		L.Push(v)
+		return 1
+	}))
+	L.SetMetatable(tb, mt)
+	return tb, func() { live = false }
+}
+
+// agentTable is ctx.agent: the live turn.
+func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at := L.NewTable()
 	at.RawSetString("active", glua.LBool(stream.Active))
 	at.RawSetString("model", glua.LString(stream.Model))
@@ -941,7 +997,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
-	tb.RawSetString("agent", at)
+	return at
+}
+
+// transcriptTable is ctx.transcript.
+func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 	tr := L.NewTable()
 	for _, m := range transcript {
 		row := L.NewTable()
@@ -963,26 +1023,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		}
 		tr.Append(row)
 	}
-	tb.RawSetString("transcript", tr)
-	// 0 while an agent run is shown: its rows mutate in place as the run
-	// goes, so the chat widget must not cache them.
-	epoch := h.trEpoch.Load()
-	if run != nil {
-		epoch = 0
-	}
-	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
-	if len(sess.Transcript) == 0 {
-		recent := L.NewTable()
-		for _, r := range h.recentSessions() {
-			row := L.NewTable()
-			row.RawSetString("id", glua.LString(r.ID))
-			row.RawSetString("title", glua.LString(sanitize.String(r.Title)))
-			row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
-			recent.Append(row)
-		}
-		tb.RawSetString("recent", recent)
-	}
-	return tb
+	return tr
 }
 
 // usageTable is the session token tally for widgets (DESIGN §8): totals
@@ -1166,7 +1207,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.29.0"))
+	api.RawSetString("version", glua.LString("0.30.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -99,7 +99,7 @@ zemi.ui.widget.register({
   region = "chat",
   priority = 5,
   render = function(ctx)
-    if #(ctx.transcript or {}) > 0 or ctx.agent_active then return fmt.empty() end
+    if ctx.transcript_count > 0 or ctx.agent_active then return fmt.empty() end
     return M.render(ctx)
   end,
 })
