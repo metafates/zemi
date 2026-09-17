@@ -63,8 +63,9 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 }
 
 // TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
-// any case), backspace widens again, esc ends the filter before closing,
-// j moves outside a filter, and enter runs the highlighted match.
+// any case), backspace widens again, esc ends the filter before closing and
+// keeps the matched row, j moves outside a filter, and a new query selects
+// its first match, which enter runs.
 func TestOverlayFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	var items []any
@@ -97,12 +98,12 @@ func TestOverlayFilter(t *testing.T) {
 		t.Fatalf("esc clears the filter first: overlays=%d rows=%d", len(a.overlays), visible())
 	}
 	a.overlayKey("j", "j")
-	if a.overlays[0].selected != 1 || a.overlays[0].query != "" {
+	if a.overlays[0].selected != 2 || a.overlays[0].query != "" {
 		t.Fatalf("j outside a filter: selected=%d query=%q", a.overlays[0].selected, a.overlays[0].query)
 	}
-	typeText("/gam")
+	typeText("/e")
 	a.overlayKey("enter", "")
-	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
+	if len(a.overlays) != 0 || a.composer.text != "alpha one" {
 		t.Fatalf("enter: overlays=%d composer=%q", len(a.overlays), a.composer.text)
 	}
 }

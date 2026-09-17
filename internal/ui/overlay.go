@@ -64,6 +64,10 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 		f.active = text == "/"
 		return f.active
 	}
+	old, prev := f.query, -1
+	if f.selected < len(f.visible) {
+		prev = f.visible[f.selected]
+	}
 	q := composerState{text: f.query, cursor: len([]rune(f.query))}
 	switch {
 	case key == "esc" || (key == "backspace" && f.query == ""):
@@ -82,6 +86,12 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 		return false
 	}
 	f.apply(texts)
+	if f.query != old {
+		f.selected, f.top = 0, 0 // a new query selects its first match
+		if f.query == "" {
+			f.selected = max(0, slices.Index(f.visible, prev)) // a cleared one keeps the row
+		}
+	}
 	return true
 }
 
