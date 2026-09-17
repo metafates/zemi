@@ -122,7 +122,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Every string here is Lua's (or a model's, through a Go builder):
 	// sanitize like widget text.
-	o.Title, o.Body, o.Empty = strings.Join(strings.Fields(sanitize.String(o.Title)), " "), sanitize.String(o.Body), sanitize.String(o.Empty)
+	o.Title, o.Body, o.Empty = sanitize.Line(o.Title), sanitize.String(o.Body), sanitize.String(o.Empty)
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
@@ -132,7 +132,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		m, _ := item.(map[string]any)
 		field := func(k string) string {
 			s, _ := m[k].(string)
-			return strings.Join(strings.Fields(sanitize.String(s)), " ")
+			return sanitize.Line(s)
 		}
 		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: field("key"), section: field("section")}
 		if i < len(o.ItemText) && o.ItemText[i] != nil {
@@ -142,7 +142,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			}
 			it.label = plainSegs(it.segs)
 		}
-		it.label = strings.Join(strings.Fields(sanitize.String(it.label)), " ") // a newline would break the box
+		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
 		st.texts = append(st.texts, strings.TrimSpace(it.label+"  "+it.desc))
 	}

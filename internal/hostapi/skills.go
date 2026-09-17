@@ -91,7 +91,6 @@ func (h *Host) syncSkills() {
 		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin},
 		skills.Dir{Path: h.learnedSkillsDir(), Source: skills.Learned})
 	for _, w := range warns {
-		h.Log.Warn("skills", w, nil)
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
 	rows := make([]*store.Skill, 0, len(found))
@@ -142,7 +141,7 @@ func (h *Host) draftLearnedSkill(sid, name, desc, body string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("skill %q already exists", name)
 	}
-	desc, _ = learn.ScrubSecrets(strings.Join(strings.Fields(sanitize.String(desc)), " "))
+	desc, _ = learn.ScrubSecrets(sanitize.Line(desc))
 	body, scrubbed := learn.ScrubSecrets(sanitize.String(body))
 	if scrubbed && learn.IsOneBlob(body) {
 		return errors.New("draft is mostly secret material")
@@ -230,7 +229,6 @@ func (h *Host) discoverProjectSkills() []skills.Skill {
 	}
 	found, warns := skills.Discover(dirs...)
 	for _, w := range warns {
-		h.Log.Warn("skills", w, nil)
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
 	return found

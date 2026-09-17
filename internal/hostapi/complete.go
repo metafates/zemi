@@ -99,16 +99,15 @@ func (h *Host) callSource(L *glua.LState, s completionSource, lead, line string)
 		return nil, err
 	}
 	list, _ := v.([]any)
-	clean := func(s string) string { return strings.Join(strings.Fields(sanitize.String(s)), " ") }
 	var out []CompletionItem
 	for _, item := range list {
 		switch it := item.(type) {
 		case string:
-			out = append(out, CompletionItem{Text: clean(it)})
+			out = append(out, CompletionItem{Text: sanitize.Line(it)})
 		case map[string]any:
 			text, _ := it["text"].(string)
 			desc, _ := it["desc"].(string)
-			out = append(out, CompletionItem{Text: clean(text), Desc: clean(desc)})
+			out = append(out, CompletionItem{Text: sanitize.Line(text), Desc: sanitize.Line(desc)})
 		}
 	}
 	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" }), nil

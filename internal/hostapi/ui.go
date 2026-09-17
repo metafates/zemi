@@ -405,7 +405,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.title")
 		h.refuseBelowUser(L, "ui.title")
-		text := strings.Join(strings.Fields(sanitize.String(L.OptString(1, ""))), " ")
+		text := sanitize.Line(L.OptString(1, ""))
 		if text == "" {
 			h.title.Store(nil)
 		} else {
