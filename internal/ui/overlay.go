@@ -37,6 +37,7 @@ type listFilter struct {
 	visible  []int
 	selected int
 	top      int // first row shown
+	width    int // the widest the list has been, so filtering never narrows its box
 }
 
 func (f *listFilter) apply(texts []string) {
@@ -85,15 +86,18 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 }
 
 // filterRows renders the query line (when set) above rows, or a no-match
-// note.
+// note. rows come from listRowsW with f.width.
 func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
+	for _, r := range rows {
+		f.width = max(f.width, segsWidth(r))
+	}
 	var out [][]hostapi.Segment
 	if f.active {
 		out = append(out, append([]hostapi.Segment{{Text: "/ ", HL: "Comment"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...))
 	}
 	out = append(out, rows...)
 	if len(f.visible) == 0 {
-		out = append(out, []hostapi.Segment{{Text: "  no matches", HL: "Comment"}})
+		out = append(out, padSegs([]hostapi.Segment{{Text: "  no matches", HL: "Comment"}}, f.width))
 	}
 	return out
 }
@@ -371,7 +375,8 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine("enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
-	const limit = 10
+	// borders, the blank row, the hint, the counter and the filter line
+	limit := min(max(h-6, 3), 20)
 	var list [][]hostapi.Segment
 	var hints []string
 	switch {
@@ -380,7 +385,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		for _, i := range st.visible {
 			items = append(items, st.items[i])
 		}
-		list = listRows(items, st.selected, &st.top, limit)
+		list = listRowsW(items, st.selected, &st.top, limit, st.width)
 		if len(st.visible) > 0 {
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {

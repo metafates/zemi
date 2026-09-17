@@ -227,6 +227,11 @@ type listItem struct {
 // moves only when the selection leaves it and a click never moves the item
 // under the pointer (nil for a list that never scrolls).
 func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segment {
+	return listRowsW(items, sel, top, limit, 0)
+}
+
+// listRowsW is listRows padded to at least minW cells.
+func listRowsW(items []listItem, sel int, top *int, limit, minW int) [][]hostapi.Segment {
 	labelW := 0
 	for _, it := range items {
 		labelW = max(labelW, ansi.StringWidth(it.label))
@@ -291,7 +296,7 @@ func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segmen
 	}
 	// Every row pads to the widest of the whole list, so a box sized from
 	// the visible window keeps its width while scrolling.
-	widest := 0
+	widest := minW
 	for y, r := range rows {
 		n := segsWidth(r)
 		if k, ok := keys[y]; ok {
@@ -694,7 +699,7 @@ func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 			}
 			items = append(items, item)
 		}
-		body = mp.filterRows(listRows(items, mp.selected, &mp.top, limit))
+		body = mp.filterRows(listRowsW(items, mp.selected, &mp.top, limit, mp.width))
 		if len(mp.items) > limit || mp.active {
 			hints = append(hints, "/", "filter")
 		}

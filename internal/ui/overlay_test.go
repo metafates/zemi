@@ -377,3 +377,26 @@ func TestOverlayHints(t *testing.T) {
 		}
 	}
 }
+
+// TestOverlayFilterKeepsWidth: filtering, down to no match, never narrows
+// the box, and the list grows with the screen.
+func TestOverlayFilterKeepsWidth(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 40)
+	var items []any
+	for i := range 15 {
+		items = append(items, fmt.Sprintf("item %02d", i))
+	}
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, "a much longer row than the others")})
+	st := &app.overlays[0]
+	box := overlayBox(st, 80, 40)
+	if !strings.Contains(fmt.Sprint(box), "item 14") {
+		t.Fatalf("a tall screen still scrolls: %v", box)
+	}
+	for _, q := range []string{"item", "xxx"} {
+		st.active, st.query = true, q
+		st.apply(st.texts)
+		if got := overlayBox(st, 80, 40); segsWidth(got[0]) != segsWidth(box[0]) {
+			t.Fatalf("filter %q: width %d, want %d", q, segsWidth(got[0]), segsWidth(box[0]))
+		}
+	}
+}
