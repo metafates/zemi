@@ -165,11 +165,10 @@ func formatOverlayItem(item any) string {
 func (st *overlayState) enterVerb(idx int) string {
 	m, _ := st.o.Items[idx].(map[string]any)
 	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
-	trusted := st.o.Origin == lua.OriginBuiltin || st.o.Origin == lua.OriginUser
 	switch {
 	case has("detail") || m["actions"] != nil:
 		return "open"
-	case has("fill") || (has("run") && trusted) || st.o.OnSelect != nil:
+	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil:
 		return "select"
 	case st.back:
 		return "back"
@@ -201,7 +200,7 @@ func (a *App) detailAction(idx int) {
 	d := a.overlays[len(a.overlays)-1]
 	a.closeOverlayByID(d.o.ID)
 	m, _ := d.o.Items[idx].(map[string]any)
-	run, _ := m["run"].(string)
+	run := rowRun(d.o, m)
 	fill, _ := m["fill"].(string)
 	pi := len(a.overlays) - 1 // the parent: a detail view opens right on top of it
 	switch {
@@ -347,9 +346,18 @@ func (a *App) cancelOverlay(o hostapi.Overlay) {
 	}
 }
 
+// rowRun is the command a row runs: honored only for builtin and user
+// overlays so a plugin row label cannot disguise a command.
+func rowRun(o hostapi.Overlay, m map[string]any) string {
+	if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
+		return ""
+	}
+	run, _ := m["run"].(string)
+	return run
+}
+
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
-// palette) and "run" (a command, honored only for builtin and user
-// overlays so a plugin row label cannot disguise a command).
+// palette) and "run" (rowRun).
 func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 	if idx >= len(o.Items) {
 		return
@@ -362,7 +370,7 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 		a.composer.text = sanitize.String(fill)
 		a.composer.moveEnd()
 	}
-	if run, _ := m["run"].(string); run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
+	if run := rowRun(o, m); run != "" {
 		name, args := splitCommand(run)
 		a.runCommand(name, args)
 	}

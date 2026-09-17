@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -316,6 +317,11 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
 			}},
+		{"a plugin's run action goes back, as its hint says",
+			hostapi.Overlay{Origin: lua.OriginPlugin, Items: []any{detail(map[string]any{"text": "Restart", "run": "help"})}}, []string{"enter", "enter"},
+			func(a *App) string {
+				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
+			}},
 		{"a run action in a toggle list rebuilds the list",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() []any { reloads++; return []any{detail()} }},
 			[]string{"enter", "enter"},
@@ -343,7 +349,7 @@ func TestOverlayNavigation(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			a := newTestApp(t, t.TempDir())
-			c.o.Origin = lua.OriginBuiltin
+			c.o.Origin = cmp.Or(c.o.Origin, lua.OriginBuiltin)
 			a.openOverlay(c.o)
 			for _, k := range c.keys {
 				a.overlayKey(k, "")
