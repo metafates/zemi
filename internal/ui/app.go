@@ -1118,20 +1118,23 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 // ---------------------------------------------------------------------------
 // segment helpers
 
+// hlStyle resolves a highlight name. "Host:*" names are Go-owned security
+// chrome (DESIGN §8): they resolve to fixed styles and never consult the theme.
+func (a *App) hlStyle(hl string) uv.Style {
+	if st, ok := fixedStyle(hl); ok {
+		return st
+	}
+	return a.thm.style(hl)
+}
+
 // renderSegs styles and joins segments, truncating to w visible cells.
-// "Host:*" highlight names are Go-owned security chrome (DESIGN §8): they
-// resolve to fixed styles and never consult the theme.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
 	for _, s := range segs {
 		if s.Text == "" {
 			continue
 		}
-		if fs, ok := fixedStyle(s.HL); ok {
-			b.WriteString(fs.Styled(s.Text))
-			continue
-		}
-		st := a.thm.style(s.HL)
+		st := a.hlStyle(s.HL)
 		b.WriteString(st.Styled(s.Text))
 	}
 	out := b.String()

@@ -312,7 +312,7 @@ func (a *App) itemSpans(y, hit int) []cellSpan {
 			w := ansi.StringWidth(s.Text)
 			if s.Hit == hit {
 				from, to := col, col+w
-				if !a.painted(s.HL) {
+				if a.hlStyle(s.HL).Bg == nil {
 					from += w - ansi.StringWidth(strings.TrimLeft(s.Text, " "))
 					to -= w - ansi.StringWidth(strings.TrimRight(s.Text, " "))
 				}
@@ -335,14 +335,6 @@ func (a *App) itemSpans(y, hit int) []cellSpan {
 		}
 	}
 	return spans
-}
-
-// painted reports whether hl has a background.
-func (a *App) painted(hl string) bool {
-	if st, ok := fixedStyle(hl); ok {
-		return st.Bg != nil
-	}
-	return a.thm.style(hl).Bg != nil
 }
 
 func plainSegs(segs []hostapi.Segment) string {
