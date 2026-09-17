@@ -135,19 +135,30 @@ func (s *DB) SearchMemory(scope, query string, limit int, bump bool) ([]*Memory,
 	return out, nil
 }
 
-// ftsQuery turns free text into an OR of quoted FTS5 tokens, so arbitrary
-// user input never becomes fts5 syntax.
+// ftsQueryTerms caps the terms of a search: FTS5 slows down faster than the
+// term count grows, and a pasted log as the first message must not stall it.
+const ftsQueryTerms = 64
+
+// ftsQuery turns free text into an OR of its first distinct quoted FTS5
+// tokens, so arbitrary user input never becomes fts5 syntax.
 func ftsQuery(query string) string {
-	tokens := strings.FieldsFunc(query, func(r rune) bool {
+	var terms []string
+	seen := map[string]bool{}
+	for _, tok := range strings.FieldsFunc(query, func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r > 0x7f)
-	})
-	if len(tokens) == 0 {
+	}) {
+		if len(terms) == ftsQueryTerms {
+			break
+		}
+		if tok = strings.ToLower(tok); !seen[tok] {
+			seen[tok] = true
+			terms = append(terms, `"`+strings.ReplaceAll(tok, `"`, `""`)+`"`)
+		}
+	}
+	if len(terms) == 0 {
 		return `""`
 	}
-	for i, tok := range tokens {
-		tokens[i] = `"` + strings.ReplaceAll(tok, `"`, `""`) + `"`
-	}
-	return strings.Join(tokens, " OR ")
+	return strings.Join(terms, " OR ")
 }
 
 // ListMemory returns a scope's memories, newest first; superseded rows are

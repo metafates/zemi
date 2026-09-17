@@ -2,7 +2,9 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,6 +76,19 @@ func TestMemorySearchFtsSyntaxIsNeutralized(t *testing.T) {
 		if _, err := db.SearchMemory("project", q, 10, false); err != nil {
 			t.Fatalf("query %q errored: %v", q, err)
 		}
+	}
+}
+
+func TestFtsQueryCapsTerms(t *testing.T) {
+	long := strings.Repeat("The the THE ", 5000)
+	for i := range 100 {
+		long += fmt.Sprintf(" w%d", i)
+	}
+	if got := strings.Count(ftsQuery(long), " OR ") + 1; got != ftsQueryTerms {
+		t.Fatalf("terms = %d", got)
+	}
+	if got := ftsQuery("Deploy deploy"); got != `"deploy"` {
+		t.Fatalf("dedupe: %s", got)
 	}
 }
 
