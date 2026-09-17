@@ -22,7 +22,7 @@ type healthCheck struct {
 	level  string // ok | warn | error
 	name   string
 	detail string
-	run    string // command enter runs on the row
+	run    string // the command the row's detail action runs
 }
 
 // healthReg holds the checks Lua registered with zemi.health.register;

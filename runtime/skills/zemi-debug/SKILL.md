@@ -71,7 +71,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "connection refused" to a local server from a command auto mode ran, on Linux | `landlock + namespaces` gives the sandbox a localhost of its own, so servers already running on the machine are unreachable; retry with `sandbox: false` |
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.zemi` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
-| learned skill not used | drafted skills start disabled: `/skills`, enter toggles |
+| learned skill not used | drafted skills start disabled: `/skills`, space toggles |
 
 ## Stores
 

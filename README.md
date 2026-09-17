@@ -59,7 +59,7 @@ zemi.mcp.add("docs", { url = "https://mcp.example.com/mcp", disabled_tools = { "
 ```
 
 Each call asks first (subject `mcp.<server>`, the tool name as argument, so "always"
-approves that tool). `/mcp` shows every server's state; enter restarts one.
+approves that tool). `/mcp` shows every server's state; enter on one offers restart and sign-in.
 
 ## Prompt commands
 

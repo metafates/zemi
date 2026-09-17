@@ -245,8 +245,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   `/lsp restart <name>`;
   `/mcp restart|sign-in|sign-out <name>`.
 
-HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: enter opens the
-browser, and zemi keeps and refreshes the grant. MCP servers:
+HTTP MCP servers that need an account show "needs sign-in" in `/mcp`: its Sign in action opens
+the browser, and zemi keeps and refreshes the grant. MCP servers:
 `zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
 A command server starts in zemi's data dir, not the project, with the project path in
 `ZEMI_PROJECT_DIR`: pass the project as an absolute path, not `.`.
