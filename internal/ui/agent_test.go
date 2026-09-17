@@ -889,6 +889,8 @@ func TestPermTitle(t *testing.T) {
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "a.go"},
 		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
 		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
+		{hostapi.PermRequest{Subject: "tool.window.text", Arg: "Results"}, "Show this panel?", "Results"},
+		{hostapi.PermRequest{Subject: "tool.window", Arg: "hello<cr>"}, "Control this window?", "hello<cr>"},
 		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "x"},
 	} {
 		if verb, target := permTitle(c.req, "/p"); verb != c.verb || target != c.target {
