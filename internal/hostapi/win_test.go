@@ -159,8 +159,8 @@ func TestWindowInputSettling(t *testing.T) {
 }
 
 // TestWindowOwnership: the window tool acts only on the model's windows and
-// its subagents', and an editor window is hidden from Lua below user config
-// and from the Lua tool.
+// its subagents'; an editor window is hidden from Lua below user config and
+// from the Lua tool, and the user must close a running one twice.
 func TestWindowOwnership(t *testing.T) {
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
@@ -206,6 +206,14 @@ func TestWindowOwnership(t *testing.T) {
 		t.Error(err)
 	}
 	runUser(t, r, fmt.Sprintf(`assert(zemi.win.get(%d) and #zemi.win.list() == 4, "user config sees the editor")`, editor))
+
+	// the user's close kills a running editor only when repeated
+	if err := h.CloseWindow(editor); err == nil || !strings.Contains(err.Error(), "unsaved") {
+		t.Fatalf("first close of the editor: %v", err)
+	}
+	if err := h.CloseWindow(editor); err != nil {
+		t.Fatalf("second close of the editor: %v", err)
+	}
 }
 
 // TestWinNamespace: zemi.win from user Lua, gated as a job, with secret-shaped

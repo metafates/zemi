@@ -37,7 +37,8 @@ const (
 
 // Spec is what opens a window.
 type Spec struct {
-	Cmd    string // run with sh -c, so pipes and quoting work as in bash
+	Cmd    string   // run with sh -c, so pipes and quoting work as in bash
+	Args   []string // $1... for Cmd
 	Dir    string
 	Env    []string
 	Kind   string // KindSplit, KindVSplit or KindFloat
@@ -195,12 +196,12 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 			}
 		},
 		Title: func(t string) {
-			if strings.TrimSpace(t) != "" {
+			if strings.TrimSpace(t) != "" && spec.Owner != "editor" {
 				w.SetTitle(t)
 			}
 		},
 	})
-	cmd := exec.Command("sh", "-c", spec.Cmd)
+	cmd := exec.Command("sh", append([]string{"-c", spec.Cmd, "sh"}, spec.Args...)...)
 	cmd.Dir = spec.Dir
 	env := slices.DeleteFunc(slices.Clone(spec.Env), func(kv string) bool {
 		return slices.ContainsFunc(hostTermEnv, func(p string) bool { return strings.HasPrefix(kv, p) })

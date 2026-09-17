@@ -56,7 +56,7 @@ user_version`, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty` and
 `charmbracelet/x/vt` (windows: a program on a pseudo-terminal drawn through
-a Go terminal emulator). Tool input validation is a small hand-written
+a Go terminal emulator; the user's editor runs in one too). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6),
 `charm.land/catwalk` (there is no model catalog; models come only from
@@ -1730,7 +1730,6 @@ internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)
 internal/win/               windows: a pty per program, drawn by a Go terminal emulator
-internal/editor/            the command that hands a file to the user's editor
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors

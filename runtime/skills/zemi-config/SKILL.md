@@ -95,9 +95,9 @@ guessing. Common keys:
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort.
 - `ui.window.unfocus` (ctrl+\): the key that takes typing back from a focused window.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
-  `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). `editor.window` says
-  where it opens inside tmux: `auto` or `popup` over zemi, `split` beside it, `fullscreen`
-  (zemi hands over the terminal, as it always does outside tmux).
+  `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). It runs in a focused
+  float over zemi with the user's full environment; ctrl+c goes to the editor, and the window
+  closes when it exits. × or `/win close <id>` kills a running editor only when repeated.
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
 - `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
@@ -283,7 +283,7 @@ vsplit by its separator and a split by its title. The user clicks a window to ty
 you built, a log, a REPL, then read it back to see what the user sees. Images (`chafa x.png`)
 show as pixels when zemi runs directly in Ghostty or kitty, and as colored symbols elsewhere
 (tmux and NO_COLOR included); a window's text reads an image's cells as blanks.
-`open_in_editor` opens a file in the user's editor (`editor.command`, `editor.window`) and waits
+`open_in_editor` opens a file in the user's editor (`editor.command`) and waits
 until they close it; the result is a diff of what they changed. It is for changes only the user
 can make, or when they ask to edit something themselves; subagents never get it.
 Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.

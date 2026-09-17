@@ -393,7 +393,10 @@ func (a *App) titleClick(id, x int) {
 			continue
 		}
 		if x >= r.x+r.w-3 {
-			a.host.CloseWindow(id)
+			if err := a.host.CloseWindow(id); err != nil {
+				a.pushToast("warn", "Window", err.Error())
+				return
+			}
 			if a.focusWin == id {
 				a.focusWin = 0
 			}

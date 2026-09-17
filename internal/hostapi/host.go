@@ -51,9 +51,9 @@ type UIHooks interface {
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert" or "submit".
 	ComposerEdit(op, text string, cursor int)
-	// EditFile opens a file in the user's editor and blocks until it closes;
-	// it returns where the editor ran (fullscreen, popup, split). Never
-	// call it on the UI goroutine.
+	// EditFile opens a file in the user's editor and blocks until it exits;
+	// it returns where the editor ran ("window"). Never call it on the UI
+	// goroutine.
 	EditFile(ctx context.Context, req EditRequest) (mode string, err error)
 	// FocusWindow gives the user's keys to a window (0 = back to zemi).
 	FocusWindow(id int)
@@ -289,6 +289,8 @@ type Host struct {
 	guards  map[*sandboxGuard]bool
 	// winGuards maps a sandboxed window's id to its guardSandbox check
 	winGuards sync.Map
+	// closeArm is the running editor window a close was last refused for
+	closeArm atomic.Pointer[winArm]
 	// trustHeld keeps the project untrusted until /trust, after a sandboxed
 	// command created a protected path
 	trustHeld atomic.Bool

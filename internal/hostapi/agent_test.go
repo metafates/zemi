@@ -532,7 +532,7 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) (string, error) {
 	if f.edit != nil {
 		f.edit(req.Path)
 	}
-	return "fullscreen", nil
+	return "window", nil
 }
 func (f *fakeUI) FocusWindow(int)  {}
 func (f *fakeUI) Copy(text string) { f.copied = text }

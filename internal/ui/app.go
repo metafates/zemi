@@ -95,7 +95,6 @@ type App struct {
 	winRects  []winRect // where windows were drawn on the last frame
 	winDrag   *winDrag  // a drag on window chrome in progress
 	chatAreaH int       // the chat area's height on the last frame (splits resize against it)
-	editEnded time.Time // when the last full-screen editor returned (editGrace)
 
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
@@ -356,9 +355,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if step != 0 && !a.wheelChrome(step) {
 			a.scrollChatRows(step * chatWheelStep)
 		}
-		return a, nil
-	case editDoneMsg:
-		msg.done <- msg.err
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {

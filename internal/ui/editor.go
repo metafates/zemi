@@ -1,40 +1,22 @@
-// editor.go hands a file to the user's editor (DESIGN §8). Inside tmux the
-// editor opens in a popup or a split and the TUI keeps drawing; otherwise
-// bubbletea releases the terminal to it (tea.ExecProcess, never
-// internal/proc: a child in its own session has no controlling terminal
-// and an editor needs one) and takes it back when the editor exits.
+// editor.go hands a file to the user's editor (DESIGN §8): it runs in a
+// focused float over zemi, so the TUI keeps drawing and keeps the terminal.
 package ui
 
 import (
+	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/metafates/zemi/internal/editor"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/win"
 )
-
-// editGrace swallows keys right after a full-screen editor returns: what
-// was typed at its closing prompt is still in the terminal's buffer.
-const editGrace = 150 * time.Millisecond
-
-var editSeq atomic.Int64
-
-// editDoneMsg is the full-screen editor's exit, delivered by bubbletea once
-// the terminal is back.
-type editDoneMsg struct {
-	err  error
-	done chan error
-}
 
 // cfgStr reads a string config key, "" when unset.
 func (a *App) cfgStr(key string) string {
@@ -43,62 +25,58 @@ func (a *App) cfgStr(key string) string {
 	return s
 }
 
-func (a *App) editorEnv() editor.Env {
-	return editor.Env{
-		Configured: a.cfgStr("editor.command"),
-		Visual:     os.Getenv("VISUAL"),
-		Editor:     os.Getenv("EDITOR"),
-		TMUX:       os.Getenv("TMUX"),
-		TmuxPane:   os.Getenv("TMUX_PANE"),
-		Window:     a.cfgStr("editor.window"),
+// editorScript is the sh -c text that runs editor on "$1", so an editor with
+// flags ("code --wait") splits like a shell would, with the common editors'
+// starting line flag.
+func editorScript(editor string, line int) string {
+	args := []string{editor}
+	if line > 0 {
+		switch filepath.Base(strings.Fields(editor)[0]) {
+		case "vi", "vim", "nvim", "nano", "micro", "emacs", "kak", "hx", "helix":
+			args = append(args, "+"+strconv.Itoa(line))
+		}
 	}
+	return strings.Join(append(args, `"$1"`), " ")
 }
 
-// EditFile implements hostapi.UIHooks: opens path in the user's editor and
-// blocks until it closes. Never call it on the UI goroutine.
+// EditFile implements hostapi.UIHooks: opens path in the user's editor
+// (editor.command, $VISUAL, $EDITOR, vi) and blocks until it exits. A
+// cancelled ctx returns and leaves the editor running, so unsaved work stays
+// the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, error) {
-	env := a.editorEnv()
-	mode := env.Mode()
-	title := sanitize.String(req.Title)
-	chanName := fmt.Sprintf("zemi-edit-%d-%d", os.Getpid(), editSeq.Add(1))
-	cmd := env.Cmd(mode, req.Path, a.host.Dirs.ProjectDir, title, chanName, req.Line)
-	a.await(func() tea.Cmd { a.editing = title; return nil })
-	defer a.await(func() tea.Cmd { a.editing = ""; a.editEnded = a.now(); return nil })
-
-	if mode == editor.Fullscreen {
-		// ctx kills it: cmd.Process is set on the program's goroutine, so
-		// reading it here would race the start
-		cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
-		done := make(chan error, 1)
-		a.await(func() tea.Cmd {
-			return tea.ExecProcess(cmd, func(err error) tea.Msg { return editDoneMsg{err: err, done: done} })
-		})
-		// the terminal is restored only after the process exits
-		if err := <-done; ctx.Err() == nil {
-			return mode, err
+	editor := cmp.Or(strings.TrimSpace(a.cfgStr("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
+	w, err := a.host.OpenWindow(win.Spec{
+		Cmd: editorScript(editor, req.Line), Args: []string{req.Path}, Kind: win.KindFloat,
+		Title: "Edit " + req.Title, Owner: "editor",
+		// the user's own editor gets the user's env: plugins read API keys, and the model cannot read the window
+		Env: os.Environ(),
+	})
+	if err != nil {
+		return "window", err
+	}
+	// NOTE: floatBox caps the size to the frame every frame, so an oversized
+	// layout keeps the editor as large as the frame through resizes
+	_ = w.SetLayout(func(l *win.Layout) { l.Cols, l.Rows = 1<<14, 1<<14 })
+	prev := 0 // read and written on the UI goroutine only
+	a.await(func() tea.Cmd {
+		prev, a.editing = a.focusWin, sanitize.String(req.Title)
+		a.setFocusWin(w.ID)
+		return nil
+	})
+	if err := w.Wait(ctx); err != nil {
+		a.await(func() tea.Cmd { a.editing = ""; return nil })
+		return "window", err
+	}
+	a.await(func() tea.Cmd {
+		a.editing = ""
+		if a.focusWin == w.ID {
+			a.setFocusWin(prev)
 		}
-		return mode, ctx.Err()
+		a.host.CloseWindow(w.ID)
+		return nil
+	})
+	if code := w.ExitCode(); code != 0 {
+		return "window", fmt.Errorf("the editor exited with code %d", code)
 	}
-
-	// tmux: a short client that blocks until the popup closes or the split
-	// signals; the editor itself lives in the tmux server, so the client
-	// keeps zemi's real environment (TERM, EDITOR) and its own session.
-	c := proc.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
-	c.Env = os.Environ()
-	buf := &proc.Buffer{Max: 4 << 10}
-	c.Stdout, c.Stderr = buf, buf
-	if err := proc.Run(c); err != nil {
-		return mode, fmt.Errorf("tmux %s: %w: %s", cmd.Args[1], err, strings.TrimSpace(buf.String()))
-	}
-	if mode == editor.Split {
-		w := proc.CommandContext(ctx, "tmux", "wait-for", chanName)
-		if err := proc.Run(w); err != nil {
-			if ctx.Err() != nil {
-				_ = proc.Run(proc.Command("tmux", "wait-for", "-S", chanName))
-				return mode, ctx.Err()
-			}
-			return mode, errors.New("tmux wait-for: " + err.Error())
-		}
-	}
-	return mode, nil
+	return "window", nil
 }

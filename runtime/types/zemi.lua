@@ -416,12 +416,11 @@ function zemi.ui.input(opts, on_confirm) end
 
 ---@class zemi.EditOpts
 ---@field line? integer 1-based line to start at
----@field title? string popup title and working-row label (default: the file name)
+---@field title? string window title ("Edit <title>") and working-row label (default: the file name)
 
 --- Open a project file in the user's editor (editor.command, $VISUAL, $EDITOR)
---- and call on_done when it closes: on_done(mode) with "fullscreen", "popup"
---- or "split", or on_done(nil, err). Inside tmux the editor opens over zemi
---- (editor.window); otherwise zemi hands over the terminal until it exits.
+--- in a focused float over zemi, and call on_done when it exits: on_done("window"),
+--- or on_done(nil, err) when it failed or exited non-zero.
 --- Never blocks the interpreter. Raises for a path outside the project.
 ---@param path string
 ---@param opts? zemi.EditOpts

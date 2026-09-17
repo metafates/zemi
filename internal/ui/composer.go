@@ -467,6 +467,12 @@ type editorMsg struct {
 // openEditor edits the draft in the user's editor (ctrl+g) through
 // EditFile, off the UI goroutine; the saved text comes back as editorMsg.
 func (a *App) openEditor() tea.Cmd {
+	for _, wn := range a.host.Wins.List() {
+		if wn.Owner == "editor" && wn.Title() == "Edit the draft" && !wn.Exited() {
+			a.setFocusWin(wn.ID) // a second editor on the draft would lose one of the two
+			return nil
+		}
+	}
 	dir, err := a.host.TempDir()
 	if err != nil {
 		a.pushToast("error", "Editor failed", err.Error())

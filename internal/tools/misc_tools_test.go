@@ -436,8 +436,8 @@ func TestOpenInEditor(t *testing.T) {
 		t.Fatal("the edited file must count as read")
 	}
 
-	p.Edit = func(context.Context, string, int, string) error { return errors.New("no tmux client") }
-	if resp = call(t, toolNamed(t, "open_in_editor", p), in()); !resp.StopTurn || !strings.Contains(resp.Content, "no tmux client") {
+	p.Edit = func(context.Context, string, int, string) error { return errors.New("the editor exited with code 1") }
+	if resp = call(t, toolNamed(t, "open_in_editor", p), in()); !resp.StopTurn || !strings.Contains(resp.Content, "the editor exited with code 1") {
 		t.Fatalf("editor failure must stop the turn: %+v", resp)
 	}
 }

@@ -157,8 +157,8 @@ It is a pure Go terminal emulator, no cgo.
 
 Your editor is part of the loop: `ctrl+g` edits the draft in it, `zemi.ui.edit(path)` opens a
 file from Lua, and the agent's `open_in_editor` tool hands you a file when only you can make
-the change and continues with the diff once you close it. Inside tmux the editor opens in a
-popup over zemi (or a split, `editor.window`); elsewhere zemi hands over the terminal.
+the change and continues with the diff once you close it. The editor opens in a focused
+window over zemi, sized to the screen, and the window closes when the editor exits.
 `editor.command` overrides `$VISUAL` and `$EDITOR`.
 
 It can also see its own screen: `zemi.ui.screenshot()` returns the drawn frame as plain

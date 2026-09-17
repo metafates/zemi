@@ -78,8 +78,29 @@ func (h *Host) finishWinGuard(w *win.Window) {
 	}
 }
 
-// CloseWindow ends a window from the UI.
-func (h *Host) CloseWindow(id int) bool { return h.closeWindow(id) }
+// OpenWindow starts a window from the UI.
+func (h *Host) OpenWindow(spec win.Spec) (*win.Window, error) { return h.openWindow(spec) }
+
+type winArm struct {
+	id    int
+	until time.Time
+}
+
+// CloseWindow ends a window for the user (×, /win close). A running editor
+// may hold unsaved changes, so the first close is refused with a warning and
+// only a second one within 3s kills it.
+func (h *Host) CloseWindow(id int) error {
+	if w, ok := h.Wins.Get(id); ok && w.Owner == "editor" && !w.Exited() {
+		if arm := h.closeArm.Load(); arm == nil || arm.id != id || time.Now().After(arm.until) {
+			h.closeArm.Store(&winArm{id, time.Now().Add(3 * time.Second)})
+			return fmt.Errorf("window %d is an editor and may hold unsaved changes: close it again to kill it", id)
+		}
+	}
+	if !h.closeWindow(id) {
+		return fmt.Errorf("no window %d", id)
+	}
+	return nil
+}
 
 func (h *Host) closeWindow(id int) bool {
 	ok := h.Wins.Close(id)
@@ -432,7 +453,9 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 						return nil
 					case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
 						for _, w := range h.Wins.List() {
-							h.closeWindow(w.ID)
+							if w.Owner != "editor" || w.Exited() {
+								h.closeWindow(w.ID)
+							}
 						}
 						return nil
 					case (fields[0] == "hide" || fields[0] == "show") && len(fields) == 2:
@@ -455,10 +478,7 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 							h.focusWindow(id)
 							return nil
 						}
-						if !h.closeWindow(id) {
-							return fmt.Errorf("no window %d", id)
-						}
-						return nil
+						return h.CloseWindow(id)
 					}
 					return errors.New("usage: /win [list | focus <id> | hide <id> | show <id> | close <id|all>]")
 				},
