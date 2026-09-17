@@ -144,12 +144,13 @@ func (h *Host) OpenUsage() error {
 		}
 		return fmt.Sprint(n)
 	}
+	// fixed columns stay whole in the narrowest box, a wrapped row would break the table
 	row := func(label string, sessions int, in, out int64, cost float64) string {
-		text := fmt.Sprintf("%-12s %6s in  %6s out  $%.2f", label, fmtTok(in), fmtTok(out), cost)
+		count := "        "
 		if sessions > 0 {
-			text += fmt.Sprintf("  (%d %s)", sessions, plural(sessions, "session", "sessions"))
+			count = fmt.Sprintf("%3d sess", sessions)
 		}
-		return text
+		return fmt.Sprintf("%-12s %6s in  %6s out  %s  $%.2f", label, fmtTok(in), fmtTok(out), count, cost)
 	}
 	lines := []string{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
