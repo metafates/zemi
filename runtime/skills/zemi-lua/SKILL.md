@@ -66,7 +66,8 @@ Check a widget, theme or layout change by reading the screen back with
 ## Type annotations
 
 zemi writes LuaLS annotations for this whole API to `~/.local/share/zemi/types/zemi.lua`
-on every start, and a `~/.config/zemi/.luarc.json` pointing at them the first time. Read
+on every start, and a `~/.config/zemi/.luarc.json` pointing at them, rewritten when zemi
+changes it. Read
 that file when you need an exact signature, field name or return shape - tests fail when it
 drifts from the surface Go registers. Each event's payload is a `zemi.ev.*` class that
 `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`,

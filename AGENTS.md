@@ -346,8 +346,9 @@ Invariants:
 
 `runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API;
 `syncTypes` (called from `installNamespaces`, next to `syncSkills`) rewrites it plus a copy
-of `runtime/lua/` to `<data>/types/` on every start, and writes `<config>/.luarc.json` only
-when there is none. It is never loaded by the interpreter — a description, not code. Three
+of `runtime/lua/` to `<data>/types/` on every start, and rewrites `<config>/.luarc.json`
+whenever its content moved (an unchanged file is left alone: the config watcher reloads on
+an mtime). It is never loaded by the interpreter — a description, not code. Three
 tests keep it honest: `TestTypesCoverAPI` (every member `Sandbox.NamespaceMembers` reports
 is annotated), `TestTypesDeclareNothingExtra` (no annotation for a member zemi dropped) and
 `TestTypesParse`. `TestTypesEventNames`, `TestTypesHostActions` and `TestTypesWidgetCtx` pin

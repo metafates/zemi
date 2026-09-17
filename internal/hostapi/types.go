@@ -6,6 +6,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
 	"os"
@@ -19,9 +20,9 @@ import (
 // repo, so a generated file never shows up in the user's config diff.
 func (h *Host) TypesDir() string { return joinIf(h.Dirs.DataHome, "types") }
 
-// syncTypes rewrites the annotations on every start (an upgraded zemi
-// replaces them) and drops a .luarc.json next to init.lua when there is
-// none. Failures are logged: an editor convenience must never stop a boot.
+// syncTypes rewrites the annotations and the .luarc.json beside init.lua
+// on every start, so an upgraded zemi replaces both. Failures are logged:
+// an editor convenience must never stop a boot.
 func (h *Host) syncTypes() {
 	dir := h.TypesDir()
 	if dir == "" {
@@ -31,7 +32,7 @@ func (h *Host) syncTypes() {
 		h.Log.Warn("types", "annotations not written", map[string]any{"error": err.Error()})
 		return
 	}
-	if err := h.ensureLuarc(dir); err != nil {
+	if err := h.writeLuarc(dir); err != nil {
 		h.Log.Warn("types", "luarc not written", map[string]any{"error": err.Error()})
 	}
 }
@@ -74,16 +75,15 @@ func (h *Host) writeTypes(dir string) error {
 	return nil
 }
 
-// ensureLuarc writes the lua-language-server settings once. It is the
-// user's file afterwards: zemi never rewrites one that exists.
-func (h *Host) ensureLuarc(typesDir string) error {
+// writeLuarc writes the lua-language-server settings zemi generates,
+// replacing an edited file: the settings describe zemi's sandbox, and a
+// stale copy costs the user diagnostics on every line. It writes only when
+// the content moved, since the config watcher reloads on an mtime.
+func (h *Host) writeLuarc(typesDir string) error {
 	if h.Dirs.ConfigHome == "" {
 		return nil
 	}
 	path := filepath.Join(h.Dirs.ConfigHome, ".luarc.json")
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
 	data, err := json.MarshalIndent(map[string]any{
 		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
 		// the sandbox's own basic, os and debug are described in zemi.lua
@@ -96,5 +96,9 @@ func (h *Host) ensureLuarc(typesDir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	data = append(data, '\n')
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
+		return nil
+	}
+	return os.WriteFile(path, data, 0o644)
 }

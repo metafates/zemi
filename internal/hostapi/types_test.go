@@ -79,8 +79,9 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 }
 
 // TestSyncTypesWritesAnnotations: a start leaves the annotations and a
-// lua-language-server pointed at them, and never overwrites a .luarc.json
-// the user edited.
+// lua-language-server pointed at them, replaces an edited .luarc.json, and
+// leaves the file alone when it already says that (the config watcher
+// reloads on an mtime).
 func TestSyncTypesWritesAnnotations(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
@@ -104,8 +105,16 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.syncTypes()
-	if data, _ := os.ReadFile(luarc); string(data) != "{}" {
-		t.Fatalf("an existing .luarc.json was overwritten: %s", data)
+	if got, _ := os.ReadFile(luarc); string(got) != string(data) {
+		t.Fatalf("an edited .luarc.json was not replaced: %s", got)
+	}
+	info, err := os.Stat(luarc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.syncTypes()
+	if again, err := os.Stat(luarc); err != nil || !again.ModTime().Equal(info.ModTime()) {
+		t.Fatalf("an unchanged .luarc.json was rewritten: %v", err)
 	}
 }
 
