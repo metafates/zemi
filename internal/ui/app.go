@@ -998,7 +998,7 @@ func (a *App) statusRow(w int) []hostapi.Segment {
 		left = append([]hostapi.Segment{{Text: "ctrl+c again to quit ", HL: "Title"}}, left...)
 	}
 	if wn := a.focusedWin(); wn != nil {
-		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s back ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)
+		left = append([]hostapi.Segment{{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"}, {Text: " "}}, left...)
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		left = append(left, hostapi.Segment{Text: " " + strings.Join(a.keySeq, " ") + " ... ", HL: "Title"})
