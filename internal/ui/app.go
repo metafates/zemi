@@ -23,6 +23,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -864,12 +865,16 @@ func (a *App) Screenshot() string {
 }
 
 // dimRows repaints rows in one fixed color. It copies each row: rows share
-// slices with widget caches.
+// slices with widget caches. Image placeholders keep their color, which
+// names the image.
 func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
 			out[j] = hostapi.Segment{Text: s.Text, HL: "Host:Dim"}
+			if strings.ContainsRune(s.Text, kitty.Placeholder) {
+				out[j] = s
+			}
 		}
 		rows[i] = out
 	}

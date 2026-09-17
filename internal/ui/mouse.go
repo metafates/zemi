@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/win"
@@ -110,7 +111,9 @@ func restyle(row []hostapi.Segment, from, to int, hl func(string) string) []host
 	mid := truncateSegs(dropCells(row, from), to-from)
 	mid = append([]hostapi.Segment(nil), mid...)
 	for i := range mid {
-		mid[i].HL = hl(mid[i].HL)
+		if !strings.ContainsRune(mid[i].Text, kitty.Placeholder) { // its color names the image
+			mid[i].HL = hl(mid[i].HL)
+		}
 	}
 	out := append(append([]hostapi.Segment{}, truncateSegs(row, from)...), mid...)
 	return append(out, dropCells(row, to)...)
