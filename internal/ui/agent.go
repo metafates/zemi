@@ -266,11 +266,15 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			if maxW > 0 {
 				// the marker and the gap take 2 cells each, a key 2 more
 				room := maxW - 4 - ansi.StringWidth(it.desc) - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
-				label = ansi.Truncate(label, max(room, labelW), "…")
+				cutW := max(room, labelW)
+				if it.desc != "" && ansi.StringWidth(label) > room {
+					cutW = labelW // a cut label keeps its description in the column
+				}
+				label = ansi.Truncate(label, cutW, "…")
 			}
 			row := []hostapi.Segment{{Text: label, HL: hl}}
 			if it.desc != "" {
-				gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(it.label))+2)
+				gap := strings.Repeat(" ", max(0, labelW-ansi.StringWidth(label))+2)
 				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
 			}
 			if it.key != "" {

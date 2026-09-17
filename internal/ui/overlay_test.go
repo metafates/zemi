@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -425,13 +426,22 @@ func TestOverlayFilterKeepsWidth(t *testing.T) {
 // TestOverlayLongLabelKeepsDescAndKey: a label too long for the box is cut
 // before its description, and the key column stays.
 func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
-	app, _ := bootAgentApp(t, 60, 20)
+	app, _ := bootAgentApp(t, 80, 20)
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{
 		map[string]any{"text": "Done. The fixture path moved, so the test binary exits 1", "desc": "now · 2 messages", "key": "current"},
 		map[string]any{"text": "please run bash", "desc": "1m ago · 18 messages · and a first line that runs far past the edge"},
 	}})
-	box := fmt.Sprint(overlayBox(&app.overlays[0], 60, 20))
+	rows := overlayBox(&app.overlays[0], 80, 20)
+	box := fmt.Sprint(rows)
 	if !strings.Contains(box, "now") || !strings.Contains(box, "current") || !strings.Contains(box, "…") {
 		t.Fatalf("box: %s", box)
+	}
+	// descriptions start in one column, the cut label's included
+	col := func(row []hostapi.Segment, s string) int {
+		before, _, _ := strings.Cut(plainSegs(row), s)
+		return ansi.StringWidth(before)
+	}
+	if a, b := col(rows[1], "now"), col(rows[2], "1m ago"); a != b {
+		t.Fatalf("descriptions at %d and %d:\n%s\n%s", a, b, plainSegs(rows[1]), plainSegs(rows[2]))
 	}
 }
