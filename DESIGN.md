@@ -1458,9 +1458,14 @@ waits on a model call (configurable: every session, every Nth, or manual
 reflector has not seen (the seen count persists in kv).
 
 Input: the transcript tail (the last 120 user and assistant messages,
-each truncated) + tool-call stats + memories awaiting review + current
-memory index (the newest 40, text cut to 160 runes) + skills index
-(enabled and disabled drafts alike).
+each truncated) + tool-call stats + the instruction files the agent's
+prompt carries (the same trust gate, 16 KiB), so the reflector can see
+what it must not repeat + memories awaiting review + current memory index
+(the newest 20 plus up to 20 older ones FTS matches against the user's
+messages, so an older near-duplicate is updated rather than added again;
+text cut to 160 runes) + skills index (enabled and disabled drafts
+alike). The prompt asks for memories phrased as facts, never as
+instructions, which the intake heuristic would flag.
 
 Output: a JSON proposal document (schema-validated):
 

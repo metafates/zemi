@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -300,31 +302,59 @@ func TestReflectPromptSkills(t *testing.T) {
 	}
 }
 
-// TestReflectPromptMemoryIndex: the index is capped to the newest memories
-// with short ids and says how many exist.
+// TestReflectPromptMemoryIndex: the index holds the newest memories plus
+// older ones matching what the user said, with short ids, and says how many
+// exist.
 func TestReflectPromptMemoryIndex(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
+	seedTranscript(t, h, sid) // the user says "the deploy script keeps failing"
 	var ids []string
-	for i := range reflectIndexMax + 2 {
-		m := &store.Memory{Scope: "project", Kind: "fact", Text: fmt.Sprintf("fact number %d.", i), ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
+	for i, text := range append([]string{"deploy needs the labels sequence bumped"}, make([]string, reflectIndexMax+1)...) {
+		if text == "" {
+			text = fmt.Sprintf("fact number %d.", i)
+		}
+		m := &store.Memory{Scope: "project", Kind: "fact", Text: text, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
 		if err := h.DB.AddMemory(m); err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, m.ID)
+		time.Sleep(2 * time.Millisecond) // the first one is the oldest
 	}
 	prompt, _, err := h.reflectPrompt(sid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, fmt.Sprintf("(newest %d of %d)", reflectIndexMax, reflectIndexMax+2)) ||
-		strings.Count(prompt, "[project/fact] fact number") != reflectIndexMax {
-		t.Fatalf("index not capped:\n%s", prompt)
+	if !strings.Contains(prompt, fmt.Sprintf("(%d of %d: the newest", reflectIndexMax+1, reflectIndexMax+2)) ||
+		strings.Count(prompt, "[project/fact] fact number") != reflectIndexMax ||
+		!strings.Contains(prompt, ids[0][:8]+" [project/fact] deploy needs the labels sequence bumped") {
+		t.Fatalf("index not the newest plus related:\n%s", prompt)
 	}
 	for _, id := range ids {
 		if strings.Contains(prompt, id) {
 			t.Fatalf("full id %s in index", id)
+		}
+	}
+}
+
+// TestReflectPromptInstructions: the reflector sees the instruction files it
+// must not repeat, and an untrusted project's stay out as they do for the
+// agent.
+func TestReflectPromptInstructions(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make check before committing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, trusted := range []bool{false, true} {
+		h.SetProjectTrusted(trusted)
+		prompt, _, err := h.reflectPrompt(sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(prompt, "## Instructions: AGENTS.md\nrun make check before committing"); got != trusted {
+			t.Fatalf("trusted=%v: instructions in prompt = %v:\n%s", trusted, got, prompt)
 		}
 	}
 }

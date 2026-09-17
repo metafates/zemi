@@ -25,13 +25,15 @@ import (
 // Transcript budget for the reflect prompt: the last reflectMsgsMax user
 // and assistant messages, each truncated to reflectMsgMax runes. Tool calls
 // reach it only as usage stats.
-// The memory index shows the newest reflectIndexMax memories, text cut
-// to reflectIndexText runes.
+// The memory index shows the newest reflectIndexMax memories plus up to
+// reflectIndexMax older ones matching the user's messages, text cut to
+// reflectIndexText runes. Instruction files get reflectInstructionsMax bytes.
 const (
-	reflectMsgsMax   = 120
-	reflectMsgMax    = 400
-	reflectIndexMax  = 40
-	reflectIndexText = 160
+	reflectMsgsMax         = 120
+	reflectMsgMax          = 400
+	reflectIndexMax        = 20
+	reflectIndexText       = 160
+	reflectInstructionsMax = 16 << 10
 )
 
 const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions.
@@ -41,9 +43,9 @@ Rules:
 - Scope every memory by where it holds. "project" is for this repository only (its layout, commands, conventions, decisions) and is shown in no other project. "user" is for what holds in every project: the user's own preferences and habits, their machine, tools and accounts, and models or providers. A fact about a repository is never "user" scope; a fact about the user or their setup is never "project" scope.
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
-- Each memory is one self-contained single line, at most 500 characters.
+- Each memory is one self-contained single line, at most 500 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
-- Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything instruction files and tool descriptions already say.
+- Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything the instruction files below or tool descriptions already say.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
@@ -206,9 +208,13 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		msgs = msgs[n:]
 	}
 	var lines []string
+	var said strings.Builder // what the user wrote, to find related older memories
 	for _, m := range msgs {
 		if line := reflectLine(m); line != "" {
 			lines = append(lines, line)
+			if m.Role == "user" {
+				said.WriteString(line + "\n")
+			}
 		}
 	}
 	if len(lines) == 0 {
@@ -235,6 +241,9 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 			b.WriteString(line + "\n")
 		}
 	}
+	if s := h.instructionSections(h.instructionFiles(), reflectInstructionsMax); s != "" {
+		b.WriteString("\n# Instruction files\nEvery session's prompt carries these already." + s + "\n")
+	}
 	if props := h.memoryProposals(); len(props) > 0 {
 		b.WriteString("\n# Memories awaiting review\n")
 		for _, m := range props {
@@ -242,12 +251,21 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		}
 	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
-		// NOTE: newest first only; an older near-duplicate can slip past (exact
-		// ones are dropped at intake). FTS against the transcript would fix it.
 		slices.SortStableFunc(mems, func(a, b *store.Memory) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
-		n := min(len(mems), reflectIndexMax)
-		fmt.Fprintf(&b, "\n# Current memory index (newest %d of %d)\n", n, len(mems))
-		for _, m := range mems[:n] {
+		index := mems[:min(len(mems), reflectIndexMax)]
+		if len(mems) > len(index) {
+			related, err := h.memorySearch("all", said.String(), reflectIndexMax, false)
+			if err != nil {
+				h.Log.Warn("reflector", "related memory search failed", map[string]any{"error": err.Error()})
+			}
+			for _, m := range related {
+				if !slices.ContainsFunc(index, func(o *store.Memory) bool { return o.ID == m.ID }) {
+					index = append(index, m)
+				}
+			}
+		}
+		fmt.Fprintf(&b, "\n# Current memory index (%d of %d: the newest, then older ones related to this session)\n", len(index), len(mems))
+		for _, m := range index {
 			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID[:8], m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText))
 			if len(m.Tags) > 0 {
 				line += " #" + strings.Join(m.Tags, " #")

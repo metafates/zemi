@@ -134,7 +134,16 @@ func (h *Host) systemWith(sys string, files []string) string {
 		}
 		files = abs
 	}
-	budget := contextBudget
+	sections := h.instructionSections(files, contextBudget)
+	if sections != "" {
+		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
+	}
+	return h.withDigest(sys + h.environmentPrompt() + sections + h.assembleSections() + h.skillsIndexPrompt())
+}
+
+// instructionSections renders instruction files as "## Instructions: <name>"
+// sections, at most budget bytes of file content in all.
+func (h *Host) instructionSections(files []string, budget int) string {
 	var sections string
 	for _, f := range files {
 		if budget <= 0 {
@@ -155,10 +164,7 @@ func (h *Host) systemWith(sys string, files []string) string {
 		}
 		sections += "\n\n## Instructions: " + name + "\n" + text
 	}
-	if sections != "" {
-		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
-	}
-	return h.withDigest(sys + h.environmentPrompt() + sections + h.assembleSections() + h.skillsIndexPrompt())
+	return sections
 }
 
 // instructionFiles lists the instruction files for this project, general
