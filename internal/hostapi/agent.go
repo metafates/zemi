@@ -1513,13 +1513,13 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			return h.takesImages(id)
 		},
 		Remember: func(scope, kind, text string, tags []string) (bool, error) {
-			stored, _, err := h.proposeMemory(scope, kind, text, tags)
+			stored, _, err := h.proposeMemory(h.AgentSessionID(), scope, kind, text, tags)
 			return stored, err
 		},
 		Recall: func(query string, limit int) ([]*store.Memory, error) {
 			return h.memorySearch("all", query, limit, true)
 		},
-		EditMemory:   h.modelEditMemory,
+		EditMemory:   func(id, text string) (string, error) { return h.modelEditMemory(h.AgentSessionID(), id, text) },
 		Scratch:      h.inScratch,
 		Protected:    func(p string) bool { return !h.inScratch(p) && h.protectedWrite(p) },
 		ScratchDir:   h.ScratchDir,

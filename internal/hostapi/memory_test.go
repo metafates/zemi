@@ -170,7 +170,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			if tc.inTool != "" {
 				h.recordToolCall(child, tc.inTool, true, "")
 			}
-			stored, _, err := h.proposeMemory("project", "fact", "the build uses make", nil)
+			stored, _, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
 			if err != nil || stored != tc.stored {
 				t.Fatalf("stored = %v, want %v (%v)", stored, tc.stored, err)
 			}

@@ -45,11 +45,11 @@ func TestAgentSelfAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.SetProjectTrusted(true)
-	stored, id, err := h.proposeMemory("project", "fact", "the build uses make", nil)
+	stored, id, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
 	if err != nil || !stored {
 		t.Fatalf("propose: %v %v", stored, err)
 	}
-	if msg, err := h.modelEditMemory(id[:8], "the build uses go build"); err != nil || !strings.HasSuffix(msg, "updated") {
+	if msg, err := h.modelEditMemory(h.AgentSessionID(), id[:8], "the build uses go build"); err != nil || !strings.HasSuffix(msg, "updated") {
 		t.Fatalf("update: %q %v", msg, err)
 	}
 	if _, m, _ := h.locateMemory(id); m.Text != "the build uses go build" || m.Origin != learn.OriginLearned {
@@ -58,7 +58,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.modelEditMemory(id, ""); err == nil || !strings.Contains(err.Error(), "permission denied") {
+	if _, err := h.modelEditMemory(h.AgentSessionID(), id, ""); err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("forget without auto autonomy must ask (and fail closed headless): %v", err)
 	}
 }

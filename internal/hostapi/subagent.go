@@ -267,6 +267,16 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if def.ReadOnly {
 		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
 	}
+	// A run outside any session (Lua at idle) still gets a parent, so
+	// /sessions never lists it as a top-level session.
+	parent := cmp.Or(run.parent, "lua")
+	// memories name the session this run belongs to, not whichever is live
+	// when a background run gets to them
+	pipe.Remember = func(scope, kind, text string, tags []string) (bool, error) {
+		stored, _, err := h.proposeMemory(parent, scope, kind, text, tags)
+		return stored, err
+	}
+	pipe.EditMemory = func(id, text string) (string, error) { return h.modelEditMemory(parent, id, text) }
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string, string) {
 			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)
@@ -281,12 +291,6 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 
 	sid := ""
 	if h.DB != nil {
-		// A run outside any session (Lua at idle) still gets a parent, so
-		// /sessions never lists it as a top-level session.
-		parent := run.parent
-		if parent == "" {
-			parent = "lua"
-		}
 		sid = store.NewID()
 		if err := h.DB.CreateSession(sid, parent, truncRunes(run.description, 60), def.Name); err != nil {
 			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})

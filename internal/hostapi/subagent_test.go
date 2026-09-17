@@ -354,3 +354,34 @@ func TestSubagentModelChoice(t *testing.T) {
 		t.Fatalf("unknown model: %v %q", err, resp.Content)
 	}
 }
+
+// TestSubagentMemoryKeepsItsSession: a memory a run writes after the user
+// moved to another session is judged by the run's own session, which read
+// outside text, so auto autonomy still queues it.
+func TestSubagentMemoryKeepsItsSession(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Settings.SetHost("memory.autonomy", "auto")
+	h.SetProjectTrusted(true)
+	sid := seedSession(t, h)
+	h.recordToolCall(sid, "fetch", true, "")
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts("done")
+			}
+			seedSession(t, h) // the user ran /new and sent a message
+			return toolCallParts("c1", "memory_add", `{"scope":"project","kind":"fact","text":"the build uses make"}`)
+		}}, nil
+	}
+	def, err := h.agentDef("general")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
+		t.Fatal(err)
+	}
+	props := h.memoryProposals()
+	if len(props) != 1 || props[0].ProvenanceSessionID != sid || len(projectMemories(t, h)) != 0 {
+		t.Fatalf("want one proposal from %s, nothing stored: %+v", sid, props)
+	}
+}

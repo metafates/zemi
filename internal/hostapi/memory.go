@@ -655,7 +655,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if scope == "" {
 			scope = "project"
 		}
-		stored, id, err := h.proposeMemory(scope, kind, text, rawStrings(spec, "tags"))
+		stored, id, err := h.proposeMemory(h.AgentSessionID(), scope, kind, text, rawStrings(spec, "tags"))
 		switch {
 		case errors.Is(err, learn.ErrBadKind) || scope != "project" && scope != "user":
 			L.RaiseError("zemi.memory.add: %v", err)
@@ -702,12 +702,13 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 }
 
 // proposeMemory runs a learned memory (zemi.memory.add, the memory_add
-// tool) through intake and the autonomy gate.
-func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bool, id string, err error) {
+// tool) written in session sid through intake and the autonomy gate. A
+// subagent passes its parent, which a background run may outlive.
+func (h *Host) proposeMemory(sid, scope, kind, text string, tags []string) (stored bool, id string, err error) {
 	if scope != "project" && scope != "user" {
 		return false, "", errors.New("scope must be project or user")
 	}
-	res, err := h.storeMemory(scope, learn.OriginLearned, kind, text, tags)
+	res, err := learn.Intake(scope, learn.OriginLearned, kind, text, tags, sid)
 	if err != nil {
 		return false, "", err
 	}
@@ -715,21 +716,19 @@ func (h *Host) proposeMemory(scope, kind, text string, tags []string) (stored bo
 	return stored, res.Memory.ID, err
 }
 
-// modelEditMemory is memory_update (text set) and memory_forget (text "").
+// modelEditMemory is memory_update (text set) and memory_forget (text "")
+// from session sid.
 // The change applies at once only under auto autonomy, to a learned memory,
 // with text that is not instruction-shaped; otherwise it asks, so an edit
 // cannot slip past the review a new memory would get.
-func (h *Host) modelEditMemory(id, text string) (string, error) {
+func (h *Host) modelEditMemory(sid, id, text string) (string, error) {
 	db, m, err := h.locateMemory(id)
 	if err != nil {
 		return "", err
 	}
 	verb, preview, shaped := "delete", "- "+m.Text, false
 	if text != "" {
-		prov := h.AgentSessionID()
-		if prov == "" {
-			prov = m.ProvenanceSessionID
-		}
+		prov := cmp.Or(sid, m.ProvenanceSessionID)
 		// the new text is the model's, whoever wrote the old one
 		res, err := learn.Intake(m.Scope, learn.OriginLearned, m.Kind, text, m.Tags, prov)
 		if err != nil {
@@ -738,7 +737,7 @@ func (h *Host) modelEditMemory(id, text string) (string, error) {
 		text, verb, shaped = res.Memory.Text, "update", res.InstructionShaped
 		preview += "\n+ " + text
 	}
-	if !h.memoryAuto(h.AgentSessionID()) || m.Origin != learn.OriginLearned || shaped {
+	if !h.memoryAuto(sid) || m.Origin != learn.OriginLearned || shaped {
 		req := tools.Request{Tool: "memory_" + verb, Subject: "memory.write", Arg: m.ID[:8], Reason: verb + " memory", Preview: preview}
 		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): %s memory %s", v.DecidedBy, verb, m.ID[:8])
