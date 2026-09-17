@@ -152,9 +152,9 @@ func (h *Host) shownArg(req tools.Request) string {
 	return req.Arg
 }
 
-// alwaysChoice is the "don't ask again" option for a request: the label the
-// prompt shows and the session rules (model principal) accepting it adds.
-// Subcommand programs allow their two-word prefix ("go test"), file access its
+// alwaysChoice is the "for this session" option for a request: what it
+// allows, as the prompt shows it ("allow `go test`"), and the session rules
+// (model principal) accepting it adds. Subcommand programs allow their two-word prefix ("go test"), file access its
 // directory, fetches their host; the rest the exact request. Gate-forced
 // asks (environment assignments, heredocs) and text with a glob wildcard,
 // which the rule would widen, offer no choice.
@@ -188,20 +188,19 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				names = append(names, "`"+truncRunes(p, 24)+"`")
 			}
 		}
-		// The label is a button: long enough and the row stacks, which turns
-		// the prompt into a wall. It still has to say how much it covers, so
-		// what is not named is counted.
+		// long lists name two programs and count the rest, so the label
+		// still says how much it covers
 		if len(names) == 0 {
-			return "don't ask again for this exact command", rules
+			return "allow this exact command", rules
 		}
 		shown := names
 		if len(shown) > 2 {
 			shown = names[:2]
 		}
 		if hidden := len(names) - len(shown) + unnamed; hidden > 0 {
-			return fmt.Sprintf("don't ask again for %s and %d more", strings.Join(shown, ", "), hidden), rules
+			return fmt.Sprintf("allow %s and %d more", strings.Join(shown, ", "), hidden), rules
 		}
-		return "don't ask again for " + strings.Join(shown, ", "), rules
+		return "allow " + strings.Join(shown, " and "), rules
 	case req.Subject == "fs.write" || req.Subject == "fs.read":
 		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
 		// the rule would be "*", which matches every path on disk
@@ -244,7 +243,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	if strings.ContainsAny(req.Arg, globMeta) {
 		return "", nil
 	}
-	return "don't ask again for this", []perm.Rule{rule(req.Subject, req.Arg)}
+	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
 }
 
 // globMeta are perm's glob wildcards; its patterns have no escape
@@ -259,7 +258,7 @@ var subcommandPrograms = map[string]bool{
 	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
 }
 
-// commandPrefix is the two-word prefix "don't ask again" allows for a
+// commandPrefix is the two-word prefix the always answer allows for a
 // command segment ("go test ./..." is "go test"), or "" when there is none.
 func commandPrefix(seg string) string {
 	f := strings.Fields(seg)

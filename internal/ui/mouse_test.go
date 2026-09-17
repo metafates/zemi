@@ -70,14 +70,14 @@ func TestMouseClicks(t *testing.T) {
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
 	app.renderSync(t)
-	x, y = findCell(t, app, " No ")
+	x, y = findCell(t, app, "No ")
 	clickAt(app, x+1, y)
 	if <-done {
 		t.Fatal("clicking No allowed the command")
 	}
 }
 
-// TestMouseHover: hovering a button lights it, moving off clears it, and
+// TestMouseHover: hovering a choice lights it, moving off clears it, and
 // hovering a palette row then clicking it fills the composer.
 func TestMouseHover(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
@@ -88,15 +88,15 @@ func TestMouseHover(t *testing.T) {
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
 	app.renderSync(t)
-	x, y := findCell(t, app, " No ")
+	x, y := findCell(t, app, "No ")
 	app.Update(tea.MouseMotionMsg{X: x + 1, Y: y})
 	app.renderSync(t)
-	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: " No ", HL: "Host:BtnHover"}}, 80)) {
-		t.Fatal("hovered button not lit")
+	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover"}}, 80)) {
+		t.Fatal("hovered choice not lit")
 	}
 	app.Update(tea.MouseMotionMsg{X: 0, Y: 0})
 	app.renderSync(t)
-	if strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: " No ", HL: "Host:BtnHover"}}, 80)) {
+	if strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover"}}, 80)) {
 		t.Fatal("hover stayed after the pointer left")
 	}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
@@ -230,7 +230,8 @@ func TestHoverTargets(t *testing.T) {
 		{"overlay row text is a target", overlay, "alpha", 1, 1},
 		{"overlay row padding is not a target", overlay, "alpha", 6, 0},
 		{"overlay gutter is not a target", overlay, "beta and", -1, 0},
-		{"button padding is part of the button", perm, " No ", 0, 1},
+		{"a choice is a target", perm, "No ", 0, 1},
+		{"the gutter left of a choice is not a target", perm, "No ", -2, 0},
 		{"thought line text is a target", thought, "Thought for", 1, 1},
 		{"right of the thought line is not a target", thought, "Thought for", 60, 0},
 	} {

@@ -1047,10 +1047,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls queue: one active overlay at
-  a time, FIFO. The buttons are `Yes`, `Yes, <always label>` (only when
-  the request has an always choice), `No`, and `No, and say why`; `y` and `o` answer once, `a` takes the always option, `n` and
-  `esc` deny, `t` denies and hands the composer back so the user can say
-  what to do instead. The overlay writes session rules only: `always`
+  a time, FIFO. The title asks what the call would do ("Run this
+  command?"), and the model's description sits quoted on its own line,
+  never in the title. The choices are a vertical list with their keys:
+  `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
+  when the request has an always choice), `No` (`n` or `esc`), and `No,
+  and tell zemi what to do instead` (`t`, which denies, stops the turn and
+  hands the composer back); up and down move, enter answers the
+  highlighted one. The overlay writes session rules only: `always`
   adds allow rules to the rule store (§6.1), scoped to the
   `model` principal, with the prefix-glob patterns §6.2 lists. Permanent
   rules never come from the overlay; they are written by

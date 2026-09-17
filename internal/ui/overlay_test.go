@@ -253,9 +253,9 @@ func TestPermissionOverFloat(t *testing.T) {
 	}
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
 	findCell(t, app, "make deploy")
-	x, y := findCell(t, app, " No ")
+	x, y := findCell(t, app, "No ")
 	if _, _, ok := app.target(x, y); !ok {
-		t.Fatal("the No button under a float is not a target")
+		t.Fatal("the No choice under a float is not a target")
 	}
 }
 

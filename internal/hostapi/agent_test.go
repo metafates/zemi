@@ -540,7 +540,7 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
 		t.Fatalf("always bash: %v by %q", v.Decision, v.DecidedBy)
 	}
-	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "don't ask again for `git push`" {
+	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow `git push`" {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 	rules := h.Perm.Rules()
@@ -724,9 +724,10 @@ func TestAlwaysChoice(t *testing.T) {
 		label    string
 		patterns []string
 	}{
-		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "don't ask again for `go test`, `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "don't ask again for this exact command", []string{"ls -la"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "don't ask again for this exact command", []string{"cat notes"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow `go test` and `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow this exact command", []string{"ls -la"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow this exact command", []string{"cat notes"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/", []string{filepath.Join(proj, "internal", "*")}},
 		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},

@@ -47,7 +47,7 @@ type AgentEvent struct {
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
 	Tool    string // the asking tool (bash, edit, mcp_github_search)
-	Always  string // the "don't ask again" choice, "" when none is offered
+	Always  string // what the session-long choice allows ("allow `go test`"), "" when none is offered
 	Subject string
 	Arg     string
 	Reason  string

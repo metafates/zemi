@@ -25,34 +25,31 @@ import (
 // permQueue and open when the current one is answered (parallel tool runs
 // may ask concurrently; each must be answered exactly once).
 type permAskPrompt struct {
-	req     hostapi.PermRequest
-	answer  chan permAnswer
-	opened  time.Time // keys typed just before it appeared must not answer it
-	sel     int       // highlighted choice
-	scroll  int       // first preview row shown
-	stacked bool      // the buttons drew one per row at the last render
+	req    hostapi.PermRequest
+	answer chan permAnswer
+	opened time.Time // keys typed just before it appeared must not answer it
+	sel    int       // highlighted choice
+	scroll int       // first preview row shown
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a
 // message should not approve a command by accident.
 const permGrace = 400 * time.Millisecond
 
-// permChoice is one button of the permission prompt.
+// permChoice is one answer of the permission prompt.
 type permChoice struct {
-	label string
-	by    string
-	ok    bool
-	tell  bool // deny and stop the turn so the user can say what to do instead
+	label, key string
+	by         string
+	ok         bool
+	tell       bool // deny and stop the turn so the user can say what to do instead
 }
 
 func (pa *permAskPrompt) choices() []permChoice {
-	out := []permChoice{{"Yes", "user:once", true, false}}
+	out := []permChoice{{"Yes", "y", "user:once", true, false}}
 	if pa.req.Always != "" {
-		out = append(out, permChoice{"Yes, " + pa.req.Always, "user:always", true, false})
+		out = append(out, permChoice{"Yes, and " + pa.req.Always + " for this session", "a", "user:always", true, false})
 	}
-	// short labels keep the four buttons on one row: a stacked row turns the
-	// prompt into a wall of text (the hint line explains the keys)
-	return append(out, permChoice{"No", "user", false, false}, permChoice{"No, and say why", "user", false, true})
+	return append(out, permChoice{"No", "n", "user", false, false}, permChoice{"No, and tell zemi what to do instead", "t", "user", false, true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
@@ -359,6 +356,11 @@ func (a *App) workingRow() []hostapi.Segment {
 		label = "Editing " + a.editing
 		parts = []string{"save and close the editor to continue"}
 	}
+	// esc answers an open prompt, so the row does not offer it
+	waiting := a.permAsk != nil || a.question != nil
+	if waiting {
+		label = map[bool]string{true: "Waiting for your approval", false: "Waiting for your answer"}[a.permAsk != nil]
+	}
 	now := a.now()
 	animate := a.cfgBool("ui.animations", true)
 	bullet := hostapi.Segment{Text: "• ", HL: "Title"}
@@ -366,7 +368,9 @@ func (a *App) workingRow() []hostapi.Segment {
 		bullet = hostapi.Segment{Text: "◦ ", HL: "Comment"}
 	}
 	row := append([]hostapi.Segment{bullet}, a.shimmer(label, now, animate)...)
-	parts = append(parts, map[bool]string{false: "esc to interrupt", true: "ctrl+c quits"}[a.cancelling])
+	if !waiting {
+		parts = append(parts, map[bool]string{false: "esc to interrupt", true: "ctrl+c quits"}[a.cancelling])
+	}
 	if n := len(st.Steering) - st.Reports; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d queued, up to edit", n))
 	}
@@ -411,7 +415,7 @@ func fmtElapsed(d time.Duration) string {
 }
 
 // permBox draws the permission prompt: what the tool wants to do, the
-// command or the diff it would apply, and the choices.
+// command or the diff it would apply, the model's own words and the choices.
 func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	req := pa.req
 	isDiff := strings.HasPrefix(req.Preview, "--- ")
@@ -422,16 +426,11 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	inner := max(min(w-4, maxW)-4, 1)
 	blank := []hostapi.Segment{{Text: ""}}
 
-	verb, target := permTitle(req, a.host.Dirs.ProjectDir)
-	head := []hostapi.Segment{{Text: verb, HL: "Host:Bold"}}
+	title, target := permTitle(req, a.host.Dirs.ProjectDir)
+	var head [][]hostapi.Segment
 	if target != "" {
-		head = append(head, hostapi.Segment{Text: "  " + target, HL: "Host:Value"})
+		head = append(head, ellipsizeSegs([]hostapi.Segment{{Text: target, HL: "Host:Value"}}, inner))
 	}
-	body := [][]hostapi.Segment{ellipsizeSegs(head, inner)}
-	if note, hl := permNote(req.Reason); note != "" {
-		body = append(body, ellipsizeSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner))
-	}
-
 	var content [][]hostapi.Segment
 	switch {
 	case req.Subject == "tool.bash":
@@ -441,43 +440,65 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	case req.Preview != "":
 		content = codePanel(req.Preview, inner)
 	}
-	btns := permButtons(pa, inner)
-	pa.stacked = len(btns) > 1
-	choose, scroll := "←→", "j/k"
-	if pa.stacked {
-		choose, scroll = "↑↓", "shift+↑↓"
+	// the model's words sit apart from the chrome, quoted, never in the title
+	var words [][]hostapi.Segment
+	if req.Description != "" {
+		words = append(words, wrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner)...)
 	}
-	// the rest of the box: borders, title rows, blanks, hint and the buttons
-	if room := max(chatH-10-len(btns), 3); len(content) > room {
+	if note, hl := permNote(req.Reason); note != "" {
+		words = append(words, wrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner)...)
+	}
+	choices := pa.choices()
+	items := make([]listItem, len(choices))
+	for i, c := range choices {
+		items[i] = listItem{label: c.label, key: c.key}
+	}
+	list := listRows(items, pa.sel, nil, len(items))
+	if segsWidth(list[0]) > inner {
+		// a narrow box keeps the labels, which say what is approved; the keys still work
+		for i := range items {
+			items[i].key = ""
+		}
+		list = listRows(items, pa.sel, nil, len(items))
+	}
+	tail := [][]hostapi.Segment{blank}
+	if len(words) > 0 {
+		tail = append(append(tail, words...), blank)
+	}
+	tail = append(append(tail, list...), blank, hintLine("enter", "confirm", "esc", "deny"))
+
+	// borders, a blank row above the content, and the "more" row
+	if room := max(chatH-len(head)-len(tail)-4, 3); len(content) > room {
 		pa.scroll = max(0, min(pa.scroll, len(content)-room))
-		more := fmt.Sprintf("  %d of %d lines · %s scroll", pa.scroll+room, len(content), scroll)
+		more := fmt.Sprintf("  %d of %d lines · pgdn for more", pa.scroll+room, len(content))
 		content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
 	}
 	// panels span the box, and the box fits its content (at least 56 wide)
 	fit := 56
-	for _, r := range slices.Concat(body, content) {
+	for _, r := range slices.Concat(head, content, tail) {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
-	}
-	for _, r := range btns {
-		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	if len(content) > 0 {
-		body = append(body, blank)
-		body = append(body, content...)
+	// the key column sits at the box's right edge
+	for _, r := range list {
+		if n := len(r); n > 1 && segsWidth(r) < fit {
+			r[n-2].Text += strings.Repeat(" ", fit-segsWidth(r))
+		}
 	}
-	body = append(body, blank)
-	body = append(body, btns...)
-	body = append(body, blank, hintLine(choose, "choose", "enter", "confirm", "esc", "deny"))
+	body := head
+	if len(content) > 0 {
+		body = append(append(body, blank), content...)
+	}
+	body = append(body, tail...)
 
 	badge := ""
 	if n := len(a.permQueue); n > 0 {
 		badge = fmt.Sprintf(" 1 of %d ", n+1)
 	}
-	return hostBoxW(" Permission required ", "Host:Title", badge, body, w, maxW)
+	return hostBoxW(" "+title+" ", "Host:Title", badge, body, w, maxW)
 }
 
 // padPanel cuts or extends a panel row to width, keeping its last style.
@@ -491,38 +512,38 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 	return r
 }
 
-// permTitle names what the request does, and on what.
-func permTitle(req hostapi.PermRequest, root string) (verb, target string) {
-	verb, target = req.Subject, req.Arg
+// permTitle asks what the request would do, and names what it acts on.
+func permTitle(req hostapi.PermRequest, root string) (title, target string) {
+	title, target = "Allow "+req.Subject+"?", req.Arg
 	switch {
 	case req.Subject == "tool.bash":
-		return "Run a command", req.Description
+		return "Run this command?", ""
 	case req.Tool == "write":
-		verb = "Write"
+		title = "Write this file?"
 	case req.Tool == "edit" || req.Tool == "multiedit":
-		verb = "Edit"
+		title = "Edit this file?"
 	case req.Subject == "fs.write":
-		verb = "Change"
+		title = "Change this file?"
 	case req.Subject == "fs.read":
-		verb = "Read"
+		title = "Read this file?"
 	case strings.HasPrefix(req.Subject, "net."):
-		verb = "Fetch"
+		title = "Fetch this URL?"
 	case strings.HasPrefix(req.Subject, "mcp."):
-		verb = "Use the " + strings.TrimPrefix(req.Subject, "mcp.") + " tool"
+		title = "Use a " + strings.TrimPrefix(req.Subject, "mcp.") + " tool?"
 	case req.Subject == "tool.workflow":
-		verb = "Run a workflow"
+		title = "Run this workflow?"
 	case req.Subject == "tool.lua":
-		verb = "Run Lua in zemi"
-		if target == "script" { // an inline script, shown below
-			target = ""
-		}
+		title = "Run Lua inside zemi?"
 	case req.Subject == "memory.write":
-		verb = "Change a memory"
+		title = "Change a memory?"
+	}
+	if target == "script" { // an inline script, shown below
+		target = ""
 	}
 	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
 		target = rel
 	}
-	return verb, target
+	return title, target
 }
 
 // permNote turns a request reason into a line worth reading: generic tool
@@ -540,29 +561,6 @@ func permNote(reason string) (string, string) {
 		return "asked by the " + who + " agent", "Host:Hint"
 	}
 	return reason, "Host:Hint"
-}
-
-// permButtons lays the choices out in one row, or one per row when they do
-// not fit: every label stays whole, since the user approves what it says.
-func permButtons(pa *permAskPrompt, width int) [][]hostapi.Segment {
-	var row []hostapi.Segment
-	var stacked [][]hostapi.Segment
-	for i, c := range pa.choices() {
-		hl := "Host:Btn"
-		if i == pa.sel {
-			hl = map[bool]string{true: "Host:BtnSel", false: "Host:BtnNo"}[c.ok]
-		}
-		btn := hostapi.Segment{Text: " " + c.label + " ", HL: hl, Hit: i + 1}
-		if i > 0 {
-			row = append(row, hostapi.Segment{Text: "  "})
-		}
-		row = append(row, btn)
-		stacked = append(stacked, []hostapi.Segment{btn})
-	}
-	if segsWidth(row) > width {
-		return stacked
-	}
-	return [][]hostapi.Segment{row}
 }
 
 // hintLine is a footer of key/label pairs: "←→ choose · enter confirm".

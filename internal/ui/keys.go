@@ -88,39 +88,23 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		choices := pa.choices()
-		pick := func(by string) {
-			for _, c := range choices {
-				if c.by == by {
-					a.answerPerm(c.ok, c.by)
-					return
-				}
-			}
-		}
-		// stacked buttons move with up/down, and the preview scrolls with shift
-		if pa.stacked {
-			if d := listMove(key); d != 0 {
-				pa.sel = (pa.sel + len(choices) + d) % len(choices)
-				return nil
-			}
+		if moveSel(&pa.sel, len(choices), key) {
+			return nil
 		}
 		switch key {
-		case "left", "shift+tab", "h":
-			pa.sel = (pa.sel + len(choices) - 1) % len(choices)
-		case "right", "tab", "l":
-			pa.sel = (pa.sel + 1) % len(choices)
 		case "enter":
 			a.choosePerm(choices[pa.sel])
-		case "y", "o":
-			pick("user:once")
-		case "a":
-			pick("user:always")
-		case "t":
-			a.choosePerm(choices[len(choices)-1])
+		case "y", "o", "a", "t":
+			for _, c := range choices {
+				if c.key == key || key == "o" && c.key == "y" {
+					a.choosePerm(c)
+				}
+			}
 		case "n", "esc":
 			a.answerPerm(false, "user")
-		case "j", "down", "shift+down":
+		case "shift+down":
 			pa.scroll++
-		case "k", "up", "shift+up":
+		case "shift+up":
 			pa.scroll = max(0, pa.scroll-1)
 		case "pgdown":
 			pa.scroll += 10

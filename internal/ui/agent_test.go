@@ -108,7 +108,7 @@ func waitPrompt(t *testing.T, app *App, cond func() bool) {
 // §6.2, §8): fixed chrome, subject + arg + reason, answer keys, and the
 // always answer delivered to the asker.
 func TestGoldenPermissionOverlay(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
+	app, _ := bootAgentApp(t, 70, 22)
 
 	done := make(chan struct{})
 	var allowed bool
@@ -120,7 +120,7 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 			Arg:         "git push origin main",
 			Description: "Publish the release branch",
 			Reason:      "publishing the release branch",
-			Always:      "don't ask again for `git push`",
+			Always:      "allow `git push`",
 		})
 		close(done)
 	}()
@@ -188,8 +188,8 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 }
 
 // TestPermissionTellNarrow: at 30 columns the box keeps its right border
-// and stacks its buttons, down moves between them, and "t" denies the open
-// ask and the queued one.
+// and the labels over the key column, down moves between them, and "t"
+// denies the open ask and the queued one.
 func TestPermissionTellNarrow(t *testing.T) {
 	app, _ := bootAgentApp(t, 30, 30)
 	res := make(chan bool, 2)
@@ -202,11 +202,11 @@ func TestPermissionTellNarrow(t *testing.T) {
 	waitPrompt(t, app, func() bool { return app.permAsk != nil && len(app.permQueue) == 1 })
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "╮") || !strings.Contains(frame, "│  Yes ") || !strings.Contains(frame, "│  No, and say") {
+	if !strings.Contains(frame, "╮") || !strings.Contains(frame, "│ › Yes    ") || !strings.Contains(frame, "│   No, and tell") {
 		t.Fatalf("narrow box:\n%s", frame)
 	}
 	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 1 {
-		t.Fatalf("down on stacked buttons: sel=%d", app.permAsk.sel)
+		t.Fatalf("down: sel=%d", app.permAsk.sel)
 	}
 	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
 	for range 2 {
@@ -553,6 +553,18 @@ func TestWorkingRowRetry(t *testing.T) {
 	}
 }
 
+// TestWorkingRowWaits: while a prompt is open the row says the turn waits on
+// the user, and does not offer esc, which answers the prompt.
+func TestWorkingRowWaits(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 12 * time.Second})
+	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Waiting for your approval  12s\r") {
+		t.Fatalf("working row:\n%s", frame)
+	}
+}
+
 // TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
 // hands the text to on_confirm, esc hands it nil.
 func TestLuaInput(t *testing.T) {
@@ -598,9 +610,9 @@ func TestKeySequence(t *testing.T) {
 	}
 }
 
-// TestPermissionChoices: arrows move between Yes, the "don't ask again"
-// choice and No, enter answers the highlighted one; without a
-// don't-ask-again choice there are two buttons.
+// TestPermissionChoices: up and down move between the choices, enter
+// answers the highlighted one, and the letters answer directly; without an
+// always choice there are three.
 func TestPermissionChoices(t *testing.T) {
 	app, _ := bootAgentApp(t, 100, 30)
 	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
@@ -616,17 +628,26 @@ func TestPermissionChoices(t *testing.T) {
 		<-done
 		return ok, by
 	}
-	right, enter := tea.KeyPressMsg{Code: tea.KeyRight}, tea.KeyPressMsg{Code: tea.KeyEnter}
-	bash := hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "go test ./...", Always: "don't ask again for `go test`"}
-	if ok, by := ask(bash, right, enter); !ok || by != "user:always" {
-		t.Fatalf("right+enter = %v %q", ok, by)
-	}
-	if ok, by := ask(bash, right, right, enter); ok || by != "user" {
-		t.Fatalf("right+right+enter = %v %q", ok, by)
-	}
-	bash.Always = ""
-	if ok, by := ask(bash, right, enter); ok || by != "user" {
-		t.Fatalf("two buttons, right+enter = %v %q", ok, by)
+	down, up, enter := tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}, tea.KeyPressMsg{Code: tea.KeyEnter}
+	bash := hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "go test ./...", Always: "allow `go test`"}
+	for _, c := range []struct {
+		name   string
+		always string
+		keys   []tea.KeyPressMsg
+		ok     bool
+		by     string
+	}{
+		{"down enter takes always", "allow `go test`", []tea.KeyPressMsg{down, enter}, true, "user:always"},
+		{"down down enter denies", "allow `go test`", []tea.KeyPressMsg{down, down, enter}, false, "user"},
+		{"up stays on yes", "allow `go test`", []tea.KeyPressMsg{up, enter}, true, "user:once"},
+		{"a takes always", "allow `go test`", []tea.KeyPressMsg{{Code: 'a', Text: "a"}}, true, "user:always"},
+		{"without always, down enter denies", "", []tea.KeyPressMsg{down, enter}, false, "user"},
+		{"without always, a does nothing", "", []tea.KeyPressMsg{{Code: 'a', Text: "a"}, {Code: 'o', Text: "o"}}, true, "user:once"},
+	} {
+		bash.Always = c.always
+		if ok, by := ask(bash, c.keys...); ok != c.ok || by != c.by {
+			t.Errorf("%s: %v %q", c.name, ok, by)
+		}
 	}
 }
 
@@ -770,10 +791,11 @@ func TestPermTitle(t *testing.T) {
 		req          hostapi.PermRequest
 		verb, target string
 	}{
-		{hostapi.PermRequest{Subject: "tool.bash", Arg: "make", Description: "Build"}, "Run a command", "Build"},
-		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write", "a.go"},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua in zemi", ""},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua in zemi", "x.lua"},
+		{hostapi.PermRequest{Subject: "tool.bash", Arg: "make", Description: "Build"}, "Run this command?", ""},
+		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "a.go"},
+		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
+		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
+		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "x"},
 	} {
 		if verb, target := permTitle(c.req, "/p"); verb != c.verb || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, verb, target)
