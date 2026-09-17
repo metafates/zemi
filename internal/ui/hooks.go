@@ -89,12 +89,13 @@ var trustAnswers = []string{"trust", "untrust", "later"}
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
 // styles, with no Lua text inside. It has no cursor: trusting runs project
 // code, so it takes y or a click on its row. On a short screen the spacers
-// go first, then the list of what trust allows, so the answers stay visible.
+// go first, then the line on what no trust means, then what trust allows
+// from its last item up, so the answers stay visible.
 func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	width := min(boxInner(w), 64)
 	type row struct {
 		segs []hostapi.Segment
-		drop int // 0 always shown, 1 spacer, 2 detail
+		drop int // 0 always shown, else the order rows go in
 	}
 	var body []row
 	add := func(drop int, segs ...hostapi.Segment) {
@@ -129,17 +130,17 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		text("Currently "+tp.state+".", "Host:Hint")
 	}
 	add(1)
-	add(2, hostapi.Segment{Text: "Trusting lets this " + what + " run code and steer zemi:"})
-	for _, s := range []string{
+	add(6, hostapi.Segment{Text: "Trusting lets this " + what + " run code and steer zemi:"})
+	for i, s := range []string{
 		".zemi config: init.lua, agents, commands and workflows",
 		"AGENTS.md and CLAUDE.md instructions",
 		"language servers, which can build the project",
 		"auto mode edits, builds and tests without asking",
 	} {
-		add(2, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: s, HL: "Host:Value"})
+		add(6-i, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: s, HL: "Host:Value"})
 	}
 	add(1)
-	text("Without trust, zemi asks before anything but reads.", "Host:Hint")
+	add(2, hostapi.Segment{Text: "Without trust, zemi asks before anything but reads.", HL: "Host:Hint"})
 	add(1)
 	later, laterDesc := "Not now", "ask again next start"
 	if tp.state != "" {
@@ -150,7 +151,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{label: "Don't trust", desc: saved, key: "n"},
 		{label: later, desc: laterDesc, key: "esc"},
 	}, -1, nil, 3)
-	for drop := 1; drop <= 2 && len(body)+len(list)+2 > h; drop++ {
+	for drop := 1; drop <= 6 && len(body)+len(list)+2 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
 	}
 	var rows [][]hostapi.Segment
