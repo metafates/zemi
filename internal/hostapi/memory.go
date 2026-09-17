@@ -99,7 +99,7 @@ func (h *Host) applyProposal(res *learn.Result) error {
 		ag.memAuto++
 	}
 	ag.mu.Unlock()
-	h.Notify("info", "memory", "stored: "+res.Memory.Text+redactNote(res.Scrubbed))
+	h.Notify("info", "Remembered", res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -170,7 +170,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "memory", "remembered for this project"+redactNote(res.Scrubbed)+". s in /memory makes it apply everywhere.")
+	h.Notify("info", "Remembered for this project"+redactNote(res.Scrubbed), "s in /memory makes it apply everywhere")
 	return nil
 }
 
@@ -210,7 +210,7 @@ func (h *Host) memoryCommand(args string) error {
 func (h *Host) openMemoryReview() {
 	ui := h.hooks()
 	if ui == nil {
-		h.Notify("warn", "memory", "review UI unavailable")
+		h.Notify("warn", "Memory review unavailable", "")
 		return
 	}
 	rows := h.memoryRows()
@@ -267,7 +267,7 @@ func (h *Host) openMemoryReview() {
 		}
 	}
 	if len(parts) > 0 {
-		h.Notify("info", "memory", strings.Join(parts, ", "))
+		h.Notify("info", "Memory updated", strings.Join(parts, ", "))
 	}
 }
 
