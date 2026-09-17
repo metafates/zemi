@@ -219,8 +219,10 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	}
 	var state string
 	switch {
-	case wn.Exited():
+	case wn.Exited() && focused:
 		state = fmt.Sprintf("exited %d · any key closes", wn.ExitCode())
+	case wn.Exited():
+		state = fmt.Sprintf("exited %d", wn.ExitCode())
 	case focused:
 		state = a.unfocusKey() + " to leave"
 	default:
