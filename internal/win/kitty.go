@@ -139,12 +139,14 @@ func (w *Window) kittyCommand(k map[string]string, data []byte) {
 	}
 	var h int
 	switch a := k["a"]; a {
-	case "q":
-		reply("OK")
-		return
-	case "", "t", "T":
+	case "q", "", "t", "T":
+		// a query checks the medium too, so a tool that probes for one picks direct
 		if t := k["t"]; t != "" && t != "d" {
 			reply("EINVAL:only direct transmission")
+			return
+		}
+		if a == "q" {
+			reply("OK")
 			return
 		}
 		if h, key = w.m.transmit(w, key, k, data); h == 0 {

@@ -73,6 +73,7 @@ func TestKittyGraphics(t *testing.T) {
 			gfx:  []string{apc("a=d,d=I,i=16,q=2")}, text: "\n\nEND",
 		},
 		{name: "query", out: apc("a=q,i=31;AAAA") + "END", reply: apc("i=31;OK"), text: "END"},
+		{name: "query for shared memory is refused", out: apc("a=q,t=s,i=31;AAAA") + "END", reply: apc("i=31;EINVAL:only direct transmission"), text: "END"},
 		{
 			name: "no host support",
 			off:  true, out: apc("a=T,i=31,c=3,r=2;iVBO") + "END",
