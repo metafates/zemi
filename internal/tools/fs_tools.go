@@ -401,7 +401,7 @@ func applyEdits(src string, edits []any, where string) (out string, n int, toler
 		}
 		if m := editError(src, old, c, all, where); m != "" {
 			if len(edits) > 1 {
-				m = fmt.Sprintf("edit %d: %s; nothing was written", i, m)
+				m = fmt.Sprintf("edit %d (nothing was written): %s", i, m)
 			}
 			return src, 0, false, m
 		}
@@ -433,10 +433,29 @@ func editError(src, old string, n int, all bool, where string) string {
 	}
 	first, _, _ := strings.Cut(strings.TrimLeft(old, "\n"), "\n")
 	if first = strings.TrimSpace(first); first != "" {
-		for i, l := range strings.Split(src, "\n") {
+		lines := strings.Split(src, "\n")
+		at, hits := 0, 0
+		for i, l := range lines {
 			if strings.TrimSpace(l) == first {
-				return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs: read from there and copy the text exactly", where, i+1)
+				if hits == 0 {
+					at = i
+				}
+				hits++
 			}
+		}
+		// the file's lines only when the hit is unique: a common first line
+		// like "}" would show the wrong block
+		if hits > 1 {
+			return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs: read from there and copy the text exactly", where, at+1)
+		}
+		if hits == 1 {
+			var b strings.Builder
+			fmt.Fprintf(&b, "old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1)
+			n := min(strings.Count(strings.Trim(old, "\n"), "\n")+1, 30)
+			for j := at; j < min(at+n, len(lines)); j++ {
+				fmt.Fprintf(&b, "\n%6d\t%s", j+1, lines[j])
+			}
+			return b.String()
 		}
 	}
 	return "old_string not found in " + where + "; read the file again and copy the text exactly"

@@ -355,7 +355,8 @@ func TestEditSafety(t *testing.T) {
 		{"reindent", "\tif x {\n\t\treturn\n\t}\n", false,
 			map[string]any{"old_string": "if x {\n    return\n}", "new_string": "if x {\n    return 1\n}"},
 			"check the indentation", "\tif x {\n\t\treturn 1\n\t}\n"},
-		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "matches line 2", "a\nb\nc\n"},
+		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
+		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches line 1, so a later line differs: read", "}\na\n}\nb\n"},
 		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
 	} {
 		path := filepath.Join(dir, c.name)
