@@ -134,10 +134,23 @@ func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostap
 	}
 	cols, rows = max(min(cols, w-4), 2), max(min(rows, h-3), 1)
 	wn.Resize(cols, rows)
+	// the title row goes into the top border: one frame, not two
 	body := a.windowRows(wn, cols, rows)
+	top := []hostapi.Segment{{Text: "╭─"}}
+	for _, s := range body[0] {
+		switch {
+		case strings.TrimSpace(s.Text) == "":
+			s.Text, s.HL = strings.Repeat("─", ansi.StringWidth(s.Text)), ""
+		case s.HL == "Host:Panel":
+			s.HL = ""
+		case s.HL == "Host:PanelTitle":
+			s.HL = "Host:Title"
+		}
+		top = append(top, s)
+	}
+	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─╮"})}
 	bw := cols + 4
-	box = [][]hostapi.Segment{{{Text: "╭" + strings.Repeat("─", bw-2) + "╮"}}}
-	for _, row := range body {
+	for _, row := range body[1:] {
 		line := []hostapi.Segment{{Text: "│ "}}
 		line = append(line, row...)
 		box = append(box, append(line, hostapi.Segment{Text: " │"}))
@@ -151,7 +164,7 @@ func (a *App) floatBox(wn *win.Window, w, h, headerH, chatH int) (box [][]hostap
 		y0 = headerH + max((chatH-len(box))/2, 0)
 	}
 	x0, y0 = min(x0, max(w-bw, 0)), min(y0, max(h-len(box), 0))
-	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 2, w: cols, h: rows, titleY: y0 + 1, sepX: -1}
+	return box, x0, y0, winRect{id: wn.ID, x: x0 + 2, y: y0 + 1, w: cols, h: rows, titleY: y0, sepX: -1}
 }
 
 // placeBox writes box at x0, y0 over rows, clipped to the frame.
@@ -198,20 +211,20 @@ func (a *App) windowRows(wn *win.Window, width, height int) [][]hostapi.Segment 
 }
 
 // winTitleRow is the row above a window: id and title on the left, state
-// and the close mark on the right.
+// and the close mark on the right. Focus lights the title, not the bar.
 func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Segment {
-	hl := "Host:Panel"
+	hl, titleHL := "Host:Panel", "Host:Panel"
 	if focused {
-		hl = "Host:BtnSel"
+		titleHL = "Host:PanelTitle"
 	}
 	var state string
 	switch {
 	case wn.Exited():
 		state = fmt.Sprintf("exited %d · any key closes", wn.ExitCode())
 	case focused:
-		state = a.unfocusKey() + " leaves"
+		state = a.unfocusKey() + " to leave"
 	default:
-		state = "click to type"
+		state = "click to focus"
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
 	right := " " + state + " × "
@@ -222,7 +235,7 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
 	fill := max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))
 	return []hostapi.Segment{
-		{Text: left, HL: hl},
+		{Text: left, HL: titleHL},
 		{Text: strings.Repeat(" ", fill), HL: hl},
 		{Text: right, HL: hl},
 	}
@@ -327,7 +340,7 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 				l := wn.Layout()
 				d.fx, d.fy = l.X, l.Y
 				if l.X < 0 || l.Y < 0 { // centered: pin where it is
-					d.fx, d.fy = r.x-2, r.titleY-1
+					d.fx, d.fy = r.x-2, r.titleY
 				}
 			}
 			a.winDrag = d

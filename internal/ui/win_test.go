@@ -69,6 +69,10 @@ func TestWindowClickHitsTopmost(t *testing.T) {
 	if a.focusWin != ids[1] {
 		t.Fatalf("click focused window %d, want the float %d", a.focusWin, ids[1])
 	}
+	// the float's title sits in its top border, right above its cells
+	if top := plainSegs(a.lastRows[float.titleY]); float.titleY != float.y-1 || !strings.Contains(top, "╭─ 2 sleep 5 ─") || !strings.Contains(top, "× ─╮") {
+		t.Fatalf("float top border %q at %d, cells at %d", top, float.titleY, float.y)
+	}
 }
 
 // TestWinTitleRowFits: the title row never outgrows its window, which would

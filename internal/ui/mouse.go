@@ -125,15 +125,7 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 		return
 	}
 	for _, sp := range spans {
-		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(hl string) string {
-			switch hl {
-			case "Host:BtnSel", "Host:BtnNo":
-				return hl
-			case "Host:Btn":
-				return "Host:BtnHover"
-			}
-			return "Host:Hover"
-		})
+		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(string) string { return "Host:Hover" })
 	}
 }
 
