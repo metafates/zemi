@@ -61,7 +61,7 @@ func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		t.Fatal(err)
 	}
-	found, warns := skills.Discover("", h.builtinSkillsDir(), "")
+	found, warns := skills.Discover(skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
 	if len(found) == 0 || len(warns) > 0 {
 		t.Fatalf("builtin skills: %d found, warnings %v", len(found), warns)
 	}

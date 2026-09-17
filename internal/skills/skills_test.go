@@ -107,7 +107,7 @@ func TestDiscoverMergesAuthoredOverLearned(t *testing.T) {
 	writeFile(t, filepath.Join(learned, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: learned alpha\n---\n")
 	writeFile(t, filepath.Join(learned, "beta", "SKILL.md"), "---\nname: beta\ndescription: learned beta\n---\n")
 
-	got, warns := Discover(authored, "", learned)
+	got, warns := Discover(Dir{authored, Authored}, Dir{learned, Learned})
 	if len(warns) != 1 || !strings.Contains(warns[0], "broken") {
 		t.Fatalf("warnings=%v", warns)
 	}

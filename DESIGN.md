@@ -1575,6 +1575,16 @@ outside the user's own hands (plugin manager, M5) land disabled until
 reviewed, like plugins; authored skills written by the user in their own
 config dir start enabled.
 
+A trusted project's skills (`.zemi/skills`, `.agents/skills` and
+`.claude/skills` at the repository root, the dirs other agents read) join
+the index after all three sources and lose every name clash. They are
+body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
+and kept out of the `skills` table, which is keyed by name across
+projects. They are scanned when the trust decision is set (boot, reload,
+`/trust`), never per turn: a sandboxed command may write one, and a
+rescan would change the prompt mid-session. An untrusted project adds
+none, like its instruction files (§5).
+
 ### 10.6 Evals
 
 None of this is built. There is no `zemi.eval`, no mock provider, no

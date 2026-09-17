@@ -11,6 +11,7 @@ description: Configure zemi - init.lua, providers, models, settings, keymaps, co
 | --- | --- |
 | `~/.config/zemi/init.lua` | user config, runs at startup with the trusted `user` origin |
 | `~/.config/zemi/skills/<name>/SKILL.md` | skills the user wrote |
+| `<project>/{.zemi,.agents,.claude}/skills/<name>/SKILL.md` | project skills: only in a project the user trusts, body only |
 | `~/.config/zemi/.luarc.json` | lua-language-server settings, written once on a first start |
 | `~/.local/share/zemi/types/zemi.lua` | LuaLS annotations for the whole `zemi.*` API, rewritten on every start |
 | `<project>/.zemi/init.lua` | project config: loads only in a project the user trusts, low-trust `project` origin |

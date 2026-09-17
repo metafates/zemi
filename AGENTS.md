@@ -98,7 +98,7 @@ releases a trust hold (`Host.ReleaseTrust`, see "Sandbox"), saves, sets `Host.Se
 fails before the trust step must not leave the old decision in force); `Host.SetProjectTrusted` clears
 the auto-mode approval cache on a change. `Host.ProjectTrusted()` gates project `.zemi`
 (init.lua, agents, commands, workflows), instruction files and profile `context.files`
-(untrusted: only `<config>/AGENTS.md`), every language server,
+(untrusted: only `<config>/AGENTS.md`), project skills, every language server,
 the Lua tool's ask, and what auto and plan mode settle (see below). `Host.git` switches off
 fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a
 sandboxed command can plant a nested repo whose config zemi's own checks would run.
@@ -321,7 +321,12 @@ every sync, enabled by default; keep them accurate when behavior changes), learn
 (reflector drafts, body only, no Lua hook, scrubbed, start disabled) under
 `<data>/skills/`, each a `SKILL.md`
 with YAML frontmatter (name, description); discovery lives in `internal/skills`, hosting in
-`internal/hostapi/skills.go`, rows in the global DB `skills` table. Invariants:
+`internal/hostapi/skills.go`, rows in the global DB `skills` table. A trusted project adds
+its own (`.zemi/skills`, `.agents/skills`, `.claude/skills` under `Dirs.RepoRoot()`): body only,
+enabled, never in the table or `skillsReg`. `SetProjectTrusted` scans them into
+`Host.projectSkills`, so a skill a command writes mid-session waits for the next boot or
+`/trust`, and `enabledSkills` adds them after every other skill whose name they do not take.
+Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only
   user or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace

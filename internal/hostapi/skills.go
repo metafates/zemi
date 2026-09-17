@@ -87,7 +87,9 @@ func (h *Host) syncSkills() {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
 	found, warns := skills.Discover(
-		h.authoredSkillsDir(), h.builtinSkillsDir(), h.learnedSkillsDir())
+		skills.Dir{Path: h.authoredSkillsDir(), Source: skills.Authored},
+		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin},
+		skills.Dir{Path: h.learnedSkillsDir(), Source: skills.Learned})
 	for _, w := range warns {
 		h.Log.Warn("skills", w, nil)
 	}
@@ -208,8 +210,41 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	return out
 }
 
+// enabledSkills is the registry's enabled skills, then the project's.
 func (h *Host) enabledSkills() []skills.Skill {
-	return slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
+	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
+	return append(enabled, h.projectOnlySkills()...)
+}
+
+// discoverProjectSkills scans the repository's skill dirs, which other
+// agents share. They are body only: a zemi-skill.lua there never runs.
+func (h *Host) discoverProjectSkills() []skills.Skill {
+	root := h.Dirs.RepoRoot()
+	if root == "" {
+		return nil
+	}
+	var dirs []skills.Dir
+	for _, d := range []string{".zemi", ".agents", ".claude"} {
+		dirs = append(dirs, skills.Dir{Path: filepath.Join(root, d, "skills"), Source: skills.Project})
+	}
+	found, warns := skills.Discover(dirs...)
+	for _, w := range warns {
+		h.Log.Warn("skills", w, nil)
+	}
+	return found
+}
+
+// projectOnlySkills is the project's skills whose names no authored, builtin
+// or learned skill takes, enabled or not.
+func (h *Host) projectOnlySkills() []skills.Skill {
+	p := h.projectSkills.Load()
+	if p == nil {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(*p), func(s skills.Skill) bool {
+		_, taken := h.skillsReg.get(s.Name)
+		return taken
+	})
 }
 
 // skillsIndexPrompt renders the §10.7 skills index section: one line per
@@ -401,25 +436,25 @@ func sourceSection(source string) string {
 }
 
 func (h *Host) skillItems() []any {
-	all := h.skillsReg.list()
+	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
 	slices.SortStableFunc(all, func(a, b skills.Skill) int { return cmp.Compare(a.Source, b.Source) })
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
-		key, state, actions := "off", "disabled", []any{map[string]any{"text": "Enable", "run": toggle}}
-		if h.skillsReg.isEnabled(s.Name) {
-			key, state = "on", "enabled"
-			actions = []any{map[string]any{"text": "Disable", "run": toggle}, map[string]any{"text": "Use now", "fill": "/skills use " + s.Name + " "}}
+		use := map[string]any{"text": "Use now", "fill": "/skills use " + s.Name + " "}
+		item := map[string]any{"text": s.Name, "desc": s.Description, "section": sourceSection(string(s.Source))}
+		state := "enabled"
+		switch {
+		case s.Source == skills.Project: // no stored state to toggle
+			item["key"], item["actions"] = "on", []any{use}
+		case h.skillsReg.isEnabled(s.Name):
+			item["key"], item["run"], item["actions"] = "on", toggle, []any{map[string]any{"text": "Disable", "run": toggle}, use}
+		default:
+			state = "disabled"
+			item["key"], item["run"], item["actions"] = "off", toggle, []any{map[string]any{"text": "Enable", "run": toggle}}
 		}
-		items = append(items, map[string]any{
-			"text":    s.Name,
-			"key":     key,
-			"desc":    s.Description,
-			"section": sourceSection(string(s.Source)),
-			"detail":  fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md"))),
-			"actions": actions,
-			"run":     toggle,
-		})
+		item["detail"] = fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
+		items = append(items, item)
 	}
 	return items
 }
@@ -435,7 +470,7 @@ func (h *Host) SkillsCommandsStep() lua.BootStep {
 				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
 				GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
 					var names []string
-					for _, s := range h.skillsReg.list() {
+					for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 						names = append(names, s.Name)
 					}
 					return names
@@ -455,10 +490,10 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
-		for _, s := range h.skillsReg.list() {
+		for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 			rows = append(rows, map[string]any{
 				"name": s.Name, "description": s.Description, "source": string(s.Source),
-				"enabled": h.skillsReg.isEnabled(s.Name), "path": s.Dir,
+				"enabled": s.Source == skills.Project || h.skillsReg.isEnabled(s.Name), "path": s.Dir,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))

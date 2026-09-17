@@ -193,7 +193,8 @@ zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
 
 Instructions reach the model from `~/.config/zemi/AGENTS.md` (yours, every project), then
 `ZEMI.md` and `AGENTS.md` in each directory from the repository root down to where you
-started zemi; a directory with neither contributes its `CLAUDE.md`.
+started zemi; a directory with neither contributes its `CLAUDE.md`. A trusted project's skills
+in `.zemi/skills`, `.agents/skills` or `.claude/skills` join the skill index.
 
 Run `zemi` in your project. `/health` checks the model key, the store,
 git, ripgrep and the reflector; `zemi --health` runs the same checks without the TUI.

@@ -1,7 +1,7 @@
 // Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description), authored under the config repo's skills/ and learned
-// under the data dir's skills/. Learned skills are quarantined by the
+// description), authored under the config dir's skills/, learned under the
+// data dir's skills/ and, in a trusted project, its own skills dirs. Learned skills are quarantined by the
 // enabled-state store; discovery only reports what is on disk.
 package skills
 
@@ -16,7 +16,7 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Source distinguishes authored skills (user's config repo, enabled by
+// Source distinguishes authored skills (user's config dir, enabled by
 // default) from learned ones (data dir, start disabled, §10.5).
 type Source string
 
@@ -24,7 +24,14 @@ const (
 	Authored Source = "authored"
 	Builtin  Source = "builtin" // shipped with zemi, enabled by default
 	Learned  Source = "learned"
+	Project  Source = "project" // a trusted project's, body only, never stored
 )
+
+// Dir is a directory of skill directories from one source.
+type Dir struct {
+	Path   string
+	Source Source
+}
 
 // Caps: SKILL.md is bounded so a huge file cannot stall boot or the
 // skill tool; the description is what the model sees in the index.
@@ -116,23 +123,23 @@ func frontmatter(data []byte) (name, description string, err error) {
 	return fm.Name, fm.Description, nil
 }
 
-// Discover merges authored, builtin and learned skill directories; on a
-// name clash the higher-trust source wins (authored over builtin over
+// Discover merges skill directories in the order given, higher trust
+// first: on a name clash the earlier one wins (authored over builtin over
 // learned, §10.5). Unreadable or invalid directories are skipped with a
 // returned warning per failure, never fatal: a broken skill must not hide
 // the others.
-func Discover(authoredDir, builtinDir, learnedDir string) (skills []Skill, warnings []string) {
+func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 	seen := map[string]bool{}
-	scan := func(dir string, source Source) {
-		entries, err := os.ReadDir(dir)
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d.Path)
 		if err != nil {
-			return
+			continue
 		}
 		for _, e := range entries {
 			if !e.IsDir() || seen[e.Name()] {
 				continue
 			}
-			sk, err := Parse(filepath.Join(dir, e.Name()), source)
+			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source)
 			if err != nil {
 				warnings = append(warnings, err.Error())
 				continue
@@ -141,9 +148,6 @@ func Discover(authoredDir, builtinDir, learnedDir string) (skills []Skill, warni
 			skills = append(skills, sk)
 		}
 	}
-	scan(authoredDir, Authored)
-	scan(builtinDir, Builtin)
-	scan(learnedDir, Learned)
 	return skills, warnings
 }
 

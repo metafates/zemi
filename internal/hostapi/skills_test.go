@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -235,5 +236,38 @@ func TestSkillsUse(t *testing.T) {
 	}
 	if err := h.skillsCommand("use auto-learned"); err == nil || !strings.Contains(err.Error(), "no enabled skill") {
 		t.Errorf("disabled skill: err = %v", err)
+	}
+}
+
+// TestProjectSkills: a trusted project adds its skills to the index, an
+// authored skill keeps its name, a skill written later waits for the next
+// trust decision, and an untrusted project adds none.
+func TestProjectSkills(t *testing.T) {
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
+	h.syncSkills()
+	root := h.Dirs.ProjectDir
+	writeSkill(t, filepath.Join(root, ".claude", "skills"), "deploy", "the project's deploy", "")
+	writeSkill(t, filepath.Join(root, ".agents", "skills"), "lint", "project lint", "")
+	writeSkill(t, filepath.Join(root, ".zemi", "skills"), "release", "project release", "")
+
+	index := func() map[string]string {
+		got := map[string]string{}
+		for _, s := range h.enabledSkills() {
+			if s.Source != skills.Builtin {
+				got[s.Name] = s.Description
+			}
+		}
+		return got
+	}
+	h.SetProjectTrusted(true)
+	writeSkill(t, filepath.Join(root, ".claude", "skills"), "late", "written mid-session", "")
+	want := map[string]string{"deploy": "the user's deploy", "lint": "project lint", "release": "project release"}
+	if got := index(); !maps.Equal(got, want) {
+		t.Fatalf("trusted: %v", got)
+	}
+	h.SetProjectTrusted(false)
+	if got := index(); !maps.Equal(got, map[string]string{"deploy": "the user's deploy"}) {
+		t.Fatalf("untrusted: %v", got)
 	}
 }

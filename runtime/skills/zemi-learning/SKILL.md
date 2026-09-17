@@ -67,6 +67,9 @@ description: when asked to run the local integration tests
   whole, so keep it short.
 - An optional `zemi-skill.lua` next to it runs when the skill is enabled.
 - Skills zemi drafts itself live in `~/.local/share/zemi/skills/` and start disabled.
+- A project the user trusts adds the skills in `.zemi/skills/`, `.agents/skills/` and
+  `.claude/skills/` at the repository root: always on, no Lua hook, and a user skill of the
+  same name wins. zemi reads them at startup, on a reload and on `/trust`.
 
 ## From Lua
 

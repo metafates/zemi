@@ -21,6 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/win"
@@ -291,14 +292,23 @@ type Host struct {
 	// trustHeld keeps the project untrusted until /trust, after a sandboxed
 	// command created a protected path
 	trustHeld atomic.Bool
+	// projectSkills is a trusted project's skills, found when the decision
+	// is set so a command writing a skill mid-session cannot change the prompt
+	projectSkills atomic.Pointer[[]skills.Skill]
 }
 
-// SetProjectTrusted records the trust decision. A change drops the auto-mode
-// approvals, which were given under the other decision.
+// SetProjectTrusted records the trust decision and rescans the project's
+// skills. A change drops the auto-mode approvals, which were given under the
+// other decision.
 func (h *Host) SetProjectTrusted(ok bool) {
 	if h.projectTrusted.Swap(ok) != ok {
 		h.autoApproved.Clear()
 	}
+	var found []skills.Skill
+	if ok {
+		found = h.discoverProjectSkills()
+	}
+	h.projectSkills.Store(&found)
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home
