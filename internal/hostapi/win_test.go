@@ -9,6 +9,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/win"
 )
@@ -183,5 +184,27 @@ func TestWinNamespace(t *testing.T) {
 	`)
 	if n := len(h.Wins.List()); n != 0 {
 		t.Fatalf("windows left: %d", n)
+	}
+}
+
+// TestWinCommandOpensMenu: /win lists windows with actions that run the
+// /win subcommands.
+func TestWinCommandOpensMenu(t *testing.T) {
+	h, r := newTestHost(t)
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.WindowCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "user", Title: "sleeper"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Wins.Close(w.ID)
+	if err := h.Commands.Lookup("win").GoFn(h, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(ui.opened) != 1 || len(ui.opened[0].Items) != 1 || !strings.Contains(fmt.Sprint(ui.opened[0].Items[0]), "win close 1") {
+		t.Fatalf("opened: %+v", ui.opened)
 	}
 }

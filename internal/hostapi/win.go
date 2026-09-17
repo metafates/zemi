@@ -393,23 +393,29 @@ func (h *Host) WindowCommandsStep() lua.BootStep {
 					fields := strings.Fields(args)
 					switch {
 					case len(fields) == 0 || fields[0] == "list":
-						wins := h.Wins.List()
-						if len(wins) == 0 {
-							h.Notify("info", "Windows", "none open")
+						ui := h.hooks()
+						if ui == nil {
 							return nil
 						}
-						var lines []string
-						for _, w := range wins {
+						var items []any
+						for _, w := range h.Wins.List() {
 							state := "running"
 							if w.Exited() {
 								state = fmt.Sprintf("exited %d", w.ExitCode())
 							}
+							// a hidden window cannot take focus: its keys would go nowhere visible
+							actions := []any{map[string]any{"text": "Focus", "run": fmt.Sprintf("win focus %d", w.ID)}, map[string]any{"text": "Hide", "run": fmt.Sprintf("win hide %d", w.ID)}}
 							if w.Hidden() {
-								state += ", hidden"
+								state += " · hidden"
+								actions = []any{map[string]any{"text": "Show", "run": fmt.Sprintf("win show %d", w.ID)}}
 							}
-							lines = append(lines, fmt.Sprintf("%d %s (%s, %s, %s)", w.ID, w.Title(), w.Kind(), w.Owner, state))
+							items = append(items, map[string]any{
+								"text":    fmt.Sprintf("%d %s", w.ID, w.Title()),
+								"desc":    fmt.Sprintf("%s · %s · %s", w.Kind(), w.Owner, state),
+								"actions": append(actions, map[string]any{"text": "Close", "run": fmt.Sprintf("win close %d", w.ID)}),
+							})
 						}
-						h.Notify("info", "Windows", strings.Join(lines, "\n"))
+						ui.OpenOverlay(Overlay{ID: "win", Title: "Windows", Origin: lua.OriginBuiltin, Items: items, Empty: "No windows open."})
 						return nil
 					case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
 						for _, w := range h.Wins.List() {

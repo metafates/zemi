@@ -230,7 +230,7 @@ Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/mod
 `/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
-`/reload`, `/win` (`list`, `focus`, `hide`, `show <id>`, `close <id|all>` for windows). Arguments:
+`/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:
 
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
   return to their state before it, the conversation is cut there and the prompt comes back
