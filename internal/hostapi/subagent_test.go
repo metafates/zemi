@@ -316,6 +316,10 @@ func TestAgentDefs(t *testing.T) {
 	if _, ok := defs["broken"]; ok {
 		t.Fatal("an agent without description must be skipped")
 	}
+	// the skipped file is reported to /errors, once over both get() calls
+	if n := len(h.errs.entries); n != 1 || !strings.Contains(h.errs.entries[0].msg, "broken.md") {
+		t.Fatalf("errors=%d %+v", n, h.errs.entries)
+	}
 }
 
 // TestSubagentModelChoice: a subagent's model comes from the tool call,

@@ -51,6 +51,20 @@ func (h *Host) RecordError(source, msg string) {
 	h.refresh()
 }
 
+// RecordErrorOnce records an error unless the list already holds it.
+// Skills, agents and workflows are re-discovered on every turn and
+// reload, and a badge that comes back for one broken file is noise.
+func (h *Host) RecordErrorOnce(source, msg string) {
+	msg = sanitize.String(msg)
+	l := &h.errs
+	l.mu.Lock()
+	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.source == source && e.msg == msg })
+	l.mu.Unlock()
+	if !dup {
+		h.RecordError(source, msg)
+	}
+}
+
 // errorsNamespace is zemi.errors: the same list /errors shows, readable
 // from Lua so the agent can inspect zemi's own failures (boot included)
 // through the lua tool without a permission ask.

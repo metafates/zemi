@@ -92,6 +92,7 @@ func (h *Host) syncSkills() {
 		skills.Dir{Path: h.learnedSkillsDir(), Source: skills.Learned})
 	for _, w := range warns {
 		h.Log.Warn("skills", w, nil)
+		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
 	rows := make([]*store.Skill, 0, len(found))
 	for _, s := range found {
@@ -230,6 +231,7 @@ func (h *Host) discoverProjectSkills() []skills.Skill {
 	found, warns := skills.Discover(dirs...)
 	for _, w := range warns {
 		h.Log.Warn("skills", w, nil)
+		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
 	return found
 }

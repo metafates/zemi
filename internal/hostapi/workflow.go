@@ -64,13 +64,19 @@ func (h *Host) workflows() []Workflow {
 		}
 		for _, e := range entries {
 			name, ok := strings.CutSuffix(e.Name(), ".lua")
-			if !ok || e.IsDir() || seen[name] || !skills.ValidName(name) {
+			if !ok || e.IsDir() || seen[name] {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
+			if !skills.ValidName(name) {
+				h.Log.Warn("workflows", path+": name must match [a-z0-9][a-z0-9-]*", nil)
+				h.RecordErrorOnce("workflows", path+": name must match [a-z0-9][a-z0-9-]*")
+				continue
+			}
 			src, err := readRegularFile(path)
 			if err != nil {
 				h.Log.Warn("workflows", err.Error(), nil)
+				h.RecordErrorOnce("workflows", err.Error())
 				continue
 			}
 			seen[name] = true
