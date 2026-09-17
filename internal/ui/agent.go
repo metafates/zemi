@@ -68,9 +68,10 @@ func (a *App) choosePerm(c permChoice) {
 }
 
 type modelPickPrompt struct {
-	items  []hostapi.ModelOption
-	texts  []string // filter text per item: id and display name
-	answer chan modelPick
+	items   []hostapi.ModelOption
+	current string
+	texts   []string // filter text per item: id and display name
+	answer  chan modelPick
 	listFilter
 }
 
@@ -131,7 +132,7 @@ func (a *App) PickModel(items []hostapi.ModelOption, current string) (string, bo
 }
 
 func (a *App) openModelPick(items []hostapi.ModelOption, current string, answer chan modelPick) {
-	mp := &modelPickPrompt{items: items, answer: answer}
+	mp := &modelPickPrompt{items: items, current: current, answer: answer}
 	mp.selected = max(0, slices.IndexFunc(items, func(it hostapi.ModelOption) bool { return it.ID == current }))
 	for _, it := range items {
 		mp.texts = append(mp.texts, it.ID+" "+it.Display)
@@ -668,24 +669,32 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 }
 
 func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
+	const limit = 12
 	var body [][]hostapi.Segment
+	hints := []string{"enter", "switch"}
 	if len(mp.items) == 0 {
-		body = append(body, []hostapi.Segment{{Text: "no models registered", HL: "Comment"}})
+		body, hints = append(body, []hostapi.Segment{{Text: "No models yet. Add a provider in init.lua.", HL: "Comment"}}), nil
 	} else {
 		items := make([]listItem, 0, len(mp.visible))
 		for _, i := range mp.visible {
 			it := mp.items[i]
-			desc := ""
-			if it.Display != "" && it.Display != it.ID {
-				desc = it.Display
+			item := listItem{label: it.ID}
+			if it.Display != it.ID {
+				item.desc = it.Display
 			}
-			if !it.HasKey {
-				desc = strings.TrimSpace(desc + "  (no api key)")
+			switch {
+			case it.ID == mp.current:
+				item.key, item.keyHL = "current", "Host:Hint"
+			case !it.HasKey:
+				item.key, item.keyHL = "no API key", "Host:Warn"
 			}
-			items = append(items, listItem{label: it.ID, desc: desc})
+			items = append(items, item)
 		}
-		body = mp.filterRows(listRows(items, mp.selected, &mp.top, 12))
+		body = mp.filterRows(listRows(items, mp.selected, &mp.top, limit))
+		if len(mp.items) > limit || mp.active {
+			hints = append(hints, "/", "filter")
+		}
 	}
-	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine("enter", "pick", "/", "filter", "esc", "cancel"))
-	return hostBox(" Select model ", "Host:Title", "", body, w)
+	body = append(body, []hostapi.Segment{{Text: ""}}, hintLine(append(hints, "esc", "cancel")...))
+	return hostBox(" Model ", "Host:Title", "", body, w)
 }
