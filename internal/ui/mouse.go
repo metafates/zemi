@@ -294,7 +294,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 
 // itemSpans is the cells of item hit on the contiguous rows around y that
 // carry it, one span per run of text. Blank ends of a segment are dropped
-// unless painted: a button's padding is part of the button.
+// unless painted (a themed background such as a code span).
 // NOTE: only the top chrome box takes input, so contiguity scopes an item;
 // two boxes stacked edge to edge with the same ids would merge (bound by the
 // box's columns if that ever happens).

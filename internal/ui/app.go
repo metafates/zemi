@@ -806,9 +806,8 @@ func (a *App) compose(w, h int) string {
 				if y >= toastBottom {
 					break
 				}
-				// a blank cell each side, so the text it covers never touches the bar
 				x0 := max(0, chatW-segsWidth(line)-2)
-				rows = placeBox(rows, [][]hostapi.Segment{append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})}, x0, y, w)
+				rows = placeBox(rows, [][]hostapi.Segment{margined(line)}, x0, y, w)
 				y++
 			}
 			y++
