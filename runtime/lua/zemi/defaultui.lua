@@ -551,10 +551,13 @@ zemi.ui.widget.register({
           end
         end
       end
-      -- the result's last lines: always for a failure, for commands with ctrl+o
-      if (t.output or "") ~= "" and (t.status == "err" or (ctx.show_reasoning and name == "bash")) then
+      -- the result's last lines: always for a failure and for what the user
+      -- answered, for commands with ctrl+o
+      local output = t.output or ""
+      if name == "question" then output = output:gsub("^The user answered:\n", "") end
+      if output ~= "" and (t.status == "err" or name == "question" or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
-        for ol in (t.output .. "\n"):gmatch("(.-)\n") do
+        for ol in (output .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "    " }, { text = ol, hl = ohl } }
         end
       end

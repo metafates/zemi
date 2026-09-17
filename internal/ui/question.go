@@ -6,7 +6,9 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -205,24 +207,22 @@ func (a *App) answerQuestion(answer string) {
 	qp.at, qp.reviewSel = len(qp.qs), len(qp.qs)
 }
 
-// questionTabs is the tab row of a batch: a check on answered questions,
-// then the review tab.
+// questionTabs is the tab row of a batch: the questions, a check on the
+// answered ones, then the review tab.
 func questionTabs(qp *questionPrompt) []hostapi.Segment {
 	var row []hostapi.Segment
 	for i := range len(qp.qs) + 1 {
-		label := "Submit"
+		label := "Review"
 		if i < len(qp.qs) {
-			label = qp.qs[i].Header
-			if label == "" {
-				label = fmt.Sprintf("Q%d", i+1)
+			label = cmp.Or(qp.qs[i].Header, fmt.Sprintf("Q%d", i+1))
+			if qp.states[i].answered != "" {
+				label = "✓ " + label
 			}
-			label = map[bool]string{true: "✓ ", false: "○ "}[qp.states[i].answered != ""] + label
 		}
 		if i > 0 {
-			row = append(row, hostapi.Segment{Text: " "})
+			row = append(row, hostapi.Segment{Text: "  ·  ", HL: "Host:Hint"})
 		}
-		hl := map[bool]string{true: "Host:BtnSel", false: "Host:Btn"}[i == qp.at]
-		row = append(row, hostapi.Segment{Text: " " + label + " ", HL: hl})
+		row = append(row, hostapi.Segment{Text: label, HL: map[bool]string{true: "Host:Title", false: "Host:Hint"}[i == qp.at]})
 	}
 	return row
 }
@@ -231,12 +231,18 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	blank := []hostapi.Segment{{Text: ""}}
 	var body [][]hostapi.Segment
 	title := " Question "
+	tabs := []string{}
 	if len(qp.qs) > 1 {
 		title = " Questions "
 		body = append(body, questionTabs(qp), blank)
+		tabs = []string{"tab", "next"}
+	}
+	// a fixed minimum width, so moving between tabs does not resize the box
+	box := func() [][]hostapi.Segment {
+		body[0] = padSegs(body[0], min(boxInner(w), 56))
+		return hostBox(title, "Host:Title", "", body, w)
 	}
 	if qp.reviewing() {
-		body = append(body, []hostapi.Segment{{Text: "Review your answers", HL: "Host:Bold"}}, blank)
 		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {
 			ans := hostapi.Segment{Text: "  " + qp.states[i].answered, HL: "Host:Value"}
@@ -246,9 +252,9 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
 		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, len(items)*3+1)...)
-		body = append(body, blank,
-			hintLine("↑↓", "move", "enter", "submit or edit", "←", "back", "esc", "dismiss"))
-		return hostBox(title, "Host:Title", "", body, w)
+		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
+		body = append(body, blank, hintLine("enter", enter, "shift+tab", "back", "esc", "cancel"))
+		return box()
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
@@ -259,17 +265,17 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	body = append(body, blank)
 	items := make([]listItem, 0, len(q.Options)+1)
 	for i, opt := range q.Options {
-		label := opt.Label
-		if q.Multi {
-			label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + label
+		it := listItem{label: opt.Label, desc: opt.Description}
+		// the model marks its pick in the label; the tool strips it from the answer
+		if l, ok := strings.CutSuffix(it.label, " (Recommended)"); ok {
+			it.label, it.desc = l, strings.TrimSuffix("recommended · "+it.desc, " · ")
 		}
-		items = append(items, listItem{label: label, desc: opt.Description})
+		if q.Multi {
+			it.label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + it.label
+		}
+		items = append(items, it)
 	}
-	other := q.Other
-	if other == "" {
-		other = "Type your own answer"
-	}
-	items = append(items, listItem{label: other})
+	items = append(items, listItem{label: cmp.Or(q.Other, "Type your own answer")})
 	// borders, the blank row and the hint take four rows, typing one more
 	limit := chatH - len(body) - 4
 	if st.typing {
@@ -283,15 +289,12 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	switch {
 	case st.typing:
 		body = append(body, st.input.inputRow(boxInner(w)))
-		hints = []string{"enter", "answer", "esc", "back to options"}
+		hints = []string{"enter", "answer", "esc", "back"}
 	case q.Multi:
-		hints = []string{"↑↓", "move", "space", "mark", "enter", "answer", "esc", "dismiss"}
+		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, []string{"esc", "cancel"})
 	default:
-		hints = []string{"↑↓", "move", "enter", "answer", "esc", "dismiss"}
-	}
-	if len(qp.qs) > 1 {
-		hints = append(hints, "tab", "next")
+		hints = slices.Concat([]string{"enter", "answer"}, tabs, []string{"esc", "cancel"})
 	}
 	body = append(body, blank, hintLine(hints...))
-	return hostBox(title, "Host:Title", "", body, w)
+	return box()
 }

@@ -83,7 +83,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 
 	pressKeys(app, "j", "enter", "space", "j", "j", "space", "enter")
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Review your answers") || !strings.Contains(frame, "tests, lint") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Submit answers") || !strings.Contains(frame, "tests, lint") {
 		t.Fatalf("review tab missing:\n%s", frame)
 	}
 	pressKeys(app, "enter")
@@ -189,7 +189,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	}
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"› Type your own answer", "21/21", "dismiss", "╰"} {
+	for _, want := range []string{"› Type your own answer", "21/21", "esc cancel", "╰"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q missing:\n%s", want, frame)
 		}
