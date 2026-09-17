@@ -671,9 +671,12 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 func pickBox(mp *modelPickPrompt, w int) [][]hostapi.Segment {
 	const limit = 12
 	var body [][]hostapi.Segment
-	hints := []string{"enter", "switch"}
+	var hints []string
+	if len(mp.visible) > 0 {
+		hints = []string{"enter", "switch"}
+	}
 	if len(mp.items) == 0 {
-		body, hints = append(body, []hostapi.Segment{{Text: "No models yet. Add a provider in init.lua.", HL: "Comment"}}), nil
+		body = append(body, []hostapi.Segment{{Text: "No models yet. Add a provider in init.lua.", HL: "Comment"}})
 	} else {
 		items := make([]listItem, 0, len(mp.visible))
 		for _, i := range mp.visible {

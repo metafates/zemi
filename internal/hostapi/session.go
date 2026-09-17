@@ -100,7 +100,7 @@ func (h *Host) OpenSessions() error {
 		if p.Count > 0 {
 			desc = append(desc, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
 		}
-		if line := firstUserLine(p.FirstJSON); line != "" {
+		if line := firstUserLine(p.FirstJSON); line != "" && !strings.EqualFold(line, s.Title) {
 			desc = append(desc, line)
 		}
 		item := map[string]any{"text": cmp.Or(s.Title, "Untitled"), "desc": strings.Join(desc, " · ")}

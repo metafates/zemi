@@ -146,7 +146,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	// borders, the blank row, the hint and the counter take five rows
 	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))
 	if len(mr.items) == 0 {
-		lines = append(lines, []hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}})
+		lines = wrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
 	}
 	// the hint pads to the list, so changing hints never resizes the box
 	widest := 0

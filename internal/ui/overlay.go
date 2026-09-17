@@ -398,7 +398,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		list = st.filterRows(list)
 	case st.o.Body == "":
-		list = [][]hostapi.Segment{{{Text: cmp.Or(st.o.Empty, "Nothing here."), HL: "Comment"}}}
+		list = wrapSegs([]hostapi.Segment{{Text: cmp.Or(st.o.Empty, "Nothing here."), HL: "Comment"}}, boxInner(w))
 	}
 	var body [][]hostapi.Segment
 	if st.o.Body != "" {

@@ -23,6 +23,7 @@ type questionPrompt struct {
 	states    []qState
 	at        int // the tab shown: a question, or len(qs) for the review tab
 	reviewSel int // a question row, or len(qs) for submit
+	width     int // the widest body so far: the box only grows between tabs
 	answer    chan qAnswer
 }
 
@@ -237,9 +238,11 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 		body = append(body, questionTabs(qp), blank)
 		tabs = []string{"tab", "next"}
 	}
-	// a fixed minimum width, so moving between tabs does not resize the box
 	box := func() [][]hostapi.Segment {
-		body[0] = padSegs(body[0], min(boxInner(w), 56))
+		for _, r := range body {
+			qp.width = max(qp.width, segsWidth(r))
+		}
+		body[0] = padSegs(body[0], min(boxInner(w), max(qp.width, 56)))
 		return hostBox(title, "Host:Title", "", body, w)
 	}
 	if qp.reviewing() {
