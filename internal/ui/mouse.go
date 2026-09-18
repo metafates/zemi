@@ -255,6 +255,14 @@ func (a *App) click(x, y int) {
 // cellSpan is the cells [lo, hi) of screen row y.
 type cellSpan struct{ y, lo, hi int }
 
+// firstRow keeps the spans of the topmost row only.
+func firstRow(spans []cellSpan) []cellSpan {
+	if len(spans) == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(spans), func(s cellSpan) bool { return s.y != spans[0].y })
+}
+
 // target finds what a click at (x, y) would do: the cells that act, over
 // every row of the item, and the action. Clicks and hover share it, so a
 // highlight always means a click does something. The pointer must be over
@@ -296,7 +304,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	closing, onClose := a.winCloseAt(x, y)
+	button, onButton := a.winButtonAt(x, y)
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
@@ -339,14 +347,17 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
-	case top == "" && onClose:
-		return []cellSpan{{y, closing.x + closing.w - 2, closing.x + closing.w - 1}}, func() { a.titleClick(closing.id, x) }, true
+	case top == "" && onButton:
+		// the button under the pointer, of the two the title row ends with
+		lo := button.x + button.w - winButtons + (x-(button.x+button.w-winButtons))/3*3
+		return []cellSpan{{y, lo, lo + 3}}, func() { a.titleClick(button.id, x) }, true
 	case under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
-		if under.Widget == "" { // a Go statusline pill names its command
+		if under.Widget == "" { // a Go pill or dock entry names its command
+			name, args := splitCommand(under.Click)
 			act = func() {
-				if under.Click != "reload" {
-					a.runCommand(under.Click, "")
+				if name != "reload" {
+					a.runCommand(name, args)
 				} else if a.reload != nil {
 					go a.reload() // off the UI goroutine, as the typed /reload
 				}
@@ -355,7 +366,9 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			break
 		}
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
-		return spans, act, ok
+		// a click acts anywhere on the target, but only its first row lights:
+		// underlining a whole diff says nothing about what the click does
+		return firstRow(spans), act, ok
 	}
 	return nil, nil, false
 }

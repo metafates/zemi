@@ -669,10 +669,13 @@ func (a *App) compose(w, h int) string {
 	a.paintFloats(rows, &lay, w, h)
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
-	// the popup takes the mouse on the cells it covers, windows under it included
+	// the popup draws over the windows and takes the mouse on the cells it
+	// covers, so its rect is known before they are placed
 	var pop uv.Rectangle
+	var popup [][]hostapi.Segment
+	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		pop = a.floatPopup(rows, append(a.completionRows(), a.paletteRows()...), lay, w)
+		popup, popX, pop = a.floatPopup(append(a.completionRows(), a.paletteRows()...), lay, len(rows), w)
 	}
 	for i := range a.winRects {
 		r := &a.winRects[i]
@@ -696,6 +699,12 @@ func (a *App) compose(w, h int) string {
 		box, x0, y0, r := a.floatBox(wn, stage)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
+	}
+	if dock := a.dockRow(stage.Dx()); dock != nil {
+		rows = placeBox(rows, [][]hostapi.Segment{dock}, stage.Min.X, stage.Max.Y-1, w)
+	}
+	for i, line := range popup {
+		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
 	}
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
@@ -852,23 +861,23 @@ func dimRows(rows [][]hostapi.Segment) {
 	}
 }
 
-// floatPopup frames a completion popup and lays it over the bottom rows of
-// the stage, left-aligned with it, when the stage is above the composer;
-// otherwise beside the composer on the side with more rows, aligned with
-// it. The rows it covers are blanked to the right of the frame (word
-// fragments beside a dropdown read as garbage); a popup taller than its
-// room is clipped. It returns the cells the popup covers.
-func (a *App) floatPopup(rows, popup [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
+// floatPopup frames a completion popup for the bottom rows of the stage,
+// left-aligned with it, when the stage is above the composer; otherwise
+// beside the composer on the side with more rows, aligned with it. Every
+// row is padded to the frame's width (word fragments beside a dropdown read
+// as garbage); a popup taller than its room is clipped. It returns the rows
+// to draw, their left column and the cells they cover.
+func (a *App) floatPopup(popup [][]hostapi.Segment, lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
 	if len(popup) == 0 {
-		return uv.Rectangle{}
+		return nil, 0, uv.Rectangle{}
 	}
 	stage, c := lay.stage, lay.rects["composer"]
-	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, len(rows))
+	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
 	if stage.Max.Y > c.Min.Y {
 		x, width, top, bottom = c.Min.X, c.Dx(), 0, c.Min.Y
-		if up = c.Min.Y >= len(rows)-c.Max.Y; !up {
-			top, bottom = c.Max.Y, len(rows)
+		if up = c.Min.Y >= h-c.Max.Y; !up {
+			top, bottom = c.Max.Y, h
 		}
 	}
 	box := hostBox("", "", "", popup, width)
@@ -877,10 +886,11 @@ func (a *App) floatPopup(rows, popup [][]hostapi.Segment, lay screenLayout, w in
 	} else {
 		bottom = min(bottom, top+len(box))
 	}
+	out := make([][]hostapi.Segment, 0, max(bottom-top, 0))
 	for i := top; i < bottom; i++ {
-		placeBox(rows, [][]hostapi.Segment{padSegs(box[i-top], width)}, x, i, w)
+		out = append(out, padSegs(box[i-top], width))
 	}
-	return uv.Rect(x, top, width, max(bottom-top, 0))
+	return out, x, uv.Rect(x, top, width, len(out))
 }
 
 // rowsBelow counts the rows under the default scrolled region's viewport

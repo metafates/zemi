@@ -284,13 +284,15 @@ func (a *App) placeCursor(c *tea.Cursor, modal bool) *tea.Cursor {
 }
 
 // winTitleRow is the row above a window: id and title on the left, state
-// and the close mark on the right. Focus lights the title, not the bar.
+// then the minimize and close buttons on the right. Focus lights the title,
+// not the bar. The buttons take the last winButtons cells, where
+// winButtonAt and titleClick look for them.
 func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Segment {
 	hl, titleHL := "Host:Panel", "Host:Panel"
 	if focused {
 		titleHL = "Host:PanelTitle"
 	}
-	state, closeMark := "", " × "
+	state, buttons := "", true
 	switch {
 	case wn.Exited() && focused:
 		state = fmt.Sprintf("exited %d · any key closes", wn.ExitCode())
@@ -300,22 +302,54 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 		state = a.unfocusKey() + " to leave"
 	case a.mouseEnabled():
 		state = "click to focus"
-	default: // no clicks reach zemi, so the × would not act
-		state, closeMark = "/win to focus or close", " "
+	default: // no clicks reach zemi, so the buttons would not act
+		state, buttons = "/win to focus or close", false
+	}
+	var right []hostapi.Segment
+	if buttons {
+		// a narrow window drops the minimize button, then cuts the close mark
+		// from the left, so it stays where titleClick looks for it
+		if width >= winButtons {
+			right = append(right, hostapi.Segment{Text: " ─ ", HL: "Host:WinMin"})
+		}
+		mark := " × "
+		if over := segsWidth(right) + 3 - width; over > 0 {
+			mark = ansi.TruncateLeft(mark, over, "")
+		}
+		right = append(right, hostapi.Segment{Text: mark, HL: "Host:WinClose"})
+	}
+	rw := segsWidth(right)
+	if state != "" && rw+ansi.StringWidth(state)+2 <= width-4 {
+		right = append([]hostapi.Segment{{Text: " " + state + " ", HL: hl}}, right...)
+		rw = segsWidth(right)
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
-	right := " " + state + closeMark
-	if ansi.StringWidth(right) > width-4 {
-		right = closeMark // a narrow window keeps its close mark where titleClick looks
+	left = ansi.Truncate(left, max(0, width-rw), "…")
+	fill := max(0, width-ansi.StringWidth(left)-rw)
+	out := []hostapi.Segment{{Text: left, HL: titleHL}, {Text: strings.Repeat(" ", fill), HL: hl}}
+	return append(out, right...)
+}
+
+// winButtons is the cells the minimize and close buttons take together, at
+// the right end of the title row.
+const winButtons = 6
+
+// dockRow lists the hidden windows on one row at the bottom of the stage; a
+// click on one shows it again. With nothing hidden it draws nothing.
+func (a *App) dockRow(width int) []hostapi.Segment {
+	var out []hostapi.Segment
+	for _, wn := range a.host.Wins.List() {
+		if !wn.Hidden() {
+			continue
+		}
+		label := fmt.Sprintf(" %d %s ", wn.ID, sanitize.Line(wn.Title()))
+		out = append(out, hostapi.Segment{Text: label, HL: "Host:Dock", Click: fmt.Sprintf("win show %d", wn.ID)},
+			hostapi.Segment{Text: " ", NoCopy: true})
 	}
-	right = ansi.TruncateLeft(right, max(0, ansi.StringWidth(right)-width), "")
-	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
-	fill := max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))
-	return []hostapi.Segment{
-		{Text: left, HL: titleHL},
-		{Text: strings.Repeat(" ", fill), HL: hl},
-		{Text: right, HL: hl},
+	if out == nil {
+		return nil
 	}
+	return truncateSegs(out, width)
 }
 
 func (a *App) unfocusKey() string {
@@ -339,8 +373,10 @@ func (a *App) focusedWin() *win.Window {
 	return wn
 }
 
-// setFocusWin moves the focus and tells both programs.
+// setFocusWin moves the focus and tells both programs. A float also comes
+// to the front, so the one being used is never under another.
 func (a *App) setFocusWin(id int) {
+	a.raiseFloat(id)
 	if id == a.focusWin {
 		return
 	}
@@ -351,6 +387,15 @@ func (a *App) setFocusWin(id int) {
 	if wn, ok := a.host.Wins.Get(id); ok {
 		wn.Focus(true)
 		a.host.SetFocus("") // one thing takes the keys
+	}
+}
+
+// raiseFloat draws a float over the other floats from the next frame on.
+// Splits and vsplits keep their order: the list is what places them.
+func (a *App) raiseFloat(id int) {
+	if wn, ok := a.host.Wins.Get(id); ok && wn.Layout().Kind == win.KindFloat {
+		a.host.Wins.Raise(id)
+		a.frameGen++
 	}
 }
 
@@ -419,6 +464,7 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 				d.what = "resize"
 			}
 			a.winDrag = d
+			a.raiseFloat(r.id)
 			return true
 		}
 		if m.Y < r.y || m.Y >= r.y+r.h || m.X < r.x || m.X >= r.x+r.w {
@@ -468,11 +514,11 @@ func (a *App) windowMouse(msg tea.Msg) bool {
 	return false
 }
 
-// winCloseAt is the window whose " × " corner (titleClick) is at (x, y),
-// unless a later window covers it.
-func (a *App) winCloseAt(x, y int) (winRect, bool) {
+// winButtonAt is the window whose minimize or close button (titleClick) is
+// at (x, y), unless a later window covers it.
+func (a *App) winButtonAt(x, y int) (winRect, bool) {
 	for _, r := range slices.Backward(a.winRects) {
-		if y == r.titleY && x >= r.x+r.w-3 && x < r.x+r.w {
+		if y == r.titleY && x >= r.x+r.w-winButtons && x < r.x+r.w {
 			return r, true
 		}
 		lo, hi := r.x, r.x+r.w
@@ -486,14 +532,15 @@ func (a *App) winCloseAt(x, y int) (winRect, bool) {
 	return winRect{}, false
 }
 
-// titleClick is a click on a window's title row: its × closes, the rest
-// focuses.
+// titleClick is a click on a window's title row: its × closes, its ─ hides
+// it into the dock, the rest focuses.
 func (a *App) titleClick(id, x int) {
 	for _, r := range a.winRects {
 		if r.id != id {
 			continue
 		}
-		if x >= r.x+r.w-3 {
+		switch wn, _ := a.host.Wins.Get(id); {
+		case x >= r.x+r.w-3:
 			if err := a.host.CloseWindow(id); err != nil {
 				a.pushToast("warn", "Window", err.Error())
 				return
@@ -501,9 +548,15 @@ func (a *App) titleClick(id, x int) {
 			if a.focusWin == id {
 				a.focusWin = 0
 			}
-			return
+		case x >= r.x+r.w-winButtons && wn != nil:
+			_ = wn.SetLayout(func(l *win.Layout) { l.Hidden = true })
+			if a.focusWin == id {
+				a.setFocusWin(0)
+			}
+		default:
+			a.setFocusWin(id)
 		}
-		a.setFocusWin(id)
+		return
 	}
 }
 
@@ -527,7 +580,7 @@ func (a *App) dragWindow(d *winDrag, x, y int) {
 		return
 	}
 	if d.what == "title" {
-		if d.x0 >= r.x+r.w-3 {
+		if d.x0 >= r.x+r.w-winButtons {
 			return
 		}
 		d.what = map[string]string{win.KindSplit: "split", win.KindVSplit: "vsplit"}[wn.Layout().Kind]

@@ -588,6 +588,18 @@ func (m *Manager) List() []*Window {
 	return append([]*Window(nil), m.wins...)
 }
 
+// Raise moves a window to the end of the list, where floats draw on top.
+func (m *Manager) Raise(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, w := range m.wins {
+		if w.ID == id {
+			m.wins = append(append(m.wins[:i:i], m.wins[i+1:]...), w)
+			return
+		}
+	}
+}
+
 // Close ends a window: the program is killed if still running, and the
 // window leaves the list.
 func (m *Manager) Close(id int) bool {
