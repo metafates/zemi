@@ -26,3 +26,13 @@ func TestMatch(t *testing.T) {
 		}
 	}
 }
+
+// TestMatchRefusesBadPatterns: a typo must read as a bad pattern, not as an
+// empty result.
+func TestMatchRefusesBadPatterns(t *testing.T) {
+	for _, pattern := range []string{"[", "a[b", "**/[x", "{a,b", "[]"} {
+		if _, err := Match(pattern); err == nil {
+			t.Errorf("Match(%q) = nil error", pattern)
+		}
+	}
+}

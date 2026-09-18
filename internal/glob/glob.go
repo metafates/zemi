@@ -43,6 +43,10 @@ func Match(pattern string) (func(rel string) bool, error) {
 			}
 			b.WriteString("[" + class + "]")
 			i = j
+		case c == '[':
+			// rg refuses this too, and a matcher for a literal "[" would
+			// read as "no files match" instead of "your pattern is wrong"
+			return nil, fmt.Errorf("bad glob %q: [ without a closing ]", pattern)
 		default:
 			b.WriteString(regexp.QuoteMeta(string(c)))
 		}
