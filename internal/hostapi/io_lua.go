@@ -71,8 +71,11 @@ func (h *Host) readJails() []string {
 	// The log dir is not: MCP and LSP server stderr is logged as written and
 	// may carry tokens. The types dir holds the API annotations and the
 	// shipped Lua UI, which the agent reads before restyling or extending it.
-	return []string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.TypesDir()}
+	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
+	// outside the config home, so it needs its own root.
+	return append([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
+		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.TypesDir()},
+		h.Dirs.UserTrees()...)
 }
 
 func (h *Host) writeJails() []string {

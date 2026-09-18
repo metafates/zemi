@@ -342,7 +342,9 @@ origin and never keep an absolute name, so neither can be forged. `ProjectConfig
 
 ### Origin model (internal/lua/origin.go, registries)
 
-Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi) >
+Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus
+each subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a
+symlinked `skills` or `lua` still resolves inside) >
 `builtin` (embedded runtime/) > `plugin` (site/pack) > `project` (<project>/.zemi);
 `learned` code is denylisted from dangerous APIs. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is

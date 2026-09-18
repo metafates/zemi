@@ -304,3 +304,31 @@ func TestProjectSkills(t *testing.T) {
 		t.Fatalf("untrusted: %v", got)
 	}
 }
+
+// TestSymlinkedSkillsDir: <config>/skills may be a link into a dotfiles
+// tree. Its files must stay inside the read jail and classify as user
+// origin, or every skill body asks and every hook is refused.
+func TestSymlinkedSkillsDir(t *testing.T) {
+	log := logging.New(t.TempDir())
+	cfg, real := t.TempDir(), t.TempDir()
+	if err := os.Symlink(real, filepath.Join(cfg, "skills")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	dirs := config.Dirs{ConfigHome: cfg, DataHome: t.TempDir(), StateHome: t.TempDir(), ProjectDir: t.TempDir()}
+	classes := lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}
+	for _, dir := range dirs.UserTrees() {
+		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
+	}
+	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes}), log, config.NewStore(), dirs)
+	writeSkill(t, h.authoredSkillsDir(), "demo", "demo skill", "return {}")
+	if !h.inJail(filepath.Join(h.authoredSkillsDir(), "demo", "SKILL.md"), h.readJails()...) {
+		t.Error("a symlinked skills dir is outside the read jail")
+	}
+	hook, err := filepath.EvalSymlinks(filepath.Join(real, "demo", "zemi-skill.lua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := classes.Classify(hook); got != lua.OriginUser {
+		t.Errorf("hook origin = %q, want user", got)
+	}
+}

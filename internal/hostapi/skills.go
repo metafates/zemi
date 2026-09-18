@@ -330,9 +330,9 @@ func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 		origin = lua.OriginLearned
 	}
 	if err := h.RT.EvalFileInline(L, s.Hook, origin); err != nil {
-		h.Log.Warn("skills", "enable hook failed", map[string]any{
-			"skill": s.Name, "error": err.Error(),
-		})
+		// /errors and /health, like a dropped skill file: a dead hook is
+		// silent otherwise, and the skill looks enabled
+		h.RecordErrorOnce("skills", s.Name+": enable hook failed: "+err.Error())
 		return err
 	}
 	h.Log.Info("skills", "enable hook ran", map[string]any{"skill": s.Name})

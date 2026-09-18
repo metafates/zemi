@@ -74,6 +74,9 @@ func run(args []string) int {
 		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
 		{Prefix: dirs.DataHome + string(filepath.Separator) + "skills", Origin: lua.OriginLearned},
 	}
+	for _, dir := range dirs.UserTrees() {
+		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
+	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
 		PathClass: classes,

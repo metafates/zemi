@@ -180,6 +180,21 @@ func (d Dirs) RepoRoot() string {
 	return d.ProjectDir
 }
 
+// UserTrees are the config subdirectories zemi loads user files from.
+// They are named apart from ConfigHome because a symlinked one (skills ->
+// ~/.agents/skills) resolves outside it, and both origin classification and
+// the read jail work on resolved paths.
+func (d Dirs) UserTrees() []string {
+	if d.ConfigHome == "" {
+		return nil
+	}
+	var out []string
+	for _, name := range []string{"lua", "skills", "agents", "commands", "workflows"} {
+		out = append(out, filepath.Join(d.ConfigHome, name))
+	}
+	return out
+}
+
 // PluginsDir is ~/.local/share/zemi/site/pack.
 func (d Dirs) PluginsDir() string {
 	return filepath.Join(d.DataHome, "site", "pack")
