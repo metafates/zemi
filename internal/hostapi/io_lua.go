@@ -73,9 +73,15 @@ func (h *Host) readJails() []string {
 	// shipped Lua UI, which the agent reads before restyling or extending it.
 	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
 	// outside the config home, so it needs its own root.
-	return append([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
+	roots := append([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
 		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.TypesDir()},
 		h.Dirs.UserTrees()...)
+	if h.ProjectTrusted() {
+		// the decision covers the repository, so starting in a subdirectory
+		// must not ask for every sibling package the task reaches
+		roots = append(roots, h.Dirs.RepoRoot())
+	}
+	return roots
 }
 
 func (h *Host) writeJails() []string {
@@ -931,6 +937,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
+		h.lspDirty()
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {

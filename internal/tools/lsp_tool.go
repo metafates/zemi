@@ -19,20 +19,19 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-const lspToolDesc = `Ask the file's language server about code, by symbol name instead of grep: it understands scopes, so it skips comments, strings and same-named identifiers elsewhere.
-- definition: where the symbol under that name in this file is defined (path:line:col and the line).
-- implementation: what implements it (a Go interface's implementations, an abstract method's overrides); no text search answers this.
-- references: every use of it across the project, grouped by file.
-- workspace_symbols: find a declaration by name anywhere in the project when you do not know its file (symbol is the query, path only picks the server to ask).
-- rename: rename it everywhere with a true semantic rename (imports and other files included); prefer this over editing each occurrence. Returns the changed files.
-- symbols: the file's outline (functions, types, methods with line ranges); cheaper than reading a large file to find its shape.
-symbol is the identifier as written in path; when it appears on several lines, line picks the occurrence (otherwise the first is used). Works when a server is installed for the language (gopls, pyright, typescript-language-server, clangd, rust-analyzer or one from config) in a trusted project.`
+const lspToolDesc = `Ask the file's language server about code by symbol name instead of grepping: it understands scopes, so it skips comments, strings and same-named identifiers elsewhere. Prefer it wherever it applies.
+- definition: where the symbol is defined, as path:line:col and the line.
+- implementation: what implements it (a Go interface, an abstract method); no text search answers this.
+- references: every use across the project, grouped by file.
+- workspace_symbols: find a declaration by name when you do not know its file.
+- rename: a true semantic rename everywhere, imports and other files included.
+- symbols: the file's outline, cheaper than reading a large file for its shape.`
 
 var lspToolProps = map[string]any{
 	"action":   map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols"}},
-	"path":     map[string]any{"type": "string", "description": "file the symbol appears in (or to outline); for workspace_symbols any file of the language"},
-	"symbol":   map[string]any{"type": "string", "description": "identifier as written in the file, or the query for workspace_symbols; not for symbols"},
-	"line":     map[string]any{"type": "number", "description": "1-based line of the occurrence to use when the name appears more than once"},
+	"path":     map[string]any{"type": "string", "description": "file the symbol is in, or to outline; for workspace_symbols any file of the language"},
+	"symbol":   map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
+	"line":     map[string]any{"type": "number", "description": "1-based line, when the name appears more than once"},
 	"new_name": map[string]any{"type": "string", "description": "rename only"},
 }
 

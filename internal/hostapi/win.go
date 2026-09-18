@@ -578,52 +578,39 @@ func (t *windowTool) gate() *tools.Pipeline {
 func (t *windowTool) Info() fantasy.ToolInfo {
 	info := fantasy.ToolInfo{
 		Name: "window",
-		Description: `Run a program in a window inside zemi's screen, or pin a panel of text over it, and keep working while it stays up: a TUI app you built, a dev server's log, a test watcher, a REPL, a table of results you keep current. A window is a real terminal; the program sees TERM=xterm-256color and the window's size. The user can click a window and type into it (ctrl+\ brings their keys back to zemi).
-
-A text panel is for what the user should be able to watch while you work, and what you will keep up to date:
-- benchmark or test numbers, rewritten as each run finishes, so old and new stay side by side
-- the few lines that matter out of a long build, log or migration, refreshed as it goes
-- the plan or checklist you are working through, ticked off step by step
-Open it before the work starts and set_text it as results land. Do not open one for something you can just say: a result stated once belongs in your reply, and a panel that never changes only steals rows from the chat. Close it when the thing it watches is done.
-
-Actions:
-- text: open a panel showing text instead of a program: with markdown true it renders like the chat (headings, lists, tables, code, colors) and re-wraps when the window resizes. A panel nobody sized fits its body, up to half the area it sits in, so a five-line table takes five lines.
-- set_text: replace a panel's body, or add to it with append true: rewrite the whole body when the numbers change, append for a running trail, which keeps the panel on its newest lines (a body past 256 KB drops its oldest ones).
-- open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
-- set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
-- hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.
-- focus: hand the user's keys to the window, which asks the user; show a hidden window first.
+		Description: `Run a program in a window inside zemi's screen, or pin a panel of text over it, and keep working while it stays up: a TUI app you built, a dev server's log, a REPL, a table of results you keep current. Load the zemi-customize skill before the first one for when a panel is worth opening and how layout places windows.
+- text: open a panel of text instead of a program; markdown true renders it like the chat. set_text: replace its body, or add with append true.
+- open: run cmd, returns the window id. kind is split, vsplit or float. set: move, resize, retitle, hide or show; the program keeps running.
+- hide, show: a hidden window keeps running and still takes read and keys. focus: hand the user's own keyboard over; asks the user, shown windows only.
 - read: the screen as text plus the cursor. Always read after acting before deciding the next step.
-- keys: press keys in neovim notation, e.g. "ihello<esc>:wq<cr>" or "<c-b>:q<cr>".
+- keys: neovim notation, e.g. "ihello<esc>:wq<cr>" or "<c-b>:q<cr>". send: raw text as one bracketed paste; prefer keys.
 - mouse: click, press, release or move at a cell, or scroll with button wheel_up or wheel_down.
-- send: raw text; several lines go in as one bracketed paste, so an editor does not re-indent them. Prefer keys.
-- wait: block until the program exits.
-- close: end it. list: the windows you opened.
-A window stays on screen after its program exits, exit code in the title, until closed; when it exits on its own, the next message tells you. A subagent's windows open hidden: show one only when the user should see it.`,
+- wait: block until the program exits. close: end it. list: the windows you opened.
+A window stays on screen after its program exits, exit code in the title, and the next message tells you. A subagent's windows open hidden.`,
 		Parameters: map[string]any{
 			"action":     map[string]any{"type": "string", "enum": []string{"text", "set_text", "open", "set", "hide", "show", "focus", "read", "keys", "mouse", "send", "wait", "close", "list"}},
 			"id":         map[string]any{"type": "number"},
 			"cmd":        map[string]any{"type": "string", "description": "run with sh -c in the project directory"},
-			"markdown":   map[string]any{"type": "boolean", "description": "text: render the body as markdown"},
-			"append":     map[string]any{"type": "boolean", "description": "set_text: add to the body instead of replacing it"},
+			"markdown":   map[string]any{"type": "boolean"},
+			"append":     map[string]any{"type": "boolean"},
 			"kind":       map[string]any{"type": "string", "enum": []string{"split", "vsplit", "float"}, "description": "default split"},
 			"title":      map[string]any{"type": "string"},
 			"hidden":     map[string]any{"type": "boolean"},
-			"focus":      map[string]any{"type": "boolean", "description": "give the user's keys to the window right away"},
-			"frac":       map[string]any{"type": "number", "description": "0.1 to 0.9: a split or vsplit's share of the screen area it sits in (by default the rows of the chat area, the columns of the screen); unset, the window takes an equal share of what is left"},
+			"focus":      map[string]any{"type": "boolean", "description": "open: hand over the user's keys right away"},
+			"frac":       map[string]any{"type": "number", "description": "0.1 to 0.9: a split or vsplit's share of its area; unset, an equal share"},
 			"cols":       map[string]any{"type": "number", "description": "a float's width"},
 			"rows":       map[string]any{"type": "number", "description": "a float's height"},
-			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column inside the window; set: a float's left column (-1 centers)"},
-			"y":          map[string]any{"type": "number", "description": "mouse: 0-based row inside the window; set: a float's top row (-1 centers)"},
-			"expect":     map[string]any{"type": "string", "description": "read returns as soon as the screen shows this text"},
-			"wait_ms":    map[string]any{"type": "number", "description": "read waits this long for the program to draw (default 300); with expect, the longest to wait (default 5000)"},
-			"scrollback": map[string]any{"type": "number", "description": "read adds this many lines that scrolled off the top"},
+			"x":          map[string]any{"type": "number", "description": "mouse: 0-based column; set: a float's left column (-1 centers)"},
+			"y":          map[string]any{"type": "number", "description": "mouse: 0-based row; set: a float's top row (-1 centers)"},
+			"expect":     map[string]any{"type": "string", "description": "read returns as soon as the screen shows this"},
+			"wait_ms":    map[string]any{"type": "number", "description": "read waits this long to be drawn (default 300, or 5000 with expect)"},
+			"scrollback": map[string]any{"type": "number", "description": "read adds this many lines from above the screen"},
 			"keys":       map[string]any{"type": "string"},
-			"text":       map[string]any{"type": "string", "description": "send: what to type; text and set_text: the body to show"},
+			"text":       map[string]any{"type": "string", "description": "send: what to type; text and set_text: the body"},
 			"button":     map[string]any{"type": "string", "enum": []string{"left", "middle", "right", "wheel_up", "wheel_down"}, "description": "default left"},
 			"mkind":      map[string]any{"type": "string", "enum": []string{"click", "press", "release", "move"}, "description": "default click"},
 			"mod":        map[string]any{"type": "string", "description": "ctrl, alt or shift, joined with +"},
-			"timeout_ms": map[string]any{"type": "number", "description": "wait gives up after this long (default 60000)"},
+			"timeout_ms": map[string]any{"type": "number", "description": "wait gives up after this (default 60000)"},
 		},
 		Required: []string{"action"},
 	}

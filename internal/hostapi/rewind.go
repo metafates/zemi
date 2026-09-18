@@ -135,6 +135,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
 	}
 	var failed []string
+	if len(cps) > 0 {
+		h.lspDirty() // a restore rewrites files behind the language servers' backs
+	}
 	for _, cp := range cps {
 		if err := restoreCheckpoint(cp); err != nil {
 			failed = append(failed, cp.Path+": "+err.Error())

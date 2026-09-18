@@ -61,7 +61,7 @@ var subagentHeadless = func() map[string]bool {
 var builtinAgents = []AgentDef{
 	{
 		Name:        "explore",
-		Description: "Fast read-only agent for finding code: files by pattern, symbols, how something works. It cannot edit files or run commands.",
+		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
 		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "web_search", "memory_search", "skill"},
 		ReadOnly:    true,
 		System:      "You are a read-only search agent. Search broadly, read what matters, never guess. Your report goes to another agent, not the user: lead with the answer, cite paths relative to the project root with line numbers, and quote code only when the exact text matters. If you did not find it, say so and say where you looked.",
@@ -69,7 +69,7 @@ var builtinAgents = []AgentDef{
 	},
 	{
 		Name:        "general",
-		Description: "General-purpose agent for research and multi-step tasks: searching code, reading files, running commands and making edits.",
+		Description: "Multi-step work: searches, reads, runs commands and edits.",
 		// this replaces basePrompt rather than extending it, so the git and
 		// verification rules have to be said again here
 		System: "Complete the task with the tools. Edit and write refuse a file not read with the read tool first (cat in bash does not count); when a tool refuses, do what its message says. Prefer read, grep, glob and edit over bash, and never run a server, watcher or interactive program in bash (use job_start). Do not commit, push or change git state unless the task says to. Verify what you changed with the narrowest test or build that covers it. Then report to the agent that sent you what you found or changed, with paths and line numbers, and anything you could not verify.",
@@ -77,7 +77,7 @@ var builtinAgents = []AgentDef{
 	},
 	{
 		Name:        "web",
-		Description: "Web research agent: searches the web, reads pages and follows links, then answers with the sources it used. Give it the question, not just a URL. It cannot change files or run commands.",
+		Description: "Searches the web, reads pages and follows links, answering with its sources. Give it the question, not just a URL.",
 		Tools:       []string{"web_search", "fetch", "read", "grep", "glob"},
 		ReadOnly:    true,
 		Model:       "small",
@@ -611,16 +611,15 @@ func (t *agentTool) names() []string {
 
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
-	b.WriteString("Launch a subagent for a self-contained task. It works with its own context and tools and returns one final report." +
-		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code; it only reads, so it never" +
-		" stops to ask the user for permission. The subagent cannot see this conversation: the prompt must carry" +
-		" everything it needs, say what to report back and say how to verify the work. Its report is not shown to the user; relay what matters.")
+	b.WriteString("Launch a subagent for a self-contained task; it works with its own context and returns one final report." +
+		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code, since it only reads and never" +
+		" stops to ask permission. The subagent cannot see this conversation: the prompt must carry everything it needs," +
+		" what to report back and how to verify the work. Its report is not shown to the user; relay what matters.")
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
-			" as a message, so keep working (or end your turn) meanwhile. To add to or correct a running background agent's task, call again with" +
-			" send_to set to its id: prompt reaches it at its next step (agent and description are ignored).")
+		b.WriteString(" Set background for long work you need not wait on: the tool returns at once and the report arrives later as a message." +
+			" To add to or correct a running one, call again with send_to set to its id (agent and description are ignored).")
 	}
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
@@ -631,7 +630,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	models := t.h.modelIDs()
 	if len(models) > 1 {
-		b.WriteString("\n\nA subagent runs on your model unless the agent or the model field says otherwise. Configured models: " + strings.Join(models, ", ") + ". Pick a cheaper one for simple searches and a stronger one for hard reasoning.")
+		b.WriteString("\n\nA subagent runs on your model unless the agent or the model field says otherwise. Configured: " + strings.Join(models, ", ") + ". Pick a cheaper one for simple searches, a stronger one for hard reasoning.")
 	}
 	// headless there is no send_to, so the two fields it qualifies are plain required
 	required := "; required"
@@ -641,12 +640,12 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	params := map[string]any{
 		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
 		"prompt":      map[string]any{"type": "string", "description": "the full task"},
-		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit" + required},
-		"model":       map[string]any{"type": "string", "description": "what to run it on: a tier (small, main, smart) or one of the configured provider/model ids; default: the agent's own, else main"},
+		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "explore for reading and searching, general only when it must run commands or edit" + required},
+		"model":       map[string]any{"type": "string", "description": "a tier (small, main, smart) or a configured provider/model; default the agent's own, else main"},
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
-		params["send_to"] = map[string]any{"type": "string", "description": "id of a running background agent: send prompt to it as a message instead of starting an agent"}
+		params["send_to"] = map[string]any{"type": "string", "description": "id of a running background agent to send prompt to"}
 	}
 	return fantasy.ToolInfo{
 		Name:        "agent",

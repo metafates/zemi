@@ -53,6 +53,10 @@ type Auth struct {
 	Name      string // shown on the browser page
 	ServerURL string
 	Path      string
+	// ClientID and ClientSecret are a client registered with the server by
+	// hand; empty means register on the fly (RFC 7591).
+	ClientID     string
+	ClientSecret string
 
 	mu     sync.Mutex
 	tok    *Token
@@ -163,11 +167,14 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 	redirect := fmt.Sprintf("http://localhost:%d/callback", ln.Addr().(*net.TCPAddr).Port)
 
 	t := &Token{ServerURL: a.ServerURL, RedirectURI: redirect, AuthURL: m.authURL, TokenURL: m.tokenURL, Resource: m.resource}
-	a.mu.Lock()
-	if prev := a.load(); prev != nil && prev.RedirectURI == redirect && prev.TokenURL == m.tokenURL {
-		t.ClientID, t.ClientSecret = prev.ClientID, prev.ClientSecret
+	t.ClientID, t.ClientSecret = a.ClientID, a.ClientSecret
+	if t.ClientID == "" {
+		a.mu.Lock()
+		if prev := a.load(); prev != nil && prev.RedirectURI == redirect && prev.TokenURL == m.tokenURL {
+			t.ClientID, t.ClientSecret = prev.ClientID, prev.ClientSecret
+		}
+		a.mu.Unlock()
 	}
-	a.mu.Unlock()
 	if t.ClientID == "" {
 		if m.registerURL == "" {
 			return errors.New("the server does not let apps register; set an Authorization header in its config instead")
@@ -411,7 +418,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 	if resp.StatusCode/100 != 2 || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r) != nil || r.ClientID == "" {
 		// name the endpoint: a 404 here usually means discovery found no
 		// metadata and this URL was the spec's guess
-		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not allow it, so set an Authorization header in its config instead", endpoint, resp.StatusCode)
+		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not support dynamic client registration, so either register an app with it yourself and pass client_id (and client_secret, if it issued one) to zemi.mcp.add, or set an Authorization header in its config", endpoint, resp.StatusCode)
 	}
 	return r.ClientID, r.ClientSecret, nil
 }

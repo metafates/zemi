@@ -82,7 +82,8 @@ one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 the trust step must not leave the old decision in force).
 `Host.ProjectTrusted()` gates project `.zemi` (init.lua, agents, commands, workflows),
 instruction files and profile `context.files`, project skills, every language server, the Lua
-tool's ask, and what auto and plan mode settle. `Host.git` switches off fsmonitor, hooks and
+tool's ask, the read jail reaching past the launch dir to `Dirs.RepoRoot()`, and what auto and
+plan mode settle. `Host.git` switches off fsmonitor, hooks and
 repo-local filter drivers in every repository, trusted or not: a sandboxed command can plant
 a nested repo whose config zemi would run.
 
@@ -453,8 +454,9 @@ is how the agent debugs its own widgets and layout. Editor windows come out blan
   so rust-analyzer reports nothing until one exists; without a backend it (`RunsCode`) does
   not start at all. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is
   empty, so an untrusted project does not carry their schemas every step. A server re-reads a
-  file only when told, so before every touch or query `lspSync` diffs two `git status`
-  listings and sends `workspace/didChangeWatchedFiles` for what changed. A slow or failed
+  file only when told, so `lspSync` diffs two `git status` listings and sends
+  `workspace/didChangeWatchedFiles` for what changed; it runs before a touch or query only
+  once something other than zemi's own file tools ran (`lspDirty`). A slow or failed
   server means no diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send` goes

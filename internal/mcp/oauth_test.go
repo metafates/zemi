@@ -149,6 +149,42 @@ func TestOAuthSignIn(t *testing.T) {
 	}
 }
 
+// TestOAuthPreRegisteredClient: a server with no dynamic client
+// registration says so, and takes a client_id set in the config instead.
+func TestOAuthPreRegisteredClient(t *testing.T) {
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-authorization-server/mcp", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/authorize",
+			"token_endpoint": srv.URL + "/token", "registration_endpoint": srv.URL + "/register"})
+	})
+	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("client_id") != "mine" {
+			http.Error(w, "client_id "+q.Get("client_id"), 400)
+			return
+		}
+		http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "t1", "expires_in": 3600})
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+
+	visit := func(u string) { go func() { _, _ = http.Get(u) }() }
+	auth := &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "a.json")}
+	err := auth.Authorize(t.Context(), visit)
+	if err == nil || !strings.Contains(err.Error(), "dynamic client registration") {
+		t.Fatalf("without a client id: %v", err)
+	}
+	auth = &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "b.json"), ClientID: "mine"}
+	if err := auth.Authorize(t.Context(), visit); err != nil {
+		t.Fatalf("with a client id: %v", err)
+	}
+}
+
 func TestCallbackPageEscapes(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writeCallbackPage(rec, "<srv>", errors.New(`<script>alert(1)</script>`))

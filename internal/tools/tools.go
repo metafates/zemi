@@ -325,30 +325,30 @@ func sandboxLimits() string {
 	// seccomp blocks every inet socket
 	// NOTE: a refused connection to a host service matches no LikelyDenied
 	// pattern, so on Linux it gets no hint; the limit text is all it gets.
-	s := "no network, writes only in the scratchpad and $TMPDIR (a private one) (the project stays read-only)"
+	s := "no network, writes only in the scratchpad and a private $TMPDIR, the project read-only"
 	switch {
 	case b.EnforcesProtect && runtime.GOOS == "linux":
-		s = "no network (localhost inside the sandbox only: servers already running on this machine are unreachable), writes only in the project (not in plan mode), the scratchpad and $TMPDIR (a private one), .git and .zemi read-only"
+		s = "no network at all, not even to servers running on this machine; writes only in the project (not in plan mode), the scratchpad and a private $TMPDIR; .git and .zemi read-only"
 	case b.EnforcesProtect:
-		s = "no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and $TMPDIR (a private one), .git and .zemi read-only"
+		s = "no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and a private $TMPDIR, .git and .zemi read-only"
 	}
 	if b.HidesSecretFiles {
 		return s + ", secret files unreadable"
 	}
-	return s + ", credential files in the home dir unreadable"
+	return s + ", home credential files unreadable"
 }
 
 // NetworkProp is the middle tier: the sandbox stays, the command gets
 // sockets. It is the answer to almost every sandbox denial, since the file
 // rules are the ones a settled command is meant to keep.
 func NetworkProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "true keeps the command sandboxed but lets it reach the network (go mod download, npm install, curl, gh); asks the user first. Prefer it over sandbox: false, which drops every limit."}
+	return map[string]any{"type": "boolean", "description": "keeps the sandbox and adds the network (go mod download, npm install, curl); asks the user. Try this before sandbox: false, which drops every limit."}
 }
 
 // SandboxProp is the escape bash, job_start and window take while a
 // backend is live.
 func SandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (" + sandboxLimits() + "); false runs the command outside the sandbox and asks the user first. Use it only after network: true was not enough."}
+	return map[string]any{"type": "boolean", "description": "a command zemi settles on its own runs sandboxed (" + sandboxLimits() + "); false runs it unconfined and asks the user. Only after network: true was not enough."}
 }
 
 func decidedBy(o perm.Outcome) string {
@@ -680,13 +680,9 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk("bash", `Run a command with sh -c in the project directory. It is POSIX sh, not bash: for [[ ]], arrays or pipefail, run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. stdin is empty and there is no terminal. stdout and stderr are merged; output over 10000 characters keeps its start and end, and the whole output is saved to a file named in the result.
-
-The call blocks until the command exits; at the timeout (default 60000 ms, up to 600000) it keeps running as a background job instead of being stopped, and the result gives you its id for job_read. Never use it for:
-- servers and watchers (npm run dev, vite, go run ./cmd/server, tsc -w, jest --watch, tail -f): use job_start, read output with job_read, stop with job_kill. Appending & or nohup does not help: what the command started is stopped when the call returns.
-- interactive programs (vim, less, REPLs, git rebase -i, git add -p, npm init, password or y/n prompts): use the non-interactive form, such as git --no-pager log, git commit -m "msg", npm init -y, --yes, CI=1.
-
-Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: what a command prints here does not count as reading a file, so edit will still refuse it. Chain dependent steps with &&; send independent commands as separate calls in one response, and do not join them with echo separators. When one call repeats a long path, bind it to a short variable first: D=/long/path/to/dir; ls $D; grep -n 'func ' $D/main.go.`,
+		mk("bash", `Run a command with sh -c in the project directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over; stdin is empty and there is no terminal. stdout and stderr are merged and long output is cut, with the whole of it saved to a file the result names. At the timeout the command is not killed but handed on as a background job whose id the result gives you.
+Not for anything that does not exit on its own (npm run dev, tsc -w, tail -f): use job_start, since & and nohup do not help. Not for interactive programs (vim, less, REPLs, git rebase -i): use the non-interactive form (git --no-pager, -m, --yes, CI=1). Not for files: read, grep, glob, edit and write do that, and what a command prints does not count as reading a file.
+Chain dependent steps with &&; independent commands are separate calls in one response.`,
 			false,
 			withSandbox(map[string]any{
 				"command":     map[string]any{"type": "string"},
@@ -699,9 +695,9 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runBash),
 
-		gated(mk("read", "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line is prefixed with its 1-based number and a tab; that prefix is not file content, so never copy it into edit. offset is a 1-based line and limit a line count. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Read the region you need in one window rather than many small slices, and read several files in one response. Use it instead of cat, head, tail or sed.", true,
+		gated(mk("read", "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
 			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "file path, absolute or relative to the project root"},
+				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
 				"limit":  map[string]any{"type": "number", "description": "how many lines to read"},
 			},
@@ -711,7 +707,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runRead)),
 
-		gated(edits(mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). For changes to an existing file use edit; an existing file must have been read with the read tool this session, or the call is refused. Use it instead of echo or a heredoc in bash.", true,
+		gated(edits(mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for an existing file, which must have been read this session or the call is refused.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -722,7 +718,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runWrite))),
 
-		gated(edits(mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since, or the call is refused: then read it and retry, do not switch to bash. old_string must match exactly once, including indentation (never the line-number prefix read adds): add surrounding lines to make it unique, or set replace_all to change every match. Keep old_string as small as still unique. An old_string of whole lines also matches when only whitespace differs. If it fails to match, read that region again and copy it exactly; never retry with a guess. Do not re-read after success.", true,
+		gated(edits(mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since; otherwise read it and retry. old_string must match exactly once, indentation included (never read's line-number prefix): add surrounding lines to make it unique, or set replace_all. Keep it as small as still unique; whole lines also match when only whitespace differs. A failed match means the text differs: read that region again and copy it, never guess. Do not re-read after success.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -735,7 +731,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runEdit))),
 
-		gated(edits(mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, with the same rules as edit (file read first, exact match). Prefer it over several edit calls to the same file. If any edit fails, nothing is written.", true,
+		gated(edits(mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, under edit's rules. Prefer it over several edit calls to one file. If any edit fails, nothing is written.", true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 				"edits": map[string]any{"type": "array", "items": map[string]any{
@@ -754,10 +750,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runMultiedit))),
 
-		mk("glob", "List files matching a glob pattern under path (default: the project root), newest first, skipping .gitignored files when ripgrep is installed. A pattern without / matches file names at any depth: *.go, src/**/*.ts, *.{ts,tsx}. Use it instead of find or ls.", true,
+		mk("glob", "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
-				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
+				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -765,10 +761,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path (default: the project root), skipping .gitignored files when ripgrep is installed, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case); include limits the files by glob, such as *.go or *.{ts,tsx}. Returns up to 100 matching lines as path:line: text. Use it instead of grep or rg in bash, then read the region it points at. A match is not a read: edit still needs the read tool.", true,
+		mk("grep", "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. A match is not a read: edit still needs the read tool.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
-				"path":    map[string]any{"type": "string", "description": "directory to search under; defaults to the project root"},
+				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
 				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},
@@ -777,7 +773,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runGrep),
 
-		mk("fetch", "Fetch a URL over http/https and return the response body as text (an HTML page becomes the readable article as markdown: headings, lists, tables, code blocks and links, without the navigation and boilerplate). Every redirect hop is re-gated and private addresses are refused.",
+		mk("fetch", "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -794,7 +790,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runFetch),
 
-		mk("todos", "Track work with several distinct steps you could lose, or several tasks from the user, in a list the user sees. Not for one change and its check, and never single-step lists. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
+		mk("todos", "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{
@@ -811,10 +807,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk("open_in_editor", `Open a file in the user's own editor and wait until they close it, then continue with what they wrote. Use it when only the user can make the change: wording they own (a commit message, a README section, a config they maintain), a conflict you cannot resolve, a file you must not guess at, or when they ask to edit something themselves. Not for changes you can make: edit and write are the normal path, and this one stops everything until the user is done. The result is a diff of what they changed, and the file counts as read.`,
+		mk("open_in_editor", `Open a file in the user's own editor and wait until they close it, then continue with what they wrote. Only for a change only they can make: wording they own, a conflict you cannot resolve, or when they ask to edit something themselves. It stops everything until they are done. The result is a diff of what they changed, and the file counts as read.`,
 			false,
 			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "the file to open; a missing one is created"},
+				"path":   map[string]any{"type": "string", "description": "a missing file is created"},
 				"line":   map[string]any{"type": "number", "description": "1-based line to start at"},
 				"reason": map[string]any{"type": "string", "description": "what the user should change, in a few words; shown while the editor is open"},
 			},
@@ -824,12 +820,10 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runOpenInEditor),
 
-		mk("question", `Ask the user up to 4 questions and wait for the answers. Use it only for what the user alone can decide: requirements, scope, expected behavior, preferences, tradeoffs between approaches. Never ask what reading code or a read-only command would tell you, never ask to approve a routine action (only one that is hard to undo or reaches beyond this machine), and never ask whether a plan is ready (use plan).
-
-Put independent questions in one call; ask separately when one answer changes another question. Give 2-4 mutually exclusive options with 1-5 word labels and a description of what each means; put the one you recommend first and end its label with "(Recommended)". The user can always type their own answer, so never add an "Other" option; omit options for an open question.`,
+		mk("question", `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Give 2-4 mutually exclusive options with 1-5 word labels, the one you recommend first and its label ending in "(Recommended)"; omit options for an open question. The user can always type their own answer, so never add an "Other".`,
 			false,
 			map[string]any{
-				"questions": map[string]any{"type": "array", "description": "1 to 4 questions, shown as tabs the user can move between before submitting", "items": map[string]any{
+				"questions": map[string]any{"type": "array", "description": "1 to 4, shown as tabs the user moves between before submitting", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"question": map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
@@ -842,7 +836,7 @@ Put independent questions in one call; ask separately when one answer changes an
 							},
 							"required": []string{"label"},
 						}},
-						"multi_select": map[string]any{"type": "boolean", "description": "let the user pick several options"},
+						"multi_select": map[string]any{"type": "boolean"},
 					},
 					"required": []string{"question"},
 				}},
@@ -851,18 +845,16 @@ Put independent questions in one call; ask separately when one answer changes an
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. Call it in plan mode once nothing is left to decide, and outside plan mode only before a large or ambiguous change (a new feature, several reasonable designs, many files); a clear or small task is done, not planned. Ask open questions with the question tool first; do not use it to answer a research question.
+		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. In plan mode, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
 
-The plan is markdown for someone who will implement it without guessing: the goal, what changes where (files, and existing code to reuse as path:line), how to verify, and the assumptions made. Only the approach you recommend, kept short.
-
-The user approves it (implement it; in plan mode this also ends plan mode), asks for changes (revise it and call plan again), or dismisses it (stop and wait).`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. The user approves it (implement it, and plan mode ends), asks for changes (revise and call again), or dismisses it (stop and wait).`,
 			false,
 			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
 			[]string{"plan"},
 			func(in map[string]any) []Request { return nil },
 			runPlan),
 
-		mk("web_search", "Search the web and return up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short and specific; fetch the results worth reading. For a question that needs several searches and pages, delegate to the web agent instead.",
+		mk("web_search", "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
 			true,
 			map[string]any{
 				"query":       map[string]any{"type": "string"},
@@ -878,7 +870,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			runWebSearch),
 
-		mk("job_start", "Start a process that runs for a long time or never exits (dev server, file watcher, a slow build you do not need to wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, command is the program. It runs in the project directory with secret-shaped environment variables removed. Read its output with job_read (check a server's ready line or send it a request, not sleep) and job_kill jobs you started once you no longer need them.",
+		mk("job_start", "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
 				"command":     map[string]any{"type": "string"},
@@ -893,7 +885,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			runJobStart),
 
-		mk("job_read", "Read what a background job printed since your last read of it (everything on the first read, the first and last part when that is long, with the whole of it saved to a file the result names) and whether it is still running.",
+		mk("job_read", "Read what a background job printed since your last read of it, and whether it is still running.",
 			true,
 			map[string]any{
 				"id": map[string]any{"type": "string"},
@@ -918,7 +910,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified (kind: fact, gotcha, preference, convention or decision). One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
+		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
@@ -930,7 +922,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runMemoryAdd),
 
-		mk("memory_search", "Search memories saved in earlier sessions (facts, gotchas, preferences, conventions, decisions).",
+		mk("memory_search", "Search memories saved in earlier sessions.",
 			true,
 			map[string]any{
 				"query": map[string]any{"type": "string"},
@@ -940,7 +932,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			func(in map[string]any) []Request { return nil },
 			runMemorySearch),
 
-		mk("memory_update", "Rewrite a saved memory that is outdated or incomplete, by the id shown in your memory list or in memory_search results. Keep it one specific fact.",
+		mk("memory_update", "Rewrite a saved memory that is outdated or incomplete, by its id. Keep it one specific fact.",
 			false,
 			map[string]any{
 				"id":   map[string]any{"type": "string"},
@@ -964,7 +956,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 				return runMemoryEdit(p, str(in["id"]), "")
 			}),
 
-		mk("diagnostics", "Report compiler and linter diagnostics for one file from its language server (gopls, pyright, typescript-language-server, clangd or rust-analyzer when installed, or servers from config; none in an untrusted project). write, edit and multiedit already append errors and warnings for the file they change plus errors that appeared in other files; use this to check a file you did not change.",
+		mk("diagnostics", "Report a file's compiler and linter diagnostics from its language server. write, edit and multiedit already append errors for the file they change, so use this for a file you did not change.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
@@ -986,7 +978,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 
 		mk("lsp", lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
 
-		mk("skill", "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill's description covers, even a small task you know how to do; the description is only the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded in this conversation.",
+		mk("skill", "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill covers, even a small one you know how to do: the description is the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},

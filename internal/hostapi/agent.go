@@ -1615,6 +1615,9 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 // toolPostHook emits tool.post after every builtin tool run.
 func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
 	return func(name string, input map[string]any, ok bool, output string) {
+		if !lspQuietTool[name] {
+			h.lspDirty()
+		}
 		h.EmitAsync("tool.post", map[string]any{
 			"tool": name, "input": input, "ok": ok,
 			"output": truncRunes(output, 4096),
@@ -1734,8 +1737,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		p.Question = ui.AskQuestion
 		p.ApprovePlan = h.approvePlan
 		p.Edit = func(ctx context.Context, path string, line int, title string) error {
-			err := ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
-			return err
+			return ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
 		}
 	}
 	if h.DB != nil {
