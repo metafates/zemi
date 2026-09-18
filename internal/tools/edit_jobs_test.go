@@ -17,6 +17,7 @@ import (
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sandbox"
 )
 
 func TestEditRefusesAmbiguousMatch(t *testing.T) {
@@ -66,11 +67,11 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 }
 
 // TestJobReadSandboxHint: a sandboxed job's denial read while it ran still
-// gets the hint once it exits, and the sandbox: false retry is offered only
-// where someone can answer the ask.
+// gets the hint once it exits, naming the directories it may write, and the
+// sandbox: false retry is offered only where someone can answer the ask.
 func TestJobReadSandboxHint(t *testing.T) {
 	for _, param := range []bool{true, false} {
-		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param}
+		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param, Sandboxed: &sandbox.Policy{Write: []string{"/pad/s1"}}}
 		out := &proc.Buffer{Max: 1 << 20}
 		wait := make(chan error, 1)
 		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, func() string { return "\nguard note" })
@@ -86,7 +87,8 @@ func TestJobReadSandboxHint(t *testing.T) {
 		j, _ := p.Jobs.Get(id)
 		<-j.done
 		got := read()
-		if !strings.Contains(got, "The sandbox may have blocked this") || strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
+		if !strings.Contains(got, "The sandbox may have blocked this") || !strings.Contains(got, "/pad/s1") ||
+			strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
 			t.Errorf("param %v: after exit %q", param, got)
 		}
 	}

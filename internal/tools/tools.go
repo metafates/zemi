@@ -300,14 +300,20 @@ func (p *Pipeline) sandboxHint(out string, err error) string {
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
 	}
+	limits := sandboxLimits()
+	if p.Sandboxed != nil && len(p.Sandboxed.Write) > 0 {
+		// the exact paths, so a retry does not guess at a sibling of the
+		// scratchpad or a temp dir the policy never named
+		limits += ". Writable, these directories and what is below them only: " + strings.Join(p.Sandboxed.Write, ", ")
+	}
 	if !p.SandboxParam {
-		return "\nThe sandbox may have blocked this: " + sandboxLimits() + "."
+		return "\nThe sandbox may have blocked this: " + limits + "."
 	}
 	retry := " If the command needs the network, call it again with network: true, which keeps the sandbox and asks the user; sandbox: false, which drops every limit, is the last resort."
 	if !sandbox.LikelyNetwork(out, err) {
 		retry = " If the command needs more, call it again with network: true (the network, sandbox kept) or sandbox: false (no limits at all); both ask the user."
 	}
-	return "\nThe sandbox may have blocked this: " + sandboxLimits() + "." + retry
+	return "\nThe sandbox may have blocked this: " + limits + "." + retry
 }
 
 // sandboxLimits names what the live backend enforces. Every wrapped run
