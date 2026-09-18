@@ -323,8 +323,8 @@ drivers: a sandboxed command can plant a nested repository whose config
 would otherwise run unconfined on zemi's next `git status`.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
--> builtin commands -> the memory,
-reflector, skills, agents, workflow, mcp, lsp and window commands -> the
+-> builtin commands (main's own plus every domain
+file's: memory, reflector, skills, agents, workflow, mcp, lsp, window) -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user

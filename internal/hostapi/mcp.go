@@ -423,44 +423,37 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// MCPCommandsStep registers /mcp.
-func (h *Host) MCPCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "mcp commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "mcp", NArgs: "*", Desc: "manage MCP servers",
-				GoFn: func(h *Host, args string) error {
-					sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
-					switch sub {
-					case "":
-						return h.openMCP()
-					case "restart":
-						name = strings.TrimSpace(name)
-						if err := h.restartMCP(name); err != nil {
-							return err
-						}
-						h.Notify("info", "MCP", "restarting "+name)
-						return nil
-					case "sign-in":
-						return h.signInMCP(strings.TrimSpace(name))
-					case "sign-out":
-						return h.signOutMCP(strings.TrimSpace(name))
-					}
-					return fmt.Errorf("unknown /mcp subcommand %q", sub)
-				},
-				GoComplete: subcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
-					var names []string
-					for _, s := range h.mcp.list() {
-						names = append(names, s.name)
-					}
-					return names
-				}),
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
+// mcpCommands is /mcp.
+func (h *Host) mcpCommands() []*Command {
+	return []*Command{{
+		Name: "mcp", NArgs: "*", Desc: "manage MCP servers",
+		GoFn: func(h *Host, args string) error {
+			sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
+			switch sub {
+			case "":
+				return h.openMCP()
+			case "restart":
+				name = strings.TrimSpace(name)
+				if err := h.restartMCP(name); err != nil {
+					return err
+				}
+				h.Notify("info", "MCP", "restarting "+name)
+				return nil
+			case "sign-in":
+				return h.signInMCP(strings.TrimSpace(name))
+			case "sign-out":
+				return h.signOutMCP(strings.TrimSpace(name))
+			}
+			return fmt.Errorf("unknown /mcp subcommand %q", sub)
 		},
-	}
+		GoComplete: subcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
+			var names []string
+			for _, s := range h.mcp.list() {
+				names = append(names, s.name)
+			}
+			return names
+		}),
+	}}
 }
 
 func (h *Host) restartMCP(name string) error {

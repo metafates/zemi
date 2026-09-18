@@ -473,81 +473,75 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// WindowCommandsStep registers /win: the keyboard's way to list, focus
-// and close windows.
-func (h *Host) WindowCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "window commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "win", NArgs: "*", Desc: "manage windows", Hidden: true,
-				GoFn: func(h *Host, args string) error {
-					fields := strings.Fields(args)
+// windowCommands is /win: the keyboard's way to list, focus and close
+// windows.
+func (h *Host) windowCommands() []*Command {
+	return []*Command{{
+		Name: "win", NArgs: "*", Desc: "manage windows", Hidden: true,
+		GoFn: func(h *Host, args string) error {
+			fields := strings.Fields(args)
+			switch {
+			case len(fields) == 0 || fields[0] == "list":
+				ui := h.hooks()
+				if ui == nil {
+					return nil
+				}
+				var items []any
+				for _, w := range h.Wins.List() {
+					state := "running"
 					switch {
-					case len(fields) == 0 || fields[0] == "list":
-						ui := h.hooks()
-						if ui == nil {
-							return nil
-						}
-						var items []any
-						for _, w := range h.Wins.List() {
-							state := "running"
-							switch {
-							case w.Exited():
-								state = fmt.Sprintf("exited %d", w.ExitCode())
-							case w.IsText():
-								state = "text"
-							}
-							// a hidden window cannot take focus: its keys would go nowhere visible
-							actions := []any{map[string]any{"text": "Focus", "run": fmt.Sprintf("win focus %d", w.ID)}, map[string]any{"text": "Hide", "run": fmt.Sprintf("win hide %d", w.ID)}}
-							if w.Hidden() {
-								state += " · hidden"
-								actions = []any{map[string]any{"text": "Show", "run": fmt.Sprintf("win show %d", w.ID)}}
-							}
-							items = append(items, map[string]any{
-								"text":    fmt.Sprintf("%d %s", w.ID, w.Title()),
-								"desc":    fmt.Sprintf("%s · %s · %s", w.Kind(), w.Owner, state),
-								"actions": append(actions, map[string]any{"text": "Close", "run": fmt.Sprintf("win close %d", w.ID)}),
-							})
-						}
-						ui.OpenOverlay(Overlay{ID: "win", Title: "Windows", Origin: lua.OriginBuiltin, Items: items, Empty: "No windows open."})
-						return nil
-					case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
-						for _, w := range h.Wins.List() {
-							if w.Owner != "editor" || w.Exited() {
-								h.closeWindow(w.ID)
-							}
-						}
-						return nil
-					case (fields[0] == "hide" || fields[0] == "show") && len(fields) == 2:
-						id, err := strconv.Atoi(fields[1])
-						w, ok := h.Wins.Get(id)
-						if err != nil || !ok {
-							return fmt.Errorf("no window %s", fields[1])
-						}
-						hidden := fields[0] == "hide"
-						return h.applyLayout(w, layoutPatch{Hidden: &hidden})
-					case (fields[0] == "close" || fields[0] == "focus") && len(fields) == 2:
-						id, err := strconv.Atoi(fields[1])
-						if err != nil {
-							return fmt.Errorf("usage: /win %s <id>", fields[0])
-						}
-						if fields[0] == "focus" {
-							if _, ok := h.Wins.Get(id); !ok {
-								return fmt.Errorf("no window %d", id)
-							}
-							h.focusWindow(id)
-							return nil
-						}
-						return h.CloseWindow(id)
+					case w.Exited():
+						state = fmt.Sprintf("exited %d", w.ExitCode())
+					case w.IsText():
+						state = "text"
 					}
-					return errors.New("usage: /win [list | focus <id> | hide <id> | show <id> | close <id|all>]")
-				},
-				GoComplete: subcommandCompleter([]string{"list", "focus", "hide", "show", "close"}, nil),
-				Origin:     lua.OriginBuiltin, Gen: Gen(g.ID)})
-			return err
+					// a hidden window cannot take focus: its keys would go nowhere visible
+					actions := []any{map[string]any{"text": "Focus", "run": fmt.Sprintf("win focus %d", w.ID)}, map[string]any{"text": "Hide", "run": fmt.Sprintf("win hide %d", w.ID)}}
+					if w.Hidden() {
+						state += " · hidden"
+						actions = []any{map[string]any{"text": "Show", "run": fmt.Sprintf("win show %d", w.ID)}}
+					}
+					items = append(items, map[string]any{
+						"text":    fmt.Sprintf("%d %s", w.ID, w.Title()),
+						"desc":    fmt.Sprintf("%s · %s · %s", w.Kind(), w.Owner, state),
+						"actions": append(actions, map[string]any{"text": "Close", "run": fmt.Sprintf("win close %d", w.ID)}),
+					})
+				}
+				ui.OpenOverlay(Overlay{ID: "win", Title: "Windows", Origin: lua.OriginBuiltin, Items: items, Empty: "No windows open."})
+				return nil
+			case fields[0] == "close" && len(fields) == 2 && fields[1] == "all":
+				for _, w := range h.Wins.List() {
+					if w.Owner != "editor" || w.Exited() {
+						h.closeWindow(w.ID)
+					}
+				}
+				return nil
+			case (fields[0] == "hide" || fields[0] == "show") && len(fields) == 2:
+				id, err := strconv.Atoi(fields[1])
+				w, ok := h.Wins.Get(id)
+				if err != nil || !ok {
+					return fmt.Errorf("no window %s", fields[1])
+				}
+				hidden := fields[0] == "hide"
+				return h.applyLayout(w, layoutPatch{Hidden: &hidden})
+			case (fields[0] == "close" || fields[0] == "focus") && len(fields) == 2:
+				id, err := strconv.Atoi(fields[1])
+				if err != nil {
+					return fmt.Errorf("usage: /win %s <id>", fields[0])
+				}
+				if fields[0] == "focus" {
+					if _, ok := h.Wins.Get(id); !ok {
+						return fmt.Errorf("no window %d", id)
+					}
+					h.focusWindow(id)
+					return nil
+				}
+				return h.CloseWindow(id)
+			}
+			return errors.New("usage: /win [list | focus <id> | hide <id> | show <id> | close <id|all>]")
 		},
-	}
+		GoComplete: subcommandCompleter([]string{"list", "focus", "hide", "show", "close"}, nil),
+	}}
 }
 
 // ---------------------------------------------------------------------------

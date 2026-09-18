@@ -27,7 +27,7 @@ func TestSkillsCoverBuiltinCommands(t *testing.T) {
 	log := logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), builtinCommandsStep(h, func() {}, func() {})}); err != nil {
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range h.Commands.List() {

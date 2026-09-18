@@ -604,57 +604,50 @@ func (h *Host) lspRows() []map[string]any {
 	return out
 }
 
-// LSPCommandsStep registers /lsp.
-func (h *Host) LSPCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "lsp commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "lsp", NArgs: "*", Desc: "manage language servers", Hidden: true,
-				GoFn: func(h *Host, args string) error {
-					if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
-						name = strings.TrimSpace(name)
-						h.lsp.mu.Lock()
-						p, tries := h.lsp.running[name], h.lsp.attempts[name]
-						delete(h.lsp.running, name)
-						delete(h.lsp.attempts, name)
-						h.lsp.mu.Unlock()
-						if p == nil && tries == 0 {
-							return fmt.Errorf("no language server %q", name)
-						}
-						if p != nil { // else it capped out earlier; the counter is clear now
-							p.close()
-						}
-						h.Notify("info", "LSP", name+" starts again on the next file it serves")
-						return nil
-					}
-					ui := h.hooks()
-					if ui == nil {
-						return errors.New("no UI")
-					}
-					empty := "No language server for this project. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
-					if !h.ProjectTrusted() {
-						empty = "Language servers are off: this project is not trusted."
-					}
-					var items []any
-					for _, row := range h.lspRows() {
-						name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
-						detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
-						if e := fmt.Sprint(row["error"]); e != "" {
-							detail += "\nerror: " + e
-						}
-						item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
-						if status != "available" {
-							item["actions"] = []any{map[string]any{"text": "Restart", "run": "lsp restart " + name}}
-						}
-						items = append(items, item)
-					}
-					ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: items, Empty: empty})
-					return nil
-				},
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
+// lspCommands is /lsp.
+func (h *Host) lspCommands() []*Command {
+	return []*Command{{
+		Name: "lsp", NArgs: "*", Desc: "manage language servers", Hidden: true,
+		GoFn: func(h *Host, args string) error {
+			if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
+				name = strings.TrimSpace(name)
+				h.lsp.mu.Lock()
+				p, tries := h.lsp.running[name], h.lsp.attempts[name]
+				delete(h.lsp.running, name)
+				delete(h.lsp.attempts, name)
+				h.lsp.mu.Unlock()
+				if p == nil && tries == 0 {
+					return fmt.Errorf("no language server %q", name)
+				}
+				if p != nil { // else it capped out earlier; the counter is clear now
+					p.close()
+				}
+				h.Notify("info", "LSP", name+" starts again on the next file it serves")
+				return nil
+			}
+			ui := h.hooks()
+			if ui == nil {
+				return errors.New("no UI")
+			}
+			empty := "No language server for this project. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
+			if !h.ProjectTrusted() {
+				empty = "Language servers are off: this project is not trusted."
+			}
+			var items []any
+			for _, row := range h.lspRows() {
+				name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
+				detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
+				if e := fmt.Sprint(row["error"]); e != "" {
+					detail += "\nerror: " + e
+				}
+				item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
+				if status != "available" {
+					item["actions"] = []any{map[string]any{"text": "Restart", "run": "lsp restart " + name}}
+				}
+				items = append(items, item)
+			}
+			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: items, Empty: empty})
+			return nil
 		},
-	}
+	}}
 }

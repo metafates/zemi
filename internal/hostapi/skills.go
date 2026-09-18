@@ -464,27 +464,19 @@ func (h *Host) skillItems() []any {
 	return items
 }
 
-// SkillsCommandsStep registers the Go-owned /skills command with the
-// builtin origin (user config may rebind it).
-func (h *Host) SkillsCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "skills commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
-				GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-				GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
-					var names []string
-					for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
-						names = append(names, s.Name)
-					}
-					return names
-				}),
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
-		},
-	}
+// skillsCommands is /skills.
+func (h *Host) skillsCommands() []*Command {
+	return []*Command{{
+		Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
+		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
+		GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
+			var names []string
+			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
+				names = append(names, s.Name)
+			}
+			return names
+		}),
+	}}
 }
 
 // ---------------------------------------------------------------------------

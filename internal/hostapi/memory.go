@@ -732,20 +732,12 @@ func (h *Host) digestFor(query string) string {
 	return learn.Digest(cands, time.Now(), lines)
 }
 
-// MemoryCommandsStep registers the Go-owned /memory command with the
-// builtin origin (user config may rebind it).
-func (h *Host) MemoryCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "memory commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "memory", NArgs: "*", Desc: "review what zemi remembers",
-				GoFn:   func(h *Host, args string) error { return h.memoryCommand(args) },
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
-		},
-	}
+// memoryCommands is /memory.
+func (h *Host) memoryCommands() []*Command {
+	return []*Command{{
+		Name: "memory", NArgs: "*", Desc: "review what zemi remembers",
+		GoFn: func(h *Host, args string) error { return h.memoryCommand(args) },
+	}}
 }
 
 // ---------------------------------------------------------------------------

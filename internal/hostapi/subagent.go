@@ -751,32 +751,25 @@ func fmtDuration(d time.Duration) string {
 // ---------------------------------------------------------------------------
 // /agents and zemi.agent.run
 
-// AgentsCommandsStep registers /agents.
-func (h *Host) AgentsCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "agents commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "agents", NArgs: "*", Desc: "see running agents and the ones zemi can start",
-				GoFn: func(h *Host, args string) error {
-					sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
-					switch id = strings.TrimSpace(id); sub {
-					case "":
-						return h.openAgents()
-					case "view":
-						return h.ViewAgent(id)
-					case "stop":
-						return h.stopRun(id)
-					case "kill":
-						return h.jobs.Kill(id)
-					}
-					return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
-				},
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
+// agentsCommands is /agents.
+func (h *Host) agentsCommands() []*Command {
+	return []*Command{{
+		Name: "agents", NArgs: "*", Desc: "see running agents and the ones zemi can start",
+		GoFn: func(h *Host, args string) error {
+			sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
+			switch id = strings.TrimSpace(id); sub {
+			case "":
+				return h.openAgents()
+			case "view":
+				return h.ViewAgent(id)
+			case "stop":
+				return h.stopRun(id)
+			case "kill":
+				return h.jobs.Kill(id)
+			}
+			return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
 		},
-	}
+	}}
 }
 
 func (h *Host) openAgents() error {

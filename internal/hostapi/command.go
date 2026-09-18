@@ -3,12 +3,33 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
 )
+
+// BuiltinCommandsStep registers the Go-owned slash commands: the ones the
+// domain files define plus extra, which main.go declares because they need
+// the program's own hooks. Builtin origin lets user config replace them.
+func (h *Host) BuiltinCommandsStep(extra ...*Command) lua.BootStep {
+	return lua.BootStep{
+		Name: "builtin commands",
+		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			cmds := slices.Concat(extra, h.memoryCommands(), h.reflectorCommands(), h.skillsCommands(),
+				h.agentsCommands(), h.workflowCommands(), h.mcpCommands(), h.lspCommands(), h.windowCommands())
+			for _, c := range cmds {
+				c.Origin, c.Gen = lua.OriginBuiltin, Gen(g.ID)
+				if _, err := h.Commands.Add(c); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+}
 
 // validNargs follows Vim's spec strings (§6.2).
 func validNargs(n string) bool {

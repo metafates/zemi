@@ -601,7 +601,7 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 // TestMemoryCommandsRegistered pins the /memory command step.
 func TestMemoryCommandsRegistered(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	if err := h.MemoryCommandsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+	if err := h.BuiltinCommandsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
 		t.Fatalf("step: %v", err)
 	}
 	if h.Commands.Lookup("memory") == nil {

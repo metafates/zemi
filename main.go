@@ -104,15 +104,7 @@ func run(args []string) int {
 	var reload func()
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
-		builtinCommandsStep(host, quit, trust.command(func() { reload() })),
-		host.MemoryCommandsStep(),
-		host.ReflectorCommandsStep(),
-		host.SkillsCommandsStep(),
-		host.AgentsCommandsStep(),
-		host.WorkflowCommandsStep(),
-		host.MCPCommandsStep(),
-		host.LSPCommandsStep(),
-		host.WindowCommandsStep(),
+		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
 		lua.RequireStep("zemi.defaultui"),
 		softStep(host, app == nil, trust.step()),
 		softStep(host, app == nil, pluginsStep(dirs)),
@@ -266,134 +258,123 @@ func configFingerprint(roots ...string) string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
-// builtinCommandsStep registers the Go-owned slash commands; builtin origin
-// lets user config replace them.
-func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
-	return lua.BootStep{
-		Name: "builtin commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			for _, c := range []*hostapi.Command{
-				{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
-					quit()
-					return nil
-				}},
-				{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
-					h.OpenHelp()
-					return nil
-				}},
-				{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.NewSession()
-				}},
-				{Name: "sessions", NArgs: "*", Desc: "resume or delete an earlier session", GoFn: func(h *hostapi.Host, args string) error {
-					if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
-						return h.DeleteSession(strings.TrimSpace(id))
-					}
-					return h.OpenSessions()
-				}},
-				{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {
-					return h.ResumeSession(strings.TrimSpace(args))
-				}},
-				{Name: "rewind", NArgs: "?", Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
-					if args = strings.TrimSpace(args); args == "" {
-						return h.OpenRewind()
-					}
-					n, err := h.RewindTo(args)
-					if err == nil {
-						files := "files"
-						if n == 1 {
-							files = "file"
-						}
-						h.Notify("info", "Rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
-					}
-					return err
-				}},
-				{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
-					switch args = strings.TrimSpace(args); args {
-					case "":
-						cur := h.Effort()
-						if cur == "" {
-							cur = "default"
-						}
-						return fmt.Errorf("reasoning effort is %s (want low, medium, high or default)", cur)
-					case "default":
-						args = ""
-					case "low", "medium", "high":
-					default:
-						return fmt.Errorf("unknown effort %q (want low, medium, high or default)", args)
-					}
-					_, err := h.Settings.SetQuiet("agent.effort", args)
-					return err
-				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
-				{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.OpenUsage()
-				}},
-				{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.InitProject()
-				}},
-				{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
-					path, err := h.ExportSession(strings.TrimSpace(args))
-					if err == nil {
-						h.Notify("info", "Exported", "wrote "+path)
-					}
-					return err
-				}},
-				{Name: "copy", NArgs: "*", Desc: "copy the last reply or a code block in it", GoFn: func(h *hostapi.Host, args string) error {
-					return h.CopyReply(args)
-				}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"reply", "code"} }},
-				{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
-					_, err := h.ForkSession()
-					return err
-				}},
-				{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(*hostapi.Host, string) error {
-					// the composer matches /reload before the registry; this
-					// serves the palette, keymaps and zemi.config.reload
-					return h.ReloadConfig()
-				}},
-				{Name: "errors", NArgs: "*", Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
-					return h.OpenErrors(args)
-				}},
-				{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(*hostapi.Host, string) error {
-					trust()
-					return nil
-				}},
-				{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
-					return h.OpenHealth()
-				}},
-				{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
-					return h.CompactNow(args)
-				}},
-				{Name: "model", NArgs: "?", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
-					if args = strings.TrimSpace(args); args == "" {
-						return h.OpenModelPicker()
-					}
-					return h.SetModel(args)
-				}},
-				{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
-					if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
-						return h.ForgetRule(rest)
-					}
-					return h.OpenPermissions()
-				}},
-				{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
-					if args = strings.TrimSpace(args); args == "" {
-						return h.OpenModePicker()
-					}
-					return h.SetPermMode(args)
-				}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
-					var names []string
-					for _, m := range h.PermModeList() {
-						names = append(names, m.Name)
-					}
-					return names
-				}},
-			} {
-				c.Origin, c.Gen = lua.OriginBuiltin, hostapi.Gen(g.ID)
-				if _, err := h.Commands.Add(c); err != nil {
-					return err
-				}
-			}
+// mainCommands are the Go-owned slash commands that need the program's own
+// hooks; the rest come from the host (hostapi.BuiltinCommandsStep).
+func mainCommands(quit, trust func()) []*hostapi.Command {
+	return []*hostapi.Command{
+		{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
+			quit()
 			return nil
-		},
+		}},
+		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
+			h.OpenHelp()
+			return nil
+		}},
+		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.NewSession()
+		}},
+		{Name: "sessions", NArgs: "*", Desc: "resume or delete an earlier session", GoFn: func(h *hostapi.Host, args string) error {
+			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
+				return h.DeleteSession(strings.TrimSpace(id))
+			}
+			return h.OpenSessions()
+		}},
+		{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {
+			return h.ResumeSession(strings.TrimSpace(args))
+		}},
+		{Name: "rewind", NArgs: "?", Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
+			if args = strings.TrimSpace(args); args == "" {
+				return h.OpenRewind()
+			}
+			n, err := h.RewindTo(args)
+			if err == nil {
+				files := "files"
+				if n == 1 {
+					files = "file"
+				}
+				h.Notify("info", "Rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+			}
+			return err
+		}},
+		{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
+			switch args = strings.TrimSpace(args); args {
+			case "":
+				cur := h.Effort()
+				if cur == "" {
+					cur = "default"
+				}
+				return fmt.Errorf("reasoning effort is %s (want low, medium, high or default)", cur)
+			case "default":
+				args = ""
+			case "low", "medium", "high":
+			default:
+				return fmt.Errorf("unknown effort %q (want low, medium, high or default)", args)
+			}
+			_, err := h.Settings.SetQuiet("agent.effort", args)
+			return err
+		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
+		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.OpenUsage()
+		}},
+		{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.InitProject()
+		}},
+		{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
+			path, err := h.ExportSession(strings.TrimSpace(args))
+			if err == nil {
+				h.Notify("info", "Exported", "wrote "+path)
+			}
+			return err
+		}},
+		{Name: "copy", NArgs: "*", Desc: "copy the last reply or a code block in it", GoFn: func(h *hostapi.Host, args string) error {
+			return h.CopyReply(args)
+		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"reply", "code"} }},
+		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
+			_, err := h.ForkSession()
+			return err
+		}},
+		{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(h *hostapi.Host, _ string) error {
+			// the composer matches /reload before the registry; this
+			// serves the palette, keymaps and zemi.config.reload
+			return h.ReloadConfig()
+		}},
+		{Name: "errors", NArgs: "*", Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
+			return h.OpenErrors(args)
+		}},
+		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(*hostapi.Host, string) error {
+			trust()
+			return nil
+		}},
+		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.OpenHealth()
+		}},
+		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
+			return h.CompactNow(args)
+		}},
+		{Name: "model", NArgs: "?", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
+			if args = strings.TrimSpace(args); args == "" {
+				return h.OpenModelPicker()
+			}
+			return h.SetModel(args)
+		}},
+		{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
+				return h.ForgetRule(rest)
+			}
+			return h.OpenPermissions()
+		}},
+		{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
+			if args = strings.TrimSpace(args); args == "" {
+				return h.OpenModePicker()
+			}
+			return h.SetPermMode(args)
+		}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
+			var names []string
+			for _, m := range h.PermModeList() {
+				names = append(names, m.Name)
+			}
+			return names
+		}},
 	}
 }
 

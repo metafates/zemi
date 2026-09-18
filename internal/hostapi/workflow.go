@@ -673,51 +673,39 @@ func truncOutput(s string) string { return tools.TruncOut(s, 30000) }
 // ---------------------------------------------------------------------------
 // /workflow and zemi.workflow
 
-// WorkflowCommandsStep registers /workflow.
-func (h *Host) WorkflowCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "workflow commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
-				GoFn: func(h *Host, args string) error {
-					name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
-					if name == "" {
-						return h.openWorkflows()
-					}
-					if _, err := h.workflowSource(name); err != nil {
-						return err
-					}
-					// The agent runs it through the workflow tool, so progress,
-					// permissions and the result land in the conversation.
-					msg := "Run the saved workflow `" + name + "` with the workflow tool"
-					if rest = strings.TrimSpace(rest); rest != "" {
-						msg += " and args " + strconv.Quote(rest)
-					}
-					return h.AgentSend(msg + ", then relay its result.")
-				},
-				GoComplete: func(h *Host, _, _ string) []string {
-					var names []string
-					for _, w := range h.workflows() {
-						names = append(names, w.Name)
-					}
-					return names
-				},
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			if err != nil {
+// workflowCommands are /workflow and /review.
+func (h *Host) workflowCommands() []*Command {
+	return []*Command{{
+		Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
+		GoFn: func(h *Host, args string) error {
+			name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+			if name == "" {
+				return h.openWorkflows()
+			}
+			if _, err := h.workflowSource(name); err != nil {
 				return err
 			}
-			_, err = h.Commands.Add(&Command{
-				Name: "review", NArgs: "?", Desc: "review your changes, a base ref or a commit, with several agents",
-				GoFn: func(h *Host, args string) error {
-					return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
-				},
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
+			// The agent runs it through the workflow tool, so progress,
+			// permissions and the result land in the conversation.
+			msg := "Run the saved workflow `" + name + "` with the workflow tool"
+			if rest = strings.TrimSpace(rest); rest != "" {
+				msg += " and args " + strconv.Quote(rest)
+			}
+			return h.AgentSend(msg + ", then relay its result.")
 		},
-	}
+		GoComplete: func(h *Host, _, _ string) []string {
+			var names []string
+			for _, w := range h.workflows() {
+				names = append(names, w.Name)
+			}
+			return names
+		},
+	}, {
+		Name: "review", NArgs: "?", Desc: "review your changes, a base ref or a commit, with several agents",
+		GoFn: func(h *Host, args string) error {
+			return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
+		},
+	}}
 }
 
 func (h *Host) openWorkflows() error {

@@ -424,7 +424,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 // output and stops it through the Stop action's command.
 func TestAgentsListsJobs(t *testing.T) {
 	h, r := newTestHost(t)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.AgentsCommandsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
 	ui := &fakeUI{}

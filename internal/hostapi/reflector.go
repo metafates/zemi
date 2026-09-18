@@ -19,7 +19,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/learn"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -436,21 +435,13 @@ func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
 	}
 }
 
-// ReflectorCommandsStep registers the Go-owned /reflect command (builtin
-// origin, user config may rebind it).
-func (h *Host) ReflectorCommandsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "reflector commands",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			_, err := h.Commands.Add(&Command{
-				Name: "reflect", Hidden: true,
-				Desc:   "turn this session into memories and skills",
-				GoFn:   func(h *Host, args string) error { return h.reflectCommand() },
-				Origin: lua.OriginBuiltin, Gen: Gen(g.ID),
-			})
-			return err
-		},
-	}
+// reflectorCommands is /reflect.
+func (h *Host) reflectorCommands() []*Command {
+	return []*Command{{
+		Name: "reflect", Hidden: true,
+		Desc: "turn this session into memories and skills",
+		GoFn: func(h *Host, args string) error { return h.reflectCommand() },
+	}}
 }
 
 // reflectCommand starts a detached reflect run over the live session. Go

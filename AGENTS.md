@@ -85,8 +85,8 @@ that key.
 
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in `main.go`) — order
 matters:
-host namespaces (`zemi.*`) -> builtin commands -> memory, reflector and skills commands -> agents (+ tasks),
-workflow (+ `/review`), mcp, lsp and window commands ->
+host namespaces (`zemi.*`) -> builtin commands (main.go's own plus every domain file's,
+`Host.BuiltinCommandsStep`) ->
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/defaultui/`, one module per part) ->
 project trust (`trustGate.step`, before any config that can start an MCP server) ->
 plugins -> user `init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua`
