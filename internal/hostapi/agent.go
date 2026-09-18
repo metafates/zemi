@@ -283,9 +283,13 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	sys, parts := h.buildSystemParts(p)
 	toolset := h.profileTools(p)
 	r := agent.NewRunner(model, toolset, sys)
+	sizes := promptSizes(parts, toolset)
+	chars := 0
+	for _, s := range sizes {
+		chars += s.chars
+	}
 	h.agents.mu.Lock()
-	h.agents.promptTokens = promptTokens(sys, toolset)
-	h.agents.promptParts = promptSizes(parts, toolset)
+	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
 	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
@@ -301,17 +305,16 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	return r, nil
 }
 
-// promptTokens estimates what every prompt carries besides the messages:
-// the system prompt and the tool schemas sent with it.
 // promptPart is one named section of the fixed prompt, in characters.
 type promptPart struct {
 	name  string
 	chars int
 }
 
-// promptSizes breaks the fixed prompt down: the system prompt's sections
-// plus the tool schemas, MCP apart since a server's whole catalog rides
-// every request whether the model calls it or not.
+// promptSizes breaks down what every prompt carries besides the messages:
+// the system prompt's sections plus the tool schemas sent with it, MCP
+// apart since a server's whole catalog rides every request whether the
+// model calls it or not.
 func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	builtin, mcp := 0, 0
 	for _, t := range toolset {
@@ -337,16 +340,6 @@ func (h *Host) promptBreakdown() ([]promptPart, int64) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	return ag.promptParts, ag.promptTokens
-}
-
-func promptTokens(sys string, toolset []fantasy.AgentTool) int64 {
-	n := len(sys)
-	for _, t := range toolset {
-		info := t.Info()
-		schema, _ := json.Marshal(info.Parameters)
-		n += len(info.Name) + len(info.Description) + len(schema)
-	}
-	return int64(n / 4)
 }
 
 // AgentSend sends one user message to the agent (DESIGN §4, §6.3). Idle,
