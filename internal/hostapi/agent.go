@@ -150,8 +150,9 @@ type agentHost struct {
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).
 	turnMsgID string
-	// turnText is what the user asked for this turn; auto mode's screener
-	// reads it, so an action the user plainly asked for is not a surprise.
+	// turnText is what the user asked for this turn, steered messages
+	// appended; auto mode's screener reads it, so an action the user plainly
+	// asked for is not a surprise.
 	turnText string
 
 	// shellNotes holds !command output waiting for the next message.
@@ -536,6 +537,13 @@ func (h *Host) deliverSteering() []string {
 	msgs, text, reason, tools := ag.steering, ag.textBuf, ag.reasonBuf, ag.tools
 	ag.endThinking()
 	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
+	shown := make([]string, len(msgs))
+	for i, m := range msgs {
+		shown[i], _, _ = strings.Cut(m, attachMarker)
+		// a steered message is the request now: the screener must judge
+		// against it, not against the opening one it superseded
+		ag.turnText += "\n" + shown[i]
+	}
 	if len(msgs) > 0 {
 		ag.steering, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", nil, 0
 	}
@@ -544,13 +552,10 @@ func (h *Host) deliverSteering() []string {
 		return nil
 	}
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
-	out := make([]string, len(msgs))
-	for i, m := range msgs {
-		shown, _, _ := strings.Cut(m, attachMarker)
-		h.AppendMessage("user", shown)
-		out[i] = m // Runner.Compose expands it
+	for _, s := range shown {
+		h.AppendMessage("user", s)
 	}
-	return out
+	return msgs // Runner.Compose expands them
 }
 
 // AgentTakeQueue removes and returns the messages still waiting for a step
