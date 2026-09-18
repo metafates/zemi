@@ -3,11 +3,14 @@ package hostapi
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 func waitIdle(t *testing.T, h *Host) {
@@ -125,4 +128,44 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 		}
 	}
 	t.Fatalf("no tool row: %+v", h.Session().Transcript)
+}
+
+// TestResumeSeedsReads: a resumed session keeps the files its conversation
+// read, so the next edit is not refused; one touched after the session's
+// last message must be read again.
+func TestResumeSeedsReads(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sid := seedSession(t, h)
+	dir := t.TempDir()
+	read, touched := filepath.Join(dir, "read.go"), filepath.Join(dir, "touched.go")
+	for _, p := range []string{read, touched} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(touched, time.Now(), time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	call := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "read", Input: `{"path":"` + read + `"}`},
+		fantasy.ToolCallPart{ToolCallID: "c2", ToolName: "edit", Input: `{"path":"` + touched + `"}`},
+	}}
+	if err := h.persistMessage("assistant", call); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	seen := h.readLog()
+	if _, ok := seen.Load(perm.CanonPath(read)); !ok {
+		t.Fatal("resume forgot a file the session read")
+	}
+	if _, ok := seen.Load(perm.CanonPath(touched)); ok {
+		t.Fatal("a file touched after the session must be read again")
+	}
 }

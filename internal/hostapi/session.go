@@ -80,6 +80,7 @@ func (h *Host) ResumeSession(id string) error {
 	if err != nil {
 		return err
 	}
+	h.seedReads(rows)
 	h.setTranscript(sess.Title, tr)
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
 	return nil

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -1602,6 +1603,44 @@ func (h *Host) readLog() *sync.Map {
 		ag.instr = map[string]bool{}
 	}
 	return ag.reads[sid]
+}
+
+// seedReads refills a resumed session's read log from its stored rows: the
+// restored context still holds the text of every file the conversation
+// read or wrote, so refusing the next edit would only buy a re-read. A file
+// touched after the session's last message is left out, because that text
+// is the one the model does not have.
+func (h *Host) seedReads(rows []*store.Message) {
+	if len(rows) == 0 {
+		return
+	}
+	// stored times are milliseconds, file times finer: a file written in the
+	// row's own millisecond is not a later change
+	last := time.UnixMilli(rows[len(rows)-1].CreatedAt).Add(time.Millisecond)
+	seen := h.readLog()
+	for _, row := range rows {
+		var m fantasy.Message
+		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
+			continue
+		}
+		for _, part := range m.Content {
+			call, ok := part.(fantasy.ToolCallPart)
+			if !ok || !slices.Contains([]string{"read", "write", "edit", "multiedit"}, call.ToolName) {
+				continue
+			}
+			var in struct {
+				Path string `json:"path"`
+			}
+			if json.Unmarshal([]byte(call.Input), &in) != nil || in.Path == "" {
+				continue
+			}
+			fi, err := os.Stat(in.Path)
+			if err != nil || fi.ModTime().After(last) {
+				continue
+			}
+			seen.Store(perm.CanonPath(in.Path), fi.ModTime())
+		}
+	}
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls.

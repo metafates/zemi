@@ -179,7 +179,9 @@ table-tested; extend those tables when touching it).
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file
 the model has not read, or one whose mtime moved since (`Pipeline.Seen`, a per-session
 map wired in `PipelineFor`; subagents get their own), and hold a per-path lock, so a
-concurrent agent or the user's editor cannot lose changes. `tool.Run` runs that check
+concurrent agent or the user's editor cannot lose changes. `ResumeSession` rebuilds that
+map from the stored rows (`seedReads`), leaving out files touched after the last message,
+so `-c` and `/resume` do not re-read what the restored context already holds. `tool.Run` runs that check
 before the gate too (`tool.edits`), so nobody is asked to approve a change the tool
 would then refuse; the tool repeats it under the lock. `tool.Run` resolves the path of
 `read`, `write`, `edit` and `multiedit` (`perm.RealPath`) before the gate, and they open
