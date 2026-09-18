@@ -1176,7 +1176,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   twice within 2s quits), `ctrl+o` toggle reasoning,
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
-  native scrollback).
+  native scrollback). A scrolled-back viewport is anchored on the rows it
+  shows, not on a row number, so a resize, an expanded thought or a new
+  window splitting the chat leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
   `/permissions` (the mode and the rules in force; a session rule an "always"
   answer wrote can be removed there),

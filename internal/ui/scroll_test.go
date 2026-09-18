@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -168,5 +170,45 @@ func TestChatScrollShortContent(t *testing.T) {
 	}
 	if !strings.Contains(app.Frame(), "only one") {
 		t.Fatalf("message must stay visible")
+	}
+}
+
+// TestChatScrollAnchorsThroughRelayout: a narrower chat rewraps the lines
+// above the viewport and ctrl+o expands the thoughts among them; both
+// change how many rows sit above it, and it must keep showing the content
+// it showed, not the row number it showed.
+func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
+	visible := func(frame string) string {
+		t.Helper()
+		for _, row := range strings.Split(frame, "\r\n") {
+			if i := strings.Index(ansi.Strip(row), "message "); i >= 0 {
+				return strings.TrimSpace(ansi.Strip(row)[i:])
+			}
+		}
+		t.Fatalf("no message row on screen:\n%s", frame)
+		return ""
+	}
+	app, host := bootAgentApp(t, 100, 14)
+	for i := 1; i <= 20; i++ {
+		host.AppendMessage("user", fmt.Sprintf("message %d", i))
+		host.AppendReasoning(fmt.Sprintf("thought %d line one\nthought %d line two\n", i, i), hostapi.TurnStat{ThoughtMS: 4200})
+		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+	}
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	want := visible(app.Frame())
+
+	app.Update(tea.WindowSizeMsg{Width: 40, Height: 14})
+	app.renderSync(t)
+	if got := visible(app.Frame()); got != want {
+		t.Fatalf("resize moved the view from %q to %q", want, got)
+	}
+
+	host.ToggleReasoning()
+	app.renderSync(t)
+	if got := visible(app.Frame()); got != want {
+		t.Fatalf("expanding the thoughts moved the view from %q to %q", want, got)
 	}
 }

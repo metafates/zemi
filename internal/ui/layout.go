@@ -426,24 +426,48 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 // scrollback). follow pins it to the tail (top may go negative when the
 // content is shorter than the viewport, which bottom-anchors it);
 // otherwise top is the absolute first visible row, clamped so content
-// growth or a narrower rewrap never shows blank rows.
+// growth or a narrower rewrap never shows blank rows. anchor is the text
+// of the first few visible rows from the first non-blank one, anchorOff how
+// far below top that one sat, so a re-render that moves rows around keeps
+// the same content in view instead of the same row number.
 type scrollState struct {
 	top, rows, viewH int
 	follow, bottom   bool
+	anchor           []string
+	anchorOff        int
 	rect             uv.Rectangle // where it was drawn on the last frame
 }
+
+// anchorRows is how many rows identify the viewport. One is not enough:
+// a turn footer or a blank line repeats down the transcript.
+const anchorRows = 3
 
 // paintScrolled draws a scrolled region into r.
 func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
 	w, h := r.Dx(), r.Dy()
 	st := a.scrollOf(n)
 	lines := a.regionLines(n.Region, w)
+	prevRows := st.rows
 	st.rows, st.viewH, st.rect = len(lines), h, r
 	a.scrollIDs = append(a.scrollIDs, n.ID)
 	if st.follow {
 		st.top = st.rows - h
 	} else {
+		if prevRows > 0 && st.rows != prevRows {
+			st.top = reanchor(lines, st, prevRows)
+		}
 		st.top = max(0, min(st.top, st.rows-h))
+	}
+	st.anchor, st.anchorOff = nil, 0
+	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
+		if strings.TrimSpace(rowText(lines[i])) == "" {
+			continue
+		}
+		st.anchorOff = i - st.top
+		for j := i; j < len(lines) && j < i+anchorRows; j++ {
+			st.anchor = append(st.anchor, rowText(lines[j]))
+		}
+		break
 	}
 	rows := make([][]hostapi.Segment, h)
 	for i := range rows {
@@ -454,6 +478,57 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		rows[i] = padSegs(row, w)
 	}
 	return rows
+}
+
+// reanchor puts the viewport back on the content it was showing after the
+// row count moved: a thought block expanding above it, or a rewrap at a new
+// width, would otherwise slide unrelated lines under the user. The
+// remembered row is looked for nearest where a proportional scroll would
+// land, since the same text can appear more than once; with no match that
+// proportional position is the answer.
+func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
+	want := st.top*st.rows/prevRows + st.anchorOff
+	best := -1
+	for i := range lines {
+		if !anchoredAt(lines, i, st.anchor) {
+			continue
+		}
+		if best < 0 || abs(i-want) < abs(best-want) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return want - st.anchorOff
+	}
+	return best - st.anchorOff
+}
+
+func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
+	if len(want) == 0 || i+len(want) > len(lines) {
+		return false
+	}
+	for k, s := range want {
+		if rowText(lines[i+k]) != s {
+			return false
+		}
+	}
+	return true
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// rowText is a painted row's plain text, what the anchor compares.
+func rowText(row []hostapi.Segment) string {
+	var b strings.Builder
+	for _, s := range row {
+		b.WriteString(s.Text)
+	}
+	return b.String()
 }
 
 // scrollOf is a scrolled region's state, a "bottom" one following its tail
