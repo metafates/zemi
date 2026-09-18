@@ -1608,16 +1608,10 @@ func (h *Host) readLog() *sync.Map {
 // seedReads refills a resumed session's read log from its stored rows: the
 // restored context still holds the text of every file the conversation
 // read or wrote, so refusing the next edit would only buy a re-read. A file
-// touched after the session's last message is left out, because that text
-// is the one the model does not have.
+// changed after the row that last read or wrote it is left out, because
+// that text is the one the model does not have.
 func (h *Host) seedReads(rows []*store.Message) {
-	if len(rows) == 0 {
-		return
-	}
-	// stored times are milliseconds, file times finer: a file written in the
-	// row's own millisecond is not a later change
-	last := time.UnixMilli(rows[len(rows)-1].CreatedAt).Add(time.Millisecond)
-	seen := h.readLog()
+	touched := map[string]int64{} // path -> the time of the row that last read or wrote it
 	for _, row := range rows {
 		var m fantasy.Message
 		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
@@ -1634,12 +1628,21 @@ func (h *Host) seedReads(rows []*store.Message) {
 			if json.Unmarshal([]byte(call.Input), &in) != nil || in.Path == "" {
 				continue
 			}
-			fi, err := os.Stat(in.Path)
-			if err != nil || fi.ModTime().After(last) {
-				continue
-			}
-			seen.Store(perm.CanonPath(in.Path), fi.ModTime())
+			touched[in.Path] = row.CreatedAt
 		}
+	}
+	if len(touched) == 0 {
+		return
+	}
+	seen := h.readLog()
+	for path, at := range touched {
+		// stored times are milliseconds, file times finer: a file written in
+		// the row's own millisecond is not a later change
+		fi, err := os.Stat(path)
+		if err != nil || fi.ModTime().After(time.UnixMilli(at).Add(time.Millisecond)) {
+			continue
+		}
+		seen.Store(perm.CanonPath(path), fi.ModTime())
 	}
 }
 

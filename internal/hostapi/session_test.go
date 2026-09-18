@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 func waitIdle(t *testing.T, h *Host) {
@@ -167,5 +169,36 @@ func TestResumeSeedsReads(t *testing.T) {
 	}
 	if _, ok := seen.Load(perm.CanonPath(touched)); ok {
 		t.Fatal("a file touched after the session must be read again")
+	}
+}
+
+// TestSeedReadsUsesTheRowThatReadIt: a file the user changed in the middle
+// of a session is not seeded, however many rows came after the change.
+func TestSeedReadsUsesTheRowThatReadIt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	p := filepath.Join(t.TempDir(), "a.go")
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now()
+	if err := os.Chtimes(p, at, at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	call, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "read", Input: `{"path":"` + p + `"}`},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := json.Marshal(agent.UserMessage("and then some"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.seedReads([]*store.Message{
+		{Role: "assistant", PartsJSON: string(call), CreatedAt: at.UnixMilli()},
+		{Role: "user", PartsJSON: string(later), CreatedAt: at.Add(2 * time.Minute).UnixMilli()},
+	})
+	if _, ok := h.readLog().Load(perm.CanonPath(p)); ok {
+		t.Fatal("seeded a file changed after the row that read it")
 	}
 }

@@ -80,7 +80,7 @@ func (h *Host) ResumeSession(id string) error {
 	if err != nil {
 		return err
 	}
-	h.seedReads(rows)
+	h.seedReads(resumeRows(rows))
 	h.setTranscript(sess.Title, tr)
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
 	return nil
@@ -231,18 +231,24 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 // compacted session's model history starts at its last summary row, so a
 // rewind that cut the summary resumes from the one before it.
 func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
-	history, tr := historyFrom(rows)
+	_, tr := historyFrom(rows)
+	history, _ := historyFrom(resumeRows(rows))
+	return history, tr
+}
+
+// resumeRows are the rows the resumed model history covers: everything from
+// the last compaction summary on, so a reader sees what the model holds.
+func resumeRows(rows []*store.Message) []*store.Message {
 	for i, row := range slices.Backward(rows) {
 		var m fantasy.Message
 		if row.Role != "user" || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
 			continue
 		}
 		if _, ok := summaryOf(m); ok {
-			history, _ = historyFrom(rows[i:])
-			break
+			return rows[i:]
 		}
 	}
-	return history, tr
+	return rows
 }
 
 // historyFrom decodes stored messages into model history and transcript
