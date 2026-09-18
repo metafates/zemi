@@ -209,9 +209,11 @@ edits **inside the jail** that are not secret-shaped, except writes under any `.
 the git dir a project `.git` file names (`gitdirTarget`) or zemi's own config/data/state dirs (`protectedWrite`, which skip the
 screener too and ask the user, as do writes outside the project and scratchpad), `tool.workflow` scripts,
 `perm.SafeCommand` commands, MCP tools whose server annotates them `readOnlyHint` and not
-`destructiveHint` (`mcpReadOnly`)) and only then runs a one-shot screening model, caching
-approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
-escaped tagged data like the action) and falling back to the user ask with its reason
+`destructiveHint` (`mcpReadOnly`)) and only then runs a one-shot screening model, which also
+reads the running turn's own user message (`turnRequest`, 500 runes, tagged `request`) so an
+action the user plainly asked for is not a surprise, caching
+approvals keyed on everything it saw (subject, arg, reason, preview, that request; the
+reason goes in as escaped tagged data like the action) and falling back to the user ask with its reason
 (`askHook` resolves `fs.read`/`fs.write` arguments first, and the screener and overlay see
 them relative to the project, `shownArg`); `plan` denies writes and runs `SafeCommand` commands (sandboxed, the project unwritable). Network requests are
 never settled locally: the URL is the model's. Known ceiling: auto settles in-jail writes and

@@ -356,3 +356,37 @@ func TestAutoResolvesPaths(t *testing.T) {
 		}
 	}
 }
+
+// TestAutoScreenerSeesTheRequest: the screener judged generic routine-ness
+// and bounced work the user had just asked for. It now reads the turn's own
+// message, and an approval given under it is not reused for the next turn.
+func TestAutoScreenerSeesTheRequest(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	m := &promptStub{resp: "SAFE"}
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	ask := h.askHook()
+	req := tools.Request{Subject: "tool.bash", Arg: "git push", Reason: "push the branch", Unsandboxed: false}
+
+	h.agents.mu.Lock()
+	h.agents.active, h.agents.turnText = true, "push this branch"
+	h.agents.mu.Unlock()
+	if ok, _, _ := ask(req); !ok {
+		t.Fatal("screened call not approved")
+	}
+	if !strings.Contains(m.prompt, "push this branch") {
+		t.Errorf("the screener never saw the request:\n%s", m.prompt)
+	}
+
+	// another turn, another request: the cached approval must not carry over
+	m.resp = "UNSAFE: nobody asked"
+	h.agents.mu.Lock()
+	h.agents.turnText = "update the readme"
+	h.agents.mu.Unlock()
+	if ok, _, _ := ask(req); ok {
+		t.Error("an approval given for one request was reused for another")
+	}
+}

@@ -143,6 +143,9 @@ type agentHost struct {
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).
 	turnMsgID string
+	// turnText is what the user asked for this turn; auto mode's screener
+	// reads it, so an action the user plainly asked for is not a surprise.
+	turnText string
 
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
@@ -435,6 +438,9 @@ func (h *Host) startTurn(text string) {
 	// what follows attachMarker is for the model (background reports), the
 	// same cut resumed transcripts make
 	shown, _, _ := strings.Cut(text, attachMarker)
+	h.agents.mu.Lock()
+	h.agents.turnText = shown
+	h.agents.mu.Unlock()
 	h.AppendMessage("user", shown)
 	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
