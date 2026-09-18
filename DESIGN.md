@@ -329,7 +329,8 @@ shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
 `init.lua` -> authored skills' enable hooks -> a trusted project's
-`.zemi/init.lua` -> markdown commands (user, then a trusted project) ->
+`.zemi/init.lua` -> markdown commands (user, then a trusted repo's `.zemi`,
+`.agents` and `.claude`, the dirs other agents read) ->
 `app.ready` -> learned skill hooks, last and least trusted. Boot runs on
 its own goroutine, so it may block on the trust prompt without holding
 the UI. Project agents and workflows are read when used, under the

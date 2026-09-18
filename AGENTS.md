@@ -92,7 +92,8 @@ host namespaces (`zemi.*`) -> builtin commands (main.go's own plus every domain 
 `require("zemi.defaultui")` (shipped theme/widgets/keymaps in `runtime/lua/zemi/defaultui/`, one module per part) ->
 project trust (`trustGate.step`, before any config that can start an MCP server) ->
 plugins -> user `init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua`
-(`projectInitStep`) -> markdown commands (`commands/*.md`, user then trusted project) ->
+(`projectInitStep`) -> markdown commands (`commands/*.md`, user, then a trusted repo's `.zemi`, `.agents` and
+`.claude`) ->
 `app.ready` -> learned skill hooks (skills load last, lowest trust). Boot runs on
 its own goroutine and may block on the trust prompt; results reach the UI via a hook channel.
 

@@ -60,3 +60,33 @@ func TestMarkdownCommandSends(t *testing.T) {
 		t.Fatalf("sent %q", got)
 	}
 }
+
+// TestProjectMarkdownCommands: a trusted repository's .zemi, .agents and
+// .claude command dirs all load, and the first dir to claim a name keeps it.
+func TestProjectMarkdownCommands(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.SetProjectTrusted(true)
+	for _, c := range []struct{ dir, name, body string }{
+		{".zemi", "both", "from zemi"},
+		{".claude", "both", "from claude"},
+		{".claude", "ctest", "from claude"},
+		{".agents", "atest", "from agents"},
+	} {
+		d := filepath.Join(h.Dirs.ProjectDir, c.dir, "commands")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, c.name+".md"), []byte(c.body+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"both": "from zemi", "ctest": "from claude", "atest": "from agents"} {
+		cmd := h.Commands.Lookup(name)
+		if cmd == nil || cmd.Desc != want || cmd.Origin != lua.OriginProject {
+			t.Fatalf("/%s = %+v, want %q", name, cmd, want)
+		}
+	}
+}
