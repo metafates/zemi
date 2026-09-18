@@ -149,20 +149,12 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    ---@type zemi.Line
-    local segs = {}
-    ---@param n integer?
-    ---@param what string
-    ---@param cmd string The command a click runs, also shown after the count.
-    local function add(n, what, cmd)
-      if (n or 0) == 0 then return end
-      dot(segs)
-      segs[#segs + 1] = { text = "✻ " .. n .. " " .. what, hl = "Title", click = cmd }
-      segs[#segs + 1] = { text = " /" .. cmd, hl = "Comment", click = cmd }
-    end
-    add(ctx.pending_memory, "to review", "memory")
-    if #segs == 0 then return {} end
-    return { segs }
+    local n = ctx.pending_memory or 0
+    if n == 0 then return {} end
+    return { {
+      { text = "✻ " .. n .. " to review", hl = "Title", click = "memory" },
+      { text = " /memory", hl = "Comment", click = "memory" },
+    } }
   end,
 })
 
