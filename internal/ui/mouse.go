@@ -79,9 +79,18 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			}
 			return nil
 		}
+		if id := a.scrollbarAt(m.X, m.Y); id != "" {
+			a.barDrag = id
+			a.dragScrollbar(id, m.Y)
+			return nil
+		}
 		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
 		a.frameGen++
 	case tea.MouseMotionMsg:
+		if a.barDrag != "" {
+			a.dragScrollbar(a.barDrag, m.Y)
+			return nil
+		}
 		if !a.mouse.pressed {
 			return a.hover(m.X, m.Y)
 		}
@@ -90,6 +99,10 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.frameGen++
 		}
 	case tea.MouseReleaseMsg:
+		if a.barDrag != "" {
+			a.barDrag = ""
+			return nil
+		}
 		if !a.mouse.pressed {
 			return nil
 		}
@@ -112,6 +125,31 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		return copyCmd(text)
 	}
 	return nil
+}
+
+// scrollbarAt is the scrolled region whose scrollbar column is at (x, y),
+// "" for none. Chrome on top owns the pointer first.
+func (a *App) scrollbarAt(x, y int) string {
+	if a.topChrome() != "" {
+		return ""
+	}
+	for _, id := range a.scrollIDs {
+		st := a.scrolls[id]
+		if st != nil && st.rows > st.viewH && x == st.rect.Max.X-1 && y >= st.rect.Min.Y && y < st.rect.Max.Y {
+			return id
+		}
+	}
+	return ""
+}
+
+// dragScrollbar puts a region's viewport where the pointer holds the bar.
+func (a *App) dragScrollbar(id string, y int) {
+	st := a.scrolls[id]
+	if st == nil || st.viewH <= 1 {
+		return
+	}
+	rel := max(0, min(y-st.rect.Min.Y, st.viewH-1))
+	a.scrollRows(id, rel*(st.rows-st.viewH)/(st.viewH-1)-max(st.top, 0))
 }
 
 // dismissOutside closes a menu or popup a click landed outside of, and

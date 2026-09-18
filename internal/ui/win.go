@@ -224,6 +224,7 @@ func (a *App) textRows(wn *win.Window, width, height int) [][]hostapi.Segment {
 		}
 		rows = append(rows, padSegs(truncateSegs(row, width), width))
 	}
+	scrollbar(rows, width, top, len(lines))
 	return rows
 }
 

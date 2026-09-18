@@ -62,6 +62,8 @@ zemi.ui.theme.add("default", {
     Logo5 = { fg = "#ac9ef3", bold = true },
     Logo6 = { fg = "#bb9af7", bold = true },
     SplashKey = { fg = "fg", bold = true },
+    ScrollbarTrack = { fg = "#2a2e42" },
+    ScrollbarThumb = { fg = "#3b4261" },
     -- hover draws over the text's own style: keys left out keep it
     Hover = { underline = true, brighten = 0.25 },
     HoverItem = { fg = "accent" },

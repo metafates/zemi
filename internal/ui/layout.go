@@ -477,7 +477,28 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 		rows[i] = padSegs(row, w)
 	}
+	scrollbar(rows, w, st.top, st.rows)
 	return rows
+}
+
+// scrollbar draws a one-cell bar down the right edge of rows: the thumb's
+// size and offset say how much of total shows and where. It is decoration,
+// so it never copies, and nothing is drawn while everything fits.
+func scrollbar(rows [][]hostapi.Segment, width, top, total int) {
+	h := len(rows)
+	if h < 2 || total <= h || width < 8 {
+		return
+	}
+	size := max(h*h/total, 1)
+	pos := max(0, min((h-size)*max(top, 0)/(total-h), h-size))
+	for i := range rows {
+		mark, hl := "│", "ScrollbarTrack"
+		if i >= pos && i < pos+size {
+			mark, hl = "█", "ScrollbarThumb"
+		}
+		row := slices.Clip(truncateSegs(padSegs(rows[i], width-1), width-1))
+		rows[i] = append(row, hostapi.Segment{Text: mark, HL: hl, NoCopy: true})
+	}
 }
 
 // reanchor puts the viewport back on the content it was showing after the

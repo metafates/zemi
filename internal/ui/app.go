@@ -85,6 +85,7 @@ type App struct {
 	stage          uv.Rectangle        // where the last frame's stage was
 	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
 	chromeRect     uv.Rectangle        // the cells the topmost modal box took
+	barDrag        string              // the scrolled region whose scrollbar the pointer holds
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
