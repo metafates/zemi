@@ -533,6 +533,7 @@ func TestEventLogFromLua(t *testing.T) {
 		assert(#notes == 4 and notes[4].level == "info" and notes[3].level == "ERROR", "notes=" .. #notes)
 		assert(notes[2].title == "third" and notes[2].level == "INFO", "level stuck: " .. notes[2].level)
 		assert(notes[1].title == "fourth" and notes[1].body == "four" and notes[1].level == "WARN", "string form")
+		assert(not pcall(zemi.notify, 42), "a number is not a spec")
 	`)
 }
 

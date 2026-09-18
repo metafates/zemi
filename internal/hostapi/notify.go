@@ -32,11 +32,15 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 	return func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.notify")
 		v := luaToGoChecked(L, 1, "zemi.notify")
-		m, _ := v.(map[string]any)
+		m, isSpec := v.(map[string]any)
 		title := strField(m, "title")
 		body := strField(m, "body")
-		if s, ok := v.(string); ok {
+		s, isText := v.(string)
+		switch {
+		case isText:
 			body, title = s, L.OptString(2, "")
+		case !isSpec:
+			L.RaiseError("zemi.notify: expected a spec table or a string")
 		}
 		// the closure lives for the generation: a spec's level must not stick
 		level := level
