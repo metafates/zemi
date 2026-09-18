@@ -963,6 +963,10 @@ function zemi.ui.theme.set(name) end
 ---@return string
 function zemi.ui.theme.get() end
 
+--- Every registered theme, by name.
+---@return { name: string, origin: string }[]
+function zemi.ui.theme.list() end
+
 ---@class zemi.ui.overlay
 zemi.ui.overlay = {}
 

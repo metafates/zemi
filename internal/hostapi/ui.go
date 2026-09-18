@@ -127,6 +127,14 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		L.Push(glua.LString(h.ActiveThemeName()))
 		return 1
 	}))
+	theme.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		rows := []any{}
+		for _, t := range h.Themes.List() {
+			rows = append(rows, map[string]any{"name": t.Name, "origin": string(t.Origin)})
+		}
+		L.Push(lua.FromGo(L, rows))
+		return 1
+	}))
 	tb.RawSetString("theme", theme)
 
 	overlay := L.NewTable()
