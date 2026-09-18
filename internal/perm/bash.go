@@ -85,7 +85,7 @@ func Normalize(cmd string) Normalized {
 }
 
 // inlineVars substitutes leading literal assignments (D=/long/path; ls $D)
-// back into the command, so path gates, rules and SafeCommand see the real
+// back into the command, so path gates, rules and ReadCommand see the real
 // path instead of an opaque expansion. Only a value the shell would leave
 // as is qualifies: one word, no quotes, no expansion beyond an earlier
 // variable, no glob. A command that assigns anything else is left alone.
@@ -325,6 +325,10 @@ func (n *Normalized) scan(cmd string) {
 			}
 			sc.toks = append(sc.toks, token{kind: tokSep})
 		case r == '>' || r == '<':
+			if isAllDigits(cur.String()) { // the fd of 2>/dev/null is no argument
+				cur.Reset()
+				any = false
+			}
 			flush()
 			op, n2 := readRedirectOp(rs, i)
 			i += n2 - 1
