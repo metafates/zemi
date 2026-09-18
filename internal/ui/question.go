@@ -34,6 +34,7 @@ type qState struct {
 	typing   bool
 	input    composerState
 	top      int    // first option row shown
+	qscroll  int    // first question row shown, when the question does not fit
 	answered string // "" until answered
 }
 
@@ -122,6 +123,14 @@ func (a *App) questionKey(key, text string) {
 		return
 	}
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
+	switch key {
+	case "shift+down":
+		st.qscroll++
+		return
+	case "shift+up":
+		st.qscroll = max(0, st.qscroll-1)
+		return
+	}
 	if st.typing {
 		switch key {
 		case "enter":
@@ -289,12 +298,21 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	for l := range strings.SplitSeq(q.Question, "\n") {
 		ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
 	}
-	// borders, two blank rows, the hint and three options with their i/n row
-	keep := chatH - len(body) - 6 - min(len(items), 4)
+	// what is left after the two borders, the blank row under the question,
+	// the blank row and hint below the options, and the options themselves
+	keep := chatH - len(body) - 5 - min(len(items), 4)
 	if st.typing {
 		keep--
 	}
-	body = append(append(body, capRows(ask, max(keep, 1), boxInner(w))...), blank)
+	if keep = max(keep, 1); len(ask) > keep {
+		// an ellipsis would hide what is asked: window it like the
+		// permission prompt's preview, with the counter row saying so
+		keep = max(keep-1, 1)
+		st.qscroll = max(0, min(st.qscroll, len(ask)-keep))
+		more := fmt.Sprintf("  lines %d-%d of %d (shift+up/down)", st.qscroll+1, st.qscroll+keep, len(ask))
+		ask = append(ask[st.qscroll:st.qscroll+keep:st.qscroll+keep], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
+	}
+	body = append(append(body, ask...), blank)
 	// borders, the blank row and the hint take four rows, typing one more
 	limit := chatH - len(body) - 4
 	if st.typing {
