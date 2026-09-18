@@ -183,6 +183,7 @@ zemi.provider.add({
   id = "anthropic",
   kind = zemi.provider.kind.ANTHROPIC,            -- or OPENAI, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
+  -- base_url = "http://localhost:11434/v1",     -- required for OPENAI_COMPAT
   models = {
     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- optional: session cost in the statusline
@@ -257,7 +258,7 @@ local keys = require("./keys")      -- relative to this file
 local myui = require("myui.status") -- ~/.config/zemi/lua/myui/status.lua
 ```
 
-Plugins load from `~/.local/share/zemi/site/pack/*/start/*`. A repository can ship its own
+Plugins load from `~/.local/share/zemi/site/pack/*/start/*/plugin/*.lua`, with their modules under `lua/` next to it. A repository can ship its own
 setup in `.zemi/` (like `.claude/` or `.crush/`): `.zemi/init.lua`, modules under
 `.zemi/lua/`, `agents/`, `commands/` and `workflows/`, found from any subdirectory and loaded
 only in a project you trust. zemi asks once per repository (`/trust` asks again, `--trust`

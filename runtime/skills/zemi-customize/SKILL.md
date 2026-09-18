@@ -188,10 +188,31 @@ zemi.ui.widget.add({
   end,
 })
 
+-- A clock. ctx.time is already "15:04", and a widget only redraws when
+-- something else does, so one that changes on its own drives the redraw.
 zemi.ui.widget.add({
-  id = "statusline.branch", region = "statusline.right", priority = 1,
+  id = "statusline.clock", region = "statusline.right", priority = 1,
+  render = function(ctx) return { { { text = ctx.time, hl = "Comment" } } } end,
+})
+zemi.timer.every(30000, zemi.ui.redraw)
+
+-- Slow work belongs in a job whose callback writes zemi.state; the widget
+-- only reads it. A job started from config needs its own allow rule.
+zemi.permission.rule.add({
+  subject = "lua.job.start", pattern = "git rev-parse *", decision = "allow",
+  match = "git rev-parse --abbrev-ref HEAD",
+})
+zemi.ui.widget.add({
+  id = "statusline.branch", region = "statusline.right", priority = 2,
   render = function(ctx) return { { { text = zemi.state.get("branch") or "", hl = "Comment" } } } end,
 })
+zemi.timer.every(30000, function()
+  zemi.job.start({ cmd = "git", args = { "rev-parse", "--abbrev-ref", "HEAD" },
+    on_exit = function(res)
+      zemi.state.set("branch", (res.stdout or ""):gsub("%s+$", ""))
+      zemi.ui.redraw()
+    end })
+end)
 
 -- Change a few colors: override just those groups. theme.add below
 -- builds a complete theme, and groups it leaves out lose their colors.
@@ -212,8 +233,11 @@ Rules for widgets: `render(ctx)` returns lines of segments `{ text, hl }` (`{}` 
 lines; `effect = "shimmer"` animates a segment like the working label; `copy = false`
 marks decoration a selection skips, `soft_wrap = true` a line that continues on the next
 row), must be pure
-(no `zemi.*` mutations) and fast (about 10 ms): do slow work in `zemi.job` or
-`zemi.timer` callbacks and read the result from `zemi.state`. The theme groups the UI
+(registering, `config.set`, `state.set`, `fs` writes, jobs, http and `agent.send` raise
+during render) and fast (about 10 ms): do slow work in `zemi.job` or `zemi.timer`
+callbacks and read the result from `zemi.state`, as the branch widget above does.
+A widget redraws only when something else does; one that changes on its own calls
+`zemi.ui.redraw` from a `zemi.timer.every` callback. The theme groups the UI
 uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable give it
 `click = "some-id"` and the widget `on_click = function(ev) ... end` (ev.id is that id);
 the shipped statusline widgets run `zemi.command.run(ev.id)`, so a replacement statusline
@@ -226,5 +250,8 @@ Full API: the zemi-lua skill.
 
 ## After writing
 
-Run a quick check where possible (`/health` for config errors, `/errors` for Lua errors
-after `/reload`) and tell the user the path and how to use or undo it.
+Run a quick check where possible: `zemi.health.list()` and `zemi.errors.list()` through the
+Lua tool read the same rows `/health` and `/errors` show, without asking the user. Then tell
+the user the path and how to use or undo it. Writing to the config directory asks the
+user in every permission mode but yolo, so say what you are about to write before the ask
+appears.

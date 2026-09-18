@@ -93,6 +93,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 --   id = "anthropic",
 --   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, OPENAI_COMPAT
 --   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
+--   base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, an endpoint override for the rest
 --   models = {
 --     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
 --       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional; images = false for a text-only model
@@ -105,7 +106,8 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- zemi.config.set("ui.theme", "default")
 
 -- Keys: <leader> is keymap.leader, ctrl+g unless you change it. The
--- right-hand side is a command name, a host action or a function.
+-- right-hand side is a command name ("review", "/review"), a host action
+-- (zemi.HostAction in the type annotations lists them) or a function.
 -- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
 -- zemi.keymap.set("<leader>m", "zemi.model.pick", { desc = "switch model" })
 

@@ -298,7 +298,8 @@ function zemi.config.reload() end
 zemi.keymap = {}
 
 --- Bind a key or a key sequence. The right-hand side is a function, a
---- command name, or a host action ("zemi.ui.scroll.up"), which may take an
+--- command name with or without its slash ("review", "/review", so what
+--- `get` hands back rebinds as is), or a host action ("zemi.ui.scroll.up"), which may take an
 --- argument after a space ("zemi.ui.scroll.up sidebar" scrolls the layout
 --- node with that id; without one, the stage's scrolled region). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
@@ -310,7 +311,9 @@ zemi.keymap = {}
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
 --- the keys its bindings come first, then the global ones, unless a more
 --- trusted global binding holds the key. It may not take a key a more
---- trusted global binding holds.
+--- trusted global binding holds. The composer's own editing keys (ctrl+a,
+--- ctrl+e, ctrl+k, ctrl+u, ctrl+w, home, end) bind like any other, and the
+--- composer then no longer gets them.
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text> (these user config only),
@@ -350,7 +353,7 @@ function zemi.keymap.list() end
 
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
----@field nargs? ""|"?"|"*"|"+" How many arguments the command takes; "" takes none.
+---@field nargs? ""|"?"|"*"|"+" Arguments the command takes: "" none (the default), "?" at most one, "+" one or more, "*" any. A line with the wrong count is refused and the handler never runs.
 ---@field complete? fun(lead: string, line: string): string[]
 
 ---@class zemi.Command
@@ -745,8 +748,8 @@ function zemi.event.stats() end
 ---@field section? string a change of section starts with a header row
 ---@field detail? string body of the detail view
 ---@field actions? zemi.OverlayAction[] listed under the detail
----@field fill? string put in the composer
----@field run? string a command line such as "mcp restart gitlab"
+---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
+---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
 
 --- A detail view action; with neither fill nor run it goes back.
@@ -764,7 +767,7 @@ function zemi.event.stats() end
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
----@field on_select? fun(item: any)
+---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_close? fun()
 ---@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Both run off the key path; an error keeps the old items.
 
@@ -1272,7 +1275,7 @@ function zemi.log.error(message, fields) end
 ---@field id string
 ---@field kind string One of `zemi.provider.kind`.
 ---@field api_key? string Read it with `zemi.env.get`; never write a key into a file.
----@field base_url? string Required for openai_compat.
+---@field base_url? string Required for openai_compat; overrides the default endpoint for the other kinds.
 ---@field models zemi.ModelSpec[]
 
 ---@class zemi.ProviderKind
@@ -1823,7 +1826,9 @@ zemi.timer = {}
 ---@return zemi.TimerHandle
 function zemi.timer.after(ms, fn) end
 
---- Run fn every ms until stopped.
+--- Run fn every ms until stopped. Unlike `after`, it does not redraw when
+--- fn returns, so a widget that changes on its own (a clock) calls
+--- `zemi.ui.redraw`.
 ---@param ms integer
 ---@param fn fun()
 ---@return zemi.TimerHandle
