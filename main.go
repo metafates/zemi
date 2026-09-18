@@ -175,7 +175,7 @@ func run(args []string) int {
 			return
 		}
 		if opts.prompt != "" {
-			if err := host.AgentSend(opts.prompt); err != nil {
+			if err := sendPrompt(host, opts.prompt); err != nil {
 				app.Notify("error", "Could not send the prompt", err.Error())
 			}
 		}

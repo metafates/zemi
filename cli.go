@@ -26,6 +26,7 @@ Usage:
   zemi                          open the TUI
   zemi "fix the failing test"   open the TUI and send a first message
   zemi -p "explain main.go"     answer on stdout and exit
+  zemi -p "/review HEAD~1"      a prompt naming a command runs it
   git diff | zemi -p "review"   piped stdin is appended to the prompt
   zemi -- why does ls -la fail  flags are read anywhere; after -- it is all prompt
 
@@ -236,6 +237,20 @@ func failPrint(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	return 1
 }
 
+// sendPrompt starts a turn from a command-line prompt. A prompt naming a
+// registered command runs it, as the composer would, so /review, /workflow
+// and the markdown commands reach a script or a git hook; anything else is
+// a message for the model.
+func sendPrompt(h *hostapi.Host, prompt string) error {
+	if rest, ok := strings.CutPrefix(prompt, "/"); ok {
+		name, args, _ := strings.Cut(rest, " ")
+		if h.Commands.Lookup(name) != nil {
+			return h.RunCommand(context.Background(), name, strings.TrimLeft(args, " "))
+		}
+	}
+	return h.AgentSend(prompt)
+}
+
 // printTurn runs one turn without the TUI: the reply goes to stdout (or a
 // JSON report with --output json), a failure to stderr with status 1, an
 // interrupt ends with 130.
@@ -244,7 +259,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 	defer stop()
 	start := len(h.Session().Transcript)
 	began, before := time.Now(), h.AgentStream()
-	if err := h.AgentSend(prompt); err != nil {
+	if err := sendPrompt(h, prompt); err != nil {
 		return failPrint(err, jsonOut, stdout, stderr)
 	}
 	interrupted := false

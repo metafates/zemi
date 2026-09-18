@@ -51,7 +51,9 @@ instructions, language servers or settled builds.
 
 ## CLI (cli.go)
 
-`zemi` opens the TUI; a prompt argument is sent as the first message. Flags: `-p`/`--print`
+`zemi` opens the TUI; a prompt argument is sent as the first message, or run as a command
+when it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a hook).
+Flags: `-p`/`--print`
 (answer on stdout and exit, with `--output text|json`), `-c` (continue the latest session),
 `-r <id>`, `-m <provider/model>`, `--mode manual|plan|auto|yolo`, `--trust[=false]`, `--health`, `-v`. Piped
 stdin is appended to the prompt, and is a usage error without `-p` (the TUI needs the

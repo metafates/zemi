@@ -274,3 +274,26 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
 	return &trustGate{h: h, dirs: dirs}, h, r
 }
+
+// TestSendPromptRunsCommands: a prompt on the command line that names a
+// command runs it, the way the composer would; anything else is a message.
+func TestSendPromptRunsCommands(t *testing.T) {
+	_, h, _ := newTrustGate(t)
+	got := ""
+	if _, err := h.Commands.Add(&hostapi.Command{
+		Name: "note", NArgs: "*", Desc: "d", Origin: lua.OriginUser,
+		GoFn: func(_ *hostapi.Host, args string) error { got = args; return nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sendPrompt(h, "/note the args"); err != nil || got != "the args" {
+		t.Fatalf("command prompt: ran with %q, %v", got, err)
+	}
+	// no such command: the text is the model's, and this host has no model
+	if err := sendPrompt(h, "/notes please"); err == nil {
+		t.Fatal("an unknown command must reach the agent")
+	}
+	if got != "the args" {
+		t.Fatalf("an unknown command ran one: %q", got)
+	}
+}

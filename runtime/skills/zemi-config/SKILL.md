@@ -183,6 +183,8 @@ guessing. Common keys:
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
 `--mode manual|plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
 `--health` prints the checks `/health` shows and exits 1 when any of them errors.
+A prompt starting with a registered command runs it instead of reaching the model, so
+`zemi -p "/review HEAD~1"` or a `commands/*.md` name works from a script or a git hook.
 `zemi --help` has the full list. With `-p` nobody answers asks, so they are denied unless
 the mode is auto or yolo; a run that had calls denied says so on stderr.
 
