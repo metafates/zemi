@@ -709,7 +709,7 @@ func (h *Host) WorkflowCommandsStep() lua.BootStep {
 				return err
 			}
 			_, err = h.Commands.Add(&Command{
-				Name: "review", NArgs: "?", Desc: "review your changes with several agents",
+				Name: "review", NArgs: "?", Desc: "review your changes, a base ref or a commit, with several agents",
 				GoFn: func(h *Host, args string) error {
 					return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
 				},

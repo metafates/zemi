@@ -194,3 +194,28 @@ func TestAgentsOverlayConfigDir(t *testing.T) {
 		t.Fatalf("agents overlay = %v %+v", err, ui.opened)
 	}
 }
+
+// TestReviewTargetsACommit: a sha reviews what that commit introduced. Its
+// merge base with HEAD is the commit itself, so reading one as a base ref
+// would review everything since it plus the working tree.
+func TestReviewTargetsACommit(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	echoAgents(h)
+	src, err := h.workflowSource("review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ args, want string }{
+		{"abc1234", "git show abc1234"},
+		{"main", "git diff --merge-base main"},
+		{"", "git diff HEAD"},
+	} {
+		res, err := h.runWorkflow(context.Background(), src, c.args, nil)
+		if err != nil {
+			t.Fatalf("%q: %v", c.args, err)
+		}
+		if !strings.Contains(res.Value, c.want) {
+			t.Errorf("/review %q collected with %q", c.args, res.Value)
+		}
+	}
+}
