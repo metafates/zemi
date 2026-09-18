@@ -979,12 +979,12 @@ function zemi.ui.input(opts, on_confirm) end
 ---@field title? string window title ("Edit <title>") and working-row label (default: the file name)
 
 --- Open a project file in the user's editor (editor.command, $VISUAL, $EDITOR)
---- in a focused float over zemi, and call on_done when it exits: on_done("window"),
---- or on_done(nil, err) when it failed or exited non-zero.
+--- in a focused float over zemi, and call on_done when it exits: on_done(),
+--- or on_done(err) when it failed or exited non-zero.
 --- Never blocks the interpreter. Raises for a path outside the project.
 ---@param path string
 ---@param opts? zemi.EditOpts
----@param on_done fun(mode: string|nil, err: string|nil)
+---@param on_done fun(err: string|nil)
 function zemi.ui.edit(path, opts, on_done) end
 
 --- Change one highlight group on top of the active theme, and any theme

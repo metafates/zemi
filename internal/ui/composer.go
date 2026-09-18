@@ -499,7 +499,7 @@ func (a *App) openEditor() tea.Cmd {
 	go func() {
 		defer os.Remove(path)
 		var msg editorMsg
-		if _, msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"}); msg.err == nil {
+		if msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"}); msg.err == nil {
 			b, err := os.ReadFile(path)
 			msg.text, msg.err = strings.TrimRight(string(b), "\n"), err
 		}

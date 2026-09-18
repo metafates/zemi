@@ -317,7 +317,7 @@ func TestGoldenAgentStream(t *testing.T) {
 		CtxWindow:  200000,
 	})
 	// A stream event lands through the hook path, bumping the frame.
-	app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "..."})
+	app.AgentEvent(hostapi.AgentEvent{Kind: "text"})
 
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
@@ -830,7 +830,7 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 func TestStreamEventsCoalesce(t *testing.T) {
 	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: logging.New(""), focused: true}
 	for range 3 * hookQueueSize {
-		app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "x"})
+		app.AgentEvent(hostapi.AgentEvent{Kind: "text"})
 	}
 	if n := len(app.testQueue); n != 1 {
 		t.Fatalf("queued %d stream events, want 1", n)
@@ -841,7 +841,7 @@ func TestStreamEventsCoalesce(t *testing.T) {
 	}
 	for app.Pump() {
 	}
-	app.AgentEvent(hostapi.AgentEvent{Kind: "text", Text: "y"})
+	app.AgentEvent(hostapi.AgentEvent{Kind: "text"})
 	if n := len(app.testQueue); n != 1 {
 		t.Fatalf("a handled event must let the next one queue, got %d", n)
 	}

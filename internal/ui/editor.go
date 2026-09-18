@@ -43,7 +43,7 @@ func editorScript(editor string, line int) string {
 // (editor.command, $VISUAL, $EDITOR, vi) and blocks until it exits. A
 // cancelled ctx returns and leaves the editor running, so unsaved work stays
 // the user's. Never call it on the UI goroutine.
-func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, error) {
+func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	editor := cmp.Or(strings.TrimSpace(a.cfgStr("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
 	w, err := a.host.OpenWindow(win.Spec{
 		Cmd: editorScript(editor, req.Line), Args: []string{req.Path}, Kind: win.KindFloat,
@@ -52,7 +52,7 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 		Env: os.Environ(),
 	})
 	if err != nil {
-		return "window", err
+		return err
 	}
 	// NOTE: floatBox caps the size to the frame every frame, so an oversized
 	// layout keeps the editor as large as the frame through resizes
@@ -72,11 +72,11 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) (string, er
 	if err := w.Wait(ctx); err != nil {
 		a.await(func() tea.Cmd { a.editing = ""; return nil })
 		go func() { <-w.Done(); a.do(closeWin) }()
-		return "window", err
+		return err
 	}
 	a.await(func() tea.Cmd { a.editing = ""; closeWin(); return nil })
 	if code := w.ExitCode(); code != 0 {
-		return "window", fmt.Errorf("the editor exited with code %d", code)
+		return fmt.Errorf("the editor exited with code %d", code)
 	}
-	return "window", nil
+	return nil
 }

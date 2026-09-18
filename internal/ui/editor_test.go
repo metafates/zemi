@@ -51,7 +51,7 @@ func TestEditFileWindow(t *testing.T) {
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := a.EditFile(ctx, hostapi.EditRequest{Path: path, Title: "f.txt"})
+			err := a.EditFile(ctx, hostapi.EditRequest{Path: path, Title: "f.txt"})
 			done <- err
 		}()
 		var err error

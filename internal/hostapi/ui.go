@@ -245,7 +245,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	// edit(path, opts, on_done): the user's editor on a project file, then
-	// on_done(mode) once it closes, or on_done(nil, err). Never blocks the
+	// on_done() once it closes, or on_done(err). Never blocks the
 	// interpreter. The gate is a read: the writing is the user's own.
 	tb.RawSetString("edit", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.edit")
@@ -269,15 +269,14 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		ui := h.hooks()
 		h.GoSafe("ui.edit", func() {
 			if ui == nil {
-				h.callLuaAsync(at, cb, nil, "no UI in this run")
+				h.callLuaAsync(at, cb, "no UI in this run")
 				return
 			}
-			mode, err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title})
-			if err != nil {
-				h.callLuaAsync(at, cb, nil, err.Error())
+			if err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title}); err != nil {
+				h.callLuaAsync(at, cb, err.Error())
 				return
 			}
-			h.callLuaAsync(at, cb, mode)
+			h.callLuaAsync(at, cb)
 		})
 		return 0
 	}))

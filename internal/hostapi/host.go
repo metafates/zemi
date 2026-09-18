@@ -59,10 +59,9 @@ type UIHooks interface {
 	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
 	// "history_next", "paste" or "edit".
 	ComposerEdit(op, text string, cursor int)
-	// EditFile opens a file in the user's editor and blocks until it exits;
-	// it returns where the editor ran ("window"). Never call it on the UI
-	// goroutine.
-	EditFile(ctx context.Context, req EditRequest) (mode string, err error)
+	// EditFile opens a file in the user's editor and blocks until it exits.
+	// Never call it on the UI goroutine.
+	EditFile(ctx context.Context, req EditRequest) error
 	// FocusWindow gives the user's keys to a window (0 = back to zemi).
 	FocusWindow(id int)
 	// Copy puts text on the clipboard and says so.
@@ -1266,7 +1265,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.37.0"))
+	api.RawSetString("version", glua.LString("0.38.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

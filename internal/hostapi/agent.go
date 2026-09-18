@@ -38,10 +38,8 @@ type Profile struct {
 // AgentEvent is one streaming update delivered to the UI (hostapi stays
 // UI-agnostic; internal/ui implements the display).
 type AgentEvent struct {
-	Kind   string // turn_start, text, reasoning, tool_start, tool_end, tool_progress, retry, turn_done
-	Text   string
-	CallID string
-	Err    string
+	Kind string // turn_start, text, reasoning, tool_start, tool_end, tool_progress, retry, turn_done
+	Err  string
 }
 
 // PermRequest is one interactive permission ask for the overlay.
@@ -588,7 +586,7 @@ func (s *streamAdapter) TextDelta(text string) {
 	ag.endThinking()
 	ag.textBuf += text
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "text", Text: text})
+	s.h.agentEvent(AgentEvent{Kind: "text"})
 	// NOTE: one queue round trip per delta; fine for the few configs that
 	// listen, coalesce here if one ever streams into something slow.
 	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
@@ -625,7 +623,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag.beginThinking()
 	ag.reasonBuf += text
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "reasoning", Text: text})
+	s.h.agentEvent(AgentEvent{Kind: "reasoning"})
 	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
 }
 
@@ -655,7 +653,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	}
-	s.h.agentEvent(AgentEvent{Kind: "tool_start", CallID: id})
+	s.h.agentEvent(AgentEvent{Kind: "tool_start"})
 }
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
@@ -672,7 +670,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 		}
 	}
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "tool_end", CallID: id})
+	s.h.agentEvent(AgentEvent{Kind: "tool_end"})
 	s.h.recordToolCall(s.h.AgentSessionID(), name, ok)
 }
 
@@ -1552,7 +1550,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		p.Question = ui.AskQuestion
 		p.ApprovePlan = h.approvePlan
 		p.Edit = func(ctx context.Context, path string, line int, title string) error {
-			_, err := ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
+			err := ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
 			return err
 		}
 	}

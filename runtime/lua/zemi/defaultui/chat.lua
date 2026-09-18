@@ -32,7 +32,7 @@ zemi.ui.widget.register({
       -- a diff row takes a double click: a single one may start a selection
       if line > 0 and (ev.clicks or 1) < 2 then return end
       local function failed(err) zemi.notify.error(tostring(err), "Could not open " .. path) end
-      local ok, err = pcall(zemi.ui.edit, path, { line = line }, function(_, e)
+      local ok, err = pcall(zemi.ui.edit, path, { line = line }, function(e)
         if e then failed(e) end
       end)
       if not ok then failed(err) end

@@ -349,7 +349,7 @@ func (h *Host) editMemory(ui UIHooks, id string) {
 			err = cerr
 		}
 		if err == nil {
-			_, err = ui.EditFile(context.Background(), EditRequest{Path: f.Name(), Title: "the memory"})
+			err = ui.EditFile(context.Background(), EditRequest{Path: f.Name(), Title: "the memory"})
 		}
 		if err != nil {
 			return false, err

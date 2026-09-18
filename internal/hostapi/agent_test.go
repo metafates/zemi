@@ -539,11 +539,11 @@ func (f *fakeUI) Scroll(kind, id string)               {}
 func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }
 func (f *fakeUI) AgentEvent(ev AgentEvent)             {}
 func (f *fakeUI) ComposerEdit(string, string, int)     {}
-func (f *fakeUI) EditFile(_ context.Context, req EditRequest) (string, error) {
+func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {
 		f.edit(req.Path)
 	}
-	return "window", nil
+	return nil
 }
 func (f *fakeUI) FocusWindow(int)  {}
 func (f *fakeUI) Copy(text string) { f.copied = text }
