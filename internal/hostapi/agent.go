@@ -1625,6 +1625,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		EditMemory:   func(id, text string) (string, error) { return h.modelEditMemory(h.AgentSessionID(), id, text) },
 		Scratch:      h.inScratch,
 		Protected:    func(p string) bool { return !h.inScratch(p) && h.protectedWrite(p) },
+		Secret:       h.secretPath,
 		ScratchDir:   h.ScratchDir,
 		SearchURL:    func() string { return h.setStr("web.search_url") },
 		Seen:         h.readLog(),

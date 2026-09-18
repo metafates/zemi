@@ -991,6 +991,34 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 	}
 }
 
+// TestAlwaysRuleSkipsSecrets: "allow reads anywhere in the project" is a
+// directory glob, and the label does not say "including every .env and
+// *.pem in it", so those still ask. A rule the user wrote does not.
+func TestAlwaysRuleSkipsSecrets(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	proj := perm.RealPath(h.Dirs.ProjectDir)
+	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
+	pipe := h.PipelineFor()
+	for _, c := range []struct {
+		path string
+		want perm.Decision
+	}{
+		{filepath.Join(proj, "main.go"), perm.Allow},
+		{filepath.Join(proj, ".env"), perm.Deny},
+		{filepath.Join(proj, "deploy", "prod.pem"), perm.Deny},
+	} {
+		if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: c.path}); v.Decision != c.want {
+			t.Errorf("%s: %s (%s), want %s", c.path, v.Decision, v.Reason, c.want)
+		}
+	}
+	// the user's own rule means what it says
+	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, ".env"), Decision: perm.Allow})
+	if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Allow {
+		t.Errorf("a user rule for .env: %s (%s)", v.Decision, v.Reason)
+	}
+}
+
 // TestHeadlessToolsetDropsPrompts: a print run has nobody to answer a
 // question, approve a plan, open an editor or watch a window, so those
 // schemas never ship with it, the prompt stops telling the model to use

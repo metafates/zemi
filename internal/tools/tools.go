@@ -176,6 +176,10 @@ type Pipeline struct {
 	// allow for it still asks, since broad "always" globs cannot exclude
 	// every such path; nil = none.
 	Protected func(path string) bool
+	// Secret reports a secret-shaped path (.env, *.pem, id_rsa): an
+	// "always" answer allows a whole directory, and its label does not say
+	// "including every secret in it"; nil = none.
+	Secret func(path string) bool
 	// Guard runs before a sandboxed command starts; the func it returns runs
 	// once the command exited, and its text ends the result. nil = none.
 	Guard func(sandbox.Policy) func() string
@@ -190,6 +194,9 @@ type LSPSession struct {
 	Open func(path string) error
 }
 
+// PathSubject reports a subject whose argument is a file path.
+func PathSubject(subject string) bool { return subject == "fs.read" || subject == "fs.write" }
+
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
@@ -197,13 +204,18 @@ func (p *Pipeline) Check(req Request) Verdict {
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
 		return Verdict{perm.Deny, "plan mode is on: no file changes (tab switches mode)", "mode:plan"}
 	}
-	loosen := func(v Verdict) Verdict {
+	// rule is the one that allowed the request, nil when a default did
+	loosen := func(v Verdict, rule *perm.Rule) Verdict {
 		switch {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
 		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg):
 			return p.resolveAsk(req, "this changes .git, .zemi or zemi's own files")
+		// an "always" answer allows the file's whole directory; a rule the
+		// user wrote in init.lua says what it means and stays authoritative
+		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && p.Secret != nil && p.Secret(req.Arg):
+			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// rule-allowed commands run unconfined, so only readers skip the ask
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
@@ -219,7 +231,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	switch o.Decision {
 	case perm.Allow:
-		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)})
+		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)}, o.Rule)
 	case perm.Deny:
 		return Verdict{perm.Deny, o.Reason, decidedBy(o)}
 	}

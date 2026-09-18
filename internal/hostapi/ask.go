@@ -22,7 +22,7 @@ import (
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string, string) {
 		askedFor := req.Reason
-		if isPathSubject(req.Subject) {
+		if tools.PathSubject(req.Subject) {
 			// judged and shown where it lands: a symlink a sandboxed command
 			// planted must not dress a write to zemi's config as a project file
 			req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
@@ -146,12 +146,10 @@ func (h *Host) askHook() tools.Asker {
 	}
 }
 
-func isPathSubject(subject string) bool { return subject == "fs.read" || subject == "fs.write" }
-
 // shownArg is the request's argument as the user and the screener read it: a
 // path relative to the project when inside it.
 func (h *Host) shownArg(req tools.Request) string {
-	if !isPathSubject(req.Subject) {
+	if !tools.PathSubject(req.Subject) {
 		return req.Arg
 	}
 	if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), req.Arg); ok {

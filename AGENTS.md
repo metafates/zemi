@@ -301,7 +301,10 @@ subcommands (`git`, `go`, `npm`, ...; `subcommandPrograms`) and the exact segmen
 `fs.read`/`fs.write` the file's resolved directory with `/*` (the `fs.write` rule has a
 `not_match` of `dir*/.git*`, so `.git`, `.gitattributes` and `.gitmodules` still ask; an
 approved `.gitignore` or `.github/` file also gets its own exact rule), and `net.*` both
-`scheme://host` and `scheme://host/*`. A gate-forced ask (heredoc, env assignment) and a
+`scheme://host` and `scheme://host/*`. A directory glob cannot exclude the secret shapes
+either, so `Pipeline.Check`'s loosen sends an `fs.read` or `fs.write` a `model`-principal
+rule allowed back to the ask when `Secret` (`h.secretPath`) matches it; a rule from user
+config has no principal and stays authoritative. A gate-forced ask (heredoc, env assignment) and a
 request whose pattern text holds a glob wildcard (`*`, `?`) offer no always option at all.
 `/permissions` (`OpenPermissions`, permmode.go) lists the mode and every rule in force,
 grouped deny > ask > allow; a `model`-principal rule is one an "always" answer wrote, so its
