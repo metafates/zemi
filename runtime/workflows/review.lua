@@ -42,6 +42,8 @@ for _, lens in ipairs(lenses) do
     return agent(
       "Review these changes for " .. lens[1] .. " problems (" .. lens[2] .. "). "
         .. "Read the changed code and what it calls before judging. "
+        .. "Report only problems these changes introduced; leave pre-existing ones alone, "
+        .. "and do not ask for more rigor than the rest of the file has. "
         .. "Report at most 5 findings, most severe first, each as: file:line - problem - why it matters. "
         .. "Report nothing you cannot point to in the code; if nothing is wrong, say so.\n\n"
         .. changes,
@@ -62,7 +64,8 @@ end
 
 phase("verify")
 return agent(
-  "Verify these review findings. For each one read the cited code and keep it only if the problem is real. "
+  "Verify these review findings. For each one read the cited code and keep it only if the problem is real "
+    .. "and these changes introduced it: reject a finding whose problem is also in code the changes did not touch. "
     .. "Answer with the confirmed findings, most severe first, as: file:line - problem - suggested fix. "
     .. "Then list rejected findings, one line each with the reason.\n\n"
     .. "Changes:\n" .. changes .. "\n\nFindings:\n" .. table.concat(findings, "\n\n"),
