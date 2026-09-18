@@ -135,6 +135,11 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Every string here is Lua's (or a model's, through a Go builder):
 	// sanitize like widget text.
 	o.Title, o.Body, o.Empty = sanitize.Line(o.Title), sanitize.String(o.Body), sanitize.String(o.Empty)
+	for _, row := range o.BodySegs { // drawn in Body's place, so it needs Body's scrubbing
+		for i := range row {
+			row[i].Text = sanitize.String(row[i].Text)
+		}
+	}
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
