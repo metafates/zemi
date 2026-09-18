@@ -143,14 +143,19 @@ func (s *Store) SetHost(path string, val any) error {
 	return nil
 }
 
-// AddWatch registers a change observer and returns its handle id.
-func (s *Store) AddWatch(w Watcher) int {
+// AddWatch registers a change observer and returns its handle id. A path
+// outside the schema is refused: watchers match by exact path, so a typo
+// would sit there and never fire.
+func (s *Store) AddWatch(w Watcher) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.schema[w.Path]; !ok {
+		return 0, &ErrUnknownKey{Path: w.Path}
+	}
 	s.watchSeq++
 	w.ID = s.watchSeq
 	s.watchers = append(s.watchers, w)
-	return w.ID
+	return w.ID, nil
 }
 
 // RemoveWatch drops one watcher by id; returns false if it was gone.

@@ -465,6 +465,14 @@ in which milestone.
   timer, session, window) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
+- **Never silently accept**: a call that can never do what it says raises
+  where it is made, not three turns later in `/errors`. A color outside the
+  palette, a rule subject outside the subject namespaces, a printable key
+  with no `focus`, a watch on a path outside the schema and a tool spec the
+  provider would reject are all misuse, not runtime failure. Where the
+  wrong shape is a decision zemi must take anyway, it takes the closed one:
+  a `tool.pre` or `permission.request` handler returning something that is
+  not a `zemi.Veto` denies.
 - **Frozen namespaces**: all `zemi.*` tables are read-only; the API only
   grows through versioned Go changes, visible in `zemi.api.version`.
 
@@ -715,11 +723,8 @@ digest, skills index, project context ship as built-in sections).
 zemi.tool.register({
   name = "figlet",
   description = "Render text as ASCII art",
-  input = {                                  -- JSON Schema
-    type = "object",
-    properties = { text = { type = "string" } },
-    required = { "text" },
-  },
+  input = { text = { type = "string" } },     -- the parameters, flat
+  required = { "text" },
   parallel = false,
   timeout_ms = 5000,
   -- execute returns a string, { output = string }, or a table sent as JSON;

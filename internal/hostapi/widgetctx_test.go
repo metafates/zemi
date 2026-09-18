@@ -65,3 +65,47 @@ func TestWidgetCtxLazy(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.command.run("check"))`)
 }
+
+// TestConvertSegments: the two returns that unambiguously mean one line
+// are wrapped, and the ambiguous one names both spellings (DESIGN §6.0).
+func TestConvertSegments(t *testing.T) {
+	seg := func(text string) map[string]any { return map[string]any{"text": text} }
+	for _, c := range []struct {
+		name string
+		in   any
+		want string // rendered text per line, joined by "|"; "!" prefixes an expected error
+	}{
+		{"lines", []any{[]any{"a"}, []any{"b"}}, "a|b"},
+		{"bare string", "a", "a"},
+		{"bare line", []any{seg("a"), seg("b")}, "ab"},
+		{"one string", []any{"a"}, "a"},
+		{"empty table", map[string]any{}, ""},
+		{"strings", []any{"a", "b"}, "!list of strings"},
+		{"single segment", seg("a"), "!widget render must return a list of lines, got a single segment"},
+		{"number line", []any{42.0}, "!widget line must be a list of segments, got a number"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rows, err := convertSegments(c.in, "w")
+			if want, isErr := strings.CutPrefix(c.want, "!"); isErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("err = %v, want %q", err, want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var lines []string
+			for _, row := range rows {
+				var b strings.Builder
+				for _, s := range row {
+					b.WriteString(s.Text)
+				}
+				lines = append(lines, b.String())
+			}
+			if got := strings.Join(lines, "|"); got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}

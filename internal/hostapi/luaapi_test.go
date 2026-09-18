@@ -210,6 +210,12 @@ func TestHighlightOverride(t *testing.T) {
 		assert(not pcall(zemi.ui.hl, "X", { underline = "wavy" }), "an unknown underline kind raises")
 		assert(not pcall(zemi.ui.hl, "X", "blue") and not pcall(zemi.ui.hl, "X"), "a spec that is not a table raises")
 		assert(not pcall(zemi.ui.theme.register, "bogus", "nope"), "a theme that is not a table raises")
+		local ok, err = pcall(zemi.ui.hl, "X", { fg = "salmon" })
+		assert(not ok and tostring(err):find("palette key", 1, true), "err=" .. tostring(err))
+		assert(not pcall(zemi.ui.hl, "X", { bg = "#gg0000" }), "a bad hex color raises")
+		assert(not pcall(zemi.ui.theme.register, "p", { palette = { accent = "salmon" } }), "a palette name as a color raises")
+		assert(not pcall(zemi.ui.theme.register, "q", { palette = { a = "#111111" }, hl = { T = { fg = "b" } } }),
+			"a theme group naming a color its palette lacks raises")
 		assert(zemi.ui.hl_get("X") == nil, "a refused spec sets nothing")
 	`)
 	theme := h.Themes.Get("t")

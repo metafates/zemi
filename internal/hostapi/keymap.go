@@ -69,8 +69,8 @@ func checkKey(key string) error {
 
 // keySeq normalizes a binding key: one key, or a space-separated sequence
 // ("ctrl+x ctrl+s"), where a leading "<leader>" expands to keymap.leader
-// ("<leader>gs" is leader, g, s). A global sequence cannot start with a
-// printable key: those belong to the composer.
+// ("<leader>gs" is leader, g, s). A global binding cannot start with a
+// printable key: those belong to the composer, so it would never fire.
 func (h *Host) keySeq(key string, focused bool) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
@@ -101,8 +101,8 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 			return "", err
 		}
 	}
-	if len(tokens) > 1 && len([]rune(tokens[0])) == 1 && !focused {
-		return "", fmt.Errorf("a key sequence must start with a non-printable key such as ctrl+g, not %q", tokens[0])
+	if len([]rune(tokens[0])) == 1 && !focused {
+		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: pass opts.focus to scope it to a node, or start with a non-printable key such as ctrl+g", tokens[0])
 	}
 	return strings.Join(tokens, " "), nil
 }

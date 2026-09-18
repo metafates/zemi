@@ -28,6 +28,10 @@ const (
 	Deny  Decision = "deny"
 )
 
+// SubjectPrefixes are the namespaces a subject lives in. A rule for
+// anything else can never fire, so zemi refuses it (DESIGN §9).
+var SubjectPrefixes = []string{"tool.", "fs.", "net.", "lua.", "mcp.", "memory."}
+
 // Rule is one permission rule. Pattern is a glob over the operation
 // argument (path, url, normalized command segment). NotMatch is an
 // optional runtime exclusion: an argument matching Pattern but also

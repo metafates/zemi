@@ -516,3 +516,15 @@ func (r *ThemeRegistry) Purge() {
 	r.themes, r.overrides = map[string]*Theme{}, nil
 	r.mu.Unlock()
 }
+
+// Palettes merges every registered theme's palette: a zemi.ui.hl override
+// outlives the theme that is active when it is set.
+func (r *ThemeRegistry) Palettes() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := map[string]string{}
+	for _, t := range r.themes {
+		maps.Copy(out, t.Palette)
+	}
+	return out
+}

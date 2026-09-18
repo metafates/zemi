@@ -140,27 +140,44 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if slices.Contains(h.builtinToolNames(), name) {
 			L.RaiseError("zemi.tool.register: %q is a builtin tool name", name)
 		}
-		schema := map[string]any{}
-		var required []string
-		if in, ok := spec.RawGetString("input").(*glua.LTable); ok {
-			v, err := lua.ToGo(in)
+		desc := rawString(spec, "description")
+		if desc == "" {
+			L.RaiseError("zemi.tool.register: description is required; the model picks the tool by it")
+		}
+		// input is the parameters themselves, flat; what reaches the provider
+		// is only ever this map (tools.SchemaProperties)
+		schema := map[string]any{"type": "object"}
+		required := rawStrings(spec, "required")
+		if v := spec.RawGetString("input"); v != glua.LNil {
+			props, err := lua.ToGo(v)
 			if err != nil {
 				L.RaiseError("zemi.tool.register: input: %v", err)
 			}
-			if m, ok := v.(map[string]any); ok {
-				schema = m
+			m, ok := props.(map[string]any)
+			if !ok {
+				L.RaiseError("zemi.tool.register: input must map a parameter name to its schema, got %s", luaShape(props))
 			}
-			required = rawStrings(in, "required")
-		}
-		if schema["type"] == nil {
-			schema["type"] = "object"
+			if _, wrapped := m["properties"]; wrapped {
+				L.RaiseError(`zemi.tool.register: input holds "properties"; write the parameters flat: input = { path = { type = "string" } }`)
+			}
+			if _, inside := m["required"]; inside {
+				L.RaiseError("zemi.tool.register: required is a field of the spec, beside input, not inside it")
+			}
+			for _, r := range required {
+				if _, ok := m[r]; !ok {
+					L.RaiseError("zemi.tool.register: required names %q, which input does not define", r)
+				}
+			}
+			schema["properties"] = m
+		} else if len(required) > 0 {
+			L.RaiseError("zemi.tool.register: required names parameters but there is no input")
 		}
 		timeout := 30 * time.Second
 		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
 			timeout = time.Duration(ms) * time.Millisecond
 		}
 		lt := &luaTool{
-			Name: name, Desc: rawString(spec, "description"),
+			Name: name, Desc: desc,
 			Schema: schema, Required: required,
 			Parallel: rawBool(spec, "parallel"),
 			Timeout:  timeout, Fn: fn,
@@ -387,11 +404,13 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 		h.Log.Error("tools", "tool.pre handler failed", map[string]any{"tool": tool, "error": err.Error()})
 		return "", "", nil
 	}
-	tb, ok := ret.(*glua.LTable)
-	if !ok {
-		return "", "", nil
+	tb, d, bad := vetoDecision(ret, "deny", "halt", "rewrite")
+	if bad != "" {
+		// a misspelled deny must not read as consent (DESIGN §6.2)
+		h.Log.Error("tools", "tool.pre handler returned a bad shape", map[string]any{"tool": tool, "error": bad})
+		return "deny", "tool.pre: " + bad, nil
 	}
-	switch d := rawString(tb, "decision"); d {
+	switch d {
 	case "deny", "halt":
 		return d, rawString(tb, "reason"), nil
 	case "rewrite":

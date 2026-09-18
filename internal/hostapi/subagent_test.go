@@ -210,7 +210,7 @@ func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
 	h, r := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.tool.register({ name = "weather", execute = function() return "sunny" end })`)
+	runUser(t, r, `zemi.tool.register({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 			if toolResult {

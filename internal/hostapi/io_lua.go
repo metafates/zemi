@@ -133,7 +133,11 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
 		})
-		L.RaiseError("%s %s: permission ask required", subject, arg)
+		// name the rule that settles it: a host-API call has no overlay, so
+		// "ask required" is the whole problem and none of the fix
+		L.RaiseError("%s %s: permission ask required; allow it in config with "+
+			`zemi.permission.rule{ subject = %q, pattern = %q, decision = "allow", match = %q }`,
+			subject, arg, subject, arg, arg)
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
@@ -890,7 +894,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			jh.stdin = stdin
 		}
 		if err := proc.Start(cmd); err != nil {
-			return nil, err
+			if strings.ContainsAny(cmdName, " \t") {
+				return nil, fmt.Errorf("zemi.job.start: %w (cmd is the program alone; the rest goes in args = { ... })", err)
+			}
+			return nil, fmt.Errorf("zemi.job.start: %w", err)
 		}
 		stopID := h.stops.add(func() { proc.Kill(cmd) })
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)

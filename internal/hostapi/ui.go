@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -86,15 +88,17 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if pal, ok := m["palette"].(map[string]any); ok {
 			for k, v := range pal {
-				if s, ok := v.(string); ok {
-					t.Palette[k] = s
+				s, _ := v.(string)
+				if !isHexColor(s) {
+					L.RaiseError("zemi.ui.theme.register: palette %s = %q is not #rrggbb; a palette holds colors, not names", k, s)
 				}
+				t.Palette[k] = s
 			}
 		}
 		if hl, ok := m["hl"].(map[string]any); ok {
 			for k, v := range hl {
 				if spec, ok := v.(map[string]any); ok {
-					t.HL[k] = hlSpec(L, "zemi.ui.theme.register", spec)
+					t.HL[k] = hlSpec(L, "zemi.ui.theme.register", spec, t.Palette)
 				}
 			}
 		}
@@ -202,7 +206,13 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.ui.select: %v", err)
 		}
-		list, _ := items.([]any)
+		list, ok := items.([]any)
+		if m, empty := items.(map[string]any); empty && len(m) == 0 {
+			ok = true // Lua's {} marshals as an empty map: no items
+		}
+		if !ok {
+			L.RaiseError("zemi.ui.select: items must be a list; the order is select(items, opts, on_choice)")
+		}
 		o := Overlay{
 			ID:       fmt.Sprintf("select:%d", h.selectSeq.Add(1)),
 			Title:    rawString(opts, "prompt"),
@@ -325,7 +335,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		// an override sits above every theme, the user's own included
 		h.refuseBelowUser(L, "ui.hl")
 		group := L.CheckString(1)
-		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", tableArg(L, 2, "zemi.ui.hl")))
+		// an override outlives the theme active when it is set, so any
+		// registered theme's palette may name the color
+		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", tableArg(L, 2, "zemi.ui.hl"), h.Themes.Palettes()))
 		h.refresh()
 		return 0
 	}))
@@ -447,13 +459,43 @@ func tableArg(L *glua.LState, n int, where string) map[string]any {
 	return m
 }
 
-// hlSpec reads a group table; misuse raises (DESIGN §6.0).
-func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
+// isHexColor reports whether ref is #rgb or #rrggbb, the only color
+// literal a theme understands.
+func isHexColor(ref string) bool {
+	s, ok := strings.CutPrefix(ref, "#")
+	if !ok || (len(s) != 3 && len(s) != 6) {
+		return false
+	}
+	_, err := strconv.ParseUint(s, 16, 32)
+	return err == nil
+}
+
+// checkColor refuses a color that can never resolve. A name outside the
+// palette used to draw as nothing, with no error anywhere, and a CSS color
+// name is the first thing anyone writes (DESIGN §6.0).
+func checkColor(L *glua.LState, where, field, ref string, palette map[string]string) {
+	switch {
+	case ref == "" || ref == "NONE" || palette[ref] != "":
+	case strings.HasPrefix(ref, "#") && isHexColor(ref):
+	case strings.HasPrefix(ref, "#"):
+		L.RaiseError("%s: %s %q is not a hex color; write #rrggbb", where, field, ref)
+	default:
+		L.RaiseError("%s: %s %q is neither #rrggbb nor a palette key (%s)",
+			where, field, ref, strings.Join(slices.Sorted(maps.Keys(palette)), ", "))
+	}
+}
+
+// hlSpec reads a group table; misuse raises (DESIGN §6.0). palette is what
+// its colors may name.
+func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]string) HLSpec {
 	flag := func(key string) *bool {
 		if b, ok := m[key].(bool); ok {
 			return &b
 		}
 		return nil
+	}
+	for _, f := range []string{"fg", "bg", "sp"} {
+		checkColor(L, where, f, strField(m, f), palette)
 	}
 	spec := HLSpec{
 		Link: strField(m, "link"),

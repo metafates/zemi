@@ -242,6 +242,7 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 			return { { text = s, hl = "Title" }, { text = "!" } }
 		end })
 		assert(not pcall(zemi.ui.overlay.open, { id = "t", anchor = "top" }), "an unknown anchor must raise")
+		assert(not pcall(zemi.ui.select, { prompt = "p" }, {}, function() end), "select with the args swapped must raise")
 	`)
 	if s := ui.opened[3]; s.Anchor != "bottom" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
 		t.Fatalf("segment overlay: %+v", s)
@@ -311,9 +312,12 @@ func TestKeymapFromLua(t *testing.T) {
 		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp" }) do
 			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
 		end
-		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "+", "esc" }) do
+		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "esc" }) do
 			zemi.keymap.set(good, function() end)
 		end
+		local ok2, err2 = pcall(zemi.keymap.set, "+", function() end)
+		assert(not ok2 and tostring(err2):find("printable key", 1, true), "err=" .. tostring(err2))
+		zemi.keymap.set("+", function() end, { focus = "sidebar" })
 	`)
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
@@ -481,6 +485,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 			zemi.config.set("ui.theme", "watched")
 		end)
 		zemi.config.set("ui.completion.files", false)
+		assert(not pcall(zemi.config.watch, "agent.mdoel", function() end), "a watch on an unknown key must raise")
 	`)
 	if v, ok := h.Settings.Get("ui.theme"); !ok || v != "watched" {
 		t.Fatalf("watch callback side effect missing: ui.theme = %v, want watched", v)

@@ -1586,8 +1586,9 @@ function zemi.permission.mode.list() end
 
 ---@class zemi.ToolSpec
 ---@field name string
----@field description string What the model reads to decide when to call it.
----@field input? table A JSON Schema object with `type`, `properties` and `required`.
+---@field description string What the model reads to decide when to call it. Required.
+---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
+---@field required? string[] Which of `input`'s parameters the model must send.
 ---@field execute fun(args: table, tool: { name: string, origin: zemi.Origin }): any A string, a table whose `output` is the string, or anything else sent as JSON.
 ---@field timeout_ms? integer 30000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.

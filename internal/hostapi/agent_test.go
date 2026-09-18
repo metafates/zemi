@@ -101,6 +101,10 @@ func TestPermissionRuleValidation(t *testing.T) {
 		not_match = "git push*", match = "git status",
 	})`, "needs both examples")
 
+	runExpectErr(t, r, `zemi.permission.rule({
+		subject = "bash", pattern = "git status", decision = "allow", match = "git status",
+	})`, "starts with none of")
+
 	runUser(t, r, `zemi.permission.rule({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git status",
@@ -256,22 +260,35 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	}
 }
 
-// TestToolRegisterValidation covers zemi.tool.register input checks and
-// the builtin-name shadowing ban (DESIGN §6.4).
+// TestToolRegisterValidation covers zemi.tool.register: a spec that could
+// never reach the model raises instead of registering (DESIGN §6.0), and
+// the builtin-name shadowing ban holds (DESIGN §6.4).
 func TestToolRegisterValidation(t *testing.T) {
 	_, r := newTestHost(t)
 
-	runExpectErr(t, r, `zemi.tool.register({ name = "x" })`, "execute callback is required")
-	for _, name := range []string{"bash", "fetch", "agent", "window"} {
-		runExpectErr(t, r, `zemi.tool.register({ name = "`+name+`", execute = function() end })`, "builtin tool name")
+	for _, c := range []struct{ src, want string }{
+		{`{ name = "x" }`, "execute callback is required"},
+		{`{ name = "bash", execute = function() end }`, "builtin tool name"},
+		{`{ name = "window", execute = function() end }`, "builtin tool name"},
+		{`{ name = "my tool", execute = function() end }`, "identifier"},
+		{`{ name = "x", execute = function() end }`, "description is required"},
+		{`{ name = "x", description = "d", execute = function() end,
+			input = { type = "object", properties = { city = { type = "string" } } } }`, `input holds "properties"`},
+		{`{ name = "x", description = "d", execute = function() end,
+			input = { city = { type = "string" }, required = { "city" } } }`, "beside input, not inside it"},
+		{`{ name = "x", description = "d", execute = function() end,
+			input = { city = { type = "string" } }, required = { "town" } }`, `required names "town"`},
+		{`{ name = "x", description = "d", execute = function() end, required = { "city" } }`, "there is no input"},
+	} {
+		runExpectErr(t, r, `zemi.tool.register(`+c.src+`)`, c.want)
 	}
-	runExpectErr(t, r, `zemi.tool.register({ name = "my tool", execute = function() end })`, "identifier")
 
 	runUser(t, r, `
 		zemi.tool.register({
 			name = "weather",
 			description = "look up weather",
-			input = { type = "object", properties = { city = { type = "string" } }, required = { "city" } },
+			input = { city = { type = "string", description = "the city" } },
+			required = { "city" },
 			execute = function(args) return "sunny in " .. args.city end,
 		})
 		local found = false

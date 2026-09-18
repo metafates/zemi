@@ -149,6 +149,30 @@ func TestVetoShape(t *testing.T) {
 	}
 }
 
+// TestVetoBadShapeFailsClosed: a handler that meant to decide and wrote
+// the wrong shape must not read as consent where the event has a closed
+// side (DESIGN §6.0).
+func TestVetoBadShapeFailsClosed(t *testing.T) {
+	for _, ret := range []string{`"deny"`, `true`, `{ decision = "block" }`} {
+		t.Run(ret, func(t *testing.T) {
+			h, r := newTestHost(t)
+			runUser(t, r, `
+				zemi.event.on("permission.request", function() return `+ret+` end)
+				zemi.event.on("app.quit", function() return `+ret+` end)
+				zemi.event.on("tool.pre", function() return `+ret+` end)`)
+			if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied {
+				t.Errorf("permission.request = %+v, want denied", res)
+			}
+			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+				t.Errorf("app.quit = %+v, want proceed", res)
+			}
+			if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
+				t.Errorf("tool.pre = %q, want deny", d)
+			}
+		})
+	}
+}
+
 // TestHotRuntimeVetoesFailClosed: while the runtime is hot the deny hooks
 // cannot run, so permission.request and tool.pre deny and app.quit proceeds.
 func TestHotRuntimeVetoesFailClosed(t *testing.T) {
@@ -212,7 +236,7 @@ func TestLuaToolRunsToolPre(t *testing.T) {
 	} {
 		h, r := newTestHost(t)
 		runUser(t, r, `
-			zemi.tool.register({ name = "weather", execute = function() return "sunny" end })
+			zemi.tool.register({ name = "weather", description = "the weather", execute = function() return "sunny" end })
 			zemi.event.on("tool.pre", function(ev) if ev.tool == "weather" then return `+c.ret+` end end)
 		`)
 		resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})

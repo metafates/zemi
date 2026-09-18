@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1397,6 +1398,10 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 	switch {
 	case r.Subject == "" || r.Pattern == "":
 		return errors.New("subject and pattern are required")
+	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
+		// "bash" is not a subject, "tool.bash" is: a rule outside the
+		// namespaces would sit in the store and never match
+		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
 	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
 		return errors.New("decision must be allow, ask or deny")
 	}

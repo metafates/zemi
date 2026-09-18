@@ -648,6 +648,26 @@ func (h *Host) EmitOnState(L *glua.LState, name string, payload map[string]any) 
 	h.emitSync(L, h.Events.Handlers(name), name, payload, "host")
 }
 
+// vetoDecision reads what a vetoable handler returned: nil is no opinion,
+// a zemi.Veto table is its decision. Anything else is a handler that meant
+// to decide and wrote the wrong shape, and bad says so, so the caller can
+// fail closed instead of reading silence as consent (DESIGN §6.0).
+func vetoDecision(ret glua.LValue, allowed ...string) (tb *glua.LTable, decision, bad string) {
+	if ret == nil || ret == glua.LNil {
+		return nil, "", ""
+	}
+	tb, ok := ret.(*glua.LTable)
+	if !ok {
+		return nil, "", fmt.Sprintf("a handler returned %s: return nil, or { decision = %q, reason = ... }",
+			ret.Type().String(), allowed[0])
+	}
+	if decision = rawString(tb, "decision"); !slices.Contains(allowed, decision) {
+		return nil, "", fmt.Sprintf("a handler returned decision %q: use nil or one of %s",
+			decision, strings.Join(allowed, ", "))
+	}
+	return tb, decision, ""
+}
+
 // VetoResult is the aggregated outcome of a vetoable event.
 type VetoResult struct {
 	Denied   bool
@@ -687,7 +707,14 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 					if name == "app.quit" && hd.Origin.Rank() <= lua.OriginProject.Rank() {
 						break
 					}
-					if tb, ok := ret.(*glua.LTable); ok && rawString(tb, "decision") == "deny" {
+					tb, decision, bad := vetoDecision(ret, "deny")
+					switch {
+					case bad != "":
+						h.logHandlerError(hd, errors.New(bad))
+						// a handler that meant to deny and misspelled it must
+						// not read as consent where there is a closed side
+						outcomes[i] = outcome{denied: name == "permission.request", reason: bad}
+					case decision == "deny":
 						outcomes[i] = outcome{denied: true, reason: rawString(tb, "reason")}
 					}
 				}
@@ -874,19 +901,70 @@ func UserHL(hl string) string {
 	return hl
 }
 
+// luaShape names a marshaled Lua value the way the author wrote it: a Go
+// type name in a widget error tells them nothing (DESIGN §6.0).
+func luaShape(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return "nil"
+	case string:
+		return "a string"
+	case bool:
+		return "a boolean"
+	case float64:
+		return "a number"
+	case []any:
+		return "a list"
+	case map[string]any:
+		if _, ok := t["text"]; ok {
+			return "a single segment"
+		}
+		return "a table of keys"
+	}
+	return "an unexpected value"
+}
+
+// oneLine wraps the two returns that mean one line and used to be errors:
+// a lone string, and a line handed back without its enclosing list. A list
+// of several strings is both a line and a line each, so it stays an error.
+func oneLine(v any) (any, error) {
+	switch t := v.(type) {
+	case string:
+		return []any{[]any{t}}, nil
+	case []any:
+		if len(t) == 0 {
+			return v, nil
+		}
+		switch t[0].(type) {
+		case map[string]any:
+			return []any{t}, nil
+		case string:
+			if len(t) > 1 {
+				return nil, errors.New(`widget render returned a list of strings: write { { "a", "b" } } for one line, { { "a" }, { "b" } } for two`)
+			}
+			return []any{t}, nil
+		}
+	}
+	return v, nil
+}
+
 func convertSegments(v any, widget string) ([][]Segment, error) {
+	v, err := oneLine(v)
+	if err != nil {
+		return nil, err
+	}
 	rows, ok := v.([]any)
 	if m, isMap := v.(map[string]any); isMap && len(m) == 0 {
 		ok = true // Lua's {} marshals as an empty map: no lines
 	}
 	if !ok {
-		return nil, fmt.Errorf("widget render must return a list of lines, got %T", v)
+		return nil, fmt.Errorf("widget render must return a list of lines, got %s", luaShape(v))
 	}
 	out := make([][]Segment, 0, len(rows))
 	for _, row := range rows {
 		cells, ok := row.([]any)
 		if !ok {
-			return nil, fmt.Errorf("widget line must be a list of segments, got %T", row)
+			return nil, fmt.Errorf("widget line must be a list of segments, got %s", luaShape(row))
 		}
 		line := make([]Segment, 0, len(cells))
 		for _, cell := range cells {
@@ -911,7 +989,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 				}
 				line = append(line, seg)
 			default:
-				return nil, fmt.Errorf("widget segment must be a string or table, got %T", cell)
+				return nil, fmt.Errorf("widget segment must be a string or a { text = ... } table, got %s", luaShape(cell))
 			}
 		}
 		out = append(out, line)
