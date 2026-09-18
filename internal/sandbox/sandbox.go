@@ -18,6 +18,18 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
+// helperArg is the argv[0]+1 a re-exec'd helper answers to.
+const helperArg = "__sandbox"
+
+// DispatchHelper exits as the sandbox helper when this process was re-exec'd
+// as one. Every binary the probe or Wrap may re-exec (zemi and the test
+// binaries) calls it first; one that does not reports no backend.
+func DispatchHelper() {
+	if len(os.Args) > 2 && os.Args[1] == helperArg {
+		os.Exit(Helper(os.Args[2:]))
+	}
+}
+
 // Policy is what a sandboxed command may touch. Everything is readable
 // except Hide; only Write is writable, minus Protect.
 type Policy struct {

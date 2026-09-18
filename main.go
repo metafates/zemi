@@ -33,9 +33,7 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 2 && os.Args[1] == "__sandbox" {
-		os.Exit(sandbox.Helper(os.Args[2:]))
-	}
+	sandbox.DispatchHelper()
 	os.Exit(run(os.Args[1:]))
 }
 

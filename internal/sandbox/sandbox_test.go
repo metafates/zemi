@@ -25,17 +25,13 @@ import (
 // The test binary doubles as the sandboxed program (__act) and, on Linux,
 // as the helper zemi's main dispatches to.
 func TestMain(m *testing.M) {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "__sandbox":
-			os.Exit(Helper(os.Args[2:]))
-		case "__act":
-			if err := act(os.Args[2], os.Args[3]); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			os.Exit(0)
+	DispatchHelper()
+	if len(os.Args) > 1 && os.Args[1] == "__act" {
+		if err := act(os.Args[2], os.Args[3]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }

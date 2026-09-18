@@ -20,9 +20,8 @@ import (
 )
 
 const (
-	helperArg = "__sandbox"
-	probeArg  = "probe"
-	// probeEnv stops a binary that does not dispatch helperArg (another
+	probeArg = "probe"
+	// probeEnv stops a binary that does not call DispatchHelper (another
 	// package's test binary) from probing again when run as the probe
 	probeEnv = "ZEMI_SANDBOX_PROBE"
 
