@@ -5,6 +5,7 @@
 package sandbox
 
 import (
+	"cmp"
 	"errors"
 	"maps"
 	"os"
@@ -82,9 +83,7 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 	real := func(l []string) []string {
 		out := make([]string, len(l))
 		for i, path := range l {
-			if out[i] = perm.RealPath(path); out[i] == "" {
-				out[i] = path
-			}
+			out[i] = cmp.Or(perm.RealPath(path), path)
 		}
 		return out
 	}

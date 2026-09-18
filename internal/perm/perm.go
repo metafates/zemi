@@ -89,10 +89,8 @@ func (s *Store) Remove(r Rule) {
 // Rules returns a copy of all rules.
 func (s *Store) Rules() []Rule {
 	s.mu.Lock()
-	out := make([]Rule, len(s.rules))
-	copy(out, s.rules)
-	s.mu.Unlock()
-	return out
+	defer s.mu.Unlock()
+	return slices.Clone(s.rules)
 }
 
 // globMatch matches a whole-string glob: `*` spans any characters
@@ -203,10 +201,8 @@ func FoldCase(p string) string {
 // fold compares names the way APFS does: full Unicode case folding over the
 // canonical decomposition, so U+017F (long s) matches s and U+00E9 matches e+U+0301.
 func fold(s string) string {
-	for i := 0; i < len(s); i++ {
-		if s[i] >= utf8.RuneSelf {
-			return norm.NFC.String(cases.Fold().String(norm.NFD.String(s)))
-		}
+	if strings.ContainsFunc(s, func(r rune) bool { return r >= utf8.RuneSelf }) {
+		return norm.NFC.String(cases.Fold().String(norm.NFD.String(s)))
 	}
 	return strings.ToLower(s)
 }
