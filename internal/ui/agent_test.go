@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/win"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
@@ -73,6 +74,24 @@ func BenchmarkStreamingFrame(b *testing.B) {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: fmt.Sprintf("streaming token %d", i)})
 		app.frameGen++
 		app.renderSync(b)
+		_ = app.Frame()
+	}
+}
+
+// BenchmarkWindowFrame is an idle frame with a long transcript and three
+// text panels: their bodies must come from the wrap cache, not be re-wrapped
+// once per measure and once per draw.
+func BenchmarkWindowFrame(b *testing.B) {
+	app, host := bootAgentApp(b, 120, 40)
+	defer host.Wins.CloseAll()
+	seedLongChat(host, 100)
+	for _, kind := range []string{win.KindSplit, win.KindVSplit, win.KindFloat} {
+		if _, err := host.Wins.OpenText(win.Spec{Kind: kind, Text: strings.Repeat("a line of panel output that wraps\n", 200)}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	app.renderSync(b)
+	for b.Loop() {
 		_ = app.Frame()
 	}
 }

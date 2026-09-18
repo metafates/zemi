@@ -216,15 +216,15 @@ func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 func (a *App) textRows(wn *win.Window, width, height int) [][]hostapi.Segment {
 	lines := a.textLines(wn, width)
 	top := wn.Top(max(0, len(lines)-height))
+	bar := scrollbar{h: height, top: top, total: len(lines), width: width}
 	rows := make([][]hostapi.Segment, 0, height)
 	for y := range height {
 		var row []hostapi.Segment
 		if i := top + y; i < len(lines) {
 			row = lines[i]
 		}
-		rows = append(rows, padSegs(truncateSegs(row, width), width))
+		rows = append(rows, bar.row(padSegs(truncateSegs(row, bar.inner()), bar.inner()), y))
 	}
-	scrollbar(rows, width, top, len(lines))
 	return rows
 }
 

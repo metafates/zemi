@@ -100,6 +100,7 @@ type App struct {
 	cursor  *tea.Cursor
 	winDrag *winDrag // a drag on window chrome in progress
 
+	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
 	frameGen   int64
@@ -152,15 +153,16 @@ type widgetCache struct {
 // host.SetUIHooks(app).
 func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 	return &App{
-		host:    host,
-		log:     log,
-		thm:     themeResolver{host: host, sgr: map[string]uv.Style{}},
-		caches:  map[string]*widgetCache{},
-		scrolls: map[string]*scrollState{},
-		timeStr: "--:--",
-		now:     time.Now,
-		focused: true,
-		hooks:   make(chan tea.Msg, hookQueueSize),
+		host:     host,
+		log:      log,
+		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}},
+		caches:   map[string]*widgetCache{},
+		prefixes: map[string]string{},
+		scrolls:  map[string]*scrollState{},
+		timeStr:  "--:--",
+		now:      time.Now,
+		focused:  true,
+		hooks:    make(chan tea.Msg, hookQueueSize),
 	}
 }
 
@@ -681,6 +683,8 @@ func (a *App) compose(w, h int) string {
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	}
+	clear(a.prefixes) // a theme cannot change inside one frame
+
 	lay := a.layout(w, h)
 	stage := lay.stage
 	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
@@ -1150,22 +1154,51 @@ func (a *App) segStyle(hl, over string) uv.Style {
 	return a.thm.hover(a.hlStyle(hl), over)
 }
 
+// sgrPrefix is the ANSI sequence a segment's style opens with, "" for the
+// terminal's own. It is cached for the frame: compose styles thousands of
+// segments and building the sequence for each is the biggest cost of
+// drawing one.
+func (a *App) sgrPrefix(hl, over string) string {
+	key := hl // no highlight name holds a NUL, and hover is the rare case
+	if over != "" {
+		key = hl + "\x00" + over
+	}
+	if p, ok := a.prefixes[key]; ok {
+		return p
+	}
+	st := a.segStyle(hl, over)
+	p := ""
+	if !st.IsZero() {
+		p = st.String()
+	}
+	a.prefixes[key] = p
+	return p
+}
+
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
+	write := func(text, hl, over string) {
+		p := a.sgrPrefix(hl, over)
+		if p == "" {
+			b.WriteString(text)
+			return
+		}
+		b.WriteString(p)
+		b.WriteString(text)
+		b.WriteString(ansi.ResetStyle)
+	}
 	for _, s := range segs {
 		if s.Text == "" {
 			continue
 		}
 		if s.Effect == "shimmer" {
 			for _, r := range a.shimmer(s, a.now(), a.host.Settings.Bool("ui.animations")) {
-				st := a.segStyle(r.HL, s.Over)
-				b.WriteString(st.Styled(r.Text))
+				write(r.Text, r.HL, s.Over)
 			}
 			continue
 		}
-		st := a.segStyle(s.HL, s.Over)
-		b.WriteString(st.Styled(s.Text))
+		write(s.Text, s.HL, s.Over)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {
