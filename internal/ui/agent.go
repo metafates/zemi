@@ -571,9 +571,7 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 // reasons say nothing the title does not, subagent and auto-mode reasons do.
 func permNote(reason string) (string, string) {
 	switch {
-	case reason == "", reason == "run command", reason == "write file", reason == "edit file",
-		reason == "multiedit file", reason == "read file", reason == "fetch url", reason == "glob files",
-		reason == "search files":
+	case reason == "":
 		return "", ""
 	case strings.HasPrefix(reason, "auto mode"):
 		return reason, "Host:Warn"

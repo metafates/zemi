@@ -577,7 +577,11 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 	tagged := func(tag, body string) string {
 		return fmt.Sprintf("\n<%s>\n%s\n</%s>", tag, strings.ReplaceAll(body, "</", "<\\/"), tag)
 	}
-	prompt := fmt.Sprintf("Project: %s\nAction: %s%s%s", h.Dirs.ProjectDir, req.Subject, tagged("reason", req.Reason), tagged("action", h.shownArg(req)))
+	prompt := fmt.Sprintf("Project: %s\nAction: %s", h.Dirs.ProjectDir, req.Subject)
+	if req.Reason != "" {
+		prompt += tagged("reason", req.Reason)
+	}
+	prompt += tagged("action", h.shownArg(req))
 	// a write's diff carries the file's current content, which must not reach
 	// the provider unless the model could read that file without asking
 	if req.Preview != "" && (req.Subject != "fs.write" || h.fsDefault("fs.read", req.Arg) == perm.Allow) {

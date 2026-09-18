@@ -632,7 +632,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"path"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "read file"}}
+				return []Request{{Subject: "fs.read", Arg: str(in["path"])}}
 			},
 			runRead)),
 
@@ -643,7 +643,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "write file", Preview: ChangeDiff("write", in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}
 			},
 			runWrite)),
 
@@ -656,7 +656,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "edit file", Preview: ChangeDiff("edit", in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}
 			},
 			runEdit)),
 
@@ -675,7 +675,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"path", "edits"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "multiedit file", Preview: ChangeDiff("multiedit", in)}}
+				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("multiedit", in)}}
 			},
 			runMultiedit)),
 
@@ -686,7 +686,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: searchRoot(in), Reason: "glob files"}}
+				return []Request{{Subject: "fs.read", Arg: searchRoot(in)}}
 			},
 			runGlob),
 
@@ -698,7 +698,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: searchRoot(in), Reason: "search files"}}
+				return []Request{{Subject: "fs.read", Arg: searchRoot(in)}}
 			},
 			runGrep),
 
@@ -715,7 +715,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 				if u, err := ParseNetURL(str(in["url"])); err == nil {
 					host = u.Hostname()
 				}
-				return []Request{{Subject: "net." + host, Arg: str(in["url"]), Reason: "fetch url"}}
+				return []Request{{Subject: "net." + host, Arg: str(in["url"])}}
 			},
 			runFetch),
 
@@ -1037,7 +1037,7 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Reason: "run command", Description: str(in["description"]), Unsandboxed: in["sandbox"] == false}}
+	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["description"]), Unsandboxed: in["sandbox"] == false}}
 }
 
 // jobLine is what job_start runs, as the shell line the gate checks. With

@@ -288,7 +288,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	pipe.EditMemory = func(id, text string) (string, error) { return h.modelEditMemory(parent, id, text) }
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string, string) {
-			req.Reason = strings.TrimSpace("agent " + def.Name + ": " + req.Reason)
+			req.Reason = strings.TrimSuffix("agent "+def.Name+": "+req.Reason, ": ")
 			return ask(req)
 		}
 	}
