@@ -108,6 +108,7 @@ type App struct {
 	lastState  hostapi.UIState  // what the widgets last rendered with, pulse aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
+	progress   bool             // the terminal was told a turn is running (OSC 9;4)
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
@@ -216,12 +217,12 @@ func (a *App) leave() {
 		return
 	}
 	a.host.Wins.CloseAll()
-	if g := a.host.Wins.TakeGraphics(); g != "" {
-		a.program.Send(tea.RawMsg{Msg: g})
-		// NOTE: raw output is written on the next frame and quitting leaves the
-		// alternate screen first, so wait out a frame
-		time.Sleep(50 * time.Millisecond)
-	}
+	// the progress report is cleared whether or not one is running: reading
+	// the flag from this goroutine would race with the frame loop
+	a.program.Send(tea.RawMsg{Msg: a.host.Wins.TakeGraphics() + "\x1b]9;4;0\x07"})
+	// NOTE: raw output is written on the next frame and quitting leaves the
+	// alternate screen first, so wait out a frame
+	time.Sleep(50 * time.Millisecond)
 	a.program.Quit()
 }
 
@@ -421,6 +422,20 @@ func (a *App) View() tea.View {
 	return v
 }
 
+// progressCmd tells the terminal a turn is running with OSC 9;4, which
+// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar; it
+// writes only when the state changed, and clears on quit.
+func (a *App) progressCmd(running bool) tea.Cmd {
+	if running && !a.host.Settings.Bool("ui.progress") {
+		running = false
+	}
+	if running == a.progress {
+		return nil
+	}
+	a.progress = running
+	return tea.Raw("\x1b]9;4;" + map[bool]string{true: "3", false: "0"}[running] + "\x07")
+}
+
 // notifyIfAway alerts through the terminal when zemi needs attention while
 // its window is not focused: OSC 9 (a desktop notification in iTerm2,
 // Ghostty, WezTerm, Windows Terminal) and a bell for other terminals.
@@ -474,6 +489,9 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	if c := a.progressCmd(a.host.AgentActive()); c != nil {
+		cmds = append(cmds, c)
+	}
 	if g := a.host.Wins.TakeGraphics(); g != "" {
 		cmds = append(cmds, tea.Raw(g))
 	}
