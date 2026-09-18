@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -284,6 +285,27 @@ func TestCompletionScan(t *testing.T) {
 	app.onFilesScanned(msg)
 	if !slices.Contains(app.completion.files, "new.go") {
 		t.Fatalf("rescan missed new.go: %v", app.completion.files)
+	}
+}
+
+// TestCompletionPartialNote: a scan that filled the cap says the list is
+// partial instead of claiming the repo holds no match.
+func TestCompletionPartialNote(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	files := make([]string, scanMaxFiles)
+	for i := range files {
+		files[i] = "pkg/f" + strconv.Itoa(i) + ".go"
+	}
+	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
+	app.composerKey("q", tea.KeyPressMsg{Text: "q"}) // a letter no path holds
+	rows := app.completionRows()
+	if len(rows) == 0 {
+		t.Fatal("no popup rows")
+	}
+	last := rows[len(rows)-1][0].Text
+	if !strings.Contains(last, "more files") {
+		t.Fatalf("last row = %q, want the partial note", last)
 	}
 }
 

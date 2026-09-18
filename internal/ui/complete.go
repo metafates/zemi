@@ -25,10 +25,13 @@ type fileCompleter struct {
 	selected int
 
 	scanning bool
-	walkGen  int // bumps so stale scan results are dropped
+	walkGen  int  // bumps so stale scan results are dropped
+	partial  bool // the scan hit scanMaxFiles, so the rest of the repo is missing
 }
 
-const scanMaxFiles = 5000
+// scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
+// A repo that passes it loses whatever rg listed last, hence the note.
+const scanMaxFiles = 50000
 
 func (a *App) completionEnabled() bool { return a.host.Settings.Bool("ui.completion.files") }
 
@@ -104,6 +107,7 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 	}
 	a.completion.scanning = false
 	a.completion.files = msg.files
+	a.completion.partial = len(msg.files) >= scanMaxFiles
 	if a.completion.open {
 		a.completion.rematch(a.completionMax())
 	}
@@ -208,17 +212,24 @@ func (a *App) completionRows() [][]hostapi.Segment {
 	if !f.shown() {
 		return nil
 	}
-	if f.count() == 0 && f.scanning && len(f.files) == 0 {
-		return [][]hostapi.Segment{{{Text: "  scanning files...", HL: "Comment"}}}
+	note := func(text string) []hostapi.Segment {
+		return []hostapi.Segment{{Text: "  " + text, HL: "Comment"}}
 	}
-	if f.count() == 0 && f.trigger == '@' {
-		return [][]hostapi.Segment{{{Text: "  no matches", HL: "Comment"}}}
+	if f.count() == 0 && f.scanning && len(f.files) == 0 {
+		return [][]hostapi.Segment{note("scanning files...")}
+	}
+	if f.count() == 0 && f.trigger == '@' && !f.partial {
+		return [][]hostapi.Segment{note("no matches")}
 	}
 	items := append([]listItem(nil), f.extra...)
 	for _, m := range f.matches {
 		items = append(items, listItem{label: m})
 	}
-	return listRows(items, f.selected, nil, len(items))
+	rows := listRows(items, f.selected, nil, len(items))
+	if f.partial {
+		rows = append(rows, note("more files than the list holds - type more of the path"))
+	}
+	return rows
 }
 
 // scanFilesCmd lists the project's files off the UI goroutine.
