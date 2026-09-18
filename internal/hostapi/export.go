@@ -303,7 +303,7 @@ func (h *Host) OpenUsage() error {
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", "  "+fmtTok(total)+" sent with every request")
 		parts = slices.Clone(parts)
-		slices.SortStableFunc(parts, func(a, b promptPart) int { return b.chars - a.chars })
+		slices.SortStableFunc(parts, func(a, b promptPart) int { return cmp.Compare(b.chars, a.chars) })
 		sum := 0
 		for _, p := range parts {
 			sum += p.chars
@@ -340,16 +340,15 @@ func (h *Host) OpenUsage() error {
 	}
 	// a model with no prices costs $0.00 on every row: one line says so
 	// instead of a column of zeros
-	priced := windows[len(windows)-1].u.Cost > 0 || s.SessionCost > 0
-	if spec, _ := h.modelSpec(h.sessionModelID()); spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 {
-		priced = true
-	}
+	id := h.sessionModelID()
+	spec, _ := h.modelSpec(id)
+	priced := spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 || s.SessionCost > 0 || windows[len(windows)-1].u.Cost > 0
 	head := fmt.Sprintf("%18s%9s%10s", "in", "out", "sessions") // over the rows' columns, past the 6 cells of the title
 	if priced {
 		head += "      cost"
 	}
 	section("Tokens", head)
-	for _, w := range windows {
+	for i, w := range windows {
 		count := ""
 		if w.u.Sessions > 0 {
 			count = fmt.Sprint(w.u.Sessions)
@@ -360,12 +359,12 @@ func (h *Host) OpenUsage() error {
 		}
 		// a broken cache prefix (a per-turn system section, a model switch) has
 		// no other symptom than the bill
-		if w.label == "this session" && s.CacheBilled > 0 {
+		if i == 0 && s.CacheBilled > 0 { // the live session
 			row = append(row, text("Comment", fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
 		}
 		rows = append(rows, row)
 	}
-	if id := h.sessionModelID(); id != "" && !priced {
+	if id != "" && !priced {
 		rows = append(rows, []Segment{}, []Segment{text("Comment", "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
 	}
 	var plain strings.Builder
