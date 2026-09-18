@@ -32,6 +32,7 @@ No CI, no lint config; `make check` is what a change has to pass:
 ```
 make check              # go vet ./... + go test ./... + make luals + a gofmt check, all must be clean
 make luals              # lua-language-server over runtime/ (runtime/.luarc.json); prints a skip line without the binary
+                        # not on PATH? point at it: make check LUALS=/path/to/lua-language-server
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make test               # full suite (~20s, all pure Go, no network, CGO not needed)
 make race               # go test -race ./internal/...
@@ -74,9 +75,11 @@ A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) b
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
 files, one per launch. Config reload is not fsnotify: `watchConfig` walks the config trees
 once a second and reloads when the fingerprint (path, size, mtime) moved and no turn is
-active; an untrusted project's `.zemi` is not watched. A replayed `zemi.config.set` that
-writes what the last boot wrote is skipped (`Host.cfgWritten`), so `/model`, `/effort`,
-the mode cycle and `-m`/`--mode` survive a reload until the config changes that key.
+active; an untrusted project's `.zemi` is not watched. A replay that writes a key the same
+values in the same order as the last boot is skipped (`cfgReplayed`), and a key the new
+config writes fewer times is settled to its last value (`cfgSettle`), so `/model`,
+`/effort`, the mode cycle and `-m`/`--mode` survive a reload until the config changes
+that key.
 
 ## Architecture and control flow
 

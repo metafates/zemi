@@ -41,8 +41,8 @@ func (h *Host) runGit(dir string, args ...string) (string, error) {
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	// the system gitconfig does not apply; commits pass their own identity;
-	// status leaves a repository's index alone
+	// the system gitconfig does not apply; status leaves a repository's
+	// index alone
 	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

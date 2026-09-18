@@ -1055,8 +1055,7 @@ kv(key, value_json, updated_at)                                 -- zemi.state
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
 DBs at `~/.local/state/zemi/projects/<hash of project root>/zemi.db`. The
-global DB holds user-scope memory, skills and kv (an older
-`config_revisions` table is left in place, unused); a project DB
+global DB holds user-scope memory, skills and kv; a project DB
 holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and
 project-scope memory. Opening a store sweeps checkpoints older than 30

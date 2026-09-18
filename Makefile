@@ -35,7 +35,7 @@ luals:
 		$(LUALS) --check=$(CURDIR)/runtime --configpath=$(CURDIR)/runtime/.luarc.json --checklevel=Warning \
 			--check_format=pretty --logpath=$$tmp --metapath=$$tmp/meta; \
 		st=$$?; rm -rf $$tmp; exit $$st; \
-	else echo "luals: $(LUALS) not installed, skipped"; fi
+	else echo "luals: $(LUALS) not installed, skipped (LUALS=/path/to/lua-language-server to point at one)"; fi
 
 check: vet test luals
 	@out=$$(gofmt -l $(GO_FILES)); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
