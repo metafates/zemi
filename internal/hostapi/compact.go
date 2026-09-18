@@ -443,17 +443,22 @@ func tailStart(history []fantasy.Message, keep int64) int {
 	return start
 }
 
+// keptTools name results that are not output: a skill body is
+// instructions, and question, plan and open_in_editor carry the user's own
+// words, which nothing else in the history holds.
+var keptTools = []string{"skill", "question", "plan", "open_in_editor"}
+
 // pruneToolOutput clears tool results older than the newest toolKeepTokens
 // of them when that frees at least pruneMinTokens, and returns what it
-// freed. Skill bodies stay: they are instructions, not output. inTurn also
-// clears what the running turn produced, which only a subagent asks for:
-// its whole run is one turn. The input history is not modified.
+// freed. inTurn also clears what the running turn produced, which only a
+// subagent asks for: its whole run is one turn. The input history is not
+// modified.
 func pruneToolOutput(history []fantasy.Message, inTurn bool) ([]fantasy.Message, int64) {
-	skill := map[string]bool{}
+	keep := map[string]bool{}
 	for _, m := range history {
 		for _, part := range m.Content {
-			if p, ok := part.(fantasy.ToolCallPart); ok && p.ToolName == "skill" {
-				skill[p.ToolCallID] = true
+			if p, ok := part.(fantasy.ToolCallPart); ok && slices.Contains(keptTools, p.ToolName) {
+				keep[p.ToolCallID] = true
 			}
 		}
 	}
@@ -476,7 +481,7 @@ func pruneToolOutput(history []fantasy.Message, inTurn bool) ([]fantasy.Message,
 		for j, part := range h.Content {
 			p, ok := part.(fantasy.ToolResultPart)
 			text := toolText(p)
-			if !ok || skill[p.ToolCallID] || text == "" || text == clearedOutput {
+			if !ok || keep[p.ToolCallID] || text == "" || text == clearedOutput {
 				continue
 			}
 			n := int64(len(text) / 4)

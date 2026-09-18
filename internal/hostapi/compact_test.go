@@ -262,6 +262,20 @@ func TestPruneToolOutput(t *testing.T) {
 	}
 }
 
+// TestPruneKeepsUserWords: a question result is the only place the user's
+// answer lives in the model's history, so pruning must leave it.
+func TestPruneKeepsUserWords(t *testing.T) {
+	history := []fantasy.Message{
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.ToolCallPart{ToolCallID: "old", ToolName: "question"},
+		}},
+		toolResult("old", 30_000), toolResult("new", toolKeepTokens),
+	}
+	if _, freed := pruneToolOutput(history, true); freed != 0 {
+		t.Fatalf("the user's answer was cleared: %d tokens", freed)
+	}
+}
+
 // TestPruneKeepsRunningTurn: pruning between the steps of one turn must
 // leave the output after the last user message, which the turn continues
 // from, even when it is past the kept budget.
