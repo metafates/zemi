@@ -472,14 +472,10 @@ zemi.ui.widget.add({
       blank()
       -- a header in the composer rule's voice: the name, how far along, and
       -- a short meter of one cell per item
-      local meter = {}
+      local head = { { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
       for n, td in ipairs(todos) do
         if n > 12 then break end
-        meter[n] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
-      end
-      local head = { { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
-      for _, m in ipairs(meter) do
-        head[#head + 1] = m
+        head[#head + 1] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
       end
       lines[#lines + 1] = head
       for n, td in ipairs(todos) do
