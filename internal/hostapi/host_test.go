@@ -307,6 +307,12 @@ func TestKeymapFromLua(t *testing.T) {
 		zemi.keymap.del("tab")
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
 		assert(not pcall(zemi.keymap.del, "tab"), "deleting an unbound key must raise")
+		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp" }) do
+			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
+		end
+		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "+", "esc" }) do
+			zemi.keymap.set(good, function() end)
+		end
 	`)
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
@@ -348,7 +354,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		zemi.ui.widget.register({
 			id = "mutating", region = "header",
 			render = function(ctx)
-				zemi.keymap.set("zz", function() end)
+				zemi.keymap.set("ctrl+z", function() end)
 				return {}
 			end,
 		})
@@ -376,7 +382,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("mutation during render: err = %v", err)
 	}
-	if h.Keymaps.Lookup("", "zz") != nil {
+	if h.Keymaps.Lookup("", "ctrl+z") != nil {
 		t.Fatal("refused bind still landed in the keymap registry")
 	}
 

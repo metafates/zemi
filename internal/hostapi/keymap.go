@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
@@ -17,6 +20,51 @@ func normalizeKey(key string) string {
 		return strings.ToLower(key)
 	}
 	return key
+}
+
+// keyMods are the modifier prefixes ultraviolet writes before a key name.
+var keyMods = map[string]bool{"ctrl": true, "alt": true, "shift": true, "super": true, "hyper": true, "meta": true}
+
+// keyNames are the named keys the terminal can report, taken from
+// ultraviolet's own table so the list cannot drift from what a keypress
+// matches against.
+var keyNames = sync.OnceValue(func() map[string]bool {
+	names := map[string]bool{}
+	add := func(c rune) {
+		if n := (uv.Key{Code: c}).Keystroke(); len(n) > 1 && strings.IndexFunc(n,
+			func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') }) < 0 {
+			names[n] = true
+		}
+	}
+	for _, c := range []rune{uv.KeyBackspace, uv.KeyTab, uv.KeyEnter, uv.KeyEscape, uv.KeySpace} {
+		add(c)
+	}
+	// the special keys are one contiguous block of codes past KeyExtended
+	for c := uv.KeyExtended + 1; c <= uv.KeyExtended+200; c++ {
+		add(c)
+	}
+	return names
+})
+
+// checkKey refuses a key nothing can ever type ("ctrl-q", "control+q"):
+// bindings are matched against the key name the terminal reports, so a
+// misspelled one sits in /help and never fires.
+func checkKey(key string) error {
+	base := key
+	for len([]rune(base)) > 1 {
+		mod, rest, ok := strings.Cut(base, "+")
+		if !ok || rest == "" {
+			break
+		}
+		if !keyMods[mod] {
+			return fmt.Errorf("unknown modifier %q in key %q: use ctrl, alt, shift, super, hyper or meta", mod, key)
+		}
+		base = rest
+	}
+	if len([]rune(base)) == 1 || keyNames()[base] {
+		return nil
+	}
+	return fmt.Errorf("unknown key %q in key %q", base, key)
 }
 
 // keySeq normalizes a binding key: one key, or a space-separated sequence
@@ -49,6 +97,9 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 	}
 	for i := range tokens {
 		tokens[i] = normalizeKey(tokens[i])
+		if err := checkKey(tokens[i]); err != nil {
+			return "", err
+		}
 	}
 	if len(tokens) > 1 && len([]rune(tokens[0])) == 1 && !focused {
 		return "", fmt.Errorf("a key sequence must start with a non-printable key such as ctrl+g, not %q", tokens[0])
