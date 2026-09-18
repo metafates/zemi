@@ -51,6 +51,16 @@ type Verdict struct {
 	DecidedBy string // rule, hook, user, overlay, default
 }
 
+// DeniedText is the tool error a refused gate returns: who decided, what
+// it was about, and the reason the asker gave.
+func DeniedText(v Verdict, what string) string {
+	s := "permission denied (" + v.DecidedBy + "): " + what
+	if v.Reason == "" {
+		return s
+	}
+	return s + ": " + v.Reason
+}
+
 // PreHook runs the tool.pre Lua events; decision is "" (pass),
 // "deny", "rewrite" or "halt". Rewritten carries the replacement input
 // (already shallow-merged over the original). Loosened reports a rewrite
@@ -385,7 +395,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			pipe.Denied(t.info.Name, req, v)
 		}
 		if v.Decision == perm.Deny {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission denied ("+v.DecidedBy+"): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
+			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+req.Arg))), nil
 		}
 		if v.Decision == perm.Ask {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil

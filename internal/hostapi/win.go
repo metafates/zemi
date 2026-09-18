@@ -692,7 +692,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	act := func(w *win.Window, arg, reason string, unsandboxed bool) string {
 		v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: reason + " " + w.Title(), Unsandboxed: unsandboxed || !w.Sandboxed})
 		if v.Decision != perm.Allow {
-			return "permission denied (" + v.DecidedBy + "): " + v.Reason
+			return tools.DeniedText(v, w.Title())
 		}
 		return ""
 	}
@@ -721,7 +721,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		// no program runs, so the gate is about what the user's screen shows
 		title := cmp.Or(in.Title, "text")
 		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window.text", Arg: title, Reason: "show text in a window", Preview: in.Text}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + v.Reason), nil
+			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "window "+title)), nil
 		}
 		if in.Action == "set_text" {
 			w, resp, ok := find()
@@ -755,7 +755,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title, Unsandboxed: in.Sandbox != nil && !*in.Sandbox}
 		v := gate.Check(req)
 		if v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): " + in.Cmd + ": " + v.Reason), nil
+			return fantasy.NewTextErrorResponse(tools.DeniedText(v, in.Cmd)), nil
 		}
 		spec := win.Spec{Cmd: in.Cmd, Kind: in.Kind, Title: in.Title, Owner: t.owner}
 		var after func() string

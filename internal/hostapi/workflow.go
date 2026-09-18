@@ -642,7 +642,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 	// user sees it before it starts (tools inside stay gated one by one).
 	preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
 	if v := h.PipelineFor().Check(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
-		return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): workflow " + arg), nil
+		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
 	start := time.Now()
 	var last atomic.Value

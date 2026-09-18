@@ -312,7 +312,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 	}
 	req := tools.Request{Tool: mcpToolName(name, t.tool.Name), Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
 	if v := t.pipe.Check(req); v.Decision != perm.Allow {
-		return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): mcp." + name + " " + t.tool.Name), nil
+		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
 	client := t.srv.currentClient()
 	if client == nil {

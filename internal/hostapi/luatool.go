@@ -190,7 +190,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			req.Reason = strings.TrimSuffix("uses "+strings.Join(unlisted, ", ")+", which can change zemi or start programs outside the sandbox: "+in.Description, ": ")
 		}
 		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + "): Lua " + arg + ": " + v.Reason), nil
+			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
 		}
 		if len(unlisted) > 0 {
 			rel = fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))

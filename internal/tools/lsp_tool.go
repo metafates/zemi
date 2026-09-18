@@ -150,7 +150,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 				continue
 			}
 			if v := p.Check(Request{Tool: "lsp", Subject: "fs.write", Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("permission denied (%s): rename touches %s; nothing was changed", v.DecidedBy, f)), nil
+				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+f+"; nothing was changed")), nil
 			}
 		}
 		var b strings.Builder
