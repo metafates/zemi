@@ -643,7 +643,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // and back while it compacts, its head pulled in while a prompt waits on the
 // user, a bow once the turn is over.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·°ᵒ~─ə✕✓" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·•°ᵒ─^><" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -663,14 +663,13 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(7000); a != want || b != want {
 		t.Fatalf("idle rule moved: %q then %q", a, b)
 	}
-	// a ripple of "~" runs out along the rule, three cells a frame
-	wave := func(ms int64) int { return len([]rune(strings.Split(row(ms), "~")[0])) } // the ripple's leading cell
+	// working swaps the eyes in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := wave(0), wave(500); a != 3 || b != a+3 {
-		t.Fatalf("the ripple does not run out: %d then %d", a, b)
+	if a, b := row(0), row(500); !strings.HasPrefix(a, "@•·─") || !strings.HasPrefix(b, "@·•─") {
+		t.Fatalf("the working eyes do not swap: %q then %q", a, b)
 	}
-	if r := row(500); !strings.HasPrefix(r, "@··") || !strings.HasSuffix(r, "─ Working  20s · esc to interrupt ") {
-		t.Fatalf("the snail left the corner, or the status did: %q", r)
+	if r := row(500); !strings.HasSuffix(r, "─ Working  20s · esc to interrupt ") {
+		t.Fatalf("the status left the right end: %q", r)
 	}
 	// the open prompt says what answers it, so the rule retracts to the shell
 	// alone: no label, and no esc, which the prompt takes
@@ -679,13 +678,9 @@ func TestWorkingRowMascot(t *testing.T) {
 		t.Fatalf("the rule does not retract while the user is asked: %q", r)
 	}
 	app.permAsk = nil
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Compacting: true})
-	if a, b := wave(1000), wave(1500); b != a-3 {
-		t.Fatalf("the ripple does not run back: %d then %d", a, b)
-	}
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.turnEnd = time.UnixMilli(2000)
-	if r := row(2500); !strings.HasPrefix(r, "@·· ✓─") {
+	if r := row(2500); !strings.HasPrefix(r, "@^^─") {
 		t.Fatalf("no done frame after the turn: %q", r)
 	}
 	// thinking blinks in place

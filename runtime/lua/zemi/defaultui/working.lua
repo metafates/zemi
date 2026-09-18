@@ -56,10 +56,7 @@ zemi.ui.widget.add({
     -- a narrow rule keeps the label and the snail at least 8 cells
     if zemi.ui.width(label .. tail) + 10 > ctx.width then tail = "" end
     local text = label .. tail ~= "" and zemi.ui.width(label .. tail) + 2 or 0
-    -- one small shell per running subagent, where the rule meets the text
-    local kids = math.max(math.min(ctx.agents_running, ctx.width - text - 8), 0)
-    local row = snail.rule(state, ctx.frame, ctx.width - text - kids)
-    row[#row + 1] = { text = string.rep("ə", kids), hl = "Accent", copy = false }
+    local row = snail.rule(state, ctx.frame, ctx.width - text)
     if text > 0 then
       row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
       row[#row + 1] = { text = tail .. " ", hl = "Comment" }

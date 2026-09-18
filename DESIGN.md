@@ -1110,12 +1110,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   (flex), then the composer (1..8 rows plus a "+n lines" row) inside a
   square frame two rows taller, whose rules carry regions: the `working`
   one on top, which gets the whole rule between the corners (the shipped
-  `working` widget: the snail mascot fixed in the left corner, its eyes
-  swapping in place while the model thinks, retracted while the user is
-  asked, marked once the turn ends; the rule beside it is plain "─" while
-  zemi is idle and carries ripples of "~" running out along it while tools
-  run, back toward the snail during compaction and reflection;
-  one small shell per running subagent, and at the right end a shimmering
+  `working` widget: the snail mascot fixed in the left corner on a plain
+  rule, the state in its eyes alone: swapping while the model thinks or
+  tools run, retracted while the user is asked, `^^` once the turn ends,
+  `><` on an error; at the right end a shimmering
   label naming the current activity, elapsed
   time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
   `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`),
