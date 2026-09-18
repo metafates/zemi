@@ -497,7 +497,7 @@ func TestOverlayFitsShortScreen(t *testing.T) {
 	}
 	a.openOverlay(hostapi.Overlay{Title: "Model", Items: items})
 	a.renderSync(t)
-	if f := ansi.Strip(a.Frame()); !strings.Contains(f, "esc close") || !strings.Contains(f, "╰") {
+	if f := ansi.Strip(a.Frame()); !strings.Contains(f, "esc close") || !strings.Contains(f, "└") {
 		t.Fatalf("the overlay's hint or bottom border is cut:\n%s", f)
 	}
 }

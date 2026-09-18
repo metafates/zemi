@@ -384,7 +384,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
-		p, hl := "│ ", "Comment" // a gutter down the rows after the first
+		p, hl := "│ ", "Rule" // a gutter down the rows after the first
 		if i == 0 {
 			p, hl = prefix, promptHL
 		}

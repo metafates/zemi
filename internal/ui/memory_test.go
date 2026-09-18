@@ -256,7 +256,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	edges := func(frame string) string {
 		var out []string
 		for i, l := range strings.Split(frame, "\n") {
-			if strings.Contains(l, "╭") || strings.Contains(l, "╰") {
+			if strings.Contains(l, "┌") || strings.Contains(l, "└") {
 				out = append(out, fmt.Sprint(i, ansi.StringWidth(strings.TrimRight(l, " \r"))))
 			}
 		}

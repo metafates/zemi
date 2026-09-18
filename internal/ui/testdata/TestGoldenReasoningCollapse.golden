@@ -1,14 +1,14 @@
                                                                                 
                                                                                 
                                                                                 
-[38;2;122;162;247m▌ [m[38;2;192;202;245mwhy does the build fail?[m                                                      
+[38;2;154;165;242m▌ [m[38;2;216;216;216mwhy does the build fail?[m                                                      
                                                                                 
-[38;2;122;162;247m✻ [m[38;2;86;95;137mThought for 4.2s[m[38;2;86;95;137m  click or ctrl+o to read[m                                     
+[38;2;154;165;242m✻ [m[38;2;122;122;122mThought for 4.2s[m[38;2;122;122;122m  click or ctrl+o to read[m                                     
                                                                                 
-[38;2;192;202;245m● [m[38;2;192;202;245mThe test binary exits 1 because the fixture path moved.[m                       
+[38;2;216;216;216m● [m[38;2;216;216;216mThe test binary exits 1 because the fixture path moved.[m                       
                                                                                 
-  [38;2;86;95;137m38.0s · 1.2k out[m                                                              
+  [38;2;122;122;122m38.0s · 1.2k out[m                                                              
                                                                                 
-[38;2;86;95;137m> [m[38;2;26;27;38;48;2;192;202;245m [m
+[38;2;122;122;122m> [m[7m [m
                                                                                 
-[38;2;86;95;137mmanual[m [38;2;86;95;137muntrusted[m                                                                
+[38;2;122;122;122mmanual[m [38;2;122;122;122muntrusted[m                                                                

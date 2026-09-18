@@ -314,6 +314,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.host.Wins.SetHostColor(10, msg.Color)
 	case tea.BackgroundColorMsg:
 		a.host.Wins.SetHostColor(11, msg.Color)
+		// the light variant of the chrome and of a theme that ships one
+		a.thm.light = msg.Color != nil && luma(msg.Color) > 1<<15
 	case tea.CursorColorMsg:
 		a.host.Wins.SetHostColor(12, msg.Color)
 	case tea.FocusMsg, tea.BlurMsg:
@@ -1141,7 +1143,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 // hlStyle resolves a highlight name. "Host:*" names are Go-owned security
 // chrome (DESIGN §8): they resolve to fixed styles and never consult the theme.
 func (a *App) hlStyle(hl string) uv.Style {
-	if st, ok := fixedStyle(hl); ok {
+	if st, ok := fixedStyle(hl, a.thm.light); ok {
 		return st
 	}
 	return a.thm.style(hl)

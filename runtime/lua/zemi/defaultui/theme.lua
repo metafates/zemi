@@ -1,74 +1,100 @@
--- The default theme: a palette and every highlight group the shipped UI
--- draws with.
+-- The default theme: greys, one accent (periwinkle), and the terminal's own
+-- red, green and yellow so the user's palette decides those.
+--
+-- Widgets should reach for the semantic groups - Accent, Dim, Rule, Title,
+-- Selected, Button, Danger, Ok - and everything else links to one of them.
+-- That way a widget cannot pick a color that is off the identity, and
+-- retinting the UI is a matter of changing the palette.
 
-zemi.ui.theme.add("default", {
-  palette = {
-    bg = "#1a1b26",
-    fg = "#c0caf5",
-    muted = "#565f89",
-    accent = "#7aa2f7",
-    ok = "#9ece6a",
-    warn = "#e0af68",
-    err = "#f7768e",
-    panel = "#24283b",
-  },
-  hl = {
+---@param palette table<string, string>
+---@return table
+local function theme(palette)
+  local hl = {
     Normal = { fg = "fg" },
-    Comment = { fg = "muted" },
+    Accent = { fg = "accent" },
+    Dim = { fg = "dim" },
+    Rule = { fg = "rule" },
     Title = { fg = "accent", bold = true },
-    UserMsg = { fg = "accent" },
-    ToastError = { fg = "bg", bg = "err", bold = true },
+    Selected = { fg = "accent", bold = true },
+    Button = { fg = "accent" },
+    Danger = { fg = "red" },
+    Ok = { fg = "green" },
+
+    Comment = { link = "Dim" },
+    UserMsg = { link = "Accent" },
     Toast = { fg = "fg", bg = "panel" },
     ToastTitle = { fg = "fg", bg = "panel", bold = true },
     ToastInfo = { fg = "accent", bg = "panel" },
-    ToastWarn = { fg = "warn", bg = "panel" },
-    ToastErr = { fg = "err", bg = "panel" },
-    MarkdownHeading = { fg = "accent", bold = true },
-    MarkdownCode = { fg = "warn", bg = "panel" },
+    ToastWarn = { fg = "yellow", bg = "panel" },
+    ToastErr = { fg = "red", bg = "panel" },
+    ToastError = { fg = "red", bg = "panel", bold = true },
+    MarkdownHeading = { link = "Title" },
+    MarkdownCode = { fg = "fg", bg = "panel" },
     MarkdownLink = { fg = "accent", underline = true },
-    MarkdownQuote = { fg = "muted", italic = true },
-    AgentReason = { fg = "muted" },
-    ThinkingMark = { fg = "accent" },
-    ThinkingBar = { fg = "#3b4261" },
+    MarkdownQuote = { fg = "dim", italic = true },
+    AgentReason = { link = "Dim" },
+    ThinkingMark = { link = "Accent" },
+    ThinkingBar = { link = "Rule" },
     AgentToolName = { fg = "fg", bold = true },
-    AgentToolRun = { fg = "muted" },
-    AgentToolOk = { fg = "ok" },
-    AgentToolErr = { fg = "err" },
-    -- tool diffs match the permission prompt: tinted rows, dim line numbers
-    DiffAdd = { fg = "#d4e8c8", bg = "#243427" },
-    DiffAddNum = { fg = "#7fa36c", bg = "#243427" },
-    DiffDel = { fg = "#eccad0", bg = "#3a2629" },
-    DiffDelNum = { fg = "#b06d76", bg = "#3a2629" },
-    DiffCtx = { fg = "#9aa0c0" },
-    DiffCtxNum = { fg = "#4c5372" },
+    AgentToolRun = { link = "Dim" },
+    AgentToolOk = { link = "Ok" },
+    AgentToolErr = { link = "Danger" },
+    -- a diff keeps the terminal's green and red on the sign and the line
+    -- number, and tints the row no further than it has to
+    DiffAdd = { bg = "addbg" },
+    DiffAddNum = { fg = "green", bg = "addbg" },
+    DiffDel = { bg = "delbg" },
+    DiffDelNum = { fg = "red", bg = "delbg" },
+    DiffCtx = { link = "Normal" },
+    DiffCtxNum = { link = "Dim" },
     TodoActive = { fg = "fg", bold = true },
-    StatusUsage = { fg = "muted" },
-    StatusUsageWarn = { fg = "warn" },
-    StatusUsageErr = { fg = "err", bold = true },
-    ModeManual = { fg = "muted" },
-    ModePlan = { fg = "ok", bold = true },
-    ModeAuto = { fg = "accent", bold = true },
+    StatusUsage = { link = "Dim" },
+    StatusUsageWarn = { fg = "yellow" },
+    StatusUsageErr = { fg = "red", bold = true },
+    ModeManual = { link = "Dim" },
+    ModePlan = { link = "Ok" },
+    ModeAuto = { link = "Accent" },
     -- yolo answers every ask by itself, so nothing else on screen shows it
-    -- is on: it gets a filled pill, the other modes plain text
-    ModeYolo = { fg = "bg", bg = "err", bold = true },
-    PromptPlan = { fg = "ok", bold = true },
-    PromptAuto = { fg = "accent", bold = true },
-    PromptYolo = { fg = "err", bold = true },
-    PromptShell = { fg = "warn", bold = true },
-    Queued = { fg = "bg", bg = "muted" },
-    -- splash wordmark, a top-down blend from accent to violet
-    Logo1 = { fg = "#7aa2f7", bold = true },
-    Logo2 = { fg = "#80a0f5", bold = true },
-    Logo3 = { fg = "#8f9cf3", bold = true },
-    Logo4 = { fg = "#9d99f1", bold = true },
-    Logo5 = { fg = "#ac9ef3", bold = true },
-    Logo6 = { fg = "#bb9af7", bold = true },
-    SplashKey = { fg = "fg", bold = true },
-    ScrollbarTrack = { fg = "#2a2e42" },
-    ScrollbarThumb = { fg = "#3b4261" },
+    -- is on: it is the only red in the statusline
+    ModeYolo = { fg = "red", bold = true },
+    PromptPlan = { link = "Ok" },
+    PromptAuto = { link = "Accent" },
+    PromptYolo = { fg = "red", bold = true },
+    -- the shell glyph: what follows goes to the shell, not to the model
+    PromptShell = { fg = "yellow", bold = true },
+    Queued = { link = "Dim" },
+    SplashKey = { link = "Button" },
+    ScrollbarTrack = { link = "Dim" },
+    ScrollbarThumb = { link = "Accent" },
     -- hover draws over the text's own style: keys left out keep it
-    Hover = { underline = true, brighten = 0.25 },
-    HoverItem = { fg = "accent" },
-  },
-})
+    Hover = { underline = true },
+    HoverItem = { link = "Accent" },
+  }
+  for i = 1, 6 do hl["Logo" .. i] = { link = "Title" } end
+  return { palette = palette, hl = hl }
+end
+
+zemi.ui.theme.add("default", theme({
+  bg = "#141414",
+  fg = "#d8d8d8",
+  dim = "#7a7a7a",
+  rule = "#3a3a3a",
+  accent = "#9aa5f2",
+  panel = "#1e1e1e",
+  addbg = "#1b2417",
+  delbg = "#2a1a1a",
+}))
+
+-- picked automatically when the terminal reports a light background
+zemi.ui.theme.add("default-light", theme({
+  bg = "#fafafa",
+  fg = "#1b1b1b",
+  dim = "#8e8e8e",
+  rule = "#cfcfcf",
+  accent = "#6b78d6",
+  panel = "#f0f0f0",
+  addbg = "#e7f2e2",
+  delbg = "#fae7e7",
+}))
+
 zemi.ui.theme.set("default")

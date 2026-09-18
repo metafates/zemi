@@ -6,6 +6,7 @@ import (
 	"io"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -297,7 +298,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		if !ok {
 			return
 		}
-		fg, bg := theme.hex(spec.Fg), theme.hex(spec.Bg)
+		fg, bg := theme.color(spec.Fg), theme.color(spec.Bg)
 		bold, italic := spec.Bold != nil && *spec.Bold, spec.Italic != nil && *spec.Italic
 		underline := spec.Underline != "" && spec.Underline != "none"
 		fmt.Fprintf(&key, ";%s=%s/%s/%t%t%t", group, fg, bg, bold, italic, underline)
@@ -327,10 +328,15 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	return cfg, key.String()
 }
 
-// hex resolves a color reference (raw hex or palette name) to hex, or "".
-func (t *Theme) hex(ref string) string {
+// color resolves a color reference for glamour: raw hex, a palette name, or
+// an ANSI color name as its number, which is how lipgloss takes one. "" when
+// nothing resolves.
+func (t *Theme) color(ref string) string {
 	if strings.HasPrefix(ref, "#") {
 		return ref
+	}
+	if c, ok := ANSIColors[ref]; ok {
+		return strconv.Itoa(int(c))
 	}
 	if v := t.Palette[ref]; strings.HasPrefix(v, "#") {
 		return v

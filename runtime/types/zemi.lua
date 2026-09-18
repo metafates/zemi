@@ -724,7 +724,7 @@ function zemi.event.stats() end
 --- over the text's own style: keys left out keep it, false and "NONE" clear it.
 ---@class zemi.HLSpec
 ---@field link? string Draw as this group instead; the other fields are then ignored. Chains longer than 8 or cycles draw unstyled.
----@field fg? string Hex ("#7aa2f7"), a palette name, or "NONE".
+---@field fg? string Hex ("#9aa5f2"), a palette name, an ANSI color name ("red", "green", ...), or "NONE".
 ---@field bg? string
 ---@field sp? string Underline color.
 ---@field bold? boolean

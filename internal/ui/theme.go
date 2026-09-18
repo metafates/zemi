@@ -13,8 +13,9 @@ import (
 // the active theme's palette (DESIGN §6.6: palettes map names to colors, hl
 // groups reference palette names or raw hex; Go resolves them).
 type themeResolver struct {
-	host *hostapi.Host
-	sgr  map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
+	host  *hostapi.Host
+	sgr   map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
+	light bool                // the terminal reported a light background
 }
 
 func (t themeResolver) style(hl string) uv.Style {
@@ -28,12 +29,19 @@ func (t themeResolver) style(hl string) uv.Style {
 	return drawOver(uv.Style{}, spec, theme)
 }
 
-// group is the active theme's spec for a group.
+// group is the active theme's spec for a group. On a light terminal a
+// theme's "-light" variant is used when it registered one.
 func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
 	if hl == "" || t.host == nil {
 		return hostapi.HLSpec{}, nil, false
 	}
-	theme := t.host.Themes.Get(t.host.ActiveThemeName())
+	name := t.host.ActiveThemeName()
+	theme := t.host.Themes.Get(name)
+	if t.light {
+		if light := t.host.Themes.Get(name + "-light"); light != nil {
+			theme = light
+		}
+	}
 	if theme == nil {
 		return hostapi.HLSpec{}, nil, false
 	}
@@ -140,9 +148,13 @@ func (t themeResolver) sgrStyle(params string) uv.Style {
 	return st
 }
 
-// colorValue resolves a theme color reference: raw hex, or a palette name.
+// colorValue resolves a theme color reference: raw hex, a palette name, or
+// an ANSI color name the user's terminal decides.
 func colorValue(ref string, theme *hostapi.Theme) color.Color {
 	if !strings.HasPrefix(ref, "#") {
+		if c, ok := hostapi.ANSIColors[ref]; ok {
+			return c
+		}
 		ref = theme.Palette[ref]
 	}
 	if !strings.HasPrefix(ref, "#") {

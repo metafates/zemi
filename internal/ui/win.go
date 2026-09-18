@@ -86,28 +86,17 @@ func (a *App) floatBox(wn *win.Window, stage uv.Rectangle) (box [][]hostapi.Segm
 	}
 	cols, rows = max(min(cols, sw-4), 2), max(min(rows, sh-3), 1)
 	wn.Resize(cols, rows)
-	// the title row goes into the top border: one frame, not two
+	// the title row is already a rule: it goes into the top border
 	body := a.windowRows(wn, cols, rows)
-	top := []hostapi.Segment{{Text: "╭─", NoCopy: true}}
-	for _, s := range body[0] {
-		switch {
-		case strings.TrimSpace(s.Text) == "":
-			s.Text, s.HL = strings.Repeat("─", ansi.StringWidth(s.Text)), ""
-		case s.HL == "Host:Panel":
-			s.HL = ""
-		case s.HL == "Host:PanelTitle":
-			s.HL = "Host:Title"
-		}
-		top = append(top, s)
-	}
-	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─╮", NoCopy: true})}
+	top := append([]hostapi.Segment{{Text: "┌─", HL: "Host:Rule", NoCopy: true}}, body[0]...)
+	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─┐", HL: "Host:Rule", NoCopy: true})}
 	bw := cols + 4
 	for _, row := range body[1:] {
-		line := []hostapi.Segment{{Text: "│ ", NoCopy: true}}
+		line := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
 		line = append(line, row...)
-		box = append(box, append(line, hostapi.Segment{Text: " │", NoCopy: true}))
+		box = append(box, append(line, hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true}))
 	}
-	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
+	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: "Host:Rule", NoCopy: true}})
 	x0, y0 = l.X, l.Y
 	if x0 < 0 {
 		x0 = stage.Min.X + max((sw-bw)/2, 0)
@@ -284,14 +273,14 @@ func (a *App) placeCursor(c *tea.Cursor, modal bool) *tea.Cursor {
 	return c
 }
 
-// winTitleRow is the row above a window: id and title on the left, state
+// winTitleRow is the rule above a window: id and title on the left, state
 // then the minimize and close buttons on the right. Focus lights the title,
-// not the bar. The buttons take the last winButtons cells, where
+// not the rule. The buttons take the last winButtons cells, where
 // winButtonAt and titleClick look for them.
 func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Segment {
-	hl, titleHL := "Host:Panel", "Host:Panel"
+	titleHL := "Host:Hint"
 	if focused {
-		titleHL = "Host:PanelTitle"
+		titleHL = "Host:Title"
 	}
 	state, buttons := "", true
 	switch {
@@ -311,23 +300,23 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 		// a narrow window drops the minimize button, then cuts the close mark
 		// from the left, so it stays where titleClick looks for it
 		if width >= winButtons {
-			right = append(right, hostapi.Segment{Text: " ─ ", HL: "Host:WinMin"})
+			right = append(right, hostapi.Segment{Text: " ─ ", HL: "Host:Hint"})
 		}
 		mark := " × "
 		if over := segsWidth(right) + 3 - width; over > 0 {
 			mark = ansi.TruncateLeft(mark, over, "")
 		}
-		right = append(right, hostapi.Segment{Text: mark, HL: "Host:WinClose"})
+		right = append(right, hostapi.Segment{Text: mark, HL: "Host:Danger"})
 	}
 	rw := segsWidth(right)
 	if state != "" && rw+ansi.StringWidth(state)+2 <= width-4 {
-		right = append([]hostapi.Segment{{Text: " " + state + " ", HL: hl}}, right...)
+		right = append([]hostapi.Segment{{Text: " " + state + " ", HL: "Host:Hint"}}, right...)
 		rw = segsWidth(right)
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
 	left = ansi.Truncate(left, max(0, width-rw), "…")
 	fill := max(0, width-ansi.StringWidth(left)-rw)
-	out := []hostapi.Segment{{Text: left, HL: titleHL}, {Text: strings.Repeat(" ", fill), HL: hl}}
+	out := []hostapi.Segment{{Text: left, HL: titleHL}, {Text: strings.Repeat("─", fill), HL: "Host:Rule", NoCopy: true}}
 	return append(out, right...)
 }
 
@@ -335,8 +324,8 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 // the right end of the title row.
 const winButtons = 6
 
-// dockRow lists the hidden windows on one row at the bottom of the stage; a
-// click on one shows it again. With nothing hidden it draws nothing.
+// dockRow lists the hidden windows on one rule row at the bottom of the
+// stage; a click on one shows it again. With nothing hidden it draws nothing.
 func (a *App) dockRow(width int) []hostapi.Segment {
 	var out []hostapi.Segment
 	for _, wn := range a.host.Wins.List() {
@@ -344,11 +333,14 @@ func (a *App) dockRow(width int) []hostapi.Segment {
 			continue
 		}
 		label := fmt.Sprintf(" %d %s ", wn.ID, sanitize.Line(wn.Title()))
-		out = append(out, hostapi.Segment{Text: label, HL: "Host:Dock", Click: fmt.Sprintf("win show %d", wn.ID)},
-			hostapi.Segment{Text: " ", NoCopy: true})
+		out = append(out, hostapi.Segment{Text: label, HL: "Host:Hint", Click: fmt.Sprintf("win show %d", wn.ID)},
+			hostapi.Segment{Text: "─", HL: "Host:Rule", NoCopy: true})
 	}
 	if out == nil {
 		return nil
+	}
+	if fill := width - segsWidth(out); fill > 0 {
+		out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: "Host:Rule", NoCopy: true})
 	}
 	return truncateSegs(out, width)
 }

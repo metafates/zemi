@@ -220,6 +220,8 @@ func TestHighlightOverride(t *testing.T) {
 			and hv.brighten == 0.3 and hv.replace, zemi.json.encode(hv))
 		zemi.ui.hl.set("U", { underline = false })
 		assert(zemi.ui.hl.get("U").underline == false, "underline = false reads back")
+		zemi.ui.hl.set("W", { fg = "yellow" })
+		assert(zemi.ui.hl.get("W").fg == "yellow", "an ANSI color name stays the terminal's")
 		assert(not pcall(zemi.ui.hl.set, "X", { underline = "wavy" }), "an unknown underline kind raises")
 		assert(not pcall(zemi.ui.hl.set, "X", "blue") and not pcall(zemi.ui.hl.set, "X"), "a spec that is not a table raises")
 		assert(not pcall(zemi.ui.theme.add, "bogus", "nope"), "a theme that is not a table raises")

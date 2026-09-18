@@ -248,10 +248,11 @@ end)
 
 -- Change a few colors: override just those groups. theme.add below
 -- builds a complete theme, and groups it leaves out lose their colors.
-zemi.ui.hl.set("ModePlan", { fg = "bg", bg = "warn", bold = true })
-zemi.ui.hl.set("ModeAuto", { fg = "bg", bg = "#c4a7e7", bold = true })
+zemi.ui.hl.set("ModePlan", { fg = "yellow", bold = true })
+zemi.ui.hl.set("ModeAuto", { fg = "#c4a7e7", bold = true })
 
--- A whole theme (define every group the UI uses, or copy the default's)
+-- A whole theme (define every group the UI uses, or copy the default's).
+-- Add a "dusk-light" beside it and a light terminal picks that one.
 zemi.ui.theme.add("dusk", {
   palette = { bg = "#1e1e2e", fg = "#cdd6f4", muted = "#6c7086", accent = "#f5c2e7", ok = "#a6e3a1", warn = "#f9e2af", err = "#f38ba8", panel = "#313244" },
   hl = { Normal = { fg = "fg" }, Comment = { fg = "muted" }, Title = { fg = "accent", bold = true } },
