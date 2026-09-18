@@ -43,6 +43,7 @@ var luaReadOnly = map[string]bool{
 	"command.list": true, "composer.get": true,
 	"config.get": true, "config.schema": true,
 	"errors.list": true, "event.log": true, "event.stats": true,
+	"fs.exists": true, "fs.glob": true, "fs.grep": true, "fs.list": true, "fs.read": true, "fs.stat": true,
 	"json.decode": true, "json.encode": true,
 	"keymap.get": true, "keymap.list": true, "learn.proposals": true,
 	"log": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
@@ -62,6 +63,17 @@ var luaReadMethods = map[string]bool{
 	"byte": true, "find": true, "format": true, "gmatch": true, "gsub": true, "len": true,
 	"lower": true, "match": true, "rep": true, "reverse": true, "sub": true, "upper": true,
 	"text": true, "wait_text": true, "info": true, "wait": true,
+}
+
+// luaBuiltinRequire reports whether the require at i names a zemi.*
+// module: those are shipped code the requirer gets read-only, so loading
+// one changes nothing.
+func luaBuiltinRequire(toks []ast.Token, i int) bool {
+	j := i + 1
+	if j < len(toks) && toks[j].Type == '(' {
+		j++
+	}
+	return j < len(toks) && toks[j].Type == parse.TString && strings.HasPrefix(toks[j].Str, "zemi.")
 }
 
 // luaDynamic names what can reach zemi without spelling a member out.
@@ -106,14 +118,20 @@ func luaUnlisted(src string) []string {
 			}
 		case t.Type != parse.TIdent || prev == '.' || prev == ':':
 		case luaDynamic[t.Str]:
-			add(t.Str)
+			if t.Str != "require" || !luaBuiltinRequire(toks, i) {
+				add(t.Str)
+			}
 		case t.Str == "zemi":
 			var path []string
 			for i+2 < len(toks) && toks[i+1].Type == '.' && toks[i+2].Type == parse.TIdent {
 				path = append(path, toks[i+2].Str)
 				i += 2
 			}
-			if name := strings.Join(path, "."); !luaReadOnly[name] {
+			// a path nothing calls is a field read: it does nothing on its
+			// own, and a function read into a variable still meets the guard.
+			// zemi itself with no path is the aliasing route, always listed.
+			called := i+1 < len(toks) && (toks[i+1].Type == '(' || toks[i+1].Type == parse.TString || toks[i+1].Type == '{')
+			if name := strings.Join(path, "."); len(path) == 0 || called && !luaReadOnly[name] {
 				add(strings.TrimSuffix("zemi."+name, "."))
 			}
 		}
@@ -130,7 +148,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Name: "Lua",
 		Description: "Run Lua 5.1 inside zemi to read or change zemi's live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops; start slow work with zemi.job or zemi.timer." +
-			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
+			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, a field like zemi.api.version, require of a zemi.* module, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},

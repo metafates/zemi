@@ -400,6 +400,31 @@ func (s *Sandbox) protectTable(tb *glua.LTable, what string) *glua.LTable {
 	return proxy
 }
 
+// protectNamespace is protectTable for a zemi.* namespace: reading a member
+// it does not have raises and lists the ones it does. A frozen namespace
+// yields nothing to pairs, so a typo would otherwise be an "attempt to call
+// a nil value" with no way to recover (DESIGN §6.0).
+func (s *Sandbox) protectNamespace(tb *glua.LTable, what, path string) *glua.LTable {
+	mt := s.lockedMeta(what)
+	// realTableOf reads it: __index is a function here, not the table
+	mt.RawSetString(realKey, tb)
+	mt.RawSetString("__index", s.L.NewFunction(func(L *glua.LState) int {
+		key := L.Get(2)
+		if v := tb.RawGet(key); v != glua.LNil {
+			L.Push(v)
+			return 1
+		}
+		var names []string
+		tb.ForEach(func(k, _ glua.LValue) { names = append(names, k.String()) })
+		slices.Sort(names)
+		L.RaiseError("%s has no member %q (%s)", path, key.String(), strings.Join(names, ", "))
+		return 0
+	}))
+	proxy := s.L.NewTable()
+	s.L.SetMetatable(proxy, mt)
+	return proxy
+}
+
 // deepProtect replaces every table-valued member of tbl (recursively) with
 // its protected proxy, so nested namespaces like zemi.ui.widget are frozen
 // too. Go keeps its references to the real tables.
@@ -417,7 +442,7 @@ func (s *Sandbox) deepProtect(tbl *glua.LTable, path string) {
 	for _, e := range swaps {
 		joined := path + "." + e.key.String()
 		s.deepProtect(e.tb, joined)
-		tbl.RawSet(e.key, s.protectTable(e.tb, "namespace "+joined))
+		tbl.RawSet(e.key, s.protectNamespace(e.tb, "namespace "+joined, joined))
 	}
 }
 
@@ -454,12 +479,19 @@ func realTableOf(tb *glua.LTable) *glua.LTable {
 	if !ok {
 		return tb
 	}
+	if real, ok := mt.RawGetString(realKey).(*glua.LTable); ok {
+		return real
+	}
 	idx, ok := mt.RawGetString("__index").(*glua.LTable)
 	if !ok || idx == tb {
 		return tb
 	}
 	return idx
 }
+
+// realKey holds a namespace proxy's real table on its metatable, which
+// Lua cannot reach: __metatable answers "zemi:protected".
+const realKey = "__zemi_real"
 
 // rawLookup reads key from tbl, falling through a protected proxy's
 // __index (LookupPath walks proxies and real tables alike).
@@ -506,7 +538,7 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 	}
 	s.freezeTable(tbl, "namespace "+name)
 	s.deepProtect(tbl, name)
-	proxy := s.protectTable(tbl, "namespace "+name)
+	proxy := s.protectNamespace(tbl, "namespace "+name, name)
 	if call != nil {
 		mt := proxy.Metatable.(*glua.LTable)
 		mt.RawSetString("__call", call)
@@ -554,7 +586,7 @@ func (s *Sandbox) ensureParent(parts []string) (*glua.LTable, error) {
 			tbl = realTableOf(next)
 		case *glua.LNilType:
 			real := s.L.NewTable()
-			tbl.RawSetString(parts[i], s.protectTable(real, "namespace "+joined))
+			tbl.RawSetString(parts[i], s.protectNamespace(real, "namespace "+joined, joined))
 			s.protected[joined] = struct{}{}
 			tbl = real
 		default:
@@ -573,7 +605,7 @@ func (s *Sandbox) RegisterProtectedValue(path string, v glua.LValue) error {
 	if tb, ok := v.(*glua.LTable); ok {
 		s.freezeTable(tb, "protected value "+path)
 		s.deepProtect(tb, path)
-		v = s.protectTable(tb, "protected value "+path)
+		v = s.protectNamespace(tb, "protected value "+path, path)
 	}
 	parent, err := s.ensureParent(strings.Split(path, "."))
 	if err != nil {

@@ -165,6 +165,9 @@ func TestSandboxDeepNamespaceProtection(t *testing.T) {
 	`)
 	wantRaise(t, sb, `zemi.ui.widget.register = "fake"`, "cannot modify frozen")
 	wantRaise(t, sb, `zemi.ui.widget.new = 1`, "cannot modify frozen")
+	// a typo names the members instead of "attempt to call a nil value"
+	wantRaise(t, sb, `zemi.ui.widget.regsiter()`, `zemi.ui.widget has no member "regsiter" (register)`)
+	wantRaise(t, sb, `local x = zemi.iu`, `zemi has no member "iu" (ui)`)
 	mustRun(t, sb, `
 		assert(type(zemi.ui.widget.register) == "function",
 			"nested member changed despite refused write")

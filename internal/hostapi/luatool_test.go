@@ -126,6 +126,16 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
 		t.Errorf("read-only script: %+v %q", ui.asked, out)
 	}
+	// a field read does nothing on its own, and a shipped module is read-only
+	for _, src := range []string{
+		`return zemi.api.version`,
+		`return zemi.fs.read("f.txt") ~= nil, #zemi.fs.glob("*.txt")`,
+		`return type(require("zemi.util").trim)`,
+	} {
+		if ui, out := run(src, false); len(ui.asked) != 0 {
+			t.Errorf("%s asked: %+v %q", src, ui.asked, out)
+		}
+	}
 	for _, hidden := range []string{`local z = zemi z.job.out({ cmd = "true" })`, `local j = _G["zemi"].job`} {
 		if ui, _ := run(hidden, false); len(ui.asked) != 1 {
 			t.Errorf("%s: no ask", hidden)

@@ -8,7 +8,8 @@ description: Reference for zemi's Lua API (zemi.* namespaces, events, widgets, o
 zemi runs Lua 5.1 (gopher-lua) in a sandbox. There is no `io`, `os.execute` or
 `require` of arbitrary C modules; filesystem, network and processes go through
 `zemi.fs`, `zemi.http` and `zemi.job`, each behind the permission engine. The `zemi.*`
-tables are frozen: you cannot add or replace members.
+tables are frozen: you cannot add or replace members, and reading a member a namespace
+does not have raises with the list of the ones it does.
 
 ## Origins
 
@@ -54,7 +55,8 @@ The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can 
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
 values (as JSON) come back. A script that only reads (`zemi.config.get`, `zemi.session.messages`,
-`zemi.errors.list`, `zemi.ui.screenshot`, the `list` calls, `zemi.json`, `zemi.log`, ...) runs at
+`zemi.errors.list`, `zemi.ui.screenshot`, the `list` calls, the `zemi.fs` readers, `zemi.json`,
+`zemi.log`, a field such as `zemi.api.version`, `require("zemi.util")`, ...) runs at
 once in a trusted project. Anything else asks the user once for the whole script: write every
 call out by name (`zemi.job.start(...)`, `w:send(...)`), since a call reached through a name
 built from strings, `_G` or `load` asks too, and one the scan misses raises. Plan mode and a

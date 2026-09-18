@@ -474,7 +474,9 @@ in which milestone.
   a `tool.pre` or `permission.request` handler returning something that is
   not a `zemi.Veto` denies.
 - **Frozen namespaces**: all `zemi.*` tables are read-only; the API only
-  grows through versioned Go changes, visible in `zemi.api.version`.
+  grows through versioned Go changes, visible in `zemi.api.version`. A
+  frozen namespace yields nothing to `pairs`, so reading a member it does
+  not have raises and lists the members it does.
 
 ### 6.1 Config and lifecycle
 

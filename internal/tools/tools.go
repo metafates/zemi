@@ -307,6 +307,10 @@ func decidedBy(o perm.Outcome) string {
 
 func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	if p.Ask == nil {
+		// say why it asked: nobody will, and the caller retries blind otherwise
+		if req.Reason != "" {
+			reason += " (asked because " + req.Reason + ")"
+		}
 		return Verdict{perm.Ask, reason + "; no overlay available, failing closed", "default"}
 	}
 	allowed, by, why := p.Ask(req)
