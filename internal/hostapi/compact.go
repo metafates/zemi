@@ -358,7 +358,7 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // context-too-long refusal, up to three times. An empty or cut-off reply is
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
-	model, err := h.modelFor("compact.model")
+	model, err := h.modelFor("compact.model", "models.small")
 	if err != nil {
 		return "", err
 	}

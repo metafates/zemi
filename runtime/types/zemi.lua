@@ -1329,7 +1329,9 @@ zemi.model = {}
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
 
---- Switch the model. Raises for an unknown id. User or builtin origin only.
+--- Switch the model the main conversation runs on: it writes models.smart
+--- when config set that tier, else models.main. Raises for an unknown id.
+--- User or builtin origin only.
 ---@param id string
 function zemi.model.set(id) end
 
@@ -1340,7 +1342,7 @@ function zemi.model.pick() end
 -- zemi.agent
 
 ---@class zemi.ProfileSpec
----@field model? string
+---@field model? string A tier name ("small", "main", "smart") or a "provider/model" id.
 ---@field system? string Replaces the system prompt.
 ---@field temperature? number
 ---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest.

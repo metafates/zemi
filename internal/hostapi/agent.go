@@ -195,13 +195,13 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 	return nil, nil
 }
 
-// currentModelID picks the model: profile override, config agent.model,
-// else the first catalog entry.
+// currentModelID picks the model the main conversation runs on: a profile
+// override, the smart tier, the main tier, else the first catalog entry.
 func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
-		return p.Model
+		return h.modelRef(p.Model)
 	}
-	if s := h.Settings.Str("agent.model"); s != "" {
+	if s := h.tierModel("smart"); s != "" {
 		return s
 	}
 	for _, spec := range h.Providers.List() {
@@ -1274,7 +1274,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
 			return 0
 		}
-		fired, err := h.Settings.SetQuiet("agent.model", id)
+		fired, err := h.Settings.SetQuiet(h.ConversationKey(), id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
@@ -1296,7 +1296,7 @@ func (h *Host) OpenModelPicker() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	cur, sel := h.Settings.Str("agent.model"), 0
+	cur, sel := h.currentModelID(nil), 0
 	var items []any
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
@@ -1318,13 +1318,22 @@ func (h *Host) OpenModelPicker() error {
 	return nil
 }
 
-// SetModel switches agent.model (/model <id>) from any goroutine: the
-// config watches it fires run later on the interpreter queue.
+// ConversationKey is the tier /model and -m write: the smart one when
+// config set it, since that is what the main conversation reads, else main.
+func (h *Host) ConversationKey() string {
+	if h.Settings.Str("models.smart") != "" {
+		return "models.smart"
+	}
+	return "models.main"
+}
+
+// SetModel switches the conversation's tier (/model <id>) from any
+// goroutine: the config watches it fires run later on the interpreter queue.
 func (h *Host) SetModel(id string) error {
 	if _, ok := h.modelSpec(id); !ok {
 		return fmt.Errorf("unknown model %q", id)
 	}
-	fired, err := h.Settings.SetQuiet("agent.model", id)
+	fired, err := h.Settings.SetQuiet(h.ConversationKey(), id)
 	if err != nil {
 		return err
 	}

@@ -195,7 +195,7 @@ func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 // applyOptions applies the flags after boot, so they win over init.lua.
 func applyOptions(h *hostapi.Host, o options) error {
 	if o.model != "" {
-		if err := h.Settings.SetHost("agent.model", o.model); err != nil {
+		if err := h.Settings.SetHost(h.ConversationKey(), o.model); err != nil {
 			return err
 		}
 	}

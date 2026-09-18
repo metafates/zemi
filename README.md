@@ -189,7 +189,10 @@ zemi.provider.add({
       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- optional: session cost in the statusline
   },
 })
-zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
+zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
+-- optional tiers, both falling back to models.main:
+-- zemi.config.set("models.small", "anthropic/claude-haiku-4-5")  -- titles, summaries, the web agent
+-- zemi.config.set("models.smart", "anthropic/claude-opus-4-1")   -- the main conversation
 ```
 
 Instructions reach the model from `~/.config/zemi/AGENTS.md` (yours, every project), then

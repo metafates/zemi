@@ -659,7 +659,7 @@ func (h *Host) autoApprove(req tools.Request) (ok bool, why string) {
 			}
 		}
 	}()
-	model, err := h.modelFor("permissions.auto_model", "agent.small_model")
+	model, err := h.modelFor("permissions.auto_model", "models.small")
 	if err != nil {
 		return false, "auto mode unavailable: " + err.Error()
 	}

@@ -46,7 +46,7 @@ zemi.provider.add({
       context_window = 200000, cost_per_1m_in = 3, cost_per_1m_out = 15 },
   },
 })
-zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
+zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
 ```
 
 `images = false` marks a model that refuses image input: `read` on an image then returns a
@@ -84,13 +84,16 @@ init.lua now sets that key to a different value.
 `zemi.config.schema()` lists every key with kind, default and description; prefer it over
 guessing. Common keys:
 
-- `agent.model`, `reflector.model` (empty: use the agent model)
-- `agent.subagent_model`: default model for subagents whose definition sets none (empty: the
-  session model); a cheaper model here keeps searches cheap. The agent may still pick another
-  configured model per run.
-- `agent.small_model`: a fast, cheap model for small jobs (session titles, the builtin `web`
-  agent, and auto-mode screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
-  `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.
+- Model tiers, each a `provider/model`; a tier nothing sets falls back to `models.main`:
+  - `models.main`: the model everything runs on unless a tier or a definition names another.
+  - `models.small`: the short jobs (session titles, compaction summaries, the builtin `web`
+    agent, and auto-mode screening unless `permissions.auto_model` is set), e.g.
+    `zemi.config.set("models.small", "anthropic/claude-haiku-4-5")`.
+  - `models.smart`: the main conversation, which orchestrates and delegates; subagents stay
+    on `models.main`.
+  `/model` and `-m` write the tier the conversation reads: smart when it is set, else main.
+  Agent definitions, the `agent` tool and workflows take a tier name where they take a model.
+- `reflector.model` (empty: `models.main`)
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
@@ -101,8 +104,8 @@ guessing. Common keys:
   float over zemi with the user's full environment; ctrl+c goes to the editor, `ui.window.unfocus`
   shrinks it to uncover the composer, and the window closes when it exits. × or `/win close <id>` kills a running editor only when repeated.
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
-- `compact.model`: model that writes compaction summaries (empty uses `agent.model`)
-- `session.auto_title` (true): name sessions from the first exchange with `agent.small_model`
+- `compact.model`: model that writes compaction summaries (empty uses `models.small`)
+- `session.auto_title` (true): name sessions from the first exchange with `models.small`
 - `lsp.auto` (true): start installed gopls, pyright, typescript-language-server, clangd or
   rust-analyzer when their marker file (go.mod, package.json, Cargo.toml, ...) is next to a
   file zemi touches or above it, up to the repo root. typescript starts only with a

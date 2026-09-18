@@ -72,7 +72,7 @@ func TestHealthChecks(t *testing.T) {
 }
 
 // TestHealthChecksProfileModel: the model row checks the default profile's
-// model, which is the one a turn uses, not agent.model.
+// model, which is the one a turn uses, not models.main.
 func TestHealthChecksProfileModel(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `

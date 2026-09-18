@@ -101,8 +101,12 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 --       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional; images = false for a text-only model
 --   },
 -- })
--- zemi.config.set("agent.model", "anthropic/claude-sonnet-4-5")
--- zemi.config.set("agent.subagent_model", "anthropic/claude-haiku-4-5") -- subagents default to a cheaper model
+-- Model tiers: main runs everything, small the short jobs (session titles,
+-- compaction summaries, the web subagent, auto-mode screening), smart the
+-- main conversation. A tier you leave unset falls back to main.
+-- zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
+-- zemi.config.set("models.small", "anthropic/claude-haiku-4-5")
+-- zemi.config.set("models.smart", "anthropic/claude-opus-4-1")
 
 -- Settings: zemi.config.schema() lists every one with its default.
 -- zemi.config.set("ui.theme", "default")
