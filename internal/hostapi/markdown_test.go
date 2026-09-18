@@ -225,7 +225,7 @@ func TestWrapSegsExpandsTabs(t *testing.T) {
 func TestMarkdownHexColors(t *testing.T) {
 	h, _ := newTestHost(t)
 	for _, c := range []struct{ name, text, want string }{
-		{"long form, dark text on a light color", "use #FFF000 here", "#FFF000 38;2;0;0;0;48;2;255;240;0"},
+		{"dark text on a light color, the spaces beside it as padding", "use #FFF000 here", " #FFF000  38;2;0;0;0;48;2;255;240;0"},
 		{"a code span's padding joins the swatch", "`#03f`", "\u00a0#03f\u00a0 38;2;255;255;255;48;2;0;51;255"},
 		{"issue number", "see #123", ""},
 		{"after a word", "café#fff", ""},

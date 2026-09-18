@@ -429,6 +429,13 @@ func swatchColors(row []Segment) []Segment {
 			if 299*r+587*g+114*b < 128000 { // perceived brightness under half
 				fg = "38;2;255;255;255"
 			}
+			// a space beside the color joins the swatch as its padding
+			if m[0] > at && seg.Text[m[0]-1] == ' ' {
+				m[0]--
+			}
+			if m[1] < len(seg.Text) && seg.Text[m[1]] == ' ' {
+				m[1]++
+			}
 			pre, sw := seg, seg
 			pre.Text, sw.Text = seg.Text[at:m[0]], seg.Text[m[0]:m[1]]
 			sw.HL = fmt.Sprintf("%s%s;48;2;%d;%d;%d", SGRPrefix, fg, r, g, b)
