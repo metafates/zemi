@@ -395,11 +395,7 @@ func TestTextWindowRenders(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	rows := func() [][]hostapi.Segment {
 		a.Frame()
-		i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
-		if i < 0 {
-			t.Fatal("the text window was not drawn")
-		}
-		r := a.winRects[i]
+		r := winRectOf(t, a, wn.ID)
 		if r.w > 40 {
 			t.Fatalf("a float with no size asked for is %d cells wide", r.w)
 		}
@@ -494,13 +490,10 @@ func TestTextPanelSizes(t *testing.T) {
 			}
 			a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 			a.Frame()
-			i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
-			if i < 0 {
-				t.Fatal("the panel was not drawn")
-			}
-			got := a.winRects[i].h + 1 // the rect is the body; the title row is its own
+			rect := winRectOf(t, a, wn.ID)
+			got := rect.h + 1 // the rect is the body; the title row is its own
 			if c.kind == win.KindVSplit {
-				got = a.winRects[i].w
+				got = rect.w
 			}
 			if got != c.want {
 				t.Fatalf("panel is %d cells, want %d", got, c.want)
@@ -531,12 +524,8 @@ func TestFloatStaysOnTheStage(t *testing.T) {
 	} {
 		_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y = c.x, c.y })
 		a.Frame()
-		i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == wn.ID })
-		if i < 0 {
-			t.Fatalf("%s: the float was not drawn", c.name)
-		}
 		// the box is the cells plus a two-column border and the title and bottom rows
-		r := a.winRects[i]
+		r := winRectOf(t, a, wn.ID)
 		if r.x-2 < stage.Min.X || r.x+r.w+2 > stage.Max.X || r.titleY < stage.Min.Y || r.y+r.h >= stage.Max.Y {
 			t.Fatalf("%s: float %+v leaves the stage %v", c.name, r, stage)
 		}
@@ -566,4 +555,14 @@ func TestDragEndsWhenChromeOpens(t *testing.T) {
 	if l := wn.Layout(); l.X != 10 || l.Y != 4 {
 		t.Fatalf("the float followed the pointer: %+v", l)
 	}
+}
+
+// winRectOf is where the last frame drew window id.
+func winRectOf(t *testing.T, a *App, id int) winRect {
+	t.Helper()
+	i := slices.IndexFunc(a.winRects, func(r winRect) bool { return r.id == id })
+	if i < 0 {
+		t.Fatalf("window %d was not drawn", id)
+	}
+	return a.winRects[i]
 }
