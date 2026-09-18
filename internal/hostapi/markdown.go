@@ -404,7 +404,13 @@ var hexColor = regexp.MustCompile(`#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
 // of black and white reads on it.
 func swatchColors(row []Segment) []Segment {
 	var out []Segment
-	for _, seg := range row {
+	// a code span's padding cell beside a swatch takes its color
+	pad := func(s *Segment, hl string) {
+		if s.NoCopy && s.Text == "\u00a0" {
+			s.HL = hl
+		}
+	}
+	for i, seg := range row {
 		at := 0
 		for _, m := range hexColor.FindAllStringIndex(seg.Text, -1) {
 			hex := seg.Text[m[0]+1 : m[1]]
@@ -428,8 +434,13 @@ func swatchColors(row []Segment) []Segment {
 			sw.HL = fmt.Sprintf("%s%s;48;2;%d;%d;%d", SGRPrefix, fg, r, g, b)
 			if pre.Text != "" {
 				out = append(out, pre)
+			} else if len(out) > 0 {
+				pad(&out[len(out)-1], sw.HL)
 			}
 			out = append(out, sw)
+			if m[1] == len(seg.Text) && i+1 < len(row) {
+				pad(&row[i+1], sw.HL)
+			}
 			at = m[1]
 		}
 		if at == 0 {

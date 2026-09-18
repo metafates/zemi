@@ -223,21 +223,22 @@ func TestWrapSegsExpandsTabs(t *testing.T) {
 }
 
 func TestMarkdownHexColors(t *testing.T) {
+	h, _ := newTestHost(t)
 	for _, c := range []struct{ name, text, want string }{
-		{"long form, dark text on a light color", "use #FFF000 here", "38;2;0;0;0;48;2;255;240;0"},
-		{"short form in a code span", "`#03f`", "38;2;255;255;255;48;2;0;51;255"},
+		{"long form, dark text on a light color", "use #FFF000 here", "#FFF000 38;2;0;0;0;48;2;255;240;0"},
+		{"a code span's padding joins the swatch", "`#03f`", "\u00a0#03f\u00a0 38;2;255;255;255;48;2;0;51;255"},
 		{"issue number", "see #123", ""},
 		{"after a word", "café#fff", ""},
 		{"url fragment", "https://x.dev/#fff000", ""},
 		{"longer word", "#fff0001", ""},
 	} {
-		got := ""
-		for _, s := range styledLines(c.text)[0] {
-			if strings.Contains(s.HL, "48;2;") && strings.HasPrefix(s.Text, "#") {
-				got = strings.TrimPrefix(s.HL, SGRPrefix)
+		text, hl := "", ""
+		for _, s := range h.Markdown(c.text, 40)[0] {
+			if strings.Contains(s.HL, "48;2;") && (hl == "" || s.HL == hl) {
+				text, hl = text+s.Text, s.HL
 			}
 		}
-		if got != c.want {
+		if got := strings.TrimSuffix(text+" "+strings.TrimPrefix(hl, SGRPrefix), " "); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
