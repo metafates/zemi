@@ -558,7 +558,7 @@ func isName(s string) bool {
 	return true
 }
 
-var secretEnvShape = []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "API_KEY", "APIKEY", "PRIVATE_KEY"}
+var secretEnvShape = []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL"}
 
 // EnvIsSecret reports whether an env var name looks like it holds a secret
 // (case-insensitive); such variables never reach children or Lua. PWD and
@@ -569,12 +569,30 @@ func EnvIsSecret(name string) bool {
 		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
+// EnvKeep returns the comma-separated names ChildEnv passes through despite
+// their secret shape; the host reads permissions.env_keep from user config,
+// so a build that needs its own NPM_TOKEN has a way back.
+var EnvKeep func() string
+
+func envKept(name string) bool {
+	if EnvKeep == nil {
+		return false
+	}
+	for s := range strings.SplitSeq(EnvKeep(), ",") {
+		if strings.EqualFold(strings.TrimSpace(s), name) {
+			return true
+		}
+	}
+	return false
+}
+
 // ChildEnv is a child process environment: zemi's own minus secret-shaped
-// names, plus extras that pass the secret and assignment gates.
+// names the user did not keep, plus extras that pass the secret and
+// assignment gates.
 func ChildEnv(extras map[string]any) ([]string, error) {
 	var out []string
 	for _, kv := range os.Environ() {
-		if name, _, ok := strings.Cut(kv, "="); ok && !EnvIsSecret(name) {
+		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || envKept(name)) {
 			out = append(out, kv)
 		}
 	}

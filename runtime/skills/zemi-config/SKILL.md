@@ -163,6 +163,10 @@ guessing. Common keys:
   `zemi --mode auto`. `/permissions` lists the mode and every rule in force; an "always"
   answer (the only rule made at runtime) has a Remove action there, config rules do not. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
+- `permissions.env_keep` (empty): comma-separated env var names a command, job, window or
+  language server keeps although they look secret-shaped (`*KEY*`, `*TOKEN*`, `*SECRET*`,
+  `*PASSWORD*`, ...), which zemi otherwise drops from every child. Name only what a build
+  really needs: whatever is kept, the model can print.
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
   `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`, and
   `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules })`

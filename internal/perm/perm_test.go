@@ -309,15 +309,35 @@ func TestGlobConcurrentAndRunes(t *testing.T) {
 }
 
 func TestEnvIsSecret(t *testing.T) {
+	// KEY matches anywhere, so KEYTIMEOUT goes with it: a child that loses a
+	// zsh setting is cheaper than one that inherits a credential
 	for name, want := range map[string]bool{
 		"GITHUB_TOKEN": true, "aws_secret_access_key": true, "OPENAI_API_KEY": true, "GEMINI_APIKEY": true,
+		"AWS_ACCESS_KEY_ID": true, "KEYTIMEOUT": true,
 		"SMTP_PASSWD": true, "MYSQL_PWD": true, "DB_PASS": true, "GPG_PASSPHRASE": true, "db_password": true,
 		"PATH": false, "PWD": false, "OLDPWD": false, "COMPASS_HOME": false, "BYPASS": false, "PASSENGER_APP_ENV": false,
-		"KEYTIMEOUT": false, "SSH_AUTH_SOCK": false, "HOME": false,
+		"SSH_AUTH_SOCK": false, "HOME": false,
 	} {
 		if got := EnvIsSecret(name); got != want {
 			t.Errorf("EnvIsSecret(%q) = %v, want %v", name, got, want)
 		}
+	}
+}
+
+func TestChildEnvKeeps(t *testing.T) {
+	t.Setenv("ZEMI_TEST_NPM_TOKEN", "t")
+	t.Setenv("ZEMI_TEST_API_KEY", "k")
+	EnvKeep = func() string { return "zemi_test_npm_token, OTHER" }
+	t.Cleanup(func() { EnvKeep = nil })
+	env, err := ChildEnv(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(env, "ZEMI_TEST_NPM_TOKEN=t") {
+		t.Error("a kept name must reach the child")
+	}
+	if slices.Contains(env, "ZEMI_TEST_API_KEY=k") {
+		t.Error("an unlisted secret-shaped name must not")
 	}
 }
 

@@ -390,6 +390,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		Wins:      &win.Manager{},
 	}
 	h.Perm.Default = h.fsDefault
+	perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	h.Wins.OnExit = h.windowExited
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
