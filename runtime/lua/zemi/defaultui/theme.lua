@@ -31,7 +31,9 @@ local function theme(palette)
     ToastErr = { fg = "red", bg = "panel" },
     ToastError = { fg = "red", bg = "panel", bold = true },
     MarkdownHeading = { link = "Title" },
-    MarkdownCode = { fg = "fg", bg = "panel" },
+    -- an inline span reads by its color: glamour pads it with a space either
+    -- side, and a filled background would hang off the text as a stray block
+    MarkdownCode = { fg = "accent", bg = "panel" },
     MarkdownLink = { fg = "accent", underline = true },
     MarkdownQuote = { fg = "dim", italic = true },
     AgentReason = { link = "Dim" },
