@@ -129,7 +129,7 @@ zemi.permission.mode.add("ask", {
 
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
-`splash`, `chat`, `working` (the composer frame's whole top rule, `ctx.width` cells: the mascot moving along it and the turn status at its right end), `statusline.quit`,
+`splash`, `chat`, `working` (the composer frame's whole top rule, `ctx.width` cells: the mascot in its left corner, its eyes showing the turn state, and the turn status at its right end), `statusline.quit`,
 `statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
 `statusline.learn`, `statusline.keys`, `statusline.scroll`, `statusline.info`. Regions: `header`,
 `chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
