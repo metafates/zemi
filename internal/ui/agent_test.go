@@ -671,11 +671,11 @@ func TestWorkingRowMascot(t *testing.T) {
 	if r := row(500); !strings.HasSuffix(r, "─ Working  20s · esc to interrupt ") {
 		t.Fatalf("the status left the right end: %q", r)
 	}
-	// the open prompt says what answers it, so the rule retracts to the shell
+	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no label, and no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
 	if r := row(1000); r != "@??"+strings.Repeat("─", 75) {
-		t.Fatalf("the rule does not retract while the user is asked: %q", r)
+		t.Fatalf("the snail does not ask while the user is asked: %q", r)
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})

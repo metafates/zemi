@@ -10,12 +10,12 @@ local HEADS = {
   thinking = { "°ᵒ", "ᵒ°" },
   working = { "•·", "·•" },
   rereading = { "·•", "•·" },
-  retracted = { "??" },
+  asking = { "??" },
   error = { "><" },
   done = { "^^" },
 }
 --- The snail at the left of a plain rule of `room` cells.
----@param state "idle"|"thinking"|"working"|"rereading"|"retracted"|"error"|"done"
+---@param state "idle"|"thinking"|"working"|"rereading"|"asking"|"error"|"done"
 ---@param frame integer ctx.frame
 ---@param room integer
 ---@return zemi.Line

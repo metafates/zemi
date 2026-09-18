@@ -39,13 +39,13 @@ zemi.ui.widget.add({
       if ag.compacting then label, state = "Compacting", "rereading" end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
-        label, state = "Editing " .. ctx.editing, "retracted"
+        label, state = "Editing " .. ctx.editing, "idle"
         parts = { "save and close the editor to continue" }
       end
-      -- the open prompt says what answers it, so the rule retracts to the
+      -- the open prompt says what answers it, so the rule shrinks to the
       -- mascot alone rather than repeating it
       if ctx.waiting ~= "" then
-        label, state, parts = "", "retracted", {}
+        label, state, parts = "", "asking", {}
       else
         parts[#parts + 1] = ctx.cancelling and "ctrl+c quits" or "esc to interrupt"
       end
