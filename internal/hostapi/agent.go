@@ -266,7 +266,7 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 		skip = headlessExcluded
 	}
 	pipe := h.PipelineFor()
-	out := filterTools(h.builtinTools(pipe), want, skip)
+	out, _ := filterTools(h.builtinTools(pipe), want, skip)
 	out = append(out, h.luaFantasyTools(pipe)...)
 	return append(out, h.mcpFantasyTools(pipe)...)
 }

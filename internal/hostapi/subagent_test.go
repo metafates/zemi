@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // scriptModel answers every stream call with the parts its script returns
@@ -456,5 +458,19 @@ func TestAgentsListsJobs(t *testing.T) {
 	}
 	if j.Running() {
 		t.Fatal("job still running after kill")
+	}
+}
+
+// TestFilterToolsNamesTheUnknown: an agent file spelling its tools another
+// harness's way names nothing here, and a run with no tools would invent
+// its report instead of failing.
+func TestFilterToolsNamesTheUnknown(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	kept, unknown := filterTools(tools.All(h.PipelineFor()), []string{"read", "Grep", "agent"}, subagentExcluded)
+	if len(kept) != 1 || kept[0].Info().Name != "read" {
+		t.Errorf("kept %d tools", len(kept))
+	}
+	if !slices.Equal(unknown, []string{"Grep"}) {
+		t.Errorf("unknown = %q", unknown)
 	}
 }

@@ -285,7 +285,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	all = append(all, h.windowToolFor(def.Name, pipe))
-	runner := agent.NewRunner(model, filterTools(all, def.Tools, subagentExcluded), h.systemWith(h.subagentSystem(def), nil))
+	kept, unknown := filterTools(all, def.Tools, subagentExcluded)
+	if len(unknown) > 0 {
+		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
+	}
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def), nil))
 	runner.ProviderOptions = h.Providers.EffortOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -475,21 +479,29 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// filterTools keeps the tools named in want (nil keeps all) minus skip.
-func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) []fantasy.AgentTool {
-	keep := map[string]bool{}
+// filterTools keeps the tools named in want (nil keeps all) minus skip, and
+// reports the wanted names nothing answers to: an agent file carrying
+// another harness's spelling ("Read, Grep") would otherwise run with no
+// tools at all and invent its report.
+func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (kept []fantasy.AgentTool, unknown []string) {
+	keep, have := map[string]bool{}, map[string]bool{}
 	for _, n := range want {
 		keep[n] = true
 	}
-	var out []fantasy.AgentTool
 	for _, t := range all {
 		name := t.Info().Name
+		have[name] = true
 		if skip[name] || (want != nil && !keep[name]) {
 			continue
 		}
-		out = append(out, t)
+		kept = append(kept, t)
 	}
-	return out
+	for _, n := range want {
+		if !have[n] && !skip[n] {
+			unknown = append(unknown, n)
+		}
+	}
+	return kept, unknown
 }
 
 // setToolDetail updates the live progress line under a running tool row.
