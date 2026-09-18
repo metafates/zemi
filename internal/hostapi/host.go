@@ -527,6 +527,25 @@ func (h *Host) AppendReasoning(text string, stat TurnStat) {
 	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
 
+// goKeys are the bindings the key router owns (internal/ui/keys.go): they
+// are not Lua keymaps, so /help would list none of them. Keep them in step
+// with the README table.
+var goKeys = [][2]string{
+	{"enter", "send the message"},
+	{"alt+enter, ctrl+j", "newline"},
+	{"esc", "interrupt the turn, or leave an agent view"},
+	{"ctrl+c", "interrupt; twice while idle quits"},
+	{"ctrl+g", "edit the draft in your editor"},
+	{"ctrl+v", "paste, images included"},
+	{"up, ctrl+p", "earlier prompts (empty composer: queued messages)"},
+	{"down, ctrl+n", "later prompts"},
+	{"ctrl+z", "undo in the composer"},
+	{"alt+left, alt+right", "move by word"},
+	{"/", "command palette"},
+	{"@", "attach a project file"},
+	{"!cmd", "run a shell command with your next message"},
+}
+
 // OpenHelp opens the help overlay listing keymaps and slash commands.
 func (h *Host) OpenHelp() {
 	ui := h.hooks()
@@ -534,6 +553,9 @@ func (h *Host) OpenHelp() {
 		return
 	}
 	var items []any
+	for _, k := range goKeys {
+		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Keys"})
+	}
 	for _, b := range h.Keymaps.List() {
 		desc := b.Desc
 		if desc == "" {
