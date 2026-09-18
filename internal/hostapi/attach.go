@@ -2,8 +2,9 @@
 // project file is appended to what the model receives, behind attachMarker,
 // while the transcript keeps the typed text. Images (png, jpeg, gif, webp)
 // travel as file parts for vision models. Only files inside the project
-// that the permission store allows reading attach (secret-shaped paths ask,
-// so they are skipped); the model can still read the rest with its tools.
+// that the permission store allows reading attach; a file that is too big,
+// not text or not allowed gets a note saying so in place of its content, so
+// the model knows to reach for it with its tools.
 package hostapi
 
 import (
@@ -48,6 +49,13 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 
 var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)`)
 
+func overLimit(limit int64) string {
+	if limit >= 1<<20 {
+		return fmt.Sprintf("it is over the %d MB attachment limit", limit>>20)
+	}
+	return fmt.Sprintf("it is over the %d KB attachment limit; read it with the read tool", limit>>10)
+}
+
 // expandAttachments also carries output of the user's !commands since the
 // last message, behind the same marker, and returns referenced images.
 func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
@@ -64,42 +72,56 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		}
 		seen[rel] = true
 		var abs string
+		drop := false
 		if name, ok := strings.CutPrefix(rel, "drop:"); ok {
 			// only copies of what the user dropped live there (AttachPath)
 			if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") || h.dropsDir() == "" {
 				continue
 			}
-			abs = filepath.Join(h.dropsDir(), name)
+			abs, drop = filepath.Join(h.dropsDir(), name), true
 		} else {
 			var err error
 			abs, err = h.resolveJailed(rel, []string{h.Dirs.ProjectDir})
-			// the model reads the file, so the model's rules apply
-			if err != nil || h.Perm.Evaluate("fs.read", abs, "model").Decision != perm.Allow {
+			if err != nil {
 				continue
 			}
 		}
 		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
-		limit := int64(attachMax)
+		limit, tag := int64(attachMax), "file"
 		if image {
-			limit = attachImageMax
+			limit, tag = attachImageMax, "image"
 		}
-		// a FIFO blocks the turn, and a huge file would be read whole first
-		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() || fi.Size() > limit {
+		// say why instead of dropping the reference: the model is told the
+		// file was meant to be there and can still read it itself
+		note := func(why string) { fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, rel, why, tag) }
+		// a FIFO blocks the turn, and an @word naming no file is just prose
+		fi, err := os.Stat(abs)
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		// the model reads the file, so the model's rules apply
+		if !drop && h.Perm.Evaluate("fs.read", abs, "model").Decision != perm.Allow {
+			note("reading it needs your approval")
+			continue
+		}
+		if fi.Size() > limit { // a huge file would be read whole first
+			note(overLimit(limit))
 			continue
 		}
 		data, err := os.ReadFile(abs)
-		if image {
-			if err != nil || int64(len(data)) > limit {
-				continue
-			}
+		switch {
+		case err != nil:
+			note("it could not be read")
+		case int64(len(data)) > limit:
+			note(overLimit(limit))
+		case image:
 			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: data, MediaType: mt})
 			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", rel)
-			continue
+		case !utf8.Valid(data):
+			note("it is not text")
+		default:
+			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)
 		}
-		if err != nil || int64(len(data)) > limit || !utf8.Valid(data) {
-			continue
-		}
-		fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)
 	}
 	b.WriteString(h.takeShellNotes())
 	if b.Len() == 0 {

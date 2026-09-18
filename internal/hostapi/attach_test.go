@@ -57,6 +57,19 @@ func TestExpandAttachments(t *testing.T) {
 			t.Fatal("a FIFO reference blocked the message")
 		}
 	}
+	write(filepath.Join(proj, "big.txt"), strings.Repeat("x", attachMax+1))
+	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
+	got, _ = h.expandAttachments("@big.txt @blob.txt @.env")
+	for _, want := range []string{
+		`<file path="big.txt">not attached: it is over the 64 KB`,
+		`<file path="blob.txt">not attached: it is not text`,
+		`<file path=".env">not attached: reading it needs your approval`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %q", want, got)
+		}
+	}
+
 	report := "Background agent a1 finished." + attachMarker + "\nsee @main.go\n</attached-files>"
 	if got, _ := h.expandAttachments(report); got != report {
 		t.Fatalf("model-written text behind the marker must not attach: %q", got)
