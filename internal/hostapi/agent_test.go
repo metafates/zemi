@@ -529,16 +529,16 @@ type fakeUI struct {
 	edit         func(path string) // what the user does in the editor
 }
 
-func (f *fakeUI) Notify(level, title, body string) {}
-func (f *fakeUI) OpenOverlay(o Overlay)            { f.opened = append(f.opened, o) }
-func (f *fakeUI) CloseOverlay(id string)           { f.closed = append(f.closed, id) }
-func (f *fakeUI) CloseLuaOverlays()                { f.closedLua++ }
-func (f *fakeUI) Reload()                          { f.reloads++ }
-func (f *fakeUI) Refresh()                         {}
-func (f *fakeUI) Scroll(kind, id string)           {}
-func (f *fakeUI) LayoutRects() map[string]Rect     { return nil }
-func (f *fakeUI) AgentEvent(ev AgentEvent)         {}
-func (f *fakeUI) ComposerEdit(string, string, int) {}
+func (f *fakeUI) Notify(level, title, body string)     {}
+func (f *fakeUI) OpenOverlay(o Overlay)                { f.opened = append(f.opened, o) }
+func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
+func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
+func (f *fakeUI) Reload()                              { f.reloads++ }
+func (f *fakeUI) Refresh()                             {}
+func (f *fakeUI) Scroll(kind, id string)               {}
+func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }
+func (f *fakeUI) AgentEvent(ev AgentEvent)             {}
+func (f *fakeUI) ComposerEdit(string, string, int)     {}
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) (string, error) {
 	if f.edit != nil {
 		f.edit(req.Path)

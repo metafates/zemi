@@ -33,7 +33,10 @@ import (
 type UIHooks interface {
 	Notify(level, title, body string)
 	OpenOverlay(o Overlay)
-	CloseOverlay(id string)
+	// CloseOverlay closes an overlay and runs its on_close, but only for a
+	// caller of user or builtin origin or the origin that opened it: a
+	// project timer must not dismiss the errors it caused.
+	CloseOverlay(id string, origin lua.Origin)
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
 	// Reload replays the boot steps on a fresh generation (/reload).

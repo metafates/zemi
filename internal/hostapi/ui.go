@@ -181,7 +181,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		id := L.CheckString(1)
 		h.refuseDuringRender(L, "zemi.ui.overlay.close")
 		if ui := h.hooks(); ui != nil {
-			ui.CloseOverlay(id)
+			ui.CloseOverlay(id, h.RT.CurrentOrigin(L))
 		}
 		h.EmitAsync("overlay.close", map[string]any{"id": id})
 		return 0

@@ -521,3 +521,30 @@ zemi.ui.overlay.open({ id = "toggles", title = "Toggles", items = items(),
 		t.Fatalf("a failed reload should keep the items and record the error: %+v", app.overlays[0].items)
 	}
 }
+
+// TestOverlayCloseRules: zemi.ui.overlay.close honors only user, builtin or
+// the origin that opened the overlay, and it runs on_close, so a picker's
+// callback always answers.
+func TestOverlayCloseRules(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	run := func(src string, origin lua.Origin) {
+		t.Helper()
+		if err := host.RT.ExecuteChunk(context.Background(), src, "t.lua", origin); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+	}
+	run(`zemi.ui.overlay.open({ id = "pick", title = "Pick", items = { "a" },
+		on_close = function() zemi.ui.overlay.open({ id = "answered", items = { "a" } }) end })`, lua.OriginUser)
+	run(`zemi.ui.overlay.close("pick")`, lua.OriginProject)
+	if len(app.overlays) != 1 {
+		t.Fatal("project code closed a user overlay")
+	}
+	run(`zemi.ui.overlay.close("pick")`, lua.OriginUser)
+	for app.Pump() {
+	}
+	if len(app.overlays) != 1 || app.overlays[0].o.ID != "answered" {
+		t.Fatalf("on_close never ran: %+v", app.overlays)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -180,9 +181,22 @@ func (a *App) OpenOverlay(o hostapi.Overlay) {
 }
 
 // CloseOverlay posts the close: waiting on the UI goroutine from the
-// interpreter could deadlock.
-func (a *App) CloseOverlay(id string) {
-	a.do(func() { a.closeOverlayByID(id) })
+// interpreter could deadlock. An origin that neither opened the overlay nor
+// outranks it closes nothing, and the close runs on_close, so a picker's
+// callback always answers.
+func (a *App) CloseOverlay(id string, origin lua.Origin) {
+	a.do(func() {
+		i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id })
+		if i < 0 {
+			return
+		}
+		o := a.overlays[i].o
+		if origin != lua.OriginUser && origin != lua.OriginBuiltin && origin != o.Origin {
+			a.log.Debug("ui", "overlay close refused", map[string]any{"id": id, "origin": string(origin)})
+			return
+		}
+		a.cancelOverlay(o)
+	})
 }
 
 // CloseLuaOverlays drops every overlay owned by the interpreter (Gen != 0)

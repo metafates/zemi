@@ -955,8 +955,9 @@ zemi.ui.overlay = {}
 ---@param spec zemi.OverlaySpec
 function zemi.ui.overlay.open(spec) end
 
+--- Close an overlay and run its on_close. Closes nothing unless user
+--- config, builtin code or the origin that opened it calls it.
 ---@param id string
----@return boolean closed
 function zemi.ui.overlay.close(id) end
 
 --- A picker in the shape of `vim.ui.select`. on_choice gets the item on
