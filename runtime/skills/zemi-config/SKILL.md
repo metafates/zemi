@@ -313,8 +313,11 @@ program and its args as a normalized command line, like `tool.bash`). A subject 
 `.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
 beats allow; within one decision the most specific pattern wins.
 
-Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure
-and fast: no zemi.* mutations inside it. For the full API see the zemi-lua skill.
+Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure and
+fast: a `zemi.*` call that changes anything (registering, `config.set`, `state.set`, `fs`
+writes, jobs, http, `agent.send`) raises inside it. A widget redraws only when something
+else does, so one with its own clock calls `zemi.ui.redraw` from a `zemi.timer.every`
+callback. For the full API see the zemi-lua skill.
 
 ## Project config
 

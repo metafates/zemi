@@ -654,7 +654,8 @@ function zemi.event.stats() end
 ---@field pct number
 
 --- What a widget's render function is given. Everything is a snapshot:
---- render must be pure and finish in about 10 ms. `transcript`, `agent`,
+--- render must be pure and finish in about 10 ms: a `zemi.*` call that
+--- changes anything raises inside it. `transcript`, `agent`,
 --- `todos` and `recent` are built on first read, so a widget that does not
 --- read them does not pay for them; kept past the render, a ctx reads nil
 --- for the ones render did not read.
