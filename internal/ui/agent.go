@@ -131,6 +131,64 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]
 // boxInner is the widest row a hostBox on a w-cell screen shows whole.
 func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 
+// promptBox is the frame every Go-owned prompt draws in (permission, trust,
+// question): the body, then a blank row and the hint line when there is one
+// (the trust prompt's answers carry their keys).
+func promptBox(title, badge string, body [][]hostapi.Segment, hint []hostapi.Segment, w, maxW int) [][]hostapi.Segment {
+	if len(hint) > 0 {
+		body = append(body, nil, hint)
+	}
+	return hostBoxW(" "+title+" ", "Host:Title", badge, body, w, maxW)
+}
+
+// wrapText wraps text to w cells. It splits the line breaks text already
+// holds: a newline measures as no cell, so wrapping without splitting leaves
+// one long row that spills past the box.
+func wrapText(text, hl string, w int) [][]hostapi.Segment {
+	var rows [][]hostapi.Segment
+	for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
+		rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: hl}}, w)...)
+	}
+	return rows
+}
+
+// promptChoice is one answer of a Go-owned prompt.
+type promptChoice struct{ key, label, desc string }
+
+// choiceRows draws a prompt's answers as buttons: the key in a filled cell
+// right next to its label, the selected one filled. Every row carries the
+// choice's 1-based Hit, so a click answers it. sel of -1 selects none.
+func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
+	kw := 0
+	for _, c := range choices {
+		kw = max(kw, ansi.StringWidth(c.key))
+	}
+	var rows [][]hostapi.Segment
+	for i, c := range choices {
+		keyHL, textHL := "Host:BtnKey", "Normal"
+		if i == sel {
+			keyHL, textHL = "Host:BtnSel", "Host:Bold"
+		}
+		line := []hostapi.Segment{{Text: c.label, HL: textHL}}
+		if c.desc != "" {
+			line = append(line, hostapi.Segment{Text: "  " + c.desc, HL: "Host:Hint"})
+		}
+		// a label wraps instead of ending in "…": the user answers what it says
+		for j, r := range hostapi.WrapSegs(line, max(w-kw-3, 8)) {
+			key := hostapi.Segment{Text: strings.Repeat(" ", kw+2)}
+			if j == 0 {
+				key = hostapi.Segment{Text: " " + c.key + strings.Repeat(" ", kw-ansi.StringWidth(c.key)) + " ", HL: keyHL}
+			}
+			row := append([]hostapi.Segment{key, {Text: " "}}, r...)
+			for k := range row {
+				row[k].Hit = i + 1
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
 // hostBoxW is hostBox with its own width cap.
 func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW int) [][]hostapi.Segment {
 	bw := ansi.StringWidth(title) + ansi.StringWidth(badge) + 4
@@ -420,19 +478,17 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	// title, and a few rows at most so they cannot push the command away
 	var words [][]hostapi.Segment
 	if req.Description != "" {
-		words = append(words, capRows(hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + req.Description + `"`, HL: "Host:Hint"}}, inner), 3, inner)...)
+		words = append(words, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
 	}
 	if note, hl := permNote(req.Reason); note != "" {
-		words = append(words, capRows(hostapi.WrapSegs([]hostapi.Segment{{Text: note, HL: hl}}, inner), 3, inner)...)
+		words = append(words, capRows(wrapText(note, hl, inner), 3, inner)...)
 	}
 	choices := pa.choices()
-	items := make([]listItem, len(choices))
+	btns := make([]promptChoice, len(choices))
 	for i, c := range choices {
-		// a label wraps instead of ending in "…": the user approves what it says
-		rows := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label}}, inner-4-2-len(c.key))
-		items[i] = listItem{label: plainSegs(rows[0]), key: c.key, more: rows[1:]}
+		btns[i] = promptChoice{key: c.key, label: c.label}
 	}
-	list := listRowsW(items, pa.sel, nil, math.MaxInt, 0, inner)
+	list := choiceRows(btns, pa.sel, inner)
 
 	// the choices and the hint always fit: borders, the blank rows around
 	// the list and the hint come first, then a line of the content, then
@@ -446,20 +502,6 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if len(words) > 0 {
 		tail = append(append(tail, words...), blank)
 	}
-	// a wrapped choice takes two rows plus a blank separator, so on a short
-	// screen the separators go first: the box never outgrows the stage, and
-	// what is being approved keeps a line and the row that says there is more
-	want := min(len(content), 2)
-	if n := fixed + len(tail) - 1 + want - chatH; n > 0 {
-		list = slices.DeleteFunc(list, func(r []hostapi.Segment) bool {
-			blank := n > 0 && strings.TrimSpace(plainSegs(r)) == ""
-			if blank {
-				n--
-			}
-			return blank
-		})
-		fixed = len(head) + len(list) + 5
-	}
 	hints := []string{"enter", "confirm"}
 	if room := chatH - fixed - len(tail) + 1; len(content) > room {
 		room-- // the row that says which lines show
@@ -472,21 +514,21 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 			hints = append(hints, "pgup/pgdn", "scroll")
 		}
 	}
-	tail = append(append(tail, list...), blank, hintLine(inner, append(hints, "esc", "deny")...))
+	hint := hintLine(inner, append(hints, "esc", "deny")...)
+	tail = append(tail, list...)
 	// panels span the box, and the box fits its content (at least 56 wide):
 	// a padded panel counts by its text, other rows whole as hostBoxW counts them
 	fit := 56
 	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
-	for _, r := range slices.Concat(head, tail) {
+	for _, r := range slices.Concat(head, tail, [][]hostapi.Segment{hint}) {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	alignKeys(list, fit) // pads the rows tail already holds
 	body := head
 	if len(head) > 0 && len(content) > 0 {
 		body = append(body, blank)
@@ -498,7 +540,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if n := len(a.permQueue); n > 0 {
 		badge = fmt.Sprintf(" 1 of %d ", n+1)
 	}
-	return hostBoxW(" "+title+" ", "Host:Title", badge, body, w, maxW)
+	return promptBox(title, badge, body, hint, w, maxW)
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in
