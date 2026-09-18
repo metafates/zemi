@@ -154,7 +154,7 @@ func (h *Host) shownArg(req tools.Request) string {
 	if !isPathSubject(req.Subject) {
 		return req.Arg
 	}
-	if rel, err := filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), req.Arg); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), req.Arg); ok {
 		return rel
 	}
 	return req.Arg
@@ -218,7 +218,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		}
 		dir := filepath.Dir(abs)
 		shown := dir
-		if rel, err := filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), dir); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), dir); ok {
 			shown = rel
 		}
 		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]

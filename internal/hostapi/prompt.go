@@ -210,7 +210,7 @@ func (h *Host) instructionSections(files []string, budget int) string {
 			continue
 		}
 		name := f
-		if rel, err := filepath.Rel(h.Dirs.RepoRoot(), f); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, ok := perm.Under(h.Dirs.RepoRoot(), f); ok {
 			name = rel
 		}
 		sections += "\n\n## Instructions: " + name + "\n" + texts[i]
@@ -272,12 +272,12 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 		return ""
 	}
 	// file tools pass resolved paths; the prompt names files under root as given
-	if rel, err := filepath.Rel(perm.RealPath(root), abs); err == nil && root != perm.RealPath(root) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel, ok := perm.Under(perm.RealPath(root), abs); ok && root != perm.RealPath(root) {
 		abs = filepath.Join(root, rel)
 	}
 	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
 		// a path boundary, not a string prefix: /repo2 is not inside /repo
-		if rel, err := filepath.Rel(root, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if _, ok := perm.Under(root, dir); !ok {
 			return ""
 		}
 		for _, name := range []string{"ZEMI.md", "AGENTS.md", "CLAUDE.md"} {

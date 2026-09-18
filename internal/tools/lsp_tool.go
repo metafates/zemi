@@ -327,7 +327,7 @@ func formatSymbols(raw json.RawMessage) string {
 
 // workRel shortens a path to the working directory when it is inside it.
 func workRel(path string) string {
-	if rel, err := filepath.Rel(workdir(), path); err == nil && !strings.HasPrefix(rel, "..") {
+	if rel, ok := perm.Under(workdir(), path); ok {
 		return rel
 	}
 	return path

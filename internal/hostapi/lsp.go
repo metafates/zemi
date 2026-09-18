@@ -422,7 +422,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 		if r, err := filepath.EvalSymlinks(abs); err == nil {
 			abs = r
 		}
-		if r, err := filepath.Rel(root, abs); err == nil && !strings.HasPrefix(r, "..") {
+		if r, ok := perm.Under(root, abs); ok {
 			return r
 		}
 		return abs

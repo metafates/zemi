@@ -314,6 +314,26 @@ func TestChildEnvRefusesGatedExtras(t *testing.T) {
 	}
 }
 
+func TestUnder(t *testing.T) {
+	for _, c := range []struct {
+		root, path, rel string
+		in              bool
+	}{
+		{"/repo", "/repo", ".", true},
+		{"/repo", "/repo/a/b", "a/b", true},
+		{"/repo", "/repo/..cache", "..cache", true},
+		{"/repo", "/repo2/a", "", false},
+		{"/repo", "/", "", false},
+		{"/repo", "/other", "", false},
+		{"/repo", "relative", "", false},
+	} {
+		rel, in := Under(c.root, c.path)
+		if in != c.in || rel != c.rel {
+			t.Errorf("Under(%q, %q) = %q, %v; want %q, %v", c.root, c.path, rel, in, c.rel, c.in)
+		}
+	}
+}
+
 func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 	tmp, _ := filepath.EvalSymlinks(t.TempDir())
 	proj, out := filepath.Join(tmp, "proj"), filepath.Join(tmp, "out")

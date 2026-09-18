@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -116,12 +117,11 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	if real, err := filepath.EvalSymlinks(cwd); err == nil {
 		cwd = real
 	}
-	if rel, err := filepath.Rel(tp.root, cwd); err == nil && rel != "." {
-		if strings.HasPrefix(rel, "..") {
-			text("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", "Host:Hint")
-		} else {
-			text("Covers the whole repository, not only "+rel+".", "Host:Hint")
-		}
+	switch rel, in := perm.Under(tp.root, cwd); {
+	case !in:
+		text("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", "Host:Hint")
+	case rel != ".":
+		text("Covers the whole repository, not only "+rel+".", "Host:Hint")
 	}
 	saved, what := "saved for this repository", "repository"
 	if hostapi.TrustUnsaved(tp.root) {

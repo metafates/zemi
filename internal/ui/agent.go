@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -561,7 +562,7 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 	if target == "script" { // an inline script, shown below
 		target = ""
 	}
-	if rel, err := filepath.Rel(root, target); err == nil && root != "" && filepath.IsAbs(target) && !strings.HasPrefix(rel, "..") {
+	if rel, ok := perm.Under(root, target); ok && root != "" && filepath.IsAbs(target) {
 		target = rel
 	}
 	return title, target

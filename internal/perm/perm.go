@@ -130,6 +130,18 @@ func subjectMatches(rule, subject string) bool {
 // into one; a rule for one then covers both.
 func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
+// Under reports whether path is root or below it, and gives its path
+// relative to root. Both must already be resolved; run RealPath first when
+// either may hold a symlink. A real entry whose own name starts with ".."
+// is inside, which a plain HasPrefix(rel, "..") test gets wrong.
+func Under(root, path string) (string, bool) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
+}
+
 // RealPath makes p absolute and resolves it one component at a time, so
 // L/../x with L a symlink lands where open lands, not beside L. A missing
 // component is joined lexically, so a file about to be created is judged by
