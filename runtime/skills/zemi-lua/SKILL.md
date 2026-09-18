@@ -89,6 +89,15 @@ without asking, the reference for how a widget is written.
 
 ## Namespaces
 
+The verbs are regular, so a name you have not read is usually guessable: anything you
+register takes `add`, `del` and `list` (`zemi.command`, `zemi.tool`, `zemi.provider`,
+`zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`, `zemi.ui.theme`,
+`zemi.permission.rule`, `zemi.permission.mode`), anything you carry a value in takes
+`set` and `get` (`zemi.config`, `zemi.state`, `zemi.ui.hl`, `zemi.ui.focus`,
+`zemi.ui.layout`, `zemi.keymap`, whose `set` also rebinds). `del` returns whether it
+removed anything; a subscription (`event.on`, `config.watch`) returns the id its own
+`off`/`unwatch` takes.
+
 | Namespace | Members |
 | --- | --- |
 | `zemi.api` | `version` (API version string) |
@@ -102,16 +111,16 @@ without asking, the reference for how a widget is written.
 | `zemi.log` | callable, plus `debug`, `info`, `warn`, `error` |
 | `zemi.agent` | `send(text)` -> true, or nil, err (what can be known before the turn starts), `cancel`, `current`, `profile(name, { model, system, temperature, tools, context = { files } })`, `set_default(name)`, `usage`, `list`, `run({ prompt, agent, description }, on_done(text, err))` -> `{ cancel }` (`send`, `profile`, `set_default` and `run` from user config only) |
 | `zemi.workflow` | `list()` -> `{ name, description, source, path }`, `run({ script = src } or { name = saved, args = v }, on_done(result, err, log))` -> `{ cancel }` or nil, err (user config only) |
-| `zemi.provider`, `zemi.model` | `register`, `list`, `kind.ANTHROPIC` / `kind.OPENAI` / `kind.OPENAI_COMPAT`; `list`, `set`, `pick` |
+| `zemi.provider`, `zemi.model` | `add`, `list`, `kind.ANTHROPIC` / `kind.OPENAI` / `kind.OPENAI_COMPAT`; `list`, `set`, `pick` |
 | `zemi.session` | `id`, `title`, `set_title`, `messages()` -> `{ id, role, text, json }` rows (`text` is the text parts joined; `json` is the provider wire shape), `list({ limit })`, `new()`, `open(id)`, `todos()`, `rewind(id)` -> files restored or nil, err (`new`, `open`, `rewind` from user config only) |
 | `zemi.composer` | `get()` -> `{ text, cursor }`, `set(text [, cursor])`, `insert(text)`, `submit()`, `history_prev()`, `history_next()`, `paste()` (clipboard image or text), `edit()` (the draft in the user's editor); edits from user config only. `complete({ id, trigger = "#" or command = "name", items = function(lead, line) return { "12", { text = "40", desc = "..." } } end })` adds a completion popup for a trigger character (an "@" source goes ahead of the files) or a command's arguments; items runs off the key path on every edit, so filter by `lead`. Keymap strings for the same: `zemi.composer.submit`, `zemi.composer.insert <text>`, `zemi.composer.history_prev`, `zemi.composer.history_next`, `zemi.composer.paste`, `zemi.composer.edit` |
 | `zemi.json` | `encode(v)`, `decode(s)` -> v or nil, err |
-| `zemi.health` | `register(name, fn)`; `fn` returns `{ level = "ok"/"warn"/"error", detail = "..." }` or a detail string, and shows as a row in `/health`. It runs under the 50 ms handler deadline |
+| `zemi.health` | `add(name, fn)`; `fn` returns `{ level = "ok"/"warn"/"error", detail = "..." }` or a detail string, and shows as a row in `/health`. It runs under the 50 ms handler deadline |
 | `zemi.lsp` | `add(name, { command, args, env, filetypes, settings, init_options })`, `disable(name)` (both user config only), `list()` -> `{ name, command, filetypes, status, error }` (status: available, starting, running, failed, exited) |
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule.add({ subject, pattern, decision, match, not_match, not_match_example })` (any origin may add deny and ask rules; allow rules need user config; the subject starts with `tool. fs. net. lua. mcp. memory.`), `rule.list()`, `mode.add(name, spec)`, `mode.del(name)`, `mode.list()` (modes: user config only; see zemi-config) |
-| `zemi.tool` | `register({ name, description, input, required, execute, timeout_ms, parallel })` (`input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises), `override(name, { pre = fn })` (not from project or learned code), `list` |
+| `zemi.tool` | `add({ name, description, input, required, execute, timeout_ms, parallel })` (`input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises), `override(name, { pre = fn })` (not from project or learned code), `list` |
 | `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
 | `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })`. http/https only, no userinfo, and loopback, RFC1918 and metadata addresses are refused at connect time, per redirect hop; an explicit user allow rule for the host is the localhost opt-in (project and learned code never get it) |
 | `zemi.win` | `open({ cmd, kind = "split"/"vsplit"/"float", title, cols, rows, focus, hidden, on_exit(info) })` -> `{ id, keys(notation), mouse({ x, y, kind, button, mod }), send(text), text(), wait_text(want, ms), info(), focus(), set({ kind, hidden, frac, cols, rows, x, y, title }), close() }` (a program in a real terminal drawn inside zemi; needs `lua.job.start` allowed; from user config its OSC 52 clipboard writes reach the host; windows survive reloads, so init.lua opens one only when `list()` has none with its title), `panel({ text, markdown, kind, title, cols, rows, focus, hidden })` -> the same handle plus `set_text(text)` and `append(text)` (a window whose body is text, not a program: markdown renders like the chat and re-wraps on resize, one with no size takes the cells the text needs, at most half its box, arrows and page keys scroll it, `append` follows the end unless the user scrolled up), `get(id)`, `list()` (editor windows only for user config), `close(id)`, `focus(id)` |

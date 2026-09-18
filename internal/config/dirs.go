@@ -72,17 +72,19 @@ func (d Dirs) Ensure() error {
 	}
 	init := filepath.Join(d.ConfigHome, "init.lua")
 	if _, err := os.Stat(init); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(init, []byte(starterInit), 0o600); err != nil {
+		if err := os.WriteFile(init, []byte(StarterInit), 0o600); err != nil {
 			return fmt.Errorf("create %s: %w", init, err)
 		}
 	}
 	return nil
 }
 
-// starterInit is the file a first run leaves behind: everything is
+// StarterInit is the file a first run leaves behind: everything is
 // commented, so zemi registers nothing the user did not ask for, and the
 // provider block only needs uncommenting.
-const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
+const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
+-- Nothing here is on: uncomment what you want. What you register takes
+-- add/del/list, what holds a value takes set/get.
 
 -- A provider and a model: zemi ships none, so uncomment this and zemi
 -- works. The key is read from your environment; paste it here instead if
@@ -102,8 +104,26 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- Settings: zemi.config.schema() lists every one with its default.
 -- zemi.config.set("ui.theme", "default")
 
--- Keys: <leader> is keymap.leader, ctrl+g unless you change it.
+-- Keys: <leader> is keymap.leader, ctrl+g unless you change it. The
+-- right-hand side is a command name, a host action or a function.
 -- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
+-- zemi.keymap.set("<leader>m", "zemi.model.pick", { desc = "switch model" })
+
+-- Your own slash command, completed in the palette like the builtin ones.
+-- zemi.command.add("tests", function(a)
+--   zemi.agent.send("run the tests" .. (a.args ~= "" and " for " .. a.args or ""))
+-- end, { desc = "ask the agent to run the tests", nargs = "?" })
+
+-- Everything on screen is a widget: an id, a region, and a render that
+-- returns lines of { text, hl } segments. Reuse a builtin id to replace it.
+-- zemi.ui.widget.add({
+--   id = "msgs", region = "statusline.right", priority = 5,
+--   render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Comment" } } } end,
+-- })
+
+-- Permissions: deny and ask rules come from any config, allow rules only
+-- from this file.
+-- zemi.permission.rule.add({ subject = "tool.bash", pattern = "git push *", decision = "ask" })
 
 -- Editing this file: zemi ships type annotations for the whole zemi.* API
 -- and a .luarc.json beside this file, so a lua-language-server gives
