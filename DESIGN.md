@@ -1737,7 +1737,8 @@ under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync, enabled by default) over learned (data dir). The model sees name +
 description in context and the full body on demand through the `skill`
 tool; there is no `/skill` command, only `/skills` to browse, toggle and
-use them. Learned skills are quarantined
+use them (a row's detail carries the whole body, since enabling a drafted
+skill is the review it gets, and opens it in the editor). Learned skills are quarantined
 mechanically: discovery lists only `enabled` skills to the model, enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin),
 and a learned skill's `zemi-skill.lua` runs as `learned` origin, limited

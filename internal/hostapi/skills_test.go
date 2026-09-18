@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -96,6 +97,28 @@ func TestSkillsQuarantineDefaults(t *testing.T) {
 	if !indexed["local-run"] || indexed["auto-learned"] {
 		t.Fatalf("skillIndex must list enabled skills only: %v", indexed)
 	}
+}
+
+// TestSkillItemsShowTheBody: enabling a learned draft is the only review
+// it gets, so /skills shows the instructions and offers to open the file.
+func TestSkillItemsShowTheBody(t *testing.T) {
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
+	h.syncSkills()
+	for _, it := range h.skillItems() {
+		m := it.(map[string]any)
+		if m["text"] != "auto-learned" {
+			continue
+		}
+		if !strings.Contains(m["detail"].(string), "Body.") {
+			t.Fatalf("no body in the detail: %v", m["detail"])
+		}
+		if !strings.Contains(fmt.Sprint(m["actions"]), "skills open auto-learned") {
+			t.Fatalf("no open action: %v", m["actions"])
+		}
+		return
+	}
+	t.Fatal("the learned skill is not listed")
 }
 
 // TestSkillsEnableGate covers the origin gate: user origin flips the

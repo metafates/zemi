@@ -385,9 +385,34 @@ func (h *Host) skillsCommand(args string) error {
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
 		return h.setSkillEnabled(nil, fields[1], !h.skillsReg.isEnabled(fields[1]))
+	case len(fields) == 2 && fields[0] == "open":
+		return h.openSkillFile(fields[1])
 	default:
-		return errors.New("usage: /skills | /skills enable|disable <name> | /skills use <name> [request]")
+		return errors.New("usage: /skills | /skills enable|disable|open <name> | /skills use <name> [request]")
 	}
+}
+
+// openSkillFile opens a skill's SKILL.md in the user's editor, so its
+// instructions can be read and fixed before it is enabled.
+func (h *Host) openSkillFile(name string) error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI")
+	}
+	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
+		if s.Name != name {
+			continue
+		}
+		path := filepath.Join(s.Dir, "SKILL.md")
+		// the editor blocks and a Go command runs on the key loop
+		h.GoSafe("skills open", func() {
+			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the skill"}); err != nil {
+				h.Notify("warn", "Skill not opened", err.Error())
+			}
+		})
+		return nil
+	}
+	return fmt.Errorf("no skill %q", name)
 }
 
 // useSkill sends an enabled skill's body as the next user message, the
@@ -458,7 +483,16 @@ func (h *Host) skillItems() []any {
 			state = "disabled"
 			item["key"], item["run"], item["actions"] = "off", toggle, []any{map[string]any{"text": "Enable", "run": toggle}}
 		}
-		item["detail"] = fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s", s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
+		open := map[string]any{"text": "Open", "run": "skills open " + s.Name}
+		item["actions"] = append(item["actions"].([]any), open)
+		// enabling a drafted skill is the only review it gets (DESIGN §10.4),
+		// so the instructions being approved are in the detail, not just a path
+		body, err := skills.Body(s.Dir)
+		if err != nil {
+			body = "could not read it: " + err.Error()
+		}
+		item["detail"] = fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s\n\n%s",
+			s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")), body)
 		items = append(items, item)
 	}
 	return items
@@ -469,7 +503,7 @@ func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
 		Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
 		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-		GoComplete: subcommandCompleter([]string{"enable", "disable", "use"}, func(h *Host, _ string) []string {
+		GoComplete: subcommandCompleter([]string{"enable", "disable", "use", "open"}, func(h *Host, _ string) []string {
 			var names []string
 			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 				names = append(names, s.Name)

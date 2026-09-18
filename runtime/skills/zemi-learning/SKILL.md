@@ -25,8 +25,9 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      it in the user's editor (the saved text becomes the user's own memory, an edited
      suggestion is stored, and the screen comes back on that row), `u` undoes
      the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
-   - `/skills`: drafted skills start disabled; space toggles, enter opens one (Enable or Disable, Use now),
-     or `/skills enable|disable <name>`.
+   - `/skills`: drafted skills start disabled; space toggles, enter shows one with its full
+     body and its actions (Enable or Disable, Use now, Open in the editor),
+     or `/skills enable|disable|open <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own.
    - Autonomy (`memory.autonomy = "auto"` in user config) stores proposed memories without
