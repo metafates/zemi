@@ -410,17 +410,6 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 	return rows
 }
 
-// alignKeys moves the key column of listRows rows out to width cells, the
-// right edge of the box they go in.
-func alignKeys(rows [][]hostapi.Segment, width int) [][]hostapi.Segment {
-	for _, r := range rows {
-		if n := len(r); n > 1 && segsWidth(r) < width {
-			r[n-2].Text += strings.Repeat(" ", width-segsWidth(r))
-		}
-	}
-	return rows
-}
-
 // shimmer is the "shimmer" segment effect: a bright band sweeps across the
 // text every 2s, each rune blending the segment's color toward Normal by
 // its distance to the band center. Blends are quantized to 8 steps so the
