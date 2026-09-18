@@ -91,7 +91,7 @@ zemi.ui.widget.add({
 })
 
 -- Reflector feedback (§10.3): a blinking badge while a run is active
--- (ctx.pulse is the shared phase), a toast with what it learned when it ends
+-- (ctx.frame is the shared tick), a toast with what it learned when it ends
 -- (a failure goes to /errors).
 zemi.ui.widget.add({
   id = "statusline.reflect",
@@ -101,7 +101,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if not ctx.reflecting then return {} end
-    return { { { text = ctx.pulse and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
+    return { { { text = ctx.frame % 2 == 1 and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
   end,
 })
 

@@ -1,19 +1,10 @@
 -- The splash that fills the empty chat until the first message.
 local fmt = require("zemi.defaultui.text")
+local snail = require("zemi.defaultui.snail")
 ---@class zemi.defaultui.splash
 local M = {}
 
----@type string[]
-local LOGO = {
-  "███████╗███████╗███╗   ███╗██╗",
-  "╚══███╔╝██╔════╝████╗ ████║██║",
-  "  ███╔╝ █████╗  ██╔████╔██║██║",
-  " ███╔╝  ██╔══╝  ██║╚██╔╝██║██║",
-  "███████╗███████╗██║ ╚═╝ ██║██║",
-  "╚══════╝╚══════╝╚═╝     ╚═╝╚═╝",
-}
-
---- The splash rows: the wordmark, what zemi will run with, recent sessions
+--- The splash rows: the mascot and wordmark, what zemi will run with, recent sessions
 --- to pick up and the keys worth knowing, centered in ctx.width by ctx.height.
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.Line[]
@@ -25,19 +16,31 @@ function M.render(ctx)
   local maxw = math.min(width, 72)
   ---@param segs zemi.Line
   local function row(segs) rows[#rows + 1] = segs end
-  -- a short chat drops the recent sessions first, then the big logo, so
+  -- a short chat drops the recent sessions first, then the mascot, so
   -- the bottom-anchored chat never cuts the block's first rows (it shows
   -- height - 1 of them)
   local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
   local extra = #recent > 0 and #recent + 3 or 0
-  if 12 + extra > fit then recent, extra = {}, 0 end
-  if width >= 36 and 12 + extra <= fit then
-    for i, l in ipairs(LOGO) do row({ { text = l, hl = "Logo" .. i } }) end
-  else
-    row({ { text = "zemi", hl = "Title" } })
-  end
+  if 9 + extra > fit then recent, extra = {}, 0 end
   local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
-  row({ { text = ver .. "a coding agent that learns how you work", hl = "Comment" } })
+  local mark = { text = "@zemi", hl = "Title" }
+  local tag = { text = ver .. "a coding agent that learns how you work", hl = "Comment" }
+  if width >= 36 and 9 + extra <= fit then
+    -- the wordmark and the tagline sit beside the snail's head
+    local block = snail.block()
+    ---@param r zemi.Line
+    ---@param seg zemi.Segment
+    local function beside(r, seg)
+      r[#r + 1] = { text = string.rep(" ", 13 - fmt.cells(r[1].text .. r[2].text)), copy = false }
+      r[#r + 1] = seg
+    end
+    beside(block[3], mark)
+    beside(block[4], tag)
+    for _, r in ipairs(block) do row(r) end
+  else
+    row({ mark })
+    row({ tag })
+  end
   row({ { text = "" } })
   row({ { text = "model    ", hl = "Comment" }, { text = (ctx.model ~= "" and ctx.model) or "none yet: add a provider in init.lua", hl = "Normal" } })
   local cwd, room = ctx.cwd or "", maxw - 10

@@ -22,7 +22,7 @@ zemi.ui.widget.add({
   render = function(ctx)
     local rows = default.splash(ctx)
     for i, row in ipairs(rows) do
-      if row[2] and row[2].hl == "Logo6" then
+      if row[#row].text == "@zemi" then
         table.insert(rows, i + 1, { row[1], { text = "hack the planet", hl = "Title" } })
         break
       end
@@ -31,7 +31,7 @@ zemi.ui.widget.add({
   end,
 })`)
 	app.renderSync(t)
-	if frame := app.Frame(); !strings.Contains(frame, "hack the planet") || !strings.Contains(frame, "╚══════╝") {
+	if frame := app.Frame(); !strings.Contains(frame, "hack the planet") || !strings.Contains(frame, "╰────╯") {
 		t.Fatalf("splash not extended:\n%s", frame)
 	}
 }
@@ -53,9 +53,9 @@ assert(require("zemi.defaultui") == d, "view not cached")`
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then
-// the logo, instead of cutting the logo's top rows.
+// the mascot, instead of cutting the block's top rows.
 func TestSplashFitsShortChat(t *testing.T) {
-	for h, want := range map[int]string{16: "zemi", 17: "███████╗███████╗███╗", 23: "3m ago"} {
+	for h, want := range map[int]string{13: "@zemi", 14: "╭────╮", 20: "3m ago"} {
 		app, _ := bootAgentApp(t, 80, h)
 		runLua(t, app, `
 local default = require("zemi.defaultui")
@@ -70,7 +70,7 @@ zemi.ui.widget.add({
 		app.Frame() // lays out the chat, so the next render knows its height
 		app.frameGen++
 		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╚══") != (want != "zemi") {
+		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╭────╮") != (h > 13) {
 			t.Fatalf("%d rows: want %q\n%s", h, want, frame)
 		}
 	}

@@ -70,7 +70,6 @@ local function theme(palette)
     Hover = { underline = true },
     HoverItem = { link = "Accent" },
   }
-  for i = 1, 6 do hl["Logo" .. i] = { link = "Title" } end
   return { palette = palette, hl = hl }
 end
 

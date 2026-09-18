@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/hostapi"
 )
 
 // TestProgressReport: OSC 9;4 goes out once when a turn starts and once
@@ -53,5 +55,36 @@ zemi.timer.after(0, function() n = 10 end)`)
 	}
 	if n := len(app.testQueue); n != 1 {
 		t.Fatalf("200 refreshes queued %d hooks, want 1", n)
+	}
+}
+
+// TestIdleDrawsNothing: the 30fps frame loop re-renders nothing while zemi
+// sits idle, and the animation tick alone never does. A running turn ticks
+// the readouts, and the mascot's done frame comes and goes once each.
+func TestIdleDrawsNothing(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	app.Update(frameTickMsg{}) // the first tick settles the clock and the flags
+	gen := app.frameGen
+	for ms := range int64(20) {
+		app.now = func() time.Time { return time.UnixMilli(ms * 500) }
+		app.Update(frameTickMsg{})
+	}
+	if app.frameGen != gen {
+		t.Fatalf("idle: %d redraws over 10s of ticks", app.frameGen-gen)
+	}
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	app.Update(frameTickMsg{})
+	if app.frameGen == gen {
+		t.Fatal("a running turn does not tick the working row")
+	}
+
+	host.SeedStream(hostapi.StreamSnapshot{})
+	app.Update(frameTickMsg{}) // the turn ends: the mascot bows
+	gen = app.frameGen
+	app.now = func() time.Time { return app.turnEnd.Add(doneLinger + time.Second) }
+	app.Update(frameTickMsg{}) // it stops bowing
+	app.Update(frameTickMsg{})
+	if app.frameGen != gen+1 {
+		t.Fatalf("the done frame cost %d redraws, want 1", app.frameGen-gen)
 	}
 }

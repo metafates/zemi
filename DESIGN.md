@@ -1106,10 +1106,11 @@ configured provider later (`zemi.memory.search` signature does not change).
 
 - **Layout**: header (no default widget; the region stays for Lua), chat
   (flex), the `working` region above the composer (the shipped `working`
-  widget while a turn runs: pulsing bullet, shimmering label naming the
+  widget while a turn runs: the snail mascot in the state of the turn,
+  shimmering label naming the
   current activity, elapsed time, interrupt key, queue depth; it reads
-  `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`,
-  and it ends with a blank row), composer (1..8 rows plus a "+n lines" row), statusline
+  `ctx.frame`, `ctx.done`, `ctx.cancelling`, `editing`, `waiting` and
+  `agent.retry`/`compacting`, and it ends with a blank row), composer (1..8 rows plus a "+n lines" row), statusline
   (1 row: `statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a

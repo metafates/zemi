@@ -206,7 +206,7 @@ zemi.ui.widget.add({
     local function add_tool(t, idx)
       local name = tool_name(t)
       local open = ctx.show_reasoning or expanded[idx] or false
-      local mark, hl = ctx.pulse and "◦ " or "● ", "AgentToolRun"
+      local mark, hl = ctx.frame % 2 == 1 and "◦ " or "● ", "AgentToolRun"
       if t.status == "ok" then
         mark, hl = "● ", "AgentToolOk"
       elseif t.status == "err" then
