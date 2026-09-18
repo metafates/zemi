@@ -476,28 +476,34 @@ func (h *Host) skillItems() []any {
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
-		use := map[string]any{"text": "Use now", "fill": "/skills use " + s.Name + " "}
 		item := map[string]any{"text": s.Name, "desc": s.Description, "section": sourceSection(string(s.Source))}
-		state := "enabled"
+		state, actions := "enabled", []any{}
 		switch {
 		case s.Source == skills.Project: // no stored state to toggle
-			item["key"], item["actions"] = "on", []any{use}
+			item["key"] = "on"
 		case h.skillsReg.isEnabled(s.Name):
-			item["key"], item["run"], item["actions"] = "on", toggle, []any{map[string]any{"text": "Disable", "run": toggle}, use}
+			item["key"], item["run"] = "on", toggle
+			actions = append(actions, map[string]any{"text": "Disable", "hotkey": "d", "run": toggle})
 		default:
 			state = "disabled"
-			item["key"], item["run"], item["actions"] = "off", toggle, []any{map[string]any{"text": "Enable", "run": toggle}}
+			item["key"], item["run"] = "off", toggle
+			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
-		open := map[string]any{"text": "Open", "run": "skills open " + s.Name}
-		item["actions"] = append(item["actions"].([]any), open)
 		// enabling a drafted skill is the only review it gets (DESIGN §10.4),
-		// so the instructions being approved are in the detail, not just a path
+		// so its instructions are one key away, not just a path
 		body, err := skills.Body(s.Dir)
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
-		item["detail"] = fmt.Sprintf("%s\n\n%s · %s · `%s`\n\n---\n\n%s",
-			s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")), body)
+		item["actions"] = append(actions,
+			map[string]any{"text": "Read it", "hotkey": "r", "detail": body},
+			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name},
+			map[string]any{"text": "Use now", "hotkey": "u", "fill": "/skills use " + s.Name + " "},
+		)
+		// the description leads, then where it comes from and where it lives;
+		// the markdown renderer keeps the line break inside the paragraph
+		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
+			s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
 		items = append(items, item)
 	}
 	return items
