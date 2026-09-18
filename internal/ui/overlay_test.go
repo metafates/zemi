@@ -430,10 +430,40 @@ func TestOverlayFilterKeepsWidth(t *testing.T) {
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
 		st.apply(st.texts)
-		if got := app.overlayBox(st, 80, 40); segsWidth(got[0]) != segsWidth(box[0]) {
-			t.Fatalf("filter %q: width %d, want %d", q, segsWidth(got[0]), segsWidth(box[0]))
+		got := app.overlayBox(st, 80, 40)
+		// the filter line adds one row; everything else keeps its size
+		if segsWidth(got[0]) != segsWidth(box[0]) || len(got) != len(box)+1 {
+			t.Fatalf("filter %q: %dx%d, want %dx%d", q, segsWidth(got[0]), len(got), segsWidth(box[0]), len(box)+1)
 		}
 	}
+}
+
+// TestOverlayClosesOnOutsideClick: a click beside a menu closes it, a click
+// inside does not, and a blocking ask ignores both.
+func TestOverlayClosesOnOutsideClick(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"alpha", "beta"}})
+	app.renderSync(t)
+	app.Frame()
+	box := app.chromeRect
+	clickAt(app, box.Min.X+1, box.Min.Y+1)
+	if len(app.overlays) != 1 {
+		t.Fatal("a click inside the box closed it")
+	}
+	clickAt(app, 0, 0)
+	if len(app.overlays) != 0 {
+		t.Fatal("a click outside the box left it open")
+	}
+
+	go app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make test"})
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	app.Frame()
+	clickAt(app, 0, 0)
+	if app.permAsk == nil {
+		t.Fatal("a stray click answered a permission ask")
+	}
+	app.answerPerm(false, "user")
 }
 
 // TestOverlayLongLabelKeepsDescAndKey: a label too long for the box is cut

@@ -183,6 +183,32 @@ func TestWinTitleRowFits(t *testing.T) {
 	}
 }
 
+// TestWinMinimizeAndDock: the title's ─ button hides a window, the dock
+// lists it, and a click on its dock entry brings it back.
+func TestWinMinimizeAndDock(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	defer host.Wins.CloseAll()
+	wn, err := host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindSplit, Title: "logs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.Frame()
+	r := app.winRects[0]
+	clickAt(app, r.x+r.w-winButtons, r.titleY)
+	if !wn.Hidden() {
+		t.Fatal("the minimize button did not hide the window")
+	}
+	app.Frame()
+	x, y := findCell(t, app, "logs")
+	spans, _, ok := app.target(x, y)
+	if !ok || len(spans) != 1 {
+		t.Fatalf("the dock entry is not clickable: %v", spans)
+	}
+	if click := app.lastRows[y][0].Click; click != fmt.Sprintf("win show %d", wn.ID) {
+		t.Fatalf("the dock entry runs %q", click)
+	}
+}
+
 func TestKittyHostDetect(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI256})
