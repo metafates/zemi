@@ -384,7 +384,9 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
-		p, hl := "│ ", "Rule" // a gutter down the rows after the first
+		// a gutter down the rows after the first, brighter than the frame's
+		// own rule so the two do not read as a double border
+		p, hl := "│ ", "Comment"
 		if i == 0 {
 			p, hl = prefix, promptHL
 		}
@@ -401,6 +403,46 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment", NoCopy: true}})
 	}
 	return out
+}
+
+// frameInner is the cells a row inside the composer frame may use: the two
+// border columns and a space beside each.
+func frameInner(w int) int { return max(w-4, 1) }
+
+// composerFrame draws the composer in a square frame whose rules carry the
+// regions the node names: the mascot and the turn's status on top, the
+// statusline clusters at the bottom. Agent state changes what the rules say
+// and never how many rows the frame takes, so nothing above it reflows.
+func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
+	hl := "Rule"
+	if strings.HasPrefix(a.composer.text, "!") {
+		hl = "RuleShell" // a shell draft tints the whole frame, not just its glyph
+	}
+	inner := frameInner(w)
+	rows := [][]hostapi.Segment{rule("┌", "┐", hl, truncateSegs(a.statuslineSegments(n.Top), inner), nil, w)}
+	for _, r := range a.composerRows(inner) {
+		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true}}, truncateSegs(r, inner)...)
+		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true}))
+	}
+	// the corners, the space beside each cluster and one cell of rule between
+	left, right := a.statusClusters(max(w-7, 1), n.Left, n.Right)
+	return append(rows, rule("└", "┘", hl, left, right, w))
+}
+
+// rule draws one side of the composer frame across w cells: the corners, the
+// left cluster after a space, the right cluster before one, "─" between them.
+func rule(l, r, hl string, left, right []hostapi.Segment, w int) []hostapi.Segment {
+	spaced := func(segs []hostapi.Segment) []hostapi.Segment {
+		if segsWidth(segs) == 0 {
+			return nil
+		}
+		return slices.Concat([]hostapi.Segment{{Text: " ", NoCopy: true}}, segs, []hostapi.Segment{{Text: " ", NoCopy: true}})
+	}
+	left, right = spaced(left), spaced(right)
+	fill := max(w-2-segsWidth(left)-segsWidth(right), 0)
+	out := append([]hostapi.Segment{{Text: l, HL: hl, NoCopy: true}}, left...)
+	out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: hl, NoCopy: true})
+	return append(append(out, right...), hostapi.Segment{Text: r, HL: hl, NoCopy: true})
 }
 
 // inputRow is a one-line text field at least 40 cells wide: "> " and the

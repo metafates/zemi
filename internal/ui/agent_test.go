@@ -651,27 +651,17 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(1500); !strings.HasPrefix(a, "@··") || !strings.HasPrefix(b, "~~~@··") {
 		t.Fatalf("the snail does not walk: %q then %q", a, b)
 	}
+	// the open prompt says what answers it, so the rule retracts to the head
+	// alone: no label, and no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
-	if r := row(1500); !strings.HasPrefix(r, "@   ") {
-		t.Fatalf("the head stays out while the user is asked: %q", r)
+	if r := row(1500); r != "@" {
+		t.Fatalf("the rule does not retract while the user is asked: %q", r)
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.turnEnd = time.UnixMilli(0)
 	if r := row(500); !strings.HasPrefix(r, "@·· ✓") {
 		t.Fatalf("no done frame after the turn: %q", r)
-	}
-}
-
-// TestWorkingRowWaits: while a prompt is open the row says the turn waits on
-// the user, and does not offer esc, which answers the prompt.
-func TestWorkingRowWaits(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 12 * time.Second})
-	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Waiting for your approval  12s\r") {
-		t.Fatalf("working row:\n%s", frame)
 	}
 }
 
@@ -868,6 +858,9 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 	app.renderSync(t)
 	var got []string
 	for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
+		if strings.HasPrefix(row, "┌") {
+			break // the composer frame below, whose rows carry the same gutter
+		}
 		if _, body, ok := strings.Cut(row, "│ "); ok {
 			got = append(got, strings.Fields(body)...)
 		}
@@ -953,7 +946,7 @@ func TestPermTitle(t *testing.T) {
 // wrapped choice and a preview too tall for the screen cannot cut the box's
 // bottom border or the row that says how to answer and scroll.
 func TestPermBoxFitsShortScreen(t *testing.T) {
-	app, host := bootAgentApp(t, 60, 18)
+	app, host := bootAgentApp(t, 60, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 4 * time.Second})
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{
 		Tool: "bash", Subject: "tool.bash",

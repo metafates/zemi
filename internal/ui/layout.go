@@ -162,6 +162,7 @@ func (a *App) layout(w, h int) screenLayout {
 		switch n.Kind {
 		case "composer":
 			s.rects["composer"] = l.rect
+			s.bar = s.bar || n.Left != "" || n.Right != ""
 		case "bar":
 			s.bar = true
 		case "region":
@@ -325,6 +326,9 @@ func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 	case "region":
 		return len(a.regionLines(n.Region, width))
 	case "composer":
+		if n.Frame {
+			return len(a.composerRows(frameInner(width))) + 2
+		}
 		return len(a.composerRows(width))
 	case "bar":
 		return 1
@@ -360,6 +364,12 @@ func (a *App) shownWidgets() []shownWidget {
 		case "bar":
 			add(l.node.Left, l.rect.Dx(), 1)
 			add(l.node.Right, l.rect.Dx(), 1)
+		case "composer":
+			if l.node.Frame {
+				for _, r := range []string{l.node.Top, l.node.Left, l.node.Right} {
+					add(r, frameInner(l.rect.Dx()), 1)
+				}
+			}
 		}
 		for _, k := range l.kids {
 			walk(k)
@@ -411,6 +421,8 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 				rows[i] = padSegs(row, w) // a blank line is a blank row
 			}
 		}
+	case n.Kind == "composer" && n.Frame:
+		rows = a.composerFrame(n, w)
 	case n.Kind == "composer":
 		rows = a.composerRows(w)
 	case n.Kind == "bar":

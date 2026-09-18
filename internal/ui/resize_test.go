@@ -63,7 +63,9 @@ func TestGoldenOverlayDetail(t *testing.T) {
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Count(frame, "┌") != 1 {
+	// the composer frame's own rule starts a row; every overlay box is indented
+	frame, _, _ := strings.Cut(ansi.Strip(app.Frame()), "\r\n┌")
+	if strings.Count(frame, "┌") != 1 {
 		t.Fatalf("the list shows around its detail view:\n%s", frame)
 	}
 }

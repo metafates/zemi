@@ -40,8 +40,11 @@ type LayoutNode struct {
 	Region      string // region: the widgets drawn in it
 	Scroll      string // region: "top" or "bottom" (follows the tail) makes it scrollable
 	Focusable   bool   // region: can take keys (zemi.ui.focus), by its id
-	Left, Right string // bar: the regions of its left and right clusters
+	Left, Right string // bar, framed composer: the regions of its left and right clusters
 	Slot        string // windows: the kind of window spliced in here, split or vsplit
+
+	Frame bool   // composer: a square frame around it, two rows taller
+	Top   string // framed composer: the region drawn in its top rule
 
 	Stage    bool // prompts, overlays, toasts, popups and centered floats go over this node
 	Hidden   bool
@@ -74,7 +77,7 @@ func (l *Layout) Regions() map[string]bool {
 	out := map[string]bool{}
 	var walk func(n *LayoutNode)
 	walk = func(n *LayoutNode) {
-		for _, r := range []string{n.Region, n.Left, n.Right} {
+		for _, r := range []string{n.Region, n.Left, n.Right, n.Top} {
 			if r != "" {
 				out[r] = true
 			}
@@ -119,7 +122,8 @@ type Rect struct{ X, Y, Width, Height int }
 // shipped UI loads, or after a reload that set none). It matches the
 // shipped defaultui/layout.lua: the main column beside the vsplit windows;
 // in it the header, the stage (the chat over the split windows), a blank
-// row, the working row, the composer, a blank row and the statusline.
+// row and the framed composer, whose rules carry the mascot and the
+// statusline.
 var DefaultLayout = &Layout{Root: &LayoutNode{Kind: "box", Dir: "row", Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 	{Kind: "box", Dir: "col", Size: Size{Kind: SizeFill}, Min: 30, Children: []*LayoutNode{
 		{Kind: "region", Region: "header"},
@@ -128,10 +132,7 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: "box", Dir: "row", Sep: true
 			{Kind: "windows", Slot: "split", Size: Size{Kind: SizeFill}},
 		}},
 		{Kind: "spacer", Size: Size{Kind: SizeCells, N: 1}},
-		{Kind: "region", Region: "working"},
-		{Kind: "composer"},
-		{Kind: "spacer", Size: Size{Kind: SizeCells, N: 1}},
-		{Kind: "bar", Left: "statusline.left", Right: "statusline.right"},
+		{Kind: "composer", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
 	}},
 	{Kind: "windows", Slot: "vsplit", Size: Size{Kind: SizeFill}},
 }}}
@@ -453,10 +454,20 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		}
 		n.Left, n.Right = str("left"), str("right")
 	case "composer":
-		err = onlyKeys(m, at, common...)
+		err = onlyKeys(m, at, append(common, "frame", "top", "left", "right")...)
+		n.Frame, n.Top, n.Left, n.Right = flag("frame"), str("top"), str("left"), str("right")
 		p.composers++
-		if err == nil && (n.Hidden || n.Collapse || hiddenAbove) {
+		switch {
+		case err != nil:
+		case n.Hidden || n.Collapse || hiddenAbove:
 			err = fmt.Errorf("%s: the composer cannot be hidden", at)
+		case !n.Frame && (n.Top != "" || n.Left != "" || n.Right != ""):
+			err = fmt.Errorf("%s: top, left and right need frame = true", at)
+		}
+		for _, key := range []string{"top", "left", "right"} {
+			if err == nil && str(key) != "" {
+				err = region(key)
+			}
 		}
 	case "windows":
 		err = onlyKeys(m, at, append(common, "slot")...)

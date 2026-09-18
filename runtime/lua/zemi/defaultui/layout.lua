@@ -20,10 +20,15 @@ local layout = {
             },
           },
           { kind = "spacer" },
-          { kind = "region", region = "working" }, -- its widget ends with a blank row
-          { kind = "composer" },
-          { kind = "spacer" },
-          { kind = "bar", left = "statusline.left", right = "statusline.right" },
+          -- the mascot lives on the top rule and the statusline on the bottom
+          -- one, so no agent state adds or removes a row
+          {
+            kind = "composer",
+            frame = true,
+            top = "working",
+            left = "statusline.left",
+            right = "statusline.right",
+          },
         },
       },
       { kind = "windows", slot = "vsplit" },

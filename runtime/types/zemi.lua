@@ -848,9 +848,17 @@ function zemi.ui.widget.list() end
 ---@field left string Region name.
 ---@field right string Region name.
 
---- zemi's own editor. Exactly one per layout, never hidden.
+--- zemi's own editor. Exactly one per layout, never hidden. With `frame` it
+--- draws inside a square frame two rows taller, whose rules carry the first
+--- line of the widgets in `top`, `left` and `right` (the last two like a
+--- bar's clusters, Go's pills included), so the mascot and the statusline
+--- cost no row of their own.
 ---@class zemi.LayoutComposer: zemi.LayoutBase
 ---@field kind "composer"
+---@field frame? boolean
+---@field top? string Region name; needs `frame`.
+---@field left? string Region name; needs `frame`.
+---@field right? string Region name; needs `frame`.
 
 --- Where windows of that kind go: one child per shown window, its `frac`
 --- of the box's cells or an equal fill share. Windows of a kind with no slot

@@ -1063,40 +1063,39 @@ func (a *App) pills() []hostapi.Segment {
 	return out
 }
 
-// statusRow builds the one-row statusline: the focused window, the left
-// region's widgets, the pills that report a broken Lua layer, then the right
-// region's widgets aligned to the right edge (DESIGN §8).
+// statusRow builds the one-row statusline: the left cluster, then the right
+// one aligned to the right edge (DESIGN §8).
 func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
-	left := a.statuslineSegments(leftRegion)
-	right := a.statuslineSegments(rightRegion)
+	left, right := a.statusClusters(w, leftRegion, rightRegion)
+	out := append([]hostapi.Segment{}, left...)
+	if gap := max(0, w-segsWidth(left)-segsWidth(right)); gap > 0 {
+		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
+	}
+	return append(out, right...)
+}
+
+// statusClusters are the statusline's two sides fitted into w cells: the
+// focused window and the left region's widgets followed by the pills that
+// report a broken Lua layer, then the right region's widgets. They need a
+// blank cell between them or they read as one word.
+func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
+	left, right = a.statuslineSegments(leftRegion), a.statuslineSegments(rightRegion)
 	pills := a.pills()
 	if len(pills) > 0 && pills[0].HL == "Host:BtnSel" {
 		left = append([]hostapi.Segment{pills[0], {Text: " "}}, left...)
 		pills = pills[1:]
 	}
 	left = append(left, pills...)
-
-	leftW := segsWidth(left)
-	rightW := segsWidth(right)
-	// The clusters need a blank cell between them or they read as one word.
-	if leftW+rightW >= w {
-		// Overflow truncates the right cluster first (lowest priority of
-		// the row's real estate goes last, §8); under four cells it would
-		// show a stray letter or two, so it goes whole.
-		if room := w - leftW - 1; room >= 4 {
-			right = fitSegs(right, room)
-			rightW = segsWidth(right)
-		} else {
-			left = truncateSegs(left, w)
-			right, rightW = nil, 0
-		}
+	if segsWidth(left)+segsWidth(right) < w {
+		return left, right
 	}
-	gap := max(0, w-leftW-rightW)
-	out := append([]hostapi.Segment{}, left...)
-	if gap > 0 {
-		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
+	// Overflow truncates the right cluster first (lowest priority of the
+	// row's real estate goes last, §8); under four cells it would show a
+	// stray letter or two, so it goes whole.
+	if room := w - segsWidth(left) - 1; room >= 4 {
+		return left, fitSegs(right, room)
 	}
-	return append(out, right...)
+	return truncateSegs(left, w), nil
 }
 
 func (a *App) statuslineSegments(region string) []hostapi.Segment {

@@ -1392,7 +1392,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.51.0"))
+	api.RawSetString("version", glua.LString("0.52.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
