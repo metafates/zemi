@@ -415,13 +415,18 @@ func (h *Host) openSkillFile(name string) error {
 	return fmt.Errorf("no skill %q", name)
 }
 
-// useSkill sends an enabled skill's body as the next user message, the
+// useSkill sends a skill's body as the next user message, the
 // deterministic path when the model did not load it on its own; request
-// is the task that follows it.
+// is the task that follows it. A disabled skill is reachable here: naming
+// it is the request, so its description need not ride every prompt. Only
+// a learned draft keeps its quarantine (DESIGN §10.5).
 func (h *Host) useSkill(name, request string) error {
-	for _, s := range h.enabledSkills() {
+	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		if s.Name != name {
 			continue
+		}
+		if s.Source == skills.Learned && !h.skillsReg.isEnabled(name) {
+			return fmt.Errorf("skill %q is an unreviewed draft: /skills open %s, then enable it", name, name)
 		}
 		msg, err := skillMessage(s, request)
 		if err != nil {
@@ -429,7 +434,7 @@ func (h *Host) useSkill(name, request string) error {
 		}
 		return h.AgentSend(msg)
 	}
-	return fmt.Errorf("no enabled skill %q", name)
+	return fmt.Errorf("no skill %q", name)
 }
 
 // skillMessage is the user message /skills use sends: the body first, so

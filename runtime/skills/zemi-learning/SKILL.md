@@ -29,7 +29,8 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      body and its actions (Enable or Disable, Use now, Open in the editor),
      or `/skills enable|disable|open <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
-     did not load it on its own.
+     did not load it on its own; a disabled skill works too (keep a rarely used one off the
+     index and name it on the day it applies), except an unreviewed learned draft.
    - Autonomy (`memory.autonomy = "auto"` in user config) stores proposed memories without
      review, except instruction-shaped text, retirements, replacements of the user's own
      memories, and anything from an untrusted project or a session that used `fetch`,

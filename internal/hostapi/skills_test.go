@@ -238,7 +238,7 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 }
 
 // TestSkillsUse: /skills use sends the body without frontmatter ahead of
-// the request, and only for an enabled skill.
+// the request, for any skill but an unreviewed learned draft.
 func TestSkillsUse(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
@@ -257,8 +257,18 @@ func TestSkillsUse(t *testing.T) {
 	if strings.Contains(msg, "description:") {
 		t.Errorf("frontmatter leaked:\n%s", msg)
 	}
-	if err := h.skillsCommand("use auto-learned"); err == nil || !strings.Contains(err.Error(), "no enabled skill") {
-		t.Errorf("disabled skill: err = %v", err)
+	if err := h.skillsCommand("use auto-learned"); err == nil || !strings.Contains(err.Error(), "unreviewed draft") {
+		t.Errorf("learned draft: err = %v", err)
+	}
+	// a disabled authored skill is reviewed code: naming it is the request
+	if err := h.setSkillEnabled(nil, "local-run", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.skillsCommand("use local-run"); err != nil && strings.Contains(err.Error(), "no skill") {
+		t.Errorf("disabled authored skill: err = %v", err)
+	}
+	if err := h.skillsCommand("use nothing"); err == nil || !strings.Contains(err.Error(), "no skill") {
+		t.Errorf("unknown skill: err = %v", err)
 	}
 }
 
