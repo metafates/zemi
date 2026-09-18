@@ -243,19 +243,20 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	blank := []hostapi.Segment{{Text: ""}}
 	var body [][]hostapi.Segment
-	title := " Question "
+	title := "Question"
 	tabs := []string{}
 	if len(qp.qs) > 1 {
-		title = " Questions "
+		title = "Questions"
 		body = append(body, questionTabs(qp), blank)
 		tabs = []string{"tab", "next"}
 	}
-	box := func() [][]hostapi.Segment {
-		for _, r := range body {
+	box := func(hints ...string) [][]hostapi.Segment {
+		hint := hintLine(boxInner(w), hints...)
+		for _, r := range append(body, hint) {
 			qp.width = max(qp.width, segsWidth(r))
 		}
 		body[0] = padSegs(body[0], min(boxInner(w), max(qp.width, 56)))
-		return hostBox(title, "Host:Title", "", body, w)
+		return promptBox(title, "", body, hint, w, 100)
 	}
 	if qp.reviewing() {
 		items := make([]listItem, 0, len(qp.qs)+1)
@@ -274,8 +275,7 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 		}
 		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, limit)...)
 		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
-		body = append(body, blank, hintLine(boxInner(w), "enter", enter, "shift+tab", "back", "esc", "cancel"))
-		return box()
+		return box("enter", enter, "shift+tab", "back", "esc", "cancel")
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
@@ -332,6 +332,5 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	default:
 		hints = slices.Concat([]string{"enter", "answer"}, tabs, []string{"esc", "cancel"})
 	}
-	body = append(body, blank, hintLine(boxInner(w), hints...))
-	return box()
+	return box(hints...)
 }

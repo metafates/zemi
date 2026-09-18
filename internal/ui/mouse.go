@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -78,9 +79,18 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			}
 			return nil
 		}
+		if id := a.scrollbarAt(m.X, m.Y); id != "" {
+			a.barDrag = id
+			a.dragScrollbar(id, m.Y)
+			return nil
+		}
 		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
 		a.frameGen++
 	case tea.MouseMotionMsg:
+		if a.barDrag != "" {
+			a.dragScrollbar(a.barDrag, m.Y)
+			return nil
+		}
 		if !a.mouse.pressed {
 			return a.hover(m.X, m.Y)
 		}
@@ -89,6 +99,10 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.frameGen++
 		}
 	case tea.MouseReleaseMsg:
+		if a.barDrag != "" {
+			a.barDrag = ""
+			return nil
+		}
 		if !a.mouse.pressed {
 			return nil
 		}
@@ -96,8 +110,10 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		a.frameGen++
 		if !a.mouse.dragged {
 			a.mouse = mouseSel{}
-			a.focusAt(m.X, m.Y)
-			a.click(m.X, m.Y)
+			if !a.dismissOutside(m.X, m.Y) {
+				a.focusAt(m.X, m.Y)
+				a.click(m.X, m.Y)
+			}
 			return a.hover(m.X, m.Y)
 		}
 		text := a.selectionText()
@@ -109,6 +125,58 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		return copyCmd(text)
 	}
 	return nil
+}
+
+// scrollbarAt is the scrolled region whose scrollbar column is at (x, y),
+// "" for none. Chrome on top owns the pointer first.
+func (a *App) scrollbarAt(x, y int) string {
+	if a.topChrome() != "" {
+		return ""
+	}
+	for _, id := range a.scrollIDs {
+		st := a.scrolls[id]
+		if st != nil && st.rows > st.viewH && x == st.rect.Max.X-1 && y >= st.rect.Min.Y && y < st.rect.Max.Y {
+			return id
+		}
+	}
+	return ""
+}
+
+// dragScrollbar puts a region's viewport where the pointer holds the bar.
+func (a *App) dragScrollbar(id string, y int) {
+	st := a.scrolls[id]
+	if st == nil || st.viewH <= 1 {
+		return
+	}
+	rel := max(0, min(y-st.rect.Min.Y, st.viewH-1))
+	a.scrollRows(id, rel*(st.rows-st.viewH)/(st.viewH-1)-max(st.top, 0))
+}
+
+// dismissOutside closes a menu or popup a click landed outside of, and
+// reports whether it did. A blocking ask (permission, trust, question,
+// memory review) stays: a tool waits on its answer, so a stray click must
+// not decide it.
+func (a *App) dismissOutside(x, y int) bool {
+	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
+	switch {
+	case a.topChrome() == "overlay" && out(a.chromeRect):
+		// the whole menu goes, not only a detail view drawn over it
+		i := len(a.overlays) - 1
+		for i > 0 && a.overlays[i].back {
+			i--
+		}
+		a.cancelOverlay(a.overlays[i].o)
+	case a.topChrome() != "":
+		return false
+	case a.palette.open && out(a.popRect):
+		a.palette.close()
+	case a.completion.shown() && out(a.popRect):
+		a.completion.close()
+	default:
+		return false
+	}
+	a.frameGen++
+	return true
 }
 
 // focusAt gives the keys to the focusable node a click lands in (the topmost:
@@ -255,6 +323,14 @@ func (a *App) click(x, y int) {
 // cellSpan is the cells [lo, hi) of screen row y.
 type cellSpan struct{ y, lo, hi int }
 
+// firstRow keeps the spans of the topmost row only.
+func firstRow(spans []cellSpan) []cellSpan {
+	if len(spans) == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(spans), func(s cellSpan) bool { return s.y != spans[0].y })
+}
+
 // target finds what a click at (x, y) would do: the cells that act, over
 // every row of the item, and the action. Clicks and hover share it, so a
 // highlight always means a click does something. The pointer must be over
@@ -296,7 +372,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	closing, onClose := a.winCloseAt(x, y)
+	button, onButton := a.winButtonAt(x, y)
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
@@ -339,14 +415,17 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
-	case top == "" && onClose:
-		return []cellSpan{{y, closing.x + closing.w - 2, closing.x + closing.w - 1}}, func() { a.titleClick(closing.id, x) }, true
+	case top == "" && onButton:
+		// the button under the pointer, of the two the title row ends with
+		lo := button.x + button.w - winButtons + (x-(button.x+button.w-winButtons))/3*3
+		return []cellSpan{{y, lo, lo + 3}}, func() { a.titleClick(button.id, x) }, true
 	case under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
-		if under.Widget == "" { // a Go statusline pill names its command
+		if under.Widget == "" { // a Go pill or dock entry names its command
+			name, args := splitCommand(under.Click)
 			act = func() {
-				if under.Click != "reload" {
-					a.runCommand(under.Click, "")
+				if name != "reload" {
+					a.runCommand(name, args)
 				} else if a.reload != nil {
 					go a.reload() // off the UI goroutine, as the typed /reload
 				}
@@ -355,7 +434,9 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			break
 		}
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
-		return spans, act, ok
+		// a click acts anywhere on the target, but only its first row lights:
+		// underlining a whole diff says nothing about what the click does
+		return firstRow(spans), act, ok
 	}
 	return nil, nil, false
 }

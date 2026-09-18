@@ -6,6 +6,22 @@ import (
 	"time"
 )
 
+// TestProgressReport: OSC 9;4 goes out once when a turn starts and once
+// when it ends, and not at all with the setting off.
+func TestProgressReport(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 10)
+	if app.progressCmd(true) == nil || app.progressCmd(true) != nil {
+		t.Fatal("a running turn should report once")
+	}
+	if app.progressCmd(false) == nil {
+		t.Fatal("the end of a turn should clear the report")
+	}
+	app.host.Settings.SetQuiet("ui.progress", false)
+	if app.progressCmd(true) != nil {
+		t.Fatal("ui.progress off should report nothing")
+	}
+}
+
 // TestRedrawAfterCallbacks: a one-shot timer's change reaches the screen
 // with no other redraw, zemi.ui.redraw asks for one, and a burst of
 // refreshes waits in the hook queue as one.

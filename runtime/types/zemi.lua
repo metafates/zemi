@@ -1634,6 +1634,11 @@ function zemi.permission.mode.add(name, spec) end
 ---@param name string
 function zemi.permission.mode.del(name) end
 
+--- Switch the active mode. User config only.
+---@param name string
+---@return true|nil ok, string? err
+function zemi.permission.mode.set(name) end
+
 ---@return zemi.PermMode[]
 function zemi.permission.mode.list() end
 

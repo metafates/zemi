@@ -212,7 +212,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		a.submitComposer()
 		return nil
-	case "shift+enter", "alt+enter", "ctrl+j":
+	case "shift+enter", "alt+enter", "ctrl+enter":
 		if !a.multiline() {
 			return nil
 		}

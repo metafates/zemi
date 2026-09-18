@@ -182,7 +182,9 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 		t.Helper()
 		for _, row := range strings.Split(frame, "\r\n") {
 			if i := strings.Index(ansi.Strip(row), "message "); i >= 0 {
-				return strings.TrimSpace(ansi.Strip(row)[i:])
+				// the scrollbar ends the row, and the padding before it
+				// depends on the width
+				return strings.TrimRight(ansi.Strip(row)[i:], " │█")
 			}
 		}
 		t.Fatalf("no message row on screen:\n%s", frame)

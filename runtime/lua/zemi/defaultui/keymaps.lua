@@ -6,6 +6,24 @@
 -- region.
 
 zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "show thinking and every tool call" })
+
+-- ctrl+y flips to yolo and back. The mode it left is remembered here, so the
+-- next press restores it whatever the mode list holds.
+local before
+zemi.keymap.set("ctrl+y", function()
+  ---@type zemi.PermMode?
+  local cur
+  for _, m in ipairs(zemi.permission.mode.list()) do
+    if m.active then cur = m end
+  end
+  if not cur then return end
+  if cur.base == "yolo" then
+    zemi.permission.mode.set(before or "manual")
+    before = nil
+  elseif zemi.permission.mode.set("yolo") then
+    before = cur.name
+  end
+end, { desc = "yolo until the next press" })
 zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
 zemi.keymap.set("shift+tab", "zemi.permission.mode.prev", { desc = "previous permission mode" })
 zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })

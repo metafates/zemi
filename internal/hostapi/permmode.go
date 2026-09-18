@@ -380,6 +380,18 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		h.refresh()
 		return 0
 	}))
+	// set(name) switches the active mode; list() says which one that is.
+	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		gate(L, "set")
+		if err := h.SetPermMode(name); err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		L.Push(glua.LTrue)
+		return 1
+	}))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		cur := h.PermMode()

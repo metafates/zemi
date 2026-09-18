@@ -125,6 +125,7 @@ guessing. Common keys:
 - `ui.mouse` (true): drag copies, clicks act on rows; false leaves selection to the terminal
 - `ui.notify` (true): terminal notification when zemi is unfocused and a turn ends or a
   prompt waits
+- `ui.progress` (true): OSC 9;4 while a turn runs, which taskbars and tab bars draw
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.max_items`
 - `memory.digest_lines` (12): lines of the memory digest; 0 leaves it out of the prompt

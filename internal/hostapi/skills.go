@@ -456,7 +456,7 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 // list stays open, enter opens its detail.
 func (h *Host) openSkills() {
 	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(),
+		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
 			Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
 			Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
 	}
@@ -496,7 +496,7 @@ func (h *Host) skillItems() []any {
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
-		item["detail"] = fmt.Sprintf("%s\n\nsource: %s · %s\npath: %s\n\n%s",
+		item["detail"] = fmt.Sprintf("%s\n\n%s · %s · `%s`\n\n---\n\n%s",
 			s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")), body)
 		items = append(items, item)
 	}

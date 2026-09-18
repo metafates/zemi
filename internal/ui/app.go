@@ -84,6 +84,8 @@ type App struct {
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	stage          uv.Rectangle        // where the last frame's stage was
 	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
+	chromeRect     uv.Rectangle        // the cells the topmost modal box took
+	barDrag        string              // the scrolled region whose scrollbar the pointer holds
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
@@ -98,6 +100,7 @@ type App struct {
 	cursor  *tea.Cursor
 	winDrag *winDrag // a drag on window chrome in progress
 
+	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
 	caches     map[string]*widgetCache
 	pending    map[string]int64 // widget id -> generation of the render in flight
 	frameGen   int64
@@ -106,6 +109,7 @@ type App struct {
 	lastState  hostapi.UIState  // what the widgets last rendered with, pulse aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
+	progress   bool             // the terminal was told a turn is running (OSC 9;4)
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
@@ -149,15 +153,16 @@ type widgetCache struct {
 // host.SetUIHooks(app).
 func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 	return &App{
-		host:    host,
-		log:     log,
-		thm:     themeResolver{host: host, sgr: map[string]uv.Style{}},
-		caches:  map[string]*widgetCache{},
-		scrolls: map[string]*scrollState{},
-		timeStr: "--:--",
-		now:     time.Now,
-		focused: true,
-		hooks:   make(chan tea.Msg, hookQueueSize),
+		host:     host,
+		log:      log,
+		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}},
+		caches:   map[string]*widgetCache{},
+		prefixes: map[string]string{},
+		scrolls:  map[string]*scrollState{},
+		timeStr:  "--:--",
+		now:      time.Now,
+		focused:  true,
+		hooks:    make(chan tea.Msg, hookQueueSize),
 	}
 }
 
@@ -214,12 +219,12 @@ func (a *App) leave() {
 		return
 	}
 	a.host.Wins.CloseAll()
-	if g := a.host.Wins.TakeGraphics(); g != "" {
-		a.program.Send(tea.RawMsg{Msg: g})
-		// NOTE: raw output is written on the next frame and quitting leaves the
-		// alternate screen first, so wait out a frame
-		time.Sleep(50 * time.Millisecond)
-	}
+	// the progress report is cleared whether or not one is running: reading
+	// the flag from this goroutine would race with the frame loop
+	a.program.Send(tea.RawMsg{Msg: a.host.Wins.TakeGraphics() + "\x1b]9;4;0\x07"})
+	// NOTE: raw output is written on the next frame and quitting leaves the
+	// alternate screen first, so wait out a frame
+	time.Sleep(50 * time.Millisecond)
 	a.program.Quit()
 }
 
@@ -419,6 +424,20 @@ func (a *App) View() tea.View {
 	return v
 }
 
+// progressCmd tells the terminal a turn is running with OSC 9;4, which
+// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar; it
+// writes only when the state changed, and clears on quit.
+func (a *App) progressCmd(running bool) tea.Cmd {
+	if running && !a.host.Settings.Bool("ui.progress") {
+		running = false
+	}
+	if running == a.progress {
+		return nil
+	}
+	a.progress = running
+	return tea.Raw("\x1b]9;4;" + map[bool]string{true: "3", false: "0"}[running] + "\x07")
+}
+
 // notifyIfAway alerts through the terminal when zemi needs attention while
 // its window is not focused: OSC 9 (a desktop notification in iTerm2,
 // Ghostty, WezTerm, Windows Terminal) and a bell for other terminals.
@@ -472,6 +491,9 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	if c := a.progressCmd(a.host.AgentActive()); c != nil {
+		cmds = append(cmds, c)
+	}
 	if g := a.host.Wins.TakeGraphics(); g != "" {
 		cmds = append(cmds, tea.Raw(g))
 	}
@@ -661,6 +683,8 @@ func (a *App) compose(w, h int) string {
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	}
+	clear(a.prefixes) // a theme cannot change inside one frame
+
 	lay := a.layout(w, h)
 	stage := lay.stage
 	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
@@ -669,10 +693,13 @@ func (a *App) compose(w, h int) string {
 	a.paintFloats(rows, &lay, w, h)
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
-	// the popup takes the mouse on the cells it covers, windows under it included
+	// the popup draws over the windows and takes the mouse on the cells it
+	// covers, so its rect is known before they are placed
 	var pop uv.Rectangle
+	var popup [][]hostapi.Segment
+	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		pop = a.floatPopup(rows, append(a.completionRows(), a.paletteRows()...), lay, w)
+		popup, popX, pop = a.floatPopup(append(a.completionRows(), a.paletteRows()...), lay, len(rows), w)
 	}
 	for i := range a.winRects {
 		r := &a.winRects[i]
@@ -697,6 +724,12 @@ func (a *App) compose(w, h int) string {
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
 	}
+	if dock := a.dockRow(stage.Dx()); dock != nil {
+		rows = placeBox(rows, [][]hostapi.Segment{dock}, stage.Min.X, stage.Max.Y-1, w)
+	}
+	for i, line := range popup {
+		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
+	}
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
 		rows = placeBox(rows, [][]hostapi.Segment{pills}, 0, h-1, w)
@@ -713,18 +746,19 @@ func (a *App) compose(w, h int) string {
 		area = uv.Rect(0, 0, w, h)
 	}
 	var modals []func()
+	a.chromeRect = uv.Rectangle{}
 	splice := func(box [][]hostapi.Segment) {
-		modals = append(modals, func() { rows = spliceBox(rows, box, area, w) })
+		modals = append(modals, func() { rows, a.chromeRect = spliceBox(rows, box, area, w) })
 	}
 	for i := range a.overlays {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
 			continue // a detail view replaces the list it opened from
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := overlayBox(ov, area.Dx(), area.Dy())
-			modals = append(modals, func() { rows = anchorBottom(rows, box, area, w) })
+			box := a.overlayBox(ov, area.Dx(), area.Dy())
+			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, w) })
 		} else {
-			splice(overlayBox(ov, area.Dx(), area.Dy()))
+			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
 	}
 	if a.trust != nil {
@@ -852,23 +886,23 @@ func dimRows(rows [][]hostapi.Segment) {
 	}
 }
 
-// floatPopup frames a completion popup and lays it over the bottom rows of
-// the stage, left-aligned with it, when the stage is above the composer;
-// otherwise beside the composer on the side with more rows, aligned with
-// it. The rows it covers are blanked to the right of the frame (word
-// fragments beside a dropdown read as garbage); a popup taller than its
-// room is clipped. It returns the cells the popup covers.
-func (a *App) floatPopup(rows, popup [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
+// floatPopup frames a completion popup for the bottom rows of the stage,
+// left-aligned with it, when the stage is above the composer; otherwise
+// beside the composer on the side with more rows, aligned with it. Every
+// row is padded to the frame's width (word fragments beside a dropdown read
+// as garbage); a popup taller than its room is clipped. It returns the rows
+// to draw, their left column and the cells they cover.
+func (a *App) floatPopup(popup [][]hostapi.Segment, lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
 	if len(popup) == 0 {
-		return uv.Rectangle{}
+		return nil, 0, uv.Rectangle{}
 	}
 	stage, c := lay.stage, lay.rects["composer"]
-	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, len(rows))
+	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
 	if stage.Max.Y > c.Min.Y {
 		x, width, top, bottom = c.Min.X, c.Dx(), 0, c.Min.Y
-		if up = c.Min.Y >= len(rows)-c.Max.Y; !up {
-			top, bottom = c.Max.Y, len(rows)
+		if up = c.Min.Y >= h-c.Max.Y; !up {
+			top, bottom = c.Max.Y, h
 		}
 	}
 	box := hostBox("", "", "", popup, width)
@@ -877,10 +911,11 @@ func (a *App) floatPopup(rows, popup [][]hostapi.Segment, lay screenLayout, w in
 	} else {
 		bottom = min(bottom, top+len(box))
 	}
+	out := make([][]hostapi.Segment, 0, max(bottom-top, 0))
 	for i := top; i < bottom; i++ {
-		placeBox(rows, [][]hostapi.Segment{padSegs(box[i-top], width)}, x, i, w)
+		out = append(out, padSegs(box[i-top], width))
 	}
-	return uv.Rect(x, top, width, max(bottom-top, 0))
+	return out, x, uv.Rect(x, top, width, len(out))
 }
 
 // rowsBelow counts the rows under the default scrolled region's viewport
@@ -1119,22 +1154,51 @@ func (a *App) segStyle(hl, over string) uv.Style {
 	return a.thm.hover(a.hlStyle(hl), over)
 }
 
+// sgrPrefix is the ANSI sequence a segment's style opens with, "" for the
+// terminal's own. It is cached for the frame: compose styles thousands of
+// segments and building the sequence for each is the biggest cost of
+// drawing one.
+func (a *App) sgrPrefix(hl, over string) string {
+	key := hl // no highlight name holds a NUL, and hover is the rare case
+	if over != "" {
+		key = hl + "\x00" + over
+	}
+	if p, ok := a.prefixes[key]; ok {
+		return p
+	}
+	st := a.segStyle(hl, over)
+	p := ""
+	if !st.IsZero() {
+		p = st.String()
+	}
+	a.prefixes[key] = p
+	return p
+}
+
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
+	write := func(text, hl, over string) {
+		p := a.sgrPrefix(hl, over)
+		if p == "" {
+			b.WriteString(text)
+			return
+		}
+		b.WriteString(p)
+		b.WriteString(text)
+		b.WriteString(ansi.ResetStyle)
+	}
 	for _, s := range segs {
 		if s.Text == "" {
 			continue
 		}
 		if s.Effect == "shimmer" {
 			for _, r := range a.shimmer(s, a.now(), a.host.Settings.Bool("ui.animations")) {
-				st := a.segStyle(r.HL, s.Over)
-				b.WriteString(st.Styled(r.Text))
+				write(r.Text, r.HL, s.Over)
 			}
 			continue
 		}
-		st := a.segStyle(s.HL, s.Over)
-		b.WriteString(st.Styled(s.Text))
+		write(s.Text, s.HL, s.Over)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {

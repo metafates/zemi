@@ -469,15 +469,49 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 		break
 	}
+	bar := scrollbar{h: h, top: st.top, total: st.rows, width: w}
 	rows := make([][]hostapi.Segment, h)
 	for i := range rows {
 		var row []hostapi.Segment
 		if j := st.top + i; j >= 0 && j < len(lines) {
-			row = truncateSegs(lines[j], w)
+			row = truncateSegs(lines[j], bar.inner())
 		}
-		rows[i] = padSegs(row, w)
+		rows[i] = bar.row(padSegs(row, bar.inner()), i)
 	}
 	return rows
+}
+
+// scrollbar is the one-cell bar down the right edge of a viewport showing
+// rows [top, top+h) of total: the thumb's size and offset say how much
+// shows and where. It is decoration, so it never copies, and it draws
+// nothing while everything fits.
+type scrollbar struct{ h, top, total, width int }
+
+func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && b.width >= 8 }
+
+// inner is the cells a row may use, the bar's own left out.
+func (b scrollbar) inner() int {
+	if b.on() {
+		return b.width - 1
+	}
+	return b.width
+}
+
+// row appends the bar cell for viewport row i to a row already padded to
+// inner cells.
+func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
+	if !b.on() {
+		return row
+	}
+	size := max(b.h*b.h/b.total, 1)
+	pos := max(0, min((b.h-size)*max(b.top, 0)/(b.total-b.h), b.h-size))
+	mark, hl := "│", "ScrollbarTrack"
+	if i >= pos && i < pos+size {
+		mark, hl = "█", "ScrollbarThumb"
+	}
+	out := make([]hostapi.Segment, len(row), len(row)+1)
+	copy(out, row)
+	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true})
 }
 
 // reanchor puts the viewport back on the content it was showing after the

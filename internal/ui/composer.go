@@ -370,23 +370,25 @@ const composerMaxRows = 8
 // the cursor row. At most composerMaxRows rows are shown, scrolled to keep the
 // cursor row visible.
 func (a *App) composerRows(w int) [][]hostapi.Segment {
-	prefix := "> "
-	cont := "  "
 	// one cell stays free for the cursor mark at the end of a full row
-	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - len(prefix) - 1)
+	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - 3)
 	start := max(0, cursorRow-composerMaxRows+1)
-	// The prompt takes the permission mode's color.
-	promptHL := map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
+	// The prompt takes the permission mode's color; a shell draft (!) says so
+	// with its own glyph, since it never reaches the model.
+	prefix, promptHL := "> ", map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
 	if promptHL == "" {
 		promptHL = "Comment"
 	}
+	if strings.HasPrefix(a.composer.text, "!") {
+		prefix, promptHL = "! ", "PromptShell"
+	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
-		p := cont
+		p, hl := "│ ", "Comment" // a gutter down the rows after the first
 		if i == 0 {
-			p = prefix
+			p, hl = prefix, promptHL
 		}
-		segs := []hostapi.Segment{{Text: p, HL: promptHL, NoCopy: true}}
+		segs := []hostapi.Segment{{Text: p, HL: hl, NoCopy: true}}
 		if i == cursorRow && a.focusedNode() == "" { // no cursor while a node has the keys
 			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
 		} else {

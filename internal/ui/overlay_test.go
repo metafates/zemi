@@ -274,7 +274,7 @@ func TestOverlayNavigation(t *testing.T) {
 		{"an empty overlay shows its empty line and enter does nothing",
 			hostapi.Overlay{Empty: "Nothing to see."}, []string{"enter"},
 			func(a *App) string {
-				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(overlayBox(&a.overlays[0], 80, 20)), "Nothing to see.") {
+				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "Nothing to see.") {
 					return "no empty line"
 				}
 				return ""
@@ -301,10 +301,10 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				d := &a.overlays[1]
 				d.o.Body = strings.Repeat("line\n", 60)
-				before := segsWidth(overlayBox(d, 80, 20)[0])
+				before := segsWidth(a.overlayBox(d, 80, 20)[0])
 				a.wheelChrome(1)
 				d.selected = 1 // enter select -> enter back
-				if after := segsWidth(overlayBox(d, 80, 20)[0]); d.scroll != 1 || after != before {
+				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.scroll != 1 || after != before {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.scroll, before, after)
 				}
 				return ""
@@ -356,7 +356,7 @@ func TestOverlayNavigation(t *testing.T) {
 		{"a newline in the title or empty text adds no terminal line",
 			hostapi.Overlay{Title: "a\nb", Empty: "p\nq"}, nil,
 			func(a *App) string {
-				for _, row := range overlayBox(&a.overlays[0], 80, 20) {
+				for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
 					if strings.Contains(plainSegs(row), "\n") {
 						return fmt.Sprintf("row %q holds a newline", plainSegs(row))
 					}
@@ -388,7 +388,7 @@ func TestOverlayHints(t *testing.T) {
 		o.Origin = lua.OriginBuiltin
 		a.openOverlay(o)
 		a.overlays[0].active = filtering
-		box := overlayBox(&a.overlays[0], 80, 20)
+		box := a.overlayBox(&a.overlays[0], 80, 20)
 		if len(box) > 20 {
 			t.Errorf("%d rows do not fit 20", len(box))
 		}
@@ -423,17 +423,47 @@ func TestOverlayFilterKeepsWidth(t *testing.T) {
 	}
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, "a much longer row than the others")})
 	st := &app.overlays[0]
-	box := overlayBox(st, 80, 40)
+	box := app.overlayBox(st, 80, 40)
 	if !strings.Contains(fmt.Sprint(box), "item 14") {
 		t.Fatalf("a tall screen still scrolls: %v", box)
 	}
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
 		st.apply(st.texts)
-		if got := overlayBox(st, 80, 40); segsWidth(got[0]) != segsWidth(box[0]) {
-			t.Fatalf("filter %q: width %d, want %d", q, segsWidth(got[0]), segsWidth(box[0]))
+		got := app.overlayBox(st, 80, 40)
+		// the filter line adds one row; everything else keeps its size
+		if segsWidth(got[0]) != segsWidth(box[0]) || len(got) != len(box)+1 {
+			t.Fatalf("filter %q: %dx%d, want %dx%d", q, segsWidth(got[0]), len(got), segsWidth(box[0]), len(box)+1)
 		}
 	}
+}
+
+// TestOverlayClosesOnOutsideClick: a click beside a menu closes it, a click
+// inside does not, and a blocking ask ignores both.
+func TestOverlayClosesOnOutsideClick(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"alpha", "beta"}})
+	app.renderSync(t)
+	app.Frame()
+	box := app.chromeRect
+	clickAt(app, box.Min.X+1, box.Min.Y+1)
+	if len(app.overlays) != 1 {
+		t.Fatal("a click inside the box closed it")
+	}
+	clickAt(app, 0, 0)
+	if len(app.overlays) != 0 {
+		t.Fatal("a click outside the box left it open")
+	}
+
+	go app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make test"})
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	app.Frame()
+	clickAt(app, 0, 0)
+	if app.permAsk == nil {
+		t.Fatal("a stray click answered a permission ask")
+	}
+	app.answerPerm(false, "user")
 }
 
 // TestOverlayLongLabelKeepsDescAndKey: a label too long for the box is cut
@@ -444,7 +474,7 @@ func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
 		map[string]any{"text": "Done. The fixture path moved, so the test binary exits 1", "desc": "now · 2 messages", "key": "current"},
 		map[string]any{"text": "please run bash", "desc": "1m ago · 18 messages · and a first line that runs far past the edge"},
 	}})
-	rows := overlayBox(&app.overlays[0], 80, 20)
+	rows := app.overlayBox(&app.overlays[0], 80, 20)
 	box := fmt.Sprint(rows)
 	if !strings.Contains(box, "now") || !strings.Contains(box, "current") || !strings.Contains(box, "…") {
 		t.Fatalf("box: %s", box)
@@ -481,7 +511,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 		{{Text: "red", HL: "ToastErr", Click: "reload"}, {Text: " plain"}},
 		{{Text: "a label far too long for a forty cell wide box", HL: "Title"}},
 	}})
-	rows := overlayBox(&app.overlays[0], 40, 20)
+	rows := app.overlayBox(&app.overlays[0], 40, 20)
 	first, second := rows[1], rows[2]
 	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Normal" {
 		t.Fatalf("first row: %+v", first)

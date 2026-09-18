@@ -47,6 +47,10 @@ var hostStyles = map[string]uv.Style{
 	"Host:DiffCtxLine": {Fg: rgb(0x9aa0c0)},
 	"Host:DiffCtxNum":  {Fg: rgb(0x4c5372)},
 	"Host:BtnSel":      {Fg: rgb(0x16161e), Bg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
+	"Host:BtnKey":      {Fg: rgb(0xc0caf5), Bg: rgb(0x2e3350), Attrs: uv.AttrBold},
+	"Host:WinMin":      {Fg: rgb(0xa9b1d6), Bg: rgb(0x242838)},
+	"Host:WinClose":    {Fg: rgb(0xf7768e), Bg: rgb(0x242838), Attrs: uv.AttrBold},
+	"Host:Dock":        {Fg: rgb(0xa9b1d6), Bg: rgb(0x2e3350)},
 	"Host:Selection":   {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c)},
 	"Host:Hover":       {Fg: rgb(0xe6e9f5), Bg: rgb(0x2d3452)},
 	"Host:Dim":         {Fg: rgb(0x3b4261)},
@@ -150,11 +154,11 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	if tp.state != "" {
 		later, laterDesc = "Keep as is", ""
 	}
-	list := listRows([]listItem{
-		{label: "Trust", desc: saved, key: "y"},
-		{label: "Don't trust", desc: saved, key: "n"},
-		{label: later, desc: laterDesc, key: "esc"},
-	}, -1, nil, 3)
+	list := choiceRows([]promptChoice{
+		{"y", "Trust", saved},
+		{"n", "Don't trust", saved},
+		{"esc", later, laterDesc},
+	}, -1, width)
 	for drop := 1; drop <= 8 && len(body)+len(list)+2 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
 	}
@@ -162,8 +166,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	for _, r := range body {
 		rows = append(rows, r.segs)
 	}
-	rows = append(rows, alignKeys(list, width)...)
-	return hostBox(" Trust this "+what+"? ", "Host:Title", "", rows, w)
+	return promptBox("Trust this "+what+"?", "", append(rows, list...), nil, w, 100)
 }
 
 // ---------------------------------------------------------------------------
