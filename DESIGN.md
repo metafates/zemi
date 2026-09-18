@@ -1105,13 +1105,16 @@ configured provider later (`zemi.memory.search` signature does not change).
 ## 8. UI core detail
 
 - **Layout**: header (no default widget; the region stays for Lua), chat
-  (flex), the `working` region above the composer (the shipped `working`
-  widget while a turn runs: the snail mascot in the state of the turn,
-  shimmering label naming the
-  current activity, elapsed time, interrupt key, queue depth; it reads
-  `ctx.frame`, `ctx.done`, `ctx.cancelling`, `editing`, `waiting` and
-  `agent.retry`/`compacting`, and it ends with a blank row), composer (1..8 rows plus a "+n lines" row), statusline
-  (1 row: `statusline.left` / `statusline.right` widgets ordered by
+  (flex), then the composer (1..8 rows plus a "+n lines" row) inside a
+  square frame two rows taller, whose rules carry regions: the `working`
+  one on top (the shipped `working` widget: the snail mascot in the state
+  of the turn, a shimmering label naming the current activity, elapsed
+  time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
+  `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`),
+  the statusline below. The mascot is always drawn and the frame's height
+  never moves with agent state, so no turn adds or removes a row.
+  Statusline
+  (`statusline.left` / `statusline.right` widgets ordered by
   `priority` ascending, overflow truncates the lowest-priority ones; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
@@ -1129,12 +1132,15 @@ configured provider later (`zemi.memory.search` signature does not change).
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open); Go still draws the box, the origin badge, the
-  filter and the hints.
+  filter and the hints. A detail view's rows are actions, so they draw as
+  the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
+  position.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
   separators) hold leaves: a widget region (optionally scrolled, by node id), the
-  composer (exactly one, never hidden), the statusline bar, a window slot, a spacer.
+  composer (exactly one, never hidden, optionally framed with a region in each rule),
+  the statusline bar, a window slot, a spacer.
   Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
   content and cells, the last child first, down to min and then to 0, and hides its last
