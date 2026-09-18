@@ -819,9 +819,12 @@ zemi.state.get("recent.model")
 
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
 callbacks; the watchdog cancels handles a tool left running. Blocking
-waits (`h:wait()`, `zemi.job.out`) are not refused anywhere, but they
-hold the interpreter until they return, so they belong in tool handlers
-and keymaps and event handlers use the callback form. Host-API calls
+waits (`h:wait()`, `zemi.job.out`, `win:wait_text`) are not refused
+anywhere, but they hold the interpreter until they return, so they end
+with the request that started them (its ceiling, or an interrupt):
+otherwise a blocked Go call, which no opcode cancellation can preempt,
+would leave the runtime hot. They belong in tool handlers; keymaps and
+event handlers use the callback form. Host-API calls
 from Lua never open the interactive overlay: when the matched decision
 is `ask`, the call raises `permission ask required` (a
 `permission.request` event is emitted, post-hoc and informational: the

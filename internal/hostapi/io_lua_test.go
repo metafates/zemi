@@ -1,9 +1,12 @@
 package hostapi
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/perm"
+	glua "github.com/yuin/gopher-lua"
 )
 
 // TestJobStartFailure: a command that cannot start is a runtime failure,
@@ -42,4 +45,18 @@ func TestJobGateSeesCommandLine(t *testing.T) {
 		assert(not pcall(zemi.job.out, { cmd = "echo", args = { "true" } }), "the program leads the line")
 		assert(not pcall(zemi.win.open, { cmd = "true; echo" }), "a second command asks")
 	`)
+}
+
+// TestWaitEndsWithTheRequest: an interpreter-blocking wait ends when the
+// request's context is canceled (its ceiling, or ctrl+c), so it cannot
+// outlive the watchdog grace and leave the runtime hot (DESIGN §4).
+func TestWaitEndsWithTheRequest(t *testing.T) {
+	L := glua.NewState()
+	defer L.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	L.SetContext(ctx)
+	cancel()
+	if err := waitDone(L, make(chan struct{}), time.Minute); err == nil || err.Error() != "canceled" {
+		t.Fatalf("waitDone = %v, want canceled", err)
+	}
 }

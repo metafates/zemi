@@ -307,7 +307,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		t.RawSetString("append", L.NewFunction(setText(true)))
 		// wait_text(want, timeout_ms) blocks the interpreter: keep it short
 		t.RawSetString("wait_text", L.NewFunction(func(L *glua.LState) int {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(L.OptInt(3, 5000))*time.Millisecond)
+			ctx, cancel := context.WithTimeout(luaCtx(L), time.Duration(L.OptInt(3, 5000))*time.Millisecond)
 			defer cancel()
 			text, ok := w.WaitText(ctx, L.CheckString(2))
 			L.Push(glua.LBool(ok))

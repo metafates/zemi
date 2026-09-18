@@ -1117,7 +1117,8 @@ function Win:set_text(text) end
 ---@return true|nil, string|nil
 function Win:append(text) end
 --- Block until the screen shows want (default 5000 ms). Blocks the
---- interpreter: keep it short, prefer zemi.timer for long waits.
+--- interpreter: keep it short, prefer zemi.timer for long waits. It also
+--- ends when the request does (its ceiling, or an interrupt).
 ---@param want string
 ---@param timeout_ms? integer
 ---@return boolean shown, string text
@@ -1756,7 +1757,7 @@ function zemi.http.get(url, opts) end
 
 ---@class zemi.JobHandle
 ---@field id integer
----@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil 30000 ms by default; err is "timeout".
+---@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil 30000 ms by default; err is "timeout" or "canceled" (the request ended).
 ---@field kill fun(self: zemi.JobHandle)
 ---@field write fun(self: zemi.JobHandle, s: string): true|nil, string|nil
 ---@field close_stdin fun(self: zemi.JobHandle)

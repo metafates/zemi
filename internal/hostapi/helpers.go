@@ -1,9 +1,35 @@
 package hostapi
 
 import (
+	"cmp"
+	"context"
+	"errors"
+	"time"
+
 	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
 )
+
+// luaCtx is the running request's context, which the queue cancels at the
+// request's ceiling and on an interrupt.
+func luaCtx(L *glua.LState) context.Context {
+	return cmp.Or(L.Context(), context.Background())
+}
+
+// waitDone blocks the interpreter until done, the timeout, or the running
+// request's cancellation: a wait that outlives its request leaves the
+// runtime hot until /reload, since a blocked Go call cannot be preempted
+// (DESIGN §4).
+func waitDone(L *glua.LState, done chan struct{}, timeout time.Duration) error {
+	select {
+	case <-done:
+		return nil
+	case <-luaCtx(L).Done():
+		return errors.New("canceled")
+	case <-time.After(timeout):
+		return errors.New("timeout")
+	}
+}
 
 // luaToGoChecked marshals the value at arg idx, raising a Lua error tagged
 // with the calling API on failure.

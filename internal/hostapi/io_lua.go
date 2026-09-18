@@ -611,10 +611,8 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	})
 	handle := L.NewTable()
 	handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
-		select {
-		case <-hnd.done:
-		case <-time.After(120 * time.Second):
-			return luaResult(L, errors.New("wait timed out"))
+		if err := waitDone(L, hnd.done, 120*time.Second); err != nil {
+			return luaResult(L, err)
 		}
 		if hnd.err != nil {
 			return luaResult(L, hnd.err)
@@ -926,15 +924,13 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	wait := func(L *glua.LState, jh *jobHandle, timeout time.Duration) int {
-		select {
-		case <-jh.done:
-			L.Push(lua.FromGo(L, jh.snapshot()))
-			return 1
-		case <-time.After(timeout):
+		if err := waitDone(L, jh.done, timeout); err != nil {
 			L.Push(glua.LNil)
-			L.Push(glua.LString("timeout"))
+			L.Push(glua.LString(err.Error()))
 			return 2
 		}
+		L.Push(lua.FromGo(L, jh.snapshot()))
+		return 1
 	}
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
