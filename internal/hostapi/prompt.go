@@ -157,30 +157,38 @@ func (h *Host) systemWith(sys string, files []string) string {
 }
 
 // instructionSections renders instruction files as "## Instructions: <name>"
-// sections, at most budget bytes of file content in all.
+// sections, at most budget bytes of file content in all. The budget is
+// spent deepest file first, so a big general one is what gets cut and the
+// project's own file is never the one with no room left.
 func (h *Host) instructionSections(files []string, budget int) string {
-	var sections string
-	for _, f := range files {
-		b, err := os.ReadFile(f)
+	texts := make([]string, len(files))
+	for i := len(files) - 1; i >= 0; i-- {
+		b, err := os.ReadFile(files[i])
 		if err != nil || len(b) == 0 {
 			continue
 		}
 		// what the budget cut is named, not dropped in silence: the model
 		// can read the rest itself
-		text := string(b)
+		texts[i] = string(b)
 		switch {
 		case budget <= 0:
-			text = fmt.Sprintf("(left out: no room for its %d bytes; read the file for it)", len(b))
+			texts[i] = fmt.Sprintf("(left out: no room for its %d bytes; read the file for it)", len(b))
 		case len(b) > budget:
-			text = strings.ToValidUTF8(string(b[:budget]), "") +
+			texts[i] = strings.ToValidUTF8(string(b[:budget]), "") +
 				fmt.Sprintf("\n(cut here: %d of %d bytes left out; read the file for the rest)", len(b)-budget, len(b))
 		}
 		budget -= len(b)
+	}
+	var sections string
+	for i, f := range files {
+		if texts[i] == "" {
+			continue
+		}
 		name := f
 		if rel, err := filepath.Rel(h.Dirs.RepoRoot(), f); err == nil && !strings.HasPrefix(rel, "..") {
 			name = rel
 		}
-		sections += "\n\n## Instructions: " + name + "\n" + text
+		sections += "\n\n## Instructions: " + name + "\n" + texts[i]
 	}
 	return sections
 }

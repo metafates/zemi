@@ -88,8 +88,9 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 	}
 }
 
-// TestInstructionBudget: the budget names the file it cut and the one it
-// never reached, so neither goes missing in silence.
+// TestInstructionBudget: the budget is spent deepest file first, so the
+// most specific file is whole and the general one is the one named as cut
+// or left out.
 func TestInstructionBudget(t *testing.T) {
 	h, _ := newTestHost(t)
 	dir := t.TempDir()
@@ -101,10 +102,10 @@ func TestInstructionBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := h.instructionSections([]string{big, small}, 100)
-	if !strings.Contains(got, "(cut here: 100 of 200 bytes left out") {
-		t.Fatalf("cut not named: %q", got)
+	if !strings.Contains(got, "\nsecond") || !strings.Contains(got, "(cut here: 106 of 200 bytes left out") {
+		t.Fatalf("deepest file not kept whole: %q", got)
 	}
-	if !strings.Contains(got, "SMALL.md\n(left out: no room for its 6 bytes") {
+	if got := h.instructionSections([]string{big, small}, 6); !strings.Contains(got, "BIG.md\n(left out: no room for its 200 bytes") {
 		t.Fatalf("skipped file not named: %q", got)
 	}
 }

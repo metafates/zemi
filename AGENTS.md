@@ -658,7 +658,9 @@ naming widgets in regions the layout does not draw.
 - **System prompt** (prompt.go): `basePrompt` (acting first, tasks, asking, care, tools,
   git, replies, security) + `delegationPrompt` for the default profile, then `zemiPrompt`
   for every profile, plan mode, the per-session pinned `environmentPrompt`, instruction
-  files under `# Project instructions`, Lua sections, skills, digest. Anything that varies
+  files under `# Project instructions` (their shared 32 KB budget is spent deepest file
+  first, so a huge `<config>/AGENTS.md` cannot squeeze out the project's own), Lua
+  sections, skills, digest. Anything that varies
   per turn must be pinned per session or it busts the provider's prompt cache.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools
   pass `tools.SchemaProperties(schema)` and a non-nil `Required`
