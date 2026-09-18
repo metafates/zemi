@@ -343,12 +343,13 @@ function zemi.keymap.list() end
 
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
----@field nargs? "0"|"?"|"*"|"+" How many arguments the command takes.
+---@field nargs? ""|"?"|"*"|"+" How many arguments the command takes; "" takes none.
 ---@field complete? fun(lead: string, line: string): string[]
 
 ---@class zemi.Command
 ---@field name string
 ---@field desc string
+---@field nargs string
 ---@field origin zemi.Origin
 
 ---@class zemi.command
