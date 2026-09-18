@@ -365,6 +365,10 @@ func TestEditSafety(t *testing.T) {
 		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
 		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches line 1, so a later line differs: read", "}\na\n}\nb\n"},
 		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
+		{"the failed edit is named as the model wrote it", "a\n", false, map[string]any{"edits": []any{
+			map[string]any{"old_string": "a", "new_string": "b"},
+			map[string]any{"old_string": "zz", "new_string": "c"},
+		}}, "edit 2 (nothing was written)", "a\n"},
 	} {
 		path := filepath.Join(dir, c.name)
 		os.WriteFile(path, []byte(c.file), 0o644)

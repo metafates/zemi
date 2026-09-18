@@ -434,7 +434,7 @@ func applyEdits(src string, edits []any, where string) (out string, n int, toler
 		}
 		if m := editError(src, old, c, all, where); m != "" {
 			if len(edits) > 1 {
-				m = fmt.Sprintf("edit %d (nothing was written): %s", i, m)
+				m = fmt.Sprintf("edit %d (nothing was written): %s", i+1, m)
 			}
 			return src, 0, false, m
 		}
