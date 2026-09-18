@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
@@ -279,6 +281,13 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			h.callLuaAsync(at, cb)
 		})
 		return 0
+	}))
+
+	// width(text) is the cells the text draws in: a wide glyph (CJK, emoji)
+	// is two, so Lua clips and pads the way the renderer measures
+	tb.RawSetString("width", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LNumber(ansi.StringWidth(L.CheckString(1))))
+		return 1
 	}))
 
 	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {

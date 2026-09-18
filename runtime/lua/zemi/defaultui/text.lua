@@ -36,13 +36,11 @@ function M.elapsed(s)
   return string.format("%dh %02dm %02ds", math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
 end
 
---- Display width of a string: one cell per UTF-8 character.
---- NOTE: a wide glyph (CJK, emoji) counts as one, so clipped model text can
---- overflow into a wrapped row; exact widths need a host width call.
+--- Display width of a string in terminal cells.
 ---@param s string
 ---@return integer
 function M.cells(s)
-  return select(2, s:gsub("[^\128-\191]", ""))
+  return zemi.ui.width(s)
 end
 
 --- A pattern matching one UTF-8 character.
@@ -58,9 +56,12 @@ function M.clip(text, room)
   if room < 1 then return "" end
   ---@type string[]
   local chars = {}
+  local w = 0
   for ch in text:gmatch(M.UTF8_CHAR) do
-    if #chars == room - 1 then break end
+    local cw = M.cells(ch)
+    if w + cw > room - 1 then break end
     chars[#chars + 1] = ch
+    w = w + cw
   end
   return table.concat(chars) .. "…"
 end

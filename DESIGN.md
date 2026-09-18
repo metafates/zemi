@@ -898,7 +898,8 @@ UI extensibility contract:
   selection neither lights nor copies those cells. Wrapping ends a row that
   continues on the next in a `soft_wrap` segment, so a copy rejoins the
   line and skips what follows it on the row (padding, another column). No lipgloss in
-  Lua; highlight names only. Rich text goes through
+  Lua; highlight names only, and `zemi.ui.width(text)` measures cells the
+  way the renderer does, so Lua clips and pads wide glyphs correctly. Rich text goes through
   `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
   styled segment lines (how the default chat widget renders assistant
   text). Glamour renders unwrapped and zemi wraps the result, so the rows

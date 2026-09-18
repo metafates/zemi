@@ -1002,6 +1002,13 @@ function zemi.ui.hl(group, spec) end
 ---@return zemi.HLSpec|nil
 function zemi.ui.hl_get(group) end
 
+--- Cells `text` draws in, measured the way the renderer does: a wide glyph
+--- (CJK, emoji) is two, a combining mark zero. Use it to clip, pad and
+--- align, never `#text`.
+---@param text string
+---@return integer
+function zemi.ui.width(text) end
+
 --- Render markdown into widget rows of at most `width` cells.
 --- Decoration glamour draws (bullets, quote bars, code margins) comes back
 --- marked `copy = false`, and a row that wrapped ends in `soft_wrap`, so a
