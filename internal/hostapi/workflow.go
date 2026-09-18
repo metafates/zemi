@@ -138,9 +138,8 @@ func (h *Host) workflowSource(name string) (string, error) {
 // WorkflowResult is a finished run: the script's return value (strings as
 // is, anything else JSON) and its log lines.
 type WorkflowResult struct {
-	Value  string
-	Log    []string
-	Agents int
+	Value string
+	Log   []string
 }
 
 // wfTask is one coroutine: the script body or a parallel() branch.
@@ -253,7 +252,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 		cancel()
 		run.drainAgents()
 	}
-	res := WorkflowResult{Log: run.log, Agents: run.started}
+	res := WorkflowResult{Log: run.log}
 	if run.resultErr != nil {
 		return res, run.resultErr
 	}
