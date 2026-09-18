@@ -332,17 +332,13 @@ zemi.ui.widget.register({
         gap("activity")
         next_i = add_tools(tr, i)
       elseif m.kind == "shell" then
-        -- a !command: the command, then its output (long output folds)
+        -- a !command: the command, then its output, already cut to a head
+        -- and a tail by the host
         gap("user")
         local hl = m.status == "err" and "AgentToolErr" or "Title"
-        lines[#lines + 1] = { { text = "$ ", hl = hl, copy = false }, { text = m.text, hl = "Normal" } }
-        local n = 0
+        lines[#lines + 1] = { { text = "$ ", hl = hl, copy = false }, { text = m.text, hl = "Normal" },
+          m.status == "err" and { text = "  failed", hl = "AgentToolErr", copy = false } or nil }
         for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
-          n = n + 1
-          if n > 12 then
-            lines[#lines + 1] = { { text = "  …", hl = "Comment", copy = false } }
-            break
-          end
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
         end
       elseif m.kind == "compact" then
