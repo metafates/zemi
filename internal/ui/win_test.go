@@ -566,3 +566,28 @@ func winRectOf(t *testing.T, a *App, id int) winRect {
 	}
 	return a.winRects[i]
 }
+
+// TestTextPanelWrapCache: a vsplit text panel is measured at one width and
+// drawn at another, so both must stay cached or every frame re-wraps the
+// whole body.
+func TestTextPanelWrapCache(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	wn, err := a.host.Wins.OpenText(win.Spec{Text: strings.Repeat("some words to wrap ", 200), Kind: win.KindVSplit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.width, a.height = 100, 30
+	a.Frame()
+	before := a.wrapText[wn.ID]
+	if len(before) != 2 {
+		t.Fatalf("cached %d bodies, want the sizing and the drawing width", len(before))
+	}
+	// the same slices back means nothing was wrapped again
+	kept := [2]*hostapi.Segment{&before[0].lines[0][0], &before[1].lines[0][0]}
+	a.Frame()
+	after := a.wrapText[wn.ID]
+	if len(after) != 2 || &after[0].lines[0][0] != kept[0] || &after[1].lines[0][0] != kept[1] {
+		t.Fatalf("an unchanged frame re-wrapped the panel: widths %d, %d", after[0].width, after[1].width)
+	}
+}

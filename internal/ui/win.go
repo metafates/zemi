@@ -169,9 +169,11 @@ func (a *App) textSpan(wn *win.Window, row bool, cross, avail int) int {
 	return want
 }
 
-// wrapped is one text window's last wrapped body. A frame sizes a panel
+// wrapped is one text window's last wrapped bodies. A frame sizes a panel
 // and then draws it, and the solver may size it more than once, so without
-// this a long body is wrapped several times per frame.
+// this a long body is wrapped several times per frame. Two entries: a
+// vsplit or a float is measured at one width and drawn at another, so one
+// slot would never hit.
 type wrapped struct {
 	text  string
 	width int
@@ -184,8 +186,10 @@ type wrapped struct {
 // that grows costs one render, not one per frame.
 func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 	text, md := wn.Content()
-	if c, ok := a.wrapText[wn.ID]; ok && c.width == width && c.text == text {
-		return c.lines
+	for _, c := range a.wrapText[wn.ID] {
+		if c.width == width && c.text == text {
+			return c.lines
+		}
 	}
 	var out [][]hostapi.Segment
 	switch {
@@ -197,9 +201,13 @@ func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 		}
 	}
 	if a.wrapText == nil {
-		a.wrapText = map[int]wrapped{}
+		a.wrapText = map[int][]wrapped{}
 	}
-	a.wrapText[wn.ID] = wrapped{text, width, out}
+	kept := a.wrapText[wn.ID]
+	if len(kept) > 1 {
+		kept = kept[1:]
+	}
+	a.wrapText[wn.ID] = append(kept, wrapped{text, width, out})
 	return out
 }
 

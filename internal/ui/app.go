@@ -89,10 +89,10 @@ type App struct {
 	work     chan func()
 	workOnce sync.Once
 	question *questionPrompt
-	editing  string          // the editor handoff in progress, shown in the working row
-	focusWin int             // window taking keys, 0 = none
-	winRects []winRect       // where windows were drawn on the last frame
-	wrapText map[int]wrapped // a text window's last wrapped body, by window id
+	editing  string            // the editor handoff in progress, shown in the working row
+	focusWin int               // window taking keys, 0 = none
+	winRects []winRect         // where windows were drawn on the last frame
+	wrapText map[int][]wrapped // a text window's last wrapped bodies, by window id
 	// cursor is the host cursor: the focused window's, nil hides it. windowRows
 	// sets it in window cells and compose places it on the frame.
 	cursor  *tea.Cursor
@@ -687,7 +687,7 @@ func (a *App) compose(w, h int) string {
 	lay := a.layout(w, h)
 	stage := lay.stage
 	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
-	maps.DeleteFunc(a.wrapText, func(id int, _ wrapped) bool { _, ok := a.host.Wins.Get(id); return !ok })
+	maps.DeleteFunc(a.wrapText, func(id int, _ []wrapped) bool { _, ok := a.host.Wins.Get(id); return !ok })
 	rows := a.paint(lay.root)
 	a.paintFloats(rows, &lay, w, h)
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
