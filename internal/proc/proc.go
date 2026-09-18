@@ -11,7 +11,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
+	"slices"
 	"sync"
 	"time"
 )
@@ -119,10 +121,7 @@ func Hangup(cmd *exec.Cmd) {
 // for: running commands, jobs and servers.
 func KillAll() {
 	mu.Lock()
-	pids := make([]int, 0, len(live))
-	for pid := range live {
-		pids = append(pids, pid)
-	}
+	pids := slices.Collect(maps.Keys(live))
 	mu.Unlock()
 	for _, pid := range pids {
 		killGroup(pid)

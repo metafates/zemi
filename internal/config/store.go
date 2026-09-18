@@ -51,6 +51,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs: session titles, compaction summaries and the builtin web subagent (provider/model; empty uses models.main)"},
 		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses models.main)"},
 		{Path: "permissions.mode", Kind: "string", Default: "manual", Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
+		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
 		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},

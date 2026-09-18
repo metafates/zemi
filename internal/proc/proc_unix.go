@@ -12,6 +12,7 @@ func setSession(cmd *exec.Cmd) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setsid = true
+	dieWithParent(cmd.SysProcAttr)
 }
 
 func killGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }

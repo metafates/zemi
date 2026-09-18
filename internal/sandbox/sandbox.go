@@ -5,6 +5,7 @@
 package sandbox
 
 import (
+	"cmp"
 	"errors"
 	"maps"
 	"os"
@@ -26,7 +27,7 @@ const helperArg = "__sandbox"
 // binaries) calls it first; one that does not reports no backend.
 func DispatchHelper() {
 	if len(os.Args) > 2 && os.Args[1] == helperArg {
-		os.Exit(Helper(os.Args[2:]))
+		os.Exit(helper(os.Args[2:]))
 	}
 }
 
@@ -82,9 +83,7 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 	real := func(l []string) []string {
 		out := make([]string, len(l))
 		for i, path := range l {
-			if out[i] = perm.RealPath(path); out[i] == "" {
-				out[i] = path
-			}
+			out[i] = cmp.Or(perm.RealPath(path), path)
 		}
 		return out
 	}
