@@ -810,6 +810,19 @@ func TestAlwaysChoice(t *testing.T) {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
 		}
 	}
+	// a read deep in a tree also offers the whole repository
+	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
+	os.MkdirAll(filepath.Join(proj, "internal", "api"), 0o755)
+	label, rules := h.repoChoice(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "internal", "api", "x.go")})
+	if label != "allow reads anywhere in the project" || len(rules) != 1 || rules[0].Pattern != filepath.Join(proj, "*") {
+		t.Errorf("repo choice: %q %+v", label, rules)
+	}
+	if label, _ := h.repoChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}); label != "" {
+		t.Errorf("writes must not offer the repository: %q", label)
+	}
+	if label, _ := h.repoChoice(tools.Request{Subject: "fs.read", Arg: filepath.Join(t.TempDir(), "x.go")}); label != "" {
+		t.Errorf("a file in no repository: %q", label)
+	}
 	for approved, cases := range map[string]map[string]perm.Decision{
 		"main.go": {
 			"main.go": perm.Allow, "internal/a.go": perm.Allow,

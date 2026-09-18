@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -138,8 +139,12 @@ func (h *Host) askHook() tools.Asker {
 			return resolved(false, "default")
 		}
 		label, rules := h.alwaysChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description})
-		if allowed && by == "user:always" {
+		wider, wideRules := h.repoChoice(req)
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description})
+		if by == "user:wider" {
+			rules = wideRules
+		}
+		if allowed && (by == "user:always" || by == "user:wider") {
 			for _, r := range rules {
 				h.Perm.Add(r)
 			}
@@ -252,6 +257,37 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return "", nil
 	}
 	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
+}
+
+// repoChoice is the wider "always" answer for a file read: its whole
+// repository instead of the directory it sits in, which in a deep tree
+// (internal/app/api/launchapi/) is the same ask again one package over.
+// Secret-shaped files still go back to the ask (Pipeline.Check loosens a
+// model rule for them), so one rule can cover the tree.
+func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
+	if req.Subject != "fs.read" {
+		return "", nil
+	}
+	abs := perm.RealPath(req.Arg)
+	if abs == "" || strings.ContainsAny(abs, globMeta) {
+		return "", nil
+	}
+	root := config.Dirs{ProjectDir: filepath.Dir(abs)}.RepoRoot()
+	// RepoRoot answers the directory itself when it finds no .git above it,
+	// and then the directory choice already covers everything this would
+	if root == filepath.Dir(abs) {
+		return "", nil
+	}
+	shown := root + string(filepath.Separator)
+	if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), root); ok {
+		shown = "the project"
+		if rel != "." {
+			shown = rel + string(filepath.Separator)
+		}
+	}
+	return "allow reads anywhere in " + shown, []perm.Rule{{
+		Subject: "fs.read", Pattern: filepath.Join(root, "*"), Decision: perm.Allow, Principal: "model",
+	}}
 }
 
 // globMeta are perm's glob wildcards; its patterns have no escape
