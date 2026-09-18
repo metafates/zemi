@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,12 +77,23 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+// A description over the cap is cut, not a reason to drop the skill:
+// published skills are written for longer limits than zemi's index.
 func TestParseDescriptionCap(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "x")
+	base := t.TempDir()
+	dir := filepath.Join(base, "x")
 	long := strings.Repeat("a", MaxDescriptionRunes+1)
-	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: "+long+"\n---\n")
-	if _, err := Parse(dir, Authored); err == nil || !strings.Contains(err.Error(), "runes") {
+	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: "+long+"\n---\n\nBody.\n")
+	sk, err := Parse(dir, Authored)
+	if !errors.Is(err, ErrDescriptionCut) {
 		t.Fatalf("err=%v", err)
+	}
+	if len([]rune(sk.Description)) != MaxDescriptionRunes {
+		t.Fatalf("description kept %d runes", len([]rune(sk.Description)))
+	}
+	found, warnings := Discover(Dir{Path: base, Source: Authored})
+	if len(found) != 1 || len(warnings) != 1 {
+		t.Fatalf("discover: %+v %q", found, warnings)
 	}
 }
 

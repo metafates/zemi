@@ -380,8 +380,10 @@ Invariants:
   `zemi-skill.lua` (`runSkillHook`): inline when `zemi.skills.enable` calls it (already on
   the interpreter goroutine), otherwise enqueued via `h.RT.Do` (`/skills enable`) — the
   inline-vs-Do split in `enableHook` is load-bearing.
-- **Token efficiency**: the agent prompt carries only the index (name + description, at most
-  512 runes); full bodies load on demand via the `skill` tool after a permission check.
+- **Token efficiency**: the agent prompt carries only the index (name + description, cut to
+  512 runes with a warning, `ErrDescriptionCut`, so a skill written for another agent's
+  longer limit still loads); full bodies load on demand via the `skill` tool after a
+  permission check.
 - **Hook registration placement**: authored skill hooks register at `SkillsAuthoredHooksStep`
   (after user init.lua), learned ones at `SkillsLearnedHooksStep` (after `app.ready`) — the
   learned step must not re-run on reload replay without its `Gen` tag.

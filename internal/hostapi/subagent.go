@@ -226,16 +226,10 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	s := strings.ReplaceAll(data, "\r\n", "\n")
-	rest, ok := strings.CutPrefix(s, "---\n")
-	if !ok {
-		return "", s, nil
+	block, body, err = skills.SplitFrontmatter(data)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", path, err)
 	}
-	block, body, ok = strings.Cut(rest, "\n---")
-	if !ok {
-		return "", "", fmt.Errorf("%s: unterminated frontmatter", path)
-	}
-	_, body, _ = strings.Cut(body, "\n")
 	return block, body, nil
 }
 

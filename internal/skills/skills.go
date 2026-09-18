@@ -56,8 +56,9 @@ func ValidName(name string) bool { return nameRe.MatchString(name) }
 
 // Parse validates one skill directory: SKILL.md must exist (not a
 // symlink), carry `---`-fenced yaml frontmatter with a name matching the
-// directory and a non-empty description within the cap. An optional
-// zemi-skill.lua enable hook is reported.
+// directory and a non-empty description, which is cut to the cap with a
+// warning rather than refused. An optional zemi-skill.lua enable hook is
+// reported.
 func Parse(dir string, source Source) (Skill, error) {
 	sk := Skill{Name: filepath.Base(dir), Dir: dir, Source: source}
 	if !nameRe.MatchString(sk.Name) {
@@ -85,27 +86,47 @@ func Parse(dir string, source Source) (Skill, error) {
 	if name != sk.Name {
 		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", sk.Name, name)
 	}
-	if runes := len([]rune(desc)); runes > MaxDescriptionRunes {
-		return sk, fmt.Errorf("skills: %s: description exceeds %d runes", sk.Name, MaxDescriptionRunes)
+	var cut error
+	if runes := []rune(desc); len(runes) > MaxDescriptionRunes {
+		desc = string(runes[:MaxDescriptionRunes])
+		cut = fmt.Errorf("skills: %s: %w to %d runes", sk.Name, ErrDescriptionCut, MaxDescriptionRunes)
 	}
 	sk.Description = desc
 	if hook := filepath.Join(dir, "zemi-skill.lua"); fileExists(hook) {
 		sk.Hook = hook
 	}
-	return sk, nil
+	return sk, cut
 }
 
-// frontmatter splits the leading `---` block and decodes name and
-// description. The body is the remainder and is not validated here.
-func frontmatter(data []byte) (name, description string, err error) {
-	s := strings.ReplaceAll(string(data), "\r\n", "\n")
+// ErrDescriptionCut rides along with a usable skill whose description was
+// over the cap: published skills are written for other agents' longer
+// limits, and dropping the body over a long trigger line helps nobody.
+var ErrDescriptionCut = errors.New("description cut")
+
+// SplitFrontmatter separates a leading `---` yaml block from the body. No
+// block means the whole text is the body.
+func SplitFrontmatter(s string) (block, body string, err error) {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
 	rest, ok := strings.CutPrefix(s, "---\n")
 	if !ok {
-		return "", "", errors.New("SKILL.md must start with a --- frontmatter block")
+		return "", s, nil
 	}
-	block, _, ok := strings.Cut(rest, "\n---")
+	block, body, ok = strings.Cut(rest, "\n---")
 	if !ok {
 		return "", "", errors.New("unterminated frontmatter block")
+	}
+	_, body, _ = strings.Cut(body, "\n") // the rest of the closing line
+	return block, body, nil
+}
+
+// frontmatter decodes the name and description of a SKILL.md.
+func frontmatter(data []byte) (name, description string, err error) {
+	block, _, err := SplitFrontmatter(string(data))
+	if err != nil {
+		return "", "", err
+	}
+	if block == "" {
+		return "", "", errors.New("SKILL.md must start with a --- frontmatter block")
 	}
 	var fm struct {
 		Name        string `yaml:"name"`
@@ -142,7 +163,9 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source)
 			if err != nil {
 				warnings = append(warnings, err.Error())
-				continue
+				if !errors.Is(err, ErrDescriptionCut) {
+					continue
+				}
 			}
 			seen[sk.Name] = true
 			skills = append(skills, sk)
@@ -163,11 +186,9 @@ func Body(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	body := strings.ReplaceAll(string(data), "\r\n", "\n")
-	if rest, ok := strings.CutPrefix(body, "---\n"); ok {
-		if _, after, ok := strings.Cut(rest, "\n---"); ok {
-			body = after
-		}
+	_, body, err := SplitFrontmatter(string(data))
+	if err != nil {
+		return "", err
 	}
 	return strings.TrimSpace(body), nil
 }
