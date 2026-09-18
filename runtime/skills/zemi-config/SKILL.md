@@ -350,7 +350,9 @@ subdirectory up to the `.git` root), like `.claude/` or `.crush/`:
 ```
 
 The same `agents/`, `commands/` and `workflows/` directories work under
-`~/.config/zemi/` for every project.
+`~/.config/zemi/` for every project. `agents/`, `commands/` and `skills/` are also read
+from `.agents/` and `.claude/` at the repository root, so files written for another
+harness load unchanged; the nearest `.zemi` wins a name clash.
 
 It loads only in a project the user trusts. The first start in a repository asks once
 (`y` trust, `n` don't trust, both saved, or a click on the row; esc, enter or ctrl+c: not now,

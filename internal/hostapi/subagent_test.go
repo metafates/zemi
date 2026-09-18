@@ -314,6 +314,8 @@ func TestAgentDefs(t *testing.T) {
 	write(filepath.Join(cfg, "agents"), "broken.md", "---\ntools: read\n---\nno description\n")
 	write(filepath.Join(proj, ".zemi", "agents"), "general.md", "---\ndescription: project override\n---\nx\n")
 	write(filepath.Join(proj, ".zemi", "agents"), "tester.md", "---\ndescription: runs tests\n---\nx\n")
+	write(filepath.Join(proj, ".claude", "agents"), "tester.md", "---\ndescription: shadowed by the nearer .zemi\n---\nx\n")
+	write(filepath.Join(proj, ".claude", "agents"), "claudely.md", "---\ndescription: from .claude\n---\nx\n")
 
 	log := logging.New(t.TempDir())
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: proj})
@@ -335,6 +337,9 @@ func TestAgentDefs(t *testing.T) {
 	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "/trust") {
 		t.Fatalf("untrusted project agent = %v", err)
 	}
+	if _, err := h.agentDef("claudely"); err == nil || !strings.Contains(err.Error(), ".claude") {
+		t.Fatalf("untrusted hint must name the dir the file is in: %v", err)
+	}
 	h.SetProjectTrusted(true)
 	defs = get()
 	for _, c := range []struct{ name, source, desc, tools, system string }{
@@ -342,6 +347,7 @@ func TestAgentDefs(t *testing.T) {
 		{"explore", "user", "my explorer", "read", "mine"},
 		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System},
 		{"tester", "project", "runs tests", "", "x"},
+		{"claudely", "project", "from .claude", "", "x"},
 	} {
 		d, ok := defs[c.name]
 		if !ok {

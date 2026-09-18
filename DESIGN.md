@@ -697,7 +697,7 @@ zemi.provider.add({
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
-config home, zemi's own, and a trusted project's `.zemi`) run as a fresh
+config home, zemi's own, and a trusted repo's `.zemi`, `.agents` and `.claude`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
 `question`, `plan`, `open_in_editor` or `Lua`, so nesting stops at depth 1, and `zemi.agent.run`

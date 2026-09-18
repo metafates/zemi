@@ -567,7 +567,7 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
 
 - **Subagents** are fresh `agent.Runner`s over `PipelineFor()` (same permission gate; asks
   are prefixed with the agent name). Definitions: builtin `explore` (read-only tools), `web`
-  (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over trusted project). They never get
+  (web_search + fetch, on `agent.small_model`) and `general`, plus `agents/*.md` (user over builtin over a trusted repo's `.zemi`, `.agents` and `.claude`). They never get
   `agent`, `workflow`, `todos`, `question`, `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session
   (`parent_id`); `ListSessions` hides children. Usage adds to the session tally, not the
   context estimate. They have no summarizer: `sendPruning` clears their own old tool output
