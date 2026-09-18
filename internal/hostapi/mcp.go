@@ -355,7 +355,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 	if err != nil {
 		return fantasy.NewTextErrorResponse("mcp " + name + ": " + err.Error()), nil
 	}
-	text := truncOutput(res.Text())
+	text := h.truncOutput("mcp", res.Text())
 	if res.IsError {
 		return fantasy.NewTextErrorResponse(text), nil
 	}

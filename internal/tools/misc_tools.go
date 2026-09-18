@@ -261,8 +261,9 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			}
 			// the body is the whole procedure, loaded once: a cut leaves the
 			// model acting on half of it, so say where the rest is
-			out := TruncOut("Skill directory: "+s.Path+"\n\n"+body, SkillMaxOut)
-			if strings.HasSuffix(out, "(truncated)") {
+			full := "Skill directory: " + s.Path + "\n\n" + body
+			out := TruncOut(full, SkillMaxOut)
+			if out != full {
 				out += "\nRead the rest with the read tool: " + path
 			}
 			return fantasy.NewTextResponse(out), nil

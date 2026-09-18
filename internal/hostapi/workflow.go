@@ -660,15 +660,24 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 		if errors.Is(err, context.Canceled) {
 			return fantasy.NewTextErrorResponse("workflow cancelled"), nil
 		}
-		return fantasy.NewTextErrorResponse(truncOutput("workflow failed: " + err.Error() + "\n" + out)), nil
+		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", "workflow failed: "+err.Error()+"\n"+out)), nil
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(the workflow returned nothing)"
 	}
-	return fantasy.NewTextResponse(truncOutput(out)), nil
+	return fantasy.NewTextResponse(h.truncOutput("workflow", out)), nil
 }
 
-func truncOutput(s string) string { return tools.TruncOut(s, 30000) }
+// truncOutput cuts a host tool's output to what a result may carry and
+// saves the whole text to the session scratchpad, so the rest is one read
+// away instead of gone.
+func (h *Host) truncOutput(name, s string) string {
+	cut := tools.TruncOut(s, 30000)
+	if cut == s {
+		return s
+	}
+	return cut + tools.Spill(h.ScratchDir(), name, s)
+}
 
 // ---------------------------------------------------------------------------
 // /workflow and zemi.workflow

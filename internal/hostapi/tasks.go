@@ -303,7 +303,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			return
 		}
 		// the description is model text, so it stays behind the marker where @ refs do not attach
-		if err := h.AgentSend(head + attachMarker + fmt.Sprintf("\n<agent-report description=%q>\n", description) + truncOutput(report) + "\n</agent-report>\n</attached-files>"); err != nil {
+		if err := h.AgentSend(head + attachMarker + fmt.Sprintf("\n<agent-report description=%q>\n", description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})

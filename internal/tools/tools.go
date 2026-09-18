@@ -1152,10 +1152,14 @@ func searchRoot(in map[string]any) string {
 	return "."
 }
 
-// TruncOut cuts tool output to at most n bytes and says so.
+// TruncOut cuts tool output to at most n bytes, keeping the start and the
+// larger end: a command prints its errors and its summary last.
 func TruncOut(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return strings.ToValidUTF8(s[:n], "") + "\n... (truncated)"
+	head := n * 3 / 10
+	return strings.ToValidUTF8(s[:head], "") +
+		fmt.Sprintf("\n... (%d characters cut) ...\n", len(s)-n) +
+		strings.ToValidUTF8(s[len(s)-(n-head):], "")
 }

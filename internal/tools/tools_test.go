@@ -513,8 +513,8 @@ func TestOutputLimits(t *testing.T) {
 	if n := strings.Count(res.Content, "\n"); n != grepMaxMatches || !strings.Contains(res.Content, "stopped at 100 matches") {
 		t.Fatalf("grep lines = %d: %q", n, res.Content[len(res.Content)-120:])
 	}
-	if out := truncMiddle(strings.Repeat("a", 20000) + "the error"); len(out) > 10100 || !strings.HasSuffix(out, "the error") {
-		t.Fatalf("truncMiddle kept %d bytes, tail %q", len(out), out[len(out)-20:])
+	if out := TruncOut(strings.Repeat("a", 20000)+"the error", cmdMaxOut); len(out) > 10100 || !strings.HasSuffix(out, "the error") {
+		t.Fatalf("TruncOut kept %d bytes, tail %q", len(out), out[len(out)-20:])
 	}
 }
 

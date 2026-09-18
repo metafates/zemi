@@ -89,7 +89,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	out := strings.TrimRight(ansi.Strip(raw), "\n")
 	var b strings.Builder
 	// compare the text, not lengths: the cut marker can outgrow a small cut
-	if cut := truncMiddle(out); cut != out {
+	if cut := TruncOut(out, cmdMaxOut); cut != out {
 		b.WriteString(cut + p.spill("bash", out))
 	} else {
 		b.WriteString(out)
@@ -133,23 +133,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-// truncMiddle keeps the start and the end of long command output: commands
-// print their errors and summaries last.
-func truncMiddle(s string) string {
-	const head, tail = 3000, 7000
-	if len(s) <= head+tail {
-		return s
-	}
-	return strings.ToValidUTF8(s[:head], "") + fmt.Sprintf("\n... (%d characters cut) ...\n", len(s)-head-tail) + strings.ToValidUTF8(s[len(s)-tail:], "")
-}
+// cmdMaxOut is what a command's output may take in a tool result; the rest
+// is spilled to the scratchpad.
+const cmdMaxOut = 10_000
 
-// spill saves output too long for a result to the scratchpad and names the
-// file, so the cut part stays one read away; "" without a scratchpad.
-func (p *Pipeline) spill(name, s string) string {
-	if p == nil || p.ScratchDir == nil {
-		return ""
-	}
-	dir := p.ScratchDir()
+// Spill saves output too long for a result under dir and names the file,
+// so the cut part stays one read away; "" when it cannot be written.
+func Spill(dir, name, s string) string {
 	if dir == "" || os.MkdirAll(dir, 0o700) != nil {
 		return ""
 	}
@@ -162,6 +152,13 @@ func (p *Pipeline) spill(name, s string) string {
 		return ""
 	}
 	return "\n(full output: " + f.Name() + ")"
+}
+
+func (p *Pipeline) spill(name, s string) string {
+	if p == nil || p.ScratchDir == nil {
+		return ""
+	}
+	return Spill(p.ScratchDir(), name, s)
 }
 
 const (

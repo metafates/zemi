@@ -267,9 +267,10 @@ func TestSubagentInstructions(t *testing.T) {
 }
 
 // TestSubagentReportTruncated: a runaway report is cut before it lands in
-// the caller's context.
+// the caller's context, and the whole text waits in the scratchpad.
 func TestSubagentReportTruncated(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	seedSession(t, h)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
 			return textParts(strings.Repeat("x", 40_000))
@@ -281,8 +282,16 @@ func TestSubagentReportTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Content) > 31_000 || !strings.HasSuffix(resp.Content, "... (truncated)") {
+	if len(resp.Content) > 31_200 || !strings.Contains(resp.Content, "characters cut") {
 		t.Fatalf("report is %d bytes and ends %q", len(resp.Content), truncRunes(resp.Content, 20))
+	}
+	_, path, ok := strings.Cut(resp.Content, "(full output: ")
+	path = strings.TrimSuffix(strings.TrimSpace(path), ")")
+	if !ok {
+		t.Fatalf("no spill file named: %q", truncRunes(resp.Content, 40))
+	}
+	if b, err := os.ReadFile(path); err != nil || len(b) != 40_000 {
+		t.Fatalf("spilled file = %d bytes, %v", len(b), err)
 	}
 }
 

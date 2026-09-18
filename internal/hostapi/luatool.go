@@ -219,12 +219,12 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	}
 	out, err := h.runModelLua(ctx, src, rel)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(truncOutput(strings.TrimSpace(out + "\nerror: " + err.Error()))), nil
+		return fantasy.NewTextErrorResponse(h.truncOutput("lua", strings.TrimSpace(out+"\nerror: "+err.Error()))), nil
 	}
 	if out == "" {
 		out = "(no output)"
 	}
-	return fantasy.NewTextResponse(truncOutput(out)), nil
+	return fantasy.NewTextResponse(h.truncOutput("lua", out)), nil
 }
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do

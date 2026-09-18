@@ -187,8 +187,10 @@ Matching runs on LF text and a CRLF file is written back as CRLF; the whitespace
 `rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same
 glob rules; they are gated on their root only, so neither shows a hit that a deny or ask
 `fs.read` rule covers, and grep hides secret-shaped files (rg still reads them). `read` on a
-directory lists its entries under the same filter plus secret-shaped names. Long bash, fetch and job_read output is saved
-whole to the session scratchpad and the result names the file; fetch refuses a body with a NUL in it,
+directory lists its entries under the same filter plus secret-shaped names. Output too long for a
+result (bash, fetch, job_read, and the host tools through `Host.truncOutput`: MCP, agent, workflow,
+Lua) is cut head and tail and saved
+whole to the session scratchpad, which the result names (`tools.Spill`); fetch refuses a body with a NUL in it,
 like read. A bash command still
 running at its timeout is handed to `Jobs.Adopt` instead of being killed, so a slow build
 keeps going under a job id (which is why the command is not bound to the turn's context;
