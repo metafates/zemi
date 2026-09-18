@@ -579,10 +579,15 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	b.WriteString("Launch a subagent for a self-contained task. It works with its own context and tools and returns one final report." +
 		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code; it only reads, so it never" +
 		" stops to ask the user for permission. The subagent cannot see this conversation: the prompt must carry" +
-		" everything it needs, say what to report back and say how to verify the work. Its report is not shown to the user; relay what matters." +
-		" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
-		" as a message, so keep working (or end your turn) meanwhile. To add to or correct a running background agent's task, call again with" +
-		" send_to set to its id: prompt reaches it at its next step (agent and description are ignored).\n\nAgents:")
+		" everything it needs, say what to report back and say how to verify the work. Its report is not shown to the user; relay what matters.")
+	// a detached run outlives a headless turn, which exits as soon as the
+	// main agent is idle, so its report would be thrown away
+	if t.h.hooks() != nil {
+		b.WriteString(" Set background for long work you do not need to wait on: the tool returns at once and the report arrives later" +
+			" as a message, so keep working (or end your turn) meanwhile. To add to or correct a running background agent's task, call again with" +
+			" send_to set to its id: prompt reaches it at its next step (agent and description are ignored).")
+	}
+	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
 		if d.Model != "" {
@@ -593,19 +598,22 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	if len(models) > 1 {
 		b.WriteString("\n\nA subagent runs on your model unless the agent or the model field says otherwise. Configured models: " + strings.Join(models, ", ") + ". Pick a cheaper one for simple searches and a stronger one for hard reasoning.")
 	}
+	params := map[string]any{
+		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user; required unless send_to is set"},
+		"prompt":      map[string]any{"type": "string", "description": "the full task"},
+		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit; required unless send_to is set"},
+		"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
+	}
+	if t.h.hooks() != nil {
+		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
+		params["send_to"] = map[string]any{"type": "string", "description": "id of a running background agent: send prompt to it as a message instead of starting an agent"}
+	}
 	return fantasy.ToolInfo{
 		Name:        "agent",
 		Description: b.String(),
-		Parameters: map[string]any{
-			"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user; required unless send_to is set"},
-			"prompt":      map[string]any{"type": "string", "description": "the full task"},
-			"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit; required unless send_to is set"},
-			"background":  map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"},
-			"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
-			"send_to":     map[string]any{"type": "string", "description": "id of a running background agent: send prompt to it as a message instead of starting an agent"},
-		},
-		Required: []string{"prompt"},
-		Parallel: true,
+		Parameters:  params,
+		Required:    []string{"prompt"},
+		Parallel:    true,
 	}
 }
 
@@ -653,7 +661,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	if in.Model != "" {
 		def.Model = in.Model
 	}
-	if in.Background {
+	if in.Background && t.h.hooks() != nil {
 		id, err := t.h.startBackgroundAgent(def, in.Description, in.Prompt)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil

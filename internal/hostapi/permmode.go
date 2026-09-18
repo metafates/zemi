@@ -82,10 +82,17 @@ const planPrompt = `
 
 # Plan mode
 The user switched on plan mode: plan the work with them and do not do it until they approve a plan. File writes are refused and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
-1. Read the code the task touches first. Never ask what reading it would tell you.
+1. Read the code the task touches first. Never ask what reading it would tell you.`
+
+// planAsking is the rest of plan mode when a user can answer; a headless
+// run has neither the question nor the plan tool.
+const planAsking = `
 2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
 3. When nothing is left to decide, call the plan tool with the plan.
 End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan takes zemi out of plan mode: then implement it.`
+
+const planHeadless = `
+2. Write the plan as your reply and stop there: nobody can approve it in this run.`
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {

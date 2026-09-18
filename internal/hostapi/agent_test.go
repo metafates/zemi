@@ -968,7 +968,9 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 
 // TestHeadlessToolsetDropsPrompts: a print run has nobody to answer a
 // question, approve a plan, open an editor or watch a window, so those
-// schemas never ship with it.
+// schemas never ship with it, the prompt stops telling the model to use
+// them, and the agent tool drops background, whose report a run that exits
+// at idle would throw away.
 func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	h, _ := newTestHost(t)
 	names := func() map[string]bool {
@@ -983,10 +985,25 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 			t.Errorf("headless toolset still ships %q", name)
 		}
 	}
+	params := func() map[string]any { return h.agentTool().Info().Parameters }
+	if params()["background"] != nil {
+		t.Error("the headless agent tool still offers background")
+	}
+	sys := h.buildSystem(nil)
+	if strings.Contains(sys, "question tool") {
+		t.Error("the headless prompt still tells the model to ask")
+	}
+
 	h.SetUIHooks(&fakeUI{})
 	for name := range headlessExcluded {
 		if !names()[name] {
 			t.Errorf("the TUI toolset lost %q", name)
 		}
+	}
+	if params()["background"] == nil {
+		t.Error("the TUI agent tool lost background")
+	}
+	if !strings.Contains(h.buildSystem(nil), "question tool") {
+		t.Error("the TUI prompt lost the asking guidance")
 	}
 }

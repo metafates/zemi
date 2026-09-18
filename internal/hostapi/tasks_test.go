@@ -31,6 +31,7 @@ func TestTaskRegEviction(t *testing.T) {
 // shown in the transcript as a one-line notice.
 func TestBackgroundAgent(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{}) // a detached run needs the TUI: headless it runs inline
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +98,7 @@ func TestMessageAgent(t *testing.T) {
 	run := func(name string, firstCallsTool bool, send func(*Host, string, string) (string, error)) {
 		t.Run(name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{}) // background agents are a TUI feature
 			started, release := make(chan struct{}), make(chan struct{})
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
