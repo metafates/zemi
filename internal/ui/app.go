@@ -84,6 +84,7 @@ type App struct {
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	stage          uv.Rectangle        // where the last frame's stage was
 	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
+	chromeRect     uv.Rectangle        // the cells the topmost modal box took
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
@@ -722,18 +723,19 @@ func (a *App) compose(w, h int) string {
 		area = uv.Rect(0, 0, w, h)
 	}
 	var modals []func()
+	a.chromeRect = uv.Rectangle{}
 	splice := func(box [][]hostapi.Segment) {
-		modals = append(modals, func() { rows = spliceBox(rows, box, area, w) })
+		modals = append(modals, func() { rows, a.chromeRect = spliceBox(rows, box, area, w) })
 	}
 	for i := range a.overlays {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
 			continue // a detail view replaces the list it opened from
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := overlayBox(ov, area.Dx(), area.Dy())
-			modals = append(modals, func() { rows = anchorBottom(rows, box, area, w) })
+			box := a.overlayBox(ov, area.Dx(), area.Dy())
+			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, w) })
 		} else {
-			splice(overlayBox(ov, area.Dx(), area.Dy()))
+			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
 	}
 	if a.trust != nil {

@@ -99,6 +99,7 @@ type Overlay struct {
 	// no body. Selected is the item selected when it opens. Verb names what
 	// enter does to a row, when "select" does not say it.
 	Body     string
+	BodyMD   bool // render Body (and every detail view's) as markdown
 	Empty    string
 	Selected int
 	Verb     string

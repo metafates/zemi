@@ -26,6 +26,16 @@ type overlayState struct {
 	input  composerState // text of an input overlay
 	scroll int           // first body row shown
 	back   bool          // a detail view: esc and its actions return to the overlay under it
+	// listH is the rows the unfiltered list took at width listW, which the
+	// box keeps while it is open
+	listH, listW int
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (st *overlayState) refilter() { st.apply(st.texts) }
@@ -197,7 +207,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " › " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, Items: actions})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions})
 	st.back, st.width = true, parent.width
 	a.overlays = append(a.overlays, st)
 }
@@ -410,7 +420,7 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
 // §8): the body, then the list, then the keys that act on the selection.
 // h is the height the box may take.
-func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
+func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
@@ -453,6 +463,15 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			hints = append(hints, "/", "filter")
 		}
 		list = st.filterRows(list)
+		// The list keeps the height it had unfiltered, so the box does not
+		// resize under the pointer on every keystroke of a filter; only a
+		// terminal resize measures it again.
+		if st.listH == 0 || st.listW != w {
+			st.listH, st.listW = len(list)-btoi(st.active), w
+		}
+		for n := min(st.listH+btoi(st.active), limit+1); len(list) < n; {
+			list = append(list, padSegs(nil, st.width))
+		}
 	case st.o.Body == "":
 		for l := range strings.SplitSeq(cmp.Or(st.o.Empty, "Nothing here."), "\n") {
 			list = append(list, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: "Comment"}}, boxInner(w))...)
@@ -465,8 +484,10 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if st.back {
 			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
 		}
-		for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
-			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, bodyW)...)
+		if st.o.BodyMD {
+			body = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), bodyW)
+		} else {
+			body = wrapText(st.o.Body, "", bodyW)
 		}
 		// borders, the hint line and a blank row before it, and the list
 		room := h - 4
@@ -506,34 +527,39 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 }
 
 // spliceBox composites box rows centered over the chat area; what the box
-// does not cover stays visible.
-func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectangle, w int) [][]hostapi.Segment {
+// does not cover stays visible. It reports the cells the box took, which a
+// click outside closes it on.
+func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	if len(rows) == 0 || len(box) == 0 {
-		return rows
+		return rows, uv.Rectangle{}
 	}
 	bottom := min(area.Max.Y, len(rows))
 	bh := min(len(box), bottom-area.Min.Y)
 	if bh <= 0 {
-		return rows
+		return rows, uv.Rectangle{}
 	}
 	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
+	lo, hi := w, 0
 	for i := range bh {
 		x0 := area.Min.X + max((area.Dx()-segsWidth(box[i]))/2, 1)
 		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i])}, x0-1, y0+i, w)
+		lo, hi = min(lo, x0-1), max(hi, x0+segsWidth(box[i])+1)
 	}
-	return rows
+	return rows, uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
 
 // anchorBottom lays box over the bottom rows of the chat area at the left
 // edge, just above the statusline that opened it; what it does not cover
-// stays visible.
-func anchorBottom(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) [][]hostapi.Segment {
+// stays visible. It reports the cells the box took.
+func anchorBottom(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	bottom := min(area.Max.Y, len(rows))
 	y0 := max(area.Min.Y, bottom-len(box))
+	width := 0
 	for i := y0; i < bottom; i++ {
 		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i-y0])}, area.Min.X, i, w)
+		width = max(width, segsWidth(box[i-y0])+2)
 	}
-	return rows
+	return rows, uv.Rect(area.Min.X, y0, width, max(bottom-y0, 0))
 }
 
 // margined holds what a box does not cover one cell off each border, so it

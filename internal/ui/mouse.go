@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -96,8 +97,10 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		a.frameGen++
 		if !a.mouse.dragged {
 			a.mouse = mouseSel{}
-			a.focusAt(m.X, m.Y)
-			a.click(m.X, m.Y)
+			if !a.dismissOutside(m.X, m.Y) {
+				a.focusAt(m.X, m.Y)
+				a.click(m.X, m.Y)
+			}
 			return a.hover(m.X, m.Y)
 		}
 		text := a.selectionText()
@@ -109,6 +112,33 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		return copyCmd(text)
 	}
 	return nil
+}
+
+// dismissOutside closes a menu or popup a click landed outside of, and
+// reports whether it did. A blocking ask (permission, trust, question,
+// memory review) stays: a tool waits on its answer, so a stray click must
+// not decide it.
+func (a *App) dismissOutside(x, y int) bool {
+	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
+	switch {
+	case a.topChrome() == "overlay" && out(a.chromeRect):
+		// the whole menu goes, not only a detail view drawn over it
+		i := len(a.overlays) - 1
+		for i > 0 && a.overlays[i].back {
+			i--
+		}
+		a.cancelOverlay(a.overlays[i].o)
+	case a.topChrome() != "":
+		return false
+	case a.palette.open && out(a.popRect):
+		a.palette.close()
+	case a.completion.shown() && out(a.popRect):
+		a.completion.close()
+	default:
+		return false
+	}
+	a.frameGen++
+	return true
 }
 
 // focusAt gives the keys to the focusable node a click lands in (the topmost:
