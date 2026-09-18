@@ -219,6 +219,29 @@ func TestAssignmentGate(t *testing.T) {
 	}
 }
 
+// An assignment prefix is stripped before the rules see the segment, so an
+// allow rule for the bare command must not carry the variable with it.
+func TestAssignmentPrefixNeverAllows(t *testing.T) {
+	s := store(t,
+		Rule{Subject: "tool.bash", Pattern: "git log*", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "rm*", Decision: Deny},
+	)
+	for _, c := range []struct {
+		cmd  string
+		want Decision
+	}{
+		{"git log -p", Allow},
+		{"GIT_EXTERNAL_DIFF=./evil git log -p", Ask},
+		{"GIT_DIR=/elsewhere/.git git log -p", Ask},
+		{`sh -c "LESSOPEN=./evil git log -p"`, Ask},
+		{"FOO=1 rm -rf x", Deny},
+	} {
+		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
+			t.Fatalf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
+		}
+	}
+}
+
 func TestCompoundRidesNoBroadAllow(t *testing.T) {
 	s := store(t, Rule{Subject: "tool.bash", Pattern: "ls*", Decision: Allow})
 	if o := s.CheckCommand("ls; rm -rf x", ""); o.Decision != Ask {

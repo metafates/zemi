@@ -177,7 +177,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	switch {
 	case req.Subject == "tool.bash":
 		n := perm.Normalize(req.Arg)
-		if n.Fail != "" || n.ForceAsk != "" {
+		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" {
 			return "", nil
 		}
 		var names []string

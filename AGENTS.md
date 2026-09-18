@@ -174,7 +174,9 @@ A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`
 "Sandbox" below).
 Bash is special: `perm.Store.CheckCommand` normalizes the command first (compound
 splitting, redirect gates, env-assignment gate — see internal/perm/bash.go, heavily
-table-tested; extend those tables when touching it).
+table-tested; extend those tables when touching it). An assignment prefix the normalizer
+strips off a segment (`Normalized.Assign`) downgrades an allow verdict to ask, since the
+rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
 
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file
 the model has not read, or one whose mtime moved since (`Pipeline.Seen`, a per-session

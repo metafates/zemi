@@ -3,7 +3,7 @@ package perm
 // CheckCommand decides a bash call (DESIGN §9): the whole call asks when
 // the assignment gate or a heredoc fires, fails when normalization fails,
 // and is allowed only when every segment and every redirect target
-// matches an allow rule.
+// matches an allow rule and no assignment prefix was stripped.
 func (s *Store) CheckCommand(cmd string, principal string) Outcome {
 	return s.CheckCommandFor("tool.bash", cmd, principal)
 }
@@ -38,6 +38,9 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 			o.Reason = joinReason("write "+p, o.Reason)
 			return o
 		}
+	}
+	if n.Assign != "" {
+		return Outcome{Decision: Ask, Reason: n.Assign}
 	}
 	return Outcome{Decision: Allow}
 }

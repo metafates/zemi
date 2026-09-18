@@ -26,6 +26,10 @@ type Normalized struct {
 	// Opaque marks shell state the segments do not show: a variable
 	// assignment, or a nested sh -c whose arguments reach the inner shell.
 	Opaque bool
+	// Assign is a non-empty reason when an assignment prefix was stripped
+	// off a segment. The rules never see it, so an allow verdict downgrades
+	// to ask (CheckCommandFor): GIT_EXTERNAL_DIFF=./x git diff runs ./x.
+	Assign string
 	// Fail is a non-empty reason when the call must fail outright
 	// (unbalanced quotes or parens, emptied redirect target).
 	Fail string
@@ -475,11 +479,15 @@ func (n *Normalized) fold(seg []string) {
 		}
 	}
 	for len(argv) > 0 {
-		if _, ok := assignmentName(argv[0]); !ok {
+		name, ok := assignmentName(argv[0])
+		if !ok {
 			break
 		}
 		argv = argv[1:]
 		n.Opaque = true
+		if n.Assign == "" {
+			n.Assign = "environment assignment: " + name
+		}
 	}
 	if len(argv) == 0 {
 		return
@@ -508,6 +516,9 @@ func (n *Normalized) absorb(inner Normalized) {
 	}
 	if inner.ForceAsk != "" && n.ForceAsk == "" {
 		n.ForceAsk = inner.ForceAsk
+	}
+	if inner.Assign != "" && n.Assign == "" {
+		n.Assign = inner.Assign
 	}
 }
 
