@@ -446,6 +446,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			}
 		}
 	}
+	if fi, err := os.Lstat(str(input["path"])); t.edits && err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// a write through the link would change a file the row does not name
+		target := workRel(perm.RealPath(str(input["path"])))
+		return t.post(pipe, input, fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a symbolic link to %s; edit %s instead", str(input["path"]), target, target))), nil
+	}
 	if t.gated {
 		// resolved once: the gate judges and the tool opens the same path, so
 		// a symlink a sandboxed command plants later cannot redirect the tool
