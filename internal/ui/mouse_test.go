@@ -78,7 +78,7 @@ func TestMouseClicks(t *testing.T) {
 
 	ran := make(chan string, 1)
 	host.Commands.Add(&hostapi.Command{Name: "mode", GoFn: func(*hostapi.Host, string) error { ran <- "mode"; return nil }, Origin: lua.OriginBuiltin})
-	x, y = findCell(t, app, "manual")
+	x, y = findCell(t, app, "auto")
 	clickAt(app, x+1, y)
 	select {
 	case <-ran:

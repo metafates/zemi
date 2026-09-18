@@ -25,7 +25,7 @@ func TestPlanMode(t *testing.T) {
 		return pipe.Check(tools.Request{Subject: subject, Arg: arg})
 	}
 	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Allow {
-		t.Fatalf("manual write = %v", v.Decision)
+		t.Fatalf("allowed write = %v", v.Decision)
 	}
 	if err := h.SetPermMode("plan"); err != nil {
 		t.Fatal(err)

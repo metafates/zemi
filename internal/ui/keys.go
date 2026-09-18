@@ -429,8 +429,8 @@ func keyText(msg tea.KeyPressMsg) string {
 	return msg.Text
 }
 
-// modeBase is the behavior of the active permission mode (manual, plan,
-// auto or yolo), which picks its colors.
+// modeBase is the behavior of the active permission mode (plan, auto or
+// yolo), which picks its colors.
 func (a *App) modeBase() string {
 	cur := a.host.PermMode()
 	for _, m := range a.host.PermModeList() {
@@ -438,7 +438,7 @@ func (a *App) modeBase() string {
 			return m.Base
 		}
 	}
-	return "manual"
+	return "auto"
 }
 
 // topChrome names the prompt drawn on top, which takes keys, the wheel,

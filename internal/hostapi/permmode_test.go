@@ -282,10 +282,11 @@ func TestAutoResolvesPaths(t *testing.T) {
 
 // TestPermModeDecide: a mode answers asks from Lua, off the interpreter and
 // without the veto deadline, so a decide that calls a model is possible.
-// What it does not decide goes to the user (no UI here: denied).
+// What it does not decide goes to the user even where the base would settle
+// it (no UI here: denied), which is how a mode asks about everything.
 func TestPermModeDecide(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.permission.mode.add("review", { base = "manual", decide = function(req)
+	runUser(t, r, `zemi.permission.mode.add("review", { base = "auto", decide = function(req)
 		if req.arg == "ls" then return "allow" end
 		if req.arg == "rm -rf /" then return "deny" end
 	end })`)

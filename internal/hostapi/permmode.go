@@ -21,9 +21,9 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// PermModeDef is one permission mode. Base picks the behavior: manual (the
-// user answers asks), plan (file changes refused, risky commands ask), auto
-// (deterministic local checks answer routine asks) or yolo (every
+// PermModeDef is one permission mode. Base picks the behavior: plan (file
+// changes refused, risky commands ask), auto (deterministic local checks
+// answer routine asks) or yolo (every
 // ask allowed). Every mode only answers asks: deny rules and the
 // tool.pre/permission.request vetoes still run first. Rules answer asks
 // before the base does, and Prompt joins the system prompt while the mode
@@ -39,7 +39,6 @@ type PermModeDef struct {
 }
 
 var builtinModes = []PermModeDef{
-	{Name: "manual", Base: "manual", Description: "you approve every change and command"},
 	{Name: "plan", Base: "plan", Description: "read and plan only: no edits, risky commands ask"},
 	{Name: "auto", Base: "auto", Description: "safe actions run on their own, risky ones ask"},
 	{Name: "yolo", Base: "yolo", Description: "everything runs without asking"},
@@ -191,7 +190,7 @@ func (h *Host) ForgetRule(arg string) error {
 }
 
 // PermMode reports the active permission mode. An unknown value reads as
-// the most careful mode on the list (fail closed).
+// the default, auto.
 func (h *Host) PermMode() string { return h.permModeDef().Name }
 
 func (h *Host) permModeDef() PermModeDef {
@@ -199,14 +198,12 @@ func (h *Host) permModeDef() PermModeDef {
 	if i := modeIndex(list, h.Settings.Str("permissions.mode")); i >= 0 {
 		return list[i]
 	}
-	for _, base := range []string{"manual", "plan", "auto", "yolo"} {
-		for _, d := range list {
-			if d.Base == base {
-				return d
-			}
+	for _, d := range list {
+		if d.Base == "auto" {
+			return d
 		}
 	}
-	return builtinModes[0]
+	return list[0]
 }
 
 // SetPermMode switches the mode at runtime (/mode, tab).
@@ -319,7 +316,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
 		}
 		if modeIndex(builtinModes, def.Base) < 0 {
-			L.RaiseError("zemi.permission.mode.add: base must be manual, plan, auto or yolo")
+			L.RaiseError("zemi.permission.mode.add: base must be plan, auto or yolo")
 		}
 		if rules, ok := spec.RawGetString("rules").(*glua.LTable); ok {
 			def.Rules = perm.NewStore()

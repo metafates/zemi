@@ -61,7 +61,11 @@ func (h *Host) askHook() tools.Asker {
 				return resolved(false, "mode:"+def.Name)
 			}
 		}
-		// a mode's own decide function (it may take seconds: a model call)
+		// a mode's own decide function (it may take seconds: a model call).
+		// Anything but allow or deny leaves the ask to the user whatever the
+		// base would settle, so a decide that never answers is how a user
+		// asks to see every request.
+		base := def.Base
 		if def.Decide != nil {
 			switch h.modeDecide(def, req) {
 			case "allow":
@@ -71,13 +75,14 @@ func (h *Host) askHook() tools.Asker {
 			case "deny":
 				return resolved(false, "mode:"+def.Name)
 			}
+			base = ""
 		}
 		switch {
-		case def.Base == "yolo":
+		case base == "yolo":
 			return resolved(true, "mode:"+def.Name)
-		case req.Subject == "tool.window.text" && def.Base != "manual":
+		case req.Subject == "tool.window.text":
 			// a text window runs nothing and reads nothing: it draws on the
-			// screen, sanitized, so only manual mode asks about it
+			// screen, sanitized, so every mode settles it
 			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
@@ -91,7 +96,7 @@ func (h *Host) askHook() tools.Asker {
 		case req.Network:
 			// the host is the model's, like a fetch URL, so no mode settles it
 			req.Reason = "needs the network, staying sandboxed"
-		case def.Base == "plan":
+		case base == "plan":
 			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {
 				return resolved(true, "mode:"+def.Name)
 			}
@@ -100,29 +105,32 @@ func (h *Host) askHook() tools.Asker {
 					req.Reason = strings.TrimPrefix(req.Reason+"; not settled in plan mode: "+note, "; ")
 				}
 			}
-		case def.Base == "auto":
+		case base == "auto":
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
+			// why it did not settle joins what the asker said (a subagent's name)
+			note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
 			switch {
 			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
-				req.Reason = "not settled: this changes .git, .zemi or zemi's own files"
+				note("not settled: this changes .git, .zemi or zemi's own files")
 			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
 				// project (~/.gitconfig, a shell rc) can name what runs next
-				req.Reason = "not settled: this changes a file outside the project"
+				note("not settled: this changes a file outside the project")
 			case !h.ProjectTrusted():
-				req.Reason = "not settled: this project is not trusted (/trust)"
+				note("not settled: this project is not trusted (/trust)")
 			case req.Subject == "tool.bash" && !h.sandboxLive():
 				// a settled command would run unconfined
-				req.Reason = "not settled: no sandbox"
+				note("not settled: no sandbox")
 			case req.Subject == "tool.bash":
-				req.Reason = "not settled: auto mode runs only read-only, build and test commands on its own"
-				if note := h.repoNote(req.Arg); note != "" {
-					req.Reason += " (" + note + ")"
+				reason := "not settled: auto mode runs only read-only, build and test commands on its own"
+				if repo := h.repoNote(req.Arg); repo != "" {
+					reason += " (" + repo + ")"
 				}
+				note(reason)
 			default:
-				req.Reason = "not settled: auto mode settles reads and edits inside the project"
+				note("not settled: auto mode settles reads and edits inside the project")
 			}
 		}
 		ui := h.hooks()

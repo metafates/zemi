@@ -1402,8 +1402,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   fail-open path.
 - Permission modes answer what is left: a mode sees only the asks that
   survive the rules above and the `permission.request` veto (§6.2), and
-  it can never overrule a `deny`. Four ship: `manual` (every ask reaches
-  the user), `plan` (`fs.write` is denied even under an allow rule, bash
+  it can never overrule a `deny`. Three ship: `plan` (`fs.write` is denied even under an allow rule, bash
   and `mcp.*` allows flip to `ask` unless the bash command is a
   `perm.ReadCommand`, and `perm.SafeCommand` commands run sandboxed with
   the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
@@ -1433,7 +1432,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and project build and test commands both
   settle, so the model can write code and run it unattended; that is the
-  auto-mode tradeoff, and `manual` and `plan` ask, and such commands run
+  auto-mode tradeoff, and `plan` asks, and such commands run
   sandboxed (below).
   In a project the user has not trusted (§5) both modes settle less:
   writes and every command but `perm.ReadCommand` (`SafeCommand` limited
@@ -1465,7 +1464,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   callback it registered keeps only the read-only calls afterwards. A new
   member is guarded until it is added to the list. Only user config may add modes (`zemi.permission.mode.add`) or set the
   current one; `tab` cycles them, and an unknown value reads as
-  `manual`.
+  `auto`, the default. A mode's `decide` that answers neither `allow` nor
+  `deny` sends the ask to the user whatever its base settles, so a mode
+  whose `decide` answers nothing is how a user gets every ask.
 - Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`,
   `job_start` or window-open call whose verdict a mode gave
   (`DecidedBy` `mode:<name>`, any base but `yolo`) runs confined; rule-allowed
@@ -1540,7 +1541,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `mouse` and `send` settle through a mode only for a window that started
   sandboxed; input to an unconfined one is `Unsandboxed` and asks. A text
   window (`tool.window.text`) runs nothing and reads nothing, so every mode
-  but manual settles it. A
+  settles it. A
   confined run that fails with output that looks like a denial
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the live backend's limits and the retry, `network: true`

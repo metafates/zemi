@@ -15,8 +15,7 @@ local function dot(segs)
 end
 
 -- Statusline left starts with the permission mode as a pill (tab cycles
--- it): quiet in manual, filled in auto and yolo, matching the composer
--- prompt color. A click opens the mode picker.
+-- it), colored like the composer prompt. A click opens the mode picker.
 zemi.ui.widget.add({
   id = "statusline.mode",
   region = "statusline.left",
@@ -25,9 +24,9 @@ zemi.ui.widget.add({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    local mode = ctx.permission_mode or "manual"
+    local mode = ctx.permission_mode or "auto"
     local base = ctx.permission_mode_base or mode
-    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeManual"
+    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
     if base == "yolo" then
       mode = " " .. mode .. " "
     end

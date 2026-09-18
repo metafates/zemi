@@ -47,7 +47,7 @@ boot step reads. `-m` and `/model` write the tier the conversation reads
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
 reports on stderr how many tool calls the gate denied — nobody can answer an ask headless, so
-`deniedHint` points at `--mode auto`, at `--trust`, or at an allow rule. It also drops what
+`deniedHint` points at `--trust` or at an allow rule. It also drops what
 needs a user (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached
 report would outlive the run), and the prompt lines naming them. A headless run with no saved
 trust decision runs untrusted and says so.
@@ -176,11 +176,12 @@ read-only — and hands the rest to the user with a reason naming why (`askHook`
 `.git`, `.zemi` or zemi's own dirs are `protectedWrite`). `plan` denies writes and runs only
 `SafeCommand` commands, sandboxed with the project unwritable. Network requests are never
 settled: the URL is the model's. A mode from config may carry `decide`, a Lua function
-answering one ask ("allow", "deny", anything else leaves it to the user); it holds the
+answering one ask ("allow", "deny", anything else sends it to the user whatever the base
+would settle, which is how a user gets every ask); it holds the
 interpreter with a 60s ceiling, long enough for a model call of its own, and cannot allow an
 `Unsandboxed` or `Network` request. Known ceiling: auto settles in-jail writes and project
 build/test commands, so the model can write code and run it unattended; that is the intended
-tradeoff, and manual and plan ask. In an untrusted project (`settledCommand`), and in a
+tradeoff, and plan asks. In an untrusted project (`settledCommand`), and in a
 trusted one with no sandbox backend, both modes settle only `ReadCommand` commands
 (`SafeCommand` whose every program only reads, named without a path; no builds, no git) and
 auto settles no writes, so `SafeCommand` is reached only for runs that will be sandboxed.
@@ -384,8 +385,8 @@ The model's `window` tool gates `open` as `tool.bash` (same rules and modes, and
 mode-settled open runs sandboxed through `win.Spec.Wrap`) and `keys`/`mouse`/`send` as
 `tool.window`, `Unsandboxed` (so no mode settles them) unless the window runs sandboxed.
 `focus` asks always unsandboxed and only for a shown window: it hands the user's own keyboard
-over. `text`/`set_text` ask `tool.window.text` with the body as preview, which every mode but
-manual settles: a text window runs nothing and reads nothing. Subagents' asks carry the agent
+over. `text`/`set_text` ask `tool.window.text` with the body as preview, which every mode
+settles: a text window runs nothing and reads nothing. Subagents' asks carry the agent
 name and their windows open hidden; the tool sees only windows it may act on
 (`windowTool.mine`), never the user's, Lua's, or the editor windows `App.EditFile`
 (ui/editor.go) opens for the user's own editor with `os.Environ()`.

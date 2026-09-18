@@ -51,7 +51,6 @@ local function theme(palette)
     StatusUsage = { link = "Dim" },
     StatusUsageWarn = { fg = "yellow" },
     StatusUsageErr = { fg = "red", bold = true },
-    ModeManual = { link = "Dim" },
     ModePlan = { link = "Ok" },
     ModeAuto = { link = "Accent" },
     -- yolo answers every ask by itself, so nothing else on screen shows it

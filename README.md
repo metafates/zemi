@@ -11,10 +11,10 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
 - Asks before anything risky. Edits show their diff in the permission prompt; `a`
   (always) allows the same kind of action until zemi exits, and rules in `init.lua` apply
   on every start. `tab` switches the mode shown at the left
-  of the statusline: `manual`, `plan` (the agent investigates and proposes; file changes
-  are refused and every command asks), `auto` (edits inside the project and build, test and
-  read-only commands run sandboxed on their own, you get the rest) or `yolo` (`ctrl+y`
-  flips to it and back).
+  of the statusline: `auto` (the default: edits inside the project and build, test and
+  read-only commands run sandboxed on their own, you get the rest), `plan` (the agent
+  investigates and proposes; file changes are refused and every command asks) or `yolo`
+  (`ctrl+y` flips to it and back).
 - Taps you on the shoulder: when the terminal is not focused, a finished turn or a
   waiting permission prompt sends a desktop notification (OSC 9) and a bell
   (`ui.notify = false` turns it off).

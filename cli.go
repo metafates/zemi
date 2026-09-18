@@ -35,16 +35,16 @@ Flags:
   -c, --continue      continue the most recent session
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
-      --mode mode     permission mode: manual, plan, auto or yolo
+      --mode mode     permission mode: plan, auto or yolo
       --output fmt    with -p: text (the reply) or json (reply, tools, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
   -h, --help          show this help
 
-With -p nobody can answer a permission ask, so asks are denied unless
---mode is auto (a model approves routine actions) or yolo. A project you
-have not trusted in the TUI runs untrusted with -p unless --trust is given.
+With -p nobody can answer a permission ask, so an ask the mode does not
+settle is denied. A project you have not trusted in the TUI runs untrusted
+with -p unless --trust is given, and then auto mode settles little.
 
 Environment:
   ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
@@ -307,13 +307,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 			if n == 1 {
 				calls = "call"
 			}
-			base := ""
-			for _, d := range h.PermModeList() {
-				if d.Name == h.PermMode() {
-					base = d.Base
-				}
-			}
-			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted(), base))
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted()))
 		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)
@@ -326,7 +320,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 }
 
 // deniedHint says what would let print mode's denied calls through.
-func deniedHint(rep report, trusted bool, base string) string {
+func deniedHint(rep report, trusted bool) string {
 	const rule = "an allow rule (zemi.permission.rule.add in init.lua) settles it"
 	switch {
 	case rep.unsandboxed > 0:
@@ -334,11 +328,9 @@ func deniedHint(rep report, trusted bool, base string) string {
 	case rep.tuiOnly > 0:
 		return "and only the TUI can approve a Lua script or a memory edit; " + rule
 	case !trusted:
-		return "try --trust --mode auto (auto mode settles little in an untrusted project)"
-	case base == "auto":
-		return "and auto mode left it to the user; " + rule
+		return "try --trust (auto mode settles little in an untrusted project)"
 	}
-	return "try --mode auto"
+	return "and the mode left it to the user; " + rule
 }
 
 // report is the --output json document for one print-mode turn.

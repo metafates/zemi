@@ -306,9 +306,9 @@ func TestWinCommandOpensMenu(t *testing.T) {
 	}
 }
 
-// TestWindowTextTool: a text window asks tool.window.text, which manual mode
-// leaves to the user and auto settles on its own; set_text replaces the body
-// in place and only a text window takes it.
+// TestWindowTextTool: a text window asks tool.window.text, which every mode
+// settles; set_text replaces the body in place and only a text window takes
+// it.
 func TestWindowTextTool(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
@@ -322,18 +322,9 @@ func TestWindowTextTool(t *testing.T) {
 		}
 		return resp
 	}
-	if resp := run(`{"action":"text","text":"# Plan","markdown":true}`); !resp.IsError {
-		t.Fatalf("manual mode must ask before drawing on the screen: %+v", resp)
-	}
-	if len(ui.asked) != 1 || ui.asked[0].Subject != "tool.window.text" || ui.asked[0].Preview != "# Plan" {
-		t.Fatalf("ask: %+v", ui.asked)
-	}
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	resp := run(`{"action":"text","text":"# Plan","markdown":true,"title":"plan"}`)
-	if resp.IsError || !strings.Contains(resp.Content, `"text":true`) || !strings.Contains(resp.Content, `"title":"plan"`) {
-		t.Fatalf("auto mode settles a text window: %+v", resp)
+	if resp.IsError || !strings.Contains(resp.Content, `"text":true`) || !strings.Contains(resp.Content, `"title":"plan"`) || len(ui.asked) != 0 {
+		t.Fatalf("a text window settles without asking: %+v asked %+v", resp, ui.asked)
 	}
 	w, _ := h.Wins.Get(1)
 	if resp := run(`{"action":"set_text","id":1,"text":"\n- done"}`); resp.IsError {

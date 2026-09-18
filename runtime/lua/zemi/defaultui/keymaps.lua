@@ -18,7 +18,7 @@ zemi.keymap.set("ctrl+y", function()
   end
   if not cur then return end
   if cur.base == "yolo" then
-    zemi.permission.mode.set(before or "manual")
+    zemi.permission.mode.set(before or "auto")
     before = nil
   elseif zemi.permission.mode.set("yolo") then
     before = cur.name

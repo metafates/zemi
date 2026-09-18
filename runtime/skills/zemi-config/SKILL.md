@@ -133,12 +133,12 @@ guessing. Common keys:
   without review, except instruction-shaped text, retirements, replacements of the user's
   own memories, and anything from an untrusted project or a session that used `fetch`,
   `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`)
-- `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
+- `permissions.mode` (`auto`, which an unknown value also reads as): `auto` (reads, edits
+  inside the project and build, test and read-only commands run on their own; everything
+  else goes to the user), `plan` (file writes are refused,
   reading commands and builds and tests run, the latter sandboxed with the project read-only,
   other commands and MCP calls ask, so the agent investigates and
-  proposes a plan), `auto` (reads, edits inside the project and build, test and read-only
-  commands run on their own; everything else goes to the user) or `yolo` (every ask is
-  allowed; deny rules still apply).
+  proposes a plan) or `yolo` (every ask is allowed; deny rules still apply).
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
   that just read (no builds, tests or git), auto edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
   anything that is not a read (config, providers, permissions, jobs, windows, servers, the
@@ -159,7 +159,7 @@ guessing. Common keys:
   build or test flag that runs code can read it in a trusted project. A command that needs the network is retried with `network: true` (the sandbox stays, sockets are added); one that needs more with `sandbox: false`, which asks the
   user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
   when the window itself runs sandboxed; a text window (`tool.window.text`) runs nothing, so
-  every mode but manual settles it. Giving a window the user's keyboard (`focus`) always asks,
+  every mode settles it. Giving a window the user's keyboard (`focus`) always asks,
   whatever the mode. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next), `shift+tab` (previous) or `ctrl+y` (yolo until the next
@@ -177,18 +177,17 @@ guessing. Common keys:
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
   `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`,
   `zemi.permission.mode.set(name)` switches the active one, and
-  `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules, decide })`
+  `zemi.permission.mode.add(name, { base = "plan"|"auto"|"yolo", description, prompt, rules, decide })`
   adds one (or replaces one with that name) after the others. It behaves like its base; its
   `rules` (`{ "tool.bash", "go test*", "allow" }`, `{ "tool.bash", "git push*", "deny" }`) answer
   what would otherwise ask, `decide(req)` answers one ask the rules left open with "allow" or
-  "deny" (60s ceiling, so it may call a model of its own), and `prompt` joins the system
-  prompt while it is on:
+  "deny" (60s ceiling, so it may call a model of its own) and anything else sends it to the
+  user, whatever the base would settle, and `prompt` joins the system prompt while it is on:
 
   ```lua
   zemi.permission.mode.del("yolo")
-  zemi.permission.mode.add("tests", {
-    base = "manual", description = "tests and git reads run, the rest asks",
-    rules = { { "tool.bash", "go test*", "allow" }, { "tool.bash", "git status*", "allow" } },
+  zemi.permission.mode.add("ask", {   -- every ask reaches the user
+    base = "auto", description = "I answer everything", decide = function() end,
   })
   ```
 
@@ -196,12 +195,12 @@ guessing. Common keys:
 
 `zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
-`--mode manual|plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
+`--mode plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
 `--health` prints the checks `/health` shows and exits 1 when any of them errors.
 A prompt starting with a registered command runs it instead of reaching the model, so
 `zemi -p "/review HEAD~1"` or a `commands/*.md` name works from a script or a git hook.
-`zemi --help` has the full list. With `-p` nobody answers asks, so they are denied unless
-the mode is auto or yolo; a run that had calls denied says so on stderr.
+`zemi --help` has the full list. With `-p` nobody answers asks, so an ask the mode does not
+settle is denied; a run that had calls denied says so on stderr.
 
 ## Keymaps, commands, UI
 

@@ -93,7 +93,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
-		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("manual")`,
+		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("auto")`,
 		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
@@ -104,8 +104,8 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		}
 	}
 	runUser(t, r, `
-		zemi.config.set("permissions.mode", "manual")
-		zemi.permission.mode.add("x", { base = "manual", rules = { { "tool.bash", "ls *", "allow" } } })
+		zemi.config.set("permissions.mode", "plan")
+		zemi.permission.mode.add("x", { base = "plan", rules = { { "tool.bash", "ls *", "allow" } } })
 		zemi.permission.mode.del("x")
 		zemi.lsp.disable("gopls")
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")
