@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -179,9 +181,18 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "dynamic client registration") {
 		t.Fatalf("without a client id: %v", err)
 	}
-	auth = &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "b.json"), ClientID: "mine"}
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	auth = &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "b.json"), ClientID: "mine", CallbackPort: port}
 	if err := auth.Authorize(t.Context(), visit); err != nil {
 		t.Fatalf("with a client id: %v", err)
+	}
+	if want := fmt.Sprintf("http://localhost:%d/callback", port); auth.tok.RedirectURI != want {
+		t.Fatalf("redirect %q, want %q", auth.tok.RedirectURI, want)
 	}
 }
 

@@ -41,6 +41,7 @@ type MCPSpec struct {
 	Headers       map[string]string
 	ClientID      string // OAuth client registered with the server by hand
 	ClientSecret  string
+	CallbackPort  int      // fixed OAuth redirect port; 0 = any of zemi's
 	EnabledTools  []string // nil = all
 	DisabledTools []string
 	Timeout       time.Duration // per call; 0 = 2 minutes
@@ -388,7 +389,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// add(name, { command, args, env, url, headers, client_id,
-	// client_secret, enabled_tools, disabled_tools, timeout }): user config
+	// client_secret, callback_port, enabled_tools, disabled_tools, timeout }): user config
 	// only, like providers.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
@@ -402,6 +403,9 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 			ClientID: rawString(opts, "client_id"), ClientSecret: rawString(opts, "client_secret"),
 			EnabledTools: rawStrings(opts, "enabled_tools"), DisabledTools: rawStrings(opts, "disabled_tools"),
 			Source: "init.lua",
+		}
+		if n, ok := opts.RawGetString("callback_port").(glua.LNumber); ok {
+			spec.CallbackPort = int(n)
 		}
 		if n, ok := opts.RawGetString("timeout").(glua.LNumber); ok && n > 0 {
 			spec.Timeout = time.Duration(float64(n) * float64(time.Second))
@@ -527,7 +531,7 @@ func hasHeader(headers map[string]string, name string) bool {
 // mcpAuth is the stored sign-in of an HTTP server, keyed by name and URL.
 func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 	return &mcp.Auth{Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
-		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret}
+		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret, CallbackPort: s.spec.CallbackPort}
 }
 
 func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {
