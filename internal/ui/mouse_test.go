@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -241,7 +240,9 @@ func TestHoverTargets(t *testing.T) {
 		src := `zemi.ui.widget.add({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
 			render = function() return {{{ text = "clickme", click = "go" }}} end })
 		zemi.ui.widget.add({ id = "b", region = "statusline.left", priority = 91,
-			render = function() return {{{ text = "noclick", click = "go" }}} end })`
+			render = function() return {{{ text = "noclick", click = "go" }}} end })
+		zemi.ui.widget.add({ id = "c", region = "statusline.left", priority = 89, on_click = function() end,
+			render = function() return {{{ text = "quiet", hl = "Comment", click = "go", hover = false }}} end })`
 		if err := app.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)
 		}
@@ -273,7 +274,9 @@ func TestHoverTargets(t *testing.T) {
 		{"a prompt choice keeps the fixed hover", perm, "No ", 0, 1, "Host:Hover"},
 		{"a choice's key button answers it too", perm, "No ", -3, 1, "Host:Hover"},
 		{"the padding right of a choice is not a target", perm, "No ", 30, 0, ""},
-		{"thought line text is a target", thought, "Thought for", 1, 1, "Hover"},
+		// a chat body row acts on a click and keeps its own groups
+		{"thought line text is a target", thought, "Thought for", 1, 1, ""},
+		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
 		{"right of the thought line is not a target", thought, "Thought for", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
 		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
@@ -302,8 +305,18 @@ func TestHoverTargets(t *testing.T) {
 				t.Fatalf("lit %d rows, want %d: %+v", len(spans), c.rows, spans)
 			}
 			for _, sp := range spans {
-				if lit := dropCells(app.lastRows[sp.y], sp.lo); len(lit) == 0 || cmp.Or(lit[0].Over, lit[0].HL) != c.lit {
-					t.Fatalf("row %d not lit with %s: %+v", sp.y, c.lit, app.lastRows[sp.y])
+				seg := dropCells(app.lastRows[sp.y], sp.lo)
+				// a prompt choice's fixed style replaces HL, every other hover
+				// draws Over, and a body row keeps its own style
+				got := ""
+				if len(seg) > 0 {
+					got = seg[0].Over
+					if seg[0].HL == "Host:Hover" {
+						got = seg[0].HL
+					}
+				}
+				if got != c.lit {
+					t.Fatalf("row %d lit with %q, want %q: %+v", sp.y, got, c.lit, app.lastRows[sp.y])
 				}
 			}
 		})

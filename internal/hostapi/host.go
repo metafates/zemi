@@ -820,6 +820,9 @@ type Segment struct {
 	// NoCopy marks decoration (gutters, bullets, borders): a selection
 	// neither lights nor copies it
 	NoCopy bool
+	// NoHover marks a clickable body row (a diff line, a tool's detail): the
+	// pointer still says it acts, but hovering it restyles nothing
+	NoHover bool
 	// Soft ends a row that wraps onto the next: a copy joins the two rows
 	// without a newline and drops the row's cells after this segment
 	Soft bool
@@ -983,6 +986,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 					seg.Effect = e
 				}
 				seg.NoCopy = c["copy"] == false
+				seg.NoHover = c["hover"] == false
 				seg.Soft = c["soft_wrap"] == true
 				if id, ok := c["click"].(string); ok && id != "" {
 					seg.Click, seg.Widget = id, widget

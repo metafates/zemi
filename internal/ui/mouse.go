@@ -276,7 +276,11 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 		style = func(s *hostapi.Segment) { s.Over = "HoverItem" }
 	}
 	for _, sp := range spans {
-		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, style)
+		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(s *hostapi.Segment) {
+			if !s.NoHover { // a body row says it acts with the pointer alone
+				style(s)
+			}
+		})
 	}
 }
 

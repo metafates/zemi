@@ -67,8 +67,10 @@ local function theme(palette)
     SplashKey = { link = "Button" },
     ScrollbarTrack = { link = "Dim" },
     ScrollbarThumb = { link = "Accent" },
-    -- hover draws over the text's own style: keys left out keep it
-    Hover = { underline = true },
+    -- hover draws over the text's own style: keys left out keep it. A row
+    -- header takes the accent and nothing else; body rows opt out entirely
+    -- (hover = false) and say a click acts with the pointer shape alone.
+    Hover = { link = "Accent" },
     HoverItem = { link = "Accent" },
   }
   return { palette = palette, hl = hl }

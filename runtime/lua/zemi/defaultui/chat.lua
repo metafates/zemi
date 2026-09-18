@@ -123,8 +123,8 @@ zemi.ui.widget.add({
     ---@param text string
     ---@param tail integer? Show only the last this many lines while collapsed.
     local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning", copy = false }, { text = label, hl = "AgentReason", click = "reasoning" } }
-      if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning" } end
+      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning", copy = false, hover = false }, { text = label, hl = "AgentReason", click = "reasoning", hover = false } }
+      if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning", hover = false } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
       local body, soft = wrap_words(text, math.max(width - 6, 20))
@@ -244,7 +244,7 @@ zemi.ui.widget.add({
       -- under the row: the command a description stands for, then progress
       for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
         if sub ~= "" then
-          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment", copy = false }, { text = fit(sub, width - 6), hl = "Comment", click = click } }
+          lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment", copy = false }, { text = fit(sub, width - 6), hl = "Comment", click = click, hover = false } }
         end
       end
       -- File tools show what they changed as numbered, tinted rows.
@@ -279,10 +279,11 @@ zemi.ui.widget.add({
             local parts = fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)
             local dclick = hunks > 0 and file_click(num) or nil
             for j, part in ipairs(parts) do
+              -- a diff line is body: the pointer alone says the click opens it
               lines[#lines + 1] = {
-                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = dclick },
-                { text = part, hl = style, soft_wrap = j < #parts, click = dclick },
-                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = dclick },
+                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = dclick, hover = false },
+                { text = part, hl = style, soft_wrap = j < #parts, click = dclick, hover = false },
+                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = dclick, hover = false },
               }
             end
           else

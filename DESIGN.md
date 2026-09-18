@@ -965,7 +965,9 @@ UI extensibility contract:
   menus, memory items) over the text's own style: keys a hover group leaves out
   keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
   (toward black on a lighter fill) and `replace` draws the group alone. A theme
-  without the group underlines. The trust and permission prompts' choices keep
+  without the group underlines. A segment marked `hover = false` takes neither
+  group: a clickable body row (a diff line, a tool's detail, reasoning) says a
+  click acts with the pointer shape alone, so hovering one restyles nothing. The trust and permission prompts' choices keep
   the fixed `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
   one draws unstyled and cannot forge prompt chrome. Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed). `zemi.ui.hl.get(group)` reads
