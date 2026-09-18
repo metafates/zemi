@@ -1881,7 +1881,7 @@ model call (§10.3).
 
 ```
 main.go, cli.go             wiring, boot steps, and the command line
-internal/lua/               interpreter thread, sandbox, origins, marshal, require
+internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,
                             agent runs, memory, reflector, skills hosting,
@@ -1891,6 +1891,8 @@ internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              rules engine, bash normalizer, SafeCommand, env gates
+internal/sandbox/           OS confinement for settled commands: seatbelt, Landlock +
+                            seccomp, the namespace variant and the helper re-exec
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse
 internal/learn/             memory intake policy: caps, kinds, scrubber
@@ -1906,6 +1908,7 @@ internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors
 runtime/lua/                embedded Lua userland (defaultui, widgets, themes)
 runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin ones
+runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 
 ## 13. Milestones

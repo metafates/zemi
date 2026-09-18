@@ -735,9 +735,9 @@ timeout.
   fresh runtime + namespaces step with temp dirs; `runUser(t, r, luaSrc)` executes a chunk
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
-- API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.45.0") and namespace members. Growing the Lua API means updating that test and the
-  version string.
+- API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version` and
+  namespace members. Growing the Lua API means updating that test and the version string
+  in `installNamespaces` together.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
   regenerate with `go test ./internal/ui -update` and eyeball the diff.
