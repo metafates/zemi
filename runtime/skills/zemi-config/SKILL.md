@@ -236,7 +236,7 @@ secret-looking paths are refused. Images reach the model only if it accepts imag
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/permissions`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
-`/usage`, `/prompt`, `/copy`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
+`/usage`, `/prompt`, `/copy`, `/trust`, `/health`, `/errors`, `/messages`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 `/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:
 
@@ -255,6 +255,9 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   input the prompt cache served, plus what the fixed prompt every request carries (system,
   tools, mcp, instructions, lua, skills, memory). `/prompt` shows that system prompt
   itself, as the last send assembled it (`zemi.agent.prompt()` returns the same text).
+- `/messages` shows the last 100 `print()` and `zemi.log` lines, newest first, which is
+  where a print from a keymap, a widget render, a timer or an event handler goes
+  (`zemi.log.list()` returns them; the log file keeps them all).
 - Settings and their values: `zemi.config.get(path)` with the Lua tool; the changes zemi
   made to its own config are the git log of the config directory.
 - `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),

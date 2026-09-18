@@ -79,11 +79,11 @@ func run(args []string) int {
 		PathClass: classes,
 		RuntimeFS: zemiRuntime.FS,
 	})
+	host := hostapi.NewHost(rt, log, settings, dirs)
 	rt.SetPrintHook(func(origin, line string) {
 		log.Info(origin, "print: "+line, nil)
+		host.RecordMessage(origin, line)
 	})
-
-	host := hostapi.NewHost(rt, log, settings, dirs)
 	host.Version = versionString()
 	// Headless: nothing to quit, and a project with no saved decision runs
 	// untrusted instead of asking. Say so, or the run looks like it applied
@@ -318,6 +318,9 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenPrompt()
+		}},
+		{Name: "messages", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.OpenMessages()
 		}},
 		{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()

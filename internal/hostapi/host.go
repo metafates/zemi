@@ -227,6 +227,7 @@ type Host struct {
 	selectSeq atomic.Int64 // ids for zemi.ui.select overlays
 
 	errs  errLog   // recent runtime errors for /errors
+	msgs  msgLog   // recent print and zemi.log lines for /messages
 	evlog eventLog // recent events and notifications for Lua reflection
 
 	// jobs owns the model's background processes (job_* tools).
@@ -1390,7 +1391,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.46.0"))
+	api.RawSetString("version", glua.LString("0.47.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

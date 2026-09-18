@@ -58,7 +58,10 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    where each node with an id, the stage and the composer landed, and `/health` names
    widgets whose region the layout does not draw.
 
-5. Read the log of the run (reading the log directory asks: MCP and LSP server output is
+5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an
+   event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first.
+
+6. Read the log of the run (reading the log directory asks: MCP and LSP server output is
    logged as written and may hold tokens). One file per start:
 
    ```sh

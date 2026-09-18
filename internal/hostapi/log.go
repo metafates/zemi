@@ -1,8 +1,15 @@
 package hostapi
 
 import (
+	"errors"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -15,6 +22,20 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("info", L.NewFunction(h.logFn(logging.Info, 1)))
 	tb.RawSetString("warn", L.NewFunction(h.logFn(logging.Warn, 1)))
 	tb.RawSetString("error", L.NewFunction(h.logFn(logging.Error, 1)))
+
+	// list() is the /messages ring: the log file is per launch and outside
+	// the read jails, so a widget reads the recent lines from here.
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		rows := []any{}
+		for _, e := range slices.Backward(h.messages()) {
+			rows = append(rows, map[string]any{
+				"at": e.at.Format("15:04:05"), "ts": float64(e.at.Unix()),
+				"source": e.source, "message": e.text,
+			})
+		}
+		L.Push(lua.FromGo(L, rows))
+		return 1
+	}))
 	return tb
 }
 
@@ -27,9 +48,64 @@ func (h *Host) logCall(L *glua.LState) *glua.LFunction {
 func (h *Host) logFn(level logging.Level, first int) glua.LGFunction {
 	return func(L *glua.LState) int {
 		msg := L.CheckString(first)
-		h.Log.Log(level, string(h.RT.CurrentOrigin(L)), msg, logFields(L, first+1))
+		origin := string(h.RT.CurrentOrigin(L))
+		h.Log.Log(level, origin, msg, logFields(L, first+1))
+		h.RecordMessage(origin+" "+strings.ToLower(level.String()), msg)
 		return 0
 	}
+}
+
+const msgLogMax = 100
+
+type msgEntry struct {
+	at     time.Time
+	source string
+	text   string
+}
+
+type msgLog struct {
+	mu      sync.Mutex
+	entries []msgEntry
+}
+
+// RecordMessage keeps one print or zemi.log line for /messages. The file
+// log holds them all, but it is per launch and the agent may not read it,
+// so a print from a keymap, a widget render or a timer would otherwise be
+// invisible while zemi runs.
+func (h *Host) RecordMessage(source, text string) {
+	l := &h.msgs
+	l.mu.Lock()
+	l.entries = append(l.entries, msgEntry{time.Now(), source, sanitize.String(text)})
+	if len(l.entries) > msgLogMax {
+		l.entries = l.entries[len(l.entries)-msgLogMax:]
+	}
+	l.mu.Unlock()
+}
+
+func (h *Host) messages() []msgEntry {
+	l := &h.msgs
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.entries)
+}
+
+// OpenMessages runs /messages: the recent print and zemi.log lines,
+// newest first.
+func (h *Host) OpenMessages() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI attached")
+	}
+	var b strings.Builder
+	for _, e := range slices.Backward(h.messages()) {
+		b.WriteString(e.at.Format("15:04:05") + " " + e.source + "  " + e.text + "\n")
+	}
+	body := strings.TrimRight(b.String(), "\n")
+	if body == "" {
+		body = "Nothing printed since zemi started."
+	}
+	ui.OpenOverlay(Overlay{ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin, Body: body})
+	return nil
 }
 
 // logFields converts an optional trailing context table to log fields.

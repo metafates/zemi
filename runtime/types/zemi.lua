@@ -1262,6 +1262,17 @@ function zemi.log.warn(message, fields) end
 ---@param fields? table
 function zemi.log.error(message, fields) end
 
+---@class zemi.LogEntry
+---@field at string "15:04:05".
+---@field ts number Unix seconds.
+---@field source string The origin that printed, or "<origin> <level>".
+---@field message string
+
+--- Recent print() and zemi.log lines, newest first (the last 100), the
+--- same list `/messages` shows.
+---@return zemi.LogEntry[]
+function zemi.log.list() end
+
 -- ---------------------------------------------------------------------------
 -- zemi.provider and zemi.model
 
