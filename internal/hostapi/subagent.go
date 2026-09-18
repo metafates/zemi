@@ -313,7 +313,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if h.hooks() == nil {
 		skip = subagentHeadless
 	}
-	kept, unknown := filterTools(all, def.Tools, skip)
+	kept, unknown := filterTools(all, def.Tools, h.toolSkip(skip))
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}

@@ -134,7 +134,23 @@ func TestLSPConfig(t *testing.T) {
 	if defs := h.lspDefs(""); len(defs) != 0 {
 		t.Fatalf("an untrusted project starts servers the user added: %+v", defs)
 	}
+	// with no server to talk to, the model does not carry their schemas
+	lspTools := func() int {
+		n := 0
+		for _, tl := range h.profileTools(nil) {
+			if name := tl.Info().Name; name == "lsp" || name == "diagnostics" {
+				n++
+			}
+		}
+		return n
+	}
+	if n := lspTools(); n != 0 {
+		t.Fatalf("%d language server tools where none can start", n)
+	}
 	h.SetProjectTrusted(true)
+	if n := lspTools(); n != 2 {
+		t.Fatalf("language server tools with a server configured = %d", n)
+	}
 	defs := h.lspDefs("")
 	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
 		t.Fatalf("defs = %+v", defs)

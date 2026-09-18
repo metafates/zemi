@@ -215,13 +215,14 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "learning", "nothing waiting for review")
 	}
 
-	all, enabled := h.skillsReg.list(), 0
-	for _, s := range all {
-		if h.skillsReg.isEnabled(s.Name) {
-			enabled++
-		}
+	// the project's own skills are always on and never in the registry, so
+	// counting only the registry would disagree with the prompt
+	proj := len(h.projectOnlySkills())
+	msg := fmt.Sprintf("%d found, %d enabled", len(h.skillsReg.list())+proj, len(h.enabledSkills()))
+	if proj > 0 {
+		msg += fmt.Sprintf(" (%d from this project)", proj)
 	}
-	add("ok", "skills", fmt.Sprintf("%d found, %d enabled", len(all), enabled))
+	add("ok", "skills", msg)
 
 	if h.RT.IsHot() {
 		add("error", "lua", "stopped: a boot step failed or a call wedged; see /errors, then /reload")

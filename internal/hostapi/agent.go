@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -236,6 +237,18 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // can only refuse, so a print run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{"window": true, "question": true, "plan": true, "open_in_editor": true}
 
+// toolSkip adds the language server tools to skip when no server can start
+// in this project (untrusted, or none installed for it): both could then
+// only answer with why they cannot, and their schemas ride every step.
+func (h *Host) toolSkip(base map[string]bool) map[string]bool {
+	if len(h.lspDefs("")) > 0 {
+		return base
+	}
+	skip := map[string]bool{"lsp": true, "diagnostics": true}
+	maps.Copy(skip, base)
+	return skip
+}
+
 // profileTools selects the tool set: a profile's names filter the builtin,
 // Lua and MCP tools alike, and a name nothing answers to is recorded rather
 // than dropped, so one misspelling does not leave the agent toolless.
@@ -248,6 +261,7 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
+	skip = h.toolSkip(skip)
 	pipe := h.PipelineFor()
 	all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	out, unknown := filterTools(all, want, skip)

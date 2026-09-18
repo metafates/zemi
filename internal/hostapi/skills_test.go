@@ -299,6 +299,12 @@ func TestProjectSkills(t *testing.T) {
 	if got := index(); !maps.Equal(got, want) {
 		t.Fatalf("trusted: %v", got)
 	}
+	// /health explains the prompt, so it counts the project's skills too
+	for _, row := range h.healthChecks() {
+		if row.name == "skills" && !strings.Contains(row.detail, "(2 from this project)") {
+			t.Fatalf("skills row = %q", row.detail)
+		}
+	}
 	h.SetProjectTrusted(false)
 	if got := index(); !maps.Equal(got, map[string]string{"deploy": "the user's deploy"}) {
 		t.Fatalf("untrusted: %v", got)
