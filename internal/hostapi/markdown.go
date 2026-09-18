@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"charm.land/glamour/v2"
 	gansi "charm.land/glamour/v2/ansi"
@@ -407,8 +408,9 @@ func swatchColors(row []Segment) []Segment {
 		at := 0
 		for _, m := range hexColor.FindAllStringIndex(seg.Text, -1) {
 			hex := seg.Text[m[0]+1 : m[1]]
-			if m[0] > 0 && strings.ContainsRune("/&", rune(seg.Text[m[0]-1])) || // a URL fragment, an HTML entity
-				m[0] > 0 && (unicode.IsLetter(rune(seg.Text[m[0]-1])) || unicode.IsDigit(rune(seg.Text[m[0]-1]))) ||
+			prev, _ := utf8.DecodeLastRuneInString(seg.Text[:m[0]])
+			if strings.ContainsRune("/&", prev) || // a URL fragment, an HTML entity
+				unicode.IsLetter(prev) || unicode.IsDigit(prev) ||
 				len(hex) == 3 && strings.Trim(hex, "0123456789") == "" {
 				continue
 			}
