@@ -221,3 +221,23 @@ func TestWrapSegsExpandsTabs(t *testing.T) {
 		t.Fatalf("wrapped %+v", rows)
 	}
 }
+
+func TestMarkdownHexColors(t *testing.T) {
+	for _, c := range []struct{ name, text, want string }{
+		{"long form, dark text on a light color", "use #FFF000 here", "38;2;0;0;0;48;2;255;240;0"},
+		{"short form in a code span", "`#03f`", "38;2;255;255;255;48;2;0;51;255"},
+		{"issue number", "see #123", ""},
+		{"url fragment", "https://x.dev/#fff000", ""},
+		{"longer word", "#fff0001", ""},
+	} {
+		got := ""
+		for _, s := range styledLines(c.text)[0] {
+			if strings.Contains(s.HL, "48;2;") && strings.HasPrefix(s.Text, "#") {
+				got = strings.TrimPrefix(s.HL, SGRPrefix)
+			}
+		}
+		if got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}

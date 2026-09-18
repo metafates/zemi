@@ -383,7 +383,7 @@ func styledLines(s string) [][]Segment {
 			}
 			row = append(row, c)
 		}
-		out = append(out, row)
+		out = append(out, swatchColors(row))
 	}
 	// trailing rows with nothing to read: blank ones, and the margin
 	// glamour leaves under a code block
@@ -391,6 +391,51 @@ func styledLines(s string) [][]Segment {
 		return !s.NoCopy && strings.TrimSpace(s.Text) != ""
 	}) {
 		out = out[:len(out)-1]
+	}
+	return out
+}
+
+// A hex color, #rgb or #rrggbb. The short form needs a letter, or "#123"
+// would paint every issue number.
+var hexColor = regexp.MustCompile(`#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
+
+// swatchColors draws every hex color in a row on that color, in whichever
+// of black and white reads on it.
+func swatchColors(row []Segment) []Segment {
+	var out []Segment
+	for _, seg := range row {
+		at := 0
+		for _, m := range hexColor.FindAllStringIndex(seg.Text, -1) {
+			hex := seg.Text[m[0]+1 : m[1]]
+			if m[0] > 0 && strings.ContainsRune("/&", rune(seg.Text[m[0]-1])) || // a URL fragment, an HTML entity
+				m[0] > 0 && (unicode.IsLetter(rune(seg.Text[m[0]-1])) || unicode.IsDigit(rune(seg.Text[m[0]-1]))) ||
+				len(hex) == 3 && strings.Trim(hex, "0123456789") == "" {
+				continue
+			}
+			if len(hex) == 3 {
+				hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
+			}
+			n, _ := strconv.ParseUint(hex, 16, 32)
+			r, g, b := n>>16, n>>8&0xff, n&0xff
+			fg := "38;2;0;0;0"
+			if 299*r+587*g+114*b < 128000 { // perceived brightness under half
+				fg = "38;2;255;255;255"
+			}
+			pre, sw := seg, seg
+			pre.Text, sw.Text = seg.Text[at:m[0]], seg.Text[m[0]:m[1]]
+			sw.HL = fmt.Sprintf("%s%s;48;2;%d;%d;%d", SGRPrefix, fg, r, g, b)
+			if pre.Text != "" {
+				out = append(out, pre)
+			}
+			out = append(out, sw)
+			at = m[1]
+		}
+		if at == 0 {
+			out = append(out, seg)
+		} else if at < len(seg.Text) {
+			seg.Text = seg.Text[at:]
+			out = append(out, seg)
+		}
 	}
 	return out
 }
