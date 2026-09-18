@@ -1179,7 +1179,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback).
-  Commands are slash commands: `/quit`, `/help`, `/model`,
+  Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
+  `/permissions` (the mode and the rules in force; a session rule an "always"
+  answer wrote can be removed there),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per

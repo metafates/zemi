@@ -368,6 +368,12 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 					}
 					return h.SetModel(args)
 				}},
+				{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
+					if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
+						return h.ForgetRule(rest)
+					}
+					return h.OpenPermissions()
+				}},
 				{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
 					if args = strings.TrimSpace(args); args == "" {
 						return h.OpenModePicker()

@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -110,6 +111,78 @@ func (h *Host) OpenModePicker() error {
 		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
+	return nil
+}
+
+// OpenPermissions lists the active mode and every rule in force. An
+// "always" answer is the only rule a user can write at runtime and the only
+// one with no file to edit, so a mis-keyed one must be visible and
+// removable; config rules come back on the next reload, so they show
+// read-only.
+func (h *Host) OpenPermissions() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI")
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "permissions", Title: "Permissions", Origin: lua.OriginBuiltin,
+		Items:  h.permItems(),
+		Reload: func() ([]any, [][]Segment) { return h.permItems(), nil },
+	})
+	return nil
+}
+
+// permRank orders the list the way the engine reads it: deny, ask, allow.
+var permRank = map[perm.Decision]int{perm.Deny: 0, perm.Ask: 1, perm.Allow: 2}
+
+func (h *Host) permItems() []any {
+	mode := h.permModeDef()
+	items := []any{map[string]any{
+		"text": "mode: " + mode.Name, "desc": mode.Description, "key": "mode",
+		"section": "Mode", "actions": []any{map[string]any{"text": "Change", "run": "mode"}},
+	}}
+	rules := h.Perm.Rules()
+	slices.SortStableFunc(rules, func(a, b perm.Rule) int {
+		return cmp.Or(cmp.Compare(permRank[a.Decision], permRank[b.Decision]), cmp.Compare(a.Subject, b.Subject), cmp.Compare(a.Pattern, b.Pattern))
+	})
+	for _, r := range rules {
+		desc := ""
+		if r.NotMatch != "" {
+			desc = "except " + r.NotMatch
+		}
+		item := map[string]any{
+			"text": r.Subject + " " + r.Pattern, "desc": desc,
+			"section": string(r.Decision) + " rules",
+		}
+		if r.Principal == "model" {
+			forget := "permissions forget " + r.Subject + " " + r.Pattern
+			item["key"], item["run"] = "session", forget
+			item["actions"] = []any{map[string]any{"text": "Remove", "run": forget}}
+			item["detail"] = "an always answer this session; removing it makes the next call ask again"
+		} else {
+			item["detail"] = "from config; edit permissions in your init.lua"
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+// ForgetRule drops the session rules an "always" answer wrote for one
+// subject and pattern. Config rules stay: a reload would bring them back.
+func (h *Host) ForgetRule(arg string) error {
+	subject, pattern, _ := strings.Cut(strings.TrimSpace(arg), " ")
+	gone := false
+	for _, r := range h.Perm.Rules() {
+		if r.Principal == "model" && r.Subject == subject && r.Pattern == pattern {
+			h.Perm.Remove(r)
+			gone = true
+		}
+	}
+	if !gone {
+		return fmt.Errorf("no session rule allows %s %s", subject, pattern)
+	}
+	h.Log.Info("permissions", "session rule removed", map[string]any{"subject": subject, "pattern": pattern})
+	h.refresh()
 	return nil
 }
 

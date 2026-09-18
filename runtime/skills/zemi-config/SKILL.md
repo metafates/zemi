@@ -159,7 +159,8 @@ guessing. Common keys:
   whatever the mode. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
-  `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
+  `zemi --mode auto`. `/permissions` lists the mode and every rule in force; an "always"
+  answer (the only rule made at runtime) has a Remove action there, config rules do not. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
   `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`, and
@@ -232,7 +233,7 @@ clipboard. Images must be png, jpg, gif or webp up to 5 MB, other dropped files 
 secret-looking paths are refused. Images reach the model only if it accepts images.
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
-`/mode`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
+`/mode`, `/permissions`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/copy`, `/trust`, `/health`, `/errors`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 `/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:

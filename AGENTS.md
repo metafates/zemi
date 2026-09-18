@@ -300,6 +300,10 @@ subcommands (`git`, `go`, `npm`, ...; `subcommandPrograms`) and the exact segmen
 approved `.gitignore` or `.github/` file also gets its own exact rule), and `net.*` both
 `scheme://host` and `scheme://host/*`. A gate-forced ask (heredoc, env assignment) and a
 request whose pattern text holds a glob wildcard (`*`, `?`) offer no always option at all.
+`/permissions` (`OpenPermissions`, permmode.go) lists the mode and every rule in force,
+grouped deny > ask > allow; a `model`-principal rule is one an "always" answer wrote, so its
+detail view has a Remove action (`ForgetRule`, the only non-sweep caller of `Store.Remove`),
+and config rules show read-only because a reload brings them back.
 
 ### require (internal/lua/runtime.go)
 

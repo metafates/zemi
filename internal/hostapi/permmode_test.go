@@ -390,3 +390,31 @@ func TestAutoScreenerSeesTheRequest(t *testing.T) {
 		t.Error("an approval given for one request was reused for another")
 	}
 }
+
+// TestPermissionsOverlayRemovesAlways: a mis-keyed "always" answer is the
+// only rule a user writes at runtime and the only one with no file to edit,
+// so /permissions shows it and takes it back.
+func TestPermissionsOverlayRemovesAlways(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	always := perm.Rule{Subject: "tool.bash", Pattern: "git push *", Decision: perm.Allow, Principal: "model"}
+	h.Perm.Add(always)
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "rm -rf *", Decision: perm.Deny})
+	if err := h.OpenPermissions(); err != nil || len(ui.opened) != 1 {
+		t.Fatalf("open: %v %+v", err, ui.opened)
+	}
+	rows := fmt.Sprint(ui.opened[0].Items)
+	if !strings.Contains(rows, "tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push *") {
+		t.Fatalf("rules not listed with a way back:\n%s", rows)
+	}
+	if err := h.ForgetRule("tool.bash rm -rf *"); err == nil {
+		t.Error("a config rule must not be removable: a reload brings it back")
+	}
+	if err := h.ForgetRule("tool.bash git push *"); err != nil {
+		t.Fatal(err)
+	}
+	if h.Perm.Evaluate("tool.bash", "git push origin main", "model").Decision != perm.Ask {
+		t.Error("the removed rule still allows")
+	}
+}
