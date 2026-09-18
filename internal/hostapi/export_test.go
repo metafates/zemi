@@ -176,3 +176,24 @@ func TestToolSummary(t *testing.T) {
 		}
 	}
 }
+
+// TestUsageBreaksThePromptDown: the fixed prompt rides every request, so
+// /usage says what it is made of instead of one aggregate context line.
+func TestUsageBreaksThePromptDown(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if _, err := h.ensureRunner(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.OpenUsage(); err != nil || len(ui.opened) != 1 {
+		t.Fatalf("usage: %v %+v", err, ui.opened)
+	}
+	body := ui.opened[0].Body
+	for _, want := range []string{"prompt", "system ", "tools "} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("no %q in the usage body:\n%s", want, body)
+		}
+	}
+}

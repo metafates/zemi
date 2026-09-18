@@ -102,7 +102,9 @@ type agentHost struct {
 
 	// promptTokens estimates the system prompt and tool schemas the runner
 	// carries; every prompt holds them, so the context estimate counts them.
+	// promptParts is the same total broken down for /usage.
 	promptTokens int64
+	promptParts  []promptPart
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.chat.reasoning config).
@@ -275,10 +277,12 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	toolset, sys := h.profileTools(p), h.buildSystem(p)
+	sys, parts := h.buildSystemParts(p)
+	toolset := h.profileTools(p)
 	r := agent.NewRunner(model, toolset, sys)
 	h.agents.mu.Lock()
 	h.agents.promptTokens = promptTokens(sys, toolset)
+	h.agents.promptParts = promptSizes(parts, toolset)
 	h.agents.mu.Unlock()
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
 	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
@@ -296,6 +300,42 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 
 // promptTokens estimates what every prompt carries besides the messages:
 // the system prompt and the tool schemas sent with it.
+// promptPart is one named section of the fixed prompt, in characters.
+type promptPart struct {
+	name  string
+	chars int
+}
+
+// promptSizes breaks the fixed prompt down: the system prompt's sections
+// plus the tool schemas, MCP apart since a server's whole catalog rides
+// every request whether the model calls it or not.
+func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
+	builtin, mcp := 0, 0
+	for _, t := range toolset {
+		info := t.Info()
+		schema, _ := json.Marshal(info.Parameters)
+		n := len(info.Name) + len(info.Description) + len(schema)
+		if strings.HasPrefix(info.Name, mcpToolPrefix) {
+			mcp += n
+		} else {
+			builtin += n
+		}
+	}
+	return []promptPart{
+		{"system", p.base}, {"tools", builtin}, {"mcp", mcp},
+		{"instructions", p.instructions}, {"lua", p.lua}, {"skills", p.skills}, {"memory", p.digest},
+	}
+}
+
+// promptBreakdown is the fixed prompt the last runner build measured, in
+// tokens: what every request pays for before the first message.
+func (h *Host) promptBreakdown() ([]promptPart, int64) {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return ag.promptParts, ag.promptTokens
+}
+
 func promptTokens(sys string, toolset []fantasy.AgentTool) int64 {
 	n := len(sys)
 	for _, t := range toolset {

@@ -249,6 +249,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   opens a picker instead (1-9 copy that block, then all blocks, then the whole reply), and
   `/copy reply`, `/copy code` and `/copy code <n>` skip it; `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
+- `/usage` shows tokens and cost per session, day and all time, plus what the fixed prompt
+  every request carries (system, tools, mcp, instructions, lua, skills, memory).
 - Settings and their values: `zemi.config.get(path)` with the Lua tool; the changes zemi
   made to its own config are the git log of the config directory.
 - `/agents view <id>` shows a subagent run's transcript in the chat (esc returns),

@@ -107,9 +107,24 @@ func (h *Host) InitProject() error { return h.AgentSend(initPrompt) }
 
 const initPrompt = `Study this repository and write AGENTS.md at its root for future coding agents; if it exists, update it and keep what is still true. Cover, briefly and concretely: what the project is, in two sentences; the exact commands to build, test, lint and run, taken from the build files; the main packages and how control flows between them; conventions and non-obvious gotchas you confirmed in the code. No generic advice. In a large codebase, first explore different areas with parallel explore agents.`
 
+// promptParts is the size in characters of each section of the fixed
+// prompt, so /usage can say what the tokens every request pays for are.
+type promptParts struct {
+	base         int // the system prompt itself, mode section and environment
+	instructions int
+	lua          int
+	skills       int
+	digest       int
+}
+
 // buildSystem renders the system prompt with context files appended
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
+	sys, _ := h.buildSystemParts(p)
+	return sys
+}
+
+func (h *Host) buildSystemParts(p *Profile) (string, promptParts) {
 	sys := h.defaultSystemPrompt()
 	var files []string
 	if p != nil {
@@ -130,13 +145,19 @@ func (h *Host) buildSystem(p *Profile) string {
 	if def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
-	return h.systemWith(sys, files)
+	return h.systemFor(sys, files)
 }
 
 // systemWith appends instruction files, the skills index and the session
 // digest to a base prompt. files names explicit project files (a profile's
 // context.files); nil means instructionFiles.
 func (h *Host) systemWith(sys string, files []string) string {
+	out, _ := h.systemFor(sys, files)
+	return out
+}
+
+// systemFor is systemWith with the section sizes it assembled.
+func (h *Host) systemFor(sys string, files []string) (string, promptParts) {
 	// a profile's files are repository content too
 	if len(files) == 0 || !h.ProjectTrusted() {
 		files = h.instructionFiles()
@@ -153,7 +174,11 @@ func (h *Host) systemWith(sys string, files []string) string {
 	if sections != "" {
 		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
 	}
-	return h.withDigest(sys + h.environmentPrompt() + sections + h.assembleSections() + h.skillsIndexPrompt())
+	env, luaSections, index := h.environmentPrompt(), h.assembleSections(), h.skillsIndexPrompt()
+	out := h.withDigest(sys + env + sections + luaSections + index)
+	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index)}
+	parts.digest = len(out) - parts.base - parts.instructions - parts.lua - parts.skills
+	return out, parts
 }
 
 // instructionSections renders instruction files as "## Instructions: <name>"

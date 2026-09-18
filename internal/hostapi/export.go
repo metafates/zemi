@@ -277,6 +277,16 @@ func (h *Host) OpenUsage() error {
 		return fmt.Sprintf("%-12s %6s in  %6s out  %s  $%.2f", label, fmtTok(in), fmtTok(out), count, cost)
 	}
 	lines := []string{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
+	if parts, total := h.promptBreakdown(); total > 0 {
+		lines = append(lines, fmt.Sprintf("%-12s %6s every request", "prompt", fmtTok(total)))
+		var named []string
+		for _, p := range parts {
+			if p.chars > 0 {
+				named = append(named, fmt.Sprintf("%s %s", p.name, fmtTok(int64(p.chars/4))))
+			}
+		}
+		lines = append(lines, "  "+strings.Join(named, " · "))
+	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		line := fmt.Sprintf("%-12s %6s of %s tokens", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow))
 		if pct := s.LastIn * 100 / s.CtxWindow; pct > 0 {

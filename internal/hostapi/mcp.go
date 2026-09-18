@@ -228,8 +228,12 @@ func (w serverLogWriter) Write(p []byte) (int, error) {
 
 var mcpNameUnsafe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
+// mcpToolPrefix marks a tool as an MCP server's, for the model and for
+// /usage's prompt breakdown.
+const mcpToolPrefix = "mcp_"
+
 func mcpToolName(server, tool string) string {
-	n := "mcp_" + server + "_" + mcpNameUnsafe.ReplaceAllString(tool, "_")
+	n := mcpToolPrefix + server + "_" + mcpNameUnsafe.ReplaceAllString(tool, "_")
 	if len(n) > 64 {
 		n = n[:64]
 	}
