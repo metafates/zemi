@@ -2,6 +2,8 @@ package hostapi
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -58,5 +60,38 @@ func TestWaitEndsWithTheRequest(t *testing.T) {
 	cancel()
 	if err := waitDone(L, make(chan struct{}), time.Minute); err == nil || err.Error() != "canceled" {
 		t.Fatalf("waitDone = %v, want canceled", err)
+	}
+}
+
+// TestReadJailCoversRepo: started in a subdirectory of a trusted repository,
+// reads elsewhere in it settle; secret shapes, writes and an untrusted
+// project still ask.
+func TestReadJailCoversRepo(t *testing.T) {
+	h, _ := newTestHost(t)
+	root := t.TempDir()
+	sub := filepath.Join(root, "pkg")
+	for _, d := range []string{filepath.Join(root, ".git"), sub} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.Dirs.ProjectDir = sub
+	sibling, secret := filepath.Join(root, "other", "main.go"), filepath.Join(root, ".env")
+	for _, c := range []struct {
+		name    string
+		trusted bool
+		subject string
+		arg     string
+		want    perm.Decision
+	}{
+		{"untrusted sibling", false, "fs.read", sibling, perm.Ask},
+		{"trusted sibling", true, "fs.read", sibling, perm.Allow},
+		{"secret", true, "fs.read", secret, perm.Ask},
+		{"write", true, "fs.write", sibling, perm.Ask},
+	} {
+		h.SetProjectTrusted(c.trusted)
+		if got := h.fsDefault(c.subject, c.arg); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
 	}
 }
