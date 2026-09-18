@@ -19,7 +19,6 @@ type Memory struct {
 	Text                string   // capped and scrubbed at intake (learn.MaxTextLen)
 	Tags                []string // comma-joined in the DB
 	ProvenanceSessionID string
-	Confidence          float64
 	HitCount            int64
 	CreatedAt           int64
 	UpdatedAt           int64
@@ -32,14 +31,13 @@ type Memory struct {
 }
 
 const memoryCols = `id, scope, kind, text, tags, provenance_session_id,
-	confidence, hit_count, created_at, updated_at, last_hit_at,
-	superseded_by, origin`
+	hit_count, created_at, updated_at, last_hit_at, superseded_by, origin`
 
 // qualified with the memory alias for joins against memory_fts (both have
 // a text column).
 const memoryColsQualified = `m.id, m.scope, m.kind, m.text, m.tags,
-	m.provenance_session_id, m.confidence, m.hit_count, m.created_at,
-	m.updated_at, m.last_hit_at, m.superseded_by, m.origin`
+	m.provenance_session_id, m.hit_count, m.created_at, m.updated_at,
+	m.last_hit_at, m.superseded_by, m.origin`
 
 func scanMemory(row scanner) (*Memory, error) {
 	var (
@@ -49,7 +47,7 @@ func scanMemory(row scanner) (*Memory, error) {
 		tags      string
 	)
 	if err := row.Scan(&m.ID, &m.Scope, &m.Kind, &m.Text, &tags, &prov,
-		&m.Confidence, &m.HitCount, &m.CreatedAt, &m.UpdatedAt, &m.LastHitAt,
+		&m.HitCount, &m.CreatedAt, &m.UpdatedAt, &m.LastHitAt,
 		&supersede, &m.Origin, &m.Score); err != nil {
 		return nil, err
 	}
@@ -70,9 +68,6 @@ func (s *DB) AddMemory(m *Memory) error {
 	if m.Scope == "" || m.Kind == "" || m.Text == "" || m.Origin == "" {
 		return errors.New("store: memory needs scope, kind, text and origin")
 	}
-	if m.Confidence == 0 {
-		m.Confidence = 1
-	}
 	t := now()
 	if m.CreatedAt == 0 {
 		m.CreatedAt = t
@@ -81,12 +76,11 @@ func (s *DB) AddMemory(m *Memory) error {
 		m.UpdatedAt = t
 	}
 	_, err := s.db.Exec(`INSERT INTO memory
-		(id, scope, kind, text, tags, provenance_session_id, confidence,
+		(id, scope, kind, text, tags, provenance_session_id,
 		 hit_count, created_at, updated_at, last_hit_at, superseded_by, origin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		m.ID, m.Scope, m.Kind, m.Text, strings.Join(m.Tags, ","),
-		nullString(m.ProvenanceSessionID), m.Confidence,
-		m.HitCount, m.CreatedAt, m.UpdatedAt, m.LastHitAt, m.Origin)
+		nullString(m.ProvenanceSessionID), m.HitCount, m.CreatedAt, m.UpdatedAt, m.LastHitAt, m.Origin)
 	if err != nil {
 		return fmt.Errorf("store: add memory: %w", err)
 	}

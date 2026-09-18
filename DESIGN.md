@@ -1042,9 +1042,9 @@ sessions(id, parent_id, title, profile, created_at, updated_at,
 messages(id, session_id, role, parts_json, created_at)          -- fantasy messages
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
-memory(id, scope, kind, text, tags, provenance_session_id, confidence,
-       hit_count, created_at, updated_at, last_hit_at, superseded_by,
-       origin)                                                  -- FTS5(text)
+memory(id, scope, kind, text, tags, provenance_session_id, hit_count,
+       created_at, updated_at, last_hit_at, superseded_by, origin)
+                                                                -- FTS5(text)
 checkpoints(message_id, session_id, path, existed, content, created_at)
                                                                 -- pre-turn file content for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
