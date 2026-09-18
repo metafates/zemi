@@ -147,6 +147,32 @@ func TestJobStreamsOutput(t *testing.T) {
 	}
 }
 
+// TestJobReadSpillsTheCut: a read that cuts the middle saves the whole
+// chunk, which since() has already moved past.
+func TestJobReadSpillsTheCut(t *testing.T) {
+	dir := t.TempDir()
+	p := &Pipeline{Jobs: NewJobs(), ScratchDir: func() string { return dir }}
+	if res, _ := runJobStart(context.Background(), p, map[string]any{"command": "seq 1 4000"}); res.IsError {
+		t.Fatal(res.Content)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"})
+		if _, file, ok := strings.Cut(out.Content, "(full output: "); ok {
+			file, _, _ = strings.Cut(file, ")")
+			b, err := os.ReadFile(file)
+			if err != nil || !strings.Contains(string(b), "\n2000\n") {
+				t.Fatalf("spill %s: %v", file, err)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no spill: %q", out.Content)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestFileToolsSymlinkRace: a directory flipped between a real one and a
 // symlink out of the jail while write, edit and read run never lets one of
 // them act outside.

@@ -262,11 +262,19 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	if errText != "" {
 		fmt.Fprintf(&b, "error: %s\n", errText)
 	}
+	// since() has already moved past what it returns, so a cut chunk is
+	// gone unless it is spilled here
+	show := func(s string) string {
+		if cut := truncMiddle(s); cut != s {
+			return cut + p.spill("job", s)
+		}
+		return s
+	}
 	if out != "" {
-		b.WriteString("[stdout]\n" + truncMiddle(out) + "\n")
+		b.WriteString("[stdout]\n" + show(out) + "\n")
 	}
 	if errOut != "" {
-		b.WriteString("[stderr]\n" + truncMiddle(errOut) + "\n")
+		b.WriteString("[stderr]\n" + show(errOut) + "\n")
 	}
 	if running && out == "" && errOut == "" {
 		b.WriteString("(no new output)")

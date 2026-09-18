@@ -808,7 +808,7 @@ The user approves it (implement it; in plan mode this also ends plan mode), asks
 			},
 			runJobStart),
 
-		mk("job_read", "Read what a background job printed since your last read of it (everything on the first read, the first and last part when that is long) and whether it is still running.",
+		mk("job_read", "Read what a background job printed since your last read of it (everything on the first read, the first and last part when that is long, with the whole of it saved to a file the result names) and whether it is still running.",
 			true,
 			map[string]any{
 				"id": map[string]any{"type": "string"},
