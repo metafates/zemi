@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
@@ -156,7 +157,14 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
-		L.Push(lua.FromGo(L, os.Getenv(name)))
+		// unset is nil, never "": an empty api_key registers a provider that
+		// fails much later, so `zemi.env.get("X") or error(...)` must work
+		v, ok := os.LookupEnv(name)
+		if !ok {
+			L.Push(glua.LNil)
+			return 1
+		}
+		L.Push(glua.LString(v))
 		return 1
 	}))
 	return tb
@@ -167,21 +175,29 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 
 func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
+	// get(key) -> value; a key nobody set is nil with no error, a store or
+	// decode failure is nil, err
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key := L.CheckString(1)
-		if h.GlobalDB == nil {
+		fail := func(err error) int {
 			L.Push(glua.LNil)
-			return 1
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		if h.GlobalDB == nil {
+			return fail(errors.New("store unavailable"))
 		}
 		v, err := h.GlobalDB.GetKV(key)
-		if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
 			L.Push(glua.LNil)
 			return 1
+		case err != nil:
+			return fail(err)
 		}
 		var decoded any
-		if json.Unmarshal([]byte(v), &decoded) != nil {
-			L.Push(glua.LNil)
-			return 1
+		if err := json.Unmarshal([]byte(v), &decoded); err != nil {
+			return fail(err)
 		}
 		L.Push(lua.FromGo(L, decoded))
 		return 1

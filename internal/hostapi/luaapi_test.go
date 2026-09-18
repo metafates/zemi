@@ -127,6 +127,14 @@ func TestLuaAPIIO(t *testing.T) {
 		local res = zemi.http.request({ method = "POST", url = "%[1]s/x", headers = { ["X-Token"] = "t" }, body = "hi" }):wait()
 		assert(res.status == 201 and res.body == "POST:hi" and res.headers["X-Echo"] == "t", zemi.json.encode(res))
 
+		local v, err = zemi.state.get("never-set")
+		assert(v == nil and err == nil, "a key nobody set is nil with no error")
+		assert(zemi.env.get("ZEMI_NOT_SET_ANYWHERE") == nil, "an unset variable is nil, not the empty string")
+
+		local wid = zemi.config.watch("agent.model", function() end)
+		assert(type(wid) == "string", "watch id type " .. type(wid))
+		assert(zemi.config.unwatch(wid) == true and zemi.config.unwatch(wid) == false, "unwatch is idempotent")
+
 		zemi.command.add("twice", function(a) zemi.state.put("twice", a.args .. a.args) end, { nargs = "*" })
 		assert(zemi.command.run("twice", "ab") == true, "run")
 		assert(zemi.state.get("twice") == "abab", "command.run runs inline")

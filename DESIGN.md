@@ -454,7 +454,7 @@ in which milestone.
   invalid enum) raises a Lua error, catchable with `pcall`. Operations that
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
-  (`zemi.fs.read`/`write`, `zemi.state.put`, `zemi.json.decode`,
+  (`zemi.fs.read`/`write`, `zemi.state.get`/`put`, `zemi.json.decode`,
   `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a masked mutator in a
@@ -569,7 +569,8 @@ last-writer-wins applies only within one origin, so the project config
 loading last cannot shadow a user binding (nor bind a prefix or an
 extension of a more trusted key sequence), and `zemi.keymap.del` unmaps
 keys set by the caller's origin or a less trusted one (user config can
-remove shipped defaults; a plugin cannot remove user keys). The actions behind cancel-turn and
+remove shipped defaults; a plugin cannot remove user keys) and reports
+whether there was a binding. The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
 exact, case-sensitive, non-abbreviable `/reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed

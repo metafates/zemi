@@ -71,7 +71,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.39.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.40.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -308,7 +308,7 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(#zemi.keymap.list() == 2, "list=" .. #zemi.keymap.list())
 		zemi.keymap.del("tab")
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
-		assert(not pcall(zemi.keymap.del, "tab"), "deleting an unbound key must raise")
+		assert(zemi.keymap.del("tab") == false, "unbinding twice reports false, not an error")
 		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp" }) do
 			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
 		end

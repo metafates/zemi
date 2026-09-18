@@ -73,17 +73,18 @@ func TestKeymapRegistry(t *testing.T) {
 	for _, d := range []struct {
 		name, key, focus string
 		origin           lua.Origin
-		ok               bool
+		removed, wantErr bool
 	}{
-		{"plugin cannot delete a user key", "tab", "", lua.OriginPlugin, false},
-		{"user deletes a plugin key", "x", "", lua.OriginUser, true},
-		{"deleting twice", "x", "", lua.OriginUser, false},
-		{"user deletes its own", "tab", "", lua.OriginUser, true},
-		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false},
-		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true},
+		{"plugin cannot delete a user key", "tab", "", lua.OriginPlugin, false, true},
+		{"user deletes a plugin key", "x", "", lua.OriginUser, true, false},
+		{"deleting twice is not an error", "x", "", lua.OriginUser, false, false},
+		{"user deletes its own", "tab", "", lua.OriginUser, true, false},
+		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false, false},
+		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true, false},
 	} {
-		if err := r.Del(d.origin, d.focus, d.key); (err == nil) != d.ok {
-			t.Fatalf("%s: err=%v", d.name, err)
+		removed, err := r.Del(d.origin, d.focus, d.key)
+		if removed != d.removed || (err != nil) != d.wantErr {
+			t.Fatalf("%s: removed=%v err=%v", d.name, removed, err)
 		}
 	}
 	r.Set(bind("q", "", lua.OriginUser))

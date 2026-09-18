@@ -79,18 +79,20 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 
 // Del unbinds a key set by the same or a less trusted origin, so user
 // config can remove shipped defaults but a plugin cannot remove user keys.
-func (r *KeymapRegistry) Del(origin lua.Origin, focus, key string) error {
+// Del removes a binding and reports whether there was one. Unbinding what
+// is not bound is not an error: a reloaded config must be idempotent.
+func (r *KeymapRegistry) Del(origin lua.Origin, focus, key string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	k := bindKey{focus, key}
 	switch b := r.bindings[k]; {
 	case b == nil:
-		return fmt.Errorf("keymap: %s is not bound", key)
+		return false, nil
 	case b.Origin.Rank() > origin.Rank():
-		return fmt.Errorf("keymap: %s is bound by a %s registration", key, b.Origin)
+		return false, fmt.Errorf("keymap: %s is bound by a %s registration", key, b.Origin)
 	}
 	delete(r.bindings, k)
-	return nil
+	return true, nil
 }
 
 // Lookup finds the binding for a key while focus has the keys: the focused

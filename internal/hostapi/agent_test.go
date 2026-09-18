@@ -393,7 +393,13 @@ func TestSessionNamespace(t *testing.T) {
 	if h.AgentSessionID() == "" {
 		t.Fatal("session id still empty after ensureSession")
 	}
-	runUser(t, r, `assert(zemi.session.id() ~= "", "session id missing")`)
+	if err := h.persistMessage("assistant", fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
+		t.Fatal(err)
+	}
+	runUser(t, r, `assert(zemi.session.id() ~= "", "session id missing")
+		local m = zemi.session.messages()[1]
+		assert(m.text == "hi there", "text=" .. tostring(m.text))
+		assert(m.json:find("hi there", 1, true), "json missing")`)
 }
 
 // TestSteeringQueue covers the DESIGN §4 queue: sends during a turn queue

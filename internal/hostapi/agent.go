@@ -1284,16 +1284,29 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	// send returns at once: starting a turn builds the system prompt, which
 	// runs agent.assemble handlers on this interpreter and must not wait on it.
+	// send(text) -> true, or nil, err. The turn itself must not run on the
+	// interpreter (DESIGN §4), so what it reports here is what can be known
+	// before it starts; later failures reach the transcript.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
 		h.refuseBelowUser(L, "agent.send")
+		p, err := h.resolveProfile("")
+		if err == nil {
+			_, err = h.resolveModel(p)
+		}
+		if err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
 		h.GoSafe("zemi.agent.send", func() {
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
 				h.Notify("error", "Could not send", err.Error())
 			}
 		})
-		return 0
+		L.Push(glua.LTrue)
+		return 1
 	}))
 
 	tb.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
@@ -1456,6 +1469,12 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 				row := L.NewTable()
 				row.RawSetString("id", glua.LString(m.ID))
 				row.RawSetString("role", glua.LString(m.Role))
+				// the text parts joined: reading a reply must not mean
+				// decoding the provider's wire shape by hand
+				var msg fantasy.Message
+				if json.Unmarshal([]byte(m.PartsJSON), &msg) == nil {
+					row.RawSetString("text", glua.LString(concatText(msg.Content)))
+				}
 				row.RawSetString("json", glua.LString(m.PartsJSON))
 				out.Append(row)
 			}

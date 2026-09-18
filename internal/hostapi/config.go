@@ -1,7 +1,9 @@
 package hostapi
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 
 	"github.com/metafates/zemi/internal/config"
@@ -32,6 +34,21 @@ func (w *watchReg) add(id int, rec watchRec) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.byID[id] = rec
+}
+
+// del drops one record, reporting whether the origin may and there was one.
+func (w *watchReg) del(id int, origin lua.Origin) (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	rec, ok := w.byID[id]
+	switch {
+	case !ok:
+		return false, nil
+	case rec.origin.Rank() > origin.Rank():
+		return false, fmt.Errorf("the watch was registered by a %s registration", rec.origin)
+	}
+	delete(w.byID, id)
+	return true, nil
 }
 
 func (w *watchReg) rec(id int) (watchRec, bool) {
@@ -175,7 +192,25 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.config.watch: %v", err)
 		}
 		h.watches.add(id, rec)
-		L.Push(glua.LNumber(id))
+		L.Push(glua.LString(strconv.Itoa(id)))
+		return 1
+	}))
+
+	// unwatch(id) drops a watch by the id watch returned
+	tb.RawSetString("unwatch", L.NewFunction(func(L *glua.LState) int {
+		id, cerr := strconv.Atoi(L.CheckString(1))
+		if cerr != nil {
+			L.Push(glua.LBool(false))
+			return 1
+		}
+		removed, err := h.watches.del(id, h.RT.CurrentOrigin(L))
+		if err != nil {
+			L.RaiseError("zemi.config.unwatch: %v", err)
+		}
+		if removed {
+			h.Settings.RemoveWatch(id)
+		}
+		L.Push(glua.LBool(removed))
 		return 1
 	}))
 

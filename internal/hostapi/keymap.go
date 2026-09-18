@@ -191,10 +191,12 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		key, focus, _ := binding(L, "del")
 		h.refuseDuringRender(L, "zemi.keymap.del")
-		if err := h.Keymaps.Del(h.RT.CurrentOrigin(L), focus, key); err != nil {
+		removed, err := h.Keymaps.Del(h.RT.CurrentOrigin(L), focus, key)
+		if err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}
-		return 0
+		L.Push(glua.LBool(removed))
+		return 1
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {

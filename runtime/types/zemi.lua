@@ -236,11 +236,16 @@ function zemi.config.get(path) end
 ---@param value any
 function zemi.config.set(path, value) end
 
---- Call fn whenever a setting changes.
+--- Call fn whenever a setting changes. A path outside the schema raises.
 ---@param path string
 ---@param fn fun(new: any, old: any)
----@return integer watch_id
+---@return string watch_id
 function zemi.config.watch(path, fn) end
+
+--- Drop a watch by the id `zemi.config.watch` returned.
+---@param id string
+---@return boolean removed
+function zemi.config.unwatch(id) end
 
 --- Every known setting with its default.
 ---@return zemi.SettingSchema[]
@@ -317,10 +322,11 @@ zemi.keymap = {}
 ---@param opts? zemi.KeymapOpts
 function zemi.keymap.set(key, action, opts) end
 
---- Unbind a key the caller's origin or a less trusted one set; raises when
---- it is not bound.
+--- Unbind a key the caller's origin or a less trusted one set. A key
+--- nothing bound is `false`, not an error, so a reload unbinds idempotently.
 ---@param key string
 ---@param opts? { focus?: string }
+---@return boolean removed
 function zemi.keymap.del(key, opts) end
 
 --- The binding a key runs, while `opts.focus` has the keys when given.
@@ -1356,9 +1362,11 @@ function zemi.agent.set_default(name) end
 ---@return zemi.AgentCurrent
 function zemi.agent.current() end
 
---- Send a message. Returns at once; the turn runs off the interpreter.
+--- Send a message. Returns at once; the turn runs off the interpreter, so
+--- the error is what can be known before it starts (no model configured).
 --- User or builtin origin only.
 ---@param text string
+---@return true?, string?
 function zemi.agent.send(text) end
 
 --- Interrupt the running turn.
@@ -1420,7 +1428,8 @@ function zemi.workflow.run(spec, on_done) end
 ---@class zemi.StoredMessage
 ---@field id string
 ---@field role string
----@field json string The fantasy message parts, as stored.
+---@field text string The message's text parts joined.
+---@field json string The provider wire format, as stored. Unstable: prefer `text`.
 
 ---@class zemi.session
 zemi.session = {}
@@ -1817,7 +1826,8 @@ function zemi.timer.every(ms, fn) end
 zemi.state = {}
 
 ---@param key string
----@return any
+---@return any value A key nobody set is nil with no error.
+---@return string? err
 function zemi.state.get(key) end
 
 ---@param key string
@@ -1829,10 +1839,11 @@ function zemi.state.put(key, value) end
 ---@class zemi.env
 zemi.env = {}
 
---- Read an environment variable. Secret-shaped names resolve for user and
---- builtin origin only; config fields hold values, never variable names.
+--- Read an environment variable, nil when it is not set. Secret-shaped
+--- names resolve for user and builtin origin only; config fields hold
+--- values, never variable names.
 ---@param name string
----@return string
+---@return string?
 function zemi.env.get(name) end
 
 -- ---------------------------------------------------------------------------
