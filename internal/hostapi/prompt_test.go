@@ -130,3 +130,23 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 		t.Fatal("the repository file was not cut to the budget")
 	}
 }
+
+// TestSendPrepCheap: everything a send does before the provider request is
+// in-memory work once the process is warm. environmentPrompt used to run
+// git status on the first send of every session, which costs seconds in a
+// large repository and lands on time to first token; a subprocess or a disk
+// walk back on this path blows this budget by orders of magnitude.
+func TestSendPrepCheap(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	h.buildSystemParts(nil)
+	h.profileTools(nil)
+	start := time.Now()
+	for range 5 {
+		_, parts := h.buildSystemParts(nil)
+		promptSizes(parts, h.profileTools(nil))
+	}
+	if d := time.Since(start); d > 200*time.Millisecond {
+		t.Fatalf("5 prompt builds took %s; something expensive is back on the send path", d)
+	}
+}

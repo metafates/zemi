@@ -323,7 +323,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 		return
 	}
 	h.GoSafe("session title", func() {
-		model, err := h.modelFor("agent.small_model")
+		model, err := h.modelFor("models.small")
 		if err != nil {
 			return
 		}

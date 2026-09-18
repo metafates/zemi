@@ -47,15 +47,15 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: "agent.model", Kind: "string", Default: "", Desc: "active model id (provider/model)"},
+		{Path: "models.main", Kind: "string", Default: "", Desc: "the model everything runs on unless a tier or a definition names another (provider/model)"},
+		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs: session titles, compaction summaries and the builtin web subagent (provider/model; empty uses models.main)"},
+		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses models.main)"},
 		{Path: "permissions.mode", Kind: "string", Default: "manual", Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
-		{Path: "agent.small_model", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs such as session titles (provider/model; empty uses agent.model)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
-		{Path: "agent.subagent_model", Kind: "string", Default: "", Desc: "default model for subagents whose definition sets none (provider/model; empty uses the session model); the agent may pick another configured model per run"},
 		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
-		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call (agent.small_model when set)"},
+		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call (the small tier)"},
 		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
@@ -68,8 +68,8 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: "bool", Default: true, Desc: "file completion on the trigger char in the composer"},
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
-		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses agent.model)"},
-		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses agent.model)"},
+		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses models.main)"},
+		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses the small tier)"},
 		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, Desc: "memory digest lines in the system prompt (0 leaves it out)"},
 	}

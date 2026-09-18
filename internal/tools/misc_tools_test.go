@@ -347,59 +347,45 @@ func TestFetchGates(t *testing.T) {
 	}
 }
 
+// TestHTMLToText: readability picks the article out of a page, and what it
+// keeps reads as markdown — heading, a parameter table as rows (it used to
+// flatten to "sizeint"), a code fence, bullets and absolute links.
 func TestHTMLToText(t *testing.T) {
-	in := `<html><head><title>hidden</title></head>` +
-		`<body><!-- comment --><nav><a href="/menu">Menu</a></nav><header><h1>Title</h1></header>` +
-		`<script>alert("x")</script><style>.c{}</style>` +
-		`<p>Hello &amp; <b>world</b><br>line2 <a class="x" href="../docs?a=1&amp;b=2"><b>Docs</b></a>` +
-		` <a href="#top">Top</a> <a href="javascript:void(0)">JS</a></p></body></html>`
-	base, _ := url.Parse("https://example.com/blog/post")
-	out := htmlToText(in, base)
-	for _, bad := range []string{"script", "hidden", "alert", ".c{}", "<b>", "Menu", "#top", "javascript"} {
-		if strings.Contains(out, bad) {
-			t.Fatalf("htmlToText kept %q: %q", bad, out)
-		}
-	}
-	for _, want := range []string{"Title", "Hello & world", "line2", "[Docs](https://example.com/docs?a=1&b=2)", "Top", "JS"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("htmlToText lost %q: %q", want, out)
-		}
-	}
-}
-
-// TestHTMLToMarkdown pins what a docs page keeps: heading levels, a
-// parameter table as rows (it used to flatten to "sizeint10"), a code
-// fence and list bullets.
-func TestHTMLToMarkdown(t *testing.T) {
-	in := `<html><head><title>x</title></head><body>
-<h1>Widget API</h1>
-<p>The widget API creates <code>widgets</code>.</p>
+	in := `<html><head><title>hidden</title></head><body>
+<nav><a href="/menu">Menu</a></nav><script>alert("x")</script><style>.c{}</style>
+<article><h1>Widget API</h1>
+<p>The widget API creates <b>widgets</b>. ` + strings.Repeat("Prose that carries the article past readability's content threshold. ", 10) + `</p>
 <h2>Options</h2>
 <table><thead><tr><th>Name</th><th>Type</th></tr></thead>
 <tbody><tr><td>size</td><td>int</td></tr></tbody></table>
 <pre><code><span class="k">w</span> := widget.New()
 </code></pre>
-<ul><li>first</li><li>second <a href="/docs">point</a></li></ul>
-</body></html>`
-	want := `# Widget API
+<ul><li>first</li><li>second <a class="x" href="../docs?a=1&amp;b=2">point</a></li></ul>
+</article><footer>&copy; 2020</footer></body></html>`
+	base, _ := url.Parse("https://example.com/api/page")
+	out := htmlToText(in, base)
+	for _, bad := range []string{"script", "hidden", "alert", ".c{}", "<b>", "Menu", "2020"} {
+		if strings.Contains(out, bad) {
+			t.Fatalf("htmlToText kept %q: %q", bad, out)
+		}
+	}
+	for _, want := range []string{
+		"Widget API", "creates **widgets**", "## Options",
+		"| Name | Type |", "| size |", "```\nw := widget.New()", "- first",
+		"[point](https://example.com/docs?a=1&b=2)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("htmlToText lost %q:\n%s", want, out)
+		}
+	}
+}
 
-The widget API creates widgets.
-
-## Options
-
-| Name | Type |
-| --- | --- |
-| size | int |
-
-` + "```" + `
-w := widget.New()
-` + "```" + `
-
-- first
-- second [point](https://example.com/docs)`
-	base, _ := url.Parse("https://example.com/api/")
-	if got := htmlToText(in, base); got != want {
-		t.Fatalf("htmlToText =\n%s\n\nwant\n%s", got, want)
+// TestHTMLToTextNoArticle: a page readability finds no article in still
+// converts whole, so a short answer page is not returned empty.
+func TestHTMLToTextNoArticle(t *testing.T) {
+	base, _ := url.Parse("https://example.com/")
+	if got := htmlToText(`<html><body><p>Hello &amp; bye</p></body></html>`, base); got != "Hello & bye" {
+		t.Fatalf("htmlToText = %q", got)
 	}
 }
 

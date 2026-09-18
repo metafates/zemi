@@ -3,9 +3,11 @@
 package hostapi
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -21,7 +23,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	}
 	id := h.currentModelID(p)
 	if id == "" {
-		return nil, fmt.Errorf("no model configured in %s: uncomment a provider and agent.model", filepath.Join(h.Dirs.ConfigHome, "init.lua"))
+		return nil, fmt.Errorf("no model configured in %s: uncomment a provider and models.main", filepath.Join(h.Dirs.ConfigHome, "init.lua"))
 	}
 	return h.Providers.Resolve(id)
 }
@@ -35,6 +37,35 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
 		}
 	}
 	return h.resolveModel(&Profile{Model: h.sessionModelID()})
+}
+
+// Tiers are the model tiers config names, in the order a picker shows them:
+// small runs the short jobs (session titles, compaction summaries, the
+// builtin web subagent, auto-mode screening), main everything else, and
+// smart the main conversation, which orchestrates and delegates. A tier
+// nothing set falls back to main.
+var Tiers = []string{"small", "main", "smart"}
+
+// tierModel resolves a tier name to the model id config gave it, falling
+// back to main. It returns "" for a name that is not a tier, so callers can
+// take a model reference that is either a tier or a provider/model id.
+func (h *Host) tierModel(tier string) string {
+	if !slices.Contains(Tiers, tier) {
+		return ""
+	}
+	return cmp.Or(h.Settings.Str("models."+tier), h.Settings.Str("models.main"))
+}
+
+// modelRef resolves a model reference: a tier name, a provider/model id, or
+// "" for neither.
+func (h *Host) modelRef(ref string) string {
+	if id := h.tierModel(ref); id != "" {
+		return id
+	}
+	if slices.Contains(Tiers, ref) {
+		return "" // a tier nothing configured, not a model id
+	}
+	return ref
 }
 
 // takesImages reports whether a model accepts image parts; unknown

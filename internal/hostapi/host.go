@@ -307,6 +307,10 @@ type Host struct {
 	// path ~-shortened, which widgets read every frame.
 	trustRoot func() string
 	project   func() string
+	// gitStatus is the working tree listing the environment prompt carries,
+	// run once per process and warmed at boot: a large repository takes
+	// seconds to answer, and on the send path that is time to first token.
+	gitStatus func() string
 
 	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
@@ -386,6 +390,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.Wins.OnExit = h.windowExited
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
+	h.gitStatus = sync.OnceValue(h.gitStatusSection)
 	if dirs.StateHome != "" {
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions
@@ -1332,6 +1337,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	h.gen.Store(g.ID)
 	h.syncSkills()
 	h.syncTypes()
+	h.GoSafe("git status", func() { h.gitStatus() })
 
 	g.SB.SetGuard(h.guardModelLua)
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {

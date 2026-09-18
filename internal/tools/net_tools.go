@@ -18,11 +18,16 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"charm.land/fantasy"
+	readability "codeberg.org/readeck/go-readability/v2"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
+	mdbase "github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	xhtml "golang.org/x/net/html"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -184,269 +189,41 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-var (
-	// RE2 has no backreferences, so the closing tag is matched by
-	// alternation instead of \1.
-	tagRe   = regexp.MustCompile(`(?s)<[^>]*>`)
-	spaceRe = regexp.MustCompile(`\n{3,}`)
-)
+// RE2 has no backreferences, so the closing tag is matched by
+// alternation instead of \1.
+var tagRe = regexp.MustCompile(`(?s)<[^>]*>`)
 
-// htmlSkip names subtrees with nothing to read in them.
-var htmlSkip = map[string]bool{
-	"script": true, "style": true, "noscript": true, "svg": true,
-	"head": true, "title": true, "nav": true, "footer": true, "aside": true,
-	"form": true, "template": true, "iframe": true,
-}
+// mdConv renders HTML as markdown. The table plugin is not in the default
+// set, and a docs page's parameter table is half of what it says.
+var mdConv = sync.OnceValue(func() *converter.Converter {
+	return converter.NewConverter(converter.WithPlugins(
+		mdbase.NewBasePlugin(), commonmark.NewCommonmarkPlugin(), table.NewTablePlugin()))
+})
 
-// htmlBlock names tags whose content starts a paragraph.
-var htmlBlock = map[string]bool{
-	"p": true, "div": true, "section": true, "article": true, "main": true,
-	"ul": true, "ol": true, "dl": true, "table": true, "blockquote": true,
-	"header": true, "figure": true, "hr": true,
-}
-
-// htmlToText renders HTML as markdown: headings, list items, table rows and
-// code blocks keep their shape, which is what a docs page's parameter table
-// needs to stay readable. Links stay as [text](url), resolved against base,
-// so the model can follow them.
+// htmlToText renders a page as markdown for the model: readability picks
+// the article out of the navigation, ads and boilerplate around it, and the
+// whole document is converted when it finds none. Links come out absolute
+// against base, so the model can follow them.
 func htmlToText(s string, base *url.URL) string {
-	w := &htmlText{base: base}
-	z := xhtml.NewTokenizer(strings.NewReader(s))
-	for {
-		switch tt := z.Next(); tt {
-		case xhtml.ErrorToken:
-			return w.done()
-		case xhtml.TextToken:
-			w.text(string(z.Text()))
-		case xhtml.StartTagToken, xhtml.SelfClosingTagToken:
-			raw, _ := z.TagName()
-			name, attr := string(raw), ""
-			if name == "a" {
-				attr = tagAttr(z, "href")
-			}
-			w.open(name, attr, tt == xhtml.StartTagToken)
-		case xhtml.EndTagToken:
-			name, _ := z.TagName()
-			w.close(string(name))
-		}
+	node, err := xhtml.Parse(strings.NewReader(s))
+	if err != nil {
+		return s
 	}
-}
-
-func tagAttr(z *xhtml.Tokenizer, want string) string {
-	for {
-		k, v, more := z.TagAttr()
-		if string(k) == want {
-			return string(v)
-		}
-		if !more {
-			return ""
-		}
+	// FromDocument rewrites the tree it is given, so the fallback parses again
+	if art, err := readability.FromDocument(node, base); err == nil && art.Node != nil {
+		node = art.Node
+	} else if node, err = xhtml.Parse(strings.NewReader(s)); err != nil {
+		return s
 	}
-}
-
-// buf is a strings.Builder that remembers its last byte, so the writer can
-// tell whether it owes a separator without copying what it holds.
-type buf struct {
-	b    strings.Builder
-	last byte
-}
-
-func (b *buf) write(s string) {
-	if s != "" {
-		b.b.WriteString(s)
-		b.last = s[len(s)-1]
+	domain := ""
+	if base != nil {
+		domain = base.Scheme + "://" + base.Host
 	}
-}
-
-// htmlText turns a token stream into markdown. Text lands in the open link,
-// then the open table cell, then the page.
-type htmlText struct {
-	base      *url.URL
-	out, cell buf
-	link      buf
-	href      string
-	row       []string
-	head      bool // the open row's cells are <th>
-	firstRow  bool // no row of this table is written yet
-	inLink    bool
-	inCell    bool
-	skip, pre int
-	nl        int // newlines owed before the next text
-}
-
-func (w *htmlText) target() *buf {
-	switch {
-	case w.inLink:
-		return &w.link
-	case w.inCell:
-		return &w.cell
+	md, err := mdConv().ConvertNode(node, converter.WithDomain(domain))
+	if err != nil {
+		return s
 	}
-	return &w.out
-}
-
-func (w *htmlText) write(s string) {
-	t := w.target()
-	if t == &w.out {
-		for ; w.nl > 0; w.nl-- {
-			w.out.write("\n")
-		}
-	}
-	t.write(s)
-}
-
-// space separates inline text; a boundary already pending is separator enough.
-func (w *htmlText) space() {
-	t := w.target()
-	if t.b.Len() == 0 || w.nl > 0 || t.last == ' ' || t.last == '\n' {
-		return
-	}
-	t.write(" ")
-}
-
-// br owes n newlines to the page; inside a cell or a link a block boundary
-// is only a space, since neither can hold a line of its own.
-func (w *htmlText) br(n int) {
-	if w.inCell || w.inLink {
-		w.space()
-		return
-	}
-	if w.out.b.Len() > 0 {
-		w.nl = max(w.nl, n)
-	}
-}
-
-func (w *htmlText) text(s string) {
-	if w.skip > 0 || s == "" {
-		return
-	}
-	if w.pre > 0 {
-		w.write(s)
-		return
-	}
-	body := strings.Join(strings.Fields(s), " ")
-	if body == "" {
-		w.space()
-		return
-	}
-	if strings.IndexFunc(s, unicode.IsSpace) == 0 {
-		w.space()
-	}
-	w.write(body)
-	if unicode.IsSpace(rune(s[len(s)-1])) {
-		w.space()
-	}
-}
-
-func (w *htmlText) open(name, href string, paired bool) {
-	if htmlSkip[name] {
-		if paired {
-			w.skip++
-		}
-		return
-	}
-	if w.skip > 0 {
-		return
-	}
-	switch {
-	case name == "br":
-		w.br(1)
-	case name == "a":
-		w.href, w.inLink = href, true
-	case name == "li":
-		w.br(1)
-		w.write("- ")
-	case name == "pre":
-		w.br(2)
-		w.write("```")
-		w.br(1)
-		w.pre++
-	case name == "table":
-		w.br(2)
-		w.firstRow = true
-	case name == "tr":
-		w.row, w.head = nil, false
-	case name == "td" || name == "th":
-		w.cell, w.inCell, w.head = buf{}, true, w.head || name == "th"
-	case len(name) == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6':
-		w.br(2)
-		w.write(strings.Repeat("#", int(name[1]-'0')) + " ")
-	case htmlBlock[name]:
-		w.br(2)
-	}
-}
-
-func (w *htmlText) close(name string) {
-	if htmlSkip[name] {
-		w.skip = max(0, w.skip-1)
-		return
-	}
-	if w.skip > 0 {
-		return
-	}
-	switch {
-	case name == "a":
-		w.closeLink()
-	case name == "pre":
-		w.pre = max(0, w.pre-1)
-		if w.out.last != '\n' {
-			w.write("\n")
-		}
-		w.write("```")
-		w.br(2)
-	case name == "td" || name == "th":
-		w.inCell = false
-		w.row = append(w.row, strings.TrimSpace(w.cell.b.String()))
-	case name == "tr":
-		w.closeRow()
-	case name == "li":
-		w.br(1)
-	case len(name) == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6':
-		w.br(2)
-	case htmlBlock[name]:
-		w.br(2)
-	}
-}
-
-func (w *htmlText) closeLink() {
-	text, href := strings.TrimSpace(w.link.b.String()), w.href
-	w.link, w.inLink, w.href = buf{}, false, ""
-	ref, err := url.Parse(html.UnescapeString(strings.TrimSpace(href)))
-	if err != nil || text == "" || strings.HasPrefix(href, "#") {
-		w.write(text)
-		return
-	}
-	if w.base != nil {
-		ref = w.base.ResolveReference(ref)
-	}
-	if ref.Scheme != "http" && ref.Scheme != "https" {
-		w.write(text)
-		return
-	}
-	w.write("[" + text + "](" + ref.String() + ")")
-}
-
-// closeRow writes the row as a markdown table row, with the header rule
-// under the first one so the columns stay paired up.
-func (w *htmlText) closeRow() {
-	if len(w.row) == 0 {
-		return
-	}
-	w.br(1)
-	w.write("| " + strings.Join(w.row, " | ") + " |")
-	if w.firstRow && w.head {
-		w.br(1)
-		w.write("|" + strings.Repeat(" --- |", len(w.row)))
-	}
-	w.row, w.firstRow = nil, false
-	w.br(1)
-}
-
-func (w *htmlText) done() string {
-	var lines []string
-	for l := range strings.SplitSeq(w.out.b.String(), "\n") {
-		lines = append(lines, strings.TrimRight(l, " \t"))
-	}
-	return strings.TrimSpace(spaceRe.ReplaceAllString(strings.Join(lines, "\n"), "\n\n"))
+	return strings.TrimSpace(string(md))
 }
 
 // searchUA is a browser User-Agent: DuckDuckGo serves its bot check to

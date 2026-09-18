@@ -188,9 +188,7 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
 		"code_challenge_method": {"S256"},
 	}
-	if m.resource != "" {
-		q.Set("resource", m.resource)
-	}
+	q.Set("resource", m.resource)
 	if m.scope != "" {
 		q.Set("scope", m.scope)
 	}
@@ -255,7 +253,9 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 		return nil, redactURL(err)
 	}
 	origin := u.Scheme + "://" + u.Host
-	m := &authMeta{}
+	// RFC 8707: the token is bound to the server's canonical URI, and the MCP
+	// spec has the client send it whether or not metadata named one.
+	m := &authMeta{resource: origin + strings.TrimSuffix(u.EscapedPath(), "/")}
 
 	var prmURLs []string
 	init := `{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"` + ProtocolVersion + `","capabilities":{},"clientInfo":{"name":"zemi","version":"1"}}}`
@@ -268,7 +268,10 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 				for _, p := range challengeParam.FindAllStringSubmatch(h, -1) {
 					switch p[1] {
 					case "resource_metadata":
-						prmURLs = append(prmURLs, p[2])
+						// servers do send a path here, though RFC 9728 wants a URI
+						if ref, err := u.Parse(p[2]); err == nil {
+							prmURLs = append(prmURLs, ref.String())
+						}
 					case "scope":
 						m.scope = p[2]
 					}
@@ -289,13 +292,20 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 			Scopes      []string `json:"scopes_supported"`
 		}
 		// a resource other than this server would have its token sent here (RFC 9728 3.3)
-		if getJSON(ctx, pu, &prm) == nil && len(prm.AuthServers) > 0 && (prm.Resource == "" || coversServer(prm.Resource, u)) {
-			issuer, m.resource = prm.AuthServers[0], cmp.Or(prm.Resource, serverURL)
-			if m.scope == "" {
-				m.scope = strings.Join(prm.Scopes, " ")
-			}
-			break
+		if getJSON(ctx, pu, &prm) != nil || (prm.Resource != "" && !coversServer(prm.Resource, u)) {
+			continue
 		}
+		// authorization_servers is optional: without it the resource is its
+		// own authorization server, and the document still names the audience
+		// and the scopes to ask for
+		if len(prm.AuthServers) > 0 {
+			issuer = prm.AuthServers[0]
+		}
+		m.resource = cmp.Or(prm.Resource, m.resource)
+		if m.scope == "" {
+			m.scope = strings.Join(prm.Scopes, " ")
+		}
+		break
 	}
 
 	iu, err := url.Parse(issuer)
@@ -399,7 +409,9 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 		ClientSecret string `json:"client_secret"`
 	}
 	if resp.StatusCode/100 != 2 || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r) != nil || r.ClientID == "" {
-		return "", "", fmt.Errorf("registering zemi with the server failed (http %d)", resp.StatusCode)
+		// name the endpoint: a 404 here usually means discovery found no
+		// metadata and this URL was the spec's guess
+		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not allow it, so set an Authorization header in its config instead", endpoint, resp.StatusCode)
 	}
 	return r.ClientID, r.ClientSecret, nil
 }

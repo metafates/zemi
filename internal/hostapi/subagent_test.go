@@ -366,10 +366,10 @@ func TestAgentDefs(t *testing.T) {
 	}
 }
 
-// TestSubagentModelChoice: a subagent's model comes from the tool call,
-// then its definition, then agent.small_model for a Small one, then
-// agent.subagent_model, then the session; the
-// agent tool lists the configured models and refuses one it does not know.
+// TestSubagentModelChoice: a subagent's model comes from its definition's
+// reference, which may name a tier, then the main tier, then the session;
+// an unset tier falls back to main. The agent tool lists the configured
+// models and refuses one it does not know.
 func TestSubagentModelChoice(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.provider.add({
@@ -377,29 +377,29 @@ func TestSubagentModelChoice(t *testing.T) {
 		models = { { id = "main" }, { id = "mini" } },
 	})`)
 	for _, c := range []struct {
-		def, setting, small string
-		isSmall             bool
-		want                string
+		def, main, small string
+		want             string
 	}{
-		{"", "", "", false, "myllm/main"},
-		{"", "myllm/mini", "", false, "myllm/mini"},
-		{"myllm/main", "myllm/mini", "", false, "myllm/main"},
-		{"", "myllm/main", "myllm/mini", false, "myllm/main"},
-		{"", "myllm/main", "myllm/mini", true, "myllm/mini"},
-		{"", "myllm/main", "", true, "myllm/main"},
+		{"", "", "", "myllm/main"}, // no tier set: the session model
+		{"", "myllm/mini", "", "myllm/mini"},
+		{"myllm/main", "myllm/mini", "", "myllm/main"},
+		{"small", "myllm/main", "myllm/mini", "myllm/mini"},
+		{"small", "myllm/main", "", "myllm/main"}, // unset tier falls back to main
 	} {
-		h.Settings.SetQuiet("agent.subagent_model", c.setting)
-		h.Settings.SetQuiet("agent.small_model", c.small)
-		if got := h.subagentModelID(AgentDef{Model: c.def, Small: c.isSmall}); got != c.want {
+		h.Settings.SetQuiet("models.main", c.main)
+		h.Settings.SetQuiet("models.small", c.small)
+		if got := h.subagentModelID(AgentDef{Model: c.def}); got != c.want {
 			t.Errorf("%+v: got %q", c, got)
 		}
 	}
+	h.Settings.SetQuiet("models.main", "")
+	h.Settings.SetQuiet("models.small", "")
 	tool := h.agentTool()
 	if desc := tool.Info().Description; !strings.Contains(desc, "Configured models: myllm/main, myllm/mini") {
 		t.Fatalf("description lacks the model list: %q", desc)
 	}
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "agent", Input: `{"description":"x","prompt":"p","agent":"explore","model":"other/x"}`})
-	if err != nil || !resp.IsError || !strings.Contains(resp.Content, `unknown model "other/x"; configured models: myllm/main, myllm/mini`) {
+	if err != nil || !resp.IsError || !strings.Contains(resp.Content, `unknown model "other/x"; tiers: small, main, smart; configured models: myllm/main, myllm/mini`) {
 		t.Fatalf("unknown model: %v %q", err, resp.Content)
 	}
 }

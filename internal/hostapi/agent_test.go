@@ -187,7 +187,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	initLua := filepath.Join(dir, "init.lua")
 	for _, c := range []struct {
 		name       string
-		config     []string // what init.lua sets agent.model to, in order
+		config     []string // what init.lua sets models.main to, in order
 		pick, want string
 	}{
 		{"first load applies config", []string{"p/a"}, "", "p/a"},
@@ -200,21 +200,21 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	} {
 		src := ""
 		for _, v := range c.config {
-			src += `zemi.config.set("agent.model", "` + v + `")` + "\n"
+			src += `zemi.config.set("models.main", "` + v + `")` + "\n"
 		}
 		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if c.pick != "" {
-			if _, err := h.Settings.SetQuiet("agent.model", c.pick); err != nil {
+			if _, err := h.Settings.SetQuiet("models.main", c.pick); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := h.Settings.Get("agent.model"); got != c.want {
-			t.Errorf("%s: agent.model = %v, want %s", c.name, got, c.want)
+		if got, _ := h.Settings.Get("models.main"); got != c.want {
+			t.Errorf("%s: models.main = %v, want %s", c.name, got, c.want)
 		}
 	}
 }
@@ -342,8 +342,8 @@ func TestModelNamespace(t *testing.T) {
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 
 	runUser(t, r, `zemi.model.set("myllm/main")`)
-	if v, ok := h.Settings.Get("agent.model"); !ok || v != "myllm/main" {
-		t.Fatalf("agent.model=%v ok=%v", v, ok)
+	if v, ok := h.Settings.Get("models.main"); !ok || v != "myllm/main" {
+		t.Fatalf("models.main=%v ok=%v", v, ok)
 	}
 	runUser(t, r, `
 		local models = zemi.model.list()
@@ -896,7 +896,8 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
-// not agent.model, and so do compaction and subagents without a model.
+// not models.main, and so does compaction; a subagent without one takes the
+// main tier, which is the worker tier whatever the conversation runs on.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -918,8 +919,8 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 	if m, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
 		t.Fatalf("summary model %v, err %v, want the profile's", m, err)
 	}
-	if id := h.subagentModelID(AgentDef{}); id != "a/big" {
-		t.Fatalf("subagent model %q, want the profile's", id)
+	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
+		t.Fatalf("subagent model %q, want the main tier", id)
 	}
 }
 
