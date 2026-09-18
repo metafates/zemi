@@ -10,13 +10,10 @@ local HEADS = {
   thinking = { "°ᵒ", "ᵒ°" },
   working = { "•·", "·•" },
   rereading = { "·•", "•·" },
-  retracted = { "" },
+  retracted = { "??" },
   error = { "><" },
   done = { "^^" },
 }
----@type table<string, string>
-local HEAD_HL = { error = "AgentToolErr", done = "AgentToolOk" }
-
 --- The snail at the left of a plain rule of `room` cells.
 ---@param state "idle"|"thinking"|"working"|"rereading"|"retracted"|"error"|"done"
 ---@param frame integer ctx.frame
@@ -27,7 +24,7 @@ function M.rule(state, frame, room)
   local head = heads[frame % #heads + 1]
   return {
     { text = "@", hl = "Accent", copy = false },
-    { text = head, hl = HEAD_HL[state] or "Normal", copy = false },
+    { text = head, hl = "Normal", copy = false },
     { text = string.rep("─", math.max(room - 1 - zemi.ui.width(head), 0)), hl = "Rule", copy = false },
   }
 end

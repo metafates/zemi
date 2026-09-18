@@ -643,7 +643,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // and back while it compacts, its head pulled in while a prompt waits on the
 // user, a bow once the turn is over.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·•°ᵒ─^><" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·•°ᵒ─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -674,7 +674,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	// the open prompt says what answers it, so the rule retracts to the shell
 	// alone: no label, and no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
-	if r := row(1000); r != "@"+strings.Repeat("─", 77) {
+	if r := row(1000); r != "@??"+strings.Repeat("─", 75) {
 		t.Fatalf("the rule does not retract while the user is asked: %q", r)
 	}
 	app.permAsk = nil

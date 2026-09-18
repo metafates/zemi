@@ -1112,7 +1112,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   one on top, which gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot fixed in the left corner on a plain
   rule, the state in its eyes alone: swapping while the model thinks or
-  tools run, retracted while the user is asked, `^^` once the turn ends,
+  tools run, `??` while the user is asked, `^^` once the turn ends,
   `><` on an error; at the right end a shimmering
   label naming the current activity, elapsed
   time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
