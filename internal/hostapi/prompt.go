@@ -333,20 +333,28 @@ func (h *Host) environmentPrompt() string {
 	if dir := h.ensureScratch(); dir != "" {
 		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), scripts for the Lua tool. Reading and writing here never asks, even in plan mode.\n", dir)
 	}
-	if out, err := h.git(h.Dirs.ProjectDir, "status", "--short", "--branch"); err != nil {
-		b.WriteString("Git repository: no")
-	} else {
-		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-		if len(lines) > 21 {
-			lines = append(lines[:21], fmt.Sprintf("... and %d more", len(lines)-21))
-		}
-		b.WriteString("Git status at session start (may be outdated):\n" + strings.Join(lines, "\n"))
-	}
+	b.WriteString(h.gitStatus())
 	env = b.String()
 	ag.mu.Lock()
 	ag.env = env
 	ag.mu.Unlock()
 	return env
+}
+
+// gitStatusSection is the working tree listing for the environment prompt.
+// h.gitStatus memoizes it for the process and boot warms it in the
+// background: run from the send it would cost the first token whatever
+// git status costs in this repository.
+func (h *Host) gitStatusSection() string {
+	out, err := h.git(h.Dirs.ProjectDir, "status", "--short", "--branch")
+	if err != nil {
+		return "Git repository: no"
+	}
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) > 21 {
+		lines = append(lines[:21], fmt.Sprintf("... and %d more", len(lines)-21))
+	}
+	return "Git status at startup (may be outdated):\n" + strings.Join(lines, "\n")
 }
 
 // withDigest appends the session digest, pinned so provider prompt caches
