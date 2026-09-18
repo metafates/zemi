@@ -321,7 +321,8 @@ func TestWidgetSizes(t *testing.T) {
 	for _, w := range a.shownWidgets() {
 		got[w.ID] = [2]int{w.width, w.height}
 	}
-	want := map[string][2]int{"head": {mainW, 30}, "splash": {mainW, a.stage.Dy()}, "statusline.info": {mainW, 1}}
+	// the statusline lives in the composer frame's bottom rule, inside its borders
+	want := map[string][2]int{"head": {mainW, 30}, "splash": {mainW, a.stage.Dy()}, "statusline.info": {mainW - 4, 1}}
 	for id, size := range want {
 		if got[id] != size {
 			t.Errorf("%s renders at %v, want %v (main column %d of 120)", id, got[id], size, mainW)

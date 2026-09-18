@@ -14,6 +14,8 @@ local function theme(palette)
     Accent = { fg = "accent" },
     Dim = { fg = "dim" },
     Rule = { fg = "rule" },
+    -- the composer frame while the draft goes to the shell, not the model
+    RuleShell = { fg = "yellow" },
     Title = { fg = "accent", bold = true },
     Selected = { fg = "accent", bold = true },
     Button = { fg = "accent" },

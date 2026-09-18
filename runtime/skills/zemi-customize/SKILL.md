@@ -129,7 +129,7 @@ zemi.permission.mode.add("ask", {
 
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
-`splash`, `chat`, `working` (the activity row above the composer), `statusline.quit`,
+`splash`, `chat`, `working` (the mascot and turn status, on the composer frame's top rule), `statusline.quit`,
 `statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
 `statusline.learn`, `statusline.keys`, `statusline.scroll`, `statusline.info`. Regions: `header`,
 `chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
@@ -137,7 +137,9 @@ change; `/reload` forces it.
 
 Where things go is a layout tree, `defaultui/layout.lua` by default. `zemi.ui.layout.set`
 in `init.lua` replaces it whole (the types file has every field): boxes (`dir = "row"` or
-`"col"`, `sep`) hold a `region`, the one `composer`, a statusline `bar`, window `slot`s
+`"col"`, `sep`) hold a `region`, the one `composer` (with `frame = true` it draws in a
+square frame whose `top`, `left` and `right` rules hold regions, which is where the shipped
+layout puts the mascot and the statusline), a statusline `bar`, window `slot`s
 and `spacer`s, each sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with
 `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and
 toasts go. `floats` put a region over the tree. A scrolled region takes keys by id:
@@ -161,8 +163,7 @@ local layout = {
         { kind = "region", region = "header" },
         { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
         { kind = "windows", slot = "split" },
-        { kind = "region", region = "working" },
-        { kind = "composer" },
+        { kind = "composer", frame = true, top = "working" },
       } },
       { kind = "windows", slot = "vsplit" },
     } },

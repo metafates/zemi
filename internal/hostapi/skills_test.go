@@ -100,7 +100,7 @@ func TestSkillsQuarantineDefaults(t *testing.T) {
 }
 
 // TestSkillItemsShowTheBody: enabling a learned draft is the only review
-// it gets, so /skills shows the instructions and offers to open the file.
+// it gets, so /skills offers the instructions and the file itself.
 func TestSkillItemsShowTheBody(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
@@ -110,11 +110,9 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 		if m["text"] != "auto-learned" {
 			continue
 		}
-		if !strings.Contains(m["detail"].(string), "Body.") {
-			t.Fatalf("no body in the detail: %v", m["detail"])
-		}
-		if !strings.Contains(fmt.Sprint(m["actions"]), "skills open auto-learned") {
-			t.Fatalf("no open action: %v", m["actions"])
+		actions := fmt.Sprint(m["actions"])
+		if !strings.Contains(actions, "Body.") || !strings.Contains(actions, "skills open auto-learned") {
+			t.Fatalf("no read or open action: %v", m["actions"])
 		}
 		return
 	}

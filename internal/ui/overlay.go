@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -195,6 +196,17 @@ func (st *overlayState) enterVerb(idx int) string {
 	return ""
 }
 
+// actionKey is the key that acts on visible row n: the item's own hotkey,
+// and in a detail view, whose rows are actions, its position when it has
+// none, so every action reads as a button with a key.
+func (st *overlayState) actionKey(n int) string {
+	m, _ := st.o.Items[st.visible[n]].(map[string]any)
+	if k, _ := m["hotkey"].(string); k != "" || !st.back {
+		return k
+	}
+	return strconv.Itoa(n + 1)
+}
+
 // openDetail pushes the detail view of item idx: its detail text as the
 // body and its actions as the list, under the parent's origin so the badge
 // and the run gate stay the parent's.
@@ -290,11 +302,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), key) {
 		return nil
 	}
-	// a row's hotkey acts like enter on it; one printable character, so no
+	// a row's key acts like enter on it; one printable character, so no
 	// overlay can take esc or ctrl+c
-	if len([]rune(key)) == 1 {
-		if i := slices.IndexFunc(st.visible, func(i int) bool { m, _ := o.Items[i].(map[string]any); return m["hotkey"] == key }); i >= 0 {
-			st.selected, key = i, "enter"
+	for n := range st.visible {
+		if len([]rune(key)) == 1 && st.actionKey(n) == key {
+			st.selected, key = n, "enter"
+			break
 		}
 	}
 	switch key {
@@ -444,6 +457,18 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	var list [][]hostapi.Segment
 	var hints []string
 	switch {
+	case st.back && len(st.o.Items) > 0:
+		// a detail view's rows are actions: draw them as the prompts' buttons.
+		// NOTE: they do not scroll, which no detail view has needed (upgrade:
+		// page them like the list below).
+		choices := make([]promptChoice, 0, len(st.visible))
+		for n, i := range st.visible {
+			choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc})
+		}
+		list = choiceRows(choices, st.selected, boxInner(w))
+		if len(st.visible) > 0 {
+			hints = append(hints, "enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back"))
+		}
 	case len(st.o.Items) > 0:
 		items := make([]listItem, 0, len(st.visible))
 		for _, i := range st.visible {

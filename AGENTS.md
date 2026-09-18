@@ -476,7 +476,11 @@ not fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays
 centered window floats go. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
-layout does not draw.
+layout does not draw. A `composer` node with `frame` draws the square frame around the
+composer and puts the first line of the widgets in its `top`, `left` and `right` regions into
+the rules (`composerFrame`, ui/composer.go), which is where the shipped layout keeps the
+mascot and the statusline: agent state changes what a rule says, never how many rows the
+frame takes, so nothing above it reflows.
 
 ### Rewind, plan mode, prompts, composer bridge
 
@@ -586,9 +590,10 @@ no `/config` command, the agent edits config files directly. `Host.git` shells o
   run on the background worker); a click id with no widget is a Go statusline pill naming its
   command. Helpers that rebuild segments must copy those fields; only `dimRows` drops them,
   because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data: an item
-  with `detail` or `actions` pushes a detail view, `Body` is text above the items (markdown
-  with `BodyMD`), a menu keeps the height it opened with while a filter narrows it, and a
-  click outside closes it.
+  with `detail` or `actions` pushes a detail view, whose rows are actions and so draw as the
+  prompts' buttons keyed by `hotkey` or position (`actionKey`), `Body` is text above the
+  items (markdown with `BodyMD`), a menu keeps the height it opened with while a filter
+  narrows it, and a click outside closes it.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua
   jobs, MCP and LSP servers, git). A child runs in its own session: no controlling terminal
   (nothing can read the TUI's keys or hang on a password prompt) and its own process group,
@@ -601,7 +606,7 @@ no `/config` command, the agent edits config files directly. `Host.git` shells o
   `todos` and `recent` on first read (`widgetCtxTable`, `BenchmarkWidgetCtx`): keep new
   expensive fields lazy. A turn's `turnScope` context (host.go) covers compaction, the model
   and tools, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
-- **Widgets read UI flags, never Go-drawn text.** The working row and the quit, key sequence
+- **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key sequence
   and scroll flags are `defaultui/` widgets reading `hostapi.UIState`; a new flag goes into
   `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget cannot
   render at 30 fps is a segment `effect` the UI applies (`shimmer`). The terminal itself gets
