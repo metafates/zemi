@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -20,6 +21,7 @@ type composerState struct {
 	text   string
 	cursor int               // rune index, 0 <= cursor <= len(runes)
 	pastes map[string]string // paste token -> the text it stands for
+	pasteN int               // tokens handed out, so a number is never reused
 
 	history []string
 	histIdx int // len(history) = live draft
@@ -79,13 +81,24 @@ func (c *composerState) paste(s string) {
 	if c.pastes == nil {
 		c.pastes = map[string]string{}
 	}
+	c.prunePastes()
 	size := fmt.Sprintf("+%d lines", lines)
 	if lines == 1 {
 		size = fmt.Sprintf("%d chars", len([]rune(s)))
 	}
-	token := fmt.Sprintf("[Pasted text #%d %s]", len(c.pastes)+1, size)
+	c.pasteN++
+	token := fmt.Sprintf("[Pasted text #%d %s]", c.pasteN, size)
 	c.pastes[token] = s
 	c.insert(token)
+}
+
+// prunePastes drops the text of tokens nothing can name any more: the
+// draft and the undo stack are all that can bring one back.
+func (c *composerState) prunePastes() {
+	maps.DeleteFunc(c.pastes, func(token, _ string) bool {
+		return !strings.Contains(c.text, token) &&
+			!slices.ContainsFunc(c.undo, func(u composerSnap) bool { return strings.Contains(u.text, token) })
+	})
 }
 
 // expand swaps paste tokens in text for what was pasted, in one pass, so a

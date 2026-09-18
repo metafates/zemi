@@ -148,9 +148,11 @@ func (a *App) paletteRows() [][]hostapi.Segment {
 	return listRows(items, p.selected, &p.top, 8)
 }
 
-// clearComposer empties the draft and closes both popups.
+// clearComposer empties the draft and closes both popups. The paste map
+// stays: the undo stack still holds the tokens of the draft being cleared,
+// and without their text a ctrl+z sends the placeholder to the model.
 func (a *App) clearComposer() {
-	a.composer.text, a.composer.cursor, a.composer.pastes = "", 0, nil
+	a.composer.text, a.composer.cursor = "", 0
 	a.palette.close()
 	a.completion.close()
 }

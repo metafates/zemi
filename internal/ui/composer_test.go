@@ -427,3 +427,16 @@ func TestPasteLineEndings(t *testing.T) {
 		t.Fatalf("composer text %q", app.composer.text)
 	}
 }
+
+// TestPasteSurvivesSubmit: ctrl+z after a submit brings the draft back, so
+// the tokens in it must still expand to what was pasted.
+func TestPasteSurvivesSubmit(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	big := strings.Repeat("line\n", 40) + "end"
+	app.Update(tea.PasteMsg{Content: big})
+	app.composerKey("enter", tea.KeyPressMsg{})
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if got := app.composer.expand(app.composer.text); got != big {
+		t.Fatalf("restored draft expands to %q", got)
+	}
+}
