@@ -460,12 +460,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	}
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
-		if strings.TrimSpace(rowText(lines[i])) == "" {
+		if strings.TrimSpace(plainSegs(lines[i])) == "" {
 			continue
 		}
 		st.anchorOff = i - st.top
 		for j := i; j < len(lines) && j < i+anchorRows; j++ {
-			st.anchor = append(st.anchor, rowText(lines[j]))
+			st.anchor = append(st.anchor, plainSegs(lines[j]))
 		}
 		break
 	}
@@ -508,7 +508,7 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 		return false
 	}
 	for k, s := range want {
-		if rowText(lines[i+k]) != s {
+		if plainSegs(lines[i+k]) != s {
 			return false
 		}
 	}
@@ -520,15 +520,6 @@ func abs(n int) int {
 		return -n
 	}
 	return n
-}
-
-// rowText is a painted row's plain text, what the anchor compares.
-func rowText(row []hostapi.Segment) string {
-	var b strings.Builder
-	for _, s := range row {
-		b.WriteString(s.Text)
-	}
-	return b.String()
 }
 
 // scrollOf is a scrolled region's state, a "bottom" one following its tail
