@@ -245,7 +245,13 @@ func (p *Pipeline) Check(req Request) Verdict {
 // mode settled runs confined, rule-allowed and user-approved ones as they
 // are. nil = unconfined.
 func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
-	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || !strings.HasPrefix(v.DecidedBy, "mode:") {
+	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || req.Unsandboxed {
+		return nil
+	}
+	// network: true keeps the sandbox, which is what the model and the user
+	// were told, so it stays confined whoever allowed it; no mode settles it,
+	// so the verdict is always the user's
+	if !strings.HasPrefix(v.DecidedBy, "mode:") && !req.Network {
 		return nil
 	}
 	pol := p.Sandbox()

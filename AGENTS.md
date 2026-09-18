@@ -263,7 +263,8 @@ auto mode sends `tool.bash` asks it cannot settle straight to the user ("not set
 sandbox"). While a backend is live, bash, `job_start` and `window` take two escapes,
 `network: true` (`Request.Network`) and `sandbox: false` (`Request.Unsandboxed`): mode rules
 and non-yolo bases settle neither, and each asks the user, with "needs the network, staying
-sandboxed" and "run outside the sandbox". Network keeps every file rule and only adds sockets
+sandboxed" and "run outside the sandbox". Network keeps every file rule and only adds sockets, whichever verdict allowed the run
+(`SandboxFor`); only `sandbox: false` gives the sandbox up
 (`Policy.Network`: seatbelt writes `(allow network*)`, the namespace backend leaves
 `CLONE_NEWNET` out so the command shares zemi's netns, the seccomp-only one permits the inet
 families), so it is what a dependency fetch needs; `sandbox: false` drops the whole policy,

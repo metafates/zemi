@@ -1499,7 +1499,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   While a backend is live, bash, `job_start` and `window` take two escapes,
   fixed per process so the prompt cache holds. `network: true`
   (`Request.Network`) keeps the sandbox and adds sockets (`Policy.Network`),
-  which is all a dependency fetch or a `gh` call needs; `sandbox: false`
+  which is all a dependency fetch or a `gh` call needs, and it stays confined
+  whichever verdict allowed it, the user's ask included; `sandbox: false`
   (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
   Neither is settled by mode rules or by a base other than `yolo`: they go to
   the user with the reason "needs the network, staying sandboxed" or "run
