@@ -122,8 +122,12 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- })
 
 -- Permissions: deny and ask rules come from any config, allow rules only
--- from this file.
--- zemi.permission.rule.add({ subject = "tool.bash", pattern = "git push *", decision = "ask" })
+-- from this file. Every rule carries an argument it must catch, checked
+-- here, so a pattern that matches nothing you meant fails at startup.
+-- zemi.permission.rule.add({
+--   subject = "tool.bash", pattern = "git push *", decision = "ask",
+--   match = "git push origin main",
+-- })
 
 -- Editing this file: zemi ships type annotations for the whole zemi.* API
 -- and a .luarc.json beside this file, so a lua-language-server gives
