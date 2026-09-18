@@ -776,6 +776,10 @@ type Segment struct {
 // it and returns sanitized segment lines (DESIGN §6.6, §8).
 func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) ([][]Segment, error) {
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		// a frame queued before a reload holds the old generation's function
+		if w.Gen != h.currentGen() {
+			return nil, lua.ErrReloaded
+		}
 		// The purity guard is raised on the interpreter goroutine, only
 		// while render runs: raised before Do, it also refused Lua that ran
 		// while this render merely waited in the queue (boot code behind
