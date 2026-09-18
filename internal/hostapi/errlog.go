@@ -6,6 +6,7 @@ package hostapi
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -138,7 +139,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		items = append(items, map[string]any{
 			"text":    e.source,
-			"desc":    at + " · " + e.msg,
+			"desc":    at + " · " + ShortChunk(e.msg),
 			"detail":  at + "\n" + e.msg,
 			"actions": actions,
 		})
@@ -146,3 +147,10 @@ func (h *Host) OpenErrors(args string) error {
 	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No errors since zemi started."})
 	return nil
 }
+
+// chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:").
+var chunkPath = regexp.MustCompile(`@\w+:/\S*/([^/:\s]+):`)
+
+// ShortChunk collapses chunk names to the file name, so a one-line error
+// says what went wrong instead of where the file lives.
+func ShortChunk(s string) string { return chunkPath.ReplaceAllString(s, "$1:") }
