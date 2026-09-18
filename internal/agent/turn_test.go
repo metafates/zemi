@@ -114,7 +114,7 @@ func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Unlock()
 }
 
-func (h *recHooks) ToolCallEnd(id, name string, ok bool, output string) {
+func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "end:"+name)
 	h.mu.Unlock()

@@ -455,17 +455,18 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	s.h.refreshViewed(run)
 }
 
-func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out string) {
+func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) {
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		run.tr[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
 		run.tr[i].Output = shortOutput(out)
+		run.tr[i].Diff = diff
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 	// memoryAuto reads the child's tools: a web agent's report is outside text
-	s.h.recordToolCall(s.sid, id, name, "", ok)
+	s.h.recordToolCall(s.sid, id, name, diff, ok)
 }
 
 func (s *subagentHooks) StepStart() {

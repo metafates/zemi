@@ -68,7 +68,7 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 				{"config", "filter.x.clean", "touch " + marker + "; cat"},
 				{"config", "filter.x.required", "true"}, // git lfs install --local
 			} {
-				if out, err := h.runGit(dir, args...); err != nil {
+				if out, err := h.runGit(dir, nil, args...); err != nil {
 					t.Fatalf("git %v: %v %s", args, err, out)
 				}
 			}

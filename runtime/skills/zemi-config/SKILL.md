@@ -27,7 +27,8 @@ Rules when editing:
   start; `a` in a permission prompt allows until zemi exits. A leftover `permissions.lua`
   is not read.
 - File writes ask first and show the diff, and write, edit and multiedit
-  refuse a file the model has not read or that changed since it read it. zemi reloads when
+  refuse a file the model has not read or that changed since it read it, and a symbolic
+  link (edit its target). A bash row shows a diff of the files the command changed. zemi reloads when
   config files change; `/reload` forces it.
 - Never write API keys into files: read them with `zemi.env.get("NAME")`.
 

@@ -186,6 +186,10 @@ type Pipeline struct {
 	// Guard runs before a sandboxed command starts; the func it returns runs
 	// once the command exited, and its text ends the result. nil = none.
 	Guard func(sandbox.Policy) func() string
+	// Changes runs before a bash command starts in dir; the func it returns
+	// runs once it ended and reports the files it changed: a line for the
+	// model and a diff for the row (the result's Metadata). nil = none.
+	Changes func(dir string) func() (note, diff string)
 }
 
 // LSPSession is a language server ready for one file's queries.

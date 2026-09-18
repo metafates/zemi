@@ -22,7 +22,7 @@ type StreamHooks interface {
 	// reports no input start only calls ToolCallStart.
 	ToolCallPending(id, name string)
 	ToolCallStart(id, name, input string)
-	ToolCallEnd(id, name string, ok bool, output string)
+	ToolCallEnd(id, name string, ok bool, output, diff string)
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
 	StepStart()
@@ -203,7 +203,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnToolResult: func(res fantasy.ToolResultContent) error {
-			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result))
+			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},
 		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },

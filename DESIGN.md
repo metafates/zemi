@@ -1578,6 +1578,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   path resolved once before the gate and open exactly that path, walking
   it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
   sandboxed command swaps for a symlink after the check fails the open.
+  `write`, `edit` and `multiedit` refuse a path whose last component is a
+  symbolic link and name the target to edit instead.
   Residual race: `zemi.fs` opens the checked path plainly, so a component
   swapped between check and open is not caught there (the Linux endgame
   is `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment

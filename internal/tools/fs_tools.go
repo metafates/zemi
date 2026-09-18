@@ -68,9 +68,21 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		return after()
 	}
+	changes := func() (string, string) { return "", "" }
+	if p != nil && p.Changes != nil {
+		changes = p.Changes(c.Dir)
+	}
+	changed := func(res fantasy.ToolResponse) (fantasy.ToolResponse, error) {
+		note, diff := changes()
+		if note != "" {
+			res.Content += "\n" + note
+		}
+		res.Metadata = diff
+		return res, nil
+	}
 	if err = proc.Start(c); err != nil {
 		finish()
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return changed(fantasy.NewTextErrorResponse(err.Error()))
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(c) }()
@@ -102,13 +114,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		if p != nil && p.Jobs != nil {
 			id := p.Jobs.Adopt(cmd, c, buf, written, wait, after)
 			fmt.Fprintf(&b, "still running after %s, so it moved to the background as %s: read the rest with job_read, stop it with job_kill.", timeout, id)
-			return fantasy.NewTextResponse(b.String()), nil
+			return changed(fantasy.NewTextResponse(b.String()))
 		}
 		proc.Kill(c)
 		<-wait
 		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
 		b.WriteString(finish())
-		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
+		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
 	note := finish()
 	if err != nil {
@@ -124,13 +136,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 		}
 		b.WriteString(note)
-		return fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true}, nil
+		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
 	if b.Len() == 0 {
 		b.WriteString("(no output)")
 	}
 	b.WriteString(note)
-	return fantasy.NewTextResponse(b.String()), nil
+	return changed(fantasy.NewTextResponse(b.String()))
 }
 
 // cmdMaxOut is what a command's output may take in a tool result; the rest

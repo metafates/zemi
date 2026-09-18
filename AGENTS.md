@@ -150,11 +150,15 @@ out files touched after the last message. `tool.Run` runs the same check before 
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 (`perm.RealPath`) before the gate; the tools open exactly that path through `openGated` (an
 `openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a
-symlink between check and open. `glob` and `grep` are gated on their root only, so neither
+symlink between check and open. The three writers refuse a path whose last component is a
+symbolic link and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
 shows a hit a deny or ask `fs.read` rule covers, and grep hides secret-shaped files. Output
 too long for a result is cut head and tail and saved whole to the scratchpad (`tools.Spill`).
 A bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
-(which is why it is not bound to the turn's context; an interrupt still kills it). `read`
+(which is why it is not bound to the turn's context; an interrupt still kills it). A bash
+row shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of
+the repository before and after, written through a warm temp index so the user's index is
+never touched, diffed into the result's `Metadata`; the model gets one line of paths. `read`
 carries the nearest instruction file not already in the prompt, once per session, so a
 monorepo package's own AGENTS.md reaches the model.
 
@@ -328,9 +332,9 @@ CI, `make luals` runs only where lua-language-server is installed.
   `/compact` and rewind claim `active` and a `turnScope` together for the same reason.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
-  anything that does not decode as a fantasy message, and reads a file tool's diff back from
-  the telemetry row that carries it (computed against the file as it was, so a resume could
-  not rebuild it).
+  anything that does not decode as a fantasy message, and reads a file tool's or a bash call's diff back
+  from the telemetry row that carries it (computed against the files as they were, so a
+  resume could not rebuild it).
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `e` in the
   review screen opens the raw text through `EditFile` after the other marks apply and
   re-runs intake as user origin, keeping the id.
