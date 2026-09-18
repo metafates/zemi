@@ -864,6 +864,16 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 	return err
 }
 
+// UserHL drops a "Host:*" style from a Lua segment: those are the fixed
+// Go chrome styles (internal/ui/hooks.go), so a widget or overlay row
+// could otherwise paint itself as a permission prompt.
+func UserHL(hl string) string {
+	if strings.HasPrefix(hl, "Host:") {
+		return ""
+	}
+	return hl
+}
+
 func convertSegments(v any, widget string) ([][]Segment, error) {
 	rows, ok := v.([]any)
 	if m, isMap := v.(map[string]any); isMap && len(m) == 0 {
@@ -889,7 +899,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 					seg.Text = sanitize.String(t)
 				}
 				if hl, ok := c["hl"].(string); ok {
-					seg.HL = hl
+					seg.HL = UserHL(hl)
 				}
 				if e, ok := c["effect"].(string); ok {
 					seg.Effect = e

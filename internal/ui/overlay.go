@@ -138,7 +138,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		if i < len(o.ItemText) && o.ItemText[i] != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
 			for _, seg := range o.ItemText[i] {
-				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: seg.HL})
+				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
 			it.label = plainSegs(it.segs)
 		}

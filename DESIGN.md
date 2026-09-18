@@ -932,7 +932,8 @@ UI extensibility contract:
   keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
   (toward black on a lighter fill) and `replace` draws the group alone. A theme
   without the group underlines. The trust and permission prompts' choices keep
-  the fixed `Host:Hover` (§8). Go resolves to the terminal's colorprofile
+  the fixed `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
+  one draws unstyled and cannot forge prompt chrome. Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed). `zemi.ui.hl_get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
   (same or less trusted origin), shipped ones included. `zemi.ui.hl` and

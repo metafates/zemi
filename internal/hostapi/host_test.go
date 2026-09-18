@@ -361,7 +361,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		zemi.ui.widget.register({
 			id = "clean", region = "header",
 			render = function(ctx)
-				return {{{text = "a\27[31mb", hl = "Comment"}}}
+				return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
 			end,
 		})
 	`)
@@ -390,8 +390,11 @@ func TestRenderRefusesMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
-	if len(lines) != 1 || len(lines[0]) != 1 {
+	if len(lines) != 1 || len(lines[0]) != 2 {
 		t.Fatalf("clean render shape = %#v", lines)
+	}
+	if hl := lines[0][1].HL; hl != "" {
+		t.Fatalf("Go chrome hl survived Lua: %q", hl)
 	}
 	seg := lines[0][0]
 	if seg.Text != "ab" || strings.ContainsRune(seg.Text, '\x1b') {
