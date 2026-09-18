@@ -530,7 +530,7 @@ body { margin: 0; background: var(--paper); color: var(--ink);
   font: 15px/1.65 "Fira Code", "DejaVu Sans Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-ligatures: none; }
 .wrap { padding-inline: clamp(16px, 9vw, 160px); }
 header, section { padding-block: 2.4rem; }
-h1 { font-size: 1rem; font-weight: 700; margin: 0; }
+h1, h2 { font-size: 1rem; font-weight: 700; margin: 0; }
 h1 b { color: var(--shell); }
 hr { border: 0; border-top: 1px solid var(--ink); margin: 0; }
 p { max-width: 72ch; margin: 0 0 1em; }
@@ -575,7 +575,7 @@ pre b { color: var(--tshell); font-weight: 400; }
 <hr>
 <section>
 {{if .OK}}
-  <h1>You're signed in</h1>
+  <h2>You're signed in</h2>
   <p class="note" id="foot">You can close this tab and go back to your terminal.</p>
   <script>
     let n = 3; const foot = document.getElementById("foot");
@@ -584,7 +584,7 @@ pre b { color: var(--tshell); font-weight: 400; }
     tick();
   </script>
 {{else}}
-  <h1>Sign-in didn't finish</h1>
+  <h2>Sign-in didn't finish</h2>
   <p class="note">Go back to zemi and open /mcp to try again.</p>
 {{end}}
 </section>
