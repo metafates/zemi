@@ -265,6 +265,18 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	})
 }
 
+// UserMessages returns the project's newest user messages, newest first,
+// for the composer history: what the user typed survives the session it
+// was typed in.
+func (s *DB) UserMessages(limit int) ([]*Message, error) {
+	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
+		FROM messages WHERE role = 'user' ORDER BY rowid DESC LIMIT ?`, limit)
+	return collect(rows, err, func(r scanner) (*Message, error) {
+		var m Message
+		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
+	})
+}
+
 // SessionPreview is what the session picker shows besides the title: how
 // many messages a session holds and the parts of its first user message.
 type SessionPreview struct {

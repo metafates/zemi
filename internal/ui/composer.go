@@ -297,27 +297,23 @@ func (c *composerState) pushHistory(text string, cap int) {
 	c.histIdx = len(c.history)
 }
 
-// seedHistory adds the messages stored for the open session (or, before the
-// first send, the latest one) to the history, so a restart or a resume does
-// not lose them. It runs when a recall starts, once per session.
-// NOTE: reads the messages on the key loop; one session is small enough
-// (upgrade: load it in the background when the session opens).
+// seedHistory adds the project's recently typed messages to the history,
+// so a restart or a resume does not lose them. It runs once, when a recall
+// starts.
+// NOTE: reads them on the key loop; one capped query is small enough
+// (upgrade: load it in the background at boot).
 func (a *App) seedHistory() {
-	sid := a.host.AgentSessionID()
-	if a.histLoaded && sid == a.histSID {
+	n := a.historySize()
+	if a.histLoaded || n <= 0 {
 		return
 	}
-	a.histLoaded, a.histSID = true, sid
-	stored := a.host.InputHistory(sid)
+	a.histLoaded = true
+	stored := a.host.InputHistory(n)
 	c := &a.composer
-	// the previous session's messages leave with it; what the user typed in
-	// this run stays recallable
-	c.history = slices.DeleteFunc(c.history, func(s string) bool {
-		return slices.Contains(a.histSeed, s) || slices.Contains(stored, s)
-	})
-	a.histSeed = stored
+	// what this run typed is stored too; keep one copy, in store order
+	c.history = slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) })
 	c.history = append(c.history, stored...)
-	if n := a.historySize(); n > 0 && len(c.history) > n {
+	if len(c.history) > n {
 		c.history = c.history[len(c.history)-n:]
 	}
 	c.histIdx = len(c.history)

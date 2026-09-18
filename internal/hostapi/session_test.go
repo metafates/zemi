@@ -62,8 +62,8 @@ func TestSessionLifecycle(t *testing.T) {
 	if n := m.lastPrompt.Load(); n != 4 {
 		t.Fatalf("resumed prompt has %d messages, want 4", n)
 	}
-	// The composer history of a resumed session is what was typed in it.
-	if got := h.InputHistory(first); len(got) != 2 || got[0] != "one" || got[1] != "three" {
+	// The composer history spans sessions, oldest first.
+	if got := h.InputHistory(10); len(got) != 3 || got[0] != "one" || got[1] != "two" || got[2] != "three" {
 		t.Fatalf("input history = %q", got)
 	}
 

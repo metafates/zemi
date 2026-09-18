@@ -50,10 +50,7 @@ type App struct {
 
 	composer composerState
 
-	// the session whose stored messages seeded the composer history
-	histSID    string
-	histLoaded bool
-	histSeed   []string // the session's own messages, dropped when it changes
+	histLoaded bool // the stored messages already seeded the composer history
 
 	// Scrolled regions by layout node id (DESIGN §8 scrollback); scrollDef
 	// is the one scroll actions without an id and the wheel outside every

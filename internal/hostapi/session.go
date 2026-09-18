@@ -158,28 +158,22 @@ func (h *Host) DeleteSession(id string) error {
 	return nil
 }
 
-// InputHistory returns the messages typed in a session, oldest first, for
-// the composer history; "" reads the latest stored session.
-func (h *Host) InputHistory(sid string) []string {
-	if h.DB == nil {
+// InputHistory returns the last limit messages the user typed in this
+// project, oldest first, for the composer history. Every session counts:
+// the prompt typed before /new is still the one worth recalling.
+func (h *Host) InputHistory(limit int) []string {
+	if h.DB == nil || limit <= 0 {
 		return nil
 	}
-	if sid == "" {
-		list, err := h.DB.ListSessions(1)
-		if err != nil || len(list) == 0 {
-			return nil
-		}
-		sid = list[0].ID
-	}
-	rows, err := h.DB.Messages(sid)
+	rows, err := h.DB.UserMessages(limit)
 	if err != nil {
 		return nil
 	}
+	slices.Reverse(rows)
 	var out []string
-	_, tr := historyFrom(rows)
-	for _, m := range tr {
-		if m.Role == "user" && m.Kind == "" && strings.TrimSpace(m.Text) != "" {
-			out = append(out, m.Text)
+	for _, row := range rows {
+		if text, ok := userText(row); ok {
+			out = append(out, text)
 		}
 	}
 	return out
