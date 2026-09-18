@@ -105,15 +105,16 @@ func run(args []string) int {
 
 	// reload is set before boot starts; /trust calls it after boot
 	var reload func()
+	soft := func(s lua.BootStep) lua.BootStep { return softStep(host, app == nil, s) }
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
 		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
 		lua.RequireStep("zemi.defaultui"),
-		softStep(host, app == nil, trust.step()),
-		softStep(host, app == nil, pluginsStep(dirs)),
-		softStep(host, app == nil, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
-		softStep(host, app == nil, host.SkillsAuthoredHooksStep()),
-		softStep(host, app == nil, projectInitStep(host, dirs)),
+		soft(trust.step()),
+		soft(pluginsStep(dirs)),
+		soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+		soft(host.SkillsAuthoredHooksStep()),
+		soft(projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
 		readyStep(host, app != nil),
 		host.SkillsLearnedHooksStep(),
