@@ -471,6 +471,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	if ag.sessionID == s.run.parent { // a background run may outlive its session
 		ag.sessIn += billedInput(usage)
 		ag.sessOut += usage.OutputTokens
+		ag.cacheRead, ag.cacheBilled = ag.cacheRead+usage.CacheReadTokens, ag.cacheBilled+billedInput(usage)
 		ag.sessCost += cost
 	}
 	ag.mu.Unlock()

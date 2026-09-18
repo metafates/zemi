@@ -87,11 +87,14 @@ type agentHost struct {
 	// every turn's counts, lastIn is the context the latest step used
 	// (agent.ContextUsed, the current context estimate). ctxWin: seeded
 	// override (tests); 0 resolves via contextWindow.
-	sessIn   int64
-	sessOut  int64
-	lastIn   int64
-	ctxWin   int64
-	sessCost float64 // USD, from model spec prices
+	sessIn  int64
+	sessOut int64
+	// cache reads and the input billed with them, for the /usage share
+	cacheRead   int64
+	cacheBilled int64
+	lastIn      int64
+	ctxWin      int64
+	sessCost    float64 // USD, from model spec prices
 
 	// readMu guards reads and instr, the per-session file bookkeeping the
 	// tools pipeline carries (what the model has read, which instruction
@@ -737,6 +740,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.sessCost += cost
 	ag.sessIn += billedInput(usage)
 	ag.sessOut += usage.OutputTokens
+	ag.cacheRead, ag.cacheBilled = ag.cacheRead+usage.CacheReadTokens, ag.cacheBilled+billedInput(usage)
 	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
 		In:        usage.InputTokens,
@@ -1014,6 +1018,11 @@ type StreamSnapshot struct {
 	LastIn      int64
 	CtxWindow   int64
 	SessionCost float64
+	// prompt cache tokens read, over the input billed alongside them. Both
+	// count this process only (a resumed session's earlier turns are not in
+	// the store), so the share stays honest.
+	CacheRead   int64
+	CacheBilled int64
 }
 
 func (h *Host) AgentStream() StreamSnapshot {
@@ -1033,6 +1042,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 		Profile: ag.defProf,
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
+		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
 		CtxWindow: ag.ctxWin,
 	}
 	out.Model = ag.modelSeed

@@ -276,7 +276,13 @@ func (h *Host) OpenUsage() error {
 		}
 		return fmt.Sprintf("%-12s %6s in  %6s out  %s  $%.2f", label, fmtTok(in), fmtTok(out), count, cost)
 	}
-	lines := []string{row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)}
+	sess := row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)
+	// a broken cache prefix (a per-turn system section, a model switch) has
+	// no other symptom than the bill
+	if s.CacheBilled > 0 {
+		sess += fmt.Sprintf("  %d%% cached", s.CacheRead*100/s.CacheBilled)
+	}
+	lines := []string{sess}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		lines = append(lines, fmt.Sprintf("%-12s %6s every request", "prompt", fmtTok(total)))
 		var named []string
