@@ -402,3 +402,25 @@ func TestTextTailFollows(t *testing.T) {
 		t.Fatalf("body is %d bytes, valid=%v", len(text), utf8.ValidString(text))
 	}
 }
+
+// TestCloseDoesNotWait: a program that ignores SIGHUP is killed on a
+// goroutine, so the UI thread that closed the window keeps drawing.
+func TestCloseDoesNotWait(t *testing.T) {
+	m := &Manager{}
+	w, err := m.Open(Spec{Cmd: "trap '' HUP; sleep 30", Env: os.Environ(), Cols: 20, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if !m.Close(w.ID) {
+		t.Fatal("close")
+	}
+	if took := time.Since(start); took > 100*time.Millisecond {
+		t.Fatalf("close blocked for %s", took)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	if err := w.Wait(ctx); err != nil {
+		t.Fatalf("the program outlived its window: %v", err)
+	}
+}

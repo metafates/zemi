@@ -622,17 +622,25 @@ func (w *Window) kill() {
 		}
 		if !w.Exited() {
 			proc.Hangup(w.cmd)
-			select {
-			case <-w.done:
-			case <-time.After(300 * time.Millisecond):
-				proc.Kill(w.cmd)
-			}
+			// the grace period waits off the caller's goroutine: a close
+			// comes from the UI one, which has frames to draw meanwhile
+			go func() {
+				select {
+				case <-w.done:
+				case <-time.After(300 * time.Millisecond):
+					proc.Kill(w.cmd)
+				}
+				w.closeInput()
+			}()
+			return
 		}
-		// end replyLoop by closing the input pipe: Emulator.Close sets a flag
-		// that Emulator.Read checks without a lock
-		_ = w.term.InputPipe().(io.Closer).Close()
+		w.closeInput()
 	})
 }
+
+// closeInput ends replyLoop: Emulator.Close sets a flag that Emulator.Read
+// checks without a lock.
+func (w *Window) closeInput() { _ = w.term.InputPipe().(io.Closer).Close() }
 
 // Layout is a snapshot of where the window shows.
 func (w *Window) Layout() Layout {
