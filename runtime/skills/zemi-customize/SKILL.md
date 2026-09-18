@@ -61,7 +61,9 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 `-`); `model: provider/model` pins a configured model, `model: inherit` or no model uses
 `agent.subagent_model` when set and the session model otherwise. The `agent` tool's `model`
 field and a workflow's `agent(prompt, { model = ... })` override it per run. `tools` limits what it may use
-(omit for everything but agent, workflow, todos, question, plan, open_in_editor and Lua). The model sees the description
+(omit for everything but agent, workflow, todos, question, plan, open_in_editor and Lua);
+a `-name` entry removes one instead, so `tools: -bash` keeps the rest, later releases
+included. A name nothing answers to fails the agent. The model sees the description
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
 lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, memory_search,
 skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on `agent.small_model`
