@@ -158,7 +158,7 @@ Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lu
 invariants: a rewritten input **re-enters at the permission gate** (per-run pipeline copy
 with `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); ask
 with no overlay available fails closed; a denied ask's result says who decided and the reason
-the asker gave (`Asker` returns it: "denied by the user: run outside the sandbox"); errors become tool-error responses, not panics.
+the asker gave (`Asker` returns it: "denied by the user (it asked because run outside the sandbox)"); errors become tool-error responses, not panics.
 Host-implemented tools (`agent`, `workflow`, `window`, `Lua`, MCP and Lua tools) run
 `tool.pre` through `preCheck`, which refuses a rewrite with an error result.
 A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`, see
