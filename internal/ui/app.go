@@ -35,6 +35,8 @@ import (
 
 const (
 	frameInterval = time.Second / 30
+	frameMS       = 500             // one animation tick: the mascot's cadence
+	doneLinger    = 3 * time.Second // how long the mascot bows after a turn
 	toastTTL      = 4 * time.Second
 	hookQueueSize = 64
 	chatWheelStep = 3
@@ -103,7 +105,9 @@ type App struct {
 	frameGen   int64
 	timeStr    string
 	activeBump time.Time
-	lastState  hostapi.UIState  // what the widgets last rendered with, pulse aside
+	turnActive bool             // what onFrame last saw of the agent
+	turnEnd    time.Time        // when it last stopped, so the mascot can bow
+	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	focused    bool             // terminal focus (true until the terminal reports a blur)
@@ -464,10 +468,14 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
-	// widgets read these flags, so a change re-renders them; the pulse
-	// alone does not, it only matters while a turn bumps the frame anyway
+	if act := a.host.AgentActive(); act != a.turnActive {
+		a.turnActive, a.turnEnd = act, now
+	}
+	// widgets read these flags, so a change re-renders them; the animation
+	// tick alone does not, it only matters while a turn bumps the frame
+	// anyway, and Done turning on and off bumps at both ends by itself
 	st := a.uiState()
-	if st.Pulse = false; st != a.lastState {
+	if st.Frame = 0; st != a.lastState {
 		a.lastState = st
 		a.frameGen++
 	}
@@ -483,7 +491,7 @@ func (a *App) onFrame() tea.Cmd {
 
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
-		Time: a.timeStr, Pulse: a.pulse(),
+		Time: a.timeStr, Frame: a.frame(), Done: !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger,
 		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
 	}
@@ -499,10 +507,13 @@ func (a *App) uiState() hostapi.UIState {
 	return st
 }
 
-// pulse is the 600ms blink phase shared by the working row and running
-// tool markers; always false with animations off.
-func (a *App) pulse() bool {
-	return a.host.Settings.Bool("ui.animations") && a.now().UnixMilli()/600%2 == 1
+// frame is the animation tick every widget animates on: the mascot's own
+// 500ms cadence, blinking markers included. Always 0 with animations off.
+func (a *App) frame() int {
+	if !a.host.Settings.Bool("ui.animations") {
+		return 0
+	}
+	return int(a.now().UnixMilli() / frameMS)
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {

@@ -45,7 +45,7 @@ func TestGoldenOverlayDetail(t *testing.T) {
 	for app.Pump() {
 	}
 	app.renderSync(t)
-	boxRow := func() string { return regexp.MustCompile(`╭.*╮`).FindString(ansi.Strip(app.Frame())) }
+	boxRow := func() string { return regexp.MustCompile(`╭ .*╮`).FindString(ansi.Strip(app.Frame())) }
 	list := boxRow()
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.renderSync(t)
@@ -63,7 +63,7 @@ func TestGoldenOverlayDetail(t *testing.T) {
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Count(frame, "╭") != 1 {
+	if frame := ansi.Strip(app.Frame()); strings.Count(frame, "╭ ") != 1 {
 		t.Fatalf("the list shows around its detail view:\n%s", frame)
 	}
 }
@@ -82,7 +82,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 	boxWidth := func() int {
 		app.renderSync(t)
 		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-			if strings.Contains(row, "╭") {
+			if strings.Contains(row, "╭ ") {
 				return ansi.StringWidth(strings.TrimSpace(row))
 			}
 		}

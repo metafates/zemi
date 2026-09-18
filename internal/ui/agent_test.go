@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -608,8 +609,38 @@ func TestWorkingRowRetry(t *testing.T) {
 		t.Fatalf("retry row missing:\n%s", frame)
 	}
 	// the label shimmers: every rune gets its own color
-	if row := app.renderSegs(app.widgetLines("working")[0][1:2], 80); strings.Count(row, "\x1b[") < len("Retrying") {
+	segs := app.widgetLines("working")[0]
+	i := slices.IndexFunc(segs, func(s hostapi.Segment) bool { return s.Effect == "shimmer" })
+	if i < 0 {
+		t.Fatalf("no shimmering label on the working row: %v", segs)
+	}
+	if row := app.renderSegs(segs[i:i+1], 80); strings.Count(row, "\x1b[") < len("Retrying") {
 		t.Fatalf("label does not shimmer: %q", row)
+	}
+}
+
+// TestWorkingRowMascot: the snail walks while the turn runs, pulls its head
+// in while a prompt waits on the user, and bows once the turn is over.
+func TestWorkingRowMascot(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
+	row := func(ms int64) string {
+		app.now = func() time.Time { return time.UnixMilli(ms) }
+		app.renderSync(t)
+		return ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 80))
+	}
+	if a, b := row(0), row(1500); !strings.HasPrefix(a, "@··") || !strings.HasPrefix(b, "~~~@··") {
+		t.Fatalf("the snail does not walk: %q then %q", a, b)
+	}
+	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
+	if r := row(1500); !strings.HasPrefix(r, "@   ") {
+		t.Fatalf("the head stays out while the user is asked: %q", r)
+	}
+	app.permAsk = nil
+	host.SeedStream(hostapi.StreamSnapshot{})
+	app.turnEnd = time.UnixMilli(0)
+	if r := row(500); !strings.HasPrefix(r, "@·· ✓") {
+		t.Fatalf("no done frame after the turn: %q", r)
 	}
 }
 

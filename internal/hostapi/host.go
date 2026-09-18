@@ -999,8 +999,9 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
 	Time  string
-	Pulse bool // shared blink phase for running markers
+	Frame int // 500ms animation tick, the mascot's cadence; 0 with ui.animations off
 
+	Done       bool   // a turn ended a moment ago, so the mascot can bow
 	QuitArmed  bool   // a second ctrl+c quits
 	KeySeq     string // keys of a bound sequence typed so far
 	RowsBelow  int    // transcript rows under a scrolled-up viewport
@@ -1028,7 +1029,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb = L.NewTable()
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
-	tb.RawSetString("pulse", glua.LBool(state.Pulse))
+	tb.RawSetString("frame", glua.LNumber(state.Frame))
+	tb.RawSetString("done", glua.LBool(state.Done))
 	tb.RawSetString("height", glua.LNumber(height))
 	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
 	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
@@ -1389,7 +1391,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.48.0"))
+	api.RawSetString("version", glua.LString("0.49.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

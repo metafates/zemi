@@ -683,7 +683,8 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
----@field pulse boolean The shared 600 ms blink phase; always false with animations off.
+---@field frame integer The shared animation tick: one step every 500 ms, the mascot's cadence. Always 0 with animations off, which leaves every animation on its first frame.
+---@field done boolean A turn ended a moment ago, so the mascot can show its done frame while the working row is otherwise gone.
 ---@field reflecting boolean
 ---@field pending_memory integer
 ---@field agents_running integer
