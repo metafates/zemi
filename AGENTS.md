@@ -624,7 +624,8 @@ how many rows the frame takes, so nothing above it reflows.
   drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data:
   an item with `detail` or `actions` pushes a detail view whose rows draw as the prompts'
   buttons, keyed by `hotkey` or position (`actionKey`), and `Body` is text above the items
-  (markdown with `BodyMD`).
+  (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
+  which stays what `y` copies).
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua jobs,
   MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which
