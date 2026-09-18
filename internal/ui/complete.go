@@ -30,7 +30,12 @@ type fileCompleter struct {
 
 const scanMaxFiles = 5000
 
-func (a *App) completionEnabled() bool { return a.cfgBool("ui.completion.files", true) }
+func (a *App) completionEnabled() bool { return a.host.Settings.Bool("ui.completion.files") }
+
+// completionMax is the popup row cap, clamped to what a popup can show.
+func (a *App) completionMax() int {
+	return min(max(a.host.Settings.Int("ui.completion.max_items"), 1), 50)
+}
 
 // updateCompletion recomputes the completion state after a composer edit:
 // the token is the text between a trigger that starts a word and the
@@ -81,7 +86,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	if !files {
 		return nil
 	}
-	f.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
+	f.rematch(a.completionMax())
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands.
 	if opening {
@@ -100,7 +105,7 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 	a.completion.scanning = false
 	a.completion.files = msg.files
 	if a.completion.open {
-		a.completion.rematch(a.cfgInt("ui.completion.max_items", 10, 1, 50))
+		a.completion.rematch(a.completionMax())
 	}
 }
 

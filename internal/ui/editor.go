@@ -18,13 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/win"
 )
 
-// cfgStr reads a string config key, "" when unset.
-func (a *App) cfgStr(key string) string {
-	v, _ := a.host.Settings.Get(key)
-	s, _ := v.(string)
-	return s
-}
-
 // editorScript is the sh -c text that runs editor on "$1", so an editor with
 // flags ("code --wait") splits like a shell would, with the common editors'
 // starting line flag.
@@ -44,7 +37,7 @@ func editorScript(editor string, line int) string {
 // cancelled ctx returns and leaves the editor running, so unsaved work stays
 // the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
-	editor := cmp.Or(strings.TrimSpace(a.cfgStr("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
+	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
 	w, err := a.host.OpenWindow(win.Spec{
 		Cmd: editorScript(editor, req.Line), Args: []string{req.Path}, Kind: win.KindFloat,
 		Title: "Edit " + req.Title, Owner: "editor", Clipboard: true,

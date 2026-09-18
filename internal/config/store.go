@@ -100,6 +100,19 @@ func (s *Store) Get(path string) (any, bool) {
 	return v, ok
 }
 
+// Str, Bool and Int read a schema key in its kind. Every schema key holds
+// its default until someone sets it, so only a key outside the schema reads
+// as the zero value.
+func (s *Store) Str(path string) string { return s.value[string](path) }
+func (s *Store) Bool(path string) bool  { return s.value[bool](path) }
+func (s *Store) Int(path string) int    { return s.value[int](path) }
+
+func (s *Store) value[T any](path string) T {
+	v, _ := s.Get(path)
+	t, _ := v.(T)
+	return t
+}
+
 // SetQuiet applies a runtime override without notifying watchers; the
 // callers on the interpreter goroutine deliver the fired watches themselves
 // so a Lua watch callback never re-enters the request queue.

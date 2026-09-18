@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -645,10 +646,5 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 
 // ActiveThemeName returns the configured theme.
 func (h *Host) ActiveThemeName() string {
-	if v, ok := h.Settings.Get("ui.theme"); ok {
-		if s, ok := v.(string); ok && !strings.HasPrefix(s, "!") {
-			return s
-		}
-	}
-	return "default"
+	return cmp.Or(h.Settings.Str("ui.theme"), "default")
 }

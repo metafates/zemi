@@ -174,29 +174,7 @@ func newAgentHost() *agentHost {
 // host wiring
 
 // Effort is the configured reasoning effort ("" = provider default).
-func (h *Host) Effort() string { return h.setStr("agent.effort") }
-
-// setStr reads a string setting, "" when unset or not a string.
-func (h *Host) setStr(key string) string {
-	v, _ := h.Settings.Get(key)
-	s, _ := v.(string)
-	return s
-}
-
-// setInt reads a number setting, def when unset or not a number (config
-// files decode numbers as float64).
-func (h *Host) setInt(key string, def int) int {
-	v, _ := h.Settings.Get(key)
-	switch n := v.(type) {
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case float64:
-		return int(n)
-	}
-	return def
-}
+func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
 
 // resolveProfile returns the profile to run: explicit name, the default,
 // or the implicit shipped profile.
@@ -222,7 +200,7 @@ func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
 		return p.Model
 	}
-	if s := h.setStr("agent.model"); s != "" {
+	if s := h.Settings.Str("agent.model"); s != "" {
 		return s
 	}
 	for _, spec := range h.Providers.List() {
@@ -1263,7 +1241,7 @@ func (h *Host) OpenModelPicker() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	cur, sel := h.setStr("agent.model"), 0
+	cur, sel := h.Settings.Str("agent.model"), 0
 	var items []any
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
@@ -1692,7 +1670,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Protected:    func(p string) bool { return !h.inScratch(p) && h.protectedWrite(p) },
 		Secret:       h.secretPath,
 		ScratchDir:   h.ScratchDir,
-		SearchURL:    func() string { return h.setStr("web.search_url") },
+		SearchURL:    func() string { return h.Settings.Str("web.search_url") },
 		Seen:         h.readLog(),
 		Instructions: func(path string) string { return h.nearestInstructions(path, h.instructionSent) },
 	}

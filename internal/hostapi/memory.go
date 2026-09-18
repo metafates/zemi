@@ -723,7 +723,7 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 // almost no boost. Pinning is not a use, so hits are not bumped.
 func (h *Host) digestFor(query string) string {
 	cands, _ := h.memoryList(false)
-	lines := h.setInt("memory.digest_lines", 12)
+	lines := h.Settings.Int("memory.digest_lines")
 	if lines < 0 {
 		lines = 12 // a negative setting is a typo, not "no digest"
 	}
@@ -935,7 +935,7 @@ func (h *Host) gateMemory(res *learn.Result) (stored, queued bool, err error) {
 // would come from.
 // NOTE: a bash command the user approved can fetch too and is not seen here.
 func (h *Host) memoryAuto(sid string) bool {
-	if h.setStr("memory.autonomy") != "auto" || !h.ProjectTrusted() || h.DB == nil {
+	if h.Settings.Str("memory.autonomy") != "auto" || !h.ProjectTrusted() || h.DB == nil {
 		return false
 	}
 	sids := []string{sid}

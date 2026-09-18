@@ -544,9 +544,9 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 func (h *Host) subagentModelID(def AgentDef) string {
 	small := ""
 	if def.Small {
-		small = h.setStr("agent.small_model")
+		small = h.Settings.Str("agent.small_model")
 	}
-	return cmp.Or(def.Model, small, h.setStr("agent.subagent_model"), h.sessionModelID())
+	return cmp.Or(def.Model, small, h.Settings.Str("agent.subagent_model"), h.sessionModelID())
 }
 
 // modelIDs lists every provider/model the config registered.

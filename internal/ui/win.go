@@ -319,7 +319,7 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 }
 
 func (a *App) unfocusKey() string {
-	if k := a.cfgStr("ui.window.unfocus"); k != "" {
+	if k := a.host.Settings.Str("ui.window.unfocus"); k != "" {
 		return k
 	}
 	return `ctrl+\`

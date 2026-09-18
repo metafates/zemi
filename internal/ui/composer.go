@@ -289,10 +289,10 @@ func (c *composerState) moveEnd() {
 }
 
 // multiline reports whether newline insertion is allowed.
-func (a *App) multiline() bool { return a.cfgBool("ui.composer.multiline", true) }
+func (a *App) multiline() bool { return a.host.Settings.Bool("ui.composer.multiline") }
 
 // historySize reads the history cap; 0 disables.
-func (a *App) historySize() int { return a.cfgInt("ui.composer.history", 50, 0, 1000) }
+func (a *App) historySize() int { return min(max(a.host.Settings.Int("ui.composer.history"), 0), 1000) }
 
 func (c *composerState) pushHistory(text string, cap int) {
 	if cap <= 0 {

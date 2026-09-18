@@ -30,7 +30,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 // when none is set.
 func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
 	for _, key := range keys {
-		if id := h.setStr(key); id != "" && h.modelFn == nil {
+		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
 			return h.Providers.Resolve(id)
 		}
 	}
@@ -96,7 +96,7 @@ func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 // contextWindow: agent.context_window, then the model spec, else 0
 // (unknown: no percent readout, no auto compaction).
 func (h *Host) contextWindow(modelID string) int64 {
-	if n := h.setInt("agent.context_window", 0); n > 0 {
+	if n := h.Settings.Int("agent.context_window"); n > 0 {
 		return int64(n)
 	}
 	m, _ := h.modelSpec(modelID)

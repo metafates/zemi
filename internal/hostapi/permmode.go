@@ -192,7 +192,7 @@ func (h *Host) PermMode() string { return h.permModeDef().Name }
 
 func (h *Host) permModeDef() PermModeDef {
 	list := h.PermModeList()
-	if i := modeIndex(list, h.setStr("permissions.mode")); i >= 0 {
+	if i := modeIndex(list, h.Settings.Str("permissions.mode")); i >= 0 {
 		return list[i]
 	}
 	for _, base := range []string{"manual", "plan", "auto", "yolo"} {

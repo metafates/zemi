@@ -253,29 +253,6 @@ type permAnswer struct {
 	by string
 }
 
-// cfgBool reads a bool config key with a fallback.
-func (a *App) cfgBool(key string, def bool) bool {
-	if v, ok := a.host.Settings.Get(key); ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return def
-}
-
-// cfgInt reads an int config key clamped to [lo, hi].
-func (a *App) cfgInt(key string, def, lo, hi int) int {
-	if v, ok := a.host.Settings.Get(key); ok {
-		switch n := v.(type) {
-		case int:
-			return min(max(n, lo), hi)
-		case float64:
-			return min(max(int(n), lo), hi)
-		}
-	}
-	return def
-}
-
 // hookMsg wraps a message posted from a non-UI goroutine.
 type hookMsg struct{ inner tea.Msg }
 
@@ -446,7 +423,7 @@ func (a *App) View() tea.View {
 // its window is not focused: OSC 9 (a desktop notification in iTerm2,
 // Ghostty, WezTerm, Windows Terminal) and a bell for other terminals.
 func (a *App) notifyIfAway(text string) tea.Cmd {
-	if a.focused || !a.cfgBool("ui.notify", true) {
+	if a.focused || !a.host.Settings.Bool("ui.notify") {
 		return nil
 	}
 	return tea.Raw("\x1b]9;" + sanitize.String(text) + "\x07\a")
@@ -525,7 +502,7 @@ func (a *App) uiState() hostapi.UIState {
 // pulse is the 600ms blink phase shared by the working row and running
 // tool markers; always false with animations off.
 func (a *App) pulse() bool {
-	return a.cfgBool("ui.animations", true) && a.now().UnixMilli()/600%2 == 1
+	return a.host.Settings.Bool("ui.animations") && a.now().UnixMilli()/600%2 == 1
 }
 
 func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
@@ -1150,7 +1127,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 			continue
 		}
 		if s.Effect == "shimmer" {
-			for _, r := range a.shimmer(s, a.now(), a.cfgBool("ui.animations", true)) {
+			for _, r := range a.shimmer(s, a.now(), a.host.Settings.Bool("ui.animations")) {
 				st := a.segStyle(r.HL, s.Over)
 				b.WriteString(st.Styled(r.Text))
 			}

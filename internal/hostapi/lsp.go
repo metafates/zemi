@@ -142,7 +142,7 @@ func (h *Host) lspDefs(path string) []lspDef {
 	defs := slices.Clone(h.lsp.user)
 	disabled := maps.Clone(h.lsp.disabled)
 	h.lsp.mu.Unlock()
-	if v, ok := h.Settings.Get("lsp.auto"); !ok || v != false {
+	if h.Settings.Bool("lsp.auto") {
 		root := h.Dirs.RepoRoot()
 		dirs := []string{root}
 		if abs, err := filepath.Abs(path); err == nil && path != "" {

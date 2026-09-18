@@ -617,15 +617,7 @@ func (h *Host) reasoningShown() bool {
 	if h.agents.reasoningShown != nil {
 		return *h.agents.reasoningShown
 	}
-	if v, ok := h.Settings.Get("ui.chat.reasoning"); ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-		if f, ok := v.(float64); ok {
-			return f != 0
-		}
-	}
-	return false
+	return h.Settings.Bool("ui.chat.reasoning")
 }
 
 // ---------------------------------------------------------------------------

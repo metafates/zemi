@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"strings"
@@ -75,13 +76,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
 	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
-		leader := "ctrl+g"
-		if v, ok := h.Settings.Get("keymap.leader"); ok {
-			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-				leader = s
-			}
-		}
-		tokens = strings.Fields(leader)
+		tokens = strings.Fields(cmp.Or(strings.TrimSpace(h.Settings.Str("keymap.leader")), "ctrl+g"))
 		if rest = strings.TrimSpace(rest); strings.Contains(rest, " ") {
 			tokens = append(tokens, strings.Fields(rest)...)
 		} else {

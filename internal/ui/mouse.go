@@ -58,7 +58,7 @@ func (s mouseSel) span(y, w int) (from, to int, ok bool) {
 	return from, to, to > from
 }
 
-func (a *App) mouseEnabled() bool { return a.cfgBool("ui.mouse", true) }
+func (a *App) mouseEnabled() bool { return a.host.Settings.Bool("ui.mouse") }
 
 func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {

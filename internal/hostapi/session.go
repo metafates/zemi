@@ -316,7 +316,7 @@ const titleSystem = `Name a coding conversation for a session list. Reply with t
 // autoTitle names a new session from its first exchange with a short model
 // call in the background; any failure keeps the first-line title.
 func (h *Host) autoTitle(sid, user, reply string) {
-	if v, ok := h.Settings.Get("session.auto_title"); ok && v == false {
+	if !h.Settings.Bool("session.auto_title") {
 		return
 	}
 	if h.DB == nil {
