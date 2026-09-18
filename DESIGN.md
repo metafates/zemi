@@ -1158,7 +1158,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message snaps back to the tail. Persisted reasoning blocks
   collapse to one `✻ thought Xs (ctrl+o to expand)` line unless shown
-  (default keymaps below).
+  (default keymaps below); a finished tool call collapses the same way and a
+  click on its row opens that one row, command and output, with the rest of
+  the transcript untouched.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;

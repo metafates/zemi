@@ -10,12 +10,21 @@ local fmt = require("zemi.defaultui.text")
 ---@type table<string, { lines: zemi.Line[], prev: string? }>
 local chat_cache = {}
 
+-- Tool rows the user opened, by transcript index (negative for the live
+-- turn's calls): a click shows that one row's whole command and output and
+-- leaves the rest of the transcript alone. Cleared when the transcript is
+-- replaced, since the indexes are then someone else's.
+---@type table<integer, true>
+local expanded = {}
+local expanded_epoch = 0
+
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
 -- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
 -- reasoning line toggles it; one on an agent's row shows that run; one on a
--- file tool's row opens the file in the user's editor.
+-- file tool's row opens the file in the user's editor; one on any other
+-- tool row expands that row.
 zemi.ui.widget.add({
   id = "chat",
   region = "chat",
@@ -38,6 +47,9 @@ zemi.ui.widget.add({
       if not ok then failed(err) end
     elseif ev.id == "reasoning" then
       zemi.ui.reasoning.toggle()
+    else
+      local n = tonumber(ev.id:match("^tool:(-?%d+)$"))
+      if n then expanded[n] = not expanded[n] or nil end
     end
   end,
   ---@param ctx zemi.WidgetCtx
@@ -160,7 +172,8 @@ zemi.ui.widget.add({
       return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
     end
     ---@param group zemi.defaultui.Tool[]
-    local function add_group(group)
+    ---@param click string The id a click on the summary row carries.
+    local function add_group(group, click)
       ---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
       local order, seen = {}, {}
       for _, t in ipairs(group) do
@@ -180,14 +193,17 @@ zemi.ui.widget.add({
       end
       local summary = table.concat(parts, ", ")
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
-      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false }, { text = fmt.clip(summary, width - 4), hl = "Normal" } }
+      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false, click = click },
+        { text = fmt.clip(summary, width - 4), hl = "Normal", click = click } }
     end
     -- tools whose input is a file path: their rows open that file
     ---@type table<string, boolean>
     local FILE_TOOL = { read = true, write = true, edit = true, multiedit = true }
     ---@param t zemi.defaultui.Tool
-    local function add_tool(t)
+    ---@param idx integer Transcript index, negative for a live-turn call.
+    local function add_tool(t, idx)
       local name = tool_name(t)
+      local open = ctx.show_reasoning or expanded[idx] or false
       local mark, hl = ctx.pulse and "◦ " or "● ", "AgentToolRun"
       if t.status == "ok" then
         mark, hl = "● ", "AgentToolOk"
@@ -200,7 +216,7 @@ zemi.ui.widget.add({
       ---@param text string
       ---@param room integer
       ---@return string
-      local function fit(text, room) return ctx.show_reasoning and text or fmt.clip(text, room) end
+      local function fit(text, room) return open and text or fmt.clip(text, room) end
       local head = { { text = mark, hl = hl, copy = false } }
       if label ~= "" then
         head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
@@ -219,7 +235,7 @@ zemi.ui.widget.add({
       ---@return string?
       local function file_click(n) return file ~= "" and ("file:" .. n .. ":" .. file) or nil end
       -- an agent's rows open its transcript (ids must differ between adjacent rows)
-      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or file_click(0)
+      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or file_click(0) or ("tool:" .. idx)
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
       -- under the row: the command a description stands for, then progress
@@ -274,7 +290,7 @@ zemi.ui.widget.add({
       -- answered, for commands with ctrl+o
       local output = t.output or ""
       if name == "question" then output = output:gsub("^The user answered:\n", "") end
-      if output ~= "" and (t.status == "err" or name == "question" or (ctx.show_reasoning and name == "bash")) then
+      if output ~= "" and (t.status == "err" or name == "question" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
         for ol in (output .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "    ", copy = false }, { text = ol, hl = ohl } }
@@ -284,8 +300,10 @@ zemi.ui.widget.add({
     -- rows from i on: a collapsed group or one call; returns the next index
     ---@param list zemi.defaultui.Tool[]
     ---@param i integer
+    ---@param live boolean? The live turn's calls, indexed apart from the transcript.
     ---@return integer
-    local function add_tools(list, i)
+    local function add_tools(list, i, live)
+      local idx = live and -i or i
       if collapsible(list[i]) then
         ---@type zemi.defaultui.Tool[]
         local group = {}
@@ -293,10 +311,16 @@ zemi.ui.widget.add({
           group[#group + 1] = list[i]
           i = i + 1
         end
-        add_group(group)
+        -- one click id for the whole group: it opens every row of it and
+        -- a click on any of those closes it again
+        if expanded[idx] then
+          for _, t in ipairs(group) do add_tool(t, idx) end
+        else
+          add_group(group, "tool:" .. idx)
+        end
         return i
       end
-      add_tool(list[i])
+      add_tool(list[i], idx)
       return i + 1
     end
 
@@ -311,8 +335,14 @@ zemi.ui.widget.add({
     end
     -- An agent run's transcript mutates in place and reports epoch 0, so
     -- only the session's settled rows are cached.
-    local key = (ctx.transcript_epoch or 0) ~= 0 and table.concat({
-      ctx.transcript_epoch, #tr, width, tostring(ctx.show_reasoning), ctx.cwd or "" }, "|") or nil
+    local epoch = ctx.transcript_epoch or 0
+    if epoch ~= expanded_epoch then expanded, expanded_epoch = {}, epoch end
+    ---@type integer[]
+    local marks = {}
+    for n in pairs(expanded) do marks[#marks + 1] = n end
+    table.sort(marks)
+    local key = epoch ~= 0 and table.concat({
+      epoch, #tr, width, tostring(ctx.show_reasoning), table.concat(marks, ","), ctx.cwd or "" }, "|") or nil
     local cached = key and chat_cache[key]
     if cached then
       for _, l in ipairs(cached.lines) do lines[#lines + 1] = l end
@@ -395,7 +425,7 @@ zemi.ui.widget.add({
       while ti <= #tools do
         if tools[ti].status ~= "ok" and tools[ti].status ~= "err" then waiting = true end
         gap("activity")
-        ti = add_tools(tools, ti)
+        ti = add_tools(tools, ti, true)
       end
       -- the tail only while the model is thinking, not while a tool runs
       if (ag.reasoning or "") ~= "" and text == "" and not waiting then

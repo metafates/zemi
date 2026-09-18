@@ -228,7 +228,7 @@ for scripts. `zemi --help` lists every flag.
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
 | `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
-| `ctrl+o` | expand reasoning |
+| `ctrl+o` | expand reasoning and every tool call (a click opens one tool row) |
 | `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
 | typing in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |

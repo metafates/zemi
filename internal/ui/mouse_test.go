@@ -486,3 +486,35 @@ func TestMouseQuestion(t *testing.T) {
 		t.Fatal("clicking an option never answered")
 	}
 }
+
+// TestToolRowClickExpands: in auto mode the command a tool ran is only on
+// its clipped row, so a click opens that one row (whole command plus the
+// output) without expanding the rest of the transcript.
+func TestToolRowClickExpands(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
+	long := "go test ./internal/hostapi -run TestSomethingWithAVeryLongName -count=1 -race"
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{ID: "1", Name: "bash", Label: "run the hostapi tests", Input: long, Status: "ok", Output: "ok  github.com/metafates/zemi/internal/hostapi"},
+	}})
+	app.renderSync(t)
+	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
+		t.Fatal("the collapsed row should not show the command")
+	}
+	x, y := findCell(t, app, "Ran 1 command")
+	clickAt(app, x+1, y)
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "-race") || !strings.Contains(frame, "ok  github.com/metafates") {
+		t.Fatalf("clicking a tool row should show its command and output:\n%s", frame)
+	}
+	if strings.Contains(frame, "first idea") {
+		t.Fatalf("one row expanded the whole transcript:\n%s", frame)
+	}
+	x, y = findCell(t, app, "run the hostapi tests")
+	clickAt(app, x+1, y)
+	app.renderSync(t)
+	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
+		t.Fatal("a second click should collapse the row again")
+	}
+}
