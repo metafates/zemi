@@ -114,11 +114,11 @@ func run(args []string) int {
 		host.LSPCommandsStep(),
 		host.WindowCommandsStep(),
 		lua.RequireStep("zemi.defaultui"),
-		softStep(host, trust.step()),
-		softStep(host, pluginsStep(dirs)),
-		softStep(host, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
-		softStep(host, host.SkillsAuthoredHooksStep()),
-		softStep(host, projectInitStep(host, dirs)),
+		softStep(host, app == nil, trust.step()),
+		softStep(host, app == nil, pluginsStep(dirs)),
+		softStep(host, app == nil, lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+		softStep(host, app == nil, host.SkillsAuthoredHooksStep()),
+		softStep(host, app == nil, projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
 		readyStep(host, app != nil),
 		host.SkillsLearnedHooksStep(),
@@ -400,13 +400,19 @@ func builtinCommandsStep(h *hostapi.Host, quit, trust func()) lua.BootStep {
 // softStep keeps a failing config step (a typo in init.lua, a broken plugin
 // or project config) from stopping boot: the error goes to the log and
 // /errors, and the remaining steps and the runtime still start, like
-// neovim reporting an init.lua error and opening anyway.
-func softStep(h *hostapi.Host, s lua.BootStep) lua.BootStep {
+// neovim reporting an init.lua error and opening anyway. Headless there is
+// no /errors to open, so the error goes to stderr as well: otherwise -p
+// answers as if the config had loaded, and a broken provider registration
+// then blames a config line that is already correct.
+func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 	run := s.Run
 	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 		if err := run(ctx, r, g); err != nil {
 			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
 			h.RecordError("boot "+s.Name, err.Error())
+			if headless { // no /errors pill to notice, and -p is the scriptable path
+				fmt.Fprintln(os.Stderr, "zemi: "+s.Name+": "+err.Error())
+			}
 		}
 		return nil
 	}
