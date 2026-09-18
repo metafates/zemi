@@ -470,8 +470,9 @@ func inDirNamed(p string, names ...string) bool {
 
 // safeCommandPath passes a settled command's argument when, read as a path
 // from the project root, it stays in the project and is not secret-shaped.
-// Plain reads may also use the scratchpad, but code may not run from there:
-// the model writes it without asking, even in plan mode.
+// Plain reads may also use the scratchpad and zemi's config, which the read
+// tool reads without asking either; code may not run from there: the model
+// writes the pad without asking, even in plan mode.
 func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	if strings.HasPrefix(arg, "~") {
 		return false
@@ -481,9 +482,9 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 		// not Join: it cleans .. before RealPath sees a symlink before it
 		p = h.Dirs.ProjectDir + string(filepath.Separator) + p
 	}
-	roots := []string{h.Dirs.ProjectDir, h.ScratchDir()}
-	if use == perm.ArgRun {
-		roots = roots[:1]
+	roots := []string{h.Dirs.ProjectDir}
+	if use != perm.ArgRun {
+		roots = append(append(roots, h.ScratchDir(), h.Dirs.ConfigHome), h.Dirs.UserTrees()...)
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
 	// a write flag the allowlist misses could still reach .git/config

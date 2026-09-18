@@ -141,6 +141,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	fakeSandbox(h, true)
 	h.SetProjectTrusted(true)
+	h.Dirs.ConfigHome = t.TempDir()
 	h.agents.sessionID = "s1"
 	pad, root := h.ScratchDir(), h.Dirs.ProjectDir
 	for _, d := range []string{pad, filepath.Join(root, "internal"), filepath.Join(root, "sub")} {
@@ -151,6 +152,7 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(root, ".env"), []byte("K=v"), 0o600)
 	os.WriteFile(filepath.Join(root, "internal", "x.go"), []byte("package x"), 0o600)
 	os.WriteFile(filepath.Join(pad, "out.txt"), []byte("hi"), 0o600)
+	os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "init.lua"), []byte("-- cfg"), 0o600)
 	if err := os.Symlink(filepath.Join(root, ".env"), filepath.Join(root, "sub", "notes")); err != nil {
 		t.Fatal(err)
 	}
@@ -180,6 +182,10 @@ func TestAutoModeSafeCommands(t *testing.T) {
 	}{
 		{"cat " + pad + "/out.txt", true},
 		{"grep -n hi " + pad + "/out.txt", true},
+		// zemi's own config reads like the project; running code from it does not
+		{"cat " + filepath.Join(h.Dirs.ConfigHome, "init.lua"), true},
+		{"grep -rn zemi " + h.Dirs.ConfigHome, true},
+		{"make -C " + h.Dirs.ConfigHome, false},
 		{"go test " + pad + "/x_test.go", false},
 		{"python3 -m pytest " + pad, false},
 		{"jest --config " + pad + "/j.js", false},

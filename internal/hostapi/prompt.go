@@ -94,6 +94,7 @@ func (h *Host) zemiPrompt() string {
 		" To change zemi's behavior (UI, keys, commands, subagents, workflows), write Lua or markdown config after loading zemi-customize; never edit zemi's source code." +
 		" To look at zemi's live state or change it now, run Lua with the Lua tool; load zemi-lua for the API first." +
 		" User config directory: " + h.Dirs.ConfigHome + " (use this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
+		" Reading the user config directory never asks, with the read tool or a command; writing there does, so say what you are about to write." +
 		" The shipped Lua UI (theme, widgets, keymaps, one module each) is readable in " + filepath.Join(h.TypesDir(), "zemi", "defaultui") + "; read it before restyling or extending the UI."
 }
 
