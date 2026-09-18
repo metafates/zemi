@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -253,8 +254,9 @@ func (h *Host) todoSnapshot() []store.Todo {
 	return h.todos
 }
 
-// OpenUsage shows token use and cost: the live session, then today, the
-// last 7 days and all time across this project's sessions.
+// OpenUsage shows how full the context is, what the fixed prompt is made of,
+// and token use and cost: the live session, then today, the last 7 days and
+// all time across this project's sessions.
 func (h *Host) OpenUsage() error {
 	ui := h.hooks()
 	if ui == nil || h.DB == nil {
@@ -270,38 +272,56 @@ func (h *Host) OpenUsage() error {
 		}
 		return fmt.Sprint(n)
 	}
-	// fixed columns stay whole in the narrowest box, a wrapped row would break the table
-	row := func(label string, sessions int, in, out int64, cost float64) string {
-		count := "        "
-		if sessions > 0 {
-			count = fmt.Sprintf("%3d sess", sessions)
+	var rows [][]Segment
+	text := func(hl, t string) Segment { return Segment{Text: t, HL: hl} }
+	section := func(title, note string) {
+		if len(rows) > 0 {
+			rows = append(rows, []Segment{})
 		}
-		return fmt.Sprintf("%-12s %6s in  %6s out  %s  $%.2f", label, fmtTok(in), fmtTok(out), count, cost)
+		rows = append(rows, []Segment{text("Title", title), text("Comment", note)})
 	}
-	sess := row("this session", 0, s.SessionIn, s.SessionOut, s.SessionCost)
-	// a broken cache prefix (a per-turn system section, a model switch) has
-	// no other symptom than the bill
-	if s.CacheBilled > 0 {
-		sess += fmt.Sprintf("  %d%% cached", s.CacheRead*100/s.CacheBilled)
-	}
-	lines := []string{sess}
-	if parts, total := h.promptBreakdown(); total > 0 {
-		lines = append(lines, fmt.Sprintf("%-12s %6s every request", "prompt", fmtTok(total)))
-		var named []string
-		for _, p := range parts {
-			if p.chars > 0 {
-				named = append(named, fmt.Sprintf("%s %s", p.name, fmtTok(int64(p.chars/4))))
-			}
+	// bar is a meter of w cells, part/whole of it filled
+	bar := func(part, whole int64, w int, hl string) []Segment {
+		n := 0
+		if whole > 0 {
+			n = int(min(max(part*int64(w)/whole, min(part, 1)), int64(w))) // anything at all gets a cell
 		}
-		lines = append(lines, "  "+strings.Join(named, " · "))
+		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: "Rule", NoCopy: true}}
 	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
-		line := fmt.Sprintf("%-12s %6s of %s tokens", "context", fmtTok(s.LastIn), fmtTok(s.CtxWindow))
-		if pct := s.LastIn * 100 / s.CtxWindow; pct > 0 {
-			line += fmt.Sprintf(" (%d%%)", pct)
+		pct := s.LastIn * 100 / s.CtxWindow
+		hl := "Accent"
+		if pct >= 90 {
+			hl = "StatusUsageErr"
+		} else if pct >= 70 {
+			hl = "StatusUsageWarn"
 		}
-		lines = append(lines, line)
+		section("Context", "")
+		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
+			text("Normal", fmtTok(s.LastIn)), text("Comment", fmt.Sprintf(" of %s · %d%%", fmtTok(s.CtxWindow), pct))))
 	}
+	if parts, total := h.promptBreakdown(); total > 0 {
+		section("Prompt", "  "+fmtTok(total)+" sent with every request")
+		parts = slices.Clone(parts)
+		slices.SortStableFunc(parts, func(a, b promptPart) int { return b.chars - a.chars })
+		sum := 0
+		for _, p := range parts {
+			sum += p.chars
+		}
+		for _, p := range parts {
+			if p.chars == 0 {
+				continue
+			}
+			row := append([]Segment{text("Normal", fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, "Accent")...)
+			rows = append(rows, append(row, text("Normal", fmt.Sprintf("%6s", fmtTok(int64(p.chars/4)))),
+				text("Comment", fmt.Sprintf("  %3d%%", p.chars*100/sum))))
+		}
+	}
+	type window struct {
+		label string
+		u     store.Usage
+	}
+	windows := []window{{"this session", store.Usage{Prompt: s.SessionIn, Completion: s.SessionOut, Cost: s.SessionCost}}}
 	y, m, d := time.Now().Date()
 	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
 	for _, w := range []struct {
@@ -316,13 +336,47 @@ func (h *Host) OpenUsage() error {
 		if err != nil {
 			return err
 		}
-		lines = append(lines, row(w.label, u.Sessions, u.Prompt, u.Completion, u.Cost))
+		windows = append(windows, window{w.label, u})
 	}
-	if id := h.sessionModelID(); id != "" {
-		if spec, _ := h.modelSpec(id); spec.CostPer1MIn == 0 && spec.CostPer1MOut == 0 {
-			lines = append(lines, "", "Cost is $0.00 because "+id+" has no prices: set cost_per_1m_in and cost_per_1m_out on the model.")
+	// a model with no prices costs $0.00 on every row: one line says so
+	// instead of a column of zeros
+	priced := windows[len(windows)-1].u.Cost > 0 || s.SessionCost > 0
+	if spec, _ := h.modelSpec(h.sessionModelID()); spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 {
+		priced = true
+	}
+	head := fmt.Sprintf("%18s%9s%10s", "in", "out", "sessions") // over the rows' columns, past the 6 cells of the title
+	if priced {
+		head += "      cost"
+	}
+	section("Tokens", head)
+	for _, w := range windows {
+		count := ""
+		if w.u.Sessions > 0 {
+			count = fmt.Sprint(w.u.Sessions)
 		}
+		row := []Segment{text("Normal", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTok(w.u.Prompt), fmtTok(w.u.Completion))), text("Comment", fmt.Sprintf("%10s", count))}
+		if priced {
+			row = append(row, text("Normal", fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
+		}
+		// a broken cache prefix (a per-turn system section, a model switch) has
+		// no other symptom than the bill
+		if w.label == "this session" && s.CacheBilled > 0 {
+			row = append(row, text("Comment", fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
+		}
+		rows = append(rows, row)
 	}
-	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage", Origin: lua.OriginBuiltin, Body: strings.Join(lines, "\n")})
+	if id := h.sessionModelID(); id != "" && !priced {
+		rows = append(rows, []Segment{}, []Segment{text("Comment", "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
+	}
+	var plain strings.Builder
+	for _, r := range rows {
+		for _, seg := range r {
+			if !seg.NoCopy {
+				plain.WriteString(seg.Text)
+			}
+		}
+		plain.WriteByte('\n')
+	}
+	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage", Origin: lua.OriginBuiltin, Body: plain.String(), BodySegs: rows})
 	return nil
 }

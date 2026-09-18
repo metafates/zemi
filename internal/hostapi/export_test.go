@@ -212,7 +212,7 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 		t.Fatalf("usage: %v %+v", err, ui.opened)
 	}
 	body := ui.opened[0].Body
-	for _, want := range []string{"prompt", "system ", "tools "} {
+	for _, want := range []string{"Prompt", "system ", "tools "} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("no %q in the usage body:\n%s", want, body)
 		}

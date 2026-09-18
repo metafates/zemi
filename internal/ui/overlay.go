@@ -509,7 +509,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if st.back {
 			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
 		}
-		if st.o.BodyMD {
+		if st.o.BodySegs != nil {
+			for _, row := range st.o.BodySegs {
+				body = append(body, hostapi.WrapSegs(row, bodyW)...)
+			}
+		} else if st.o.BodyMD {
 			body = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), bodyW)
 		} else {
 			body = wrapText(st.o.Body, "", bodyW)
