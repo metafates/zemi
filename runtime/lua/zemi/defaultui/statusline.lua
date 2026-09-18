@@ -27,9 +27,6 @@ zemi.ui.widget.add({
     local mode = ctx.permission_mode or "auto"
     local base = ctx.permission_mode_base or mode
     local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
-    if base == "yolo" then
-      mode = " " .. mode .. " "
-    end
     return { { { text = mode, hl = hl, click = "mode" } } }
   end,
 })

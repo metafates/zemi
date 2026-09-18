@@ -379,8 +379,13 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	if promptHL == "" {
 		promptHL = "Comment"
 	}
-	if strings.HasPrefix(a.composer.text, "!") {
+	if strings.HasPrefix(a.composer.text, "!") && len(rows) > 0 && len(rows[0]) > 0 {
+		// the glyph stands for the draft's own "!", so the row leaves it out
 		prefix, promptHL = "! ", "PromptShell"
+		rows[0] = rows[0][1:]
+		if cursorRow == 0 {
+			cursorCol = max(cursorCol-1, 0)
+		}
 	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
