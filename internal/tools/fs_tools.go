@@ -169,71 +169,105 @@ const (
 	readMaxBytes   = 50_000
 	readMaxLineLen = 2000
 	readMaxImage   = 5 << 20
+	editMaxBytes   = 10 << 20
 )
 
 // runRead reads a file with optional 1-based line offset and limit. A page
 // stops at readMaxLines or readMaxBytes and names the offset to continue
-// from, so a large file costs pages the model asks for, not one huge result.
+// from. It streams: the peak cost is the page, not the file, so a huge log
+// pages like any other file instead of ending the process.
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
-	data, fi, err := readGated(path)
+	f, fi, err := openRegular(path)
 	switch {
 	case fi != nil && fi.IsDir():
 		return listDir(p, path), nil
-	case fi != nil && !fi.Mode().IsRegular():
-		return fantasy.NewTextErrorResponse(path + " is not a regular file"), nil
 	case err != nil:
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	switch mt := http.DetectContentType(data); {
+	defer f.Close()
+	br := bufio.NewReaderSize(f, 64<<10)
+	head, _ := br.Peek(8000)
+	switch mt := http.DetectContentType(head); {
 	case mt == "image/png" || mt == "image/jpeg" || mt == "image/gif" || mt == "image/webp":
-		if len(data) > readMaxImage {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", path, len(data), readMaxImage)), nil
+		if fi.Size() > readMaxImage {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", path, fi.Size(), readMaxImage)), nil
 		}
 		if p.Images != nil && !p.Images() {
 			return fantasy.NewTextErrorResponse(path + " is an image and the current model does not take images; go on without it, or ask the user to describe it or switch model"), nil
 		}
+		data, err := io.ReadAll(br)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
 		return fantasy.NewImageResponse(data, mt), nil
-	case bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0:
+	case bytes.IndexByte(head, 0) >= 0:
 		return fantasy.NewTextErrorResponse(path + " is a binary file"), nil
 	}
 	// a page of a file still counts as seen: the edit guard is about what
 	// changed under the model, and an exact old_string is its own proof
 	p.markRead(path, fi)
-	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	start := 0
 	if v, ok := input["offset"].(float64); ok && v > 1 {
 		start = int(v) - 1
 	}
-	if start >= len(lines) && start > 0 {
-		return fantasy.NewTextErrorResponse(fmt.Sprintf("offset %d is past the end of %s (%d lines)", start+1, path, len(lines))), nil
-	}
-	end := len(lines)
+	limit := readMaxLines
 	if v, ok := input["limit"].(float64); ok && v > 0 {
-		if start+int(v) < end {
-			end = start + int(v)
-		}
+		limit = min(int(v), limit)
 	}
 	var b strings.Builder
-	i := start
-	for ; i < end && i-start < readMaxLines; i++ {
-		line := strings.TrimSuffix(lines[i], "\r")
-		if len(line) > readMaxLineLen {
-			line = strings.ToValidUTF8(line[:readMaxLineLen], "") + "... (line cut)"
+	n, kept := 0, 0
+	for ; ; n++ {
+		line, err := readLine(br, readMaxLineLen)
+		if err != nil {
+			break
 		}
-		row := fmt.Sprintf("%6d\t%s\n", i+1, line)
-		if i > start && b.Len()+len(row) > readMaxBytes {
+		if n < start {
+			continue
+		}
+		row := fmt.Sprintf("%6d\t%s\n", n+1, line)
+		if kept == limit || kept > 0 && b.Len()+len(row) > readMaxBytes {
+			fmt.Fprintf(&b, "... (more lines; continue with offset %d)\n", n+1)
 			break
 		}
 		b.WriteString(row)
+		kept++
 	}
-	if i < end {
-		fmt.Fprintf(&b, "... (%d more lines; continue with offset %d)\n", end-i, i+1)
+	if kept == 0 {
+		if start > 0 {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("offset %d is past the end of %s (%d lines)", start+1, path, n)), nil
+		}
+		return fantasy.NewTextResponse("(empty file)"), nil
 	}
 	if p != nil && p.Instructions != nil {
 		b.WriteString(p.Instructions(path))
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// readLine returns the next line without its ending, keeping at most max
+// bytes and naming the cut: one endless line costs max bytes, not the file.
+func readLine(br *bufio.Reader, max int) (string, error) {
+	var line []byte
+	cut := false
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if room := max - len(line); len(chunk) > room {
+			chunk, cut = chunk[:room], true
+		}
+		line = append(line, chunk...)
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case err != nil && len(line) == 0 && !cut:
+			return "", err
+		}
+		s := strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r")
+		if cut {
+			s = strings.ToValidUTF8(s, "") + "... (line cut)"
+		}
+		return s, nil
+	}
 }
 
 // listDir lists a directory one level deep, sorted, directories ending in
@@ -269,18 +303,34 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
 }
 
-// readGated reads a regular file through openGated. fi is set once the
-// file is open, so a directory or a FIFO is reported without reading it.
-func readGated(path string) (data []byte, fi os.FileInfo, err error) {
+// openRegular opens a file for reading through openGated. fi is set once
+// the file is open, so a directory or a FIFO is reported without reading
+// it; the caller closes f.
+func openRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 	// nonblocking: opening a FIFO must not wait for a writer
-	f, err := openGated(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err = openGated(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
 	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
 		// a FIFO blocks and a device can be endless
+		f.Close()
 		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}))
+	}
+	return f, fi, nil
+}
+
+// readGated reads a whole file, for the tools that need all of it (edit,
+// multiedit). A file over editMaxBytes is refused rather than allocated:
+// the edit would have to hold it twice over.
+func readGated(path string) (data []byte, fi os.FileInfo, err error) {
+	f, fi, err := openRegular(path)
+	if err != nil {
+		return nil, fi, err
+	}
+	defer f.Close()
+	if fi.Size() > editMaxBytes {
+		return nil, fi, fmt.Errorf("%s is %d bytes, too large to edit; narrow the change or split the file", path, fi.Size())
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err

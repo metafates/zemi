@@ -175,8 +175,10 @@ before the gate too (`tool.edits`), so nobody is asked to approve a change the t
 would then refuse; the tool repeats it under the lock. `tool.Run` resolves the path of
 `read`, `write`, `edit` and `multiedit` (`perm.RealPath`) before the gate, and they open
 exactly that path through `openGated` (an `openat` walk with `O_NOFOLLOW`), so a sandboxed
-command cannot swap a directory for a symlink between the check and the open. Matching runs on LF text and
-a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
+command cannot swap a directory for a symlink between the check and the open. `read` streams a page (`readLine` keeps
+at most 2000 bytes of a line), so a huge log costs the page and not the file, while
+`readGated`, which edit and multiedit need whole, refuses one over `editMaxBytes`.
+Matching runs on LF text and a CRLF file is written back as CRLF; the whitespace-tolerant fallback re-indents
 `new_string` to the file's own indentation and says so. `glob` and `grep` shell out to
 `rg` when installed (gitignore, `**`, `{a,b}`) and fall back to a Go walker with the same
 glob rules; they are gated on their root only, so neither shows a hit that a deny or ask

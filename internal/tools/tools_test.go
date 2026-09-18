@@ -502,7 +502,7 @@ func TestOutputLimits(t *testing.T) {
 	}
 	ctx := context.Background()
 	res, _ := runRead(ctx, nil, map[string]any{"path": path})
-	if !strings.HasSuffix(res.Content, "... (5 more lines; continue with offset 2001)\n") {
+	if !strings.HasSuffix(res.Content, "... (more lines; continue with offset 2001)\n") {
 		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
 	}
 	res, _ = runRead(ctx, nil, map[string]any{"path": path, "offset": float64(2001)})
@@ -536,5 +536,34 @@ func TestToolSchemasAreProperties(t *testing.T) {
 				t.Fatalf("%s.%s: array without items", info.Name, name)
 			}
 		}
+	}
+}
+
+// TestReadPagesAHugeFile: read streams, so a file past the edit ceiling
+// still pages; edit refuses it by size instead of allocating it twice.
+func TestReadPagesAHugeFile(t *testing.T) {
+	dir := perm.RealPath(t.TempDir())
+	path := filepath.Join(dir, "huge.log")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Repeat("x", 99) + "\n"
+	chunk := strings.Repeat(line, 1000)
+	for range (editMaxBytes / len(chunk)) + 1 {
+		if _, err := f.WriteString(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.Close()
+
+	p := &Pipeline{Seen: &sync.Map{}}
+	res, _ := runRead(context.Background(), p, map[string]any{"path": path, "offset": float64(100_000)})
+	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
+		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
+	}
+	res, _ = editFile(p, "edited", path, []any{map[string]any{"old_string": "x", "new_string": "y"}})
+	if !strings.Contains(res.Content, "too large to edit") {
+		t.Fatalf("edit of a huge file: %q", res.Content)
 	}
 }
