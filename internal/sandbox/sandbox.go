@@ -26,7 +26,7 @@ const helperArg = "__sandbox"
 // binaries) calls it first; one that does not reports no backend.
 func DispatchHelper() {
 	if len(os.Args) > 2 && os.Args[1] == helperArg {
-		os.Exit(Helper(os.Args[2:]))
+		os.Exit(helper(os.Args[2:]))
 	}
 }
 

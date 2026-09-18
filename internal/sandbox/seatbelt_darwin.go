@@ -141,9 +141,3 @@ func profile(p Policy) (string, []string) {
 	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
 	return b.String(), defs
 }
-
-// Helper is the Linux re-exec entry; macOS needs none.
-func Helper([]string) int {
-	fmt.Fprintln(os.Stderr, "zemi sandbox: the helper is linux only")
-	return 2
-}

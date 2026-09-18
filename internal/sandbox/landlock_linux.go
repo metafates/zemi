@@ -135,12 +135,12 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 	return nil
 }
 
-// Helper confines the process to the policy in args and runs the command.
+// helper confines the process to the policy in args and runs the command.
 // It must run before anything else in main: the confinement covers only
 // the calling thread's exec.
 // NOTE: an x86_64 command under Rosetta from an arm64 helper (a mixed-arch
 // container) dies with SIGTRAP, exit 133: Rosetta cannot open /proc/self/exe.
-func Helper(args []string) int {
+func helper(args []string) int {
 	fail := func(step string, err error) int {
 		fmt.Fprintf(os.Stderr, "zemi sandbox: %s: %v\n", step, err)
 		return 125
