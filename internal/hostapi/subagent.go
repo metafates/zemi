@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -46,6 +47,14 @@ type AgentDef struct {
 // subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, and the user's attention (questions, plan approval, editor).
 var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true}
+
+// subagentHeadless drops the window tool too: with no TUI it could only
+// refuse, and its schema is a tenth of the payload every step pays for.
+var subagentHeadless = func() map[string]bool {
+	m := maps.Clone(subagentExcluded)
+	m["window"] = true
+	return m
+}()
 
 var builtinAgents = []AgentDef{
 	{
@@ -285,7 +294,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	all = append(all, h.windowToolFor(def.Name, pipe))
-	kept, unknown := filterTools(all, def.Tools, subagentExcluded)
+	skip := subagentExcluded
+	if h.hooks() == nil {
+		skip = subagentHeadless
+	}
+	kept, unknown := filterTools(all, def.Tools, skip)
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
@@ -598,10 +611,15 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	if len(models) > 1 {
 		b.WriteString("\n\nA subagent runs on your model unless the agent or the model field says otherwise. Configured models: " + strings.Join(models, ", ") + ". Pick a cheaper one for simple searches and a stronger one for hard reasoning.")
 	}
+	// headless there is no send_to, so the two fields it qualifies are plain required
+	required := "; required"
+	if t.h.hooks() != nil {
+		required = "; required unless send_to is set"
+	}
 	params := map[string]any{
-		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user; required unless send_to is set"},
+		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
 		"prompt":      map[string]any{"type": "string", "description": "the full task"},
-		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit; required unless send_to is set"},
+		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "agent to run: explore for reading and searching, general only when it must run commands or edit" + required},
 		"model":       map[string]any{"type": "string", "description": "provider/model to run it on, one of the configured models; default: the agent's own or yours"},
 	}
 	if t.h.hooks() != nil {
