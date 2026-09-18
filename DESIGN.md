@@ -61,7 +61,7 @@ a Go terminal emulator; the user's editor runs in one too). Tool input validatio
 schema check, not a JSON Schema library. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6),
 `charm.land/catwalk` (there is no model catalog; models come only from
-`zemi.provider.register` in user config, §6.3), and `fsnotify` (config
+`zemi.provider.add` in user config, §6.3), and `fsnotify` (config
 reload is a one-second fingerprint walk of the config trees). Ripgrep is
 not a dependency either: `glob` and `grep` exec whatever
 `rg` `exec.LookPath` found at init, passing the pattern as `--regexp`
@@ -339,7 +339,7 @@ flagged reduced trust: its registrations are tagged `origin = "project"`
 ask rules and `not_match` guards; allow rules are user-config-only), and
 its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.tool.override` (same rewrite capability, same denial), no
-`zemi.provider.register`, no `zemi.agent.profile` /
+`zemi.provider.add`, no `zemi.agent.profile` /
 `zemi.agent.set_default` (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
 injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
@@ -679,7 +679,7 @@ zemi.model.list()                    -- { { id = "anthropic/...", ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")
 zemi.model.pick()                    -- open the picker (returns at once)
 
-zemi.provider.register({
+zemi.provider.add({
   id = "myllm",
   kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
   base_url = "https://llm.internal/v1",
@@ -704,7 +704,7 @@ when its last step already began, and is stored in its child session. A
 run that fails or is cancelled cannot read what is still queued, so its
 report says how many messages it never read.
 
-`zemi.provider.register` requires a user-owned registration origin: Lua
+`zemi.provider.add` requires a user-owned registration origin: Lua
 from a plugin, a project, or a learned source cannot call it (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
 gate; the key comes from user config (`zemi.env.get` reads secret-shaped
@@ -723,7 +723,7 @@ digest, skills index, project context ship as built-in sections).
 ### 6.4 Tools
 
 ```lua
-zemi.tool.register({
+zemi.tool.add({
   name = "figlet",
   description = "Render text as ASCII art",
   input = { text = { type = "string" } },     -- the parameters, flat
@@ -855,7 +855,7 @@ closed unless the job asks for a pipe with `stdin = true`).
 
 ```lua
 -- A statusline segment
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "clock", region = "statusline.right", priority = 10,
   render = function(ctx)   -- ctx: { width, session, agent, time, ... }
     return { { { text = ctx.time, hl = "Comment" } } }  -- lines of segments
@@ -878,7 +878,7 @@ zemi.ui.select(zemi.model.list(), {
 }, function(m) if m then zemi.model.set(m.id) end end)
 
 -- Themes: palettes + highlight groups resolved by Go (colorprofile-aware)
-zemi.ui.theme.register("tokyonight", {
+zemi.ui.theme.add("tokyonight", {
   palette = { bg = "#1a1b26", fg = "#a9b1d6" },
   hl = { Comment = { fg = "fg", italic = true },
          StatusLine = { bg = "bg", fg = "fg" },
@@ -1720,7 +1720,7 @@ Skill format (agentskills.io compatible, crush parity):
 skills/
   local-integration/
     SKILL.md            # yaml frontmatter: name, description; body = instructions
-    zemi-skill.lua      # optional: zemi.tool.register / command.add on enable
+    zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
 Discovery merges three sources, the higher-trust one winning a name

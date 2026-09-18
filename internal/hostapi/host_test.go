@@ -71,15 +71,15 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.41.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.42.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
-		assert(type(zemi.health.register) == "function", "zemi.health.register missing")
+		assert(type(zemi.health.add) == "function", "zemi.health.add missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai", "zemi.provider.kind missing")
-		for _, fn in ipairs({ "add", "remove", "list" }) do
+		for _, fn in ipairs({ "add", "del", "list" }) do
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
 		end
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
@@ -175,7 +175,7 @@ func TestErrorsAndReloadFromLua(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	h.RecordError("boot", `init.lua:1: zemi.provider.register: provider "x" already registered`)
+	h.RecordError("boot", `init.lua:1: zemi.provider.add: provider "x" already registered`)
 	runUser(t, r, `
 		local rows = zemi.errors.list()
 		assert(#rows == 1, "rows=" .. #rows)
@@ -329,7 +329,7 @@ func TestKeymapFromLua(t *testing.T) {
 // widget during the trust prompt was refused).
 func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.ui.widget.register({ id = "w", region = "header", render = function() return {} end })`)
+	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	w := h.Widgets.List()[0]
 	rendered := make(chan struct{})
 	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
@@ -356,14 +356,14 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 func TestRenderRefusesMutations(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.ui.widget.register({
+		zemi.ui.widget.add({
 			id = "mutating", region = "header",
 			render = function(ctx)
 				zemi.keymap.set("ctrl+z", function() end)
 				return {}
 			end,
 		})
-		zemi.ui.widget.register({
+		zemi.ui.widget.add({
 			id = "clean", region = "header",
 			render = function(ctx)
 				return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
@@ -495,7 +495,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 func TestSetModelFiresWatches(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.set("picked", nv) end)
-		zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
+		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
 	check := func(want string) {
 		t.Helper()
 		for range 200 {
@@ -567,7 +567,7 @@ func TestStoresByScope(t *testing.T) {
 }
 
 func TestClickWidget(t *testing.T) {
-	const widget = `zemi.ui.widget.register({
+	const widget = `zemi.ui.widget.add({
 		id = "w", region = "statusline.left",
 		render = function() return {{{ text = "go", click = "probe" }, { text = " plain" }}} end,
 		on_click = function(ev) assert(zemi.command.run(ev.id, ev.button)) end,

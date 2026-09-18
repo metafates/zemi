@@ -102,7 +102,7 @@ end
 
 -- Register a widget with id "splash" in init.lua to replace it (ctx carries
 -- version, model, cwd, recent, width and height).
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "splash",
   region = "chat",
   priority = 5,

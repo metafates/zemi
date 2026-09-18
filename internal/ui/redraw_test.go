@@ -13,7 +13,7 @@ func TestRedrawAfterCallbacks(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 10)
 	runLua(t, app, `
 local n = 0
-zemi.ui.widget.register({ id = "n", region = "header", render = function() return { { { text = "n=" .. n } } } end })
+zemi.ui.widget.add({ id = "n", region = "header", render = function() return { { { text = "n=" .. n } } } end })
 zemi.timer.after(0, function() n = 10 end)`)
 	gen := app.frameGen
 	for deadline := time.Now().Add(3 * time.Second); app.frameGen == gen; time.Sleep(5 * time.Millisecond) {

@@ -179,7 +179,7 @@ so is `ripgrep` (`glob` and `grep` use `rg` when installed and fall back to a Go
 zemi ships no providers. Register one in `~/.config/zemi/init.lua`:
 
 ```lua
-zemi.provider.register({
+zemi.provider.add({
   id = "anthropic",
   kind = zemi.provider.kind.ANTHROPIC,            -- or OPENAI, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),

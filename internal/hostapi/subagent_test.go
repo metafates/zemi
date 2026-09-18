@@ -210,7 +210,7 @@ func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
 	h, r := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.tool.register({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
+	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 			if toolResult {
@@ -357,7 +357,7 @@ func TestAgentDefs(t *testing.T) {
 // agent tool lists the configured models and refuses one it does not know.
 func TestSubagentModelChoice(t *testing.T) {
 	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.provider.register({
+	runUser(t, r, `zemi.provider.add({
 		id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k",
 		models = { { id = "main" }, { id = "mini" } },
 	})`)

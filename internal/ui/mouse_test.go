@@ -238,9 +238,9 @@ func TestHoverTargets(t *testing.T) {
 		app.host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	}
 	widgets := func(app *App) {
-		src := `zemi.ui.widget.register({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
+		src := `zemi.ui.widget.add({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
 			render = function() return {{{ text = "clickme", click = "go" }}} end })
-		zemi.ui.widget.register({ id = "b", region = "statusline.left", priority = 91,
+		zemi.ui.widget.add({ id = "b", region = "statusline.left", priority = 91,
 			render = function() return {{{ text = "noclick", click = "go" }}} end })`
 		if err := app.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)

@@ -9,7 +9,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 1. Ask the user to run `/health`. It checks the model and its API key, the stores,
    git, ripgrep, the reflector, pending reviews, skills, recent errors,
-   MCP servers, language servers and the Lua runtime (problems listed first), plus any rows config added with `zemi.health.register`.
+   MCP servers, language servers and the Lua runtime (problems listed first), plus any rows config added with `zemi.health.add`.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
    event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
@@ -58,11 +58,11 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model configured" | no provider or `agent.model`: see zemi-config (`zemi.provider.register`) |
+| "no model configured" | no provider or `agent.model`: see zemi-config (`zemi.provider.add`) |
 | 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |
-| `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
+| `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.add` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |

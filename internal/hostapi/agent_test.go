@@ -260,7 +260,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	}
 }
 
-// TestToolRegisterValidation covers zemi.tool.register: a spec that could
+// TestToolRegisterValidation covers zemi.tool.add: a spec that could
 // never reach the model raises instead of registering (DESIGN §6.0), and
 // the builtin-name shadowing ban holds (DESIGN §6.4).
 func TestToolRegisterValidation(t *testing.T) {
@@ -280,11 +280,11 @@ func TestToolRegisterValidation(t *testing.T) {
 			input = { city = { type = "string" } }, required = { "town" } }`, `required names "town"`},
 		{`{ name = "x", description = "d", execute = function() end, required = { "city" } }`, "there is no input"},
 	} {
-		runExpectErr(t, r, `zemi.tool.register(`+c.src+`)`, c.want)
+		runExpectErr(t, r, `zemi.tool.add(`+c.src+`)`, c.want)
 	}
 
 	runUser(t, r, `
-		zemi.tool.register({
+		zemi.tool.add({
 			name = "weather",
 			description = "look up weather",
 			input = { city = { type = "string", description = "the city" } },
@@ -311,12 +311,12 @@ func TestModelNamespace(t *testing.T) {
 
 	runExpectErr(t, r, `zemi.model.set("myllm/main")`, "unknown model")
 
-	runUser(t, r, `zemi.provider.register({
+	runUser(t, r, `zemi.provider.add({
 		id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1",
 		api_key = "test-key",
 		models = { { id = "main", display = "Main" }, { id = "mini" } },
 	})`)
-	runExpectErr(t, r, `zemi.provider.register({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, "api_key_env is gone")
+	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, "api_key_env is gone")
 	t.Setenv("ZEMI_TEST_TOKEN", "abc")
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 
@@ -334,10 +334,10 @@ func TestModelNamespace(t *testing.T) {
 	`)
 	// a reload replays init.lua: the same id replaces, it does not raise
 	runUser(t, r, `
-		zemi.provider.register({ id = "myllm", kind = "openai", api_key = "k2", models = { { id = "main" } } })
+		zemi.provider.add({ id = "myllm", kind = "openai", api_key = "k2", models = { { id = "main" } } })
 		assert(#zemi.model.list() == 1, "re-register must replace, not add")
 	`)
-	runExpectErr(t, r, `zemi.provider.register({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
+	runExpectErr(t, r, `zemi.provider.add({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
 }
 
 // TestFsDefaults pins the §9 built-in permission defaults: reads inside
@@ -851,7 +851,7 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.register({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
+		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
 			{ id = "big", context_window = 200000, images = false },
 			{ id = "small", context_window = 32000 },
 		} })
@@ -951,8 +951,8 @@ func TestRetryRestreamsStep(t *testing.T) {
 func TestMaxOutput(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, images = false } } })
-		zemi.provider.register({ id = "o", kind = "openai", models = { { id = "gpt" } } })
+		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, images = false } } })
+		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "gpt" } } })
 	`)
 	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
 		if got := h.maxOutput(model); got != want {

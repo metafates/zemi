@@ -16,7 +16,7 @@ local chat_cache = {}
 -- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
 -- reasoning line toggles it; one on an agent's row shows that run; one on a
 -- file tool's row opens the file in the user's editor.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "chat",
   region = "chat",
   priority = 10,

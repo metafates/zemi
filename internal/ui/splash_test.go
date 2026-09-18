@@ -17,7 +17,7 @@ func TestSplashExtends(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 30)
 	runLua(t, app, `
 local default = require("zemi.defaultui")
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
     local rows = default.splash(ctx)
@@ -59,7 +59,7 @@ func TestSplashFitsShortChat(t *testing.T) {
 		app, _ := bootAgentApp(t, 80, h)
 		runLua(t, app, `
 local default = require("zemi.defaultui")
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
     ctx.recent = { { ago = "1m ago", title = "a" }, { ago = "2m ago", title = "b" }, { ago = "3m ago", title = "c" } }

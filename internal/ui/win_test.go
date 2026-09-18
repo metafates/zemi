@@ -278,7 +278,7 @@ func TestImageCellsFollowTheFloat(t *testing.T) {
 func TestWidgetSizes(t *testing.T) {
 	a, _ := bootAgentApp(t, 120, 30)
 	defer a.host.Wins.CloseAll()
-	runLua(t, a, `zemi.ui.widget.register({ id = "head", region = "header", render = function(ctx)
+	runLua(t, a, `zemi.ui.widget.add({ id = "head", region = "header", render = function(ctx)
 		local rows = {}
 		for i = 1, ctx.height do rows[i] = { "x" } end
 		return rows

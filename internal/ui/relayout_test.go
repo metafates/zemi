@@ -15,14 +15,14 @@ import (
 // on top, a scrolled sidebar left of the chat, the composer at the bottom
 // and a clock floating in the stage's top-right corner.
 const sidebarConfig = `
-zemi.ui.widget.register({ id = "side", region = "side",
+zemi.ui.widget.add({ id = "side", region = "side",
   on_click = function(ev) zemi.state.set("clicked", ev.id) end,
   render = function()
     local rows = {}
     for i = 1, 40 do rows[i] = { { text = "item " .. i, click = "item" .. i } } end
     return rows
   end })
-zemi.ui.widget.register({ id = "clock", region = "clock", render = function(ctx)
+zemi.ui.widget.add({ id = "clock", region = "clock", render = function(ctx)
   return { { { text = " " .. ctx.time .. " ", hl = "Title" } } }
 end })
 zemi.ui.layout.set({
@@ -135,7 +135,7 @@ func TestRelayoutComposerOnTop(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	runLua(t, app, `
 zemi.command.add("hello", function() end, { desc = "says hello" })
-zemi.ui.widget.register({ id = "cover", region = "cover", render = function()
+zemi.ui.widget.add({ id = "cover", region = "cover", render = function()
   return { { { text = string.rep("#", 40) } }, { { text = string.rep("#", 40) } } }
 end })
 zemi.ui.layout.set({

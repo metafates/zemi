@@ -62,7 +62,7 @@ type Registry struct {
 
 // NewRegistry returns an empty registry. zemi ships no providers: every
 // provider, its key and its model catalog come from user config
-// (zemi.provider.register); without one the agent fails closed with "no
+// (zemi.provider.add); without one the agent fails closed with "no
 // models registered".
 func NewRegistry() *Registry {
 	return &Registry{keys: map[string]string{}}

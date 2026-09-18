@@ -11,7 +11,7 @@ import (
 // reads at their own prices; a model without prices costs nothing.
 func TestTurnCost(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.provider.register({
+	runUser(t, r, `zemi.provider.add({
 		id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
 		models = {
 			{ id = "m", cost_per_1m_in = 3, cost_per_1m_out = 15,

@@ -154,22 +154,22 @@ func TestSandboxDeepNamespaceProtection(t *testing.T) {
 	sb := newTestSandbox(t)
 	ui := sb.L.NewTable()
 	widget := sb.L.NewTable()
-	widget.RawSetString("register", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
+	widget.RawSetString("add", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
 	ui.RawSetString("widget", widget)
 	if err := sb.RegisterNamespace("zemi.ui", ui); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, sb, `
 		assert(type(zemi.ui.widget) == "table", "nested namespace not readable")
-		assert(type(zemi.ui.widget.register) == "function", "nested member not readable")
+		assert(type(zemi.ui.widget.add) == "function", "nested member not readable")
 	`)
-	wantRaise(t, sb, `zemi.ui.widget.register = "fake"`, "cannot modify frozen")
+	wantRaise(t, sb, `zemi.ui.widget.add = "fake"`, "cannot modify frozen")
 	wantRaise(t, sb, `zemi.ui.widget.new = 1`, "cannot modify frozen")
 	// a typo names the members instead of "attempt to call a nil value"
-	wantRaise(t, sb, `zemi.ui.widget.regsiter()`, `zemi.ui.widget has no member "regsiter" (register)`)
+	wantRaise(t, sb, `zemi.ui.widget.adds()`, `zemi.ui.widget has no member "adds" (add)`)
 	wantRaise(t, sb, `local x = zemi.iu`, `zemi has no member "iu" (ui)`)
 	mustRun(t, sb, `
-		assert(type(zemi.ui.widget.register) == "function",
+		assert(type(zemi.ui.widget.add) == "function",
 			"nested member changed despite refused write")
 	`)
 	if err := sb.CheckIntegrity(); err != nil {

@@ -22,7 +22,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// luaTool is one zemi.tool.register entry: interpreter-owned callback,
+// luaTool is one zemi.tool.add entry: interpreter-owned callback,
 // gen-scoped so a reload drops it (DESIGN §4).
 type luaTool struct {
 	Name     string
@@ -120,29 +120,29 @@ func (h *Host) builtinToolNames() []string {
 func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.tool.register")
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.tool.add")
 		if o := h.RT.CurrentOrigin(L); o.Rank() < lua.OriginProject.Rank() {
-			L.RaiseError("zemi.tool.register: %s origin may not register tools (DESIGN §10.4, §10.5)", o)
+			L.RaiseError("zemi.tool.add: %s origin may not register tools (DESIGN §10.4, §10.5)", o)
 		}
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
-			L.RaiseError("zemi.tool.register: spec must be a table")
+			L.RaiseError("zemi.tool.add: spec must be a table")
 		}
 		fn, ok := spec.RawGetString("execute").(*glua.LFunction)
 		if !ok {
-			L.RaiseError("zemi.tool.register: execute callback is required")
+			L.RaiseError("zemi.tool.add: execute callback is required")
 		}
 		name := rawString(spec, "name")
 		if name == "" || !isToolName(name) {
-			L.RaiseError("zemi.tool.register: name must be an identifier")
+			L.RaiseError("zemi.tool.add: name must be an identifier")
 		}
 		if slices.Contains(h.builtinToolNames(), name) {
-			L.RaiseError("zemi.tool.register: %q is a builtin tool name", name)
+			L.RaiseError("zemi.tool.add: %q is a builtin tool name", name)
 		}
 		desc := rawString(spec, "description")
 		if desc == "" {
-			L.RaiseError("zemi.tool.register: description is required; the model picks the tool by it")
+			L.RaiseError("zemi.tool.add: description is required; the model picks the tool by it")
 		}
 		// input is the parameters themselves, flat; what reaches the provider
 		// is only ever this map (tools.SchemaProperties)
@@ -151,26 +151,26 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if v := spec.RawGetString("input"); v != glua.LNil {
 			props, err := lua.ToGo(v)
 			if err != nil {
-				L.RaiseError("zemi.tool.register: input: %v", err)
+				L.RaiseError("zemi.tool.add: input: %v", err)
 			}
 			m, ok := props.(map[string]any)
 			if !ok {
-				L.RaiseError("zemi.tool.register: input must map a parameter name to its schema, got %s", luaShape(props))
+				L.RaiseError("zemi.tool.add: input must map a parameter name to its schema, got %s", luaShape(props))
 			}
 			if _, wrapped := m["properties"]; wrapped {
-				L.RaiseError(`zemi.tool.register: input holds "properties"; write the parameters flat: input = { path = { type = "string" } }`)
+				L.RaiseError(`zemi.tool.add: input holds "properties"; write the parameters flat: input = { path = { type = "string" } }`)
 			}
 			if _, inside := m["required"]; inside {
-				L.RaiseError("zemi.tool.register: required is a field of the spec, beside input, not inside it")
+				L.RaiseError("zemi.tool.add: required is a field of the spec, beside input, not inside it")
 			}
 			for _, r := range required {
 				if _, ok := m[r]; !ok {
-					L.RaiseError("zemi.tool.register: required names %q, which input does not define", r)
+					L.RaiseError("zemi.tool.add: required names %q, which input does not define", r)
 				}
 			}
 			schema["properties"] = m
 		} else if len(required) > 0 {
-			L.RaiseError("zemi.tool.register: required names parameters but there is no input")
+			L.RaiseError("zemi.tool.add: required names parameters but there is no input")
 		}
 		timeout := 30 * time.Second
 		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
@@ -185,7 +185,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			Gen: h.currentGen(),
 		}
 		if err := h.luaTools.add(lt); err != nil {
-			L.RaiseError("zemi.tool.register: %v", err)
+			L.RaiseError("zemi.tool.add: %v", err)
 		}
 		return 0
 	}))

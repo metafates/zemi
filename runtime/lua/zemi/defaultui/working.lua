@@ -4,7 +4,7 @@ local fmt = require("zemi.defaultui.text")
 -- a shimmering label naming what the agent does, the elapsed time, the
 -- interrupt key and the queue depth. It stays hidden for the first 300ms so
 -- instant turns do not flash it.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "working",
   region = "working",
   priority = 10,

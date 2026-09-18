@@ -23,7 +23,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				b.Fatal(err)
 			}
-			if err := r.ExecuteChunk(context.Background(), `zemi.ui.widget.register({ id = "m", region = "statusline.right", render = function(ctx) return { { { text = ctx.model } } } end })`, "b.lua", lua.OriginUser); err != nil {
+			if err := r.ExecuteChunk(context.Background(), `zemi.ui.widget.add({ id = "m", region = "statusline.right", render = function(ctx) return { { { text = ctx.model } } } end })`, "b.lua", lua.OriginUser); err != nil {
 				b.Fatal(err)
 			}
 			diff := strings.Repeat("- old line of code here\n+ new line of code here\n", 20)
@@ -50,7 +50,7 @@ func TestWidgetCtxLazy(t *testing.T) {
 	h.AppendMessage("user", "hi")
 	runUser(t, r, `
 		local kept
-		zemi.ui.widget.register({ id = "k", region = "header", render = function(ctx)
+		zemi.ui.widget.add({ id = "k", region = "header", render = function(ctx)
 			assert(#ctx.transcript == 1 and ctx.transcript_count == 1 and ctx.transcript[1].text == "hi", "transcript")
 			assert(type(ctx.agent.tools) == "table" and ctx.recent == nil, "lazy fields")
 			kept = ctx

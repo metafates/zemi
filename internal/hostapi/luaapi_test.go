@@ -204,7 +204,7 @@ func TestKeySequences(t *testing.T) {
 func TestHighlightOverride(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.ui.theme.register("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" }, Link = { link = "Title", fg = "#000000" } } })
+		zemi.ui.theme.add("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" }, Link = { link = "Title", fg = "#000000" } } })
 		zemi.ui.theme.set("t")
 		assert(zemi.ui.hl.get("Link").fg == "#123456", "a theme link to a palette color")
 		zemi.ui.hl.set("Title", { fg = "#ffffff", bold = true })
@@ -222,12 +222,12 @@ func TestHighlightOverride(t *testing.T) {
 		assert(zemi.ui.hl.get("U").underline == false, "underline = false reads back")
 		assert(not pcall(zemi.ui.hl.set, "X", { underline = "wavy" }), "an unknown underline kind raises")
 		assert(not pcall(zemi.ui.hl.set, "X", "blue") and not pcall(zemi.ui.hl.set, "X"), "a spec that is not a table raises")
-		assert(not pcall(zemi.ui.theme.register, "bogus", "nope"), "a theme that is not a table raises")
+		assert(not pcall(zemi.ui.theme.add, "bogus", "nope"), "a theme that is not a table raises")
 		local ok, err = pcall(zemi.ui.hl.set, "X", { fg = "salmon" })
 		assert(not ok and tostring(err):find("palette key", 1, true), "err=" .. tostring(err))
 		assert(not pcall(zemi.ui.hl.set, "X", { bg = "#gg0000" }), "a bad hex color raises")
-		assert(not pcall(zemi.ui.theme.register, "p", { palette = { accent = "salmon" } }), "a palette name as a color raises")
-		assert(not pcall(zemi.ui.theme.register, "q", { palette = { a = "#111111" }, hl = { T = { fg = "b" } } }),
+		assert(not pcall(zemi.ui.theme.add, "p", { palette = { accent = "salmon" } }), "a palette name as a color raises")
+		assert(not pcall(zemi.ui.theme.add, "q", { palette = { a = "#111111" }, hl = { T = { fg = "b" } } }),
 			"a theme group naming a color its palette lacks raises")
 		assert(zemi.ui.hl.get("X") == nil, "a refused spec sets nothing")
 	`)
@@ -244,7 +244,7 @@ func TestHighlightOverride(t *testing.T) {
 // one, and del reports whether there was one.
 func TestWidgetDel(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.ui.widget.register({ id = "w", region = "header", render = function() return {} end })`)
+	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.del("w")`, "p.lua", lua.OriginProject); err == nil || h.Widgets.Get("w") == nil {
 		t.Fatalf("project code removed a user widget: %v", err)
 	}

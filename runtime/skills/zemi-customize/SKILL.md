@@ -105,7 +105,7 @@ toasts go. `floats` put a region over the tree. A scrolled region takes keys by 
 
 ```lua
 -- <user config>/init.lua: statusline on top, a todo sidebar left of the chat
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "user.todos", region = "sidebar",
   render = function(ctx)
     local rows = {}
@@ -173,7 +173,7 @@ write it to config.
 -- Add a line to the default splash instead of rewriting it: defaultui returns
 -- its splash builder.
 local default = require("zemi.defaultui")
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
     if ctx.transcript_count > 0 or ctx.agent_active then return { { { text = "" } } } end
@@ -188,18 +188,18 @@ zemi.ui.widget.register({
   end,
 })
 
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.branch", region = "statusline.right", priority = 1,
   render = function(ctx) return { { { text = zemi.state.get("branch") or "", hl = "Comment" } } } end,
 })
 
--- Change a few colors: override just those groups. theme.register below
+-- Change a few colors: override just those groups. theme.add below
 -- builds a complete theme, and groups it leaves out lose their colors.
 zemi.ui.hl.set("ModePlan", { fg = "bg", bg = "warn", bold = true })
 zemi.ui.hl.set("ModeAuto", { fg = "bg", bg = "#c4a7e7", bold = true })
 
 -- A whole theme (define every group the UI uses, or copy the default's)
-zemi.ui.theme.register("dusk", {
+zemi.ui.theme.add("dusk", {
   palette = { bg = "#1e1e2e", fg = "#cdd6f4", muted = "#6c7086", accent = "#f5c2e7", ok = "#a6e3a1", warn = "#f9e2af", err = "#f38ba8", panel = "#313244" },
   hl = { Normal = { fg = "fg" }, Comment = { fg = "muted" }, Title = { fg = "accent", bold = true } },
 })

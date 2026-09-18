@@ -41,7 +41,7 @@ func TestContextEstimateCountsPrompt(t *testing.T) {
 func TestCompactModelSetting(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
+		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
 			models = { { id = "sum" } } })
 		zemi.config.set("compact.model", "p/sum")
 	`)
@@ -331,7 +331,7 @@ func TestCapRefusal(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
-			runUser(t, r, `zemi.provider.register({ id = "a", kind = "anthropic", models = { { id = "m", max_output = 8000 } } })`)
+			runUser(t, r, `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m", max_output = 8000 } } })`)
 			t.Cleanup(func() { capRejected.Delete("a/m") })
 			m := reflectStub(t, h, "ok")
 			m.failOnce.Store(&fantasy.ProviderError{StatusCode: 400, Message: c.msg})

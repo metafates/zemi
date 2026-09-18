@@ -67,7 +67,7 @@ prompt lines that name those tools (`headlessAskingPrompt`, `planHeadless`).
 A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
 checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout, errors,
-trust, mcp, lsp) plus whatever Lua registered with `zemi.health.register`.
+trust, mcp, lsp) plus whatever Lua registered with `zemi.health.add`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20
@@ -689,7 +689,7 @@ timeout.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.41.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.42.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;

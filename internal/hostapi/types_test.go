@@ -68,7 +68,7 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 		live[ns] = true
 		for _, member := range members {
 			live[ns+"."+member] = true
-			live[ns+"."+trimLast(member)] = true // zemi.ui.widget, from widget.register
+			live[ns+"."+trimLast(member)] = true // zemi.ui.widget, from widget.add
 		}
 	}
 	for _, m := range reAnnotatedFn.FindAllStringSubmatch(typesSource(t), -1) {
@@ -153,7 +153,7 @@ func bootedNamespaces(t *testing.T) map[string][]string {
 	return out
 }
 
-// trimLast drops the last dotted segment ("zemi.ui.widget.register" ->
+// trimLast drops the last dotted segment ("zemi.ui.widget.add" ->
 // "zemi.ui.widget").
 func trimLast(path string) string {
 	if i := strings.LastIndex(path, "."); i > 0 {
@@ -190,7 +190,7 @@ func TestTypesWidgetCtx(t *testing.T) {
 	}
 	runUser(t, r, `
 		local fields = { `+fields.String()+` }
-		zemi.ui.widget.register({ id = "types", region = "header", render = function(ctx)
+		zemi.ui.widget.add({ id = "types", region = "header", render = function(ctx)
 			local raw = {}
 			for k in pairs(ctx) do raw[#raw + 1] = k end
 			for _, k in ipairs(raw) do

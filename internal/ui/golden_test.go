@@ -37,7 +37,7 @@ zemi.keymap.set("ctrl+t", function()
   zemi.notify({ title = "rebound", body = "ctrl+t pressed" })
 end, { desc = "notify on rebound ctrl+t" })
 
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "user.status",
   region = "statusline.left",
   priority = 90,

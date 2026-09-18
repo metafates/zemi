@@ -87,7 +87,7 @@ const starterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- A provider and a model: zemi ships none, so uncomment this and zemi
 -- works. The key is read from your environment; paste it here instead if
 -- you keep it elsewhere.
--- zemi.provider.register({
+-- zemi.provider.add({
 --   id = "anthropic",
 --   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, OPENAI_COMPAT
 --   api_key = zemi.env.get("ANTHROPIC_API_KEY"),

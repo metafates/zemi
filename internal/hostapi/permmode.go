@@ -224,7 +224,7 @@ func (h *Host) cyclePermMode(step int) error {
 
 var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 
-// modeNamespace is zemi.permission.mode: add, remove and list modes from
+// modeNamespace is zemi.permission.mode: add, del and list modes from
 // user config (a mode answers permission asks, so no other origin may).
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -282,9 +282,9 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		h.refresh()
 		return 0
 	}))
-	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		gate(L, "remove")
+		gate(L, "del")
 		err := h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
 			i := modeIndex(list, name)
 			switch {
@@ -296,7 +296,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			return slices.Delete(list, i, i+1), nil
 		})
 		if err != nil {
-			L.RaiseError("zemi.permission.mode.remove: %v", err)
+			L.RaiseError("zemi.permission.mode.del: %v", err)
 		}
 		h.refresh()
 		return 0

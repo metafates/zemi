@@ -256,9 +256,9 @@ func TestPermissionBoxFits(t *testing.T) {
 func TestGoldenModelPicker(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
 	runLua(t, app, `
-		zemi.provider.register({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
+		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })
-		zemi.provider.register({ id = "openai", kind = "openai_compat", base_url = "http://x", models = { { id = "gpt-5", display = "GPT-5" } } })
+		zemi.provider.add({ id = "openai", kind = "openai_compat", base_url = "http://x", models = { { id = "gpt-5", display = "GPT-5" } } })
 		zemi.model.set("anthropic/claude-sonnet-4-5")`)
 	done := make(chan error, 1)
 	go func() {
@@ -857,7 +857,7 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	run(`zemi.ui.widget.register({ id = "bad", region = "statusline.right", render = function() error("boom") end })`)
+	run(`zemi.ui.widget.add({ id = "bad", region = "statusline.right", render = function() error("boom") end })`)
 	for range 10 {
 		for app.Pump() {
 		}

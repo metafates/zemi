@@ -785,7 +785,7 @@ zemi.ui.widget = {}
 --- Register a widget in a region. Registering the same id again from the
 --- same origin replaces it; a lower-trust origin is refused.
 ---@param spec zemi.WidgetSpec
-function zemi.ui.widget.register(spec) end
+function zemi.ui.widget.add(spec) end
 
 --- Remove a widget the caller's origin or a less trusted one registered.
 ---@param id string
@@ -950,7 +950,7 @@ zemi.ui.theme = {}
 
 ---@param name string
 ---@param spec zemi.ThemeSpec
-function zemi.ui.theme.register(name, spec) end
+function zemi.ui.theme.add(name, spec) end
 
 --- Make a registered theme the active one. User or builtin origin only.
 ---@param name string
@@ -999,7 +999,7 @@ function zemi.ui.edit(path, opts, on_done) end
 zemi.ui.hl = {}
 
 --- Change one highlight group on top of the active theme, and any theme
---- set later. `zemi.ui.theme.register` builds a whole theme instead.
+--- set later. `zemi.ui.theme.add` builds a whole theme instead.
 --- User or builtin origin only.
 ---@param group string
 ---@param spec zemi.HLSpec
@@ -1296,7 +1296,7 @@ zemi.provider = {}
 
 --- Register a provider and its models. User config only; zemi ships none.
 ---@param spec zemi.ProviderSpec
-function zemi.provider.register(spec) end
+function zemi.provider.add(spec) end
 
 ---@return zemi.ProviderInfo[]
 function zemi.provider.list() end
@@ -1594,7 +1594,7 @@ zemi.permission.mode = {}
 function zemi.permission.mode.add(name, spec) end
 
 ---@param name string
-function zemi.permission.mode.remove(name) end
+function zemi.permission.mode.del(name) end
 
 ---@return zemi.PermMode[]
 function zemi.permission.mode.list() end
@@ -1638,7 +1638,7 @@ zemi.tool = {}
 
 --- Register a tool the model can call.
 ---@param spec zemi.ToolSpec
-function zemi.tool.register(spec) end
+function zemi.tool.add(spec) end
 
 --- Hook a tool call before it runs. A rewritten input re-enters at the
 --- permission gate.
@@ -2077,7 +2077,7 @@ zemi.health = {}
 --- and may return a detail string instead of a table.
 ---@param name string
 ---@param fn fun(): zemi.HealthResult|string
-function zemi.health.register(name, fn) end
+function zemi.health.add(name, fn) end
 
 ---@class zemi.ErrorEntry
 ---@field index integer

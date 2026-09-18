@@ -17,7 +17,7 @@ end
 -- Statusline left starts with the permission mode as a pill (tab cycles
 -- it): quiet in manual, filled in auto and yolo, matching the composer
 -- prompt color. A click opens the mode picker.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.mode",
   region = "statusline.left",
   priority = 5,
@@ -36,7 +36,7 @@ zemi.ui.widget.register({
 })
 
 -- A first idle ctrl+c arms quit; say what the second one does.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.quit",
   region = "statusline.left",
   priority = 0,
@@ -49,7 +49,7 @@ zemi.ui.widget.register({
 })
 
 -- The keys of a bound sequence typed so far, waiting for the rest.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.keys",
   region = "statusline.left",
   priority = 95,
@@ -63,7 +63,7 @@ zemi.ui.widget.register({
 
 -- The altscreen has no scrollbar: while the chat is scrolled up, say how
 -- much is below and how to get back.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.scroll",
   region = "statusline.left",
   priority = 100,
@@ -76,7 +76,7 @@ zemi.ui.widget.register({
 })
 -- Then the project: its path when short, else its name (the splash has
 -- the whole path), and whether it is untrusted.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.cwd",
   region = "statusline.left",
   priority = 10,
@@ -93,7 +93,7 @@ zemi.ui.widget.register({
 -- Reflector feedback (§10.3): a blinking badge while a run is active
 -- (ctx.pulse is the shared phase), a toast with what it learned when it ends
 -- (a failure goes to /errors).
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.reflect",
   region = "statusline.left",
   priority = 20,
@@ -106,7 +106,7 @@ zemi.ui.widget.register({
 })
 
 -- Subagents at work: the turn's own, background ones, workflows and Lua.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.agents",
   region = "statusline.left",
   priority = 25,
@@ -122,7 +122,7 @@ zemi.ui.widget.register({
 
 -- While the chat shows an agent run's transcript (/agents, or a click on
 -- its row), say whose it is, where a message goes and how to get back.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.view",
   region = "statusline.left",
   priority = 1,
@@ -141,7 +141,7 @@ zemi.ui.widget.register({
 })
 
 -- Learned proposals waiting for review; they persist across restarts.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.learn",
   region = "statusline.left",
   priority = 30,
@@ -181,7 +181,7 @@ end)
 -- session token total when the model's context window is unknown. The
 -- percent colors by threshold: muted, warn at 80%, err at 95%. A click on
 -- the model opens the model picker, on the rest /usage.
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.info",
   region = "statusline.right",
   priority = 10,

@@ -13,7 +13,7 @@ import (
 const todoConfig = `
 local items = { { text = "write tests" }, { text = "fix focus" }, { text = "ship" } }
 local sel = 1
-zemi.ui.widget.register({ id = "todo", region = "todo", render = function(ctx)
+zemi.ui.widget.add({ id = "todo", region = "todo", render = function(ctx)
   local rows = { { { text = ctx.focus == "todo" and "TODO*" or "TODO", hl = "Title" } } }
   for i, it in ipairs(items) do
     local mark = (i == sel and ctx.focus == "todo") and "> " or "  "

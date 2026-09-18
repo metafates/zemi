@@ -19,7 +19,7 @@ import (
 func TestLuaToolAfterReload(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "tool.weather", Pattern: "*", Decision: perm.Allow})
-	runUser(t, r, `zemi.tool.register({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
+	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	tool := h.luaFantasyTools(h.PipelineFor())[0]
 	h.gen.Add(1)
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"})
@@ -34,7 +34,7 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.tool.register({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
+	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	input := `{"city":"` + strings.Repeat("a", 400) + `b"}`
 	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: input}); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestToolRegCollision(t *testing.T) {
 func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 	cases := map[string]string{
 		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("bash", { pre = function() end }) end)`,
-		"timer register":   `zemi.timer.after(0, function() zemi.tool.register({ name = "evil", description = "evil", execute = function() end }) end)`,
+		"timer register":   `zemi.timer.after(0, function() zemi.tool.add({ name = "evil", description = "evil", execute = function() end }) end)`,
 		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("bash", { pre = function() end }) end)`,
 	}
 	for name, src := range cases {

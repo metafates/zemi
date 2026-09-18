@@ -1058,18 +1058,18 @@ func (ag *agentHost) endThinking() {
 
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.provider.register: only user config may register providers")
+			L.RaiseError("zemi.provider.add: only user config may register providers")
 			return 0
 		}
 		spec, err := providerSpecFromLua(L, 1)
 		if err != nil {
-			L.RaiseError("zemi.provider.register: %v", err)
+			L.RaiseError("zemi.provider.add: %v", err)
 			return 0
 		}
 		if err := h.Providers.Register(spec, rawString(L.CheckTable(1), "api_key")); err != nil {
-			L.RaiseError("zemi.provider.register: %v", err)
+			L.RaiseError("zemi.provider.add: %v", err)
 			return 0
 		}
 		return 0

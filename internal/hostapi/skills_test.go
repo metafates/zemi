@@ -131,7 +131,7 @@ func TestSkillsLearnedHookOnEnable(t *testing.T) {
 	h, r := newTestHostSkills(t)
 	writeSkill(t, h.learnedSkillsDir(), "hooked", "learned with a hook", `
 		zemi.command.add("hooked-cmd", function() end, { desc = "from skill hook" })
-		local ok = pcall(zemi.tool.register, {
+		local ok = pcall(zemi.tool.add, {
 			name = "hooked-tool", description = "nope",
 			execute = function() end })
 		assert(not ok, "learned origin registered a tool")

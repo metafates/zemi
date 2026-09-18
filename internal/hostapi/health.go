@@ -25,7 +25,7 @@ type healthCheck struct {
 	run    string // the command the row's detail action runs
 }
 
-// healthReg holds the checks Lua registered with zemi.health.register;
+// healthReg holds the checks Lua registered with zemi.health.add;
 // healthChecks runs them after the built-in rows.
 type healthReg struct {
 	mu   sync.Mutex
@@ -45,14 +45,14 @@ func (r *healthReg) purge() {
 	r.mu.Unlock()
 }
 
-// health.register(name, fn): fn returns { level = "ok"|"warn"|"error",
+// health.add(name, fn): fn returns { level = "ok"|"warn"|"error",
 // detail = "..." } or a bare detail string.
 func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	tb.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, fn := L.CheckString(1), L.CheckFunction(2)
 		if strings.TrimSpace(name) == "" {
-			L.RaiseError("zemi.health.register: name is required")
+			L.RaiseError("zemi.health.add: name is required")
 		}
 		h.healthReg.mu.Lock()
 		h.healthReg.list = append(h.healthReg.list, luaHealthCheck{
@@ -128,7 +128,7 @@ func (h *Host) healthChecks() []healthCheck {
 	h.agents.mu.Unlock()
 	switch {
 	case id == "":
-		add("error", "model", "no provider registered; call zemi.provider.register in init.lua")
+		add("error", "model", "no provider registered; call zemi.provider.add in init.lua")
 	case !h.Providers.HasKey(strings.SplitN(id, "/", 2)[0]):
 		add("error", "model", id+": api key not set")
 	default:

@@ -34,7 +34,7 @@ Rules when editing:
 ## Providers and models
 
 ```lua
-zemi.provider.register({
+zemi.provider.add({
   id = "anthropic",
   kind = zemi.provider.kind.ANTHROPIC,                 -- or OPENAI, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
@@ -161,14 +161,14 @@ guessing. Common keys:
   `zemi --mode auto`. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
-  `zemi.permission.mode.remove("yolo")` takes a mode out of tab and `/mode`, and
+  `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`, and
   `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules })`
   adds one (or replaces one with that name) after the others. It behaves like its base; its
   `rules` (`{ "tool.bash", "go test*", "allow" }`, `{ "tool.bash", "git push*", "deny" }`) answer
   what would otherwise ask, and `prompt` joins the system prompt while it is on:
 
   ```lua
-  zemi.permission.mode.remove("yolo")
+  zemi.permission.mode.del("yolo")
   zemi.permission.mode.add("tests", {
     base = "manual", description = "tests and git reads run, the rest asks",
     rules = { { "tool.bash", "go test*", "allow" }, { "tool.bash", "git status*", "allow" } },
@@ -201,7 +201,7 @@ zemi.command.add("standup", function(args)
   zemi.agent.send("summarize yesterday's commits " .. args.args)
 end, { desc = "draft a standup", nargs = "*" })
 
-zemi.ui.theme.register("mine", {
+zemi.ui.theme.add("mine", {
   palette = { fg = "#e0def4", muted = "#6e6a86", accent = "#c4a7e7" },
   hl = { Normal = { fg = "fg" }, Comment = { fg = "muted" }, Title = { fg = "accent", bold = true } },
 })
@@ -214,7 +214,7 @@ Widgets replace or extend the screen. Registering a widget with an existing id f
 `statusline.view`):
 
 ```lua
-zemi.ui.widget.register({
+zemi.ui.widget.add({
   id = "statusline.branch", region = "statusline.left", priority = 40,
   render = function(ctx) return { { { text = "main", hl = "Comment" } } } end,
 })

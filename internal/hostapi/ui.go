@@ -21,11 +21,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	tb := L.NewTable()
 
 	widget := L.NewTable()
-	widget.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.widget.register")
+	widget.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.widget.add")
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
-			L.RaiseError("zemi.ui.widget.register: expected a spec table")
+			L.RaiseError("zemi.ui.widget.add: expected a spec table")
 		}
 		w := &Widget{
 			ID:     rawString(tb, "id"),
@@ -45,7 +45,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			w.OnClick = fn
 		}
 		if _, err := h.Widgets.Add(w); err != nil {
-			L.RaiseError("zemi.ui.widget.register: %v", err)
+			L.RaiseError("zemi.ui.widget.add: %v", err)
 		}
 		h.refresh()
 		return 0
@@ -74,10 +74,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	tb.RawSetString("focus", focus)
 
 	theme := L.NewTable()
-	theme.RawSetString("register", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.theme.register")
+	theme.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.theme.add")
 		name := L.CheckString(1)
-		m := tableArg(L, 2, "zemi.ui.theme.register")
+		m := tableArg(L, 2, "zemi.ui.theme.add")
 		t := &Theme{
 			Name:    name,
 			Palette: map[string]string{},
@@ -90,7 +90,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			for k, v := range pal {
 				s, _ := v.(string)
 				if !isHexColor(s) {
-					L.RaiseError("zemi.ui.theme.register: palette %s = %q is not #rrggbb; a palette holds colors, not names", k, s)
+					L.RaiseError("zemi.ui.theme.add: palette %s = %q is not #rrggbb; a palette holds colors, not names", k, s)
 				}
 				t.Palette[k] = s
 			}
@@ -98,12 +98,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if hl, ok := m["hl"].(map[string]any); ok {
 			for k, v := range hl {
 				if spec, ok := v.(map[string]any); ok {
-					t.HL[k] = hlSpec(L, "zemi.ui.theme.register", spec, t.Palette)
+					t.HL[k] = hlSpec(L, "zemi.ui.theme.add", spec, t.Palette)
 				}
 			}
 		}
 		if _, err := h.Themes.Add(t); err != nil {
-			L.RaiseError("zemi.ui.theme.register: %v", err)
+			L.RaiseError("zemi.ui.theme.add: %v", err)
 		}
 		return 0
 	}))
@@ -330,7 +330,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// hl.set(group, spec) changes one highlight group on top of the active
 	// theme (and any theme set later): { fg, bg, sp, bold, italic, underline,
 	// reverse, brighten, replace }, colors as hex or palette names, or
-	// { link = "Group" }. theme.register builds a whole theme.
+	// { link = "Group" }. theme.add builds a whole theme.
 	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.ui.hl.set")
 		// an override sits above every theme, the user's own included

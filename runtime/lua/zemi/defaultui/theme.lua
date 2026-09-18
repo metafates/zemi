@@ -1,7 +1,7 @@
 -- The default theme: a palette and every highlight group the shipped UI
 -- draws with.
 
-zemi.ui.theme.register("default", {
+zemi.ui.theme.add("default", {
   palette = {
     bg = "#1a1b26",
     fg = "#c0caf5",
