@@ -464,25 +464,37 @@ zemi.ui.widget.add({
       end
     end
     -- The todo list stays under the conversation until every item is done.
-    local todos, open = ctx.todos or {}, false
+    local todos, left = ctx.todos or {}, 0
     for _, td in ipairs(todos) do
-      if td.status ~= "done" then open = true end
+      if td.status ~= "done" then left = left + 1 end
     end
-    if open then
+    if left > 0 then
       blank()
+      -- a header in the composer rule's voice: the name, how far along, and
+      -- a short meter of one cell per item
+      local meter = {}
+      for n, td in ipairs(todos) do
+        if n > 12 then break end
+        meter[n] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
+      end
+      local head = { { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
+      for _, m in ipairs(meter) do
+        head[#head + 1] = m
+      end
+      lines[#lines + 1] = head
       for n, td in ipairs(todos) do
         if n > 12 then
-          lines[#lines + 1] = { { text = "… ", hl = "Comment", copy = false }, { text = (#todos - 12) .. " more", hl = "Comment" } }
+          lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = (#todos - 12) .. " more", hl = "Comment" } }
           break
         end
-        local mark, hl, item = "☐ ", "Normal", td.content
+        local mark, mhl, hl, item = "  ○ ", "Rule", "Normal", td.content
         if td.status == "done" then
-          mark, hl = "☑ ", "Comment"
+          mark, mhl, hl = "  ✓ ", "TodoDone", "Comment"
         elseif td.status == "in_progress" then
-          mark, hl = "◼ ", "TodoActive"
+          mark, mhl, hl = "  ▸ ", "TodoMark", "TodoActive"
           if (td.active_form or "") ~= "" then item = td.active_form end
         end
-        lines[#lines + 1] = { { text = mark, hl = hl, copy = false }, { text = item, hl = hl } }
+        lines[#lines + 1] = { { text = mark, hl = mhl, copy = false }, { text = item, hl = hl } }
       end
     end
     return lines
