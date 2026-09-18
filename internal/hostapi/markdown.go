@@ -134,7 +134,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 			// is laid out to the width, whose columns it stretches to fill.
 			rows = c.glamour(*cfg, styleKey, chunk.text, 0)
 			for _, row := range rows {
-				if segsWidth(row) > width {
+				if SegsWidth(row) > width {
 					rows = c.glamour(*cfg, styleKey, chunk.text, width)
 					break
 				}
@@ -396,7 +396,7 @@ func styledLines(s string) [][]Segment {
 // "    └ ") behind a NoCopy indent, so a copy gives back the line.
 func WrapSegs(line []Segment, w int) [][]Segment {
 	w = max(w, 1)
-	if segsWidth(line) <= w {
+	if SegsWidth(line) <= w {
 		return [][]Segment{line}
 	}
 	indent := 0
@@ -504,7 +504,8 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 	return rows
 }
 
-func segsWidth(segs []Segment) int {
+// SegsWidth is the printed width of a segment run.
+func SegsWidth(segs []Segment) int {
 	n := 0
 	for _, s := range segs {
 		n += ansi.StringWidth(s.Text)

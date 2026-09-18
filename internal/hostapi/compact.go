@@ -291,7 +291,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	default:
 		return err
 	}
-	summary := textMessage(compactPrefix + out + compactSuffix)
+	summary := agent.UserMessage(compactPrefix + out + compactSuffix)
 	if err := h.storeCompaction(summary, tail); err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 			fmt.Fprintf(&b, "\n\nAdditional focus: %s", focus)
 		}
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(compactSystem)).Generate(ctx, fantasy.AgentCall{
-			Messages:        []fantasy.Message{textMessage(b.String())},
+			Messages:        []fantasy.Message{agent.UserMessage(b.String())},
 			MaxOutputTokens: &maxOut,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		})
@@ -529,10 +529,6 @@ func toolText(p fantasy.ToolResultPart) string {
 	}
 	txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](p.Output)
 	return txt.Text
-}
-
-func textMessage(text string) fantasy.Message {
-	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}}
 }
 
 // transcriptText flattens history for the summarizer: text as written,

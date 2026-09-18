@@ -192,7 +192,7 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 	}}
 	runner := agent.NewRunner(model, nil, "sys")
 	runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
-	runner.History = []fantasy.Message{textMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
+	runner.History = []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
 	if err := h.sendPruning(context.Background(), runner, "p/m", "go"); err != nil {
 		t.Fatalf("send: %v (streams %d)", err, sends)
 	}

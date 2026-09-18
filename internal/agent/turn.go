@@ -401,10 +401,11 @@ func (r *Runner) compose(text string) fantasy.Message {
 	if r.Compose != nil {
 		return r.Compose(text)
 	}
-	return userMessage(text)
+	return UserMessage(text)
 }
 
-func userMessage(text string) fantasy.Message {
+// UserMessage is one plain-text message from the user.
+func UserMessage(text string) fantasy.Message {
 	return fantasy.Message{
 		Role:    fantasy.MessageRoleUser,
 		Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}},

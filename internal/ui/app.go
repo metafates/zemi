@@ -1215,10 +1215,5 @@ func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad)})
 }
 
-func segsWidth(segs []hostapi.Segment) int {
-	n := 0
-	for _, s := range segs {
-		n += ansi.StringWidth(s.Text)
-	}
-	return n
-}
+// the same measurement the markdown renderer uses
+var segsWidth = hostapi.SegsWidth

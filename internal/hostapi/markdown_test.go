@@ -138,7 +138,7 @@ func TestMarkdownTableWidth(t *testing.T) {
 	width := func(lines [][]Segment) int {
 		w := 0
 		for _, l := range lines {
-			w = max(w, segsWidth(l))
+			w = max(w, SegsWidth(l))
 		}
 		return w
 	}

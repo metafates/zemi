@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestContextEstimateCountsPrompt: the estimate a compaction installs counts
@@ -57,7 +59,7 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "## Goal\nship it")
 	m.cutReply = true
-	out, err := h.summarize(context.Background(), []fantasy.Message{textMessage("hi")}, "", "", 0)
+	out, err := h.summarize(context.Background(), []fantasy.Message{agent.UserMessage("hi")}, "", "", 0)
 	if err != nil {
 		t.Fatalf("summarize: %v", err)
 	}
@@ -217,7 +219,7 @@ func TestCompactionStopsAfterFailures(t *testing.T) {
 }
 
 func TestTailStart(t *testing.T) {
-	user := func(bytes int) fantasy.Message { return textMessage(strings.Repeat("u", bytes)) }
+	user := func(bytes int) fantasy.Message { return agent.UserMessage(strings.Repeat("u", bytes)) }
 	call := func(bytes int) fantasy.Message {
 		return fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
 			fantasy.ToolCallPart{ToolCallID: "c", ToolName: "read", Input: strings.Repeat("i", bytes)},
@@ -265,8 +267,8 @@ func TestPruneToolOutput(t *testing.T) {
 // from, even when it is past the kept budget.
 func TestPruneKeepsRunningTurn(t *testing.T) {
 	history := []fantasy.Message{
-		textMessage("old ask"), toolResult("old", 30_000),
-		textMessage("live ask"), toolResult("live", 50_000),
+		agent.UserMessage("old ask"), toolResult("old", 30_000),
+		agent.UserMessage("live ask"), toolResult("live", 50_000),
 	}
 	out, freed := pruneToolOutput(history, false)
 	if freed != 30_000 {
@@ -283,7 +285,7 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 // TestPruneInTurnClearsSubagentOutput: a subagent's whole run is one turn,
 // so clearing its old output cannot wait for a user message that never comes.
 func TestPruneInTurnClearsSubagentOutput(t *testing.T) {
-	history := []fantasy.Message{textMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
+	history := []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
 	if _, freed := pruneToolOutput(history, false); freed != 0 {
 		t.Fatalf("a running turn's output was cleared: %d tokens", freed)
 	}
