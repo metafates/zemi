@@ -371,23 +371,32 @@ func TestRenderRefusesMutations(t *testing.T) {
 			end,
 		})
 		zemi.ui.widget.add({
+			id = "writing", region = "header",
+			render = function(ctx)
+				zemi.state.set("x", 1)
+				return {}
+			end,
+		})
+		zemi.ui.widget.add({
 			id = "clean", region = "header",
 			render = function(ctx)
 				return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
 			end,
 		})
 	`)
-	var mutating, clean *Widget
+	var mutating, writing, clean *Widget
 	for _, w := range h.Widgets.List() {
 		switch w.ID {
 		case "mutating":
 			mutating = w
+		case "writing":
+			writing = w
 		case "clean":
 			clean = w
 		}
 	}
-	if mutating == nil || clean == nil {
-		t.Fatalf("widgets not registered (mutating=%v clean=%v)", mutating, clean)
+	if mutating == nil || writing == nil || clean == nil {
+		t.Fatalf("widgets not registered (mutating=%v writing=%v clean=%v)", mutating, writing, clean)
 	}
 
 	if _, err := h.RenderWidget(context.Background(), mutating, 40, 10, UIState{}); err == nil ||
@@ -396,6 +405,11 @@ func TestRenderRefusesMutations(t *testing.T) {
 	}
 	if h.Keymaps.Lookup("", "ctrl+z") != nil {
 		t.Fatal("refused bind still landed in the keymap registry")
+	}
+	// the store is the mutation a widget author reaches for first
+	if _, err := h.RenderWidget(context.Background(), writing, 40, 10, UIState{}); err == nil ||
+		!strings.Contains(err.Error(), "not allowed during widget render") {
+		t.Fatalf("zemi.state.set during render: err = %v", err)
 	}
 
 	lines, err := h.RenderWidget(context.Background(), clean, 40, 10, UIState{})
