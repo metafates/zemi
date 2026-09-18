@@ -257,7 +257,8 @@ zemi.ui.widget.add({
           hunks = hunks + 1
           old = tonumber(a) --[[@as integer]]
           new = tonumber(b) --[[@as integer]]
-        elseif dl ~= "" and dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++" then
+        -- file headers come before the first hunk; after it "---" is a removed "-- " line
+        elseif dl ~= "" and (hunks > 0 or (dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++")) then
           local num, style = 0, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
           -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
           -- assignments whose right side names a left-side target stay split.
