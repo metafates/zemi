@@ -87,3 +87,24 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 		})
 	}
 }
+
+// TestInstructionBudget: the budget names the file it cut and the one it
+// never reached, so neither goes missing in silence.
+func TestInstructionBudget(t *testing.T) {
+	h, _ := newTestHost(t)
+	dir := t.TempDir()
+	big, small := filepath.Join(dir, "BIG.md"), filepath.Join(dir, "SMALL.md")
+	if err := os.WriteFile(big, []byte(strings.Repeat("a", 200)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(small, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := h.instructionSections([]string{big, small}, 100)
+	if !strings.Contains(got, "(cut here: 100 of 200 bytes left out") {
+		t.Fatalf("cut not named: %q", got)
+	}
+	if !strings.Contains(got, "SMALL.md\n(left out: no room for its 6 bytes") {
+		t.Fatalf("skipped file not named: %q", got)
+	}
+}

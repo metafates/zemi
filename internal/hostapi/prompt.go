@@ -161,16 +161,19 @@ func (h *Host) systemWith(sys string, files []string) string {
 func (h *Host) instructionSections(files []string, budget int) string {
 	var sections string
 	for _, f := range files {
-		if budget <= 0 {
-			break
-		}
 		b, err := os.ReadFile(f)
 		if err != nil || len(b) == 0 {
 			continue
 		}
+		// what the budget cut is named, not dropped in silence: the model
+		// can read the rest itself
 		text := string(b)
-		if len(b) > budget {
-			text = strings.ToValidUTF8(string(b[:budget]), "") + "\n(truncated)"
+		switch {
+		case budget <= 0:
+			text = fmt.Sprintf("(left out: no room for its %d bytes; read the file for it)", len(b))
+		case len(b) > budget:
+			text = strings.ToValidUTF8(string(b[:budget]), "") +
+				fmt.Sprintf("\n(cut here: %d of %d bytes left out; read the file for the rest)", len(b)-budget, len(b))
 		}
 		budget -= len(b)
 		name := f
