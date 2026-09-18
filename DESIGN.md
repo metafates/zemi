@@ -454,13 +454,19 @@ in which milestone.
   invalid enum) raises a Lua error, catchable with `pcall`. Operations that
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
-  (`zemi.fs.read`/`write`, `zemi.state.get`/`put`, `zemi.json.decode`,
+  (`zemi.fs.read`/`write`, `zemi.state.get`/`set`, `zemi.json.decode`,
   `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a masked mutator in a
   render, an origin that may not make the call) and a permission gate
   that does not allow always raise. One exception: `zemi.command.run`
   returns `nil, err` when the caller's origin may not run the command.
+- **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
+  `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
+  `zemi.ui.theme`, `zemi.permission.rule`, `zemi.permission.mode`), `set`
+  writes a value, `get` and `list` read back, `del` removes and reports
+  whether it did. A new call takes the verb its shape already has, so the
+  surface stays guessable without the type annotations open.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
   timer, session, window) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
