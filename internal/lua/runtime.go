@@ -27,8 +27,12 @@ type Runtime struct {
 	hot     atomic.Bool
 	hotMu   sync.Mutex // orders goHot's generation check against retiring cur
 	booting atomic.Bool
-	cur     atomic.Pointer[Generation]
-	seq     atomic.Int64
+	// reloading marks the window where the old generation is retired and
+	// the new one is not up, so requests read as ErrReloaded, not as a
+	// runtime nobody ever booted.
+	reloading atomic.Bool
+	cur       atomic.Pointer[Generation]
+	seq       atomic.Int64
 
 	printHook func(origin, line string)
 	reloadMu  sync.Mutex
@@ -158,6 +162,8 @@ func (r *Runtime) Boot(ctx context.Context, steps []BootStep) error {
 func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func()) error {
 	r.reloadMu.Lock()
 	defer r.reloadMu.Unlock()
+	r.reloading.Store(true)
+	defer r.reloading.Store(false)
 	if old := r.current(); old != nil {
 		old.drain(ErrReloaded)
 		close(old.stop)
@@ -238,6 +244,9 @@ func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Durat
 	}
 	gen := r.current()
 	if gen == nil {
+		if r.reloading.Load() {
+			return nil, ErrReloaded
+		}
 		return nil, errors.New("zemi: lua runtime not booted")
 	}
 	return gen.do(ctx, class, ceiling, grace, fn)

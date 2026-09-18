@@ -547,3 +547,25 @@ func TestQueueDoAfterFailedBoot(t *testing.T) {
 		t.Fatalf("request after a good reload: %v", err)
 	}
 }
+
+// TestReloadWindowReportsReloaded: a request landing between generations
+// (the purge stops MCP and language servers, so the window is real) reads
+// as a reload, not as a runtime nobody booted, which the UI and the host
+// would record as an error.
+func TestReloadWindowReportsReloaded(t *testing.T) {
+	noop := func(*glua.LState) ([]any, error) { return nil, nil }
+	var during error
+	r := newTestRuntime(t)
+	purge := func() {
+		_, during = r.Do(context.Background(), ClassUI, 0, 0, noop)
+	}
+	if err := r.ForceReload(context.Background(), nil, purge); err != nil {
+		t.Fatalf("ForceReload: %v", err)
+	}
+	if !errors.Is(during, ErrReloaded) {
+		t.Fatalf("during the purge: %v, want ErrReloaded", during)
+	}
+	if _, err := NewRuntime(RuntimeOptions{}).Do(context.Background(), ClassUI, 0, 0, noop); errors.Is(err, ErrReloaded) {
+		t.Fatalf("a runtime that never booted reports a reload: %v", err)
+	}
+}
