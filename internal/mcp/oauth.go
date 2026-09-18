@@ -512,8 +512,8 @@ func writeCallbackPage(w http.ResponseWriter, server string, err error) {
 }
 
 // The page follows zemi's landing page: mono type on paper, ink rules, and
-// the snail in a dark terminal, bowing when it worked and pulled into its
-// shell when it did not. No webfont: a sign-in page loads nothing remote.
+// the snail in a dark terminal, its eyes ^^ when it worked and >< when it
+// did not, as in the TUI. No webfont: a sign-in page loads nothing remote.
 var callbackPage = template.Must(template.New("callback").Parse(`<!doctype html>
 <html lang="en">
 <head>
@@ -556,15 +556,15 @@ pre b { color: var(--tshell); font-weight: 400; }
     <div class="title">zemi - mcp sign-in</div>
     <div class="screen">
 {{if .OK}}<pre aria-hidden="true"><b>╭────╮</b>
-<b>│╭──╮│</b>  ╷╷
-<b>│╰──╯│</b>╭─┴┴╮ <span class="ok">✓</span>
+<b>│╭──╮│</b>  ^^
+<b>│╰──╯│</b>╭─┴┴╮
 <b>╰────╯</b>╯   ╵</pre>
       <div class="dim">state: <span class="ok">signed in</span></div>
       <div>&gt; <b>{{.Server}}</b> is connected <span class="cursor"></span></div>
 {{else}}<pre aria-hidden="true"><b>╭────╮</b>
-<b>│╭──╮│</b>
-<b>│╰──╯│</b> <span class="err">✕</span>
-<b>╰────╯</b></pre>
+<b>│╭──╮│</b>  &gt;&lt;
+<b>│╰──╯│</b>╭─┴┴╮
+<b>╰────╯</b>╯   ╵</pre>
       <div class="dim">state: <span class="err">sign-in failed</span></div>
       <div>&gt; could not sign in to <b>{{.Server}}</b></div>
       <div class="reason">{{.Reason}}</div>
