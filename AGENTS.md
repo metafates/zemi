@@ -478,7 +478,8 @@ its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testi
 painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
 layout does not draw. A `composer` node with `frame` draws the square frame around the
 composer and puts the first line of the widgets in its `top`, `left` and `right` regions into
-the rules (`composerFrame`, ui/composer.go), which is where the shipped layout keeps the
+the rules (`composerFrame`, ui/composer.go; `top` gets the whole rule, which the snail in
+`defaultui/snail.lua` moves along, keeping its place in module locals), which is where the shipped layout keeps the
 mascot and the statusline: agent state changes what a rule says, never how many rows the
 frame takes, so nothing above it reflows.
 

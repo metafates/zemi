@@ -1116,7 +1116,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 		ag.turnStart = time.Time{}
 	}
 	ag.steering = append([]string(nil), s.Steering...)
-	ag.retries, ag.retryAt = s.Retries, time.Time{}
+	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
 	if s.RetryIn > 0 {
 		ag.retryAt = time.Now().Add(s.RetryIn)
 	}

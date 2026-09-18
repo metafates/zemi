@@ -624,7 +624,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Retrying  attempt 2 · next try in 4s · esc to interrupt") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "─ Retrying  attempt 2 · next try in 4s · esc to interrupt ┐") {
 		t.Fatalf("retry row missing:\n%s", frame)
 	}
 	// the label shimmers: every rune gets its own color
@@ -638,29 +638,44 @@ func TestWorkingRowRetry(t *testing.T) {
 	}
 }
 
-// TestWorkingRowMascot: the snail walks while the turn runs, pulls its head
-// in while a prompt waits on the user, and bows once the turn is over.
+// TestWorkingRowMascot: the snail crawls along the rule over its trail with
+// the status at the right end, pulls its head in where it is while a prompt
+// waits on the user, rolls back over the trail during compaction, and bows
+// once the turn is over.
 func TestWorkingRowMascot(t *testing.T) {
+	for _, r := range "@·°ᵒ~─ə✕✓" { // the rule's arithmetic counts one cell each
+		if ansi.StringWidth(string(r)) != 1 {
+			t.Fatalf("%q is not one cell wide", r)
+		}
+	}
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
 	row := func(ms int64) string {
 		app.now = func() time.Time { return time.UnixMilli(ms) }
 		app.renderSync(t)
-		return ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 80))
+		segs := app.widgetLines("working")[0]
+		if w := segsWidth(segs); w != 78 {
+			t.Fatalf("the rule is %d cells, want 78", w)
+		}
+		return ansi.Strip(app.renderSegs(segs, 80))
 	}
-	if a, b := row(0), row(1500); !strings.HasPrefix(a, "@··") || !strings.HasPrefix(b, "~~~@··") {
-		t.Fatalf("the snail does not walk: %q then %q", a, b)
+	if a, b := row(0), row(1500); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "~~~@··─") || !strings.HasSuffix(b, "─ Working  20s · esc to interrupt ") {
+		t.Fatalf("the snail does not crawl: %q then %q", a, b)
 	}
-	// the open prompt says what answers it, so the rule retracts to the head
+	// the open prompt says what answers it, so the rule retracts to the shell
 	// alone: no label, and no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "make"}}
-	if r := row(1500); r != "@" {
+	if r := row(2000); r != "~~~@"+strings.Repeat("─", 74) {
 		t.Fatalf("the rule does not retract while the user is asked: %q", r)
 	}
 	app.permAsk = nil
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Compacting: true})
+	if a, b := row(2500), row(3000); !strings.HasPrefix(a, "~~~@─") || !strings.HasPrefix(b, "~@─") {
+		t.Fatalf("the shell does not roll back over its trail: %q then %q", a, b)
+	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	app.turnEnd = time.UnixMilli(0)
-	if r := row(500); !strings.HasPrefix(r, "@·· ✓") {
+	app.turnEnd = time.UnixMilli(3000)
+	if r := row(3500); !strings.HasPrefix(r, "~··@ ✓─") {
 		t.Fatalf("no done frame after the turn: %q", r)
 	}
 }

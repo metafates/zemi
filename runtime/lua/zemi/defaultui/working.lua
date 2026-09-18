@@ -1,12 +1,11 @@
 local fmt = require("zemi.defaultui.text")
 local snail = require("zemi.defaultui.snail")
 
--- The composer frame's top rule: the mascot in the state of the turn, a
--- shimmering label naming what the agent does, the elapsed time, the
--- interrupt key and the queue depth. The mascot is always there, so the rule
--- never gains or loses a row; the label stays away for the first 300ms so
--- instant turns do not flash it, and the mascot stays a few seconds after
--- the turn to say it finished.
+-- The composer frame's top rule, all ctx.width cells of it: the mascot moving
+-- along the rule in the state of the turn and, at the right end, a shimmering
+-- label naming what the agent does, the elapsed time, the interrupt key and
+-- the queue depth. The label stays away for the first 300ms so instant turns
+-- do not flash it, and the done mark stays a few seconds after the turn.
 zemi.ui.widget.add({
   id = "working",
   region = "working",
@@ -19,7 +18,11 @@ zemi.ui.widget.add({
     local parts = {}
     local label, state = "", "idle"
     if not ctx.agent_active then
-      if ctx.done then state = "done" end
+      if ctx.reflecting then
+        label, state = "Reflecting", "rereading"
+      elseif ctx.done then
+        state = "done"
+      end
     elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
       label, state = "Working", "working"
       for _, t in ipairs(ag.tools or {}) do
@@ -33,7 +36,7 @@ zemi.ui.widget.add({
         if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
         parts[#parts + 1] = "next try in " .. fmt.elapsed(ag.retry.next_in)
       end
-      if ag.compacting then label = "Compacting" end
+      if ag.compacting then label, state = "Compacting", "rereading" end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
         label, state = "Editing " .. ctx.editing, "retracted"
@@ -49,12 +52,18 @@ zemi.ui.widget.add({
       local queued = #ag.steering - ag.reports
       if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end
     end
-    local row, w = snail.row(state, ctx.frame)
-    if label == "" and #parts == 0 then return { row } end
-    -- the lane keeps the text still while the snail crawls under it
-    row[#row + 1] = { text = string.rep(" ", math.max(2, snail.WIDTH - w)), copy = false }
-    if label ~= "" then row[#row + 1] = { text = label, hl = "Comment", effect = "shimmer" } end
-    if #parts > 0 then row[#row + 1] = { text = "  " .. table.concat(parts, " · "), hl = "Comment" } end
+    local tail = #parts > 0 and "  " .. table.concat(parts, " · ") or ""
+    -- a narrow rule keeps the label and the snail at least 8 cells
+    if zemi.ui.width(label .. tail) + 10 > ctx.width then tail = "" end
+    local text = label .. tail ~= "" and zemi.ui.width(label .. tail) + 2 or 0
+    -- one small shell per running subagent, where the rule meets the text
+    local kids = math.max(math.min(ctx.agents_running, ctx.width - text - 8), 0)
+    local row = snail.rule(state, ctx.frame, ctx.width - text - kids)
+    row[#row + 1] = { text = string.rep("ə", kids), hl = "Accent", copy = false }
+    if text > 0 then
+      row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
+      row[#row + 1] = { text = tail .. " ", hl = "Comment" }
+    end
     return { row }
   end,
 })
