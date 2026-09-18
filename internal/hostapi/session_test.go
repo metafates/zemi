@@ -4,6 +4,10 @@ import (
 	"errors"
 	"os"
 	"testing"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 func waitIdle(t *testing.T, h *Host) {
@@ -86,4 +90,39 @@ func TestSessionLifecycle(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// TestResumeKeepsToolDiffs: the diff a file tool showed live is stored
+// with its call, so a resumed session renders it instead of a bare row.
+func TestResumeKeepsToolDiffs(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sid := seedSession(t, h)
+	if err := h.persistMessage("user", agent.UserMessage("edit it")); err != nil {
+		t.Fatal(err)
+	}
+	call := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "edit", Input: `{"path":"x.go"}`},
+	}}
+	if err := h.persistMessage("assistant", call); err != nil {
+		t.Fatal(err)
+	}
+	h.recordToolCall(sid, "c1", "edit", "12 +added\n13 -gone", true)
+
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range h.Session().Transcript {
+		if m.Kind == "tool" {
+			if m.Diff != "12 +added\n13 -gone" {
+				t.Fatalf("resumed tool row diff = %q", m.Diff)
+			}
+			return
+		}
+	}
+	t.Fatalf("no tool row: %+v", h.Session().Transcript)
 }

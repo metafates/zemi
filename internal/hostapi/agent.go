@@ -712,6 +712,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 	ag := s.h.agents
+	diff := ""
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
@@ -720,12 +721,13 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 			if !ok {
 				ag.tools[i].Diff = "" // the change did not happen
 			}
+			diff = ag.tools[i].Diff
 			break
 		}
 	}
 	ag.mu.Unlock()
 	s.h.agentStream()
-	s.h.recordToolCall(s.h.AgentSessionID(), name, ok)
+	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
 }
 
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
@@ -940,12 +942,18 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 
 // recordToolCall stores one tool telemetry row in session sid (each tool
 // call gets its own "tool" message row so tool_calls.message_id stays a
-// real FK). The output is not kept: the history row already holds it.
-func (h *Host) recordToolCall(sid, name string, ok bool) {
+// real FK). The output is not kept: the history row already holds it. A
+// file tool's diff is, keyed by call id: it is computed against the file
+// as it was, so a resumed session could never rebuild it (historyFrom).
+func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 	if h.DB == nil || sid == "" {
 		return
 	}
-	parts, _ := json.Marshal(map[string]any{"tool": name})
+	row := map[string]any{"tool": name}
+	if diff != "" {
+		row["id"], row["diff"] = id, diff
+	}
+	parts, _ := json.Marshal(row)
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})

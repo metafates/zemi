@@ -173,10 +173,10 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.tool != "" {
-				h.recordToolCall(sid, tc.tool, true)
+				h.recordToolCall(sid, "c1", tc.tool, "", true)
 			}
 			if tc.inTool != "" {
-				h.recordToolCall(child, tc.inTool, true)
+				h.recordToolCall(child, "c2", tc.inTool, "", true)
 			}
 			if tc.fork {
 				if _, err := h.ForkSession(); err != nil {

@@ -256,6 +256,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	var history []fantasy.Message
 	var tr []ChatMessage
 	toolRow := map[string]int{} // tool call id -> transcript index
+	diffs := map[string]string{}
+	for _, row := range rows {
+		var tc struct{ ID, Diff string }
+		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.Diff != "" {
+			diffs[tc.ID] = tc.Diff
+		}
+	}
 	for _, row := range rows {
 		var m fantasy.Message
 		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil || len(m.Content) == 0 {
@@ -274,7 +281,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text})
 			case fantasy.ToolCallPart:
 				toolRow[p.ToolCallID] = len(tr)
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok"})
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok", Diff: diffs[p.ToolCallID]})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					tr[i].Output = shortOutput(agent.ToolOutput(p.Output))

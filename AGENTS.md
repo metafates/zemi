@@ -445,7 +445,9 @@ what the screen says.
   `handOff`), so a cancel, a send or another claim cannot slip in between.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
-  anything that does not decode as a fantasy message.
+  anything that does not decode as a fantasy message, and reads a file tool's diff back
+  from the telemetry row that carries it (computed against the file as it was, so a resume
+  could not rebuild it).
 - **Proposals persist.** Memory proposals live in the scope DB's `proposals` table until
   `/memory` (a/d/s, the edited rows come back with `Action` and `Scope`; a scope move adds
   before it deletes; `e` returns a row with `Edit`, and after the other marks apply
