@@ -4,6 +4,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -685,9 +686,11 @@ Not for anything that does not exit on its own (npm run dev, tsc -w, tail -f): u
 Chain dependent steps with &&; independent commands are separate calls in one response.`,
 			false,
 			withSandbox(map[string]any{
-				"command":     map[string]any{"type": "string"},
-				"description": map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests"},
-				"timeout_ms":  map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
+				// "about", not "description": a schema's properties reach the model
+				// sorted by name, and this one has to stream before the command
+				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests"},
+				"command":    map[string]any{"type": "string"},
+				"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -873,10 +876,10 @@ The plan is short markdown someone could implement without guessing: the goal, w
 		mk("job_start", "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
-				"command":     map[string]any{"type": "string"},
-				"args":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"env":         map[string]any{"type": "object", "description": "extra environment variables"},
-				"description": map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
+				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
+				"command": map[string]any{"type": "string"},
+				"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"env":     map[string]any{"type": "object", "description": "extra environment variables"},
 			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -1104,7 +1107,7 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["description"]),
+	return []Request{{Subject: "tool.bash", Arg: cmd, Description: cmp.Or(str(in["about"]), str(in["description"])),
 		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}
 }
 

@@ -4,12 +4,14 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -65,6 +67,7 @@ type StreamTool struct {
 	Name    string
 	Input   string
 	Status  string // "run", "ok", "err"
+	partial string // the head of the streaming input, until Label is known
 }
 
 // agentHost owns the live agent session: profiles, the runner, the
@@ -852,17 +855,49 @@ func capLines(s string, n int) string {
 	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... %d more lines", len(lines)-n)
 }
 
-// toolLabel is the description a model gives a command (bash, job_start),
-// shown in place of the command; "" for other tools.
+// toolLabel is what a model says a command is about (bash, job_start),
+// shown in place of the command; "" for other tools. Rows stored before the
+// argument was renamed hold "description".
 func toolLabel(input string) string {
 	var in struct {
 		Command     string `json:"command"`
+		About       string `json:"about"`
 		Description string `json:"description"`
 	}
 	if json.Unmarshal([]byte(input), &in) != nil || in.Command == "" {
 		return ""
 	}
-	return learn.Truncate(strings.Join(strings.Fields(in.Description), " "), 80)
+	return cleanLabel(cmp.Or(in.About, in.Description))
+}
+
+func cleanLabel(s string) string {
+	return learn.Truncate(strings.Join(strings.Fields(s), " "), 80)
+}
+
+// aboutArg is a call's leading "about" argument in input that is still streaming.
+var aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
+
+// ToolInputDelta labels a pending row as soon as "about" has streamed: a
+// long command or heredoc takes seconds to arrive after it.
+func (s *streamAdapter) ToolInputDelta(id, delta string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
+	if i < 0 || ag.tools[i].Label != "" || len(ag.tools[i].partial) > 1024 {
+		ag.mu.Unlock()
+		return
+	}
+	t := &ag.tools[i]
+	t.partial += delta
+	var label string
+	if m := aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
+		t.Label = cleanLabel(label)
+	}
+	labelled := t.Label != ""
+	ag.mu.Unlock()
+	if labelled {
+		s.h.agentStream()
+	}
 }
 
 // toolSummary picks the argument a person reads first (a command, path or

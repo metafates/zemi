@@ -102,6 +102,8 @@ func (h *recHooks) Retrying(error, time.Duration) {}
 
 func (h *recHooks) StepStart() {}
 
+func (h *recHooks) ToolInputDelta(string, string) {}
+
 func (h *recHooks) ToolCallPending(id, name string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "pending:"+name)
