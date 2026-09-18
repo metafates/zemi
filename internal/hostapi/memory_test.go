@@ -100,13 +100,16 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 
 	runExpectErr(t, r, `zemi.memory.add({ kind = "rumor", text = "x" })`, "kind outside the enum")
 
-	// No provenance before a session: refused.
+	// User config before the first send is its own provenance, and what it
+	// writes is the user's memory, not zemi's.
 	h2, r2 := newTestHostDB(t)
 	runUser(t, r2, `
-		local out, err = zemi.memory.add({ kind = "fact", text = "x" })
-		assert(out == nil and err:find("provenance"), tostring(err))
+		local out = zemi.memory.add({ kind = "fact", text = "x" })
+		assert(out.queued == true, "add before a session must queue")
 	`)
-	_ = h2
+	if p := h2.memoryProposals(); len(p) != 1 || p[0].Origin != learn.OriginUser {
+		t.Fatalf("proposal from user config: %+v", p)
+	}
 
 	// Auto mode in a trusted project stores a plain fact and returns its id.
 	if err := h.Settings.SetHost("memory.autonomy", "auto"); err != nil {
@@ -180,7 +183,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			stored, _, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
+			stored, _, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, "project", "fact", "the build uses make", nil)
 			if err != nil || stored != tc.stored {
 				t.Fatalf("stored = %v, want %v (%v)", stored, tc.stored, err)
 			}
@@ -189,7 +192,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			if err := h.SetPermMode("auto"); err != nil {
 				t.Fatal(err)
 			}
-			res, err := h.storeMemory("project", learn.OriginLearned, "fact", "tests run with make test", nil)
+			res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginLearned, "fact", "tests run with make test", nil)
 			if err == nil {
 				err = h.applyProposal(res)
 			}
@@ -209,7 +212,7 @@ func TestMemorySearchFromLua(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 
-	res, err := h.storeMemory("project", learn.OriginLearned, "gotcha",
+	res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginLearned, "gotcha",
 		"postgres FTS triggers keep the index in sync", nil)
 	if err != nil {
 		t.Fatalf("intake project: %v", err)
@@ -217,7 +220,7 @@ func TestMemorySearchFromLua(t *testing.T) {
 	if err := h.applyProposal(res); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	resU, err := h.storeMemory("user", learn.OriginUser, "preference",
+	resU, err := h.storeMemory(h.AgentSessionID(), "user", learn.OriginUser, "preference",
 		"the user prefers short replies", []string{"style"})
 	if err != nil {
 		t.Fatalf("intake user: %v", err)
@@ -277,14 +280,14 @@ func TestMemorySupersedeForgetOriginGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 
-	res, err := h.storeMemory("project", learn.OriginLearned, "fact", "old note about the pipeline", nil)
+	res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginLearned, "fact", "old note about the pipeline", nil)
 	if err != nil {
 		t.Fatalf("intake: %v", err)
 	}
 	if err := h.applyProposal(res); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	res2, err := h.storeMemory("project", learn.OriginLearned, "fact", "new note about the pipeline", nil)
+	res2, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginLearned, "fact", "new note about the pipeline", nil)
 	if err != nil {
 		t.Fatalf("intake2: %v", err)
 	}
@@ -419,7 +422,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	if len(ui.reviewItems) != 1 || len(ui.reviewItems[0]) != 2 {
 		t.Fatalf("review rows: %+v", ui.reviewItems)
 	}
-	if !ui.reviewItems[0][0].Queued || ui.reviewItems[0][0].Origin != learn.OriginLearned {
+	if !ui.reviewItems[0][0].Queued || ui.reviewItems[0][0].Origin != learn.OriginUser {
 		t.Fatalf("first row: %+v", ui.reviewItems[0][0])
 	}
 	if ui.reviewItems[0][1].Origin != learn.OriginUser {

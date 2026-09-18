@@ -45,7 +45,7 @@ func TestAgentSelfAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.SetProjectTrusted(true)
-	stored, id, err := h.proposeMemory(h.AgentSessionID(), "project", "fact", "the build uses make", nil)
+	stored, id, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, "project", "fact", "the build uses make", nil)
 	if err != nil || !stored {
 		t.Fatalf("propose: %v %v", stored, err)
 	}

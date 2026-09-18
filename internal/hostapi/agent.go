@@ -1527,7 +1527,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			return h.takesImages(id)
 		},
 		Remember: func(scope, kind, text string, tags []string) (bool, error) {
-			stored, _, err := h.proposeMemory(h.AgentSessionID(), scope, kind, text, tags)
+			stored, _, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, scope, kind, text, tags)
 			return stored, err
 		},
 		Recall: func(query string, limit int) ([]*store.Memory, error) {

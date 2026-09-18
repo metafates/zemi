@@ -52,17 +52,16 @@ func (h *Host) memoryDB(scope string) *store.DB {
 	return h.DB
 }
 
-// storeMemory runs the §10.4 intake policy. Provenance is the live
-// session; a user keystroke before the first send is its own provenance.
-func (h *Host) storeMemory(scope, origin, kind, text string, tags []string) (*learn.Result, error) {
-	prov := h.AgentSessionID()
-	if prov == "" {
+// storeMemory runs the §10.4 intake policy over what session sid wrote;
+// user config before the first send is its own provenance.
+func (h *Host) storeMemory(sid, scope, origin, kind, text string, tags []string) (*learn.Result, error) {
+	if sid == "" {
 		if origin != learn.OriginUser {
 			return nil, learn.ErrNoProvenance
 		}
-		prov = "user"
+		sid = "user"
 	}
-	return learn.Intake(scope, origin, kind, text, tags, prov)
+	return learn.Intake(scope, origin, kind, text, tags, sid)
 }
 
 // queueProposal persists a policy-clean memory for review in its scope's
@@ -199,7 +198,7 @@ func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("usage: /memory <note>")
 	}
-	res, err := h.storeMemory("project", learn.OriginUser, "fact", text, nil)
+	res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginUser, "fact", text, nil)
 	if err != nil {
 		return err
 	}
@@ -394,7 +393,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		if p.ID != id || p.Forget {
 			continue
 		}
-		res, err := h.storeMemory(p.Scope, learn.OriginUser, p.Kind, text, p.Tags)
+		res, err := h.storeMemory(h.AgentSessionID(), p.Scope, learn.OriginUser, p.Kind, text, p.Tags)
 		if err != nil || res.Memory.Text == p.Text {
 			return false, err
 		}
@@ -414,7 +413,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	res, err := h.storeMemory(m.Scope, learn.OriginUser, m.Kind, text, m.Tags)
+	res, err := h.storeMemory(h.AgentSessionID(), m.Scope, learn.OriginUser, m.Kind, text, m.Tags)
 	if err != nil || res.Memory.Text == m.Text {
 		return false, err
 	}
@@ -797,7 +796,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.memory.add: spec must be a table")
 		}
-		if o := h.RT.CurrentOrigin(L); o.Rank() <= lua.OriginProject.Rank() {
+		o := h.RT.CurrentOrigin(L)
+		if o.Rank() <= lua.OriginProject.Rank() {
 			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
 		}
 		kind := rawString(spec, "kind")
@@ -806,7 +806,13 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if scope == "" {
 			scope = "project"
 		}
-		stored, id, err := h.proposeMemory(h.AgentSessionID(), scope, kind, text, rawStrings(spec, "tags"))
+		// user config writes the user's own memory; the model's Lua tool
+		// runs as user origin but its notes are the model's
+		memOrigin := learn.OriginLearned
+		if tool, _ := h.modelLuaRun(L); !tool && o == lua.OriginUser {
+			memOrigin = learn.OriginUser
+		}
+		stored, id, err := h.proposeMemory(h.AgentSessionID(), memOrigin, scope, kind, text, rawStrings(spec, "tags"))
 		switch {
 		case errors.Is(err, learn.ErrBadKind) || scope != "project" && scope != "user":
 			L.RaiseError("zemi.memory.add: %v", err)
@@ -852,14 +858,14 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// proposeMemory runs a learned memory (zemi.memory.add, the memory_add
-// tool) written in session sid through intake and the autonomy gate. A
+// proposeMemory runs a memory (zemi.memory.add, the memory_add tool)
+// written in session sid through intake and the autonomy gate. A
 // subagent passes its parent, which a background run may outlive.
-func (h *Host) proposeMemory(sid, scope, kind, text string, tags []string) (stored bool, id string, err error) {
+func (h *Host) proposeMemory(sid, origin, scope, kind, text string, tags []string) (stored bool, id string, err error) {
 	if scope != "project" && scope != "user" {
 		return false, "", errors.New("scope must be project or user")
 	}
-	res, err := learn.Intake(scope, learn.OriginLearned, kind, text, tags, sid)
+	res, err := h.storeMemory(sid, scope, origin, kind, text, tags)
 	if err != nil {
 		return false, "", err
 	}

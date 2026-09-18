@@ -77,7 +77,8 @@ description: when asked to run the local integration tests
 
 ```lua
 zemi.memory.search("deploy", { scope = "all", limit = 5 })  -- scope: all, user, project
-zemi.memory.add({ kind = "gotcha", text = "...", scope = "project" })  -- queued under ask
+zemi.memory.add({ kind = "gotcha", text = "...", scope = "project" })  -- queued under ask,
+                                                                      -- origin user from config
 zemi.memory.list(true)                   -- true includes superseded memories
 zemi.memory.supersede(old_id, new_id); zemi.memory.forget(id)  -- user config only
 for _, p in ipairs(zemi.learn.proposals()) do print(p.id, p.forget, p.text) end

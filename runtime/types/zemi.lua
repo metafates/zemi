@@ -1877,7 +1877,9 @@ zemi.memory = {}
 function zemi.memory.search(query, opts) end
 
 --- Propose a memory. It goes through intake and the autonomy gate, so it
---- is stored or queued for review, never written blindly. Raises for
+--- is stored or queued for review, never written blindly. User config
+--- writes its own memory (origin user) and works before the first
+--- message; the model's Lua tool writes a learned one. Raises for
 --- project and learned code.
 ---@param spec zemi.MemorySpec
 ---@return zemi.MemoryAddResult|nil res

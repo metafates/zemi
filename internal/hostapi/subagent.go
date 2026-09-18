@@ -25,6 +25,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
@@ -282,7 +283,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	// memories name the session this run belongs to, not whichever is live
 	// when a background run gets to them
 	pipe.Remember = func(scope, kind, text string, tags []string) (bool, error) {
-		stored, _, err := h.proposeMemory(parent, scope, kind, text, tags)
+		stored, _, err := h.proposeMemory(parent, learn.OriginLearned, scope, kind, text, tags)
 		return stored, err
 	}
 	pipe.EditMemory = func(id, text string) (string, error) { return h.modelEditMemory(parent, id, text) }
