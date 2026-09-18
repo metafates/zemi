@@ -172,7 +172,13 @@ func (h *Host) systemFor(sys string, files []string) (string, promptParts) {
 		}
 		files = abs
 	}
-	sections := h.instructionSections(files, contextBudget)
+	// The user's own file spends its own budget: how big a repository's
+	// AGENTS.md is must not decide whether the user's rules ship at all.
+	var mine []string
+	if len(files) > 0 && h.Dirs.ConfigHome != "" && files[0] == filepath.Join(h.Dirs.ConfigHome, "AGENTS.md") {
+		mine, files = files[:1], files[1:]
+	}
+	sections := h.instructionSections(mine, contextBudget) + h.instructionSections(files, contextBudget)
 	if sections != "" {
 		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
 	}

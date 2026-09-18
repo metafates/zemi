@@ -109,3 +109,24 @@ func TestInstructionBudget(t *testing.T) {
 		t.Fatalf("skipped file not named: %q", got)
 	}
 }
+
+// TestUserInstructionsOwnBudget: a repository AGENTS.md over the budget is
+// cut, and the user's own file still ships whole.
+func TestUserInstructionsOwnBudget(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	h.SetProjectTrusted(true)
+	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("my rules"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := h.systemWith("base", nil)
+	if !strings.Contains(got, "my rules") {
+		t.Fatal("the repository file evicted the user's own instructions")
+	}
+	if !strings.Contains(got, "cut here") {
+		t.Fatal("the repository file was not cut to the budget")
+	}
+}
