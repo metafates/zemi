@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -517,5 +519,43 @@ func TestStripImages(t *testing.T) {
 	}
 	if res := history[1].Content[1].(fantasy.ToolResultPart); res.Output.GetType() != fantasy.ToolResultContentTypeText {
 		t.Fatalf("text result changed: %#v", res.Output)
+	}
+}
+
+// TestProviderHeadersRideRequests: a gateway that needs an attribution,
+// team or proxy header gets it on every request.
+func TestProviderHeadersRideRequests(t *testing.T) {
+	seen := make(chan string, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Header.Get("X-Team")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"no model here"}}`)
+	}))
+	defer srv.Close()
+	r := NewRegistry()
+	err := r.Register(Spec{
+		ID: "gw", Kind: KindOpenAICompat, BaseURL: srv.URL,
+		Headers: map[string]string{"X-Team": "core"},
+		Models:  []Model{{ID: "m"}},
+	}, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.Resolve("gw/m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := m.Stream(t.Context(), fantasy.Call{Prompt: []fantasy.Message{UserMessage("hi")}})
+	if err == nil {
+		for range stream {
+		}
+	}
+	select {
+	case h := <-seen:
+		if h != "core" {
+			t.Fatalf("X-Team = %q", h)
+		}
+	default:
+		t.Fatal("the provider never reached the gateway")
 	}
 }

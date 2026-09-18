@@ -1111,6 +1111,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		ID:      rawString(tb, "id"),
 		Kind:    rawString(tb, "kind"),
 		BaseURL: rawString(tb, "base_url"),
+		Headers: rawStringMap(tb, "headers"),
 	}
 	models, ok := tb.RawGetString("models").(*glua.LTable)
 	if ok {

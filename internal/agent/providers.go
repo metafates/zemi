@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -43,11 +45,14 @@ const (
 )
 
 // Spec describes one provider: kind selects the fantasy implementation.
+// Headers ride every request (a gateway's attribution or team header); they
+// are as secret as the key, so nothing echoes them back.
 type Spec struct {
-	ID      string  `json:"id"`
-	Kind    string  `json:"kind"` // KindAnthropic, KindOpenAI or KindOpenAICompat
-	BaseURL string  `json:"base_url,omitempty"`
-	Models  []Model `json:"models"`
+	ID      string            `json:"id"`
+	Kind    string            `json:"kind"` // KindAnthropic, KindOpenAI or KindOpenAICompat
+	BaseURL string            `json:"base_url,omitempty"`
+	Headers map[string]string `json:"-"`
+	Models  []Model           `json:"models"`
 }
 
 // Registry holds provider specs; ids are unique. API keys live in a side
@@ -176,25 +181,43 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown provider %q", providerID)
 	}
+	key := r.apiKey(spec.ID)
 	switch spec.Kind {
 	case KindAnthropic:
-		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey)
+		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
+			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) })
 	case KindOpenAI:
-		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, openai.New, openai.WithBaseURL, openai.WithAPIKey)
+		return languageModel(spec, key, model, openai.New, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
+			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) })
 	case KindOpenAICompat:
-		return languageModel(spec.BaseURL, r.apiKey(spec.ID), model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey)
+		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
+			func(c *http.Client) openaicompat.Option { return openaicompat.WithHTTPClient(c) })
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}
 }
 
-func languageModel[O any](baseURL, key, model string, newProvider func(...O) (fantasy.Provider, error), withBaseURL, withAPIKey func(string) O) (fantasy.LanguageModel, error) {
-	var opts []O
-	if baseURL != "" {
-		opts = append(opts, withBaseURL(baseURL))
+// modelHTTP bounds the wait for response headers: a gateway that accepts the
+// connection and then says nothing would otherwise hold the turn until the
+// user interrupts it. Client.Timeout stays zero, so a long stream is never cut.
+var modelHTTP = sync.OnceValue(func() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = 2 * time.Minute
+	return &http.Client{Transport: t}
+})
+
+func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (fantasy.Provider, error),
+	withBaseURL, withAPIKey func(string) O, withHeaders func(map[string]string) O, withClient func(*http.Client) O,
+) (fantasy.LanguageModel, error) {
+	opts := []O{withClient(modelHTTP())}
+	if spec.BaseURL != "" {
+		opts = append(opts, withBaseURL(spec.BaseURL))
 	}
 	if key != "" {
 		opts = append(opts, withAPIKey(key))
+	}
+	if len(spec.Headers) > 0 {
+		opts = append(opts, withHeaders(spec.Headers))
 	}
 	p, err := newProvider(opts...)
 	if err != nil {

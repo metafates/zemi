@@ -1281,6 +1281,7 @@ function zemi.log.error(message, fields) end
 ---@field kind string One of `zemi.provider.kind`.
 ---@field api_key? string Read it with `zemi.env.get`; never write a key into a file.
 ---@field base_url? string Required for openai_compat; overrides the default endpoint for the other kinds.
+---@field headers? table<string, string> Sent with every request; as secret as the key.
 ---@field models zemi.ModelSpec[]
 
 ---@class zemi.ProviderKind
