@@ -534,7 +534,7 @@ func TestRegistryConcurrentReload(t *testing.T) {
 	})
 	for range 100 {
 		r.HasKey("p1")
-		r.EffortOptions("p1/m", "high")
+		r.CallOptions("p1/m", "high")
 	}
 	wg.Wait()
 }

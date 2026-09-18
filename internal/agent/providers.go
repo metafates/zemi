@@ -57,8 +57,15 @@ type Spec struct {
 	Kind    string            `json:"kind"` // one of kinds
 	BaseURL string            `json:"base_url,omitempty"`
 	Headers map[string]string `json:"-"`
-	Models  []Model           `json:"models"`
+	// Body holds extra request-body fields merged into every request
+	// (service_tier, a gateway's routing block, a vendor's thinking flag).
+	// Only KindsWithBody carry it.
+	Body   map[string]any `json:"-"`
+	Models []Model        `json:"models"`
 }
+
+// KindsWithBody are the kinds whose fantasy options take Spec.Body.
+var KindsWithBody = []string{KindAnthropic, KindOpenAICompat}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
@@ -149,31 +156,43 @@ func (r *Registry) apiKey(providerID string) string {
 // default).
 var Efforts = []string{"low", "medium", "high"}
 
-// EffortOptions translates a reasoning effort into the provider options of
-// the model's provider kind; nil for the provider default or a kind without
-// the knob. A model that does not support the option fails its turn with the
-// provider's error.
-func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions {
-	if !slices.Contains(Efforts, effort) {
-		return nil
-	}
+// CallOptions are the provider options a turn runs with: the reasoning
+// effort and the spec's extra body fields, in the model's provider kind;
+// nil when neither applies to the kind. A model that does not support an
+// option fails its turn with the provider's error.
+func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 	providerID, _, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
 	}
-	re := openai.ReasoningEffort(effort)
+	var re *openai.ReasoningEffort
+	if slices.Contains(Efforts, effort) {
+		e := openai.ReasoningEffort(effort)
+		re = &e
+	}
+	if re == nil && len(spec.Body) == 0 {
+		return nil
+	}
 	switch spec.Kind {
 	case KindAnthropic:
-		e := anthropic.Effort(effort)
-		return anthropic.NewProviderOptions(&anthropic.ProviderOptions{Effort: &e})
-	case KindOpenAI:
-		return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: &re})
+		o := &anthropic.ProviderOptions{ExtraBody: spec.Body}
+		if re != nil {
+			e := anthropic.Effort(effort)
+			o.Effort = &e
+		}
+		return anthropic.NewProviderOptions(o)
 	case KindOpenAICompat:
-		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: &re})
+		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: re, ExtraBody: spec.Body})
+	case KindOpenAI:
+		if re != nil {
+			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re})
+		}
 	case KindGoogle:
-		level := strings.ToUpper(effort)
-		return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
+		if re != nil {
+			level := strings.ToUpper(effort)
+			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
+		}
 	}
 	return nil
 }

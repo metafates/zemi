@@ -80,6 +80,26 @@ func TestProfileTemperatureReachesRunner(t *testing.T) {
 // examples must be provided and must behave exactly as the rule claims
 // (DESIGN §6.2), allow rules are user-config-only, and accepted rules
 // take effect in the permission engine.
+// TestProviderBody: extra request-body fields are kept on the spec, and a
+// kind whose requests cannot carry them is refused where it is written.
+func TestProviderBody(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", api_key = "k",
+			body = { service_tier = "flex", provider = { order = { "a" } } }, models = { { id = "m" } } })
+		local ok, err = pcall(zemi.provider.add, { id = "oa", kind = "openai", api_key = "k",
+			body = { service_tier = "flex" }, models = { { id = "m" } } })
+		assert(not ok and tostring(err):find("anthropic and openai_compat"), tostring(err))
+	`)
+	spec, _ := h.Providers.Lookup("gw")
+	if spec.Body["service_tier"] != "flex" {
+		t.Fatalf("body = %+v", spec.Body)
+	}
+	if order, _ := spec.Body["provider"].(map[string]any); len(order) == 0 {
+		t.Fatalf("nested table lost: %+v", spec.Body)
+	}
+}
+
 func TestPermissionRuleValidation(t *testing.T) {
 	h, r := newTestHost(t)
 

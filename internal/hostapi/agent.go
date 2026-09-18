@@ -287,7 +287,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	h.agents.mu.Lock()
 	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
 	h.agents.mu.Unlock()
-	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
+	r.ProviderOptions = h.Providers.CallOptions(h.currentModelID(p), h.Effort())
 	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
 	if p != nil {
 		r.Temperature = p.Temperature
@@ -1202,6 +1202,23 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		Kind:    rawString(tb, "kind"),
 		BaseURL: rawString(tb, "base_url"),
 		Headers: rawStringMap(tb, "headers"),
+	}
+	if t, ok := tb.RawGetString("body").(*glua.LTable); ok {
+		v, err := lua.ToGo(t)
+		if err != nil {
+			return agent.Spec{}, fmt.Errorf("body: %w", err)
+		}
+		switch b := v.(type) {
+		case map[string]any:
+			if !slices.Contains(agent.KindsWithBody, spec.Kind) {
+				return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(agent.KindsWithBody, " and "))
+			}
+			spec.Body = b
+		case []any:
+			if len(b) > 0 {
+				return agent.Spec{}, errors.New("body must be a table of named fields")
+			}
+		}
 	}
 	models, ok := tb.RawGetString("models").(*glua.LTable)
 	if ok {

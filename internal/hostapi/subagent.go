@@ -318,7 +318,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
 	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def), nil))
-	runner.ProviderOptions = h.Providers.EffortOptions(modelID, h.Effort())
+	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }

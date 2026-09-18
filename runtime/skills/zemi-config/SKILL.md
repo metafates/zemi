@@ -40,6 +40,7 @@ zemi.provider.add({
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
   -- base_url = "https://llm.internal/v1",   -- required for openai_compat
   -- headers = { ["X-Team"] = "core" },     -- sent with every request; as secret as the key
+  -- body = { service_tier = "flex" },      -- extra request-body fields; anthropic and openai_compat only
   models = {
     { id = "claude-sonnet-4-5", display = "Sonnet 4.5",
       context_window = 200000, cost_per_1m_in = 3, cost_per_1m_out = 15 },
