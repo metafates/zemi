@@ -1,44 +1,65 @@
 -- zemi's mascot: a snail whose shell is the "@". Text only, and only the
 -- shell takes the accent. ctx.frame advances every 500ms (0 with
--- ui.animations off, which leaves every state on its first frame).
+-- ui.animations off, which leaves the snail where it is).
 ---@class zemi.defaultui.snail
 local M = {}
 
---- The lane the snail crawls in: its widest frame plus the two-cell gap
---- before any text, so text beside a moving snail never shifts.
-M.WIDTH = 8
-
--- Per state, the frames it cycles: head, trail length, mark and its group.
--- The head wiggles while thinking, the shell crawls right over its own trail
--- while working, and the head goes in while zemi waits for the user.
----@type table<string, { [1]: string, [2]: integer?, [3]: string?, [4]: string? }[]>
-local FRAMES = {
-  idle = { { "··" } },
-  thinking = { { "°ᵒ" }, { "ᵒ°" } },
-  working = { { "··", 0 }, { "··", 1 }, { "··", 2 }, { "··", 3 } },
-  retracted = { { "" } },
-  error = { { "", 0, "✕", "AgentToolErr" } },
-  done = { { "··", 0, "✓", "AgentToolOk" } },
+-- Per state: the head's frames, a mark and its group, and how the shell moves
+-- along the rule.
+---@type table<string, { head: string[], mark: string?, mark_hl: string?, move: ("crawl"|"roll")? }>
+local STATES = {
+  idle = { head = { "··" } },
+  thinking = { head = { "°ᵒ", "ᵒ°" } },
+  working = { head = { "··" }, move = "crawl" },
+  rereading = { head = { "" }, move = "roll" },
+  retracted = { head = { "" } },
+  error = { head = { "" }, mark = "✕", mark_hl = "AgentToolErr" },
+  done = { head = { "··" }, mark = "✓", mark_hl = "AgentToolOk" },
 }
 
---- The one-line snail, and the cells it took. Pad it to M.WIDTH before
---- writing text beside it, so the text never shifts as the snail moves.
----@param state "idle"|"thinking"|"working"|"retracted"|"error"|"done"
+-- where the shell is on the rule, which way it faces and the last frame it
+-- moved on: it keeps its place between states and turns
+local pos, dir = 0, 1
+---@type string?
+local moving
+---@type integer?
+local last
+
+--- The snail on a rule of `room` cells: "~" where it has been, "─" ahead.
+--- Crawling, it turns around at either end and the trail dries as it heads
+--- back; rereading, the shell alone rolls over its trail twice as fast.
+---@param state "idle"|"thinking"|"working"|"rereading"|"retracted"|"error"|"done"
 ---@param frame integer ctx.frame
+---@param room integer
 ---@return zemi.Line
----@return integer
-function M.row(state, frame)
-  local frames = FRAMES[state] or FRAMES.idle
-  local f = frames[frame % #frames + 1]
-  local trail = string.rep("~", f[2] or 0)
+function M.rule(state, frame, room)
+  local st = STATES[state] or STATES.idle
+  local head = st.head[frame % #st.head + 1]
+  local body = 1 + zemi.ui.width(head) + (st.mark and 2 or 0)
+  local far = math.max(room - body, 0)
+  local steps = st.move and last and math.min(frame - last, 4) or 0
+  if st.move == "roll" then steps = steps * 2 end
+  -- a roll sets off back over what the crawl did, the next crawl forward
+  if st.move and st.move ~= moving then
+    moving = st.move
+    dir = moving == "roll" and -1 or 1
+  end
+  last = st.move and frame or nil
+  for _ = 1, steps do
+    if pos + dir < 0 or pos + dir > far then dir = -dir end
+    pos = pos + dir
+  end
+  pos = math.min(pos, far)
+  local shell = { text = "@", hl = "Accent", copy = false }
+  local face = { text = head, hl = "Normal", copy = false }
   ---@type zemi.Line
-  local segs = {
-    { text = trail, hl = "Comment", copy = false },
-    { text = "@", hl = "Accent", copy = false },
-    { text = f[1], hl = "Normal", copy = false },
-  }
-  if f[3] then segs[#segs + 1] = { text = " " .. f[3], hl = f[4], copy = false } end
-  return segs, #trail + 1 + zemi.ui.width(f[1]) + (f[3] and 2 or 0)
+  local segs = { { text = string.rep("~", pos), hl = "Dim", copy = false } }
+  -- the head leads, so heading back it is left of the shell
+  segs[2] = dir < 0 and face or shell
+  segs[3] = dir < 0 and shell or face
+  if st.mark then segs[4] = { text = " " .. st.mark, hl = st.mark_hl, copy = false } end
+  segs[#segs + 1] = { text = string.rep("─", math.max(room - pos - body, 0)), hl = "Rule", copy = false }
+  return segs
 end
 
 --- The four-line snail at rest, for the splash.

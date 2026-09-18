@@ -419,30 +419,39 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 		hl = "RuleShell" // a shell draft tints the whole frame, not just its glyph
 	}
 	inner := frameInner(w)
-	rows := [][]hostapi.Segment{rule("┌", "┐", hl, truncateSegs(a.statuslineSegments(n.Top), inner), nil, w)}
+	// the top region draws its rule corner to corner; its "Rule" cells take
+	// the frame's tint
+	top := truncateSegs(a.statuslineSegments(n.Top), w-2)
+	for i := range top {
+		if top[i].HL == "Rule" {
+			top[i].HL = hl
+		}
+	}
+	rows := [][]hostapi.Segment{rule("┌", "┐", hl, top, nil, w)}
 	for _, r := range a.composerRows(inner) {
 		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true}}, truncateSegs(r, inner)...)
 		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true}))
 	}
 	// the corners, the space beside each cluster and one cell of rule between
 	left, right := a.statusClusters(max(w-7, 1), n.Left, n.Right)
-	return append(rows, rule("└", "┘", hl, left, right, w))
+	return append(rows, rule("└", "┘", hl, spaced(left), spaced(right), w))
 }
 
 // rule draws one side of the composer frame across w cells: the corners, the
-// left cluster after a space, the right cluster before one, "─" between them.
+// clusters at either end, "─" between them.
 func rule(l, r, hl string, left, right []hostapi.Segment, w int) []hostapi.Segment {
-	spaced := func(segs []hostapi.Segment) []hostapi.Segment {
-		if segsWidth(segs) == 0 {
-			return nil
-		}
-		return slices.Concat([]hostapi.Segment{{Text: " ", NoCopy: true}}, segs, []hostapi.Segment{{Text: " ", NoCopy: true}})
-	}
-	left, right = spaced(left), spaced(right)
 	fill := max(w-2-segsWidth(left)-segsWidth(right), 0)
 	out := append([]hostapi.Segment{{Text: l, HL: hl, NoCopy: true}}, left...)
 	out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: hl, NoCopy: true})
 	return append(append(out, right...), hostapi.Segment{Text: r, HL: hl, NoCopy: true})
+}
+
+// spaced sets a cluster off from the rule around it.
+func spaced(segs []hostapi.Segment) []hostapi.Segment {
+	if segsWidth(segs) == 0 {
+		return nil
+	}
+	return slices.Concat([]hostapi.Segment{{Text: " ", NoCopy: true}}, segs, []hostapi.Segment{{Text: " ", NoCopy: true}})
 }
 
 // inputRow is a one-line text field at least 40 cells wide: "> " and the

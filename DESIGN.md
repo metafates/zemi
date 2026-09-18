@@ -1107,8 +1107,13 @@ configured provider later (`zemi.memory.search` signature does not change).
 - **Layout**: header (no default widget; the region stays for Lua), chat
   (flex), then the composer (1..8 rows plus a "+n lines" row) inside a
   square frame two rows taller, whose rules carry regions: the `working`
-  one on top (the shipped `working` widget: the snail mascot in the state
-  of the turn, a shimmering label naming the current activity, elapsed
+  one on top, which gets the whole rule between the corners (the shipped
+  `working` widget: the snail mascot moving along the rule itself, "~"
+  behind it and "─" ahead, crawling while tools run, its eyes swapping in
+  place while the model thinks, retracted while the user is asked, the
+  bare shell rolling back over its trail during compaction and reflection,
+  one small shell per running subagent, and at the right end a shimmering
+  label naming the current activity, elapsed
   time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
   `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`),
   the statusline below. The mascot is always drawn and the frame's height

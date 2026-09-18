@@ -366,9 +366,9 @@ func (a *App) shownWidgets() []shownWidget {
 			add(l.node.Right, l.rect.Dx(), 1)
 		case "composer":
 			if l.node.Frame {
-				for _, r := range []string{l.node.Top, l.node.Left, l.node.Right} {
-					add(r, frameInner(l.rect.Dx()), 1)
-				}
+				add(l.node.Top, max(l.rect.Dx()-2, 1), 1) // the whole rule between the corners
+				add(l.node.Left, frameInner(l.rect.Dx()), 1)
+				add(l.node.Right, frameInner(l.rect.Dx()), 1)
 			}
 		}
 		for _, k := range l.kids {
