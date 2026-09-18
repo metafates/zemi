@@ -252,7 +252,9 @@ auto mode sends `tool.bash` asks it cannot settle straight to the user ("not set
 sandbox"). While a backend is live, bash, `job_start` and `window` take `sandbox: false`
 (`Request.Unsandboxed`): mode rules and non-yolo bases skip it and it asks the user with
 "run outside the sandbox"; headless (`SandboxParam` needs UI hooks) neither the parameter
-nor the retry line is offered, and the denial is by `unsandboxed`. A confined failure that
+nor the retry line is offered, and the denial is by `unsandboxed` (only for `tool.bash` and
+`tool.window`: a Lua script or a memory edit is `Unsandboxed` for another reason, and `-p`
+hints at the TUI for those instead). A confined failure that
 `sandbox.LikelyDenied` recognizes (a job: over its whole retained tail) gets
 `Pipeline.sandboxHint`, which, like `tools.SandboxProp()`, describes the backend
 `sandbox.Probe` returns. `/health` has a `sandbox` row.

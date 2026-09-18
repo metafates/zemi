@@ -125,8 +125,13 @@ func TestDeniedHint(t *testing.T) {
 		{"untrusted", 0, false, "auto", "try --trust --mode auto"},
 		{"already auto", 0, true, "auto", "auto mode left it to the user"},
 		{"outside the sandbox", 1, true, "auto", "outside the sandbox needs the TUI"},
+		{"lua script", 0, true, "auto", "only the TUI can approve a Lua script"},
 	} {
-		got := deniedHint(report{denied: 1, unsandboxed: c.unsandboxed}, c.trusted, c.base)
+		rep := report{denied: 1, unsandboxed: c.unsandboxed}
+		if c.name == "lua script" {
+			rep.tuiOnly = 1
+		}
+		got := deniedHint(rep, c.trusted, c.base)
 		if !strings.Contains(got, c.want) || (c.base == "auto" && c.trusted && strings.Contains(got, "--mode auto")) {
 			t.Errorf("%s: %q", c.name, got)
 		}

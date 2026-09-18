@@ -316,6 +316,8 @@ func deniedHint(rep report, trusted bool, base string) string {
 	switch {
 	case rep.unsandboxed > 0:
 		return "and running outside the sandbox needs the TUI; " + rule
+	case rep.tuiOnly > 0:
+		return "and only the TUI can approve a Lua script or a memory edit; " + rule
 	case !trusted:
 		return "try --trust --mode auto (auto mode settles little in an untrusted project)"
 	case base == "auto":
@@ -340,6 +342,7 @@ type report struct {
 
 	denied      int // tool calls the permission gate refused; text mode notes them
 	unsandboxed int // of those, asks to run outside the sandbox
+	tuiOnly     int // of those, asks no permission mode ever settles
 }
 
 type reportTool struct {
@@ -361,8 +364,11 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "tool":
 			if m.Status != "ok" && strings.Contains(m.Output, "permission denied") {
 				rep.denied++
-				if strings.Contains(m.Output, "permission denied (unsandboxed)") {
+				switch {
+				case strings.Contains(m.Output, "permission denied (unsandboxed)"):
 					rep.unsandboxed++
+				case m.Tool == "Lua" || strings.HasPrefix(m.Tool, "memory_"):
+					rep.tuiOnly++
 				}
 			}
 			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})

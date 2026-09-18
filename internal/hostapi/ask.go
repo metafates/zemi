@@ -126,7 +126,10 @@ func (h *Host) askHook() tools.Asker {
 		}
 		ui := h.hooks()
 		if ui == nil {
-			if req.Unsandboxed {
+			// only a command's sandbox escape is a sandbox matter; a Lua
+			// script or a memory edit is Unsandboxed for another reason and
+			// must not be reported as one
+			if req.Unsandboxed && (req.Subject == "tool.bash" || req.Subject == "tool.window") {
 				return resolved(false, "unsandboxed")
 			}
 			return resolved(false, "default")
