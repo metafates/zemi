@@ -57,6 +57,9 @@ type Auth struct {
 	// hand; empty means register on the fly (RFC 7591).
 	ClientID     string
 	ClientSecret string
+	// CallbackPort pins the redirect port for a server that matches the
+	// redirect URI exactly; 0 tries callbackPorts.
+	CallbackPort int
 
 	mu     sync.Mutex
 	tok    *Token
@@ -159,7 +162,7 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 	if err != nil {
 		return err
 	}
-	ln, err := listenCallback()
+	ln, err := listenCallback(a.CallbackPort)
 	if err != nil {
 		return err
 	}
@@ -418,7 +421,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 	if resp.StatusCode/100 != 2 || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r) != nil || r.ClientID == "" {
 		// name the endpoint: a 404 here usually means discovery found no
 		// metadata and this URL was the spec's guess
-		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not support dynamic client registration, so either register an app with it yourself and pass client_id (and client_secret, if it issued one) to zemi.mcp.add, or set an Authorization header in its config", endpoint, resp.StatusCode)
+		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not support dynamic client registration, so either register an app with it yourself and pass client_id (and client_secret, callback_port when its redirect URI has a fixed port) to zemi.mcp.add, or set an Authorization header in its config", endpoint, resp.StatusCode)
 	}
 	return r.ClientID, r.ClientSecret, nil
 }
@@ -473,9 +476,13 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 // stable between sign-ins; any free port is the last resort.
 var callbackPorts = []int{40704, 40705, 40706, 40707, 40708, 40709, 40710, 40711, 40712, 40713, 0}
 
-func listenCallback() (net.Listener, error) {
+func listenCallback(fixed int) (net.Listener, error) {
+	ports := callbackPorts
+	if fixed > 0 {
+		ports = []int{fixed}
+	}
 	var err error
-	for _, p := range callbackPorts {
+	for _, p := range ports {
 		var ln net.Listener
 		if ln, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", p)); err == nil {
 			return ln, nil

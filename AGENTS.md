@@ -173,8 +173,8 @@ allows. `auto` settles what `autoLocal` covers — reads and edits **inside the 
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
 (`unsettled`), input to a window that already runs sandboxed, and MCP tools a server annotates
 read-only — and hands the rest to the user with a reason naming why (`askHook`; writes under
-`.git`, `.zemi` or zemi's own dirs are `protectedWrite`). `plan` denies writes and runs
-commands like auto, sandboxed with the project unwritable. Network requests are never
+`.git`, `.zemi` or zemi's own dirs are `protectedWrite`, checkouts in `.zemi/worktrees` aside).
+`plan` denies writes and runs commands like auto, sandboxed with the project unwritable. Network requests are never
 settled: the URL is the model's. A mode from config may carry `decide`, a Lua function
 answering one ask ("allow", "deny", anything else sends it to the user whatever the base
 would settle, which is how a user gets every ask); it holds the
@@ -204,7 +204,10 @@ run), `GOCACHE` is one per trust root (Go trusts cache entries, so a shared one 
 project poison another's build), the project is writable only when it is trusted, outside
 zemi's own dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`),
 `.git`, `.zemi` and every `PATH` dir under a write root stay read-only because zemi runs git,
-sh and servers unconfined by name, and home credential paths are hidden. The namespace
+sh and servers unconfined by name, and home credential paths are hidden. The exception is
+`<repo root>/.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a
+write root of its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never
+rewritten), with each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
 `/trust`. Bash, `job_start` and `window` take two escapes no mode settles and each of which
@@ -439,7 +442,8 @@ is how the agent debugs its own widgets and layout. Editor windows come out blan
   not instruction-shaped, and no `fetch`, `web_search`, `Lua` or non-builtin tool call in the
   session or its subagents' (`subagentHooks` records those, `ForkSession` copies them).
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
-  with JSON or SSE replies, OAuth discovery where a server needs it). Servers come from
+  with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and `callback_port` for one without
+  dynamic registration). Servers come from
   `zemi.mcp.add` (user origin only); they stop on `PurgeGeneration` and run unconfined in
   `DataHome` with `ZEMI_PROJECT_DIR` set, trusted project or not: `npx` and `uv` read config
   from the working directory, and most servers need the network a sandbox refuses. Tools are

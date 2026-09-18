@@ -150,11 +150,32 @@ func TestTurnExtras(t *testing.T) {
 func TestToolLabel(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"command":"go test ./...","description":"Run the  unit tests"}`: "Run the unit tests",
+		`{"about":"Run the tests","command":"go test ./..."}`:             "Run the tests",
 		`{"command":"ls"}`: "",
 		`{"description":"Find the config loader","prompt":"..."}`: "",
 	} {
 		if got := toolLabel(in); got != want {
 			t.Errorf("toolLabel(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPendingRowLabel(t *testing.T) {
+	h, _ := newTestHost(t)
+	s := &streamAdapter{h: h}
+	s.ToolCallPending("1", "bash")
+	label := func() string {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		return h.agents.tools[0].Label
+	}
+	for _, c := range []struct{ delta, want string }{
+		{`{"about": "Say \"hi`, ""},
+		{`\"  twice", "comm`, `Say "hi" twice`},
+		{`and": "echo hi; echo hi"}`, `Say "hi" twice`},
+	} {
+		if s.ToolInputDelta("1", c.delta); label() != c.want {
+			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
 		}
 	}
 }

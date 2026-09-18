@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -20,9 +21,16 @@ const (
 	deniedLookups = `nodename nor servname`
 )
 
-// nestedShapes is a .git or .zemi path component; APFS folds case, the
-// regex does not.
-const nestedShapes = `(regex #"/\.([gG][iI][tT]|[zZ][eE][mM][iI])(/|$)")`
+// nestedShapes is a .git or .zemi path component below root; APFS folds
+// case, the regex does not. The root itself may sit under one (a worktree in
+// .zemi/worktrees), so the match starts after it.
+func nestedShapes(root string) string {
+	anchor := "^" + regexp.QuoteMeta(root)
+	if strings.ContainsAny(root, "\"\n") {
+		anchor = "" // unquotable: match anywhere, which only denies more
+	}
+	return `(regex #"` + anchor + `(/.*)?/\.([gG][iI][tT]|[zZ][eE][mM][iI])(/|$)")`
+}
 
 //go:embed profile.sb
 var baseProfile string
@@ -133,9 +141,19 @@ func profile(p Policy) (string, []string) {
 	// project) get this, so tests can still git init in the temp dirs.
 	// NOTE: a bare repo (HEAD, objects, refs, config) is found by git under
 	// any name and cannot be matched here.
-	for i, w := range p.Write {
-		if slices.ContainsFunc(p.Protect, func(pr string) bool { return pr != w && within(pr, w) }) {
-			fmt.Fprintf(&b, "(deny file-write* (require-all (subpath %s) %s))\n", param("NESTED", i, w), nestedShapes)
+	// A root inside another root's protected path (.zemi/worktrees) is opened
+	// again after that root's rule, shallow to deep, and gets its own.
+	roots := slices.Clone(p.Write)
+	slices.SortStableFunc(roots, func(a, b string) int { return len(a) - len(b) })
+	for i, w := range roots {
+		hole := slices.ContainsFunc(p.Protect, func(pr string) bool {
+			return within(w, pr) && slices.ContainsFunc(roots, func(o string) bool { return o != w && within(pr, o) })
+		})
+		if hole {
+			fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", param("NESTED", i, w))
+		}
+		if hole || slices.ContainsFunc(p.Protect, func(pr string) bool { return pr != w && within(pr, w) }) {
+			fmt.Fprintf(&b, "(deny file-write* (require-all (subpath %s) %s))\n", param("NESTED", i, w), nestedShapes(w))
 		}
 	}
 	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")

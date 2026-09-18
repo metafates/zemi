@@ -117,6 +117,15 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	relative := slices.ContainsFunc(path, func(e string) bool { return !filepath.IsAbs(e) })
 	if writable && !linked && !relative {
 		p.Write = append(p.Write, d.ProjectDir)
+		// the one part of .zemi a command may write; a real dir, since the
+		// backend would open a link's target
+		wt := d.WorktreesDir()
+		if fi, err := os.Lstat(wt); err == nil && fi.IsDir() && h.inJail(wt, d.ProjectDir) {
+			if err := d.IgnoreLocal(); err != nil {
+				h.Log.Warn("sandbox", "cannot write .zemi/.gitignore", map[string]any{"error": err.Error()})
+			}
+			p.Write = append(p.Write, wt)
+		}
 	}
 	if s := h.ScratchDir(); s != "" {
 		p.Write = append(p.Write, s)
@@ -283,7 +292,7 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 var sandboxWalkMax = 100_000
 
 // configEntries lists the .git and .zemi entries under root (true), which
-// it does not descend into, and the directories it cannot read (false),
+// it does not descend into (.zemi/worktrees aside), and the directories it cannot read (false),
 // where a command could hide one. ok is false past sandboxWalkMax entries.
 func configEntries(root string) (found map[string]bool, ok bool) {
 	found, n := map[string]bool{}, 0
@@ -300,9 +309,12 @@ func configEntries(root string) (found map[string]bool, ok bool) {
 			found[path] = false
 		case path != root && (strings.EqualFold(d.Name(), ".git") || strings.EqualFold(d.Name(), ".zemi")):
 			found[path] = true
-			if d.IsDir() {
+			// .zemi/worktrees is writable, so the walk goes on below it only
+			if d.IsDir() && !strings.EqualFold(d.Name(), ".zemi") {
 				return filepath.SkipDir
 			}
+		case d.IsDir() && strings.EqualFold(filepath.Base(filepath.Dir(path)), ".zemi") && d.Name() != "worktrees":
+			return filepath.SkipDir
 		}
 		return nil
 	})

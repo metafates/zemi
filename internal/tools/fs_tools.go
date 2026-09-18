@@ -771,7 +771,7 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	c := proc.CommandContext(cctx, rgBin, append([]string{"--hidden", "--no-require-git", "--glob", "!.git"}, args...)...)
+	c := proc.CommandContext(cctx, rgBin, append([]string{"--hidden", "--no-require-git", "--glob", "!.git", "--glob", "!.zemi/worktrees"}, args...)...)
 	c.Dir = root
 	out, err := c.StdoutPipe()
 	if err != nil || proc.Start(c) != nil {

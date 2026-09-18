@@ -2060,6 +2060,7 @@ function zemi.skills.disable(name) end
 ---@field headers? table<string, string>
 ---@field client_id? string An OAuth client registered with the server by hand, for a server without dynamic client registration.
 ---@field client_secret? string
+---@field callback_port? integer Fixed localhost port for the sign-in redirect, for a server that matches the registered redirect URI exactly.
 ---@field enabled_tools? string[]
 ---@field disabled_tools? string[]
 ---@field timeout? integer Seconds.

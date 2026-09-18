@@ -504,3 +504,49 @@ if "$0" __act write "$1" 2>/dev/null || "$0" __act open "$1" 2>/dev/null; then e
 		}
 	}
 }
+
+// A root inside another root's protected .zemi, and a session started in it.
+func TestWorktreeRoot(t *testing.T) {
+	b := probeOrSkip(t)
+	if !b.EnforcesProtect {
+		t.Skipf("%s does not enforce this", b.Name)
+	}
+	root := t.TempDir()
+	zemi := filepath.Join(root, ".zemi")
+	trees := filepath.Join(zemi, "worktrees")
+	wt := filepath.Join(trees, "x")
+	if err := os.MkdirAll(filepath.Join(wt, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outer := Policy{Write: []string{root, trees}, Protect: []string{zemi, filepath.Join(wt, ".git")}}
+	inner := Policy{Write: []string{wt}, Protect: []string{filepath.Join(wt, ".git")}}
+	cases := []struct {
+		name, verb, arg string
+		p               Policy
+		allowed, skip   bool
+	}{
+		{"outer writes the worktree", "write", filepath.Join(wt, "pkg", "a.txt"), outer, true, false},
+		{"outer writes .zemi", "write", filepath.Join(zemi, "init.lua"), outer, false, false},
+		{"outer writes the worktree's .git", "write", filepath.Join(wt, ".git"), outer, false, false},
+		{"outer creates the worktree's .zemi", "mkwrite", filepath.Join(wt, ".zemi", "init.lua"), outer, false, runtime.GOOS == "linux"},
+		{"inner writes the worktree", "write", filepath.Join(wt, "pkg", "b.txt"), inner, true, false},
+		{"inner creates a nested .git", "mkwrite", filepath.Join(wt, "pkg", ".git", "config"), inner, false, runtime.GOOS == "linux"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.skip {
+				t.Skipf("%s does not enforce this", b.Name)
+			}
+			out, err := run(t, c.p, c.verb, c.arg)
+			if c.allowed && err != nil {
+				t.Fatalf("denied: %v\n%s", err, out)
+			}
+			if !c.allowed && (err == nil || !LikelyDenied(out, err)) {
+				t.Fatalf("not denied: %v\n%s", err, out)
+			}
+		})
+	}
+}

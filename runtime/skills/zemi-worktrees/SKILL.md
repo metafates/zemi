@@ -16,28 +16,28 @@ current checkout is simpler and leaves nothing to clean up. Never create one to 
 ## Where zemi puts them
 
 ```sh
-git worktree add -b feat/retry .worktrees/retry
-echo '.worktrees/' >> .git/info/exclude       # once per repository
+git worktree add -b feat/retry .zemi/worktrees/retry
 ```
 
-`.worktrees/<short name>` under the directory zemi started in (the Environment section names
-it; it is the repo root in the normal case) is the right place:
+`.zemi/worktrees/<short name>` at the repository root is the right place:
 
-- it is inside the project, so reads need no permission prompt and writes ask exactly like
-  any other project file. A worktree outside that directory is outside the jail: every read
-  and write there asks, one prompt at a time. Started in a subdirectory, put `.worktrees/`
-  there rather than at the repo root, or the jail does not cover it.
-- `.git/info/exclude` is local to the clone, so the entry never shows in a diff or needs
-  committing, and it keeps `git status` clean.
-- `grep`, `glob` and ripgrep honour that exclude, so a search does not return every hit
-  twice, and `go test ./...` skips a leading-dot directory.
+- it is inside the project, so reads need no permission prompt. The rest of `.zemi` is
+  config and every write there asks, but a checkout under `.zemi/worktrees` is treated like
+  the project: auto mode settles edits in it and sandboxed commands may write it (its own
+  `.git` and `.zemi` stay protected). A worktree outside the project is outside the jail:
+  every read and write there asks, one prompt at a time.
+- zemi writes `worktrees/` into `.zemi/.gitignore` when a sandboxed command next runs (appending when
+  the file is there), so `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so
+  a search does not return every hit twice. Nothing under it is loaded as the outer
+  project's config, skills, agents or commands.
+- `git worktree add` itself writes `.git`, so it asks once.
 
-Check the exclude entry is there before the first `git worktree add`; without it every
-search in the repository doubles.
+zemi started inside such a worktree shares the main checkout's trust decision, sessions and
+memories.
 
 ## Running work in one
 
-The path is just a directory: `cd .worktrees/retry && go test ./...` in one bash call (every
+The path is just a directory: `cd .zemi/worktrees/retry && go test ./...` in one bash call (every
 call starts in the project directory). Two rules:
 
 - **One branch per worktree.** git refuses to check the same branch out twice, and that
@@ -55,9 +55,9 @@ the prompt and let it stay there. Subagents share this session's permission rule
 ## Finishing one
 
 ```sh
-cd .worktrees/retry && git add -A && git commit -m "add retry" && cd -
+cd .zemi/worktrees/retry && git add -A && git commit -m "add retry" && cd -
 git merge feat/retry              # or: git rebase, or open a PR from the branch
-git worktree remove .worktrees/retry
+git worktree remove .zemi/worktrees/retry
 git branch -d feat/retry          # only after it is merged
 ```
 
@@ -73,7 +73,7 @@ so an abandoned worktree is reused instead of piling up.
 | Symptom | Cause |
 | --- | --- |
 | `fatal: '<branch>' is already checked out` | another worktree holds it; `git worktree list` says which |
-| search results appear twice | `.worktrees/` is missing from `.git/info/exclude` |
+| search results appear twice | the worktree is not under `.zemi/worktrees/` |
 | the worktree has no `node_modules`, `.env`, build cache | untracked and ignored files are not copied; install or symlink them |
 | `git worktree remove` fails | uncommitted changes, or the directory was already deleted (`git worktree prune`) |
 | project config not loaded in the worktree | the main checkout is not trusted: a worktree shares its trust decision; `/trust` there |

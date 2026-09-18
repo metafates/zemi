@@ -248,8 +248,8 @@ func configFingerprint(roots ...string) string {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && d.Name() == ".git":
-				return filepath.SkipDir
+			case d.IsDir() && (d.Name() == ".git" || p == filepath.Join(root, "worktrees")):
+				return filepath.SkipDir // checkouts in .zemi/worktrees are not config
 			case d.IsDir():
 				return nil
 			}

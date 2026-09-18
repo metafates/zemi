@@ -21,6 +21,8 @@ type StreamHooks interface {
 	// arguments; ToolCallStart then fills that row in. A provider that
 	// reports no input start only calls ToolCallStart.
 	ToolCallPending(id, name string)
+	// ToolInputDelta is a piece of the pending call's JSON arguments.
+	ToolInputDelta(id, delta string)
 	ToolCallStart(id, name, input string)
 	ToolCallEnd(id, name string, ok bool, output string)
 	// StepStart marks the start of a model call; after Retrying the call
@@ -196,6 +198,10 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolInputStart: func(id, name string) error {
 			hooks.ToolCallPending(id, name)
+			return nil
+		},
+		OnToolInputDelta: func(id, delta string) error {
+			hooks.ToolInputDelta(id, delta)
 			return nil
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
