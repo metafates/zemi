@@ -89,14 +89,11 @@ without asking, the reference for how a widget is written.
 
 ## Namespaces
 
-The verbs are regular, so a name you have not read is usually guessable: anything you
-register takes `add`, `del` and `list` (`zemi.command`, `zemi.tool`, `zemi.provider`,
-`zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`, `zemi.ui.theme`,
-`zemi.permission.rule`, `zemi.permission.mode`), anything you carry a value in takes
-`set` and `get` (`zemi.config`, `zemi.state`, `zemi.ui.hl`, `zemi.ui.focus`,
-`zemi.ui.layout`, `zemi.keymap`, whose `set` also rebinds). `del` returns whether it
-removed anything; a subscription (`event.on`, `config.watch`) returns the id its own
-`off`/`unwatch` takes.
+The verbs are regular: `add` registers (`command`, `tool`, `provider`, `health`, `mcp`,
+`lsp`, `ui.widget`, `ui.theme`, `permission.rule`, `permission.mode`), `set` writes a
+value (`config`, `state`, `keymap`, `ui.hl`, `ui.focus`, `ui.layout`, `ui.theme`), `get`
+and `list` read back, and `del` removes where anything can be removed, returning whether
+it did. `event.on` and `config.watch` hand back the id their `off` and `unwatch` take.
 
 | Namespace | Members |
 | --- | --- |
