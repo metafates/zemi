@@ -315,7 +315,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		answer := trustAnswers[hit-1]
 		return spans, func() { a.answerTrust(answer) }, true
 	case top == "question":
-		return nil, nil, false
+		qp := a.question
+		if !qp.reviewing() && qp.states[qp.at].typing {
+			return nil, nil, false // the row is an input, not a choice
+		}
+		sel, n := qp.sel()
+		return list(n, sel, func() { a.questionKey("enter", "") })
 	case top == "memReview":
 		mr := a.memReview
 		return list(len(mr.items), &mr.sel, nil)

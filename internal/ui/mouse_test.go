@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/win"
 )
 
@@ -458,5 +459,30 @@ func TestSelectionRejoinsWrappedText(t *testing.T) {
 	}
 	if got := dragRows("func add", "1000000"); got != code {
 		t.Errorf("code: %q", got)
+	}
+}
+
+// TestMouseQuestion: the question overlay answers to the mouse like the
+// permission prompt - the first click selects a row, the second picks it.
+func TestMouseQuestion(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan []string, 1)
+	go func() {
+		ans, _ := app.AskQuestion([]tools.Question{{Question: "apply the proposals?", Options: []tools.QuestionOption{{Label: "apply"}, {Label: "skip"}}}})
+		done <- ans
+	}()
+	waitPrompt(t, app, func() bool { return app.question != nil })
+	app.renderSync(t)
+	x, y := findCell(t, app, "skip")
+	clickAt(app, x+1, y)
+	app.renderSync(t)
+	clickAt(app, x+1, y)
+	select {
+	case ans := <-done:
+		if len(ans) != 1 || ans[0] != "skip" {
+			t.Fatalf("answered %q", ans)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("clicking an option never answered")
 	}
 }
