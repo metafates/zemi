@@ -24,11 +24,9 @@ local function theme(palette)
 
     Comment = { link = "Dim" },
     UserMsg = { link = "Accent" },
-    Toast = { fg = "fg", bg = "panel" },
-    ToastTitle = { fg = "fg", bg = "panel", bold = true },
-    ToastInfo = { fg = "accent", bg = "panel" },
-    ToastWarn = { fg = "yellow", bg = "panel" },
-    ToastErr = { fg = "red", bg = "panel" },
+    ToastInfo = { fg = "accent", bold = true },
+    ToastWarn = { fg = "yellow", bold = true },
+    ToastErr = { fg = "red", bold = true },
     ToastError = { fg = "red", bg = "panel", bold = true },
     MarkdownHeading = { link = "Title" },
     -- an inline span reads by its color: glamour pads it with a space either

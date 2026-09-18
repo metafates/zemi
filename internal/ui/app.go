@@ -1114,39 +1114,27 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 	return out
 }
 
-// toastBox lays a toast out as a panel: a level-colored bar, the bold
-// title, then the body word-wrapped, every row padded to one width.
+// toastBox lays a toast out in the frame every other box uses, the title in
+// the top rule in the level's color, the body word-wrapped under it.
 func toastBox(t toast, w int) [][]hostapi.Segment {
-	bar := map[string]string{"warn": "ToastWarn", "error": "ToastErr"}[t.level]
-	if bar == "" {
-		bar = "ToastInfo"
+	level := map[string]string{"warn": "ToastWarn", "error": "ToastErr"}[t.level]
+	if level == "" {
+		level = "ToastInfo"
 	}
-	inner := max(min(w-2, 60)-3, 1)
-	var body [][]hostapi.Segment
-	if t.title != "" {
-		body = append(body, truncateSegs([]hostapi.Segment{{Text: t.title, HL: "ToastTitle"}}, inner))
-	}
+	inner := max(min(w-2, 60)-4, 1)
 	var rows [][]hostapi.Segment
 	if t.body != "" {
-		for l := range strings.SplitSeq(t.body, "\n") {
-			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: "Toast"}}, inner)...)
-		}
+		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
 		more := map[bool]string{true: "... full error in /errors", false: "..."}[t.recorded]
-		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Toast"}})
+		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Comment"}})
 	}
-	body = append(body, rows...)
-	bw := 0
-	for _, r := range body {
-		bw = max(bw, segsWidth(r))
+	title := ""
+	if t.title != "" {
+		title = " " + ansi.Truncate(t.title, inner, "…") + " "
 	}
-	box := make([][]hostapi.Segment, 0, len(body))
-	for _, r := range body {
-		row := append([]hostapi.Segment{{Text: "▌ ", HL: bar}}, r...)
-		box = append(box, append(row, hostapi.Segment{Text: strings.Repeat(" ", bw-segsWidth(r)+1), HL: "Toast"}))
-	}
-	return box
+	return hostBoxW(title, level, "", rows, w, 60)
 }
 
 // ---------------------------------------------------------------------------
