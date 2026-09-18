@@ -31,7 +31,7 @@ func TestLuaAPIAdditions(t *testing.T) {
 		local data, rerr = zemi.fs.read("does-not-exist.txt")
 		assert(data == nil and tostring(rerr):find("no such file"), "fs.read failure: " .. tostring(rerr))
 		-- writes ask by default, and a Lua ask raises; an allow rule opens it
-		zemi.permission.rule({ subject = "lua.fs.write", pattern = "*/notes/a.txt", decision = "allow", match = "/p/notes/a.txt" })
+		zemi.permission.rule.add({ subject = "lua.fs.write", pattern = "*/notes/a.txt", decision = "allow", match = "/p/notes/a.txt" })
 		assert(zemi.fs.write("notes/a.txt", "hi") == true, "fs.write returns true")
 		assert(zemi.fs.read("notes/a.txt") == "hi", "fs round trip")
 
@@ -48,14 +48,14 @@ func TestLuaAPIAdditions(t *testing.T) {
 		zemi.event.emit("user.once", {})
 		assert(n == 11, "n = " .. n)
 
-		zemi.timer.set(0, function() zemi.state.put("scheduled", "ran") end)
+		zemi.timer.after(0, function() zemi.state.set("scheduled", "ran") end)
 	`)
 	waitFor(t, func() error {
 		h.stops.mu.Lock()
 		pending := len(h.stops.m)
 		h.stops.mu.Unlock()
 		if v, _ := h.GlobalDB.GetKV("scheduled"); v != `"ran"` || pending != 0 {
-			return fmt.Errorf("timer.set(0) callback never ran or its handle stayed registered (%d)", pending)
+			return fmt.Errorf("timer.after(0) callback never ran or its handle stayed registered (%d)", pending)
 		}
 		return nil
 	})
@@ -91,7 +91,7 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 	}))
 	defer srv.Close()
 	runUser(t, r, fmt.Sprintf(`
-		zemi.permission.rule({ subject = "lua.http.get", pattern = "*", decision = "allow", match = "%[1]s/x" })
+		zemi.permission.rule.add({ subject = "lua.http.get", pattern = "*", decision = "allow", match = "%[1]s/x" })
 		for _, url in ipairs({ "file:///etc/passwd", "ftp://example.com/x", "http://user:pw@example.com/" }) do
 			local res = zemi.http.get(url):wait()
 			assert(res == nil, url .. " must be refused")
@@ -123,9 +123,14 @@ func TestLuaAPIIO(t *testing.T) {
 	}))
 	defer srv.Close()
 	runUser(t, r, fmt.Sprintf(`
-		zemi.permission.rule({ subject = "lua.http.post", pattern = "%[1]s*", decision = "allow", match = "%[1]s/x" })
+		zemi.permission.rule.add({ subject = "lua.http.post", pattern = "%[1]s*", decision = "allow", match = "%[1]s/x" })
 		local res = zemi.http.request({ method = "POST", url = "%[1]s/x", headers = { ["X-Token"] = "t" }, body = "hi" }):wait()
 		assert(res.status == 201 and res.body == "POST:hi" and res.headers["X-Echo"] == "t", zemi.json.encode(res))
+
+		zemi.state.set("ui.a", 1)
+		zemi.state.set("ui.b", 2)
+		assert(zemi.json.encode(zemi.state.keys("ui.")) == '["ui.a","ui.b"]', zemi.json.encode(zemi.state.keys("ui.")))
+		assert(zemi.state.del("ui.a") == true and zemi.state.del("ui.a") == false, "del reports whether there was one")
 
 		local v, err = zemi.state.get("never-set")
 		assert(v == nil and err == nil, "a key nobody set is nil with no error")
@@ -135,12 +140,12 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(type(wid) == "string", "watch id type " .. type(wid))
 		assert(zemi.config.unwatch(wid) == true and zemi.config.unwatch(wid) == false, "unwatch is idempotent")
 
-		zemi.command.add("twice", function(a) zemi.state.put("twice", a.args .. a.args) end, { nargs = "*" })
+		zemi.command.add("twice", function(a) zemi.state.set("twice", a.args .. a.args) end, { nargs = "*" })
 		assert(zemi.command.run("twice", "ab") == true, "run")
 		assert(zemi.state.get("twice") == "abab", "command.run runs inline")
 		assert(zemi.command.del("twice") == true and zemi.command.run("twice") == nil, "del removes")
 
-		zemi.permission.rule({ subject = "lua.fs.write", pattern = "*", decision = "allow", match = "/x" })
+		zemi.permission.rule.add({ subject = "lua.fs.write", pattern = "*", decision = "allow", match = "/x" })
 		assert(zemi.fs.mkdir("d/e") == true, "mkdir")
 		assert(zemi.fs.write("d/e/f.txt", "x") == true, "write")
 		assert(zemi.fs.exists("d/e/f.txt") and not zemi.fs.exists("d/nope"), "exists")
@@ -156,15 +161,15 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(#zemi.fs.grep("hunter2") == 0, "grep never reads secret-shaped files")
 		assert(zemi.fs.remove("d/e/f.txt") == true and not zemi.fs.exists("d/e/f.txt"), "remove")
 
-		zemi.permission.rule({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "sh" })
+		zemi.permission.rule.add({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "sh" })
 		-- a grandchild holding stdout does not keep the job alive
-		zemi.job.start({ cmd = "sh", args = { "-c", "sleep 5 & echo hi" }, on_exit = function(r) zemi.state.put("bg", r.stdout) end })
+		zemi.job.start({ cmd = "sh", args = { "-c", "sleep 5 & echo hi" }, on_exit = function(r) zemi.state.set("bg", r.stdout) end })
 		-- without stdin = true a reader gets EOF instead of hanging
-		zemi.job.start({ cmd = "cat", on_exit = function(r) zemi.state.put("cat", r.code) end })
+		zemi.job.start({ cmd = "cat", on_exit = function(r) zemi.state.set("cat", r.code) end })
 		local got = {}
 		zemi.job.start({ cmd = "sh", args = { "-c", "echo one; echo two; exit 3" },
 			on_stdout = function(lines) for _, l in ipairs(lines) do got[#got + 1] = l end end,
-			on_exit = function(res) zemi.state.put("job", { lines = got, code = res.code }) end })
+			on_exit = function(res) zemi.state.set("job", { lines = got, code = res.code }) end })
 	`, srv.URL))
 	waitFor(t, func() error {
 		v, _ := h.GlobalDB.GetKV("job")
@@ -194,37 +199,37 @@ func TestKeySequences(t *testing.T) {
 
 // TestHighlightOverride: zemi.ui.hl changes one group of the active theme
 // and leaves the others as the theme defines them; links resolve through
-// overrides and the theme, a cycle resolves to nothing, and hl_get reads
+// overrides and the theme, a cycle resolves to nothing, and hl.get reads
 // the resolved group.
 func TestHighlightOverride(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.ui.theme.register("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" }, Link = { link = "Title", fg = "#000000" } } })
 		zemi.ui.theme.set("t")
-		assert(zemi.ui.hl_get("Link").fg == "#123456", "a theme link to a palette color")
-		zemi.ui.hl("Title", { fg = "#ffffff", bold = true })
-		zemi.ui.hl("Mine", { link = "Link" })
-		local mine = zemi.ui.hl_get("Mine")
+		assert(zemi.ui.hl.get("Link").fg == "#123456", "a theme link to a palette color")
+		zemi.ui.hl.set("Title", { fg = "#ffffff", bold = true })
+		zemi.ui.hl.set("Mine", { link = "Link" })
+		local mine = zemi.ui.hl.get("Mine")
 		assert(mine.fg == "#ffffff" and mine.bold and mine.bg == nil, zemi.json.encode(mine))
-		zemi.ui.hl("A", { link = "B" })
-		zemi.ui.hl("B", { link = "A" })
-		assert(zemi.ui.hl_get("A") == nil and zemi.ui.hl_get("Nope") == nil, "a cycle or an unset group")
-		zemi.ui.hl("Hover", { underline = "curl", sp = "accent", bold = false, brighten = 0.3, replace = true })
-		local hv = zemi.ui.hl_get("Hover")
+		zemi.ui.hl.set("A", { link = "B" })
+		zemi.ui.hl.set("B", { link = "A" })
+		assert(zemi.ui.hl.get("A") == nil and zemi.ui.hl.get("Nope") == nil, "a cycle or an unset group")
+		zemi.ui.hl.set("Hover", { underline = "curl", sp = "accent", bold = false, brighten = 0.3, replace = true })
+		local hv = zemi.ui.hl.get("Hover")
 		assert(hv.underline == "curl" and hv.sp == "#123456" and hv.bold == false and hv.italic == nil
 			and hv.brighten == 0.3 and hv.replace, zemi.json.encode(hv))
-		zemi.ui.hl("U", { underline = false })
-		assert(zemi.ui.hl_get("U").underline == false, "underline = false reads back")
-		assert(not pcall(zemi.ui.hl, "X", { underline = "wavy" }), "an unknown underline kind raises")
-		assert(not pcall(zemi.ui.hl, "X", "blue") and not pcall(zemi.ui.hl, "X"), "a spec that is not a table raises")
+		zemi.ui.hl.set("U", { underline = false })
+		assert(zemi.ui.hl.get("U").underline == false, "underline = false reads back")
+		assert(not pcall(zemi.ui.hl.set, "X", { underline = "wavy" }), "an unknown underline kind raises")
+		assert(not pcall(zemi.ui.hl.set, "X", "blue") and not pcall(zemi.ui.hl.set, "X"), "a spec that is not a table raises")
 		assert(not pcall(zemi.ui.theme.register, "bogus", "nope"), "a theme that is not a table raises")
-		local ok, err = pcall(zemi.ui.hl, "X", { fg = "salmon" })
+		local ok, err = pcall(zemi.ui.hl.set, "X", { fg = "salmon" })
 		assert(not ok and tostring(err):find("palette key", 1, true), "err=" .. tostring(err))
-		assert(not pcall(zemi.ui.hl, "X", { bg = "#gg0000" }), "a bad hex color raises")
+		assert(not pcall(zemi.ui.hl.set, "X", { bg = "#gg0000" }), "a bad hex color raises")
 		assert(not pcall(zemi.ui.theme.register, "p", { palette = { accent = "salmon" } }), "a palette name as a color raises")
 		assert(not pcall(zemi.ui.theme.register, "q", { palette = { a = "#111111" }, hl = { T = { fg = "b" } } }),
 			"a theme group naming a color its palette lacks raises")
-		assert(zemi.ui.hl_get("X") == nil, "a refused spec sets nothing")
+		assert(zemi.ui.hl.get("X") == nil, "a refused spec sets nothing")
 	`)
 	theme := h.Themes.Get("t")
 	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
@@ -251,8 +256,8 @@ func TestWidgetDel(t *testing.T) {
 func TestPurgeStopsLuaJobs(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
-		zemi.permission.rule({ subject = "lua.job.start", pattern = "sleep *", decision = "allow", match = "sleep 30" })
-		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.put("sleep", "stopped") end })
+		zemi.permission.rule.add({ subject = "lua.job.start", pattern = "sleep *", decision = "allow", match = "sleep 30" })
+		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.set("sleep", "stopped") end })
 	`)
 	h.PurgeGeneration()
 	waitFor(t, func() error {

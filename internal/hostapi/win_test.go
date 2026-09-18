@@ -352,7 +352,7 @@ func TestWindowTextTool(t *testing.T) {
 	}
 	// Lua opens one too, and only its own origin may write to it
 	runUser(t, r, `
-		local w = assert(zemi.win.text({ text = "hi", markdown = true, title = "lua" }))
+		local w = assert(zemi.win.panel({ text = "hi", markdown = true, title = "lua" }))
 		assert(w:set_text("bye"))
 		assert(w:append(" now"))
 		assert(w:text() == "bye now", w:text())

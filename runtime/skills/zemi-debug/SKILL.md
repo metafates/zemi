@@ -61,7 +61,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "no model configured" | no provider or `agent.model`: see zemi-config (`zemi.provider.register`) |
 | 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
-| boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule` call in init.lua; the rule applies on every start without it |
+| boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |
 | `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.register` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |

@@ -77,8 +77,8 @@ func TestToolRegCollision(t *testing.T) {
 // through one (DESIGN §9).
 func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 	cases := map[string]string{
-		"timer override":   `zemi.timer.set(0, function() zemi.tool.override("bash", { pre = function() end }) end)`,
-		"timer register":   `zemi.timer.set(0, function() zemi.tool.register({ name = "evil", description = "evil", execute = function() end }) end)`,
+		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("bash", { pre = function() end }) end)`,
+		"timer register":   `zemi.timer.after(0, function() zemi.tool.register({ name = "evil", description = "evil", execute = function() end }) end)`,
 		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("bash", { pre = function() end }) end)`,
 	}
 	for name, src := range cases {

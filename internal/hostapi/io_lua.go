@@ -202,17 +202,51 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		L.Push(lua.FromGo(L, decoded))
 		return 1
 	}))
-	tb.RawSetString("put", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		key := L.CheckString(1)
-		v := luaToGoChecked(L, 2, "zemi.state.put")
+		v := luaToGoChecked(L, 2, "zemi.state.set")
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
-			L.RaiseError("zemi.state.put: %v", err)
+			L.RaiseError("zemi.state.set: %v", err)
 		}
 		return luaResult(L, h.GlobalDB.SetKV(key, string(b)))
+	}))
+	// del(key) -> whether there was one; a config that writes state can
+	// clear it again
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		key := L.CheckString(1)
+		if h.GlobalDB == nil {
+			return luaResult(L, errors.New("store unavailable"))
+		}
+		removed, err := h.GlobalDB.DelKV(key)
+		if err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		L.Push(glua.LBool(removed))
+		return 1
+	}))
+	// keys(prefix?) -> the keys set, sorted
+	tb.RawSetString("keys", L.NewFunction(func(L *glua.LState) int {
+		if h.GlobalDB == nil {
+			return luaResult(L, errors.New("store unavailable"))
+		}
+		keys, err := h.GlobalDB.KeysKV(L.OptString(1, ""))
+		if err != nil {
+			L.Push(glua.LNil)
+			L.Push(glua.LString(err.Error()))
+			return 2
+		}
+		out := L.NewTable()
+		for _, k := range keys {
+			out.Append(glua.LString(k))
+		}
+		L.Push(out)
+		return 1
 	}))
 	return tb
 }
@@ -262,12 +296,12 @@ func (r *stopReg) purge() {
 
 func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	set := func(repeat bool) *glua.LFunction {
+	once := func(repeat bool) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
 			h.refuseDuringRender(L, "zemi.timer")
 			ms := L.CheckNumber(1)
 			fn := L.CheckFunction(2)
-			// set(0, fn) runs fn on the next queue turn (vim.schedule); a
+			// after(0, fn) runs fn on the next queue turn (vim.schedule); a
 			// repeating timer needs a real interval.
 			if ms < 0 || (repeat && ms == 0) {
 				L.RaiseError("zemi.timer: interval must be positive")
@@ -322,8 +356,8 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			return 1
 		})
 	}
-	tb.RawSetString("set", set(false))
-	tb.RawSetString("every", set(true))
+	tb.RawSetString("after", once(false))
+	tb.RawSetString("every", once(true))
 	return tb
 }
 
@@ -995,9 +1029,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// out runs a command to completion (spec.timeout_ms, default 60s, kills
-	// it); it blocks the interpreter, so it belongs in tools.
-	tb.RawSetString("out", L.NewFunction(func(L *glua.LState) int {
+	// wait blocks the interpreter until the command finishes
+	// (spec.timeout_ms, default 60s, then kills it), so it belongs in tools
+	// and short commands; elsewhere start it and use on_exit.
+	tb.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
 		jh, err := start(L)
 		if err != nil {
 			return luaResult(L, err)

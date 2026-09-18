@@ -195,8 +195,8 @@ zemi.ui.widget.register({
 
 -- Change a few colors: override just those groups. theme.register below
 -- builds a complete theme, and groups it leaves out lose their colors.
-zemi.ui.hl("ModePlan", { fg = "bg", bg = "warn", bold = true })
-zemi.ui.hl("ModeAuto", { fg = "bg", bg = "#c4a7e7", bold = true })
+zemi.ui.hl.set("ModePlan", { fg = "bg", bg = "warn", bold = true })
+zemi.ui.hl.set("ModeAuto", { fg = "bg", bg = "#c4a7e7", bold = true })
 
 -- A whole theme (define every group the UI uses, or copy the default's)
 zemi.ui.theme.register("dusk", {

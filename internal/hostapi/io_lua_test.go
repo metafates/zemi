@@ -10,12 +10,12 @@ import (
 )
 
 // TestJobStartFailure: a command that cannot start is a runtime failure,
-// so job.start and job.out return nil, err instead of raising (DESIGN §6.0).
+// so job.start and job.wait return nil, err instead of raising (DESIGN §6.0).
 func TestJobStartFailure(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `
-		local res, err = zemi.job.out({ cmd = "zemi-no-such-binary" })
+		local res, err = zemi.job.wait({ cmd = "zemi-no-such-binary" })
 		assert(res == nil and type(err) == "string", tostring(err))
 		res, err = zemi.job.start({ cmd = "zemi-no-such-binary" })
 		assert(res == nil and type(err) == "string", tostring(err))
@@ -41,8 +41,8 @@ func TestJobGateSeesCommandLine(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "true*", Decision: perm.Allow})
 	runUser(t, r, `
-		assert(zemi.job.out({ cmd = "true", args = { "x" } }), "allowed")
-		assert(not pcall(zemi.job.out, { cmd = "echo", args = { "true" } }), "the program leads the line")
+		assert(zemi.job.wait({ cmd = "true", args = { "x" } }), "allowed")
+		assert(not pcall(zemi.job.wait, { cmd = "echo", args = { "true" } }), "the program leads the line")
 		assert(not pcall(zemi.win.open, { cmd = "true; echo" }), "a second command asks")
 	`)
 }

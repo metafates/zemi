@@ -23,7 +23,7 @@ server caches, `~/.cache/zemi`) override the four roots.
 
 Rules when editing:
 
-- Add lasting rules with `zemi.permission.rule` in init.lua, which adds them again on every
+- Add lasting rules with `zemi.permission.rule.add` in init.lua, which adds them again on every
   start; `a` in a permission prompt allows until zemi exits. A leftover `permissions.lua`
   is not read.
 - File writes ask first and show the diff, and write, edit and multiedit

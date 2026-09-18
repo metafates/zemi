@@ -405,12 +405,13 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// text(spec): spec = { text, markdown, kind, title, cols, rows, focus, hidden }
-	tb.RawSetString("text", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.win.text")
+	// panel(spec): a window showing text instead of a program.
+	// spec = { text, markdown, kind, title, cols, rows, focus, hidden }
+	tb.RawSetString("panel", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.win.panel")
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
-			L.RaiseError("zemi.win.text: spec must be a table")
+			L.RaiseError("zemi.win.panel: spec must be a table")
 		}
 		w, err := h.openTextWindow(win.Spec{
 			Text: rawString(spec, "text"), Markdown: rawBool(spec, "markdown"),

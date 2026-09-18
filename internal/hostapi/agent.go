@@ -1346,10 +1346,11 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("rule", L.NewFunction(func(L *glua.LState) int {
+	rule := L.NewTable()
+	rule.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
-			L.RaiseError("zemi.permission.rule: rule must be a table")
+			L.RaiseError("zemi.permission.rule.add: rule must be a table")
 			return 0
 		}
 		r := perm.Rule{
@@ -1361,18 +1362,18 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		switch rawString(spec, "scope") {
 		case "", "session":
 		case "permanent":
-			L.RaiseError(`zemi.permission.rule: scope "permanent" was removed; a rule in init.lua applies on every start, so drop the scope field`)
+			L.RaiseError(`zemi.permission.rule.add: scope "permanent" was removed; a rule in init.lua applies on every start, so drop the scope field`)
 		default:
-			L.RaiseError(`zemi.permission.rule: scope must be "session"`)
+			L.RaiseError(`zemi.permission.rule.add: scope must be "session"`)
 		}
 		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
 		// user config only; every other origin may only add deny/ask rules.
 		if h.RT.CurrentOrigin(L) != lua.OriginUser && r.Decision == perm.Allow {
-			L.RaiseError("zemi.permission.rule: allow rules may only come from user config")
+			L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
 			return 0
 		}
 		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
-			L.RaiseError("zemi.permission.rule: %v", err)
+			L.RaiseError("zemi.permission.rule.add: %v", err)
 			return 0
 		}
 		if h.Perm.Add(r) || h.claimStale(r) {
@@ -1387,7 +1388,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("mode", h.modeNamespace(L))
 
-	tb.RawSetString("rules", L.NewFunction(func(L *glua.LState) int {
+	rule.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, r := range h.Perm.Rules() {
 			row := L.NewTable()
@@ -1400,6 +1401,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		L.Push(out)
 		return 1
 	}))
+	tb.RawSetString("rule", rule)
 
 	return tb
 }

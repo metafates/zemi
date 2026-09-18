@@ -99,8 +99,8 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		{"composer shell", `zemi.composer.set("!touch MARKER") zemi.composer.submit()`, "zemi.composer.set", "composer.set"},
 		{"editor command", `zemi.config.set("editor.command", "touch MARKER; true") zemi.ui.edit("f.txt", {}, function() end)`, "zemi.config.set", "config.set"},
 		{"screening model", `zemi.provider.register({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("agent.small_model", "e/m")`, "zemi.provider.register", "provider.register"},
-		{"allow rule", `zemi.permission.rule({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
-		{"job", `zemi.job.out({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.out", "job.out"},
+		{"allow rule", `zemi.permission.rule.add({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
+		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
 		{"window", `zemi.win.open({ cmd = "sleep 1" })`, "zemi.win.open", "win.open"},
 		{"window input", `zemi.win.get(1):send("x")`, ":send", "win:send"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
@@ -136,7 +136,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 			t.Errorf("%s asked: %+v %q", src, ui.asked, out)
 		}
 	}
-	for _, hidden := range []string{`local z = zemi z.job.out({ cmd = "true" })`, `local j = _G["zemi"].job`} {
+	for _, hidden := range []string{`local z = zemi z.job.wait({ cmd = "true" })`, `local j = _G["zemi"].job`} {
 		if ui, _ := run(hidden, false); len(ui.asked) != 1 {
 			t.Errorf("%s: no ask", hidden)
 		}
@@ -147,7 +147,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 
 	// a callback an approved run left behind loses the approval with the run
 	os.Remove(marker)
-	run(`zemi.event.on("user.zz", function() zemi.job.out({ cmd = "touch", args = { "MARKER" } }) end)`, true)
+	run(`zemi.event.on("user.zz", function() zemi.job.wait({ cmd = "touch", args = { "MARKER" } }) end)`, true)
 	run(`zemi.event.emit("user.zz")`, true)
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("an earlier run's handler started a program")

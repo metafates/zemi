@@ -326,25 +326,26 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 1
 	}))
 
-	// hl(group, spec) changes one highlight group on top of the active theme
-	// (and any theme set later): { fg, bg, sp, bold, italic, underline,
+	hl := L.NewTable()
+	// hl.set(group, spec) changes one highlight group on top of the active
+	// theme (and any theme set later): { fg, bg, sp, bold, italic, underline,
 	// reverse, brighten, replace }, colors as hex or palette names, or
 	// { link = "Group" }. theme.register builds a whole theme.
-	tb.RawSetString("hl", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.hl")
+	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.hl.set")
 		// an override sits above every theme, the user's own included
-		h.refuseBelowUser(L, "ui.hl")
+		h.refuseBelowUser(L, "ui.hl.set")
 		group := L.CheckString(1)
 		// an override outlives the theme active when it is set, so any
 		// registered theme's palette may name the color
-		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl", tableArg(L, 2, "zemi.ui.hl"), h.Themes.Palettes()))
+		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl.set", tableArg(L, 2, "zemi.ui.hl.set"), h.Themes.Palettes()))
 		h.refresh()
 		return 0
 	}))
 
-	// hl_get(group) is how the group draws under the active theme, links
+	// hl.get(group) is how the group draws under the active theme, links
 	// followed and palette names resolved to hex, or nil when nothing sets it.
-	tb.RawSetString("hl_get", L.NewFunction(func(L *glua.LState) int {
+	hl.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		theme := h.Themes.Get(h.ActiveThemeName())
 		spec, ok := h.Themes.Group(theme, L.CheckString(1))
 		if !ok {
@@ -388,6 +389,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		L.Push(lua.FromGo(L, out))
 		return 1
 	}))
+	tb.RawSetString("hl", hl)
 
 	reasoning := L.NewTable()
 	reasoning.RawSetString("toggle", L.NewFunction(func(L *glua.LState) int {
@@ -445,6 +447,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	sb.FreezeTable(theme, "namespace zemi.ui.theme")
 	sb.FreezeTable(overlay, "namespace zemi.ui.overlay")
 	sb.FreezeTable(focus, "namespace zemi.ui.focus")
+	sb.FreezeTable(hl, "namespace zemi.ui.hl")
 
 	return tb
 }

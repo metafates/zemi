@@ -82,41 +82,41 @@ func TestProfileTemperatureReachesRunner(t *testing.T) {
 func TestPermissionRuleValidation(t *testing.T) {
 	h, r := newTestHost(t)
 
-	runExpectErr(t, r, `zemi.permission.rule({
+	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 	})`, "needs a match example")
 
-	runExpectErr(t, r, `zemi.permission.rule({
+	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git push",
 	})`, "does not match pattern")
 
-	runExpectErr(t, r, `zemi.permission.rule({
+	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git status", scope = "permanent",
 	})`, "a rule in init.lua applies on every start")
 
-	runExpectErr(t, r, `zemi.permission.rule({
+	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git *", decision = "allow",
 		not_match = "git push*", match = "git status",
 	})`, "needs both examples")
 
-	runExpectErr(t, r, `zemi.permission.rule({
+	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "bash", pattern = "git status", decision = "allow", match = "git status",
 	})`, "starts with none of")
 
-	runUser(t, r, `zemi.permission.rule({
+	runUser(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`)
 	runUser(t, r, `
-		local rules = zemi.permission.rules()
+		local rules = zemi.permission.rule.list()
 		assert(#rules == 1, "rules=" .. #rules)
 		assert(rules[1].pattern == "git status", "pattern=" .. rules[1].pattern)
 		assert(rules[1].decision == "allow", "decision=" .. rules[1].decision)
 	`)
 
-	err := r.ExecuteChunk(context.Background(), `zemi.permission.rule({
+	err := r.ExecuteChunk(context.Background(), `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`, "plugin.lua", lua.OriginPlugin)
@@ -125,7 +125,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 	}
 
 	// Lua may always deny, from any origin.
-	runUser(t, r, `zemi.permission.rule({
+	runUser(t, r, `zemi.permission.rule.add({
 		subject = "tool.bash", pattern = "rm -rf *", decision = "deny",
 		match = "rm -rf /tmp/x",
 	})`)
@@ -210,13 +210,13 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	}
 	initLua := filepath.Join(dir, "init.lua")
 	src := `
-		zemi.permission.rule({ subject = "tool.bash", pattern = "rm *", decision = "deny", match = "rm x" })
+		zemi.permission.rule.add({ subject = "tool.bash", pattern = "rm *", decision = "deny", match = "rm x" })
 		zemi.event.on("tool.pre", function() return { decision = "deny", reason = "vetoed" } end)`
 	if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, src+`
-		zemi.permission.rule({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })`)
+		zemi.permission.rule.add({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })`)
 	decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
 
 	pre := h.toolPreHook()
@@ -527,7 +527,7 @@ func TestPipelineForCheck(t *testing.T) {
 func TestStoreBackedState(t *testing.T) {
 	_, r := newTestHostDB(t)
 	runUser(t, r, `
-		zemi.state.put("note", { text = "hi", n = 2 })
+		zemi.state.set("note", { text = "hi", n = 2 })
 		local v = zemi.state.get("note")
 		assert(v and v.text == "hi" and v.n == 2, "state roundtrip failed")
 	`)

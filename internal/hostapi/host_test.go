@@ -71,7 +71,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.40.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.41.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -96,9 +96,9 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width missing or not in cells")
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
 		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")
-		assert(type(zemi.ui.hl) == "function", "zemi.ui.hl missing")
+		assert(type(zemi.ui.hl.set) == "function", "zemi.ui.hl.set missing")
 		assert(type(zemi.ui.redraw) == "function" and type(zemi.ui.title) == "function", "zemi.ui.redraw or title missing")
-		assert(type(zemi.ui.hl_get) == "function" and type(zemi.ui.widget.del) == "function", "zemi.ui.hl_get or widget.del missing")
+		assert(type(zemi.ui.hl.get) == "function" and type(zemi.ui.widget.del) == "function", "zemi.ui.hl.get or widget.del missing")
 		assert(type(zemi.ui.reasoning.toggle) == "function", "zemi.ui.reasoning.toggle missing")
 		for _, fn in ipairs({ "set", "get", "rects" }) do
 			assert(type(zemi.ui.layout[fn]) == "function", "zemi.ui.layout." .. fn .. " missing")
@@ -494,7 +494,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 
 func TestSetModelFiresWatches(t *testing.T) {
 	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.put("picked", nv) end)
+	runUser(t, r, `zemi.config.watch("agent.model", function(nv) zemi.state.set("picked", nv) end)
 		zemi.provider.register({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
 	check := func(want string) {
 		t.Helper()

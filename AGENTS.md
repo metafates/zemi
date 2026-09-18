@@ -488,7 +488,7 @@ open runs sandboxed through `win.Spec.Wrap`, recorded as `Window.Sandboxed`) and
 window runs sandboxed. `focus` asks the same subject always unsandboxed and only for a shown
 window: it hands the user's own keyboard over (ctrl+c included), so no mode settles it and it
 never unhides on its own. An exit lands in the next message through `shellNotes`. Its `text`
-and `set_text` actions (Lua: `zemi.win.text`, `w:set_text`, `w:append`) ask
+and `set_text` actions (Lua: `zemi.win.panel`, `w:set_text`, `w:append`) ask
 `tool.window.text` with the body as preview, which every mode but manual settles (ask.go):
 a text window runs nothing and reads nothing, it only draws sanitized text on the screen. Subagents get
 `windowToolFor(name, pipe)`: their asks carry the agent name and their windows open hidden.
@@ -672,10 +672,10 @@ naming widgets in regions the layout does not draw.
 
 ### Permission rules and config
 
-Every rule lives in memory: `zemi.permission.rule` in config adds it again on each boot, and
+Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot, and
 an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git commits
 (`scope = "permanent"` raises and points at init.lua). Only `user` origin may add allow rules
-(project may tighten only); the gate lives at the `zemi.permission.rule` namespace closure,
+(project may tighten only); the gate lives at the `zemi.permission.rule.add` namespace closure,
 same off-interpreter-`OriginHost` reasoning as skills. Skill proposals always wait for review
 (DESIGN §10.4). The reflector proposes memories and skills only; there is no config-patch
 pipeline and no `/config` command (the agent edits config files directly). `Host.git` shells

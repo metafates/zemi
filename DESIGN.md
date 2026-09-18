@@ -248,7 +248,7 @@ included, rebinds it) cancels the running
 turn by cancelling the fantasy
 context; in-flight Lua tool calls get the catchable "context canceled"
 error at the next opcode (see the watchdog above). One residual gap: a Go
-call invoked from Lua that blocks mid-call (e.g. `zemi.job.out` waiting on
+call invoked from Lua that blocks mid-call (e.g. `zemi.job.wait` waiting on
 a subprocess) does not observe cancellation until it returns. Every
 request-ctx cancellation (watchdog expiry, veto deadline, turn cancel,
 hot mode) cancels the async handles that request started, inside Go,
@@ -508,8 +508,8 @@ permission-gated file tools); zemi makes no commits.
 Permission rules are data with one API and an optional principal:
 
 ```lua
-zemi.permission.rule{ subject = "tool.bash", pattern = "make *",
-                      decision = "deny", match = "make check" }
+zemi.permission.rule.add{ subject = "tool.bash", pattern = "make *",
+                          decision = "deny", match = "make check" }
 ```
 
 Lua rules carry no principal, so they match every principal (§9); rules
@@ -733,8 +733,8 @@ zemi.tool.register({
   -- execute returns a string, { output = string }, or a table sent as JSON;
   -- errors: `error(msg)` is caught and becomes a tool error result.
   execute = function(args, call)             -- call: { name, origin }
-    -- zemi.job.out blocks the queue; timeout_ms bounds it
-    return { output = zemi.job.out({ cmd = "figlet", args = { args.text } }).stdout }
+    -- zemi.job.wait blocks the queue; timeout_ms bounds it
+    return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
   end,
 })
 
@@ -817,17 +817,17 @@ local res = h:wait()                              -- blocks the queue until done
 zemi.http.get(url, { on_done = function(r) end }) -- or callback style
 zemi.job.start({ cmd = "go", args = { "test", "./..." },
                  on_stdout = nil, on_exit = function(ev) end })
-zemi.job.out({ cmd = "figlet", args = { "hi" } }) -- blocking convenience: run,
+zemi.job.wait({ cmd = "figlet", args = { "hi" } }) -- blocking convenience: run,
                                                   -- wait, { stdout, stderr, code }
-local t = zemi.timer.set(1000, function() end)    -- one-shot; also zemi.timer.every
+local t = zemi.timer.after(1000, function() end)  -- one-shot; also zemi.timer.every
 t:stop()                                          -- cancels a pending timer
-zemi.state.put("recent.model", "anthropic/x")      -- persisted kv, global scope
-zemi.state.get("recent.model")
+zemi.state.set("recent.model", "anthropic/x")     -- persisted kv, global scope
+zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 ```
 
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
 callbacks; the watchdog cancels handles a tool left running. Blocking
-waits (`h:wait()`, `zemi.job.out`, `win:wait_text`) are not refused
+waits (`h:wait()`, `zemi.job.wait`, `win:wait_text`) are not refused
 anywhere, but they hold the interpreter until they return, so they end
 with the request that started them (its ceiling, or an interrupt):
 otherwise a blocked Go call, which no opcode cancellation can preempt,
@@ -946,9 +946,9 @@ UI extensibility contract:
   without the group underlines. The trust and permission prompts' choices keep
   the fixed `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
   one draws unstyled and cannot forge prompt chrome. Go resolves to the terminal's colorprofile
-  (truecolor/256/16, downgrading as needed). `zemi.ui.hl_get(group)` reads
+  (truecolor/256/16, downgrading as needed). `zemi.ui.hl.get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
-  (same or less trusted origin), shipped ones included. `zemi.ui.hl` and
+  (same or less trusted origin), shipped ones included. `zemi.ui.hl.set` and
   `zemi.ui.theme.set` are user or shipped code only: an override and the
   active theme sit above every other theme, the user's own included.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
@@ -1217,7 +1217,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   highlighted one. The overlay writes session rules only: `always`
   adds allow rules to the rule store (§6.1), scoped to the
   `model` principal, with the prefix-glob patterns §6.2 lists. Lasting
-  rules never come from the overlay; they are `zemi.permission.rule`
+  rules never come from the overlay; they are `zemi.permission.rule.add`
   lines in the user's own config. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
   may restyle the frame via theme groups only. The security-relevant
@@ -1341,7 +1341,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   user.
 - Defaults when no rule matches: pure reads (`zemi.config.get`,
   `zemi.state.get`, `zemi.log`, list/introspection calls) and
-  UI-shaping host APIs (`zemi.state.put`, `zemi.notify`, `zemi.timer`,
+  UI-shaping host APIs (`zemi.state.set`, `zemi.notify`, `zemi.timer`,
   `zemi.ui.*`, `zemi.keymap`, `zemi.command`,
   `zemi.model.pick`) are allow; `fs.read`
   inside the jail is allow except secret-shaped paths (matched
@@ -1358,7 +1358,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   APIs checks the same capability under its `lua.` subject (`lua.fs.read`
   mirrors `fs.read`, subject namespace above), so these defaults cover
   both origins without extra rules. Registration and config APIs
-  (`zemi.permission.rule`, `zemi.config.set`, profile/provider
+  (`zemi.permission.rule.add`, `zemi.config.set`, profile/provider
   registration) follow their origin rules in §6 and refuse outright, as
   errors, never as asks. Anything unlisted defaults to `ask`; there is no
   fail-open path.

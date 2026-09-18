@@ -16,7 +16,7 @@ import (
 // and a clock floating in the stage's top-right corner.
 const sidebarConfig = `
 zemi.ui.widget.register({ id = "side", region = "side",
-  on_click = function(ev) zemi.state.put("clicked", ev.id) end,
+  on_click = function(ev) zemi.state.set("clicked", ev.id) end,
   render = function()
     local rows = {}
     for i = 1, 40 do rows[i] = { { text = "item " .. i, click = "item" .. i } } end

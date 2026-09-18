@@ -186,6 +186,7 @@ function debug.traceback(msg) end
 ---| "learned"  # model-written, lowest trust
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
+---@alias zemi.HealthLevel "ok"|"warn"|"error"
 ---@alias zemi.Scope "user"|"project"
 --- The regions the default layout draws; a layout may draw any other name.
 ---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
@@ -994,19 +995,22 @@ function zemi.ui.input(opts, on_confirm) end
 ---@param on_done fun(err: string|nil)
 function zemi.ui.edit(path, opts, on_done) end
 
+---@class zemi.ui.hl
+zemi.ui.hl = {}
+
 --- Change one highlight group on top of the active theme, and any theme
 --- set later. `zemi.ui.theme.register` builds a whole theme instead.
 --- User or builtin origin only.
 ---@param group string
 ---@param spec zemi.HLSpec
-function zemi.ui.hl(group, spec) end
+function zemi.ui.hl.set(group, spec) end
 
 --- How a group draws under the active theme: links followed, palette names
 --- resolved to hex, keys the group leaves unset left out. Nil when
 --- nothing defines the group.
 ---@param group string
 ---@return zemi.HLSpec|nil
-function zemi.ui.hl_get(group) end
+function zemi.ui.hl.get(group) end
 
 --- Cells `text` draws in, measured the way the renderer does: a wide glyph
 --- (CJK, emoji) is two, a combining mark zero. Use it to clip, pad and
@@ -1169,7 +1173,7 @@ function zemi.win.open(spec) end
 --- sized takes the cells the text needs, at most half the box it sits in.
 ---@param spec zemi.WinTextSpec
 ---@return zemi.Win|nil, string|nil
-function zemi.win.text(spec) end
+function zemi.win.panel(spec) end
 
 ---@param id integer
 ---@return zemi.Win|nil
@@ -1567,14 +1571,19 @@ function zemi.composer.edit() end
 ---@class zemi.permission
 zemi.permission = {}
 
+---@class zemi.permission.rule
+zemi.permission.rule = {}
+
 --- Add a permission rule. Any origin may add deny and ask rules; allow rules
 --- need user config. Ordering is deny > ask > allow, then
 --- fewest wildcards, then longest literal prefix.
 ---@param spec zemi.RuleSpec
-function zemi.permission.rule(spec) end
+function zemi.permission.rule.add(spec) end
 
+--- The rules in force, in evaluation order. There is no `del`: a session
+--- rule dies with the session and config rules are declarative file state.
 ---@return zemi.Rule[]
-function zemi.permission.rules() end
+function zemi.permission.rule.list() end
 
 ---@class zemi.permission.mode
 zemi.permission.mode = {}
@@ -1791,11 +1800,13 @@ zemi.job = {}
 ---@return string|nil err A process that could not start.
 function zemi.job.start(spec) end
 
---- Start a job and wait for it.
+--- Start a job and block the interpreter until it finishes (spec.timeout_ms,
+--- default 60000, then kills it). Everything else waits, so keep it to
+--- tools and short commands; elsewhere use `start` with `on_exit`.
 ---@param spec zemi.JobSpec
 ---@return zemi.JobResult|nil res
 ---@return string|nil err
-function zemi.job.out(spec) end
+function zemi.job.wait(spec) end
 
 -- ---------------------------------------------------------------------------
 -- zemi.timer
@@ -1806,11 +1817,11 @@ function zemi.job.out(spec) end
 ---@class zemi.timer
 zemi.timer = {}
 
---- Run fn once after ms. `set(0, fn)` runs it on the next queue turn.
+--- Run fn once after ms. `after(0, fn)` runs it on the next queue turn.
 ---@param ms integer
 ---@param fn fun()
 ---@return zemi.TimerHandle
-function zemi.timer.set(ms, fn) end
+function zemi.timer.after(ms, fn) end
 
 --- Run fn every ms until stopped.
 ---@param ms integer
@@ -1834,7 +1845,19 @@ function zemi.state.get(key) end
 ---@param value any
 ---@return true|nil ok
 ---@return string|nil err
-function zemi.state.put(key, value) end
+function zemi.state.set(key, value) end
+
+--- Drop a key.
+---@param key string
+---@return boolean|nil removed
+---@return string|nil err
+function zemi.state.del(key) end
+
+--- The keys set, sorted, filtered by prefix when given.
+---@param prefix? string
+---@return string[]|nil keys
+---@return string|nil err
+function zemi.state.keys(prefix) end
 
 ---@class zemi.env
 zemi.env = {}
@@ -2042,8 +2065,9 @@ function zemi.lsp.list() end
 -- ---------------------------------------------------------------------------
 -- zemi.health and zemi.errors
 
+--- What a /health check returns. Any other level reads as "ok".
 ---@class zemi.HealthResult
----@field level zemi.Level
+---@field level zemi.HealthLevel
 ---@field detail string
 
 ---@class zemi.health

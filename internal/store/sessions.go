@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrNotFound is returned by single getters when the row is missing.
@@ -417,6 +418,31 @@ func (s *DB) SetKV(key, valueJSON string) error {
 		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
 		key, valueJSON, now())
 	return err
+}
+
+// DelKV drops a key, reporting whether there was one.
+func (s *DB) DelKV(key string) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM kv WHERE key = ?`, key)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// KeysKV lists the keys with a prefix, sorted.
+func (s *DB) KeysKV(prefix string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT key FROM kv WHERE key LIKE ? ESCAPE '\' ORDER BY key`, likePrefix(prefix))
+	return collect(rows, err, func(r scanner) (k string, err error) {
+		err = r.Scan(&k)
+		return
+	})
+}
+
+// likePrefix escapes a LIKE prefix, so a key holding % or _ matches itself.
+func likePrefix(prefix string) string {
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return r.Replace(prefix) + "%"
 }
 
 // Usage is summed token counts and cost.

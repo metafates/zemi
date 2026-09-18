@@ -448,7 +448,7 @@ type Theme struct {
 type ThemeRegistry struct {
 	mu        sync.RWMutex
 	themes    map[string]*Theme
-	overrides map[string]HLSpec // zemi.ui.hl: groups set on top of any theme
+	overrides map[string]HLSpec // zemi.ui.hl.set: groups set on top of any theme
 }
 
 // SetHL overrides one highlight group on top of every theme.

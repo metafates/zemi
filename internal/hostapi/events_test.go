@@ -21,7 +21,7 @@ import (
 func TestToolDeniedEvent(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
-		zemi.state.put("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
+		zemi.state.set("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
 	end)`)
 	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: "*secret*", Decision: perm.Deny})
 	for _, tl := range tools.All(h.PipelineFor()) {
@@ -63,7 +63,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
-		`zemi.ui.hl("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,
+		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.register({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
