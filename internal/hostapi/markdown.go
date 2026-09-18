@@ -33,6 +33,7 @@ const SGRPrefix = "sgr:"
 // cache keyed by block id is the upgrade.
 const (
 	mdLinesMax     = 4096
+	mdBytesMax     = 8 << 20
 	mdRenderersMax = 16
 )
 
@@ -46,13 +47,21 @@ type markdownCache struct {
 	renderers map[string]*glamour.TermRenderer
 	lines     map[string][][]Segment
 	prev      map[string][][]Segment
+	bytes     int // roughly what lines holds: a window panel keyed by its
+	// whole body would otherwise retain every version of it
 }
 
 func (c *markdownCache) put(k string, v [][]Segment) {
-	if c.lines == nil || len(c.lines) >= mdLinesMax {
-		c.prev, c.lines = c.lines, map[string][][]Segment{}
+	if c.lines == nil || len(c.lines) >= mdLinesMax || c.bytes >= mdBytesMax {
+		c.prev, c.lines, c.bytes = c.lines, map[string][][]Segment{}, 0
 	}
 	c.lines[k] = v
+	c.bytes += len(k)
+	for _, line := range v {
+		for _, s := range line {
+			c.bytes += len(s.Text) + len(s.HL) + 32
+		}
+	}
 }
 
 // Markdown renders text as styled segment lines at most width cells wide

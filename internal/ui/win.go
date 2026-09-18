@@ -179,20 +179,23 @@ type wrapped struct {
 }
 
 // textLines renders a text window's body at width: markdown through the
-// renderer the chat uses, plain text through the wrap cache. Both key on
-// (text, width), so a frame that changes neither does no work.
+// renderer the chat uses, plain text wrapped here. The cache keys on
+// (text, width), so a frame that changes neither does no work, and a body
+// that grows costs one render, not one per frame.
 func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 	text, md := wn.Content()
-	if md {
-		return a.host.Markdown(text, width)
-	}
 	if c, ok := a.wrapText[wn.ID]; ok && c.width == width && c.text == text {
 		return c.lines
 	}
 	var out [][]hostapi.Segment
 	// a tab draws as no cell, so it would lose the text's indentation
-	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
-		out = append(out, hostapi.WrapSegs([]hostapi.Segment{{Text: line}}, width)...)
+	switch {
+	case md:
+		out = a.host.Markdown(text, width)
+	default:
+		for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
+			out = append(out, hostapi.WrapSegs([]hostapi.Segment{{Text: line}}, width)...)
+		}
 	}
 	if a.wrapText == nil {
 		a.wrapText = map[int]wrapped{}
