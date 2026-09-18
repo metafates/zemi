@@ -205,3 +205,44 @@ func TestDiscoverChecksResource(t *testing.T) {
 		}
 	}
 }
+
+// TestDiscoverWithoutAuthServers: a protected-resource document that names
+// no authorization server still says what the token is for and what to ask
+// for, and the resource is then its own authorization server (RFC 9728).
+// The challenge may point at that document with a path rather than a URI,
+// and a server with no metadata at all still gets the RFC 8707 resource.
+func TestDiscoverWithoutAuthServers(t *testing.T) {
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="/.well-known/oauth-protected-resource/mcp"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"resource": srv.URL + "/mcp", "scopes_supported": []string{"read", "write"}})
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/authorize", "token_endpoint": srv.URL + "/token"})
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+
+	m, err := discover(context.Background(), srv.URL+"/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.authURL != srv.URL+"/authorize" || m.resource != srv.URL+"/mcp" || m.scope != "read write" {
+		t.Fatalf("discover = %+v", m)
+	}
+
+	// no metadata anywhere: the endpoints are the spec's guess and the
+	// resource is still the server's canonical URI
+	bare := httptest.NewServer(http.NotFoundHandler())
+	defer bare.Close()
+	if m, err = discover(context.Background(), bare.URL+"/mcp/"); err != nil {
+		t.Fatal(err)
+	}
+	if m.resource != bare.URL+"/mcp" || m.registerURL != bare.URL+"/register" {
+		t.Fatalf("bare server: %+v", m)
+	}
+}
