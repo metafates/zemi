@@ -1,8 +1,8 @@
 local fmt = require("zemi.defaultui.text")
 local snail = require("zemi.defaultui.snail")
 
--- The composer frame's top rule, all ctx.width cells of it: the mascot moving
--- along the rule in the state of the turn and, at the right end, a shimmering
+-- The composer frame's top rule, all ctx.width cells of it: the mascot in the
+-- left corner in the state of the turn and, at the right end, a shimmering
 -- label naming what the agent does, the elapsed time, the interrupt key and
 -- the queue depth. The label stays away for the first 300ms so instant turns
 -- do not flash it, and the done mark stays a few seconds after the turn.
