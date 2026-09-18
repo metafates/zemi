@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -29,6 +31,11 @@ import (
 type PermModeDef struct {
 	Name, Base, Description, Prompt string
 	Rules                           *perm.Store
+	// Decide answers an ask the rules left open: "allow", "deny" or
+	// anything else to leave it to the user. It dies with its generation
+	// (PurgeGeneration clears the list), so no reload check is needed.
+	Decide *glua.LFunction
+	Origin lua.Origin
 }
 
 var builtinModes = []PermModeDef{
@@ -305,7 +312,9 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, spec := L.CheckString(1), L.CheckTable(2)
 		gate(L, "add")
-		def := PermModeDef{Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt")}
+		def := PermModeDef{Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt"),
+			Origin: h.RT.CurrentOrigin(L)}
+		def.Decide, _ = spec.RawGetString("decide").(*glua.LFunction)
 		if !modeName.MatchString(name) {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
 		}
@@ -621,4 +630,44 @@ func whitelists(path string) bool {
 	return slices.ContainsFunc(strings.Split(string(data), "\n"), func(l string) bool {
 		return strings.HasPrefix(strings.TrimSpace(l), "!")
 	})
+}
+
+// modeDecideCeiling is how long a mode's decide function may run: long
+// enough for a model call over zemi.http, short enough that a wedged one
+// still trips the watchdog. It holds the interpreter for that time, which
+// is the mode's own cost.
+const modeDecideCeiling = 60 * time.Second
+
+// modeDecide runs a mode's decide function for one ask and returns what it
+// said; "" (an error, a timeout, anything but allow or deny) leaves the
+// request to the user.
+func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
+	ctx := context.Background()
+	if t := h.turn.Load(); t != nil {
+		ctx = t.ctx // an interrupt stops the decision too
+	}
+	out, err := h.RT.Do(ctx, lua.ClassAgent, modeDecideCeiling, 2*time.Second, func(L *glua.LState) ([]any, error) {
+		defer h.RT.PushFrame(L, def.Origin, "permission.mode."+def.Name)()
+		base := L.GetTop()
+		defer L.SetTop(base)
+		L.Push(def.Decide)
+		L.Push(lua.FromGo(L, map[string]any{
+			"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
+			"reason": req.Reason, "preview": req.Preview, "description": req.Description,
+		}))
+		if err := L.PCall(1, 1, nil); err != nil {
+			return nil, err
+		}
+		s, _ := lua.ToGo(L.Get(-1))
+		return []any{s}, nil
+	})
+	if err != nil {
+		h.Log.Warn("permissions", "mode decide failed", map[string]any{"mode": def.Name, "error": err.Error()})
+		return ""
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	s, _ := out[0].(string)
+	return s
 }

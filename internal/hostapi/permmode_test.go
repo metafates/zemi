@@ -274,6 +274,26 @@ func TestAutoResolvesPaths(t *testing.T) {
 	}
 }
 
+// TestPermModeDecide: a mode answers asks from Lua, off the interpreter and
+// without the veto deadline, so a decide that calls a model is possible.
+// What it does not decide goes to the user (no UI here: denied).
+func TestPermModeDecide(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.permission.mode.add("review", { base = "manual", decide = function(req)
+		if req.arg == "ls" then return "allow" end
+		if req.arg == "rm -rf /" then return "deny" end
+	end })`)
+	if err := h.SetPermMode("review"); err != nil {
+		t.Fatal(err)
+	}
+	ask := h.askHook()
+	for cmd, want := range map[string]bool{"ls": true, "rm -rf /": false, "cat x": false} {
+		if ok, by, _ := ask(tools.Request{Subject: "tool.bash", Arg: cmd}); ok != want {
+			t.Errorf("%q: allowed %v by %s", cmd, ok, by)
+		}
+	}
+}
+
 // TestPermissionsOverlayRemovesAlways: a mis-keyed "always" answer is the
 // only rule a user writes at runtime and the only one with no file to edit,
 // so /permissions shows it and takes it back.

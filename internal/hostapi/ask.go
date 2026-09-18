@@ -60,6 +60,17 @@ func (h *Host) askHook() tools.Asker {
 				return resolved(false, "mode:"+def.Name)
 			}
 		}
+		// a mode's own decide function (it may take seconds: a model call)
+		if def.Decide != nil {
+			switch h.modeDecide(def, req) {
+			case "allow":
+				if !req.Unsandboxed && !req.Network {
+					return resolved(true, "mode:"+def.Name)
+				}
+			case "deny":
+				return resolved(false, "mode:"+def.Name)
+			}
+		}
 		switch {
 		case def.Base == "yolo":
 			return resolved(true, "mode:"+def.Name)

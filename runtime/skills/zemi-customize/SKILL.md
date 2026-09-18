@@ -92,6 +92,33 @@ Read $1 and add a failing test showing: $ARGUMENTS. Do not fix the bug.
 `$ARGUMENTS` is everything after the name, `$1`..`$9` single words. Commands load when
 the file is saved (zemi reloads config on change).
 
+## Permission modes (`init.lua`, user config only)
+
+`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (manual, plan,
+auto, yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
+that the rules left open. `decide` runs off the UI with a 60s ceiling, so it may ask a model
+of its own; it holds the interpreter while it runs, so the rest of zemi waits on it.
+
+```lua
+zemi.permission.mode.add("judged", {
+  base = "manual", description = "a model of my own answers command asks",
+  decide = function(req)
+    if req.subject ~= "tool.bash" then return nil end -- everything else: ask me
+    local res = zemi.http.request({
+      method = "POST", url = "http://localhost:11434/api/generate",
+      body = zemi.json.encode({ model = "llama3", stream = false,
+        prompt = "Reply allow or deny. Command: " .. req.arg }),
+    }):wait()
+    if res and (zemi.json.decode(res.body).response or ""):match("^allow") then return "allow" end
+  end,
+})
+```
+
+Returning anything but `"allow"` or `"deny"` (nil, an error, a timeout) leaves the request
+to the user, and `"allow"` never covers `sandbox: false` or `network: true`, which always
+ask. zemi ships no such mode: `auto` settles reads, project edits and build, test and
+read-only commands by fixed rules and sends everything else to the user.
+
 ## UI (`init.lua`, or modules under `lua/`)
 
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.

@@ -1588,6 +1588,15 @@ function zemi.composer.edit() end
 ---@field description? string
 ---@field prompt? string A system prompt section while the mode is active.
 ---@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on.
+---@field decide? fun(req: zemi.PermRequest): "allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs off the UI with a 60s ceiling, so it may call a model (zemi.http), and holds the interpreter while it does.
+
+---@class zemi.PermRequest
+---@field subject string
+---@field arg string Path relative to the project, url or command.
+---@field tool string
+---@field reason string
+---@field preview string
+---@field description string
 
 ---@class zemi.PermMode
 ---@field name string
