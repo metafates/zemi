@@ -158,6 +158,45 @@ func TestWindowInputSettling(t *testing.T) {
 	}
 }
 
+// TestWindowFocus: focus hands the user's keyboard over, so it asks and
+// never unhides a window on its own.
+func TestWindowFocus(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	w, err := h.openWindow(win.Spec{Cmd: "cat >/dev/null", Owner: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { h.Wins.Close(w.ID) })
+	run := func(in string) fantasy.ToolResponse {
+		resp, err := h.windowTool().Run(t.Context(), fantasy.ToolCall{ID: "w", Name: "window", Input: fmt.Sprintf(in, w.ID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	if resp := run(`{"action":"hide","id":%d}`); resp.IsError {
+		t.Fatalf("hide: %+v", resp)
+	}
+	if resp := run(`{"action":"focus","id":%d}`); !resp.IsError || len(ui.asked) > 0 || !w.Hidden() {
+		t.Fatalf("focus unhid the window: %+v %+v", resp, ui.asked)
+	}
+	if resp := run(`{"action":"show","id":%d}`); resp.IsError {
+		t.Fatalf("show: %+v", resp)
+	}
+	if resp := run(`{"action":"focus","id":%d}`); !resp.IsError {
+		t.Fatalf("a denied focus must refuse: %+v", resp)
+	}
+	if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, "keyboard") {
+		t.Fatalf("focus asked %+v", ui.asked)
+	}
+	ui.askAllowed = true
+	if resp := run(`{"action":"focus","id":%d}`); resp.IsError {
+		t.Fatalf("focus: %+v", resp)
+	}
+}
+
 // TestWindowOwnership: the window tool acts only on the model's windows and
 // its subagents'; an editor window is hidden from Lua below user config and
 // from the Lua tool, and the user must close a running one twice.

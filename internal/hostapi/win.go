@@ -593,7 +593,7 @@ Actions:
 - open: run cmd; returns the window id. kind split goes below the chat and vsplit is a full-height sidebar, or wherever the user's layout puts them (a centered float when it has no place for them); float is over everything.
 - set: move, resize, retitle, hide or show a window; the program keeps running. To turn a split into a sidebar, set kind vsplit.
 - hide, show: a hidden window keeps running and still takes read and keys, so you can drive several programs and show the one that matters.
-- focus: give the user's keys to the window.
+- focus: hand the user's keys to the window, which asks the user; show a hidden window first.
 - read: the screen as text plus the cursor. Always read after acting before deciding the next step.
 - keys: press keys in neovim notation, e.g. "ihello<esc>:wq<cr>" or "<c-b>:q<cr>".
 - mouse: click, press, release or move at a cell, or scroll with button wheel_up or wheel_down.
@@ -685,6 +685,18 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		b, _ := json.Marshal(windowInfo(w))
 		return string(b)
 	}
+	// act gates a window action: keys, mouse, send and focus share the
+	// subject, and only a sandboxed program's input is a mode's to settle.
+	// Focus passes unsandboxed whatever runs there: it hands over the user's
+	// own keyboard, not the program's stdin.
+	act := func(w *win.Window, arg, reason string, unsandboxed bool) string {
+		v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: reason + " " + w.Title(), Unsandboxed: unsandboxed || !w.Sandboxed})
+		if v.Decision != perm.Allow {
+			return "permission denied (" + v.DecidedBy + "): " + v.Reason
+		}
+		return ""
+	}
+	focusReason := "hand the user's keyboard (ctrl+c included) to window"
 	// opened places a new window: a subagent's own space stays hidden until
 	// it shows it, and the result names the window.
 	opened := func(w *win.Window) fantasy.ToolResponse {
@@ -695,10 +707,13 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if hidden {
 			_ = h.applyLayout(w, layoutPatch{Hidden: &hidden})
 		}
+		h.setToolDetail(call.ID, fmt.Sprintf("window %d: %s", w.ID, w.Title()))
 		if in.Focus && !hidden {
+			if msg := act(w, "focus", focusReason, true); msg != "" {
+				return fantasy.NewTextResponse("opened, not focused (" + msg + ") " + describe(w))
+			}
 			h.focusWindow(w.ID)
 		}
-		h.setToolDetail(call.ID, fmt.Sprintf("window %d: %s", w.ID, w.Title()))
 		return fantasy.NewTextResponse("opened " + describe(w))
 	}
 	switch in.Action {
@@ -781,13 +796,22 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if in.Title != "" {
 			w.SetTitle(sanitize.String(in.Title))
 		}
-		if in.Action != "set" {
+		switch in.Action {
+		case "hide", "show":
 			p = layoutPatch{Hidden: new(in.Action == "hide")}
+		case "focus":
+			p = layoutPatch{} // focus never unhides: show it first
 		}
 		if err := h.applyLayout(w, p); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		if in.Action == "focus" || (in.Focus && !w.Hidden()) {
+		if in.Action == "focus" || (in.Action == "set" && in.Focus) {
+			if w.Hidden() {
+				return fantasy.NewTextErrorResponse("window " + strconv.Itoa(w.ID) + " is hidden; show it before focusing"), nil
+			}
+			if msg := act(w, "focus", focusReason, true); msg != "" {
+				return fantasy.NewTextErrorResponse(msg), nil
+			}
 			h.focusWindow(w.ID)
 		}
 		return fantasy.NewTextResponse(describe(w)), nil
@@ -835,8 +859,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Keys, Reason: "press keys in window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
+		if msg := act(w, in.Keys, "press keys in window", false); msg != "" {
+			return fantasy.NewTextErrorResponse(msg), nil
 		}
 		if err := w.SendKeys(in.Keys); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -864,8 +888,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		// a click acts like a key press, so it asks the same gate as keys
 		arg := fmt.Sprintf("%s %s %d,%d", cmp.Or(in.MKind, "click"), cmp.Or(in.Button, "left"), mx, my)
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: "use the mouse in window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
+		if msg := act(w, arg, "use the mouse in window", false); msg != "" {
+			return fantasy.NewTextErrorResponse(msg), nil
 		}
 		for _, ev := range evs {
 			w.SendMouse(ev)
@@ -876,10 +900,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		if !ok {
 			return resp, nil
 		}
-		// typed text is a command to whatever runs there: only a sandboxed
-		// program's input is a mode's to settle
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: in.Text, Reason: "type into window " + w.Title(), Unsandboxed: !w.Sandboxed}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse("permission denied (" + v.DecidedBy + ")"), nil
+		if msg := act(w, in.Text, "type into window", false); msg != "" {
+			return fantasy.NewTextErrorResponse(msg), nil
 		}
 		if err := w.SendText(in.Text); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil

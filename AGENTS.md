@@ -478,7 +478,9 @@ submits, but an editor's auto-indent never sees the lines one by one). The model
 `window` tool gates `open` as `tool.bash` (same rules and modes as bash, and a mode-settled
 open runs sandboxed through `win.Spec.Wrap`, recorded as `Window.Sandboxed`) and
 `keys`/`mouse`/`send` as `tool.window`, `Unsandboxed` (so no mode settles it) unless the
-window runs sandboxed; an exit lands in the next message through `shellNotes`. Its `text`
+window runs sandboxed. `focus` asks the same subject always unsandboxed and only for a shown
+window: it hands the user's own keyboard over (ctrl+c included), so no mode settles it and it
+never unhides on its own. An exit lands in the next message through `shellNotes`. Its `text`
 and `set_text` actions (Lua: `zemi.win.text`, `w:set_text`, `w:append`) ask
 `tool.window.text` with the body as preview, which every mode but manual settles (ask.go):
 a text window runs nothing and reads nothing, it only draws sanitized text on the screen. Subagents get
