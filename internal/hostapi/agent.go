@@ -105,9 +105,11 @@ type agentHost struct {
 
 	// promptTokens estimates the system prompt and tool schemas the runner
 	// carries; every prompt holds them, so the context estimate counts them.
-	// promptParts is the same total broken down for /usage.
+	// promptParts is the same total broken down for /usage, promptText the
+	// system prompt itself for /prompt.
 	promptTokens int64
 	promptParts  []promptPart
+	promptText   string
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.chat.reasoning config).
@@ -289,7 +291,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 		chars += s.chars
 	}
 	h.agents.mu.Lock()
-	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
+	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
 	h.agents.mu.Unlock()
 	r.ProviderOptions = h.Providers.EffortOptions(h.currentModelID(p), h.Effort())
 	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
@@ -331,6 +333,18 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		{"system", p.base}, {"tools", builtin}, {"mcp", mcp},
 		{"instructions", p.instructions}, {"lua", p.lua}, {"skills", p.skills}, {"memory", p.digest},
 	}
+}
+
+// SystemPrompt is the system prompt the last send assembled, "" before the
+// first one. /usage measures it; this is the text, so a profile, an
+// assemble handler or an instruction file the budget cut can be read
+// instead of guessed at. It is never rebuilt here: assembling it runs Lua
+// handlers on the interpreter, which a Lua caller would deadlock on.
+func (h *Host) SystemPrompt() string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return ag.promptText
 }
 
 // promptBreakdown is the fixed prompt the last runner build measured, in
@@ -1330,6 +1344,13 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		out.RawSetString("id", glua.LString(sid))
 		out.RawSetString("model", glua.LString(model))
 		L.Push(out)
+		return 1
+	}))
+
+	// prompt() is the system prompt the last send assembled, "" before the
+	// first one; it is never rebuilt here (see SystemPrompt).
+	tb.RawSetString("prompt", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LString(h.SystemPrompt()))
 		return 1
 	}))
 

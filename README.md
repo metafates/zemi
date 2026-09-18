@@ -237,7 +237,7 @@ for scripts. `zemi --help` lists every flag.
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/usage`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/memory`, `/skills`, `/reflect`,
+`/effort`, `/usage`, `/prompt`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/memory`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/quit`.
 
 ## Lua

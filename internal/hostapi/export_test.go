@@ -207,3 +207,24 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 		t.Fatalf("no cache share in the usage body:\n%s", body)
 	}
 }
+
+// TestPromptCommandShowsTheText: /prompt shows the assembled system
+// prompt, and says so before anything assembled one.
+func TestPromptCommandShowsTheText(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.OpenPrompt(); err == nil || len(ui.opened) != 0 {
+		t.Fatalf("before the first send: %v %+v", err, ui.opened)
+	}
+	if _, err := h.ensureRunner(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 1 {
+		t.Fatalf("prompt: %v %+v", err, ui.opened)
+	}
+	if body := ui.opened[0].Body; body != h.SystemPrompt() || !strings.Contains(body, "# Environment") {
+		t.Fatalf("overlay body is not the prompt:\n%s", truncRunes(body, 200))
+	}
+}

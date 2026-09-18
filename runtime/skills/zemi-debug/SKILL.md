@@ -33,6 +33,15 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
    `zemi.config.reload()` applies config you just wrote, the same as `/reload`.
 
+   For a question about what the model was told - a profile's `system`, an `agent.assemble`
+   section, an instruction file the budget cut, the memory digest - read the prompt itself:
+
+   ```lua
+   return zemi.agent.prompt()   -- the system prompt of the last send, "" before the first
+   ```
+
+   `/prompt` shows the same text; `/usage` only measures it.
+
 4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay
    in the way, text wrapping badly, a statusline that lost a segment - look instead of
    asking:

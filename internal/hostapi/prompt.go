@@ -3,6 +3,7 @@
 package hostapi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )
 
@@ -377,4 +379,19 @@ func (h *Host) forgetInstructions() {
 	ag.readMu.Lock()
 	ag.instr = map[string]bool{}
 	ag.readMu.Unlock()
+}
+
+// OpenPrompt shows the system prompt the last send assembled, which /usage
+// only measures.
+func (h *Host) OpenPrompt() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI")
+	}
+	sys := h.SystemPrompt()
+	if sys == "" {
+		return errors.New("the prompt is assembled on the first send; send a message first")
+	}
+	ui.OpenOverlay(Overlay{ID: "prompt", Title: "System prompt", Origin: lua.OriginBuiltin, Body: sys})
+	return nil
 }

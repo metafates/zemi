@@ -39,7 +39,7 @@ const luaToolChunk = "lua-tool"
 // other Go function exposed to Lua, handle methods included ("win:send"),
 // raises in an unapproved run, so a new member asks until it is added here.
 var luaReadOnly = map[string]bool{
-	"agent.current": true, "agent.list": true, "agent.usage": true,
+	"agent.current": true, "agent.list": true, "agent.prompt": true, "agent.usage": true,
 	"command.list": true, "composer.get": true,
 	"config.get": true, "config.schema": true,
 	"errors.list": true, "event.log": true, "event.stats": true,

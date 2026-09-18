@@ -1389,6 +1389,11 @@ function zemi.agent.cancel() end
 ---@return zemi.AgentUsage
 function zemi.agent.usage() end
 
+--- The system prompt the last send assembled, "" before the first one.
+--- `/prompt` shows the same text.
+---@return string
+function zemi.agent.prompt() end
+
 --- The subagents this project can run: builtin, `agents/*.md`, and trusted
 --- project definitions.
 ---@return zemi.AgentDef[]

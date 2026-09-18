@@ -316,6 +316,9 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenUsage()
 		}},
+		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.OpenPrompt()
+		}},
 		{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()
 		}},
