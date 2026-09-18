@@ -466,7 +466,7 @@ func overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
 		}
 		for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
-			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l, "\t", "    ")}}, bodyW)...)
+			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, bodyW)...)
 		}
 		// borders, the hint line and a blank row before it, and the list
 		room := h - 4

@@ -672,7 +672,7 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		gutter := " " + num(l.old) + " " + num(l.new) + " "
 		room := max(width-ansi.StringWidth(gutter)-2, 1)
 		// wrapped, never cut: the user approves every character
-		for i, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: strings.ReplaceAll(l.text, "\t", "    ")}}, room) {
+		for i, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: l.text}}, room) {
 			text := plainSegs(wrapped)
 			if i > 0 {
 				gutter, sign = strings.Repeat(" ", len(gutter)), "  "

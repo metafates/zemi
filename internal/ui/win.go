@@ -188,12 +188,11 @@ func (a *App) textLines(wn *win.Window, width int) [][]hostapi.Segment {
 		return c.lines
 	}
 	var out [][]hostapi.Segment
-	// a tab draws as no cell, so it would lose the text's indentation
 	switch {
 	case md:
 		out = a.host.Markdown(text, width)
 	default:
-		for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
+		for line := range strings.SplitSeq(text, "\n") {
 			out = append(out, hostapi.WrapSegs([]hostapi.Segment{{Text: line}}, width)...)
 		}
 	}

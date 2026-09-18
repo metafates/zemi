@@ -396,6 +396,14 @@ func styledLines(s string) [][]Segment {
 // "    └ ") behind a NoCopy indent, so a copy gives back the line.
 func WrapSegs(line []Segment, w int) [][]Segment {
 	w = max(w, 1)
+	// a tab measures and draws as no cell, so the words around it would
+	// merge: expand before anything measures the line
+	if slices.ContainsFunc(line, func(s Segment) bool { return strings.Contains(s.Text, "\t") }) {
+		line = slices.Clone(line)
+		for i, s := range line {
+			line[i].Text = strings.ReplaceAll(s.Text, "\t", "    ")
+		}
+	}
 	if SegsWidth(line) <= w {
 		return [][]Segment{line}
 	}

@@ -212,3 +212,12 @@ func TestMarkdownCacheBounded(t *testing.T) {
 		t.Fatalf("cache holds %d entries, %d bytes", len(c.lines), c.bytes)
 	}
 }
+
+// TestWrapSegsExpandsTabs: a tab measures as no cell and the renderer drops
+// it, so the words around it would merge in every prompt and toast.
+func TestWrapSegsExpandsTabs(t *testing.T) {
+	rows := WrapSegs([]Segment{{Text: "run\tthe\tlisting"}}, 40)
+	if len(rows) != 1 || rows[0][0].Text != "run    the    listing" {
+		t.Fatalf("wrapped %+v", rows)
+	}
+}
