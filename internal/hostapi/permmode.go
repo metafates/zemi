@@ -437,12 +437,13 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	return false
 }
 
-// protectedWrite reports a write under any .git or .zemi, the git dir a
+// protectedWrite reports a write under any .git or .zemi (checkouts in
+// .zemi/worktrees aside), the git dir a
 // project .git file names (git init --separate-git-dir) or zemi's own dirs:
 // git runs what .git names, and the rest changes what zemi allows.
 func (h *Host) protectedWrite(p string) bool {
 	d := h.Dirs
-	return inDirNamed(p, ".git", ".zemi") || h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir(),
+	return inDirNamed(p, ".git", ".zemi") || !h.inJail(p, d.WorktreesDir()) && h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir(),
 		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
@@ -470,8 +471,13 @@ func inDirNamed(p string, names ...string) bool {
 		return slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(s, n) })
 	}
 	for _, q := range []string{abs, perm.RealPath(p)} {
-		if slices.ContainsFunc(strings.Split(filepath.ToSlash(q), "/"), named) {
-			return true
+		parts := strings.Split(filepath.ToSlash(q), "/")
+		for i, s := range parts {
+			// .zemi/worktrees/<name>/... is a checkout, not config
+			worktree := strings.EqualFold(s, ".zemi") && i+3 < len(parts) && parts[i+1] == "worktrees"
+			if named(s) && !worktree {
+				return true
+			}
 		}
 	}
 	return false

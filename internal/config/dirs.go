@@ -185,6 +185,45 @@ func (d Dirs) RepoRoot() string {
 	return d.ProjectDir
 }
 
+// WorktreesDir is <repo root>/.zemi/worktrees, where the agent keeps git
+// worktrees: the one part of .zemi that commands and settled writes may
+// change, and that nothing is loaded from.
+func (d Dirs) WorktreesDir() string {
+	if d.ProjectDir == "" {
+		return ""
+	}
+	return filepath.Join(d.RepoRoot(), ".zemi", "worktrees")
+}
+
+// IgnoreLocal makes <repo root>/.zemi/.gitignore list the entries local to
+// this checkout, appending to an existing file: .zemi also holds checked-in
+// config, so nothing else is ignored.
+func (d Dirs) IgnoreLocal() error {
+	// a per-project local file (permissions) would be listed here too
+	const entry = "worktrees/"
+	path := filepath.Join(filepath.Dir(d.WorktreesDir()), ".gitignore")
+	b, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for line := range strings.Lines(string(b)) {
+		if strings.TrimSpace(line) == entry {
+			return nil
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sep := ""
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		sep = "\n"
+	}
+	_, err = f.WriteString(sep + entry + "\n")
+	return err
+}
+
 // UserTrees are the config subdirectories zemi loads user files from.
 // They are named apart from ConfigHome because a symlinked one (skills ->
 // ~/.agents/skills) resolves outside it, and both origin classification and

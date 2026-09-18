@@ -440,3 +440,46 @@ func TestTrustUnsaved(t *testing.T) {
 		}
 	}
 }
+
+func TestWorktreesDir(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
+	h.SetProjectTrusted(true)
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
+	project := h.Dirs.ProjectDir
+	zemi := filepath.Join(project, ".zemi")
+	wt := filepath.Join(zemi, "worktrees", "x")
+	for _, d := range []string{filepath.Join(wt, ".zemi"), filepath.Join(zemi, "skills", ".git")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ignore := filepath.Join(zemi, ".gitignore")
+	if err := os.WriteFile(ignore, []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if p := h.sandboxPolicy(false); !slices.Contains(p.Write, filepath.Dir(wt)) || !slices.Contains(p.Protect, filepath.Join(wt, ".zemi")) {
+			t.Fatalf("write %v protect %v", p.Write, p.Protect)
+		}
+	}
+	if b, _ := os.ReadFile(ignore); string(b) != "cache\nworktrees/\n" {
+		t.Fatalf(".gitignore %q", b)
+	}
+	if found, _ := configEntries(project); found[filepath.Join(zemi, "skills", ".git")] {
+		t.Fatalf("walked .zemi/skills: %v", found)
+	}
+	for path, want := range map[string]bool{
+		filepath.Join(wt, "main.go"):            false,
+		filepath.Join(wt, ".zemi", "init.lua"):  true,
+		filepath.Join(wt, ".git"):               true,
+		wt:                                      true,
+		filepath.Join(zemi, "init.lua"):         true,
+		filepath.Join(project, "pkg", "a.go"):   false,
+		filepath.Join(wt, "pkg", ".git", "cfg"): true,
+	} {
+		if got := h.protectedWrite(path); got != want {
+			t.Errorf("protectedWrite(%s) = %v, want %v", path, got, want)
+		}
+	}
+}
