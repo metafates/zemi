@@ -744,7 +744,7 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	sa.ReasoningDelta("pondering")
 	sa.TextDelta("answer")
 	sa.ToolCallStart("t1", "bash", "ls")
-	sa.ToolCallEnd("t1", "bash", true, "")
+	sa.ToolCallEnd("t1", "bash", true, "", "")
 	sa.TextDelta("done")
 	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
 

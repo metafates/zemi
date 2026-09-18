@@ -232,7 +232,8 @@ type Host struct {
 	evlog eventLog // recent events and notifications for Lua reflection
 
 	// jobs owns the model's background processes (job_* tools).
-	jobs *tools.Jobs
+	jobs  *tools.Jobs
+	snaps snapshots
 
 	// skillsReg caches discovery + enabled state (DESIGN §10.5); DB
 	// rows in the global store are the durable state.

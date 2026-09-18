@@ -164,7 +164,8 @@ zemi.ui.widget.add({
     ---@return boolean
     local function collapsible(t)
       if t.kind ~= nil and t.kind ~= "tool" then return false end
-      return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil
+      -- a command that changed files keeps its row: the diff is the news
+      return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil and (t.diff or "") == ""
     end
     ---@param s string
     ---@return string
@@ -284,6 +285,8 @@ zemi.ui.widget.add({
               }
             end
           else
+            -- a bash row names each file it changed: its hunks count from one
+            hunks = 0
             lines[#lines + 1] = { { text = "        ", copy = false }, { text = dl, hl = "Comment" } }
           end
         end

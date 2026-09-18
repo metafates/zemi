@@ -727,7 +727,7 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	s.h.agentStream()
 }
 
-func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
+func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
 	ag := s.h.agents
 	diff := ""
 	ag.mu.Lock()
@@ -737,6 +737,9 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 			ag.tools[i].Output = shortOutput(output)
 			if !ok {
 				ag.tools[i].Diff = "" // the change did not happen
+			}
+			if changed != "" {
+				ag.tools[i].Diff = changed // bash: what the command changed, failed or not
 			}
 			diff = ag.tools[i].Diff
 			break
@@ -835,8 +838,6 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 		status := t.Status
 		if status == "run" {
 			status = "err"
-		}
-		if status != "ok" {
 			t.Diff = ""
 		}
 		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
@@ -1725,7 +1726,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pre:         h.toolPreHook(),
 		Ask:         h.askHook(),
 		Checkpoint:  h.checkpointFile,
-		AfterWrite:  h.lspAfterWrite,
+		AfterWrite:  func(path string) string { h.noteWrite(path); return h.lspAfterWrite(path) },
+		Changes:     h.bashChanges,
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return h.permModeDef().Base == "plan" },

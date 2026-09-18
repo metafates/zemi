@@ -23,8 +23,12 @@ const gitTimeout = 15 * time.Second
 // nbstripout). Only the environment prompt's file list shows it; lspSync keys
 // on mtime and size, so it reports at most one extra change.
 func (h *Host) git(dir string, args ...string) (string, error) {
+	return h.gitEnv(dir, nil, args...)
+}
+
+func (h *Host) gitEnv(dir string, env []string, args ...string) (string, error) {
 	safe := []string{"-c", "core.fsmonitor=false", "-c", "diff.ignoreSubmodules=all", "-c", "core.hooksPath=/dev/null"}
-	out, _ := h.runGit(dir, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|process)$`)
+	out, _ := h.runGit(dir, nil, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|process)$`)
 	for line := range strings.Lines(out) {
 		// the user's own drivers (git-lfs) stay on
 		if scope, key, ok := strings.Cut(strings.TrimSpace(line), "\t"); ok && scope != "global" {
@@ -33,10 +37,10 @@ func (h *Host) git(dir string, args ...string) (string, error) {
 			safe = append(safe, "-c", key+"=", "-c", name+".required=false")
 		}
 	}
-	return h.runGit(dir, append(safe, args...)...)
+	return h.runGit(dir, env, append(safe, args...)...)
 }
 
-func (h *Host) runGit(dir string, args ...string) (string, error) {
+func (h *Host) runGit(dir string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", args...)
@@ -44,6 +48,7 @@ func (h *Host) runGit(dir string, args ...string) (string, error) {
 	// the system gitconfig does not apply; status leaves a repository's
 	// index alone
 	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_OPTIONAL_LOCKS=0")
+	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("git %s: %w: %s",

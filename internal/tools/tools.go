@@ -187,6 +187,10 @@ type Pipeline struct {
 	// Guard runs before a sandboxed command starts; the func it returns runs
 	// once the command exited, and its text ends the result. nil = none.
 	Guard func(sandbox.Policy) func() string
+	// Changes runs before a bash command starts in dir; the func it returns
+	// runs once it ended and reports the files it changed: a line for the
+	// model and a diff for the row (the result's Metadata). nil = none.
+	Changes func(dir string) func() (note, diff string)
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -446,6 +450,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 				pipe = &rp
 			}
 		}
+	}
+	if fi, err := os.Lstat(str(input["path"])); t.edits && err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// a write through the link would change a file the row does not name
+		target := workRel(perm.RealPath(str(input["path"])))
+		return t.post(pipe, input, fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a symbolic link to %s; edit %s instead", str(input["path"]), target, target))), nil
 	}
 	if t.gated {
 		// resolved once: the gate judges and the tool opens the same path, so
