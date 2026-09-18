@@ -117,7 +117,7 @@ type App struct {
 	colors     colorprofile.Profile
 
 	bootErr        error
-	streamPending  atomic.Bool // a stream agentEventMsg is queued
+	streamPending  atomic.Bool // a stream agentStreamMsg is queued
 	refreshPending atomic.Bool // a Refresh is queued
 
 	// the last composed frame, published for Screenshot: reading a
@@ -239,7 +239,10 @@ type widgetRenderedMsg struct {
 	err           error
 }
 
-type agentEventMsg struct{ ev hostapi.AgentEvent }
+type (
+	agentStreamMsg struct{}
+	turnDoneMsg    struct{ err string }
+)
 
 // uiFunc is a state change posted from another goroutine; it runs on the
 // Update goroutine.
@@ -302,19 +305,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uiFunc:
 		a.frameGen++
 		return a, msg()
-	case agentEventMsg:
+	case agentStreamMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.frameGen++
-		if msg.ev.Kind != "turn_done" {
-			a.streamPending.Store(false)
+		a.streamPending.Store(false)
+	case turnDoneMsg:
+		a.frameGen++
+		text := "zemi finished"
+		if msg.err != "" {
+			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "...")
 		}
-		if msg.ev.Kind == "turn_done" {
-			text := "zemi finished"
-			if msg.ev.Err != "" {
-				text = "zemi stopped: " + ansi.Truncate(msg.ev.Err, 80, "...")
-			}
-			return a, a.notifyIfAway(text)
-		}
+		return a, a.notifyIfAway(text)
 	case hookMsg:
 		_, cmd := a.Update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms

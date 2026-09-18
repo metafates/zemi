@@ -531,7 +531,7 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 		}
 	}
 	ag.mu.Unlock()
-	h.agentEvent(AgentEvent{Kind: "tool_progress"})
+	h.agentStream()
 }
 
 // subagentModelID picks a subagent's model: the definition's (a tool call

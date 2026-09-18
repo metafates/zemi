@@ -48,7 +48,11 @@ type UIHooks interface {
 	// LayoutRects is where the last frame drew each node with an id, plus
 	// "stage" and "composer"; safe from any goroutine.
 	LayoutRects() map[string]Rect
-	AgentEvent(ev AgentEvent)
+	// AgentStream says a streaming update landed; the UI only invalidates
+	// the frame, so these coalesce.
+	AgentStream()
+	// TurnDone ends a turn; err is "" when it finished cleanly.
+	TurnDone(err string)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
 	// Screenshot is the last drawn frame as plain text, "" before the

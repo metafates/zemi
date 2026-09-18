@@ -537,7 +537,8 @@ func (f *fakeUI) Reload()                              { f.reloads++ }
 func (f *fakeUI) Refresh()                             {}
 func (f *fakeUI) Scroll(kind, id string)               {}
 func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }
-func (f *fakeUI) AgentEvent(ev AgentEvent)             {}
+func (f *fakeUI) AgentStream()                         {}
+func (f *fakeUI) TurnDone(err string)                  {}
 func (f *fakeUI) ComposerEdit(string, string, int)     {}
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {

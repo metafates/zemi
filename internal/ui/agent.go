@@ -67,17 +67,20 @@ func (a *App) choosePerm(c permChoice) {
 	}
 }
 
-// AgentEvent implements hostapi.UIHooks (called from the turn goroutine).
+// AgentStream implements hostapi.UIHooks (called from the turn goroutine).
 // Stream events only invalidate the frame, so one waits in the queue at a
 // time: a token per message would crowd out hooks that carry state.
-func (a *App) AgentEvent(ev hostapi.AgentEvent) {
-	if ev.Kind != "turn_done" && a.streamPending.Swap(true) {
+func (a *App) AgentStream() {
+	if a.streamPending.Swap(true) {
 		return
 	}
-	if !a.dispatch(agentEventMsg{ev: ev}) && ev.Kind != "turn_done" {
+	if !a.dispatch(agentStreamMsg{}) {
 		a.streamPending.Store(false)
 	}
 }
+
+// TurnDone implements hostapi.UIHooks: the end of a turn always gets in.
+func (a *App) TurnDone(err string) { a.dispatch(turnDoneMsg{err: err}) }
 
 // AskPermission implements hostapi.UIHooks. It blocks the caller (a tool
 // run on the turn goroutine) until the user answers the overlay; safe from

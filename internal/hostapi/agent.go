@@ -35,13 +35,6 @@ type Profile struct {
 	Temperature  *float64 `json:"temperature,omitempty"`
 }
 
-// AgentEvent is one streaming update delivered to the UI (hostapi stays
-// UI-agnostic; internal/ui implements the display).
-type AgentEvent struct {
-	Kind string // turn_start, text, reasoning, tool_start, tool_end, tool_progress, retry, turn_done
-	Err  string
-}
-
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
 	Tool    string // the asking tool (bash, edit, mcp_github_search)
@@ -438,7 +431,7 @@ func (h *Host) startTurn(text string) {
 	// same cut resumed transcripts make
 	shown, _, _ := strings.Cut(text, attachMarker)
 	h.AppendMessage("user", shown)
-	h.agentEvent(AgentEvent{Kind: "turn_start"})
+	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
 }
 
@@ -567,9 +560,9 @@ func (h *Host) AgentActive() bool {
 	return ag.active
 }
 
-func (h *Host) agentEvent(ev AgentEvent) {
+func (h *Host) agentStream() {
 	if ui := h.hooks(); ui != nil {
-		ui.AgentEvent(ev)
+		ui.AgentStream()
 	}
 }
 
@@ -586,7 +579,7 @@ func (s *streamAdapter) TextDelta(text string) {
 	ag.endThinking()
 	ag.textBuf += text
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "text"})
+	s.h.agentStream()
 	// NOTE: one queue round trip per delta; fine for the few configs that
 	// listen, coalesce here if one ever streams into something slow.
 	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
@@ -614,7 +607,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	}
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
-	s.h.agentEvent(AgentEvent{Kind: "retry"})
+	s.h.agentStream()
 }
 
 func (s *streamAdapter) ReasoningDelta(text string) {
@@ -623,7 +616,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag.beginThinking()
 	ag.reasonBuf += text
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "reasoning"})
+	s.h.agentStream()
 	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
 }
 
@@ -653,7 +646,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	}
-	s.h.agentEvent(AgentEvent{Kind: "tool_start"})
+	s.h.agentStream()
 }
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
@@ -670,7 +663,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output string) {
 		}
 	}
 	ag.mu.Unlock()
-	s.h.agentEvent(AgentEvent{Kind: "tool_end"})
+	s.h.agentStream()
 	s.h.recordToolCall(s.h.AgentSessionID(), name, ok)
 }
 
@@ -716,7 +709,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return
 	}
-	h.agentEvent(AgentEvent{Kind: "turn_done", Err: errString(err)})
+	if ui := h.hooks(); ui != nil {
+		ui.TurnDone(errString(err))
+	}
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()
 		first := !ag.titled && ag.sessionID == sid

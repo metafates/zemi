@@ -19,7 +19,7 @@ func TestNotifyWhenAway(t *testing.T) {
 	log := logging.New("")
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	app := NewApp(host, log)
-	done := agentEventMsg{ev: hostapi.AgentEvent{Kind: "turn_done"}}
+	done := turnDoneMsg{}
 	for _, c := range []struct {
 		name   string
 		focus  tea.Msg
