@@ -5,7 +5,6 @@
 package ui
 
 import (
-	"cmp"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -143,22 +142,34 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
 	box := [][]hostapi.Segment{{
-		{Text: "╭", NoCopy: true},
+		{Text: "┌", HL: "Host:Rule", NoCopy: true},
 		{Text: title, HL: titleHL},
-		{Text: strings.Repeat("─", fill), NoCopy: true},
-		{Text: badge, HL: "Comment"},
-		{Text: "╮", NoCopy: true},
+		{Text: strings.Repeat("─", fill), HL: "Host:Rule", NoCopy: true},
+		{Text: badge, HL: "Host:Hint"},
+		{Text: "┐", HL: "Host:Rule", NoCopy: true},
 	}}
 	for _, r := range body {
 		line := ellipsizeSegs(r, bw-4)
 		pad := bw - 4 - segsWidth(line)
-		row := []hostapi.Segment{{Text: "│ ", NoCopy: true}}
+		row := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
 		row = append(row, line...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)) + " │", NoCopy: true})
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)), NoCopy: true}, hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
 		box = append(box, row)
 	}
-	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
+	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: "Host:Rule", NoCopy: true}})
 	return box
+}
+
+// button is a list row that reads as a key and what it does: "[y] Yes".
+func button(key, label, desc string) listItem {
+	return listItem{
+		label: "[" + key + "] " + label,
+		desc:  desc,
+		segs: []hostapi.Segment{
+			{Text: "[", HL: "Host:Hint"}, {Text: key, HL: "Host:HintKey"}, {Text: "] ", HL: "Host:Hint"},
+			{Text: label},
+		},
+	}
 }
 
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
@@ -183,7 +194,7 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 // listItem is one selectable entry of a list.
 type listItem struct {
 	label, desc string
-	key, keyHL  string // right-aligned column; keyHL defaults to Host:HintKey
+	key         string // right-aligned column, in Host:HintKey
 	section     string // a change of section starts with a header row
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment // the label styled; label keeps its plain text
@@ -238,7 +249,7 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 		section = it.section
 		hit, hl, marker := i+1, "Normal", hostapi.Segment{Text: "  "}
 		if i == sel {
-			hl, marker = "Host:Bold", hostapi.Segment{Text: "› ", HL: "Host:Title"}
+			hl, marker = "Host:Title", hostapi.Segment{Text: "› ", HL: "Host:Title"}
 		}
 		// segments without hl take the row's, and inline colors bold with it
 		styled := func(r []hostapi.Segment) []hostapi.Segment {
@@ -278,7 +289,7 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
 			}
 			if it.key != "" {
-				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: cmp.Or(it.keyHL, "Host:HintKey"), Hit: hit}
+				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: "Host:HintKey", Hit: hit}
 			}
 			itemRows = append(itemRows, row)
 		}
@@ -322,7 +333,6 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			rows[y] = append(r, pad, k)
 			continue
 		}
-		// a pad segment even when empty, so alignKeys never widens the gutter
 		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r))})
 	}
 	if limit = max(limit, 1); len(rows) > limit {
@@ -348,17 +358,6 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 			win = append(win, padSegs(nil, widest))
 		}
 		rows = append(win, []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
-	}
-	return rows
-}
-
-// alignKeys moves the key column of listRows rows out to width cells, the
-// right edge of the box they go in.
-func alignKeys(rows [][]hostapi.Segment, width int) [][]hostapi.Segment {
-	for _, r := range rows {
-		if n := len(r); n > 1 && segsWidth(r) < width {
-			r[n-2].Text += strings.Repeat(" ", width-segsWidth(r))
-		}
 	}
 	return rows
 }
@@ -429,8 +428,9 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	items := make([]listItem, len(choices))
 	for i, c := range choices {
 		// a label wraps instead of ending in "…": the user approves what it says
-		rows := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label}}, inner-4-2-len(c.key))
-		items[i] = listItem{label: plainSegs(rows[0]), key: c.key, more: rows[1:]}
+		rows := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label}}, inner-6-len(c.key))
+		items[i] = button(c.key, plainSegs(rows[0]), "")
+		items[i].more = rows[1:]
 	}
 	list := listRowsW(items, pa.sel, nil, math.MaxInt, 0, inner)
 
@@ -486,7 +486,6 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	alignKeys(list, fit) // pads the rows tail already holds
 	body := head
 	if len(head) > 0 && len(content) > 0 {
 		body = append(body, blank)
@@ -659,15 +658,16 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	for _, l := range lines {
 		if l.kind == '~' {
-			rows = append(rows, []hostapi.Segment{{Text: strings.Repeat(" ", 2*nw+3) + "⋯", HL: "Host:DiffCtxNum"}})
+			rows = append(rows, []hostapi.Segment{{Text: strings.Repeat(" ", 2*nw+3) + "⋯", HL: "Host:Hint"}})
 			continue
 		}
-		numHL, lineHL, sign := "Host:DiffCtxNum", "Host:DiffCtxLine", "  "
+		// the sign carries the terminal's own green or red, the row a tint
+		signHL, lineHL, sign := "Host:Hint", "", "  "
 		switch l.kind {
 		case '+':
-			numHL, lineHL, sign = "Host:DiffAddNum", "Host:DiffAddLine", "+ "
+			signHL, lineHL, sign = "Host:DiffAddSign", "Host:DiffAdd", "+ "
 		case '-':
-			numHL, lineHL, sign = "Host:DiffDelNum", "Host:DiffDelLine", "- "
+			signHL, lineHL, sign = "Host:DiffDelSign", "Host:DiffDel", "- "
 		}
 		gutter := " " + num(l.old) + " " + num(l.new) + " "
 		room := max(width-ansi.StringWidth(gutter)-2, 1)
@@ -678,8 +678,9 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 				gutter, sign = strings.Repeat(" ", len(gutter)), "  "
 			}
 			rows = append(rows, []hostapi.Segment{
-				{Text: gutter, HL: numHL},
-				{Text: sign + text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
+				{Text: gutter, HL: "Host:Hint"},
+				{Text: sign, HL: signHL},
+				{Text: text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
 			})
 		}
 	}

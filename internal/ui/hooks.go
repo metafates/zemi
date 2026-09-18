@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,9 +18,10 @@ import (
 
 // fixedStyle returns the style of a "Host:*" highlight name: Go-owned
 // security chrome rendered in fixed colors that no theme group can restyle
-// (DESIGN §8). Returning false leaves the segment to theme resolution.
-func fixedStyle(hl string) (uv.Style, bool) {
-	st, ok := hostStyles[hl]
+// (DESIGN §8). light picks the variant for a light terminal. Returning
+// false leaves the segment to theme resolution.
+func fixedStyle(hl string, light bool) (uv.Style, bool) {
+	st, ok := hostStyles[light][hl]
 	return st, ok
 }
 
@@ -27,29 +29,43 @@ func rgb(v uint32) ansi.RGBColor {
 	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
 }
 
-// hostStyles are the fixed styles of the permission prompt and other Go
+// chrome is the host chrome's palette: greys and the one accent
+// (periwinkle), plus the faintest tint a diff row may take. Red, green and
+// yellow stay the terminal's own, so the user's palette decides them.
+type chrome struct{ fg, dim, rule, accent, panel, add, del color.Color }
+
+var (
+	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x1b2417), rgb(0x2a1a1a)}
+	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7)}
+	// keyed by "the terminal is light"
+	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
+)
+
+// chromeStyles are the fixed styles of the permission prompt and other Go
 // chrome: no theme can restyle them, so nothing can dress up a prompt.
-var hostStyles = map[string]uv.Style{
-	"Host:Bold":        {Attrs: uv.AttrBold},
-	"Host:Title":       {Fg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
-	"Host:Cursor":      {Fg: rgb(0x1a1b26), Bg: rgb(0xc0caf5)},
-	"Host:Value":       {Fg: rgb(0xc0caf5)},
-	"Host:Hint":        {Fg: rgb(0x6b7394)},
-	"Host:HintKey":     {Fg: rgb(0xa9b1d6), Attrs: uv.AttrBold},
-	"Host:Warn":        {Fg: rgb(0xe0af68)},
-	"Host:Ok":          {Fg: rgb(0x9ece6a)},
-	"Host:Panel":       {Fg: rgb(0xc0caf5), Bg: rgb(0x242838)},
-	"Host:PanelTitle":  {Fg: rgb(0x7aa2f7), Bg: rgb(0x242838), Attrs: uv.AttrBold},
-	"Host:DiffAddLine": {Fg: rgb(0xd4e8c8), Bg: rgb(0x243427)},
-	"Host:DiffAddNum":  {Fg: rgb(0x7fa36c), Bg: rgb(0x243427)},
-	"Host:DiffDelLine": {Fg: rgb(0xeccad0), Bg: rgb(0x3a2629)},
-	"Host:DiffDelNum":  {Fg: rgb(0xb06d76), Bg: rgb(0x3a2629)},
-	"Host:DiffCtxLine": {Fg: rgb(0x9aa0c0)},
-	"Host:DiffCtxNum":  {Fg: rgb(0x4c5372)},
-	"Host:BtnSel":      {Fg: rgb(0x16161e), Bg: rgb(0x7aa2f7), Attrs: uv.AttrBold},
-	"Host:Selection":   {Fg: rgb(0xe6e9f5), Bg: rgb(0x3d4f7c)},
-	"Host:Hover":       {Fg: rgb(0xe6e9f5), Bg: rgb(0x2d3452)},
-	"Host:Dim":         {Fg: rgb(0x3b4261)},
+func chromeStyles(c chrome) map[string]uv.Style {
+	return map[string]uv.Style{
+		"Host:Bold":        {Attrs: uv.AttrBold},
+		"Host:Title":       {Fg: c.accent, Attrs: uv.AttrBold},
+		"Host:Rule":        {Fg: c.rule},
+		"Host:Cursor":      {Attrs: uv.AttrReverse},
+		"Host:Value":       {Fg: c.fg},
+		"Host:Hint":        {Fg: c.dim},
+		"Host:HintKey":     {Fg: c.accent},
+		"Host:Warn":        {Fg: ansi.Yellow},
+		"Host:Ok":          {Fg: ansi.Green},
+		"Host:Danger":      {Fg: ansi.Red},
+		"Host:Panel":       {Fg: c.fg, Bg: c.panel},
+		"Host:PanelTitle":  {Fg: c.accent, Bg: c.panel, Attrs: uv.AttrBold},
+		"Host:DiffAdd":     {Bg: c.add},
+		"Host:DiffAddSign": {Fg: ansi.Green, Bg: c.add},
+		"Host:DiffDel":     {Bg: c.del},
+		"Host:DiffDelSign": {Fg: ansi.Red, Bg: c.del},
+		"Host:BtnSel":      {Attrs: uv.AttrReverse | uv.AttrBold},
+		"Host:Selection":   {Attrs: uv.AttrReverse},
+		"Host:Hover":       {Underline: uv.UnderlineSingle},
+		"Host:Dim":         {Fg: c.rule},
+	}
 }
 
 // trustPrompt is the Go-owned project trust overlay (DESIGN §5, §8): the
@@ -151,9 +167,9 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		later, laterDesc = "Keep as is", ""
 	}
 	list := listRows([]listItem{
-		{label: "Trust", desc: saved, key: "y"},
-		{label: "Don't trust", desc: saved, key: "n"},
-		{label: later, desc: laterDesc, key: "esc"},
+		button("y", "Trust", saved),
+		button("n", "Don't trust", saved),
+		button("esc", later, laterDesc),
 	}, -1, nil, 3)
 	for drop := 1; drop <= 8 && len(body)+len(list)+2 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
@@ -162,7 +178,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	for _, r := range body {
 		rows = append(rows, r.segs)
 	}
-	rows = append(rows, alignKeys(list, width)...)
+	rows = append(rows, list...)
 	return hostBox(" Trust this "+what+"? ", "Host:Title", "", rows, w)
 }
 

@@ -271,7 +271,7 @@ func TestHoverTargets(t *testing.T) {
 		{"gap before the key column is not a target", keyed, "current", -3, 0, ""},
 		{"the key column lights its item", keyed, "current", 1, 1, "HoverItem"},
 		{"a prompt choice keeps the fixed hover", perm, "No ", 0, 1, "Host:Hover"},
-		{"the gutter left of a choice is not a target", perm, "No ", -2, 0, ""},
+		{"the gutter left of a choice is not a target", perm, "No ", -5, 0, ""},
 		{"thought line text is a target", thought, "Thought for", 1, 1, "Hover"},
 		{"right of the thought line is not a target", thought, "Thought for", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},

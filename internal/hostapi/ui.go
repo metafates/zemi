@@ -485,14 +485,22 @@ func isHexColor(ref string) bool {
 // checkColor refuses a color that can never resolve. A name outside the
 // palette used to draw as nothing, with no error anywhere, and a CSS color
 // name is the first thing anyone writes (DESIGN §6.0).
+// ANSIColors are the terminal's own colors: a group names one instead of a
+// hex value to let the user's terminal palette decide it.
+var ANSIColors = map[string]ansi.BasicColor{
+	"black": ansi.Black, "red": ansi.Red, "green": ansi.Green, "yellow": ansi.Yellow,
+	"blue": ansi.Blue, "magenta": ansi.Magenta, "cyan": ansi.Cyan, "white": ansi.White,
+}
+
 func checkColor(L *glua.LState, where, field, ref string, palette map[string]string) {
+	_, isANSI := ANSIColors[ref]
 	switch {
-	case ref == "" || ref == "NONE" || palette[ref] != "":
+	case ref == "" || ref == "NONE" || isANSI || palette[ref] != "":
 	case strings.HasPrefix(ref, "#") && isHexColor(ref):
 	case strings.HasPrefix(ref, "#"):
 		L.RaiseError("%s: %s %q is not a hex color; write #rrggbb", where, field, ref)
 	default:
-		L.RaiseError("%s: %s %q is neither #rrggbb nor a palette key (%s)",
+		L.RaiseError("%s: %s %q is not #rrggbb, an ANSI color name, or a palette key (%s)",
 			where, field, ref, strings.Join(slices.Sorted(maps.Keys(palette)), ", "))
 	}
 }

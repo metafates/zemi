@@ -86,28 +86,17 @@ func (a *App) floatBox(wn *win.Window, stage uv.Rectangle) (box [][]hostapi.Segm
 	}
 	cols, rows = max(min(cols, sw-4), 2), max(min(rows, sh-3), 1)
 	wn.Resize(cols, rows)
-	// the title row goes into the top border: one frame, not two
+	// the title row is already a rule: it goes into the top border
 	body := a.windowRows(wn, cols, rows)
-	top := []hostapi.Segment{{Text: "╭─", NoCopy: true}}
-	for _, s := range body[0] {
-		switch {
-		case strings.TrimSpace(s.Text) == "":
-			s.Text, s.HL = strings.Repeat("─", ansi.StringWidth(s.Text)), ""
-		case s.HL == "Host:Panel":
-			s.HL = ""
-		case s.HL == "Host:PanelTitle":
-			s.HL = "Host:Title"
-		}
-		top = append(top, s)
-	}
-	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─╮", NoCopy: true})}
+	top := append([]hostapi.Segment{{Text: "┌─", HL: "Host:Rule", NoCopy: true}}, body[0]...)
+	box = [][]hostapi.Segment{append(top, hostapi.Segment{Text: "─┐", HL: "Host:Rule", NoCopy: true})}
 	bw := cols + 4
 	for _, row := range body[1:] {
-		line := []hostapi.Segment{{Text: "│ ", NoCopy: true}}
+		line := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
 		line = append(line, row...)
-		box = append(box, append(line, hostapi.Segment{Text: " │", NoCopy: true}))
+		box = append(box, append(line, hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true}))
 	}
-	box = append(box, []hostapi.Segment{{Text: "╰" + strings.Repeat("─", bw-2) + "╯", NoCopy: true}})
+	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: "Host:Rule", NoCopy: true}})
 	x0, y0 = l.X, l.Y
 	if x0 < 0 {
 		x0 = stage.Min.X + max((sw-bw)/2, 0)
@@ -283,12 +272,12 @@ func (a *App) placeCursor(c *tea.Cursor, modal bool) *tea.Cursor {
 	return c
 }
 
-// winTitleRow is the row above a window: id and title on the left, state
-// and the close mark on the right. Focus lights the title, not the bar.
+// winTitleRow is the rule above a window: id and title on the left, state
+// and the red close mark on the right. Focus lights the title, not the rule.
 func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Segment {
-	hl, titleHL := "Host:Panel", "Host:Panel"
+	titleHL := "Host:Hint"
 	if focused {
-		titleHL = "Host:PanelTitle"
+		titleHL = "Host:Title"
 	}
 	state, closeMark := "", " × "
 	switch {
@@ -304,17 +293,21 @@ func (a *App) winTitleRow(wn *win.Window, width int, focused bool) []hostapi.Seg
 		state, closeMark = "/win to focus or close", " "
 	}
 	left := fmt.Sprintf(" %d %s ", wn.ID, sanitize.String(wn.Title()))
-	right := " " + state + closeMark
-	if ansi.StringWidth(right) > width-4 {
-		right = closeMark // a narrow window keeps its close mark where titleClick looks
+	if state != "" {
+		state = " " + state + " "
 	}
-	right = ansi.TruncateLeft(right, max(0, ansi.StringWidth(right)-width), "")
-	left = ansi.Truncate(left, max(0, width-ansi.StringWidth(right)), "…")
-	fill := max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))
+	if ansi.StringWidth(state)+ansi.StringWidth(closeMark) > width-4 {
+		state = "" // a narrow window keeps its close mark where titleClick looks
+	}
+	closeMark = ansi.TruncateLeft(closeMark, max(0, ansi.StringWidth(closeMark)-width), "")
+	right := ansi.StringWidth(state) + ansi.StringWidth(closeMark)
+	left = ansi.Truncate(left, max(0, width-right), "…")
+	fill := max(0, width-right-ansi.StringWidth(left))
 	return []hostapi.Segment{
 		{Text: left, HL: titleHL},
-		{Text: strings.Repeat(" ", fill), HL: hl},
-		{Text: right, HL: hl},
+		{Text: strings.Repeat("─", fill), HL: "Host:Rule", NoCopy: true},
+		{Text: state, HL: "Host:Hint"},
+		{Text: closeMark, HL: "Host:Danger", NoCopy: true},
 	}
 }
 
