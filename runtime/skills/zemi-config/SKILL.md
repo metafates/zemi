@@ -270,7 +270,10 @@ Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetc
 `agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin; read-only calls run at
 once, a script that calls anything else asks the user once, and plan mode or an untrusted
 project asks for every script), plus
-`mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter uses these names.
+`mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter and a profile's
+`tools` use these names: a plain name allowlists, `-name` removes one and keeps the rest, so a
+list that only removes still gets whatever a later release adds. A name nothing answers to
+fails an agent file and lands in `/errors` for a profile.
 
 Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several
 in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.

@@ -496,23 +496,30 @@ func plural(n int, one, many string) string {
 // filterTools keeps the tools named in want (nil keeps all) minus skip, and
 // reports the wanted names nothing answers to: an agent file carrying
 // another harness's spelling ("Read, Grep") would otherwise run with no
-// tools at all and invent its report.
+// tools at all and invent its report. A "-name" entry removes that tool
+// instead, so a list that only removes still gets the tools a later
+// release adds.
 func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (kept []fantasy.AgentTool, unknown []string) {
-	keep, have := map[string]bool{}, map[string]bool{}
+	keep, drop, have := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, n := range want {
-		keep[n] = true
+		if name, cut := strings.CutPrefix(n, "-"); cut {
+			drop[name] = true
+		} else {
+			keep[n] = true
+		}
 	}
 	for _, t := range all {
 		name := t.Info().Name
 		have[name] = true
-		if skip[name] || (want != nil && !keep[name]) {
+		if skip[name] || drop[name] || (len(keep) > 0 && !keep[name]) {
 			continue
 		}
 		kept = append(kept, t)
 	}
 	for _, n := range want {
-		if !have[n] && !skip[n] {
-			unknown = append(unknown, n)
+		name := strings.TrimPrefix(n, "-")
+		if !have[name] && !skip[name] {
+			unknown = append(unknown, name)
 		}
 	}
 	return kept, unknown

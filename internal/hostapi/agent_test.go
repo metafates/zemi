@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1029,5 +1030,21 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	}
 	if !strings.Contains(h.buildSystem(nil), "question tool") {
 		t.Error("the TUI prompt lost the asking guidance")
+	}
+}
+
+// TestProfileToolsRecordUnknown: another harness's spelling in a profile
+// leaves the main agent almost toolless, so the name lands in /errors.
+func TestProfileToolsRecordUnknown(t *testing.T) {
+	h, _ := newTestHost(t)
+	names := map[string]bool{}
+	for _, tool := range h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "bash"}}) {
+		names[tool.Info().Name] = true
+	}
+	if !names["bash"] || names["read"] {
+		t.Errorf("kept %v", slices.Sorted(maps.Keys(names)))
+	}
+	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "no tool is named Read, Grep") {
+		t.Errorf("errors = %+v", h.errs.entries)
 	}
 }

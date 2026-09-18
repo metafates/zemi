@@ -466,11 +466,35 @@ func TestAgentsListsJobs(t *testing.T) {
 // its report instead of failing.
 func TestFilterToolsNamesTheUnknown(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	kept, unknown := filterTools(tools.All(h.PipelineFor()), []string{"read", "Grep", "agent"}, subagentExcluded)
-	if len(kept) != 1 || kept[0].Info().Name != "read" {
-		t.Errorf("kept %d tools", len(kept))
-	}
-	if !slices.Equal(unknown, []string{"Grep"}) {
-		t.Errorf("unknown = %q", unknown)
+	all := tools.All(h.PipelineFor())
+	for _, c := range []struct {
+		name    string
+		want    []string
+		kept    []string // the whole set, when the case pins it
+		gone    []string
+		unknown []string
+	}{
+		{name: "allowlist", want: []string{"read", "Grep", "agent"}, kept: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "removal keeps the rest", want: []string{"-read", "-Grep"}, gone: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "removal wins over the allowlist", want: []string{"read", "grep", "-grep"}, kept: []string{"read"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			kept, unknown := filterTools(all, c.want, subagentExcluded)
+			var names []string
+			for _, k := range kept {
+				names = append(names, k.Info().Name)
+			}
+			if c.kept != nil && !slices.Equal(names, c.kept) {
+				t.Errorf("kept %q, want %q", names, c.kept)
+			}
+			for _, g := range c.gone {
+				if slices.Contains(names, g) || len(names) < 2 {
+					t.Errorf("kept %q", names)
+				}
+			}
+			if !slices.Equal(unknown, c.unknown) {
+				t.Errorf("unknown = %q, want %q", unknown, c.unknown)
+			}
+		})
 	}
 }

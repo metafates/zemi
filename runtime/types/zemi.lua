@@ -1325,7 +1325,7 @@ function zemi.model.pick() end
 ---@field model? string
 ---@field system? string Replaces the system prompt.
 ---@field temperature? number
----@field tools? string[] Allowed tool names.
+---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest.
 ---@field context? { files: string[] } Files pinned into the prompt.
 
 ---@class zemi.AgentCurrent

@@ -246,11 +246,12 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // can only refuse, so a print run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{"window": true, "question": true, "plan": true, "open_in_editor": true}
 
-// profileTools selects the tool set: profile names filter the builtin set;
-// Lua-registered tools are always included (the pipeline gates them).
+// profileTools selects the tool set: a profile's names filter the builtin,
+// Lua and MCP tools alike, and a name nothing answers to is recorded rather
+// than dropped, so one misspelling does not leave the agent toolless.
 func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	var want []string
-	if p != nil && len(p.Tools) > 0 {
+	if p != nil {
 		want = p.Tools
 	}
 	var skip map[string]bool
@@ -258,9 +259,12 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 		skip = headlessExcluded
 	}
 	pipe := h.PipelineFor()
-	out, _ := filterTools(h.builtinTools(pipe), want, skip)
-	out = append(out, h.luaFantasyTools(pipe)...)
-	return append(out, h.mcpFantasyTools(pipe)...)
+	all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+	out, unknown := filterTools(all, want, skip)
+	if len(unknown) > 0 {
+		h.RecordError("profile "+p.Name, "no tool is named "+strings.Join(unknown, ", "))
+	}
+	return out
 }
 
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
