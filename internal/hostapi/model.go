@@ -41,9 +41,9 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
 
 // Tiers are the model tiers config names, in the order a picker shows them:
 // small runs the short jobs (session titles, compaction summaries, the
-// builtin web subagent, auto-mode screening), main everything else, and
-// smart the main conversation, which orchestrates and delegates. A tier
-// nothing set falls back to main.
+// builtin web subagent), main everything else, and smart the main
+// conversation, which orchestrates and delegates. A tier nothing set falls
+// back to main.
 var Tiers = []string{"small", "main", "smart"}
 
 // tierModel resolves a tier name to the model id config gave it, falling

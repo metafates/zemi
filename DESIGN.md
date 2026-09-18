@@ -57,7 +57,9 @@ user_version`, so no migration library came with it), `charm.land/glamour/v2`
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty` and
 `charmbracelet/x/vt` (windows: a program on a pseudo-terminal drawn through
-a Go terminal emulator; the user's editor runs in one too). Tool input validation is a small hand-written
+a Go terminal emulator; the user's editor runs in one too), and
+`go-readability` with `html-to-markdown` (the `fetch` tool: the article
+out of a page, as markdown the model can read). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6),
 `charm.land/catwalk` (there is no model catalog; models come only from
@@ -488,9 +490,9 @@ in which milestone.
 ### 6.1 Config and lifecycle
 
 ```lua
-zemi.config.get("agent.model")                -- dotted path lookup
+zemi.config.get("models.main")                -- dotted path lookup
 zemi.config.set("ui.theme", "default")
-zemi.config.watch("agent.model", function(new, old) end)
+zemi.config.watch("models.main", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read; secret-shaped
                                               -- names (§9 deny list) are denied
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
@@ -649,9 +651,15 @@ otherwise return a decision table:
   that prefix with ` *` (a segment with no such prefix stores its exact
   normalized string); for `fs.read` and `fs.write` the file's directory
   with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;
-  for anything else the exact argument. A call §9 gate-forces to `ask`
-  (heredoc/herestring, dangerous assignment) offers no `always` option
-  at all, so it re-asks every time.
+  for anything else the exact argument. A file read is also offered a
+  wider choice covering its whole repository, since in a deep tree the
+  directory rule is the same ask again one package over. A call §9
+  gate-forces to `ask` (heredoc/herestring, dangerous assignment), a
+  pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
+  a stripped assignment) and a wrapper program that runs what it is
+  handed (a shell, an interpreter, `sudo`, `xargs`) offer no `always`
+  option at all, so they re-ask every time: no rule written from such a
+  segment says what the next call would run.
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.
@@ -683,8 +691,13 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
                                          -- (user origin only)
 
 zemi.model.list()                    -- { { id = "anthropic/...", ... } }
-zemi.model.set("anthropic/claude-sonnet-4-5")
+zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's tier
 zemi.model.pick()                    -- open the picker (returns at once)
+-- Models are three config tiers: models.main runs everything, models.small the
+-- short jobs (titles, compaction summaries, the builtin web agent), models.smart
+-- the main conversation; an unset tier falls back to main. Anywhere a model can
+-- be named (a profile, an agent definition, the agent tool, a workflow) a tier
+-- name works too.
 
 zemi.provider.add({
   id = "myllm",
@@ -761,7 +774,8 @@ one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
 `multiedit`, `glob`, `grep` (both Go-exec'd async against `rg` with a Go
-walker fallback, §2), `fetch`,
+walker fallback, §2), `fetch` (readability picks the article out of the
+page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
 answer), `plan` (shows a plan and asks for approval; in plan mode the
 approval picks the mode to implement in), `open_in_editor` (the user
@@ -1026,7 +1040,7 @@ whose rows join the Go checks in `/health` and `zemi --health`, and `list`, whic
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`),
-and `zemi.permission.mode` (`add`, `del`, `list`; user config only, §9).
+and `zemi.permission.mode` (`add`, `del`, `set`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
@@ -1134,7 +1148,9 @@ configured provider later (`zemi.memory.search` signature does not change).
   completion popups go over the stage's bottom when it is above the composer, else beside
   the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left; windows of a kind with no
-  slot float. Widgets render at their node's width and height; a content-sized node gets
+  slot float, a clicked or focused float comes to the front, and a hidden window keeps a
+  label on a dock row at the bottom of the stage that shows it again. A scrolled region
+  draws a thin scrollbar in its last column. Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.
 - **Rendering loop**: the state generation is bumped at most once per
@@ -1171,11 +1187,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   <n>`, `/copy code` and `/copy reply`), so no widget can hide what the
   model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
-  bubbles textarea; `enter` sends, `alt+enter`
-  newline (configurable); a large paste folds into a token that expands
-  on submit. The composer stays editable
-  during a turn: a submit while the turn runs queues as steering (§4)
-  instead of spawning a second turn.
+  bubbles textarea; `enter` sends, `alt+enter` and `ctrl+enter` newline
+  (configurable); a large paste folds into a token that expands on submit.
+  A prompt glyph marks the first row and a gutter aligns the rest, so a
+  multi-line draft reads as one block. The composer stays editable during
+  a turn: a submit while the turn runs queues as steering (§4) instead of
+  spawning a second turn, and the queued messages show above it.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
   send/newline, `esc`/`ctrl+c` interrupt the turn (idle, `ctrl+c`
@@ -1226,10 +1243,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   command?"), and the model's description sits quoted on its own line,
   never in the title. The choices are a vertical list with their keys:
   `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
-  when the request has an always choice), `No` (`n` or `esc`), and `No,
-  and tell zemi what to do instead` (`t`, which denies, stops the turn and
-  hands the composer back); up and down move, enter answers the
-  highlighted one. The overlay writes session rules only: `always`
+  when the request has an always choice, plus a wider one for a file
+  read), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
+  (`t`, which denies, stops the turn and hands the composer back); up and
+  down move, enter answers the highlighted one. Every Go-owned prompt
+  (permission, trust, question) draws through one renderer, which puts
+  each answer's key in a filled cell beside its label. The overlay writes session rules only: `always`
   adds allow rules to the rule store (§6.1), scoped to the
   `model` principal, with the prefix-glob patterns §6.2 lists. Lasting
   rules never come from the overlay; they are `zemi.permission.rule.add`
@@ -1240,9 +1259,12 @@ configured provider later (`zemi.memory.search` signature does not change).
   theme group can change; Go draws it itself and Lua text never renders
   inside that chrome, so a widget cannot fake a permission prompt. Modal
   chrome (overlays and prompts) draws over everything, windows included,
-  and while one is open everything outside the top box, plugin overlays and
-  widget regions too, is dimmed in a fixed host color; at any other time a plugin overlay carries a
-  Go-stamped `plugin:<path>` origin badge.
+  as do the completion and palette popups, which are not modal; while a
+  modal is open everything outside the top box, plugin overlays and widget
+  regions too, is dimmed in a fixed host color; at any other time a plugin
+  overlay carries a Go-stamped `plugin:<path>` origin badge. A menu keeps
+  the height it opened with while a filter narrows it, and a click outside
+  it closes it.
 - **Sanitization**: every model-influenced string is sanitized by Go at
   the cell boundary before it reaches any widget: tool output, assistant
   and reasoning text (before glamour), overlay diff, command, and env
@@ -1398,30 +1420,32 @@ configured provider later (`zemi.memory.search` signature does not change).
   `stash show`, `stash list` with arguments, `status -v`, `log`/`reflog`
   with `-p`, `-U`, `--binary` or another patch flag) settle only in a
   repository tracking no secret-shaped file (`git config` never settles
-  and `git remote` only bare: `.git/config` may hold tokens); anything it cannot settle goes to a one-shot screening model
-  whose approvals are cached per subject, argument, reason and preview,
-  and whose refusals fall back to the user's ask carrying the reason.
-  A file request is judged, screened and shown by its resolved path
-  (relative to the project when inside it), so a symlink a sandboxed
-  command planted cannot dress a write to zemi's config as a project
-  file, and a write under any `.git` or `.zemi` or zemi's own dirs,
-  or outside the project and the scratchpad (`~/.gitconfig`, a shell rc
-  file: the sandbox cannot confine the write tool), goes to the user
-  without screening.
+  and `git remote` only bare: `.git/config` may hold tokens). Anything a
+  mode cannot settle goes to the user's ask carrying the reason it did
+  not: no model screens permission requests.
+  A file request is judged and shown by its resolved path (relative to
+  the project when inside it), so a symlink a sandboxed command planted
+  cannot dress a write to zemi's config as a project file, and a write
+  under any `.git` or `.zemi` or zemi's own dirs, or outside the project
+  and the scratchpad (`~/.gitconfig`, a shell rc file: the sandbox cannot
+  confine the write tool), goes to the user.
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and project build and test commands both
-  settle locally, so the model can write code and run it with no
-  screening; that is the auto-mode tradeoff, and `manual` and `plan` ask,
-  and such commands run sandboxed (below).
+  settle, so the model can write code and run it unattended; that is the
+  auto-mode tradeoff, and `manual` and `plan` ask, and such commands run
+  sandboxed (below).
   In a project the user has not trusted (§5) both modes settle less:
   writes and every command but `perm.ReadCommand` (`SafeCommand` limited
   to programs that only read, named without a path; no build tool and no
-  git, which runs programs `.git/config` names) go to the user, and auto
-  mode skips the screening model, whose input the repository can steer.
+  git, which runs programs `.git/config` names) go to the user.
   With no sandbox backend a trusted project also settles only
-  `ReadCommand` commands locally (`settledCommand`), which run unconfined,
-  and auto mode sends every other command to the user without screening
-  it ("not settled: no sandbox"), since an approved one would run unconfined.
+  `ReadCommand` commands (`settledCommand`), which run unconfined, and
+  auto mode sends every other command to the user ("not settled: no
+  sandbox"), since an approved one would run unconfined.
+  A mode added from config may carry a `decide` function that answers one
+  ask from Lua ("allow", "deny", anything else leaves it to the user); it
+  runs on the interpreter with a 60s ceiling, long enough for a model call
+  of its own, and may not allow an unsandboxed or network request.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
   project and in plan mode. Everywhere else it is default-deny: without
   the user's approval a run may call only the read-only members in

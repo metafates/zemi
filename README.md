@@ -12,8 +12,9 @@ the store; everything you see and bind is Lua you can replace, in the spirit of 
   (always) allows the same kind of action until zemi exits, and rules in `init.lua` apply
   on every start. `tab` switches the mode shown at the left
   of the statusline: `manual`, `plan` (the agent investigates and proposes; file changes
-  are refused and every command asks), `auto` (a model approves routine actions, you get
-  the rest) or `yolo`.
+  are refused and every command asks), `auto` (edits inside the project and build, test and
+  read-only commands run sandboxed on their own, you get the rest) or `yolo` (`ctrl+y`
+  flips to it and back).
 - Taps you on the shoulder: when the terminal is not focused, a finished turn or a
   waiting permission prompt sends a desktop notification (OSC 9) and a bell
   (`ui.notify = false` turns it off).
@@ -225,12 +226,12 @@ for scripts. `zemi --help` lists every flag.
 
 | Key | Action |
 | --- | --- |
-| `enter` / `alt+enter`, `ctrl+j` | send / newline |
+| `enter` / `alt+enter`, `ctrl+enter`, `ctrl+j` | send / newline |
 | `alt+left` `alt+right` (or `alt+b` `alt+f`), `ctrl+z` | move by word, undo in the composer |
 | `ctrl+g` | edit the draft in your editor (unless `<leader>` bindings claim it) |
 | `esc`, `ctrl+c` | interrupt the turn (idle: `ctrl+c` twice quits) |
 | `up` on empty composer | edit queued messages |
-| `tab` / `shift+tab` | next / previous permission mode (in popups tab accepts) |
+| `tab` / `shift+tab`, `ctrl+y` | next / previous permission mode, yolo until the next press (in popups tab accepts) |
 | `ctrl+o` | expand reasoning and every tool call (a click opens one tool row) |
 | `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
 | typing in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |

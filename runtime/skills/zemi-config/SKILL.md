@@ -162,16 +162,23 @@ guessing. Common keys:
   every mode but manual settles it. Giving a window the user's keyboard (`focus`) always asks,
   whatever the mode. Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
-  `/mode <name>`, `tab` (next) or `shift+tab` (previous); for one run:
-  `zemi --mode auto`. `/permissions` lists the mode and every rule in force; an "always"
-  answer (the only rule made at runtime) has a Remove action there, config rules do not. Widgets read it as `ctx.permission_mode` (and its behavior as
+  `/mode <name>`, `tab` (next), `shift+tab` (previous) or `ctrl+y` (yolo until the next
+  press); for one run: `zemi --mode auto`. `/permissions` lists the mode and every rule in
+  force; an "always" answer (the only rule made at runtime) has a Remove action there,
+  config rules do not. An "always" answer covers a command's two-word prefix, a file's
+  directory or a URL's host, and a file read is also offered its whole repository; a
+  command that runs whatever it is handed (a shell, an interpreter, sudo, xargs) is
+  offered no always answer at all. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
-  `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`, and
-  `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules })`
+  `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`,
+  `zemi.permission.mode.set(name)` switches the active one, and
+  `zemi.permission.mode.add(name, { base = "manual"|"plan"|"auto"|"yolo", description, prompt, rules, decide })`
   adds one (or replaces one with that name) after the others. It behaves like its base; its
   `rules` (`{ "tool.bash", "go test*", "allow" }`, `{ "tool.bash", "git push*", "deny" }`) answer
-  what would otherwise ask, and `prompt` joins the system prompt while it is on:
+  what would otherwise ask, `decide(req)` answers one ask the rules left open with "allow" or
+  "deny" (60s ceiling, so it may call a model of its own), and `prompt` joins the system
+  prompt while it is on:
 
   ```lua
   zemi.permission.mode.del("yolo")
@@ -305,12 +312,14 @@ sidebar beside it, or a float over it; `zemi.win` is the same from Lua): open, r
 as text (`expect` waits for text to appear, `scrollback` adds lines that scrolled off), press
 keys in neovim notation (`ihello<esc>:wq<cr>`, `<c-x>`, `<s-tab>`), click or scroll at a cell,
 `set` the kind, size (`frac`, `cols`, `rows`), position (`x`, `y`) or title of an open window,
-`hide` and `show` it (it keeps running off screen), wait for exit, close. It sees only the
+`hide` and `show` it (it keeps running off screen, with a label on the dock row at the
+bottom that shows it again), wait for exit, close. It sees only the
 windows the model opened: the user's, Lua's and the editor's are not its to read or close.
 Subagents have the tool too; their windows open hidden until shown. The user drags a float by its title, resizes it by
-its border or a corner, a vsplit by its separator and a split by its title. The user clicks a window to type into it and presses
-`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it, and a drag over a
-window nobody is typing in copies its text. Use it to show a TUI
+its border or a corner, a vsplit by its separator and a split by its title, and a click
+raises a float over the others. The user clicks a window to type into it and presses
+`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it, the button beside
+it minimizes it to the dock, and a drag over a window nobody is typing in copies its text. Use it to show a TUI
 you built, a log, a REPL, then read it back to see what the user sees.
 `text` opens a panel that shows text instead of a program (`markdown` renders it like the chat),
 and `set_text` rewrites it in place while the work runs: benchmark or test numbers refreshed as
