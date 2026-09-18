@@ -61,7 +61,9 @@ errored; `-p` runs one turn, then reports on stderr how many tool calls the gate
 (nobody can answer an ask headless, so `deniedHint` points at `--mode auto`, at `--trust` in an
 untrusted project, and at an allow rule when auto already left the call to the user or it
 asked to run outside the sandbox); it also drops the tools that need a user
-(`headlessExcluded`: window, question, plan, open_in_editor), which could only refuse.
+(`headlessExcluded`: window, question, plan, open_in_editor), which could only refuse, the
+agent tool's `background` and `send_to` (a detached report would outlive the run), and the
+prompt lines that name those tools (`headlessAskingPrompt`, `planHeadless`).
 A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
 checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout, errors,
@@ -311,8 +313,8 @@ names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host
 events: `zemi.event.emit` takes only `user.*`, and `zemi.event.on` takes catalogued names
 or `user.*` (internal/hostapi/event.go). A keymap that is a prefix or an
 extension of a more trusted key is refused, `zemi.command.run` refuses a more trusted
-origin's Lua command (its body runs under that origin), windows can be closed, focused or
-moved only by user, builtin or the origin that opened them, and `app.quit` denials from
+origin's Lua command (its body runs under that origin), windows and overlays can be closed
+(focused or moved, for a window) only by user, builtin or the origin that opened them, and `app.quit` denials from
 project or learned handlers are ignored. When adding a registry,
 follow `internal/hostapi/registry.go`.
 
@@ -433,9 +435,11 @@ what the screen says.
 
 A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go
 emulator (charmbracelet/x/vt), or text (`Manager.OpenText`, `Window.body`): no pty, no
-emulator, the UI renders and wraps the text itself every frame (`App.textRows`, markdown
-through `Host.Markdown`, the renderer and cache the chat uses), so `SetText` replaces the
-body in place, a resize re-wraps it and the segments carry the theme's colors and the
+emulator, the UI renders and wraps the text itself (`App.textRows`, markdown through
+`Host.Markdown`, the renderer and cache the chat uses; plain text through `App.wrapText`,
+keyed like it by (text, width), since a frame sizes a panel before it draws it), so `SetText`
+replaces the body in place (`capBody` keeps the last 256 KB whatever the text looks like:
+an unbroken line has no line to drop), a resize re-wraps it and the segments carry the theme's colors and the
 copy and hover rules. A text window never exits; the keys and the wheel scroll it
 (`Window.Scroll`, `Top` clamps to what is drawn and follows the end while `body.tail` holds,
 which an append keeps and a scroll up drops, so a growing log stays on its newest lines and a
@@ -674,7 +678,7 @@ timeout.
   as user origin **with a 3s guard so an interpreter deadlock fails loudly instead of
   hanging the binary** — reuse it for any test that runs Lua.
 - API surface is pinned: `TestNamespaceVersion` asserts the exact `zemi.api.version`
-  ("0.35.0") and namespace members. Growing the Lua API means updating that test and the
+  ("0.38.0") and namespace members. Growing the Lua API means updating that test and the
   version string.
 - UI output is pinned with golden files (`charmbracelet/x/exp/golden`): commit
   `internal/ui/testdata/*.golden` changes only when the rendered change is intended;
@@ -732,7 +736,8 @@ timeout.
   the composer (`/quit`, `/help`, `/memory`, ...) with the palette popup for completion
   (`internal/ui/palette.go`). Keymaps are keys or key sequences
   (`zemi.keymap.set("<leader>m", action)`, `del`, `get`, `list`; `<leader>` is the
-  `keymap.leader` setting); printable keys stay with the composer, and an open palette or
+  `keymap.leader` setting; a key name the terminal never reports raises, `checkKey`);
+  printable keys stay with the composer, and an open palette or
   completion popup keeps its keys before keymaps are consulted. A focused node takes every
   key but ctrl+c through `Keymaps.Lookup(focus, key)`: bindings with `{ focus = id }` first
   unless a more trusted global binding holds the key, then global ones; unbound keys drop and
