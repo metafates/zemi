@@ -178,14 +178,19 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	switch {
 	case req.Subject == "tool.bash":
 		n := perm.Normalize(req.Arg)
-		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" {
+		// Opaque is an inner shell (sh -c) or a stripped assignment: what the
+		// rule would match is not what the user read
+		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
 			return "", nil
 		}
 		var names []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, with no prefix to name
-		for _, seg := range n.Segments {
+		for i, seg := range n.Segments {
+			if wrapperProgram(n.Args[i][0]) {
+				return "", nil
+			}
 			p := commandPrefix(seg)
 			if p == "" {
 				if strings.ContainsAny(seg, globMeta) {
@@ -300,6 +305,22 @@ var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 var subcommandPrograms = map[string]bool{
 	"git": true, "go": true, "cargo": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
 	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
+}
+
+// wrapperPrograms run whatever is handed to them, as code (node -e) or as
+// another command (sudo, xargs), so no rule written from such a segment
+// says what a later call would run. An always answer offers nothing for them.
+var wrapperPrograms = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true, "fish": true, "csh": true, "tcsh": true,
+	"node": true, "nodejs": true, "deno": true, "python": true, "python2": true, "python3": true,
+	"perl": true, "ruby": true, "php": true, "lua": true, "luajit": true, "julia": true, "rscript": true, "osascript": true,
+	"env": true, "sudo": true, "doas": true, "su": true, "xargs": true, "eval": true, "exec": true, "source": true, ".": true,
+	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
+	"nice": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
+}
+
+func wrapperProgram(prog string) bool {
+	return wrapperPrograms[strings.ToLower(filepath.Base(prog))]
 }
 
 // commandPrefix is the two-word prefix the always answer allows for a
