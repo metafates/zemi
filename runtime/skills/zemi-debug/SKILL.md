@@ -14,8 +14,9 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    ```
 
    They cover the model and its API key, the stores, git, ripgrep, the sandbox, the
-   reflector, pending reviews, skills, trust, recent errors, MCP servers, language servers
-   and the Lua runtime, plus any rows config added with `zemi.health.add`. `/health` shows
+   reflector, pending reviews, skills, trust, plugins, widget regions, recent errors, MCP
+   servers, language servers and the Lua runtime, plus any rows config added with
+   `zemi.health.add`. `/health` shows
    the same rows to the user, problems first.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
    event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
@@ -81,6 +82,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.zemi` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, space toggles |
+| a plugin registers nothing, with no error | its file is not at `site/pack/<any>/start/<name>/plugin/*.lua`; the `/health` plugins row names a directory with nothing to load |
 
 ## Stores
 

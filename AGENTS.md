@@ -66,8 +66,9 @@ agent tool's `background` and `send_to` (a detached report would outlive the run
 prompt lines that name those tools (`headlessAskingPrompt`, `planHeadless`).
 A headless run in a project with no saved trust decision runs untrusted
 and prints one stderr line saying so (`headlessTrust`). `/health` and `--health` read the same rows: the Go
-checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout, errors,
-trust, mcp, lsp) plus whatever Lua registered with `zemi.health.add`.
+checks (store, model, git, ripgrep, sandbox, reflector, learning, skills, lua, layout,
+plugins, errors, trust, mcp, lsp) plus whatever Lua registered with `zemi.health.add`;
+`zemi.health.list` reads the same rows from Lua.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
 ships no providers and an empty config cannot answer a prompt. The logger keeps the newest 20

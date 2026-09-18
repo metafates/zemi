@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -240,6 +241,26 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("warn", "layout", "the layout draws no region for: "+strings.Join(undrawn, ", "))
 	} else {
 		add("ok", "layout", "every widget's region is drawn")
+	}
+
+	// a pack directory with no plugin/*.lua in it loads nothing, silently
+	if packs, _ := filepath.Glob(filepath.Join(h.Dirs.PluginsDir(), "*", "start", "*")); len(packs) > 0 {
+		var loaded int
+		var empty []string
+		for _, p := range packs {
+			files, _ := filepath.Glob(filepath.Join(p, "plugin", "*.lua"))
+			if len(files) == 0 {
+				empty = append(empty, filepath.Base(p))
+				continue
+			}
+			loaded += len(files)
+		}
+		if len(empty) > 0 {
+			add("warn", "plugins", fmt.Sprintf("%d %s loaded; nothing to load in %s: a plugin is site/pack/*/start/<name>/plugin/*.lua",
+				loaded, plural(loaded, "file", "files"), strings.Join(empty, ", ")))
+		} else {
+			add("ok", "plugins", fmt.Sprintf("%d %s loaded", loaded, plural(loaded, "file", "files")))
+		}
 	}
 
 	h.errs.mu.Lock()
