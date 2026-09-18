@@ -395,6 +395,17 @@ func TestEditSafety(t *testing.T) {
 	if resp := call(t, edit, js(map[string]any{"path": path, "old_string": "y", "new_string": "z"})); !strings.Contains(resp.Content, "changed since") {
 		t.Fatalf("changed file must be read again: %q", resp.Content)
 	}
+
+	// an unread file is refused before the gate, so the user is never asked
+	// to approve a change that cannot happen
+	ask, asked := testPipeline(t, true)
+	ask.Seen = &sync.Map{}
+	unread := filepath.Join(dir, "unasked")
+	os.WriteFile(unread, []byte("x\n"), 0o644)
+	resp := call(t, All(ask)[2], js(map[string]any{"path": unread, "content": "y\n"}))
+	if !strings.Contains(resp.Content, "read ") || len(*asked) != 0 {
+		t.Fatalf("unread write: %q, asked %+v", resp.Content, *asked)
+	}
 }
 
 // TestReadAndBashShapes: read returns images as images, lists a directory
