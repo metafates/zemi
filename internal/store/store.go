@@ -338,24 +338,25 @@ func placeholders(n int) string {
 }
 
 // ProjectDBPath is the per-project database location: a hash of the
-// project root keeps the filename filesystem-safe.
-func ProjectDBPath(stateHome, projectDir string) string {
-	if projectDir == "" {
+// project root keeps the filename filesystem-safe. The caller passes the
+// trust root, so every directory of a repository shares one database.
+func ProjectDBPath(stateHome, projectRoot string) string {
+	if projectRoot == "" {
 		return filepath.Join(stateHome, "zemi.db")
 	}
-	sum := sha256.Sum256([]byte(projectDir))
+	sum := sha256.Sum256([]byte(projectRoot))
 	return filepath.Join(stateHome, "projects", hex.EncodeToString(sum[:16]), "zemi.db")
 }
 
 // OpenForDirs opens the global database and, when a project root is known,
 // the per-project one (DESIGN §7).
-func OpenForDirs(stateHome, projectDir string) (global *DB, project *DB, err error) {
+func OpenForDirs(stateHome, projectRoot string) (global *DB, project *DB, err error) {
 	global, err = Open(filepath.Join(stateHome, "zemi.db"))
 	if err != nil {
 		return nil, nil, err
 	}
-	if projectDir != "" {
-		project, err = Open(ProjectDBPath(stateHome, projectDir))
+	if projectRoot != "" {
+		project, err = Open(ProjectDBPath(stateHome, projectRoot))
 		if err != nil {
 			global.Close()
 			return nil, nil, err

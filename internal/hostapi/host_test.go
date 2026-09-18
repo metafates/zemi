@@ -3,6 +3,8 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -580,13 +582,37 @@ func TestStoresByScope(t *testing.T) {
 	if err := h.DB.CreateSession("s1", "", "t", ""); err != nil {
 		t.Fatal(err)
 	}
-	pdb, err := store.Open(store.ProjectDBPath(h.Dirs.StateHome, h.Dirs.ProjectDir))
+	pdb, err := store.Open(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer pdb.Close()
 	if _, err := pdb.GetSession("s1"); err != nil {
 		t.Fatalf("session not in the project store: %v", err)
+	}
+}
+
+// TestStoreKeyedOnRepo: zemi started in a subdirectory is the same project
+// as one started at the root, so its sessions and memories are there.
+func TestStoreKeyedOnRepo(t *testing.T) {
+	root, state := t.TempDir(), t.TempDir()
+	sub := filepath.Join(root, "internal")
+	for _, dir := range []string{filepath.Join(root, ".git"), sub} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	host := func(dir string) *Host {
+		log := logging.New(t.TempDir())
+		h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{StateHome: state, ProjectDir: dir})
+		t.Cleanup(func() { h.DB.Close(); h.GlobalDB.Close() })
+		return h
+	}
+	if err := host(root).DB.CreateSession("s1", "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host(sub).DB.GetSession("s1"); err != nil {
+		t.Fatalf("a subdirectory opened another project's store: %v", err)
 	}
 }
 

@@ -102,7 +102,8 @@ SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 
 - `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals,
   skill enabled state (`skills`), `kv`.
-- `~/.local/state/zemi/projects/<hash>/zemi.db` (per project): `sessions`, `messages`,
+- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project,
+  shared by its subdirectories and worktrees): `sessions`, `messages`,
   project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
   `/rewind` restores).
 

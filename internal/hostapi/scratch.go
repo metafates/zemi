@@ -23,7 +23,7 @@ func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.Dirs.ProjectDir)), "scratch", sid)
+	return filepath.Join(filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot())), "scratch", sid)
 }
 
 func (h *Host) inScratch(path string) bool {

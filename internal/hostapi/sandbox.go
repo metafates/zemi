@@ -150,7 +150,7 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 // trust root: Go trusts its cache entries, so a shared one lets one
 // project's build plant what another's links.
 func (h *Host) trustKey() string {
-	key := sha256.Sum256([]byte(h.Dirs.TrustRoot()))
+	key := sha256.Sum256([]byte(h.trustRoot()))
 	return hex.EncodeToString(key[:8])
 }
 

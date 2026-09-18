@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"charm.land/fantasy"
@@ -310,6 +311,7 @@ func TestSandboxPolicy(t *testing.T) {
 	}
 	a := h.sandboxPolicy(false).Env["GOCACHE"]
 	h.Dirs.ProjectDir = t.TempDir()
+	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) // a host finds its root once
 	if b := h.sandboxPolicy(false).Env["GOCACHE"]; a == b {
 		t.Errorf("two trust roots share the Go cache %q", a)
 	}

@@ -153,7 +153,8 @@ sandboxed command can plant a nested repo whose config zemi's own checks would r
    `MaxOpenConns(1)`. Two handles: global DB (user-scope memory, kv, skills, config
    revisions) and a
    per-project DB (sessions, messages, todos, tool_calls) at
-   `<state>/projects/<sha256(projectDir)[:16]>/zemi.db`. Schema is one `schema` const of
+   `<state>/projects/<sha256(Dirs.TrustRoot())[:16]>/zemi.db`, so a subdirectory and a
+   worktree share the repository's sessions and memories. Schema is one `schema` const of
    `CREATE TABLE IF NOT EXISTS` + FTS5 triggers executed on open — add tables there; a new
    column on an existing table also needs an ALTER appended to `migrations` (store.go),
    since `IF NOT EXISTS` skips it on old databases.

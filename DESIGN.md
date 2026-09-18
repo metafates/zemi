@@ -274,7 +274,7 @@ Directories (XDG):
   plans/<session id>.md   plans approved in plan mode
 ~/.local/state/zemi/      state
   zemi.db                 global store (user memory, skills, kv, revisions)
-  projects/<hash>/zemi.db per-project store (sessions, messages, todos, ...)
+  projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/scratch/<session id>/   per-session scratchpad (§9 write root)
   trust.json              trust decisions by repository root
   logs/
@@ -1054,7 +1054,9 @@ kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
-DBs at `~/.local/state/zemi/projects/<hash of project root>/zemi.db`. The
+DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db` — the same
+repository identity trust uses, so a subdirectory or a linked worktree opens
+the same sessions and project memory rather than a blank store. The
 global DB holds user-scope memory, skills and kv; a project DB
 holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and

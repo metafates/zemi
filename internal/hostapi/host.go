@@ -305,9 +305,12 @@ type Host struct {
 	// config, instructions and language servers load only when it is set,
 	// and auto and plan mode settle less without it.
 	projectTrusted atomic.Bool
-	// project is the trust root, ~-shortened, found once: widgets read it
-	// every frame and finding it walks the disk
-	project func() string
+	// trustRoot is the repository the session belongs to (a worktree maps to
+	// its main checkout), found once: it keys the store, the scratchpad and
+	// the sandbox cache, and finding it walks the disk. project is the same
+	// path ~-shortened, which widgets read every frame.
+	trustRoot func() string
+	project   func() string
 
 	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
@@ -388,9 +391,12 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.Perm.Default = h.fsDefault
 	h.Wins.OnExit = h.windowExited
-	h.project = sync.OnceValue(func() string { return TildePath(h.Dirs.TrustRoot()) })
+	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
+	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
 	if dirs.StateHome != "" {
-		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, dirs.ProjectDir)
+		// keyed on the repository, not the launch directory: a subdirectory
+		// and a worktree are the same project, with the same sessions
+		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help": func(h *Host, _ string) error { h.OpenHelp(); return nil },
