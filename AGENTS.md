@@ -575,7 +575,8 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   loses resume values on a tail call (`return agent(...)`) of a yielding Go function;
   yielding inside `pcall` silently kills the coroutine, so both refuse under pcall;
   concurrency 5, 100 agents per run. The tool asks `tool.workflow` with the script as
-  preview.
+  preview; its description carries only what and when, and points at the zemi-customize
+  skill for the script API, which every request would otherwise pay for.
 - **Background agents** (`agent` with `background: true`) run detached; the report comes
   back through `AgentSend` with the body behind `attachMarker`, which both the live
   transcript (`startTurn`, `deliverSteering`) and resume cut off. `agent` with `send_to: <run id>`

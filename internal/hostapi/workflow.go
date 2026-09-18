@@ -567,26 +567,8 @@ type workflowTool struct {
 
 func (h *Host) workflowTool() fantasy.AgentTool { return &workflowTool{h: h, saved: h.workflows()} }
 
-const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. Prefer a single agent call for one task; use a workflow when the shape is several agents with logic between them.
-
-The script runs in a sandbox with Lua's base, string, table and math libraries and:
-- agent(prompt [, {agent = "explore", description = "...", model = "provider/model"}]) -> report or nil, err. Blocks this branch until the subagent finishes. Agents cannot see this conversation: prompts must be self-contained. model is optional and must be a configured model.
-- parallel({fn, fn, ...}) -> results, errs. Runs each function as a concurrent branch (up to 5 agents at once); results[i] is fn i's return value, errs[i] its error (errs is nil when none failed).
-- phase(name) labels progress for the user; log(...) records a line returned with the result.
-- json.encode(v), json.decode(s) (decode tolerates prose around the JSON); args holds the tool's args.
-The script's return value is the tool result (tables come back as JSON). agent() and parallel() cannot run inside pcall or library callbacks (table.sort, string.gsub). No file or network access: only agents act.
-To keep one the user wants again, save it as a file (the zemi-customize skill has the directories) with leading -- comment lines describing it; it then runs by name.
-
-Example:
-  phase("review")
-  local lens = {"correctness", "security"}
-  local jobs = {}
-  for _, l in ipairs(lens) do
-    jobs[#jobs + 1] = function() return agent("Review 'git diff main' for " .. l .. " issues, each with file:line.", {agent = "explore"}) end
-  end
-  local reports = parallel(jobs)
-  phase("verify")
-  return agent("Check each finding against the code and keep only real ones:\n" .. table.concat(reports, "\n\n"))`
+const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. Prefer a single agent call for one task; use a workflow when the shape is several agents with logic between them. Pass a saved workflow's name to run it, or a script to write one.
+Load the zemi-customize skill before writing a script: it has the sandbox API (agent, parallel, phase, log, json, args), what cannot run inside it, and where to save one so it runs by name.`
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	var desc strings.Builder

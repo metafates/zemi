@@ -37,10 +37,14 @@ phase("write")
 return agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore" })
 ```
 
-- `agent(prompt, { agent = "explore" | "general" | custom, description })` returns the report
-  or `nil, err`. Prompts must be self-contained; agents do not see the conversation.
+- `agent(prompt, { agent = "explore" | "general" | custom, description, model })` returns the
+  report or `nil, err`. Prompts must be self-contained; agents do not see the conversation.
 - `parallel({ fn, ... })` returns `results, errs`; up to 5 agents run at once, 100 per run.
+- `phase(name)` labels progress, `log(...)` adds a line to the result, `json.encode/decode`
+  carry structured data between agents (decode tolerates prose around the JSON).
 - Do not call `agent` or `parallel` inside `pcall`, `table.sort` or `string.gsub` callbacks.
+- `return agent(...)` as the last statement of a `parallel` branch is a tail call and loses
+  the result: assign it, then return the variable.
 - Workflow files are read when they run: no reload needed.
 - Keep one the user wants again in `~/.config/zemi/workflows/<name>.lua` (every project) or
   `<project>/.zemi/workflows/<name>.lua` (shared through git, run only once the user
