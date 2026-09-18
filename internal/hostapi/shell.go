@@ -28,6 +28,7 @@ func (h *Host) RunShell(cmd string) {
 	if cmd == "" {
 		return
 	}
+	h.lspDirty()
 	h.GoSafe("shell", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
 		defer cancel()

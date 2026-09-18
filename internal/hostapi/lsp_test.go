@@ -262,20 +262,29 @@ func TestLSPSyncFromGit(t *testing.T) {
 	if got := refs(); got != "2 references" {
 		t.Fatalf("baseline: %q", got)
 	}
-	// created behind the server's back, as a bash command would
+	// each change is made behind the server's back, as a bash command
+	// would, and marked dirty the way running one does
 	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
+	h.lspDirty()
 	if got := refs(); got != "3 references" {
 		t.Fatalf("after an untracked file appeared: %q", got)
 	}
 	os.WriteFile(b, []byte("Foo()\nFoo()\n"), 0o644)
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(b, later, later)
+	h.lspDirty()
 	if got := refs(); got != "4 references" {
 		t.Fatalf("after it changed: %q", got)
 	}
 	os.Remove(b)
+	h.lspDirty()
 	if got := refs(); got != "2 references" {
 		t.Fatalf("after it was deleted: %q", got)
+	}
+	// with nothing marked, the sync is skipped entirely
+	os.WriteFile(b, []byte("Foo()\n"), 0o644)
+	if got := refs(); got != "2 references" {
+		t.Fatalf("with no mark: %q", got)
 	}
 }
 

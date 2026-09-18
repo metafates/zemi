@@ -293,6 +293,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				h.callLuaAsync(at, cb, "no UI in this run")
 				return
 			}
+			h.lspDirty()
 			if err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title}); err != nil {
 				h.callLuaAsync(at, cb, err.Error())
 				return

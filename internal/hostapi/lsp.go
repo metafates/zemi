@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	glua "github.com/yuin/gopher-lua"
@@ -84,6 +85,7 @@ type lspReg struct {
 	scanMu   sync.Mutex        // one scan at a time, in order
 	scan     map[string]lspSig // last git status listing by path
 	scanned  bool              // the baseline exists
+	dirty    atomic.Bool       // something other than zemi's file tools ran
 	user     []lspDef
 	disabled map[string]bool // names zemi.lsp.disable turned off
 	running  map[string]*lspProc
@@ -198,6 +200,20 @@ func globalTSServer(root string) string {
 	return js
 }
 
+// lspQuietTool lists the tools that change nothing behind a language
+// server's back: they either only read, or write through zemi's own file
+// tools, which open the document they touched. Anything else ran a program.
+var lspQuietTool = map[string]bool{
+	"read": true, "write": true, "edit": true, "multiedit": true,
+	"glob": true, "grep": true, "todos": true, "plan": true, "question": true,
+	"skill": true, "lsp": true, "diagnostics": true, "job_list": true,
+	"memory_add": true, "memory_search": true, "memory_update": true, "memory_forget": true,
+}
+
+// lspDirty records that something may have changed files without telling
+// the language servers, so the next lspSync asks git.
+func (h *Host) lspDirty() { h.lsp.dirty.Store(true) }
+
 // lspSig is what a scan remembers about a file git listed.
 type lspSig struct {
 	mtime     time.Time
@@ -213,12 +229,21 @@ type lspSig struct {
 // untracked files. Diffing two listings catches every change a server could
 // have seen in between: a file that left the listing was restored to the
 // index, so it changed too.
+// It only runs once something other than zemi's own file tools touched the
+// tree (lspDirty); those the servers hear about through the document the
+// tool opens, and a git status before every read would cost more than it
+// finds.
 // NOTE: outside a git repository nothing is detected beyond the files zemi
 // itself writes; a repository too large for git status to answer in a few
 // hundred milliseconds pays that on every touch.
 func (h *Host) lspSync() {
 	root := h.Dirs.RepoRoot()
 	if root == "" {
+		return
+	}
+	h.lsp.scanMu.Lock()
+	defer h.lsp.scanMu.Unlock()
+	if !h.lsp.dirty.Swap(false) && h.lsp.scanned {
 		return
 	}
 	h.lsp.mu.Lock()
@@ -233,8 +258,6 @@ func (h *Host) lspSync() {
 		}
 	}
 	h.lsp.mu.Unlock()
-	h.lsp.scanMu.Lock()
-	defer h.lsp.scanMu.Unlock()
 	out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames")
 	if err != nil {
 		return // not a repository, or git missing: nothing to compare
@@ -385,11 +408,12 @@ func languageID(path string) string {
 	return strings.TrimPrefix(ext, ".")
 }
 
-// lspCheck syncs path to its server and formats diagnostics with severity
-// <= maxSeverity (1 errors ... 4 all), plus, when others is set, the errors
-// the sync surfaced in other files; ok is false when no server covers the
-// file or it did not answer.
-func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.Duration) (out string, ok bool) {
+// lspCheck formats a file's diagnostics; ok is false when no server covers
+// it or it did not answer. After a write it reports errors only (plus the
+// errors the change caused in other files) on a short budget and syncs the
+// tree in the background, since a turn must not wait on git for advice; the
+// diagnostics tool waits, and reports warnings too.
+func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", false
@@ -397,6 +421,10 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 	def, ok := h.lspFor(abs)
 	if !ok {
 		return "", false
+	}
+	maxSeverity, budget := 3, 10*time.Second
+	if afterWrite {
+		maxSeverity, budget = 2, 3*time.Second
 	}
 	// NOTE: a cold gopls or tsserver can take longer than this on a
 	// big workspace; the edit then returns without diagnostics.
@@ -406,7 +434,11 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 	if err != nil {
 		return "", false
 	}
-	h.lspSync()
+	if afterWrite {
+		h.GoSafe("lsp sync", h.lspSync)
+	} else {
+		h.lspSync()
+	}
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
 	h.lspAnswered(p, err == nil)
@@ -437,7 +469,7 @@ func (h *Host) lspCheck(path string, maxSeverity int, others bool, budget time.D
 		}
 	}
 	add(abs, diags, maxSeverity)
-	if others {
+	if afterWrite {
 		other := p.client.Others(abs)
 		for _, o := range slices.Sorted(maps.Keys(other)) {
 			if len(lines) == 0 {
@@ -474,11 +506,10 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 	return tools.LSPSession{Client: p.client, Server: def.Name, Open: open}, nil
 }
 
-// lspAfterWrite is the pipeline's AfterWrite hook: errors and warnings for
-// the file just changed. Its budget is short: a write is on the turn's
-// critical path, and the diagnostics tool is there for a slow server.
+// lspAfterWrite is the pipeline's AfterWrite hook: errors for the file just
+// changed. The diagnostics tool is there for a slow server.
 func (h *Host) lspAfterWrite(path string) string {
-	if out, ok := h.lspCheck(path, 2, true, 3*time.Second); ok {
+	if out, ok := h.lspCheck(path, true); ok {
 		return "\n\n" + out
 	}
 	return ""
@@ -486,7 +517,7 @@ func (h *Host) lspAfterWrite(path string) string {
 
 // lspDiagnostics backs the diagnostics tool.
 func (h *Host) lspDiagnostics(path string) (string, error) {
-	if out, ok := h.lspCheck(path, 3, false, 10*time.Second); ok {
+	if out, ok := h.lspCheck(path, false); ok {
 		return out, nil
 	}
 	if _, ok := h.lspFor(path); !ok {

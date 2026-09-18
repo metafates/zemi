@@ -931,6 +931,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		cmd.Env = env
+		h.lspDirty()
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
