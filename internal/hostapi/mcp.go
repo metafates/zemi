@@ -237,6 +237,25 @@ func mcpToolName(server, tool string) string {
 }
 
 // mcpFantasyTools exposes the ready servers' tools, checked through pipe.
+// mcpReadOnly reports a tool the server marked read-only and not
+// destructive. It is the server's own word, which is the trust the user
+// already extends by adding the server (zemi.mcp.add is user config only).
+func (h *Host) mcpReadOnly(server, tool string) bool {
+	for _, s := range h.mcp.list() {
+		if s.name != server {
+			continue
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, t := range s.tools {
+			if t.Name == tool {
+				return t.ReadOnly()
+			}
+		}
+	}
+	return false
+}
+
 func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var out []fantasy.AgentTool
 	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
@@ -269,6 +288,10 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	}
 	return out
 }
+
+// mcpMaxMedia is the ceiling on one forwarded image or audio part, the
+// same the read tool holds itself to.
+const mcpMaxMedia = 5 << 20
 
 type mcpTool struct {
 	h     *Host
@@ -334,6 +357,20 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 	}
 	if strings.TrimSpace(text) == "" {
 		text = "(no output)"
+	}
+	if data, mime, ok := res.Media(); ok && len(data) <= mcpMaxMedia {
+		switch {
+		case !strings.HasPrefix(mime, "image/"):
+			out := fantasy.NewMediaResponse(data, mime)
+			out.Content = text
+			return out, nil
+		case t.pipe.Images == nil || t.pipe.Images():
+			out := fantasy.NewImageResponse(data, mime)
+			out.Content = text
+			return out, nil
+		default:
+			text += "\n(the image is not shown: this model takes no images)"
+		}
 	}
 	return fantasy.NewTextResponse(text), nil
 }

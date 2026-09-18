@@ -262,6 +262,9 @@ the browser, and zemi keeps and refreshes the grant. MCP servers:
 `zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
 A command server starts in zemi's data dir, not the project, with the project path in
 `ZEMI_PROJECT_DIR`: pass the project as an absolute path, not `.`.
+In auto mode a tool the server marks `readOnlyHint` runs without a screening call; every
+other MCP tool is screened or asked. An image or audio part of a result reaches the model
+as itself, not as a placeholder.
 
 ## Tools and permission rules
 

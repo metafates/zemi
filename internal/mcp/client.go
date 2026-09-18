@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,21 +48,35 @@ type Config struct {
 	OnToolsChanged func()
 }
 
-// Tool is one tool a server lists.
+// Tool is one tool a server lists. Annotations are the server's own word
+// about what the tool does.
 type Tool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	Annotations *struct {
+		ReadOnlyHint    bool  `json:"readOnlyHint"`
+		DestructiveHint *bool `json:"destructiveHint"`
+	} `json:"annotations,omitempty"`
 }
 
-// Content is one part of a tool result.
+// ReadOnly reports a tool the server marked read-only and not destructive.
+func (t Tool) ReadOnly() bool {
+	a := t.Annotations
+	return a != nil && a.ReadOnlyHint && (a.DestructiveHint == nil || !*a.DestructiveHint)
+}
+
+// Content is one part of a tool result. Data and Resource.Blob are base64.
 type Content struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`
 	MimeType string `json:"mimeType,omitempty"`
 	Resource *struct {
-		URI  string `json:"uri"`
-		Text string `json:"text,omitempty"`
+		URI      string `json:"uri"`
+		Text     string `json:"text,omitempty"`
+		Blob     string `json:"blob,omitempty"`
+		MimeType string `json:"mimeType,omitempty"`
 	} `json:"resource,omitempty"`
 }
 
@@ -93,6 +108,24 @@ func (r *Result) Text() string {
 		return string(b)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// Media decodes the first image or audio part; a model that takes images
+// gets it instead of Text's placeholder for it.
+func (r *Result) Media() (data []byte, mime string, ok bool) {
+	for _, c := range r.Content {
+		b64, mt := c.Data, c.MimeType
+		if c.Resource != nil && c.Resource.Blob != "" {
+			b64, mt = c.Resource.Blob, c.Resource.MimeType
+		}
+		if b64 == "" || !strings.HasPrefix(mt, "image/") && !strings.HasPrefix(mt, "audio/") {
+			continue
+		}
+		if b, err := base64.StdEncoding.DecodeString(b64); err == nil && len(b) > 0 {
+			return b, mt, true
+		}
+	}
+	return nil, "", false
 }
 
 type rpcError struct {

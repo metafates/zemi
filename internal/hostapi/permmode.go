@@ -320,8 +320,8 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 
 // autoLocal settles the asks auto mode needs no model for: reading and
 // editing files inside the jail that are not secret-shaped, read-only or
-// build and test commands, and running workflows (their agents' tools are
-// checked one by one). Network requests are not on this list: a URL carries
+// build and test commands, running workflows (their agents' tools are
+// checked one by one) and MCP tools their server marks read-only. Network requests are not on this list: a URL carries
 // whatever the model puts in it, so the screening model sees them. An
 // untrusted project settles only reads and commands that just read, and so
 // does a trusted one without a sandbox backend for commands.
@@ -337,6 +337,9 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.settledCommand(req.Arg)
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
+	}
+	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {
+		return h.mcpReadOnly(server, req.Arg)
 	}
 	return false
 }

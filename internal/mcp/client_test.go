@@ -40,12 +40,19 @@ func TestClient(t *testing.T) {
 			}
 			defer c.Close()
 			tools, err := c.Tools(ctx)
-			if err != nil || len(tools) != 2 || tools[0].Name != "echo" || tools[1].Name != "fail" {
+			if err != nil || len(tools) != 3 || tools[0].Name != "echo" || tools[2].Name != "fail" {
 				t.Fatalf("tools = %+v, %v", tools, err)
+			}
+			if tools[0].ReadOnly() || !tools[1].ReadOnly() {
+				t.Fatalf("read-only hints: %+v", tools)
 			}
 			res, err := c.CallTool(ctx, "echo", map[string]any{"text": "hi"})
 			if err != nil || res.IsError || res.Text() != "hi" {
 				t.Fatalf("echo = %+v, %v", res, err)
+			}
+			res, err = c.CallTool(ctx, "shot", nil)
+			if data, mime, ok := res.Media(); err != nil || !ok || mime != "image/png" || len(data) == 0 {
+				t.Fatalf("shot = %+v (%d bytes of %s), %v", res, len(data), mime, err)
 			}
 			res, err = c.CallTool(ctx, "fail", nil)
 			if err != nil || !res.IsError || res.Text() != "boom" {

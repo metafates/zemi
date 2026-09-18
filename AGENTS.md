@@ -208,7 +208,8 @@ and the `permission.request` veto: `yolo` allows; `auto` first settles locally (
 edits **inside the jail** that are not secret-shaped, except writes under any `.git` or `.zemi`,
 the git dir a project `.git` file names (`gitdirTarget`) or zemi's own config/data/state dirs (`protectedWrite`, which skip the
 screener too and ask the user, as do writes outside the project and scratchpad), `tool.workflow` scripts,
-`perm.SafeCommand` commands) and only then runs a one-shot screening model, caching
+`perm.SafeCommand` commands, MCP tools whose server annotates them `readOnlyHint` and not
+`destructiveHint` (`mcpReadOnly`)) and only then runs a one-shot screening model, caching
 approvals keyed on everything it saw (subject, arg, reason, preview; the reason goes in as
 escaped tagged data like the action) and falling back to the user ask with its reason
 (`askHook` resolves `fs.read`/`fs.write` arguments first, and the screener and overlay see
@@ -589,8 +590,10 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   read config from the working directory, which settled commands and writes may change, and
   most servers need the network a sandbox refuses. Tools are
   `mcp_<server>_<tool>`, gated per call as subject `mcp.<server>` with the tool name as
-  argument. Test against `internal/mcp/mcptest` (the test binary doubles as the stdio
-  server).
+  argument; a tool the server annotates read-only settles in auto mode (`mcpReadOnly`),
+  and the first image or audio part of a result (up to `mcpMaxMedia`) goes to the model
+  as itself, with `Result.Text()` as the caption, instead of `[image image/png]`. Test
+  against `internal/mcp/mcptest` (the test binary doubles as the stdio server).
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file (user
   `zemi.lsp.add` first, then an installed builtin whose marker is in the file's directory
   or above it), and only in a trusted project: servers run repo code (rust-analyzer build

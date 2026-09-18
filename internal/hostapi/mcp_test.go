@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"charm.land/fantasy"
@@ -11,6 +12,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestMCPBridge registers a fake server from Lua and drives its tool the
@@ -26,29 +28,46 @@ func TestMCPBridge(t *testing.T) {
 		t.Fatal("project config must not add MCP servers")
 	}
 
-	var tools []fantasy.AgentTool
+	var list []fantasy.AgentTool
 	waitFor(t, func() error {
-		if tools = h.mcpFantasyTools(h.PipelineFor()); len(tools) == 0 {
+		if list = h.mcpFantasyTools(h.PipelineFor()); len(list) == 0 {
 			return fmt.Errorf("server never became ready: %+v", h.mcp.list())
 		}
 		return nil
 	})
-	if len(tools) != 1 || tools[0].Info().Name != "mcp_fake_echo" {
-		t.Fatalf("tools = %v", tools)
+	names := []string{}
+	for _, tl := range list {
+		names = append(names, tl.Info().Name)
 	}
-	run := func() fantasy.ToolResponse {
-		resp, err := tools[0].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "mcp_fake_echo", Input: `{"text":"hi"}`})
+	if !slices.Equal(names, []string{"mcp_fake_echo", "mcp_fake_shot"}) {
+		t.Fatalf("tools = %v", names)
+	}
+	run := func(i int, input string) fantasy.ToolResponse {
+		resp, err := list[i].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return resp
 	}
-	if resp := run(); !resp.IsError {
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError {
 		t.Fatalf("unruled call must fail closed: %+v", resp)
 	}
-	h.Perm.Add(perm.Rule{Subject: "mcp.fake", Pattern: "echo", Decision: perm.Allow})
-	if resp := run(); resp.IsError || resp.Content != "hi" {
+	h.Perm.Add(perm.Rule{Subject: "mcp.fake", Pattern: "*", Decision: perm.Allow})
+	if resp := run(0, `{"text":"hi"}`); resp.IsError || resp.Content != "hi" {
 		t.Fatalf("allowed call = %+v", resp)
+	}
+
+	// the server marks shot read-only, so auto mode settles it without a
+	// screening call, and its png reaches the model instead of a placeholder
+	if !h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "shot"}) {
+		t.Error("a read-only MCP tool still pays for a screening call")
+	}
+	if h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "echo"}) {
+		t.Error("an unannotated MCP tool settled locally")
+	}
+	resp := run(1, `{}`)
+	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {
+		t.Fatalf("screenshot = %+v", resp)
 	}
 }
 
