@@ -13,10 +13,12 @@ local chat_cache = {}
 -- Tool rows the user opened, by transcript index (negative for the live
 -- turn's calls): a click shows that one row's whole command and output and
 -- leaves the rest of the transcript alone. Cleared when the transcript is
--- replaced, since the indexes are then someone else's.
+-- replaced, and the negative half when a new turn starts, since the indexes
+-- are then someone else's.
 ---@type table<integer, true>
 local expanded = {}
 local expanded_epoch = 0
+local live_tools = 0
 
 -- Chat transcript. User rows carry an accent bar; a turn's reasoning, tool
 -- rows and markdown reply stay together, identical while streaming and
@@ -337,6 +339,16 @@ zemi.ui.widget.add({
     -- only the session's settled rows are cached.
     local epoch = ctx.transcript_epoch or 0
     if epoch ~= expanded_epoch then expanded, expanded_epoch = {}, epoch end
+    -- The live turn's calls are keyed by negative index and the host restarts
+    -- that list every turn, so a shorter list means those keys now stand for
+    -- another turn's rows.
+    local ntools = #((ctx.agent or {}).tools or {})
+    if ntools < live_tools then
+      for n in pairs(expanded) do
+        if n < 0 then expanded[n] = nil end
+      end
+    end
+    live_tools = ntools
     ---@type integer[]
     local marks = {}
     for n in pairs(expanded) do marks[#marks + 1] = n end
