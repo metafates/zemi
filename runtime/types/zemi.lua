@@ -2079,6 +2079,16 @@ zemi.health = {}
 ---@param fn fun(): zemi.HealthResult|string
 function zemi.health.add(name, fn) end
 
+--- One row per /health check, built-in rows first: this is how config
+--- written from Lua is verified without asking the user to run /health.
+---@class zemi.HealthRow
+---@field level zemi.HealthLevel
+---@field name string
+---@field detail string
+
+---@return zemi.HealthRow[]
+function zemi.health.list() end
+
 ---@class zemi.ErrorEntry
 ---@field index integer
 ---@field at string "15:04:05".

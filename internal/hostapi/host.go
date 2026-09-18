@@ -1307,10 +1307,17 @@ func (h *Host) refuseDuringRender(L *glua.LState, what string) {
 
 // refuseBelowUser raises unless user config or shipped code is calling:
 // the call acts with the user's authority, like command.run's Go commands.
-func (h *Host) refuseBelowUser(L *glua.LState, what string) {
-	if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
-		L.RaiseError("zemi.%s: only user config may call this, not %s code", what, o)
+// hint, when given, says what lower-trust code can do instead.
+func (h *Host) refuseBelowUser(L *glua.LState, what string, hint ...string) {
+	o := h.RT.CurrentOrigin(L)
+	if o == lua.OriginUser || o == lua.OriginBuiltin {
+		return
 	}
+	msg := fmt.Sprintf("zemi.%s: only user config may call this, not %s code", what, o)
+	if len(hint) > 0 && hint[0] != "" {
+		msg += "; " + hint[0]
+	}
+	L.RaiseError("%s", msg)
 }
 
 // ---------------------------------------------------------------------------
@@ -1383,7 +1390,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.42.0"))
+	api.RawSetString("version", glua.LString("0.43.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

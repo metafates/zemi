@@ -137,7 +137,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		// name the rule that settles it: a host-API call has no overlay, so
 		// "ask required" is the whole problem and none of the fix
 		L.RaiseError("%s %s: permission ask required; allow it in config with "+
-			`zemi.permission.rule{ subject = %q, pattern = %q, decision = "allow", match = %q }`,
+			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q }`,
 			subject, arg, subject, arg, arg)
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
@@ -203,6 +203,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.state.set")
 		key := L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.state.set")
 		if h.GlobalDB == nil {
@@ -217,6 +218,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	// del(key) -> whether there was one; a config that writes state can
 	// clear it again
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.state.del")
 		key := L.CheckString(1)
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
@@ -372,6 +374,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		roots, subject := h.readJails(), "lua.fs.read"
 		if write {
 			roots, subject = h.writeJails(), "lua.fs.write"
+			h.refuseDuringRender(L, "zemi.fs."+api)
 		}
 		resolved, err := h.resolveJailed(L.CheckString(1), roots)
 		if err != nil {
@@ -582,6 +585,7 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 	// with wait(); the result is { status, body, headers } or, from wait(),
 	// nil, err. Each method is its own gate subject (lua.http.<method>).
 	tb.RawSetString("request", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.http.request")
 		spec := L.CheckTable(1)
 		req := httpReq{
 			method:  strings.ToUpper(rawString(spec, "method")),
@@ -896,6 +900,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	// on_exit(result) }; output is also buffered (1 MiB) for wait(). Misuse
 	// raises; a process that cannot start is the returned error.
 	start := func(L *glua.LState) (*jobHandle, error) {
+		h.refuseDuringRender(L, "zemi.job.start")
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")

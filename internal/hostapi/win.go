@@ -371,6 +371,10 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		}
 		cmd := rawString(spec, "cmd")
 		if cmd == "" {
+			// the mirror of zemi.job.start, whose cmd is the program alone
+			if _, list := spec.RawGetString("cmd").(*glua.LTable); list {
+				L.RaiseError(`zemi.win.open: cmd is a shell line, not a list: cmd = "git status"`)
+			}
 			L.RaiseError("zemi.win.open: cmd is required")
 		}
 		if perm.Normalize(cmd).ForceAsk != "" {

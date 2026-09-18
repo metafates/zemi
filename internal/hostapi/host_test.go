@@ -71,11 +71,11 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.42.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.43.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
-		assert(type(zemi.health.add) == "function", "zemi.health.add missing")
+		assert(type(zemi.health.add) == "function" and type(zemi.health.list) == "function", "zemi.health missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai", "zemi.provider.kind missing")
@@ -318,6 +318,13 @@ func TestKeymapFromLua(t *testing.T) {
 		local ok2, err2 = pcall(zemi.keymap.set, "+", function() end)
 		assert(not ok2 and tostring(err2):find("printable key", 1, true), "err=" .. tostring(err2))
 		zemi.keymap.set("+", function() end, { focus = "sidebar" })
+
+		zemi.command.add("hello", function() end)
+		zemi.keymap.set("ctrl+y", "hello")
+		local cmd = zemi.keymap.get("ctrl+y").action
+		assert(cmd == "/hello", "action=" .. cmd)
+		zemi.keymap.set("ctrl+n", cmd) -- what get hands back rebinds as is
+		assert(zemi.keymap.get("ctrl+n").action == "/hello", "command binding does not round-trip")
 	`)
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)

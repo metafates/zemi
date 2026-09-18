@@ -74,7 +74,11 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 		return L.NewFunction(func(L *glua.LState) int {
 			h.refuseDuringRender(L, "zemi.composer."+what)
 			// a submitted line reaches slash commands, !shell and the agent
-			h.refuseBelowUser(L, "composer."+what)
+			hint := ""
+			if what == "set" || what == "insert" {
+				hint = `an overlay item's fill = "text" fills the composer from any origin`
+			}
+			h.refuseBelowUser(L, "composer."+what, hint)
 			text, cursor := op(L)
 			if ui := h.hooks(); ui != nil {
 				ui.ComposerEdit(what, text, cursor)

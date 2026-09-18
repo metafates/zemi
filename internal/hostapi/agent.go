@@ -1288,6 +1288,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// interpreter (DESIGN §4), so what it reports here is what can be known
 	// before it starts; later failures reach the transcript.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.agent.send")
 		text := L.CheckString(1)
 		h.refuseBelowUser(L, "agent.send")
 		p, err := h.resolveProfile("")
@@ -1422,7 +1423,7 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 	}
 	if r.NotMatch == "" {
 		if matchEx == "" {
-			return fmt.Errorf("rule %s %q needs a match example", r.Subject, r.Pattern)
+			return fmt.Errorf(`rule %s %q needs a match example: add match = "<an argument the pattern should match>"`, r.Subject, r.Pattern)
 		}
 		if !perm.MatchExample(r.Pattern, matchEx) {
 			return fmt.Errorf("match example %q does not match pattern %q", matchEx, r.Pattern)
@@ -1430,7 +1431,7 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 		return nil
 	}
 	if matchEx == "" || notMatchEx == "" {
-		return fmt.Errorf("rule %s %q with not_match needs both examples", r.Subject, r.Pattern)
+		return fmt.Errorf("rule %s %q with not_match needs both examples: match and not_match_example", r.Subject, r.Pattern)
 	}
 	if !perm.MatchExample(r.Pattern, matchEx) || perm.MatchExample(r.NotMatch, matchEx) {
 		return fmt.Errorf("match example %q must match %q and not be excluded by %q", matchEx, r.Pattern, r.NotMatch)

@@ -110,8 +110,9 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 // resolveRHS turns a string right-hand side into a command reference or a
 // dotted host-API call, validating at bind time (DESIGN §6.2). A host call
 // may carry an argument after a space: "zemi.ui.scroll.up sidebar".
+// A leading slash is accepted so what keymap.get hands back rebinds as is.
 func (h *Host) resolveRHS(s string) (RHS, error) {
-	if cmd := h.Commands.Lookup(s); cmd != nil {
+	if cmd := h.Commands.Lookup(strings.TrimPrefix(s, "/")); cmd != nil {
 		return RHS{Command: cmd.Name}, nil
 	}
 	name, _, _ := strings.Cut(s, " ")

@@ -329,6 +329,10 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		return Verdict{perm.Deny, "denied by the user", by}
 	case by == "default" || by == "unsandboxed":
 		who = "nobody could answer the ask"
+		// nobody saw the ask, so the reason it asked is all the caller gets
+		if why == "" {
+			why = req.Reason
+		}
 	case by == "event":
 		who = "denied by a permission.request handler"
 	case strings.HasPrefix(by, "mode:"):

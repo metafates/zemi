@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -30,6 +32,12 @@ func knownEvent(name string) bool {
 	return eventCatalogue[name] || strings.HasPrefix(name, "user.")
 }
 
+// eventNames lists the catalogue for an error message: a near miss
+// ("agent.done") is fixed from the list without a doc lookup.
+func eventNames() string {
+	return strings.Join(slices.Sorted(maps.Keys(eventCatalogue)), ", ")
+}
+
 func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
@@ -38,7 +46,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
 		if !knownEvent(name) {
-			L.RaiseError("zemi.event.on: unknown event %q (v1 catalogue or user.*)", name)
+			L.RaiseError("zemi.event.on: unknown event %q (%s, or a user.* name)", name, eventNames())
 		}
 		hd := &EventHandler{
 			Event:  name,

@@ -312,7 +312,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 
 // deniedHint says what would let print mode's denied calls through.
 func deniedHint(rep report, trusted bool, base string) string {
-	const rule = "an allow rule (zemi.permission.rule in init.lua) settles it"
+	const rule = "an allow rule (zemi.permission.rule.add in init.lua) settles it"
 	switch {
 	case rep.unsandboxed > 0:
 		return "and running outside the sandbox needs the TUI; " + rule

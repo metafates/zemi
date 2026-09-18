@@ -314,6 +314,15 @@ func (r *Runtime) sandboxOf(L *glua.LState) (*Sandbox, error) {
 	return nil, ErrReloaded
 }
 
+// chunkErr names the file a chunk error came from, unless the error
+// already does: a Lua error carries its chunk name and line.
+func chunkErr(rel string, err error) error {
+	if strings.Contains(err.Error(), rel) {
+		return err
+	}
+	return fmt.Errorf("%s: %w", rel, err)
+}
+
 func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error {
 	sb, err := r.sandboxOf(L)
 	if err != nil {
@@ -321,12 +330,12 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	}
 	fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 	if err != nil {
-		return fmt.Errorf("%s: %w", rel, err)
+		return chunkErr(rel, err)
 	}
 	defer r.PushFrame(L, origin, rel)()
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
-		return fmt.Errorf("%s: %w", rel, err)
+		return chunkErr(rel, err)
 	}
 	return nil
 }
@@ -342,7 +351,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		}
 		fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", rel, err)
+			return nil, chunkErr(rel, err)
 		}
 		// CompileChunk already gave the chunk a fresh env carrying the
 		// protected-global guard. A raw print here shadows the frozen one
@@ -558,13 +567,13 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	sb := gen.SB
 	fn, cerr := sb.CompileChunk(string(src), origin.ChunkName(rel))
 	if cerr != nil {
-		return glua.LNil, fmt.Errorf("%s: %w", rel, cerr)
+		return glua.LNil, chunkErr(rel, cerr)
 	}
 	L := gen.L
 	defer gen.pushFrame(origin, rel)()
 	L.Push(fn)
 	if perr := L.PCall(0, 1, nil); perr != nil {
-		return glua.LNil, fmt.Errorf("%s: %w", rel, perr)
+		return glua.LNil, chunkErr(rel, perr)
 	}
 	out := L.Get(-1)
 	if out == glua.LNil {

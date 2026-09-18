@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -61,15 +62,25 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		h.healthReg.mu.Unlock()
 		return 0
 	}))
+	// list() -> the rows /health shows, so config written from Lua can be
+	// checked without asking the user to run /health. Registered checks run
+	// inline: list is already on the interpreter goroutine, where the queue
+	// luaHealthRows uses would deadlock.
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		rows := []any{}
+		for _, c := range append(h.goHealthRows(), h.inlineHealthRows(L)...) {
+			rows = append(rows, map[string]any{"level": c.level, "name": c.name, "detail": c.detail})
+		}
+		L.Push(lua.FromGo(L, rows))
+		return 1
+	}))
 	return tb
 }
 
-// luaHealthRows runs the registered checks, each bounded by the veto
-// deadline so a slow one cannot stall /health. It goes through the queue,
-// so it must not run on the interpreter goroutine; /health is Go-side.
-func (h *Host) luaHealthRows() []healthCheck {
+// inlineHealthRows runs the registered checks on the calling state.
+func (h *Host) inlineHealthRows(L *glua.LState) []healthCheck {
 	h.healthReg.mu.Lock()
-	list := append([]luaHealthCheck(nil), h.healthReg.list...)
+	list := slices.Clone(h.healthReg.list)
 	h.healthReg.mu.Unlock()
 	gen := h.currentGen()
 	var out []healthCheck
@@ -77,21 +88,49 @@ func (h *Host) luaHealthRows() []healthCheck {
 		if c.gen != gen {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), lua.VetoDeadline)
-		vals, err := h.RT.Call(ctx, c.origin, c.fn)
-		cancel()
 		row := healthCheck{level: "ok", name: c.name}
-		switch {
-		case err != nil:
-			row.level, row.detail = "error", sanitize.String(err.Error())
-		case len(vals) == 0:
-			row.detail = "no result"
-		default:
-			row.level, row.detail = healthResult(vals[0])
-		}
+		func() {
+			defer h.RT.PushFrame(L, c.origin, "health")()
+			base := L.GetTop()
+			L.Push(c.fn)
+			if err := L.PCall(0, 1, nil); err != nil {
+				L.SetTop(base)
+				row.level, row.detail = "error", sanitize.String(err.Error())
+				return
+			}
+			v, err := lua.ToGo(L.Get(-1))
+			L.SetTop(base)
+			if err != nil {
+				row.level, row.detail = "error", sanitize.String(err.Error())
+				return
+			}
+			row.level, row.detail = healthResult(v)
+		}()
 		out = append(out, row)
 	}
 	return out
+}
+
+// luaHealthRows runs the registered checks through the queue, bounded by
+// the veto deadline: /health is Go-side, so the checks must not run on the
+// calling goroutine.
+func (h *Host) luaHealthRows() []healthCheck {
+	h.healthReg.mu.Lock()
+	n := len(h.healthReg.list)
+	h.healthReg.mu.Unlock()
+	if n == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), lua.VetoDeadline)
+	defer cancel()
+	vals, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		return []any{h.inlineHealthRows(L)}, nil
+	})
+	if err != nil || len(vals) == 0 {
+		return []healthCheck{{level: "error", name: "health checks", detail: sanitize.String(fmt.Sprint(err))}}
+	}
+	rows, _ := vals[0].([]healthCheck)
+	return rows
 }
 
 func healthResult(v any) (level, detail string) {
@@ -111,7 +150,8 @@ func healthResult(v any) (level, detail string) {
 	return "ok", ""
 }
 
-func (h *Host) healthChecks() []healthCheck {
+// goHealthRows are the Go-side checks, in the order /health shows them.
+func (h *Host) goHealthRows() []healthCheck {
 	var out []healthCheck
 	add := func(level, name, detail string) {
 		out = append(out, healthCheck{level: level, name: name, detail: detail})
@@ -204,9 +244,26 @@ func (h *Host) healthChecks() []healthCheck {
 
 	h.errs.mu.Lock()
 	nerr := len(h.errs.entries)
+	var shown errEntry
+	boot := false
+	for _, e := range h.errs.entries {
+		if strings.HasPrefix(e.source, "boot") {
+			shown, boot = e, true
+		}
+	}
+	if nerr > 0 && !boot {
+		shown = h.errs.entries[nerr-1]
+	}
 	h.errs.mu.Unlock()
 	if nerr > 0 {
-		add("warn", "errors", fmt.Sprintf("%d since start", nerr))
+		// name one of them: headless there is no /errors to open, and a
+		// boot step that failed is an error so --health does not read green
+		level := "warn"
+		if boot {
+			level = "error"
+		}
+		first, _, _ := strings.Cut(ShortChunk(shown.msg), "\n")
+		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, first))
 		out[len(out)-1].run = "errors"
 	} else {
 		add("ok", "errors", "none since start")
@@ -251,7 +308,11 @@ func (h *Host) healthChecks() []healthCheck {
 	default:
 		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
 	}
-	return append(out, h.luaHealthRows()...)
+	return out
+}
+
+func (h *Host) healthChecks() []healthCheck {
+	return append(h.goHealthRows(), h.luaHealthRows()...)
 }
 
 // HealthRow is one check for a caller with no UI (zemi --health).

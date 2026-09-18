@@ -171,7 +171,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
-			L.RaiseError("zemi.config.set: %v", err)
+			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
 		}
 		h.deliverFired(L, fired)
 		return 0
