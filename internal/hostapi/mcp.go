@@ -326,11 +326,12 @@ func (t *mcpTool) Info() fantasy.ToolInfo {
 func (t *mcpTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *mcpTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h, name := t.h, t.srv.name
 	if resp, stop, err := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
 		return resp, err
 	}
+	defer h.postNotify(mcpToolName(name, t.tool.Name), call.Input, &reply)
 	var args map[string]any
 	if strings.TrimSpace(call.Input) != "" {
 		if err := json.Unmarshal([]byte(call.Input), &args); err != nil {
@@ -338,7 +339,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolR
 		}
 	}
 	req := tools.Request{Tool: mcpToolName(name, t.tool.Name), Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
-	if v := t.pipe.Check(req); v.Decision != perm.Allow {
+	if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
 	client := t.srv.currentClient()

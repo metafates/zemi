@@ -269,7 +269,7 @@ func (a *luaToolAdapter) Info() fantasy.ToolInfo {
 func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (a *luaToolAdapter) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	var input map[string]any
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -277,8 +277,9 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (fantas
 	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
 		return resp, err
 	}
-	req := tools.Request{Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name, Preview: call.Input}
-	if v := a.pipe.Check(req); v.Decision != perm.Allow {
+	defer a.h.postNotify(a.t.Name, call.Input, &reply)
+	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name, Preview: call.Input}
+	if v := a.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
 	out, err := a.h.runLuaTool(ctx, a.t, input)

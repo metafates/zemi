@@ -200,6 +200,17 @@ type LSPSession struct {
 // PathSubject reports a subject whose argument is a file path.
 func PathSubject(subject string) bool { return subject == "fs.read" || subject == "fs.write" }
 
+// CheckDenied is Check plus the tool.denied notification a refused verdict
+// owes its handlers: tools that gate themselves outside Run use it, so an
+// audit handler sees every refusal.
+func (p *Pipeline) CheckDenied(req Request) Verdict {
+	v := p.Check(req)
+	if v.Decision != perm.Allow && p.Denied != nil {
+		p.Denied(req.Tool, req, v)
+	}
+	return v
+}
+
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
@@ -446,10 +457,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	}
 	for _, req := range t.subjects(input) {
 		req.Tool = t.info.Name
-		v := pipe.Check(req)
-		if v.Decision != perm.Allow && pipe.Denied != nil {
-			pipe.Denied(t.info.Name, req, v)
-		}
+		v := pipe.CheckDenied(req)
 		if v.Decision == perm.Deny {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+req.Arg))), nil
 		}

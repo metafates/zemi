@@ -636,7 +636,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 func (t *windowTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *windowTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
 	var in struct {
 		Action  string   `json:"action"`
@@ -671,6 +671,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	if resp, stop, err := h.preCheck("window", call.Input); stop {
 		return resp, err
 	}
+	defer h.postNotify("window", call.Input, &reply)
 	if h.hooks() == nil {
 		return fantasy.NewTextErrorResponse("windows need the TUI; there is none in this run"), nil
 	}
@@ -690,7 +691,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	// Focus passes unsandboxed whatever runs there: it hands over the user's
 	// own keyboard, not the program's stdin.
 	act := func(w *win.Window, arg, reason string, unsandboxed bool) string {
-		v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: reason + " " + w.Title(), Unsandboxed: unsandboxed || !w.Sandboxed})
+		v := t.gate().CheckDenied(tools.Request{Tool: "window", Subject: "tool.window", Arg: arg, Reason: reason + " " + w.Title(), Unsandboxed: unsandboxed || !w.Sandboxed})
 		if v.Decision != perm.Allow {
 			return tools.DeniedText(v, w.Title())
 		}
@@ -720,7 +721,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	case "text", "set_text":
 		// no program runs, so the gate is about what the user's screen shows
 		title := cmp.Or(in.Title, "text")
-		if v := t.gate().Check(tools.Request{Tool: "window", Subject: "tool.window.text", Arg: title, Reason: "show text in a window", Preview: in.Text}); v.Decision != perm.Allow {
+		if v := t.gate().CheckDenied(tools.Request{Tool: "window", Subject: "tool.window.text", Arg: title, Reason: "show text in a window", Preview: in.Text}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "window "+title)), nil
 		}
 		if in.Action == "set_text" {
@@ -754,7 +755,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		gate := t.gate()
 		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title,
 			Unsandboxed: in.Sandbox != nil && !*in.Sandbox, Network: in.Network}
-		v := gate.Check(req)
+		v := gate.CheckDenied(req)
 		if v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, in.Cmd)), nil
 		}

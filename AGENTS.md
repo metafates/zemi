@@ -166,7 +166,9 @@ with `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow gl
 with no overlay available fails closed; a denied ask's result says who decided and the reason
 the asker gave (`Asker` returns it: "denied by the user (it asked because run outside the sandbox)"); errors become tool-error responses, not panics.
 Host-implemented tools (`agent`, `workflow`, `window`, `Lua`, MCP and Lua tools) run
-`tool.pre` through `preCheck`, which refuses a rewrite with an error result.
+`tool.pre` through `preCheck`, which refuses a rewrite with an error result, `tool.post`
+through `postNotify` and `tool.denied` through `Pipeline.CheckDenied`, the gate they call
+themselves.
 A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`, see
 "Sandbox" below).
 Bash is special: `perm.Store.CheckCommand` normalizes the command first (compound

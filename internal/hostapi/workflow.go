@@ -613,7 +613,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 func (t *workflowTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *workflowTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
 	var in struct {
 		Description string `json:"description"`
@@ -627,6 +627,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 	if resp, stop, err := h.preCheck("workflow", call.Input); stop {
 		return resp, err
 	}
+	defer h.postNotify("workflow", call.Input, &reply)
 	src, arg := in.Script, "script"
 	if in.Name != "" {
 		s, err := h.workflowSource(in.Name)
@@ -641,7 +642,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
 	preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-	if v := h.PipelineFor().Check(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
+	if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
 	start := time.Now()

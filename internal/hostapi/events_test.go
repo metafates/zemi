@@ -41,6 +41,32 @@ func TestToolDeniedEvent(t *testing.T) {
 	})
 }
 
+// TestHostToolEvents: a host-implemented tool gates and runs outside
+// internal/tools, so it has to fire tool.denied and tool.post itself.
+func TestHostToolEvents(t *testing.T) {
+	h, r := newTestHostDB(t)
+	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
+		zemi.state.set("wdenied", ev.tool .. " " .. ev.subject)
+	end)
+	zemi.event.on("tool.post", function(ev)
+		zemi.state.set("wpost", tostring(ev.ok))
+	end)`)
+	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Deny})
+	resp, err := h.workflowTool().Run(context.Background(),
+		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return 1"}`})
+	if err != nil || !resp.IsError {
+		t.Fatalf("denied workflow = %+v, %v", resp, err)
+	}
+	waitFor(t, func() error {
+		denied, _ := h.GlobalDB.GetKV("wdenied")
+		post, _ := h.GlobalDB.GetKV("wpost")
+		if denied != `"workflow tool.workflow"` || post != `"false"` {
+			return fmt.Errorf("denied = %s, post = %s", denied, post)
+		}
+		return nil
+	})
+}
+
 // TestLuaAgentsNeedUserConfig: project and learned code cannot act with
 // the user's authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {

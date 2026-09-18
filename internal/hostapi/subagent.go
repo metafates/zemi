@@ -647,7 +647,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 func (t *agentTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *agentTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	var in struct {
 		Description string `json:"description"`
 		Prompt      string `json:"prompt"`
@@ -665,6 +665,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.Too
 	if resp, stop, err := t.h.preCheck("agent", call.Input); stop {
 		return resp, err
 	}
+	defer t.h.postNotify("agent", call.Input, &reply)
 	if in.SendTo != "" {
 		if err := t.h.MessageAgent(in.SendTo, in.Prompt); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -739,6 +740,15 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) 
 		return fantasy.ToolResponse{}, true, fmt.Errorf("halted by hook: %s", reason)
 	}
 	return fantasy.ToolResponse{}, false, nil
+}
+
+// postNotify is preCheck's other half: these tools run outside
+// internal/tools, which fires tool.post for every other one. Deferred on
+// the tool's named result, so every return path reports.
+func (h *Host) postNotify(tool, input string, reply *fantasy.ToolResponse) {
+	var m map[string]any
+	_ = json.Unmarshal([]byte(input), &m)
+	h.toolPostHook()(tool, m, !reply.IsError, reply.Content)
 }
 
 func fmtDuration(d time.Duration) string {

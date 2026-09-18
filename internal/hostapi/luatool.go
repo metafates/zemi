@@ -163,7 +163,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 func (t *luaEvalTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *luaEvalTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
 	var in struct {
 		Description string `json:"description"`
@@ -176,6 +176,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	if resp, stop, err := h.preCheck("Lua", call.Input); stop {
 		return resp, err
 	}
+	defer h.postNotify("Lua", call.Input, &reply)
 	src := in.Script
 	if in.Path != "" {
 		path := in.Path
@@ -208,7 +209,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			req.Unsandboxed = true
 			req.Reason = strings.TrimSuffix("uses "+strings.Join(unlisted, ", ")+", which can change zemi or start programs outside the sandbox: "+in.Description, ": ")
 		}
-		if v := h.PipelineFor().Check(req); v.Decision != perm.Allow {
+		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
 		}
 		if len(unlisted) > 0 {
