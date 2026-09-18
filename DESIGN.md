@@ -1038,11 +1038,10 @@ origins that may not register.
 
 ```
 sessions(id, parent_id, title, profile, created_at, updated_at,
-         prompt_tokens, completion_tokens, cost)  -- plus an unused summary_message_id
+         prompt_tokens, completion_tokens, cost)
 messages(id, session_id, role, parts_json, created_at)          -- fantasy messages
 todos(id, session_id, content, status, active_form, ord, created_at)
-tool_calls(id, message_id, tool, input_json, ok, error_kind, latency_ms, denied,
-           decided_by, created_at)                              -- decided_by: rule|hook|user|overlay|default
+tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, kind, text, tags, provenance_session_id, confidence,
        hit_count, created_at, updated_at, last_hit_at, superseded_by,
        origin)                                                  -- FTS5(text)

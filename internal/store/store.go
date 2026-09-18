@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 	profile TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
-	summary_message_id TEXT, -- unused; resume scans for the summary row
 	prompt_tokens INTEGER NOT NULL DEFAULT 0,
 	completion_tokens INTEGER NOT NULL DEFAULT 0,
 	cost REAL NOT NULL DEFAULT 0
@@ -92,12 +91,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
 	tool TEXT NOT NULL,
-	input_json TEXT NOT NULL,
 	ok INTEGER NOT NULL,
-	error_kind TEXT NOT NULL DEFAULT '',
-	latency_ms INTEGER NOT NULL DEFAULT 0,
-	denied INTEGER NOT NULL DEFAULT 0,
-	decided_by TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tool_calls_message ON tool_calls(message_id, created_at);
@@ -173,7 +167,14 @@ END;
 // table needs its ALTER here as well as its place in schema: fresh databases
 // get it from schema, existing ones from the migration. Append only, never
 // edit or reorder a shipped entry.
-var migrations = [][]string{}
+var migrations = [][]string{
+	{`ALTER TABLE tool_calls DROP COLUMN input_json`,
+		`ALTER TABLE tool_calls DROP COLUMN error_kind`,
+		`ALTER TABLE tool_calls DROP COLUMN latency_ms`,
+		`ALTER TABLE tool_calls DROP COLUMN denied`,
+		`ALTER TABLE tool_calls DROP COLUMN decided_by`,
+		`ALTER TABLE sessions DROP COLUMN summary_message_id`},
+}
 
 func (s *DB) migrate() error {
 	// A database this call creates gets every column from schema, so it is

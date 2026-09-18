@@ -44,6 +44,46 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
+// TestMigrateOldDatabase: a store written before the dead telemetry
+// columns went away opens, drops them and still records tool calls.
+func TestMigrateOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE tool_calls ADD COLUMN input_json TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE tool_calls ADD COLUMN error_kind TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tool_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tool_calls ADD COLUMN denied INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tool_calls ADD COLUMN decided_by TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN summary_message_id TEXT`,
+		`PRAGMA user_version = 0`,
+	} {
+		if _, err := db.db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.CreateSession("s1", "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`}, &ToolCall{Tool: "bash", OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	var cols int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tool_calls')`).Scan(&cols); err != nil || cols != 5 {
+		t.Fatalf("tool_calls columns = %d, %v; want 5", cols, err)
+	}
+}
+
 // TestRetentionSweep: opening drops checkpoints past CheckpointTTL, keeps
 // the ones inside it, and never deletes a session (sessionTTL is off).
 func TestRetentionSweep(t *testing.T) {
@@ -163,14 +203,14 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	// Tool telemetry rows stay out of the picker preview; the call and the
 	// message it points at land together.
 	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "bash", InputJSON: `{}`, OK: false, ErrorKind: "denied", Denied: true, DecidedBy: "user"}); err != nil {
+		&ToolCall{Tool: "bash", OK: false}); err != nil {
 		t.Fatal(err)
 	}
 	if stats, err := db.ToolCallStats("s1"); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
 		t.Fatalf("tool stats = %+v, %v", stats, err)
 	}
 	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "bash", InputJSON: `{}`, OK: true}); err == nil {
+		&ToolCall{Tool: "bash", OK: true}); err == nil {
 		t.Fatal("an unknown session must fail")
 	}
 	prev, err := db.SessionPreviews([]string{"s1"})
@@ -267,7 +307,7 @@ func TestDeleteSession(t *testing.T) {
 	}
 	for _, sid := range []string{"s1", "c1"} {
 		m := &Message{SessionID: sid, Role: "user", PartsJSON: `{"text":"` + secret + `"}`}
-		if err := db.AddToolCall(m, &ToolCall{Tool: "bash", InputJSON: `{"command":"echo ` + secret + `"}`}); err != nil {
+		if err := db.AddToolCall(m, &ToolCall{Tool: "bash"}); err != nil {
 			t.Fatal(err)
 		}
 		if err := db.AddCheckpoint(sid, m.ID, "/f", true, []byte(secret)); err != nil {

@@ -940,11 +940,7 @@ func (h *Host) recordToolCall(sid, name string, ok bool) {
 	}
 	parts, _ := json.Marshal(map[string]any{"tool": name})
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
-	tc := &store.ToolCall{Tool: name, InputJSON: "{}", OK: ok}
-	if !ok {
-		tc.ErrorKind = "error"
-	}
-	if err := h.DB.AddToolCall(msg, tc); err != nil {
+	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
 	}
 }

@@ -197,7 +197,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	if err != nil {
 		return fmt.Errorf("store: fork session: %w", err)
 	}
-	rows, err = s.db.Query(`SELECT t.message_id, t.tool, t.input_json, t.ok, t.error_kind, t.latency_ms, t.denied, t.decided_by, t.created_at
+	rows, err = s.db.Query(`SELECT t.message_id, t.tool, t.ok, t.created_at
 		FROM tool_calls t JOIN messages m ON m.id = t.message_id
 		WHERE m.session_id = ? OR m.session_id IN (SELECT id FROM sessions WHERE parent_id = ?)`, src.ID, src.ID)
 	type call struct {
@@ -205,7 +205,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		at int64
 	}
 	calls, err := collect(rows, err, func(r scanner) (c call, err error) {
-		err = r.Scan(&c.MessageID, &c.Tool, &c.InputJSON, &c.OK, &c.ErrorKind, &c.LatencyMS, &c.Denied, &c.DecidedBy, &c.at)
+		err = r.Scan(&c.MessageID, &c.Tool, &c.OK, &c.at)
 		return
 	})
 	if err != nil {
@@ -246,10 +246,8 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		if mid == "" {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO tool_calls
-			(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			mid, c.Tool, c.InputJSON, c.OK, c.ErrorKind, c.LatencyMS, c.Denied, c.DecidedBy, c.at); err != nil {
+		if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
+			mid, c.Tool, c.OK, c.at); err != nil {
 			return fmt.Errorf("store: fork session: %w", err)
 		}
 	}
@@ -348,12 +346,7 @@ func (s *DB) Todos(sessionID string) ([]Todo, error) {
 type ToolCall struct {
 	MessageID string
 	Tool      string
-	InputJSON string
 	OK        bool
-	ErrorKind string
-	LatencyMS int64
-	Denied    bool
-	DecidedBy string
 }
 
 // AddToolCall records a tool invocation together with the message row it
@@ -369,11 +362,8 @@ func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
 		return err
 	}
 	tc.MessageID = m.ID
-	if _, err := tx.Exec(`INSERT INTO tool_calls
-		(message_id, tool, input_json, ok, error_kind, latency_ms, denied, decided_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		tc.MessageID, tc.Tool, tc.InputJSON, tc.OK, tc.ErrorKind, tc.LatencyMS,
-		tc.Denied, tc.DecidedBy, now()); err != nil {
+	if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
+		tc.MessageID, tc.Tool, tc.OK, now()); err != nil {
 		return fmt.Errorf("store: add tool call: %w", err)
 	}
 	return tx.Commit()
@@ -384,20 +374,18 @@ type ToolStat struct {
 	Tool   string
 	Calls  int
 	Failed int
-	Denied int
 }
 
 // ToolCallStats aggregates a session's tool_calls rows per tool, busiest
 // first (reflector input, DESIGN §10.3).
 func (s *DB) ToolCallStats(sessionID string) ([]ToolStat, error) {
 	rows, err := s.db.Query(`SELECT t.tool, COUNT(*),
-			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN t.denied != 0 THEN 1 ELSE 0 END)
+			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END)
 		FROM tool_calls t JOIN messages m ON m.id = t.message_id
 		WHERE m.session_id = ?
 		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID)
 	return collect(rows, err, func(r scanner) (st ToolStat, err error) {
-		err = r.Scan(&st.Tool, &st.Calls, &st.Failed, &st.Denied)
+		err = r.Scan(&st.Tool, &st.Calls, &st.Failed)
 		return
 	})
 }

@@ -216,9 +216,6 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 			if s.Failed > 0 {
 				line += fmt.Sprintf(", %d failed", s.Failed)
 			}
-			if s.Denied > 0 {
-				line += fmt.Sprintf(", %d denied", s.Denied)
-			}
 			b.WriteString(line + "\n")
 		}
 	}
