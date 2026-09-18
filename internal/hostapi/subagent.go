@@ -436,6 +436,9 @@ func (s *subagentHooks) TextDelta(text string) {
 
 func (s *subagentHooks) ReasoningDelta(string) {}
 
+// a run's row carries the command, which only the finished input holds
+func (s *subagentHooks) ToolCallPending(string, string) {}
+
 func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run := s.run
 	run.mu.Lock()

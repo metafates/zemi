@@ -102,6 +102,12 @@ func (h *recHooks) Retrying(error, time.Duration) {}
 
 func (h *recHooks) StepStart() {}
 
+func (h *recHooks) ToolCallPending(id, name string) {
+	h.mu.Lock()
+	h.tools = append(h.tools, "pending:"+name)
+	h.mu.Unlock()
+}
+
 func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "start:"+name)
@@ -213,6 +219,35 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	}
 	if len(r.History) != 5 {
 		t.Fatalf("history: %d", len(r.History))
+	}
+}
+
+// TestToolRowOpensAtInputStart: the row exists while the model is still
+// streaming the call's arguments (a write's file body takes seconds), not
+// only once they are complete.
+func TestToolRowOpensAtInputStart(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
+			{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{}"},
+			{Type: fantasy.StreamPartTypeToolInputEnd, ID: "c1"},
+			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+		},
+		textParts("done"),
+	}}
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	hooks := newRecHooks()
+	r.Hooks = hooks
+	if err := r.Send(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, hooks)
+	if got := strings.Join(hooks.tools, ","); got != "pending:echo,start:echo,end:echo" {
+		t.Fatalf("hook order: %s", got)
 	}
 }
 

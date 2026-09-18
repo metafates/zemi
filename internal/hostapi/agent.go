@@ -679,6 +679,13 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
 }
 
+// ToolCallPending shows the call while the model is still streaming its
+// arguments: a write's file body or a long heredoc takes seconds that a
+// spinner alone says nothing about.
+func (s *streamAdapter) ToolCallPending(id, name string) {
+	s.openToolRow(StreamTool{ID: id, Name: name, Started: time.Now(), Status: "run"})
+}
+
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	// the diff reads the file: outside the lock, which UI readers share
 	diff := ""
@@ -688,19 +695,36 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
 		}
 	}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Started: time.Now(), Status: "run", Diff: diff}
+	ag := s.h.agents
+	ag.mu.Lock()
+	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
+	if i < 0 {
+		ag.mu.Unlock()
+		s.openToolRow(row) // this provider reports no input start
+		return
+	}
+	row.Started = ag.tools[i].Started
+	ag.tools[i] = row
+	ag.mu.Unlock()
+	s.h.agentStream()
+}
+
+// openToolRow appends a live tool row. Text streamed before the call
+// belongs above it: it and the earlier (finished) tool rows move into the
+// transcript, in order, so the next step's text starts its own block
+// instead of running on.
+func (s *streamAdapter) openToolRow(row StreamTool) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
-	// Text streamed before this call belongs above it: move it and the
-	// earlier (finished) tool rows into the transcript, in order, so the
-	// next step's text starts its own block instead of running on.
 	reason, tools, text := ag.reasonBuf, ag.tools, ag.textBuf
 	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
 	flush := strings.TrimSpace(text) != ""
 	if flush {
 		ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
 	}
-	ag.tools = append(ag.tools, StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Started: time.Now(), Status: "run", Diff: diff})
+	ag.tools = append(ag.tools, row)
 	ag.mu.Unlock()
 	if flush {
 		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})

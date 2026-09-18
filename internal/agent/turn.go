@@ -17,6 +17,10 @@ import (
 type StreamHooks interface {
 	TextDelta(text string)
 	ReasoningDelta(text string)
+	// ToolCallPending opens a call's row as the model starts streaming its
+	// arguments; ToolCallStart then fills that row in. A provider that
+	// reports no input start only calls ToolCallStart.
+	ToolCallPending(id, name string)
 	ToolCallStart(id, name, input string)
 	ToolCallEnd(id, name string, ok bool, output string)
 	// StepStart marks the start of a model call; after Retrying the call
@@ -190,6 +194,10 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		OnStepStart:      func(int) error { hooks.StepStart(); return nil },
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
+		OnToolInputStart: func(id, name string) error {
+			hooks.ToolCallPending(id, name)
+			return nil
+		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
 			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
 			return nil
