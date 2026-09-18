@@ -54,7 +54,7 @@ func (h *Host) askHook() tools.Asker {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
 			switch {
-			case o.Decision == perm.Allow && !req.Unsandboxed:
+			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network:
 				return resolved(true, "mode:"+def.Name)
 			case o.Decision == perm.Deny:
 				return resolved(false, "mode:"+def.Name)
@@ -76,6 +76,9 @@ func (h *Host) askHook() tools.Asker {
 			case "tool.window":
 				req.Reason += " (not sandboxed)"
 			}
+		case req.Network:
+			// the host is the model's, like a fetch URL, so no mode settles it
+			req.Reason = "needs the network, staying sandboxed"
 		case def.Base == "plan":
 			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {
 				return resolved(true, "mode:"+def.Name)
@@ -132,6 +135,9 @@ func (h *Host) askHook() tools.Asker {
 			// must not be reported as one
 			if req.Unsandboxed && (req.Subject == "tool.bash" || req.Subject == "tool.window") {
 				return resolved(false, "unsandboxed")
+			}
+			if req.Network {
+				return resolved(false, "network")
 			}
 			return resolved(false, "default")
 		}

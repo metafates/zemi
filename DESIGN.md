@@ -1495,20 +1495,24 @@ configured provider later (`zemi.memory.search` signature does not change).
   every inet socket is refused. zemi's own temp files (the ctrl+g draft, a pasted image)
   live in `<state>/tmp`. A
   wrap that fails is a tool error, never an unconfined run.
-  While a backend is live, bash, `job_start` and `window` take
-  `sandbox: false`, fixed per process so the prompt cache holds: it sets
-  `Request.Unsandboxed`, mode rules and bases other than `yolo` no longer
-  settle the call, and it goes to the user with the reason "run outside
-  the sandbox" (headless nobody can answer, so the parameter and the retry
-  line are left out and the denial is by `unsandboxed`). Window `keys`,
+  While a backend is live, bash, `job_start` and `window` take two escapes,
+  fixed per process so the prompt cache holds. `network: true`
+  (`Request.Network`) keeps the sandbox and adds sockets (`Policy.Network`),
+  which is all a dependency fetch or a `gh` call needs; `sandbox: false`
+  (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
+  Neither is settled by mode rules or by a base other than `yolo`: they go to
+  the user with the reason "needs the network, staying sandboxed" or "run
+  outside the sandbox" (headless nobody can answer, so the parameters and the
+  retry line are left out and the denial is by `network` or `unsandboxed`). Window `keys`,
   `mouse` and `send` settle through a mode only for a window that started
   sandboxed; input to an unconfined one is `Unsandboxed` and asks. A text
   window (`tool.window.text`) runs nothing and reads nothing, so every mode
   but manual settles it. A
   confined run that fails with output that looks like a denial
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
-  gets one line naming the live backend's limits and the `sandbox: false`
-  retry; a timed-out bash run adopted as a job keeps it. Only a
+  gets one line naming the live backend's limits and the retry, `network: true`
+  first when the failure looks like a network one (`sandbox.LikelyNetwork`);
+  a timed-out bash run adopted as a job keeps it. Only a
   sandboxed run reaches `SafeCommand`, so it has to keep secrets from
   being read (the sandbox allows reads) but not writes or network; the
   per-flag write and exec refusals for project tools are gone, and

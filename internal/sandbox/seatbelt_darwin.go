@@ -66,7 +66,11 @@ func profile(p Policy) (string, []string) {
 		return fmt.Sprintf("(param %q)", name)
 	}
 	b.WriteString(baseProfile)
-	if p.Loopback {
+	switch {
+	case p.Network:
+		// the file rules still hold, so this is a socket, not the machine
+		b.WriteString("(allow network*)\n")
+	case p.Loopback:
 		// NOTE: seatbelt's localhost also matches this machine's LAN addresses,
 		// so a service bound to them is reachable too.
 		b.WriteString("(allow network-bind network-inbound (local ip \"localhost:*\"))\n")

@@ -42,6 +42,9 @@ type Request struct {
 	// memory edit zemi does not apply on its own: no mode
 	// settles the request, the user answers it
 	Unsandboxed bool
+	// Network is the model's network: true, which keeps the sandbox and adds
+	// outbound sockets. The URL is the model's, so no mode settles it either.
+	Network bool
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -245,7 +248,11 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || !strings.HasPrefix(v.DecidedBy, "mode:") {
 		return nil
 	}
-	return p.Sandbox()
+	pol := p.Sandbox()
+	if pol != nil && req.Network {
+		pol.Network = true
+	}
+	return pol
 }
 
 // wrap confines a command this run starts; nil when the run is unconfined.
@@ -279,7 +286,11 @@ func (p *Pipeline) sandboxHint(out string, err error) string {
 	if !p.SandboxParam {
 		return "\nThe sandbox may have blocked this: " + sandboxLimits() + "."
 	}
-	return "\nThe sandbox may have blocked this: " + sandboxLimits() + ". If the command needs more, call it again with sandbox: false, which asks the user."
+	retry := " If the command needs the network, call it again with network: true, which keeps the sandbox and asks the user; sandbox: false, which drops every limit, is the last resort."
+	if !sandbox.LikelyNetwork(out, err) {
+		retry = " If the command needs more, call it again with network: true (the network, sandbox kept) or sandbox: false (no limits at all); both ask the user."
+	}
+	return "\nThe sandbox may have blocked this: " + sandboxLimits() + "." + retry
 }
 
 // sandboxLimits names what the live backend enforces. Every wrapped run
@@ -304,10 +315,17 @@ func sandboxLimits() string {
 	return s + ", credential files in the home dir unreadable"
 }
 
+// NetworkProp is the middle tier: the sandbox stays, the command gets
+// sockets. It is the answer to almost every sandbox denial, since the file
+// rules are the ones a settled command is meant to keep.
+func NetworkProp() map[string]any {
+	return map[string]any{"type": "boolean", "description": "true keeps the command sandboxed but lets it reach the network (go mod download, npm install, curl, gh); asks the user first. Prefer it over sandbox: false, which drops every limit."}
+}
+
 // SandboxProp is the escape bash, job_start and window take while a
 // backend is live.
 func SandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (" + sandboxLimits() + "); false runs the command outside the sandbox and asks the user first. Use it only after a sandbox denial."}
+	return map[string]any{"type": "boolean", "description": "commands a permission mode runs without asking run sandboxed (" + sandboxLimits() + "); false runs the command outside the sandbox and asks the user first. Use it only after network: true was not enough."}
 }
 
 func decidedBy(o perm.Outcome) string {
@@ -636,7 +654,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 
 	withSandbox := func(props map[string]any) map[string]any {
 		if p != nil && p.SandboxParam {
-			props["sandbox"] = SandboxProp()
+			props["sandbox"], props["network"] = SandboxProp(), NetworkProp()
 		}
 		return props
 	}
@@ -1074,7 +1092,8 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["description"]), Unsandboxed: in["sandbox"] == false}}
+	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["description"]),
+		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}
 }
 
 // jobLine is what job_start runs, as the shell line the gate checks. With

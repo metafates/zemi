@@ -37,6 +37,7 @@ type Policy struct {
 	Protect  []string          // read-only even inside Write
 	Hide     []string          // neither readable nor writable
 	Loopback bool              // listen on and connect to localhost
+	Network  bool              // reach the network: the file rules still apply
 	Env      map[string]string // extra environment for the sandboxed command
 }
 
@@ -124,6 +125,22 @@ func LikelyDenied(out string, err error) bool {
 		}
 	}
 	return denied.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
+}
+
+// network matches the half of a denial that a socket would fix: a failed
+// lookup, a refused or unreachable connection, a TLS handshake that never
+// started.
+var network = regexp.MustCompile(`(?i)could not resolve host|` + deniedLookups +
+	`|no such host|name resolution|network (?:is )?unreachable|connection refused|connection reset|` +
+	`tls handshake|certificate|dial tcp|getaddrinfo|eai_again|socket: operation not permitted`)
+
+// LikelyNetwork reports a failure the network tier would fix, so the hint
+// can offer network: true before the full escape.
+func LikelyNetwork(out string, err error) bool {
+	if !LikelyDenied(out, err) {
+		return false
+	}
+	return network.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
 // within reports whether p is root or below it, on the strings as given:

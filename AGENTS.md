@@ -256,15 +256,22 @@ On backends other than seatbelt `configEntries` walks the writable project (at m
 protects the existing ones and the guard holds trust off for new ones at exit. zemi's
 own temp files go to `Host.TempDir()` (`<state>/tmp`). With no backend,
 auto mode sends `tool.bash` asks it cannot settle straight to the user ("not settled: no
-sandbox"). While a backend is live, bash, `job_start` and `window` take `sandbox: false`
-(`Request.Unsandboxed`): mode rules and non-yolo bases skip it and it asks the user with
-"run outside the sandbox"; headless (`SandboxParam` needs UI hooks) neither the parameter
-nor the retry line is offered, and the denial is by `unsandboxed` (only for `tool.bash` and
+sandbox"). While a backend is live, bash, `job_start` and `window` take two escapes,
+`network: true` (`Request.Network`) and `sandbox: false` (`Request.Unsandboxed`): mode rules
+and non-yolo bases settle neither, and each asks the user, with "needs the network, staying
+sandboxed" and "run outside the sandbox". Network keeps every file rule and only adds sockets
+(`Policy.Network`: seatbelt writes `(allow network*)`, the namespace backend leaves
+`CLONE_NEWNET` out so the command shares zemi's netns, the seccomp-only one permits the inet
+families), so it is what a dependency fetch needs; `sandbox: false` drops the whole policy,
+`secretDirs` hiding included. Headless (`SandboxParam` needs UI hooks) neither parameter
+nor the retry line is offered, and the denial is by `unsandboxed` or `network` (only for
+`tool.bash` and
 `tool.window`: a Lua script or a memory edit is `Unsandboxed` for another reason, and `-p`
 hints at the TUI for those instead). A confined failure that
 `sandbox.LikelyDenied` recognizes (a job: over its whole retained tail) gets
 `Pipeline.sandboxHint`, which, like `tools.SandboxProp()`, describes the backend
-`sandbox.Probe` returns. `/health` has a `sandbox` row.
+`sandbox.Probe` returns and offers `network: true` first when `sandbox.LikelyNetwork`
+matches the failure. `/health` has a `sandbox` row.
 
 `h.secretPath` matches the secret shapes on
 the resolved path too, so a symlink cannot hide one. `SafeCommand` is an

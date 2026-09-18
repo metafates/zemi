@@ -152,7 +152,7 @@ guessing. Common keys:
   lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
   `git remote -v` and git commands that print file content in a repository tracking a
   secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a
-  build or test flag that runs code can read it in a trusted project. A command that needs more is retried with `sandbox: false`, which asks the
+  build or test flag that runs code can read it in a trusted project. A command that needs the network is retried with `network: true` (the sandbox stays, sockets are added); one that needs more with `sandbox: false`, which asks the
   user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
   when the window itself runs sandboxed; a text window (`tool.window.text`) runs nothing, so
   every mode but manual settles it. Giving a window the user's keyboard (`focus`) always asks,

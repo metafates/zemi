@@ -96,8 +96,10 @@ func TestSandboxedBash(t *testing.T) {
 				bash = tl
 			}
 		}
-		if _, ok := bash.Info().Parameters["sandbox"]; !ok {
-			t.Fatal("bash has no sandbox parameter with a live backend")
+		for _, prop := range []string{"sandbox", "network"} {
+			if _, ok := bash.Info().Parameters[prop]; !ok {
+				t.Fatalf("bash has no %s parameter with a live backend", prop)
+			}
 		}
 		resp, err := bash.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "bash", Input: string(input)})
 		if err != nil {
@@ -107,17 +109,18 @@ func TestSandboxedBash(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name, mode, path string
-		unsandboxed      bool
+		unsandboxed, net bool
 		made, hint       bool
 		asked            string
 	}{
-		{"project write", "sbx", project, false, true, false, ""},
-		{"private temp write", "sbx", private, false, true, false, ""},
-		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, true, ""},
-		{"system temp write", "sbx", shared, false, false, true, ""},
-		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, true, ""},
-		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, "run outside the sandbox"},
-		{"plan project write", "sbxplan", filepath.Join(h.Dirs.ProjectDir, "plan.txt"), false, false, true, ""},
+		{"project write", "sbx", project, false, false, true, false, ""},
+		{"private temp write", "sbx", private, false, false, true, false, ""},
+		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, false, true, ""},
+		{"system temp write", "sbx", shared, false, false, false, true, ""},
+		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, false, true, ""},
+		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, "run outside the sandbox"},
+		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, "needs the network, staying sandboxed"},
+		{"plan project write", "sbxplan", filepath.Join(h.Dirs.ProjectDir, "plan.txt"), false, false, false, true, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := h.SetPermMode(c.mode); err != nil {
@@ -127,6 +130,9 @@ func TestSandboxedBash(t *testing.T) {
 			in := map[string]any{"command": "touch " + c.path}
 			if c.unsandboxed {
 				in["sandbox"] = false
+			}
+			if c.net {
+				in["network"] = true
 			}
 			resp := run(in)
 			_, statErr := os.Stat(c.path)
@@ -141,6 +147,14 @@ func TestSandboxedBash(t *testing.T) {
 			}
 		})
 	}
+	t.Run("an approved network run stays confined", func(t *testing.T) {
+		pol := h.PipelineFor().SandboxFor(
+			tools.Request{Subject: "tool.bash", Arg: "curl https://example.com", Network: true},
+			tools.Verdict{Decision: perm.Allow, DecidedBy: "mode:sbx"})
+		if pol == nil || !pol.Network || len(pol.Write) == 0 {
+			t.Errorf("policy %+v: want the network with the file rules kept", pol)
+		}
+	})
 	t.Run("go test", func(t *testing.T) {
 		if err := h.SetPermMode("auto"); err != nil {
 			t.Fatal(err)

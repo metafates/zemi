@@ -279,6 +279,36 @@ func TestNetworkDenied(t *testing.T) {
 	dial(l.Addr().String(), false)
 }
 
+// TestNetworkGranted: the middle tier hands the command sockets and keeps
+// every file rule, so "it needs the network" costs a socket, not the machine.
+func TestNetworkGranted(t *testing.T) {
+	probeOrSkip(t)
+	ip := nonLoopbackIP()
+	if ip == nil {
+		t.Skip("no non-loopback address to dial")
+	}
+	l, err := net.Listen("tcp", net.JoinHostPort(ip.String(), "0"))
+	if err != nil {
+		t.Skip(err)
+	}
+	defer l.Close()
+	go func() {
+		for c, err := l.Accept(); err == nil; c, err = l.Accept() {
+			c.Close()
+		}
+	}()
+	if out, err := run(t, Policy{Network: true}, "dial", l.Addr().String()); err != nil {
+		t.Fatalf("dial with Network: %v\n%s", err, out)
+	}
+	hidden := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(hidden, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := run(t, Policy{Network: true, Hide: []string{filepath.Dir(hidden)}}, "read", hidden); err == nil {
+		t.Fatalf("Network must not open hidden files: %s", out)
+	}
+}
+
 func nonLoopbackIP() net.IP {
 	addrs, _ := net.InterfaceAddrs()
 	for _, a := range addrs {

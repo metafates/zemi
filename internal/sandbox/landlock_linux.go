@@ -63,7 +63,7 @@ func probe() (Backend, error) {
 			cmd.Env = append(os.Environ(), probeEnv+"=1")
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
 			if mode == "namespaces" {
-				namespaceAttr(cmd.SysProcAttr, pid)
+				namespaceAttr(cmd.SysProcAttr, pid, false)
 			}
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("%w: %s", err, bytes.TrimSpace(out))
@@ -84,16 +84,21 @@ func probe() (Backend, error) {
 	return Backend{Name: fmt.Sprintf("landlock v%d + seccomp", abi)}, nil
 }
 
-// namespaceAttr starts the helper in its own user, network, mount, IPC and,
-// with pid, pid namespaces, as the same uid and with the caps to bring lo up
+// namespaceAttr starts the helper in its own user, mount, IPC, network
+// (unless network, which keeps zemi's) and, with pid, pid namespaces, as the same uid and with the caps to bring lo up
 // and mount. In its own pid namespace the command cannot name a process
 // outside to signal it, which Landlock scopes only from v6.
 // Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
 // both refuse this, and the probe falls back. Docker with seccomp unconfined
 // masks parts of /proc, so a fresh proc for the pid namespace is refused
 // there and the probe drops the pid namespace.
-func namespaceAttr(a *syscall.SysProcAttr, pid bool) {
-	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET | syscall.CLONE_NEWNS | syscall.CLONE_NEWIPC
+func namespaceAttr(a *syscall.SysProcAttr, pid, network bool) {
+	a.Cloneflags |= syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWIPC
+	if !network {
+		// its own empty network namespace; with the network it keeps zemi's,
+		// where its caps (the user namespace owns none of it) buy nothing
+		a.Cloneflags |= syscall.CLONE_NEWNET
+	}
 	if pid {
 		a.Cloneflags |= syscall.CLONE_NEWPID
 	}
@@ -123,7 +128,7 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 		if cmd.SysProcAttr == nil {
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
 		}
-		namespaceAttr(cmd.SysProcAttr, pidns)
+		namespaceAttr(cmd.SysProcAttr, pidns, p.Network)
 	}
 	cmd.Args = append([]string{exe, helperArg, mode, string(pol), "--", cmd.Path}, cmd.Args...)
 	cmd.Path = exe
@@ -200,7 +205,7 @@ func confine(p Policy, ns bool) (string, error) {
 	if err := landlock(p); err != nil {
 		return "landlock", err
 	}
-	if err := seccomp(ns); err != nil {
+	if err := seccomp(ns, p.Network); err != nil {
 		return "seccomp", err
 	}
 	return "", nil
@@ -273,7 +278,7 @@ func runInit(path string, argv []string, fail func(string, error) int) int {
 // writable again). Landlock forbids the command to umount them, and with
 // no caps left it cannot remount them.
 func setupNamespaces(p Policy) error {
-	if p.Loopback {
+	if p.Loopback && !p.Network { // shared with zemi: lo is already up
 		if err := loUp(); err != nil {
 			return err
 		}
@@ -480,7 +485,9 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // xattrs (ACLs among them) and kernel keyrings, which Landlock does not
 // mediate, SysV IPC without the IPC namespace, and socket():
 // every family without namespaces, and with them all but inet and netlink,
-// which reach only the empty network namespace. Landlock does not mediate
+// which reach only the empty network namespace. A policy with Network
+// allows those two families here as well, and there the namespace is zemi's
+// own: the inet socket is the point. Landlock does not mediate
 // connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
 // systemd user bus), so AF_UNIX is denied in both.
 // NOTE: kill is not filtered, so before Landlock v6 scopes signals the
@@ -500,7 +507,7 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // NOTE: socketpair stays allowed, so a unix socket still works between the
 // command's own processes; anything that listens on or dials a unix socket
 // path fails, and an AF_UNIX fd the command inherits stays usable.
-func seccomp(ns bool) error {
+func seccomp(ns, network bool) error {
 	arch, ok := seccompArch[runtime.GOARCH]
 	if !ok {
 		return fmt.Errorf("no filter for %s", runtime.GOARCH)
@@ -543,7 +550,7 @@ func seccomp(ns bool) error {
 		prog = append(prog, jump(eq, nr, 0, 1), deny)
 	}
 	prog = append(prog, jump(eq, unix.SYS_SOCKET, 1, 0), allow)
-	if ns {
+	if ns || network {
 		prog = append(prog, stmt(load, offArg))
 		for _, family := range []uint32{unix.AF_INET, unix.AF_INET6, unix.AF_NETLINK} {
 			prog = append(prog, jump(eq, family, 0, 1), allow)

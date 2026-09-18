@@ -628,7 +628,7 @@ A window stays on screen after its program exits, exit code in the title, until 
 		Required: []string{"action"},
 	}
 	if t.h.sandboxLive() && t.h.hooks() != nil {
-		info.Parameters["sandbox"] = tools.SandboxProp()
+		info.Parameters["sandbox"], info.Parameters["network"] = tools.SandboxProp(), tools.NetworkProp()
 	}
 	return info
 }
@@ -663,6 +663,7 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		WaitMS  float64  `json:"wait_ms"`
 		Timeout float64  `json:"timeout_ms"`
 		Sandbox *bool    `json:"sandbox"`
+		Network bool     `json:"network"`
 	}
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
@@ -751,7 +752,8 @@ func (t *windowTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		}
 		// the same gate as bash: rules, modes and the user see the command
 		gate := t.gate()
-		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title, Unsandboxed: in.Sandbox != nil && !*in.Sandbox}
+		req := tools.Request{Tool: "window", Subject: "tool.bash", Arg: in.Cmd, Reason: "run in a window: " + in.Title,
+			Unsandboxed: in.Sandbox != nil && !*in.Sandbox, Network: in.Network}
 		v := gate.Check(req)
 		if v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, in.Cmd)), nil
