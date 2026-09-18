@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"charm.land/fantasy"
 	"context"
 	"encoding/json"
 	"errors"
@@ -187,8 +186,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			if err != nil || stored != tc.stored {
 				t.Fatalf("stored = %v, want %v (%v)", stored, tc.stored, err)
 			}
-			// the edit auto autonomy does not apply goes to the user, not the auto mode screener
-			h.modelFn = func() (fantasy.LanguageModel, error) { return &promptStub{resp: "SAFE"}, nil }
+			// the edit auto autonomy does not apply goes to the user; no mode settles it
 			if err := h.SetPermMode("auto"); err != nil {
 				t.Fatal(err)
 			}

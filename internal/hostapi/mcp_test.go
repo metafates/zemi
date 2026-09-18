@@ -57,10 +57,10 @@ func TestMCPBridge(t *testing.T) {
 		t.Fatalf("allowed call = %+v", resp)
 	}
 
-	// the server marks shot read-only, so auto mode settles it without a
-	// screening call, and its png reaches the model instead of a placeholder
+	// the server marks shot read-only, so auto mode settles it without
+	// asking, and its png reaches the model instead of a placeholder
 	if !h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "shot"}) {
-		t.Error("a read-only MCP tool still pays for a screening call")
+		t.Error("a read-only MCP tool did not settle in auto mode")
 	}
 	if h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "echo"}) {
 		t.Error("an unannotated MCP tool settled locally")

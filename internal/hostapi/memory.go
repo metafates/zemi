@@ -901,7 +901,7 @@ func (h *Host) modelEditMemory(sid, id, text string) (string, error) {
 		preview += "\n+ " + text
 	}
 	if !h.memoryAuto(sid) || m.Origin != learn.OriginLearned || shaped {
-		// Unsandboxed so no mode settles it: a screener would answer text the session read
+		// Unsandboxed so no mode settles it: the text came out of the session
 		req := tools.Request{Tool: "memory_" + verb, Subject: "memory.write", Arg: m.ID[:8], Reason: verb + " memory", Preview: preview, Unsandboxed: true}
 		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): %s memory %s", v.DecidedBy, verb, m.ID[:8])

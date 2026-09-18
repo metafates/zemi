@@ -89,7 +89,7 @@ guessing. Common keys:
   session model); a cheaper model here keeps searches cheap. The agent may still pick another
   configured model per run.
 - `agent.small_model`: a fast, cheap model for small jobs (session titles, the builtin `web`
-  agent, and auto-mode screening unless `permissions.auto_model` is set); empty uses the agent model, e.g.
+  agent); empty uses the agent model, e.g.
   `zemi.config.set("agent.small_model", "anthropic/claude-haiku-4-5")`.
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
@@ -132,12 +132,11 @@ guessing. Common keys:
 - `permissions.mode`: `manual` (the user answers asks), `plan` (file writes are refused,
   reading commands and builds and tests run, the latter sandboxed with the project read-only,
   other commands and MCP calls ask, so the agent investigates and
-  proposes a plan), `auto` (a model
-  approves routine actions and hands the rest to the user) or `yolo` (every ask is
-  allowed; deny rules still apply). `permissions.auto_model` picks a cheaper screening model.
+  proposes a plan), `auto` (reads, edits inside the project and build, test and read-only
+  commands run on their own; everything else goes to the user) or `yolo` (every ask is
+  allowed; deny rules still apply).
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
-  that just read (no builds, tests or git), auto edits nothing and screens nothing without
-  the user, and the Lua tool asks. In any project the Lua tool asks before a script calls
+  that just read (no builds, tests or git), auto edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
   anything that is not a read (config, providers, permissions, jobs, windows, servers, the
   composer, ...). Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
@@ -152,7 +151,7 @@ guessing. Common keys:
   read-only to them too, and a `PATH` dir inside the project (an activated `.venv/bin`) always is. Build, test and
   lint tools run there with any flags; a program named by a path (`./run.sh`), `git config`,
   `git remote -v` and git commands that print file content in a repository tracking a
-  secret-shaped file are never run without the screening model (auto) or the user. On Linux the sandbox cannot hide `.env`, so a
+  secret-shaped file always ask the user. On Linux the sandbox cannot hide `.env`, so a
   build or test flag that runs code can read it in a trusted project. A command that needs the network is retried with `network: true` (the sandbox stays, sockets are added); one that needs more with `sandbox: false`, which asks the
   user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
   when the window itself runs sandboxed; a text window (`tool.window.text`) runs nothing, so
@@ -273,8 +272,8 @@ the browser, and zemi keeps and refreshes the grant. MCP servers:
 `zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
 A command server starts in zemi's data dir, not the project, with the project path in
 `ZEMI_PROJECT_DIR`: pass the project as an absolute path, not `.`.
-In auto mode a tool the server marks `readOnlyHint` runs without a screening call; every
-other MCP tool is screened or asked. An image or audio part of a result reaches the model
+In auto mode a tool the server marks `readOnlyHint` runs without asking; every
+other MCP tool asks the user. An image or audio part of a result reaches the model
 as itself, not as a placeholder.
 
 ## Tools and permission rules

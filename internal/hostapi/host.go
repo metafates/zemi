@@ -265,10 +265,6 @@ type Host struct {
 	todos      []store.Todo
 	todosStale atomic.Bool
 
-	// autoApproved remembers requests the auto-mode model approved, so the
-	// same command does not cost a second check.
-	autoApproved sync.Map
-
 	// luaApproved holds the chunk names of Lua tool runs the user approved
 	// (guardModelLua); luaRuns numbers them.
 	luaApproved sync.Map
@@ -331,12 +327,9 @@ type Host struct {
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
-// skills. A change drops the auto-mode approvals, which were given under the
-// other decision.
+// skills.
 func (h *Host) SetProjectTrusted(ok bool) {
-	if h.projectTrusted.Swap(ok) != ok {
-		h.autoApproved.Clear()
-	}
+	h.projectTrusted.Store(ok)
 	var found []skills.Skill
 	if ok {
 		found = h.discoverProjectSkills()

@@ -17,7 +17,7 @@ import (
 )
 
 // askHook is the tools.Pipeline asker: veto event, then the permission
-// mode (yolo allows, auto lets a model approve routine requests), then the
+// mode (yolo allows, auto settles what autoLocal covers), then the
 // Go-owned overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string, string) {
@@ -89,44 +89,29 @@ func (h *Host) askHook() tools.Asker {
 				}
 			}
 		case def.Base == "auto":
-			// everything the screener saw: an MCP or Lua tool's Arg is only its
-			// name, the input it approved is in Preview, and the turn's request
-			// is why it may have approved at all
-			key := strings.Join([]string{req.Subject, req.Arg, req.Reason, req.Preview, h.turnRequest()}, "\x00")
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
-			if req.Subject == "fs.write" && h.protectedWrite(req.Arg) {
-				// what zemi allows and what git runs: never the screener's call
+			switch {
+			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
 				req.Reason = "not settled: this changes .git, .zemi or zemi's own files"
-				break
-			}
-			if req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...) {
+			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
 				// project (~/.gitconfig, a shell rc) can name what runs next
 				req.Reason = "not settled: this changes a file outside the project"
-				break
-			}
-			if !h.ProjectTrusted() {
-				// the screener reads text the repository can steer; the user decides
+			case !h.ProjectTrusted():
 				req.Reason = "not settled: this project is not trusted (/trust)"
-				break
-			}
-			if req.Subject == "tool.bash" && !h.sandboxLive() {
-				// a screened command would run unconfined
+			case req.Subject == "tool.bash" && !h.sandboxLive():
+				// a settled command would run unconfined
 				req.Reason = "not settled: no sandbox"
-				break
+			case req.Subject == "tool.bash":
+				req.Reason = "not settled: auto mode runs only read-only, build and test commands on its own"
+				if note := h.repoNote(req.Arg); note != "" {
+					req.Reason += " (" + note + ")"
+				}
+			default:
+				req.Reason = "not settled: auto mode settles reads and edits inside the project"
 			}
-			if _, ok := h.autoApproved.Load(key); ok {
-				return resolved(true, "mode:"+def.Name)
-			}
-			ok, why := h.autoApprove(req)
-			if ok {
-				h.autoApproved.Store(key, true)
-				return resolved(true, "mode:"+def.Name)
-			}
-			h.Log.Info("permissions", "auto mode deferred to the user", map[string]any{"subject": req.Subject, "why": why})
-			req.Reason = why
 		}
 		ui := h.hooks()
 		if ui == nil {
@@ -152,8 +137,8 @@ func (h *Host) askHook() tools.Asker {
 	}
 }
 
-// shownArg is the request's argument as the user and the screener read it: a
-// path relative to the project when inside it.
+// shownArg is the request's argument as the user reads it: a path relative
+// to the project when inside it.
 func (h *Host) shownArg(req tools.Request) string {
 	if !tools.PathSubject(req.Subject) {
 		return req.Arg

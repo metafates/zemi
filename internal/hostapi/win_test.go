@@ -119,8 +119,8 @@ func TestWindowTool(t *testing.T) {
 	}
 }
 
-// TestWindowInputSettling: auto mode's screener settles input only for a
-// window that runs sandboxed; typing into an unconfined one asks the user.
+// TestWindowInputSettling: auto mode settles input only for a window that
+// runs sandboxed; typing into an unconfined one asks the user.
 func TestWindowInputSettling(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}

@@ -49,8 +49,7 @@ func (s *Store) defineDefaults() {
 	defaults := []Setting{
 		{Path: "agent.model", Kind: "string", Default: "", Desc: "active model id (provider/model)"},
 		{Path: "permissions.mode", Kind: "string", Default: "manual", Desc: "the permission mode zemi starts in: manual (you answer asks), plan, auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
-		{Path: "agent.small_model", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs: session titles and, unless permissions.auto_model is set, auto-mode screening (provider/model; empty uses agent.model)"},
-		{Path: "permissions.auto_model", Kind: "string", Default: "", Desc: "model that screens asks in auto mode (provider/model; empty uses agent.small_model, then agent.model)"},
+		{Path: "agent.small_model", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs such as session titles (provider/model; empty uses agent.model)"},
 		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "active theme name"},
 		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.subagent_model", Kind: "string", Default: "", Desc: "default model for subagents whose definition sets none (provider/model; empty uses the session model); the agent may pick another configured model per run"},

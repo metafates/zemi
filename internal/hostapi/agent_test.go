@@ -495,24 +495,6 @@ func TestSteeringQueue(t *testing.T) {
 	h.AgentCancel() // no runner: must not panic
 }
 
-// TestSteeringUpdatesRequest: auto mode's screener judges against what the
-// user asked for, so a message steered mid-turn has to reach it.
-func TestSteeringUpdatesRequest(t *testing.T) {
-	h, _ := newTestHost(t)
-	h.agents.mu.Lock()
-	h.agents.active, h.agents.turnText = true, "fix the parser"
-	h.agents.mu.Unlock()
-	if err := h.AgentSend("run the tests instead" + attachMarker + "\n<attached-files>"); err != nil {
-		t.Fatalf("queued send: %v", err)
-	}
-	if out := h.deliverSteering(); len(out) != 1 {
-		t.Fatalf("delivered %q", out)
-	}
-	if got := h.turnRequest(); got != "fix the parser\nrun the tests instead" {
-		t.Fatalf("request = %q", got)
-	}
-}
-
 // TestHistoryCarriesAcrossTurns is the regression for the runner rebuilt
 // on every send: the second turn's prompt must carry the first exchange
 // (system, user, assistant, user), and both turns land in the transcript.

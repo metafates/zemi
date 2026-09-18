@@ -534,7 +534,7 @@ func safeSegment(a []string) bool {
 	case name == "git":
 		return safeGit(rest)
 	// run starts the program instead of building or testing it, and install
-	// and publish go to the screener too
+	// and publish go to the user too
 	case name == "go":
 		return slices.Contains([]string{"build", "test", "vet", "list", "version", "doc", "env", "fmt", "mod"}, sub)
 	case name == "cargo":

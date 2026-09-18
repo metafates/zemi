@@ -152,11 +152,6 @@ type agentHost struct {
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).
 	turnMsgID string
-	// turnText is what the user asked for this turn, steered messages
-	// appended; auto mode's screener reads it, so an action the user plainly
-	// asked for is not a surprise.
-	turnText string
-
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
@@ -482,9 +477,6 @@ func (h *Host) startTurn(text string) {
 	// what follows attachMarker is for the model (background reports), the
 	// same cut resumed transcripts make
 	shown, _, _ := strings.Cut(text, attachMarker)
-	h.agents.mu.Lock()
-	h.agents.turnText = shown
-	h.agents.mu.Unlock()
 	h.AppendMessage("user", shown)
 	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
@@ -533,9 +525,6 @@ func (h *Host) deliverSteering() []string {
 	shown := make([]string, len(msgs))
 	for i, m := range msgs {
 		shown[i], _, _ = strings.Cut(m, attachMarker)
-		// a steered message is the request now: the screener must judge
-		// against it, not against the opening one it superseded
-		ag.turnText += "\n" + shown[i]
 	}
 	if len(msgs) > 0 {
 		ag.steering, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", nil, 0
