@@ -415,9 +415,14 @@ what the screen says.
   left unanswered (providers refuse a dangling call). The stops are `maxSteps` 200
   (`ErrStepLimit`) and a block of up to three tool steps repeating over six steps or three
   cycles (`ErrToolLoop`; `job_read` and `job_list` steps are left out, polling is not
-  looping), with `maxRetries` 5 per step and `MaxOutputTokens` turning a length-finished reply into `ErrReplyCut`. Cache tokens are
+  looping), with `maxRetries` 5 per step and `MaxOutputTokens` turning a length-finished reply into `ErrReplyCut`. Every
+  resolved model is wrapped in `idleModel` (providers.go): a call that makes no progress for 5
+  minutes is cancelled with "the model sent nothing", since the HTTP header timeout stops
+  counting once the status line arrives and a stalled stream would hold the turn forever.
+  The timer resets on each stream part, and tools run between model calls, so a slow build is
+  never covered. Cache tokens are
   priced apart (`CostPer1MInCached`/`CostPer1MOutCached`), and the session tally counts cache
-  reads and creations as input.
+  reads and creations as input; `/usage` shows what share the cache served.
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so
   steered messages are re-inserted every step. Leftovers become one follow-up turn, and

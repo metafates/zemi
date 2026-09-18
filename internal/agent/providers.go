@@ -17,10 +17,9 @@ import (
 	"charm.land/fantasy"
 
 	anthropic "charm.land/fantasy/providers/anthropic"
+	google "charm.land/fantasy/providers/google"
 	openai "charm.land/fantasy/providers/openai"
 	openaicompat "charm.land/fantasy/providers/openaicompat"
-
-	google "charm.land/fantasy/providers/google"
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
@@ -211,7 +210,8 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 
 // modelHTTP bounds the wait for response headers: a gateway that accepts the
 // connection and then says nothing would otherwise hold the turn until the
-// user interrupts it. Client.Timeout stays zero, so a long stream is never cut.
+// user interrupts it. Client.Timeout stays zero, so a long stream is never
+// cut; a stalled one is idleModel's job.
 var modelHTTP = sync.OnceValue(func() *http.Client {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.ResponseHeaderTimeout = 2 * time.Minute
@@ -235,5 +235,65 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	if err != nil {
 		return nil, err
 	}
-	return p.LanguageModel(context.Background(), model)
+	m, err := p.LanguageModel(context.Background(), model)
+	if err != nil {
+		return nil, err
+	}
+	return idleModel{LanguageModel: m, idle: modelIdleTimeout}, nil
+}
+
+// modelIdleTimeout is how long a model call may make no progress. The
+// header timeout only counts until the status line arrives, so a gateway
+// that accepts a stream and then stops sending would hold the turn until
+// the user interrupts it, and headless nobody can.
+// NOTE: one fixed ceiling, not a setting: a model that thinks longer than
+// this without sending a part is cut off.
+const modelIdleTimeout = 5 * time.Minute
+
+var errModelIdle = fmt.Errorf("the model sent nothing for %s", modelIdleTimeout)
+
+// idleModel bounds a call by idle time, resetting on every stream part, so
+// a slow but live answer runs as long as it likes. Tools run between model
+// calls, so this never covers a build or a test run.
+type idleModel struct {
+	fantasy.LanguageModel
+	idle time.Duration
+}
+
+func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
+	defer cancel()
+	return m.LanguageModel.Generate(ctx, call)
+}
+
+func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	timer := time.AfterFunc(m.idle, func() { cancel(errModelIdle) })
+	seq, err := m.LanguageModel.Stream(ctx, call)
+	if err != nil {
+		timer.Stop()
+		cancel(nil)
+		return nil, err
+	}
+	return func(yield func(fantasy.StreamPart) bool) {
+		defer timer.Stop()
+		defer cancel(nil)
+		timedOut := func() bool { return errors.Is(context.Cause(ctx), errModelIdle) }
+		sawErr := false
+		for part := range seq {
+			// the provider reports the cancel as its own error, so say what
+			// really happened instead of "context canceled"
+			if part.Type == fantasy.StreamPartTypeError && timedOut() {
+				part.Error = errModelIdle
+			}
+			sawErr = sawErr || part.Type == fantasy.StreamPartTypeError
+			if !yield(part) {
+				return
+			}
+			timer.Reset(m.idle)
+		}
+		if !sawErr && timedOut() { // a provider that ends the stream silently
+			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: errModelIdle})
+		}
+	}, nil
 }
