@@ -336,6 +336,8 @@ func TestTextWindow(t *testing.T) {
 	if err := w.SendText("x"); err == nil {
 		t.Fatal("a text window took program input")
 	}
+	// a terminal reporting its colors must not reach the emulator a text window has none of
+	m.SetHostColor(11, color.RGBA{0x12, 0x34, 0x56, 0xff})
 	w.Scroll(5)
 	if top := w.Top(2); top != 2 {
 		t.Fatalf("scroll clamped to %d, want 2", top)

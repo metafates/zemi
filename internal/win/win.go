@@ -538,6 +538,9 @@ func (m *Manager) SetHostColor(osc int, c color.Color) {
 
 // setColors sets the emulator's defaults; nil keeps vt's own.
 func (w *Window) setColors(c [3]color.Color) {
+	if w.body != nil {
+		return
+	}
 	w.term.SetDefaultForegroundColor(c[0])
 	w.term.SetDefaultBackgroundColor(c[1])
 	w.term.SetDefaultCursorColor(c[2])
