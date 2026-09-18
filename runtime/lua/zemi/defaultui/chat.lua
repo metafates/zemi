@@ -302,7 +302,7 @@ zemi.ui.widget.register({
 
     local tr = ctx.transcript or {}
     if #tr == 0 and not ctx.agent_active then
-      return fmt.empty() -- the splash widget fills the empty chat
+      return {} -- the splash widget fills the empty chat
     end
     -- Only the latest collapsed reasoning line carries the expand hint.
     local last_reason = 0
@@ -391,8 +391,6 @@ zemi.ui.widget.register({
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go
     -- working row above the composer carries status and elapsed time.
-    -- An empty Lua table would marshal as a map, so an empty render
-    -- returns one blank line instead.
     local ag = ctx.agent or {}
     local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
     if ag.active or #tools > 0 or text ~= "" or #queued > 0 then
@@ -438,6 +436,6 @@ zemi.ui.widget.register({
         lines[#lines + 1] = { { text = mark, hl = hl, copy = false }, { text = item, hl = hl } }
       end
     end
-    return #lines > 0 and lines or fmt.empty()
+    return lines
   end,
 })

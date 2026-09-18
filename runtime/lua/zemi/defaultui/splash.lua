@@ -109,7 +109,7 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    if ctx.transcript_count > 0 or ctx.agent_active then return fmt.empty() end
+    if ctx.transcript_count > 0 or ctx.agent_active then return {} end
     return M.render(ctx)
   end,
 })

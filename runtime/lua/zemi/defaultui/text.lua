@@ -36,10 +36,6 @@ function M.elapsed(s)
   return string.format("%dh %02dm %02ds", math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
 end
 
---- One blank line: an empty Lua table would marshal as a map.
----@return zemi.Line[]
-function M.empty() return { { { text = "" } } } end
-
 --- Display width of a string: one cell per UTF-8 character.
 --- NOTE: a wide glyph (CJK, emoji) counts as one, so clipped model text can
 --- overflow into a wrapped row; exact widths need a host width call.

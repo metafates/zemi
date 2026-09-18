@@ -43,7 +43,7 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    if not ctx.quit_armed then return fmt.empty() end
+    if not ctx.quit_armed then return {} end
     return { { { text = "ctrl+c again to quit", hl = "Title" } } }
   end,
 })
@@ -56,7 +56,7 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    if (ctx.key_seq or "") == "" then return fmt.empty() end
+    if (ctx.key_seq or "") == "" then return {} end
     return { { { text = ctx.key_seq .. " ... ", hl = "Title" } } }
   end,
 })
@@ -70,7 +70,7 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    if (ctx.rows_below or 0) == 0 then return fmt.empty() end
+    if (ctx.rows_below or 0) == 0 then return {} end
     return { { { text = " ↓ " .. ctx.rows_below .. " · ctrl+end", hl = "Title" } } }
   end,
 })
@@ -100,7 +100,7 @@ zemi.ui.widget.register({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    if not ctx.reflecting then return fmt.empty() end
+    if not ctx.reflecting then return {} end
     return { { { text = ctx.pulse and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
   end,
 })
@@ -115,7 +115,7 @@ zemi.ui.widget.register({
   ---@return zemi.Line[]
   render = function(ctx)
     local n = ctx.agents_running or 0
-    if n == 0 then return fmt.empty() end
+    if n == 0 then return {} end
     return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title", click = "agents" }, { text = " /agents", hl = "Comment", click = "agents" } } }
   end,
 })
@@ -130,7 +130,7 @@ zemi.ui.widget.register({
   ---@return zemi.Line[]
   render = function(ctx)
     local v = ctx.view
-    if not v then return fmt.empty() end
+    if not v then return {} end
     local send = v.status == "running" and " · enter messages it" or ""
     local tail = " · " .. v.status .. send .. " · esc to go back"
     return { {
@@ -161,7 +161,7 @@ zemi.ui.widget.register({
       segs[#segs + 1] = { text = " /" .. cmd, hl = "Comment", click = cmd }
     end
     add(ctx.pending_memory, "to review", "memory")
-    if #segs == 0 then return fmt.empty() end
+    if #segs == 0 then return {} end
     return { segs }
   end,
 })
@@ -228,7 +228,7 @@ zemi.ui.widget.register({
       local cost = tonumber((ctx.usage or {}).cost or 0) or 0
       if cost > 0 then add(string.format("$%.2f", cost), "Comment") end
     end
-    if #segs == 0 then return fmt.empty() end
+    if #segs == 0 then return {} end
     return { segs }
   end,
 })
