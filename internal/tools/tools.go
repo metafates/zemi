@@ -771,7 +771,7 @@ Use read, grep, glob, edit and write instead of cat, grep, find, sed or echo: wh
 			},
 			runGrep),
 
-		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML is stripped, links kept as markdown). Every redirect hop is re-gated and private addresses are refused.",
+		mk("fetch", "Fetch a URL over http/https and return the response body as text (HTML becomes markdown: headings, lists, tables, code blocks and links). Every redirect hop is re-gated and private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},

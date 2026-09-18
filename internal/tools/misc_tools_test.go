@@ -367,6 +367,42 @@ func TestHTMLToText(t *testing.T) {
 	}
 }
 
+// TestHTMLToMarkdown pins what a docs page keeps: heading levels, a
+// parameter table as rows (it used to flatten to "sizeint10"), a code
+// fence and list bullets.
+func TestHTMLToMarkdown(t *testing.T) {
+	in := `<html><head><title>x</title></head><body>
+<h1>Widget API</h1>
+<p>The widget API creates <code>widgets</code>.</p>
+<h2>Options</h2>
+<table><thead><tr><th>Name</th><th>Type</th></tr></thead>
+<tbody><tr><td>size</td><td>int</td></tr></tbody></table>
+<pre><code><span class="k">w</span> := widget.New()
+</code></pre>
+<ul><li>first</li><li>second <a href="/docs">point</a></li></ul>
+</body></html>`
+	want := `# Widget API
+
+The widget API creates widgets.
+
+## Options
+
+| Name | Type |
+| --- | --- |
+| size | int |
+
+` + "```" + `
+w := widget.New()
+` + "```" + `
+
+- first
+- second [point](https://example.com/docs)`
+	base, _ := url.Parse("https://example.com/api/")
+	if got := htmlToText(in, base); got != want {
+		t.Fatalf("htmlToText =\n%s\n\nwant\n%s", got, want)
+	}
+}
+
 func TestSearchParsers(t *testing.T) {
 	lite := `<table><tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2Fdoc&amp;rut=x" class='result-link'>The <b>Go</b> docs</a></td></tr>
 <tr><td class='result-snippet'>Learn &amp; build</td></tr>
