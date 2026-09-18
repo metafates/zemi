@@ -54,6 +54,8 @@ zemi.ui.theme.add("default", {
     PromptPlan = { fg = "ok", bold = true },
     PromptAuto = { fg = "accent", bold = true },
     PromptYolo = { fg = "err", bold = true },
+    PromptShell = { fg = "warn", bold = true },
+    Queued = { fg = "bg", bg = "muted" },
     -- splash wordmark, a top-down blend from accent to violet
     Logo1 = { fg = "#7aa2f7", bold = true },
     Logo2 = { fg = "#80a0f5", bold = true },

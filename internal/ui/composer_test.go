@@ -178,6 +178,21 @@ func TestComposerHiddenRows(t *testing.T) {
 	}
 }
 
+// TestComposerGutter: rows after the first hang off a gutter, and a shell
+// draft says so with its own glyph.
+func TestComposerGutter(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composer.text = "one\ntwo"
+	rows := app.composerRows(40)
+	if len(rows) != 2 || rows[0][0].Text != "> " || rows[1][0].Text != "│ " {
+		t.Fatalf("rows %+v", rows)
+	}
+	app.composer.text = "!ls"
+	if got := app.composerRows(40)[0][0]; got.Text != "! " || got.HL != "PromptShell" {
+		t.Fatalf("shell prompt %+v", got)
+	}
+}
+
 func TestComposerKeysMultilineOff(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.host.Settings.SetQuiet("ui.composer.multiline", false)

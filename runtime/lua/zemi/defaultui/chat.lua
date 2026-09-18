@@ -448,8 +448,14 @@ zemi.ui.widget.add({
         gap("text")
         add_markdown(text, true)
       end
+      -- queued messages are the user's own words waiting their turn, so they
+      -- get a row of their own rather than a mark glued to the tool above
       for _, q in ipairs(queued) do
-        lines[#lines + 1] = { { text = "⧗ ", hl = "Comment", copy = false }, { text = (q:gsub("%s+", " ")), hl = "Comment" } }
+        gap("queued")
+        lines[#lines + 1] = {
+          { text = " queued ", hl = "Queued", copy = false },
+          { text = " " .. (q:gsub("%s+", " ")), hl = "Comment" },
+        }
       end
     end
     -- The todo list stays under the conversation until every item is done.
