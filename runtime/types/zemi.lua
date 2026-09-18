@@ -1288,6 +1288,7 @@ function zemi.log.error(message, fields) end
 ---@field ANTHROPIC "anthropic"
 ---@field OPENAI "openai"
 ---@field OPENAI_COMPAT "openai_compat"
+---@field GOOGLE "google"
 
 ---@class zemi.ProviderInfo
 ---@field id string

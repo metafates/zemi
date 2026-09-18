@@ -4,7 +4,7 @@ import "testing"
 
 func TestEffortOptions(t *testing.T) {
 	r := NewRegistry()
-	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat"}} {
+	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat"}, {ID: "g", Kind: "google"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
 		}
@@ -15,6 +15,7 @@ func TestEffortOptions(t *testing.T) {
 		{"a/claude", "high", "anthropic"},
 		{"o/gpt", "low", "openai"},
 		{"c/deepseek", "medium", "openai-compat"},
+		{"g/gemini-3-pro", "high", "google"},
 		{"a/claude", "", ""},
 		{"a/claude", "extreme", ""},
 		{"missing/x", "high", ""},

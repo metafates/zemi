@@ -1924,7 +1924,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   (§6.2) and nothing rebinds it; one widget in Lua; golden test harness
   (`x/exp/golden`, `-update`). Exit: `init.lua` rebinds a key and adds a
   statusline segment.
-- **M1, chat that codes**: providers (anthropic, openai, openaicompat),
+- **M1, chat that codes**: providers (anthropic, openai, openai_compat, google),
   `zemi.model.pick` over the registered models, sessions + messages in
   SQLite, streaming into chat widget, composer,
   bash/read/write/edit/multiedit/glob/grep tools, permission overlays,

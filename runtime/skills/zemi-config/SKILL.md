@@ -36,7 +36,7 @@ Rules when editing:
 ```lua
 zemi.provider.add({
   id = "anthropic",
-  kind = zemi.provider.kind.ANTHROPIC,                 -- or OPENAI, OPENAI_COMPAT
+  kind = zemi.provider.kind.ANTHROPIC,        -- or OPENAI, OPENAI_COMPAT, GOOGLE
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
   -- base_url = "https://llm.internal/v1",   -- required for openai_compat
   -- headers = { ["X-Team"] = "core" },     -- sent with every request; as secret as the key

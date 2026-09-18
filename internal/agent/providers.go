@@ -1,5 +1,5 @@
 // Package agent is the chat core (DESIGN §6.3): a provider registry
-// (kinds: anthropic, openai, openaicompat; populated only from user
+// (kinds: anthropic, openai, openai_compat, google; populated only from user
 // config), model catalog and the turn runner that streams fantasy agent
 // output into the UI and persists messages.
 package agent
@@ -19,6 +19,8 @@ import (
 	anthropic "charm.land/fantasy/providers/anthropic"
 	openai "charm.land/fantasy/providers/openai"
 	openaicompat "charm.land/fantasy/providers/openaicompat"
+
+	google "charm.land/fantasy/providers/google"
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
@@ -42,14 +44,18 @@ const (
 	KindAnthropic    = "anthropic"
 	KindOpenAI       = "openai"
 	KindOpenAICompat = "openai_compat"
+	KindGoogle       = "google"
 )
+
+// kinds is every kind Resolve knows.
+var kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle}
 
 // Spec describes one provider: kind selects the fantasy implementation.
 // Headers ride every request (a gateway's attribution or team header); they
 // are as secret as the key, so nothing echoes them back.
 type Spec struct {
 	ID      string            `json:"id"`
-	Kind    string            `json:"kind"` // KindAnthropic, KindOpenAI or KindOpenAICompat
+	Kind    string            `json:"kind"` // one of kinds
 	BaseURL string            `json:"base_url,omitempty"`
 	Headers map[string]string `json:"-"`
 	Models  []Model           `json:"models"`
@@ -85,8 +91,8 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.Kind == "openaicompat" {
 		spec.Kind = KindOpenAICompat
 	}
-	if spec.Kind != KindAnthropic && spec.Kind != KindOpenAI && spec.Kind != KindOpenAICompat {
-		return fmt.Errorf("unknown provider kind %q (want %s, %s or %s)", spec.Kind, KindAnthropic, KindOpenAI, KindOpenAICompat)
+	if !slices.Contains(kinds, spec.Kind) {
+		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(kinds, ", "))
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -166,6 +172,9 @@ func (r *Registry) EffortOptions(modelID, effort string) fantasy.ProviderOptions
 		return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: &re})
 	case KindOpenAICompat:
 		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: &re})
+	case KindGoogle:
+		level := strings.ToUpper(effort)
+		return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
 	}
 	return nil
 }
@@ -192,6 +201,9 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	case KindOpenAICompat:
 		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
 			func(c *http.Client) openaicompat.Option { return openaicompat.WithHTTPClient(c) })
+	case KindGoogle:
+		return languageModel(spec, key, model, google.New, google.WithBaseURL, google.WithGeminiAPIKey, google.WithHeaders,
+			func(c *http.Client) google.Option { return google.WithHTTPClient(c) })
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}

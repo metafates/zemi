@@ -1138,6 +1138,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	kinds.RawSetString("ANTHROPIC", glua.LString(agent.KindAnthropic))
 	kinds.RawSetString("OPENAI", glua.LString(agent.KindOpenAI))
 	kinds.RawSetString("OPENAI_COMPAT", glua.LString(agent.KindOpenAICompat))
+	kinds.RawSetString("GOOGLE", glua.LString(agent.KindGoogle))
 	tb.RawSetString("kind", kinds)
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()

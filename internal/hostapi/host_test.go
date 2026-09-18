@@ -71,14 +71,14 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.44.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.45.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
 		assert(type(zemi.health.add) == "function" and type(zemi.health.list) == "function", "zemi.health missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
-		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai", "zemi.provider.kind missing")
+		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai" and zemi.provider.kind.GOOGLE == "google", "zemi.provider.kind missing")
 		for _, fn in ipairs({ "add", "del", "list" }) do
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
 		end
