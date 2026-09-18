@@ -1019,11 +1019,12 @@ list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
 a snapshot the UI publishes and edits it applies on its own goroutine;
 edits from user config only, since a submitted line reaches slash
 commands and `!shell` and a paste reads the clipboard; the same actions are
-`zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`register(name, fn)`,
-whose rows join the Go checks in `/health` and `zemi --health`),
+`zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`add(name, fn)`,
+whose rows join the Go checks in `/health` and `zemi --health`, and `list`, which reads
+those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`),
-and `zemi.permission.mode` (`add`, `remove`, `list`; user config only, §9).
+and `zemi.permission.mode` (`add`, `del`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin

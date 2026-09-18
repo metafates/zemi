@@ -233,7 +233,7 @@ for scripts. `zemi --help` lists every flag.
 | typing in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
 | `/` | command palette (tab completes names and arguments) |
-| `@` | attach a project file (images go to vision models as images) |
+| `@` | attach a project file (images go to vision models as images); `enter` accepts the highlighted one |
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,

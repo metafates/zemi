@@ -194,8 +194,13 @@ zemi.keymap.del("tab")                 -- unbind, also a shipped default
 for _, k in ipairs(zemi.keymap.list()) do print(k.key, k.action, k.origin) end
 local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
 -- host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.ui.scroll.up, zemi.ui.scroll.down,
--- zemi.ui.scroll.top, zemi.ui.scroll.bottom, zemi.model.pick, zemi.permission.mode.cycle,
--- zemi.permission.mode.prev (mode actions: user config only)
+-- zemi.ui.scroll.top, zemi.ui.scroll.bottom (each takes a node id after a space),
+-- zemi.ui.focus.set [id], zemi.ui.focus.next, zemi.ui.focus.prev, zemi.model.pick,
+-- zemi.composer.submit, zemi.composer.insert <text>, zemi.composer.history_prev,
+-- zemi.composer.history_next, zemi.composer.paste, zemi.composer.edit,
+-- zemi.permission.mode.cycle, zemi.permission.mode.prev
+-- (focus, composer and mode actions: user config only; zemi.HostAction in the type
+-- annotations is the whole list)
 
 zemi.command.add("standup", function(args)
   zemi.agent.send("summarize yesterday's commits " .. args.args)

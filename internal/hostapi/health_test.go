@@ -31,6 +31,19 @@ func TestHealthLuaChecks(t *testing.T) {
 	}
 }
 
+// TestHealthListFromLua: list() answers on the interpreter goroutine, where
+// the queue luaHealthRows uses would deadlock, and runs registered checks.
+func TestHealthListFromLua(t *testing.T) {
+	_, r := newTestHostDB(t)
+	runUser(t, r, `
+		zemi.health.add("disk", function() return { level = "warn", detail = "low" } end)
+		local seen = {}
+		for _, row in ipairs(zemi.health.list()) do seen[row.name] = row.level .. " " .. row.detail end
+		assert(seen.store, "no built-in rows")
+		assert(seen.disk == "warn low", "registered check: " .. tostring(seen.disk))
+	`)
+}
+
 func TestHealthChecks(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.reflectErr = "reflector: no JSON object in output"

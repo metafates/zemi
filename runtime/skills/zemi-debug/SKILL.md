@@ -7,9 +7,16 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 ## First look
 
-1. Ask the user to run `/health`. It checks the model and its API key, the stores,
-   git, ripgrep, the reflector, pending reviews, skills, recent errors,
-   MCP servers, language servers and the Lua runtime (problems listed first), plus any rows config added with `zemi.health.add`.
+1. Read the `/health` rows yourself with the Lua tool (read-only, no ask):
+
+   ```lua
+   return zemi.health.list()   -- { level, name, detail } per check
+   ```
+
+   They cover the model and its API key, the stores, git, ripgrep, the sandbox, the
+   reflector, pending reviews, skills, trust, recent errors, MCP servers, language servers
+   and the Lua runtime, plus any rows config added with `zemi.health.add`. `/health` shows
+   the same rows to the user, problems first.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
    event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
