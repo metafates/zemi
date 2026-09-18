@@ -47,4 +47,10 @@ func TestUsageCountsCache(t *testing.T) {
 	if sess, err := h.DB.GetSession(sid); err != nil || sess.PromptTokens != 222 {
 		t.Errorf("stored input tokens = %+v, %v; want 222", sess, err)
 	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.AgentStream(); s.CacheRead != 0 || s.CacheBilled != 0 {
+		t.Errorf("cache share after /new = %d/%d, want 0/0", s.CacheRead, s.CacheBilled)
+	}
 }

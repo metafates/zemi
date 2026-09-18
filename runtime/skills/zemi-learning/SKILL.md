@@ -37,7 +37,7 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      included (itself or through a subagent).
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
    session start (new memories apply from the next session or compaction). The digest
-   (`memory.digest_lines`, 12 by default) favors memories about the session's first
+   (`memory.digest_lines`, 12 by default, 0 off) favors memories about the session's first
    message, the user's own notes, and memories written or searched for recently; each line
    shows its age in days from two days on, and so does `memory_search`. Enabled skills
    appear as a name + description index; the full body loads with the `skill` tool.

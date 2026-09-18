@@ -290,11 +290,22 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			}
 			accepted++
 		case old.Queued && r.Scope != old.Scope:
-			if p := h.takeProposal(r.ID); p != nil {
-				p.Memory.Scope = r.Scope
-				h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
-				moved++
+			p := h.takeProposal(r.ID)
+			if p == nil {
+				continue
 			}
+			p.Memory.Scope = r.Scope
+			if h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}) {
+				moved++
+				continue
+			}
+			// the other scope already holds the text: it is out of its
+			// queue by now, so put it back rather than lose it
+			p.Memory.Scope = old.Scope
+			if err := h.addProposal(*p); err != nil {
+				h.Log.Warn("memory", "move rollback failed", map[string]any{"id": r.ID, "error": err.Error()})
+			}
+			h.Notify("warn", "Not moved", "the "+r.Scope+" scope already has that text")
 		case old.Queued:
 		case r.Action == "delete":
 			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
@@ -714,7 +725,10 @@ func (h *Host) digestFor(query string) string {
 	cands, _ := h.memoryList(false)
 	lines := h.setInt("memory.digest_lines", 12)
 	if lines < 0 {
-		lines = 12
+		lines = 12 // a negative setting is a typo, not "no digest"
+	}
+	if lines == 0 {
+		return ""
 	}
 	if strings.TrimSpace(query) != "" && len(cands) > lines {
 		hits, err := h.memorySearch("all", query, 3*lines, false)

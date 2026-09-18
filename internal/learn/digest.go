@@ -40,8 +40,11 @@ func DigestScore(m *store.Memory, at time.Time) float64 {
 
 // Digest renders the candidates into the framed digest block, best first,
 // at most maxLines lines. Scrubbed memories (secret-redacted text) never
-// reach the digest (DESIGN §10.4). Empty input yields "".
+// reach the digest (DESIGN §10.4). Empty input or maxLines <= 0 yields "".
 func Digest(cands []*store.Memory, at time.Time, maxLines int) string {
+	if maxLines <= 0 {
+		return ""
+	}
 	type scored struct {
 		m     *store.Memory
 		score float64
@@ -54,7 +57,7 @@ func Digest(cands []*store.Memory, at time.Time, maxLines int) string {
 		rows = append(rows, scored{m, DigestScore(m, at)})
 	}
 	slices.SortStableFunc(rows, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
-	if maxLines > 0 && len(rows) > maxLines {
+	if len(rows) > maxLines {
 		rows = rows[:maxLines]
 	}
 	if len(rows) == 0 {

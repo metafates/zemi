@@ -516,6 +516,29 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	}
 }
 
+// TestMemoryReviewMoveOntoDuplicate: the destination scope already holds
+// the text, so the suggestion stays where it was instead of vanishing.
+func TestMemoryReviewMoveOntoDuplicate(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.GlobalDB.AddMemory(&store.Memory{ID: "m1", Scope: "user", Kind: "convention", Text: "the build runs with make check", ProvenanceSessionID: "seed", Origin: learn.OriginUser}); err != nil {
+		t.Fatal(err)
+	}
+	p := memoryProposal{Memory: store.Memory{ID: "p1", Scope: "project", Kind: "convention", Text: "the build runs with make check", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}}
+	if err := h.addProposal(p); err != nil {
+		t.Fatal(err)
+	}
+
+	ui.reviewResult = []MemoryRow{{ID: "p1", Scope: "user"}}
+	h.openMemoryReview()
+	got := h.memoryProposals()
+	if len(got) != 1 || got[0].ID != "p1" || got[0].Scope != "project" {
+		t.Fatalf("suggestion after a refused move: %+v", got)
+	}
+}
+
 // TestEditMemory: e in /memory saves the editor's text as the user's own,
 // in place; empty, unchanged or refused text changes nothing.
 func TestEditMemory(t *testing.T) {

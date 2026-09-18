@@ -148,6 +148,7 @@ func (h *Host) DeleteSession(id string) error {
 			h.Notify("error", "Could not delete the session", err.Error())
 			return
 		}
+		h.recentStale.Store(true)
 		if h.Dirs.StateHome != "" {
 			_ = os.RemoveAll(h.scratchFor(id))
 			_ = os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-tmp", id))
@@ -209,6 +210,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.sessionID, ag.runner, ag.steering, ag.turnMsgID, ag.turnText = "", nil, nil, "", ""
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
+	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
 	ag.digest, ag.memAuto = "", 0
 	if open != nil {

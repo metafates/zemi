@@ -123,7 +123,7 @@ guessing. Common keys:
   prompt waits
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.max_items`
-- `memory.digest_lines`
+- `memory.digest_lines` (12): lines of the memory digest; 0 leaves it out of the prompt
 - `memory.autonomy` (`ask`): `auto` stores memories the model or the reflector propose
   without review, except instruction-shaped text, retirements, replacements of the user's
   own memories, and anything from an untrusted project or a session that used `fetch`,
