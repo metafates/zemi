@@ -35,7 +35,7 @@ import (
 
 const (
 	frameInterval = time.Second / 30
-	frameMS       = 500             // one animation tick: the mascot's cadence
+	frameMS       = 50              // one animation tick: the mascot's frames are multiples of it
 	doneLinger    = 3 * time.Second // how long the mascot bows after a turn
 	toastTTL      = 4 * time.Second
 	hookQueueSize = 64
@@ -484,9 +484,10 @@ func (a *App) onFrame() tea.Cmd {
 	// While a turn runs, the thought/elapsed readouts must tick even when
 	// no stream events arrive (long reasoning pauses, slow tools). The
 	// snapshot already computes the live durations; the widgets just need
-	// re-rendering (one every 4 frames, ~8/s).
+	// re-rendering: every other frame (~15/s), so the mascot's 150ms spinner
+	// steps evenly.
 	active := a.host.AgentActive()
-	if (active || a.host.Reflecting()) && now.Sub(a.activeBump) >= 125*time.Millisecond {
+	if (active || a.host.Reflecting()) && now.Sub(a.activeBump) >= 60*time.Millisecond {
 		a.activeBump = now
 		a.frameGen++
 	}

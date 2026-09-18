@@ -201,7 +201,7 @@ root, `~`-shortened), `trusted`, `model`, `profile`,
 `thought`, `elapsed`, `reports` (background reports among `steering`), `compacting`, `retry`
 (`attempt`, `why`, `next_in`, only while a retry waits)), `todos` (`content`, `status`, `active_form`), `view` (the agent run
 shown instead of the session: `id`, `agent`, `description`, `status`), `recent` (sessions,
-only while the transcript is empty), `usage`, `context`, `show_reasoning`, `frame` (the 500ms animation tick, 0 with animations off), `done` (a turn ended a moment ago),
+only while the transcript is empty), `usage`, `context`, `show_reasoning`, `frame` (the 50ms animation tick, 0 with animations off), `done` (a turn ended a moment ago),
 `reflecting`, `pending_memory`, `agents_running`, `quit_armed`, `key_seq` (a pending key
 sequence, "" when none), `rows_below` (transcript rows under a scrolled-up chat),
 `cancelling`, `editing` (the file open in the editor, else ""), `waiting` ("approval" or

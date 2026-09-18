@@ -643,7 +643,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // and back while it compacts, its head pulled in while a prompt waits on the
 // user, a bow once the turn is over.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·•°ᵒ─^><?" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·◐◓◑◒¬-!─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -665,9 +665,21 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// working swaps the eyes in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(500); !strings.HasPrefix(a, "@•·─") || !strings.HasPrefix(b, "@·•─") {
-		t.Fatalf("the working eyes do not swap: %q then %q", a, b)
+	if a, b := row(0), row(150); !strings.HasPrefix(a, "@◐◐─") || !strings.HasPrefix(b, "@◓◓─") {
+		t.Fatalf("the working eyes do not spin: %q then %q", a, b)
 	}
+	// a command running for a while is waited on, with a blink every 3s
+	long := []hostapi.StreamTool{{Name: "bash", Status: "run", Started: time.Now().Add(-time.Minute)}}
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
+	if a, b := row(0), row(2900); !strings.HasPrefix(a, "@¬¬─") || !strings.HasPrefix(b, "@--─") {
+		t.Fatalf("the snail does not wait out a long command: %q then %q", a, b)
+	}
+	long[0].Name = "read"
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
+	if a, b := row(0), row(800); !strings.HasPrefix(a, "@<<─") || !strings.HasPrefix(b, "@>>─") {
+		t.Fatalf("the eyes do not read: %q then %q", a, b)
+	}
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
 	if r := row(500); !strings.HasSuffix(r, "─ Working  20s · esc to interrupt ") {
 		t.Fatalf("the status left the right end: %q", r)
 	}
@@ -685,8 +697,8 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// thinking blinks in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})
-	if a, b := row(3000), row(3500); !strings.HasPrefix(a, "@°ᵒ") || !strings.HasPrefix(b, "@ᵒ°") {
-		t.Fatalf("the eyes do not blink: %q then %q", a, b)
+	if a, b := row(3200), row(3600); !strings.HasPrefix(a, "@??") || !strings.HasPrefix(b, "@?!") {
+		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
 }
 

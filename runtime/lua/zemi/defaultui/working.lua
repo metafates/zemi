@@ -1,6 +1,9 @@
 local fmt = require("zemi.defaultui.text")
 local snail = require("zemi.defaultui.snail")
 
+---@type table<string, boolean>
+local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true, memory_search = true }
+
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
 -- left corner in the state of the turn and, at the right end, a shimmering
 -- label naming what the agent does, the elapsed time, the interrupt key and
@@ -19,14 +22,21 @@ zemi.ui.widget.add({
     local label, state = "", "idle"
     if not ctx.agent_active then
       if ctx.reflecting then
-        label, state = "Reflecting", "rereading"
+        label, state = "Reflecting", "reading"
       elseif ctx.done then
         state = "done"
       end
     elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
       label, state = "Working", "working"
       for _, t in ipairs(ag.tools or {}) do
-        if t.status == "run" then label = t.label ~= "" and t.label or ("Running " .. t.name) end
+        if t.status == "run" then
+          label = t.label ~= "" and t.label or ("Running " .. t.name)
+          if READS[t.name] then
+            state = "reading"
+          elseif (t.elapsed or 0) >= 5 then
+            state = "waiting"
+          end
+        end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
       parts = { fmt.elapsed(ag.elapsed) }
@@ -36,7 +46,7 @@ zemi.ui.widget.add({
         if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
         parts[#parts + 1] = "next try in " .. fmt.elapsed(ag.retry.next_in)
       end
-      if ag.compacting then label, state = "Compacting", "rereading" end
+      if ag.compacting then label, state = "Compacting", "reading" end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
         label, state = "Editing " .. ctx.editing, "idle"

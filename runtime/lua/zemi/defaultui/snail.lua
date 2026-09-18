@@ -1,27 +1,41 @@
 -- zemi's mascot: a snail whose shell is the "@". Text only, and only the
 -- shell takes the accent. It never leaves the left corner: the state shows in
--- its eyes. ctx.frame advances every 500ms (0 with ui.animations off).
+-- its eyes. ctx.frame advances every 50ms (0 with ui.animations off).
 ---@class zemi.defaultui.snail
 local M = {}
 
----@type table<string, string[]>
+-- eyes per state, and how many ticks each pair stays
+---@type table<string, { [integer]: string, ticks: integer }>
 local HEADS = {
-  idle = { "··" },
-  thinking = { "°ᵒ", "ᵒ°" },
-  working = { "•·", "·•" },
-  rereading = { "·•", "•·" },
-  asking = { "??" },
-  error = { "><" },
-  done = { "^^" },
+  idle = { "··", ticks = 1 },
+  thinking = { "??", "?!", "!!", "··", ticks = 8 },
+  working = { "◐◐", "◓◓", "◑◑", "◒◒", ticks = 3 },
+  reading = { "<<", "··", ">>", "··", ticks = 8 },
+  asking = { "??", ticks = 1 },
+  error = { "><", ticks = 1 },
+  done = { "^^", ticks = 1 },
 }
+
+---@alias zemi.defaultui.SnailState "idle"|"thinking"|"working"|"waiting"|"reading"|"asking"|"error"|"done"
+
+--- The eyes of `state` at `frame`.
+---@param state zemi.defaultui.SnailState
+---@param frame integer ctx.frame
+---@return string
+function M.eyes(state, frame)
+  -- waiting on a long command: a 200ms blink every 3s
+  if state == "waiting" then return frame % 60 >= 56 and "--" or "¬¬" end
+  local heads = HEADS[state] or HEADS.idle
+  return heads[math.floor(frame / heads.ticks) % #heads + 1]
+end
+
 --- The snail at the left of a plain rule of `room` cells.
----@param state "idle"|"thinking"|"working"|"rereading"|"asking"|"error"|"done"
+---@param state zemi.defaultui.SnailState
 ---@param frame integer ctx.frame
 ---@param room integer
 ---@return zemi.Line
 function M.rule(state, frame, room)
-  local heads = HEADS[state] or HEADS.idle
-  local head = heads[frame % #heads + 1]
+  local head = M.eyes(state, frame)
   return {
     { text = "@", hl = "Accent", copy = false },
     { text = head, hl = "Normal", copy = false },

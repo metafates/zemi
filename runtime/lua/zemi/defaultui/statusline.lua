@@ -97,7 +97,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if not ctx.reflecting then return {} end
-    return { { { text = ctx.frame % 2 == 1 and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
+    return { { { text = ctx.frame % 20 >= 10 and "✧ reflecting" or "✻ reflecting", hl = "AgentReason" } } }
   end,
 })
 
