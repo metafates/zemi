@@ -1,6 +1,6 @@
 ---
 name: zemi-customize
-description: Extend or restyle zemi without editing its source - workflows, subagents, prompt commands, splash, statusline, chat, theme, keys. Load before creating any.
+description: Extend or restyle zemi without editing its source - workflows, subagents, prompt commands, splash, statusline, chat, theme, keys, and the windows and text panels the window tool opens. Load before creating any.
 ---
 
 # Customizing zemi
@@ -253,6 +253,28 @@ for a tool row with a `run` id and `zemi.ui.edit(path, { line = n }, cb)` for a 
 edit or multiedit row (the shipped one opens the file on a click on the head row and at the
 diff row's line on a double click).
 Full API: the zemi-lua skill.
+
+## Windows and panels (the `window` tool)
+
+A window is a real terminal running a program; a panel (`action: "text"`) is text you draw
+and keep current, with no program behind it. Open a panel for what the user should be able to
+watch while you work and what you will rewrite as results land:
+
+- benchmark or test numbers, rewritten as each run finishes, so old and new stay side by side
+- the few lines that matter out of a long build, log or migration, refreshed as it goes
+- the plan or checklist you are working through, ticked off step by step
+
+Open it before the work starts and `set_text` it as results land; `append` for a running
+trail (a body past 256 KB drops its oldest lines). Do not open one for something you can just
+say: a result stated once belongs in your reply, and a panel that never changes only steals
+rows from the chat. Close it when the thing it watches is done.
+
+A `split` takes rows at the bottom of the chat and a `vsplit` a full-height column beside it,
+each where the user's layout has a slot of that kind, a centered float when it has none;
+`frac` is its share of that area, and an unsized panel fits its body up to half of it. A
+`float` sits over everything at `x`/`y` (`-1` centers) in `cols` by `rows` cells. The program
+sees `TERM=xterm-256color` and the window's size; the user can click a window and type into
+it, and `ctrl+\` brings their keys back to zemi.
 
 ## After writing
 

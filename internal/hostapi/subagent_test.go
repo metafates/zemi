@@ -395,7 +395,7 @@ func TestSubagentModelChoice(t *testing.T) {
 		}
 	}
 	tool := h.agentTool()
-	if desc := tool.Info().Description; !strings.Contains(desc, "Configured models: myllm/main, myllm/mini") {
+	if desc := tool.Info().Description; !strings.Contains(desc, "Configured: myllm/main, myllm/mini") {
 		t.Fatalf("description lacks the model list: %q", desc)
 	}
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "agent", Input: `{"description":"x","prompt":"p","agent":"explore","model":"other/x"}`})

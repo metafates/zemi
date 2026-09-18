@@ -567,8 +567,7 @@ type workflowTool struct {
 
 func (h *Host) workflowTool() fantasy.AgentTool { return &workflowTool{h: h, saved: h.workflows()} }
 
-const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. Prefer a single agent call for one task; use a workflow when the shape is several agents with logic between them. Pass a saved workflow's name to run it, or a script to write one.
-Load the zemi-customize skill before writing a script: it has the sandbox API (agent, parallel, phase, log, json, args), what cannot run inside it, and where to save one so it runs by name.`
+const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. One task is a single agent call; a workflow is for several agents with logic between them. Pass a saved workflow's name to run it, or a script to write one - load the zemi-customize skill first for the script API and where to save it.`
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	var desc strings.Builder
