@@ -96,6 +96,9 @@ func TestLSPTool(t *testing.T) {
 		{fmt.Sprintf(`{"action":"definition","path":%q,"symbol":"Foo"}`, a), "also appears on lines 2: pass line"},
 		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, b), "3 references\na.txt:1:6: func Foo()\na.txt:2:1: Foo()\nb.txt:1:6: x := Foo()"},
 		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Nope"}`, b), "does not appear"},
+		{fmt.Sprintf(`{"action":"implementation","path":%q,"symbol":"Foo","line":2}`, a), "a.txt:1:6: func Foo()"},
+		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Ba"}`, b), "function Bar  a.txt:3"},
+		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Nope"}`, b), "no symbol matching Nope"},
 		{fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Foo","new_name":"Baz"}`, b), "renamed Foo to Baz in 2 files, 3 places"},
 	} {
 		if got := run(c.input); !strings.Contains(got, c.want) {

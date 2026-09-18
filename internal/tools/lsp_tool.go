@@ -21,15 +21,17 @@ import (
 
 const lspToolDesc = `Ask the file's language server about code, by symbol name instead of grep: it understands scopes, so it skips comments, strings and same-named identifiers elsewhere.
 - definition: where the symbol under that name in this file is defined (path:line:col and the line).
+- implementation: what implements it (a Go interface's implementations, an abstract method's overrides); no text search answers this.
 - references: every use of it across the project, grouped by file.
+- workspace_symbols: find a declaration by name anywhere in the project when you do not know its file (symbol is the query, path only picks the server to ask).
 - rename: rename it everywhere with a true semantic rename (imports and other files included); prefer this over editing each occurrence. Returns the changed files.
 - symbols: the file's outline (functions, types, methods with line ranges); cheaper than reading a large file to find its shape.
 symbol is the identifier as written in path; when it appears on several lines, line picks the occurrence (otherwise the first is used). Works when a server is installed for the language (gopls, pyright, typescript-language-server, clangd, rust-analyzer or one from config) in a trusted project.`
 
 var lspToolProps = map[string]any{
-	"action":   map[string]any{"type": "string", "enum": []string{"definition", "references", "rename", "symbols"}},
-	"path":     map[string]any{"type": "string", "description": "file the symbol appears in (or to outline)"},
-	"symbol":   map[string]any{"type": "string", "description": "identifier as written in the file; not for symbols"},
+	"action":   map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols"}},
+	"path":     map[string]any{"type": "string", "description": "file the symbol appears in (or to outline); for workspace_symbols any file of the language"},
+	"symbol":   map[string]any{"type": "string", "description": "identifier as written in the file, or the query for workspace_symbols; not for symbols"},
 	"line":     map[string]any{"type": "number", "description": "1-based line of the occurrence to use when the name appears more than once"},
 	"new_name": map[string]any{"type": "string", "description": "rename only"},
 }
@@ -72,6 +74,31 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 	if symbol == "" {
 		return fantasy.NewTextErrorResponse("symbol is required"), nil
 	}
+	if action == "workspace_symbols" {
+		var syms []struct {
+			Name     string       `json:"name"`
+			Kind     int          `json:"kind"`
+			Location lsp.Location `json:"location"`
+		}
+		if err := c.Call(ctx, "workspace/symbol", map[string]any{"query": symbol}, &syms); err != nil {
+			return fail(err)
+		}
+		if len(syms) == 0 {
+			return fantasy.NewTextResponse("no symbol matching " + symbol + " in the project"), nil
+		}
+		var b strings.Builder
+		for _, sym := range syms[:min(len(syms), 50)] {
+			kind := "symbol"
+			if sym.Kind > 0 && sym.Kind < len(symbolKinds) {
+				kind = symbolKinds[sym.Kind]
+			}
+			fmt.Fprintf(&b, "%s %s  %s:%d\n", kind, sym.Name, workRel(sym.Location.Path()), sym.Location.Range.Start.Line+1)
+		}
+		if len(syms) > 50 {
+			fmt.Fprintf(&b, "... %d more\n", len(syms)-50)
+		}
+		return fantasy.NewTextResponse(strings.TrimRight(b.String(), "\n")), nil
+	}
 	text, err := os.ReadFile(path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -83,14 +110,14 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 	}
 	params := map[string]any{"textDocument": doc, "position": lsp.Pos(string(text), off)}
 	switch action {
-	case "definition":
+	case "definition", "implementation":
 		var raw json.RawMessage
-		if err := c.Call(ctx, "textDocument/definition", params, &raw); err != nil {
+		if err := c.Call(ctx, "textDocument/"+action, params, &raw); err != nil {
 			return fail(err)
 		}
 		locs := decodeLocations(raw)
 		if len(locs) == 0 {
-			return fantasy.NewTextResponse("no definition found for " + symbol + note), nil
+			return fantasy.NewTextResponse("no " + action + " found for " + symbol + note), nil
 		}
 		return fantasy.NewTextResponse(formatLocations(locs, 20) + note), nil
 	case "references":

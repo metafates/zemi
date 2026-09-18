@@ -648,7 +648,8 @@ model text cannot draw a window's image in chrome. `onFrame` writes `TakeGraphic
   the other builtins and user-added servers run unconfined. typescript still gets the tsserver on PATH (skipped when that is inside
   the repo). The pipeline's `AfterWrite` appends errors and warnings to
   write/edit/multiedit results plus errors in other files, the `diagnostics` tool reads
-  any file and the `lsp` tool does definition, references, rename and symbols by name.
+  any file and the `lsp` tool does definition, implementation, references, rename, a file's
+  symbols and `workspace_symbols` (project-wide search, `path` only picks the server).
   A server answers from the text the client sent for an open document and from its own
   copy of every other file, which it re-reads only when told: so before every touch or
   query `lspSync` diffs two `git status` listings and sends `workspace/didChangeWatchedFiles`

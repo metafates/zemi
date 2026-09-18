@@ -769,8 +769,8 @@ edits a file in their own editor; the result is the diff),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory_add`/`memory_search`/`memory_update`/`memory_forget` (model
 memory edits re-run intake and ask, §10.4), `diagnostics` (language
-server errors for any file), `lsp` (definition, references, rename and
-symbols by name), `skill` (loads a SKILL.md body on demand), plus the
+server errors for any file), `lsp` (definition, implementation,
+references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
 four the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), `window` (a program in a terminal drawn inside
 zemi, or text the UI renders, markdown included, and replaces in place) and `Lua` (run Lua inside zemi, main agent only, as user origin:

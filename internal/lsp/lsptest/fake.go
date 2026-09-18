@@ -68,6 +68,7 @@ func Serve(in io.Reader, out io.Writer) {
 					Line, Character int
 				} `json:"position"`
 				NewName string `json:"newName"`
+				Query   string `json:"query"`
 				Changes []struct {
 					URI  string `json:"uri"`
 					Type int    `json:"type"`
@@ -100,7 +101,7 @@ func Serve(in io.Reader, out io.Writer) {
 		case "textDocument/didClose":
 			delete(texts, m.Params.TextDocument.URI)
 			delete(seen, m.Params.TextDocument.URI)
-		case "textDocument/definition", "textDocument/references", "textDocument/rename":
+		case "textDocument/definition", "textDocument/implementation", "textDocument/references", "textDocument/rename":
 			uri := m.Params.TextDocument.URI
 			text := texts[uri]
 			word := wordAt(text, m.Params.Position.Line, m.Params.Position.Character)
@@ -118,7 +119,7 @@ func Serve(in io.Reader, out io.Writer) {
 			}
 			var result any
 			switch m.Method {
-			case "textDocument/definition":
+			case "textDocument/definition", "textDocument/implementation":
 				// the definition is the first "func WORD" line, if any
 				for _, h := range hits(uri, text) {
 					l := h["range"].(map[string]any)["start"].(map[string]any)["line"].(int)
@@ -146,6 +147,19 @@ func Serve(in io.Reader, out io.Writer) {
 				result = map[string]any{"changes": changes}
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
+		case "workspace/symbol":
+			var syms []any
+			for _, u := range slices.Sorted(maps.Keys(texts)) {
+				for i, line := range strings.Split(texts[u], "\n") {
+					name, ok := strings.CutPrefix(line, "func ")
+					if name, _, _ = strings.Cut(name, "("); !ok || !strings.Contains(name, m.Params.Query) {
+						continue
+					}
+					syms = append(syms, map[string]any{"name": name, "kind": 12, "location": map[string]any{"uri": u, "range": map[string]any{
+						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i, "character": len(line)}}}})
+				}
+			}
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": syms})
 		case "textDocument/documentSymbol":
 			var syms []any
 			for i, line := range strings.Split(texts[m.Params.TextDocument.URI], "\n") {
