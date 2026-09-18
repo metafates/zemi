@@ -134,10 +134,11 @@ guessing. Common keys:
   own memories, and anything from an untrusted project or a session that used `fetch`,
   `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`)
 - `permissions.mode` (`auto`, which an unknown value also reads as): `auto` (reads, edits
-  inside the project and build, test and read-only commands run on their own; everything
-  else goes to the user), `plan` (file writes are refused,
-  reading commands and builds and tests run, the latter sandboxed with the project read-only,
-  other commands and MCP calls ask, so the agent investigates and
+  inside the project and commands run on their own, the commands sandboxed; bulk deletes
+  like `rm -rf`, `git clean` or `find -delete` and everything
+  else go to the user), `plan` (file writes are refused,
+  commands run sandboxed with the project read-only,
+  MCP calls ask, so the agent investigates and
   proposes a plan) or `yolo` (every ask is allowed; deny rules still apply).
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
   that just read (no builds, tests or git), auto edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls

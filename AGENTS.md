@@ -170,21 +170,24 @@ is no fail-open path. New host-API side effects need the same `lua.` subject.
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules
 and the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
 allows. `auto` settles what `autoLocal` covers — reads and edits **inside the jail** that are
-not secret-shaped, `tool.workflow` scripts (each agent they start is gated), `SafeCommand`
-commands, input to a window that already runs sandboxed, and MCP tools a server annotates
+not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
+(`unsettled`), input to a window that already runs sandboxed, and MCP tools a server annotates
 read-only — and hands the rest to the user with a reason naming why (`askHook`; writes under
-`.git`, `.zemi` or zemi's own dirs are `protectedWrite`). `plan` denies writes and runs only
-`SafeCommand` commands, sandboxed with the project unwritable. Network requests are never
+`.git`, `.zemi` or zemi's own dirs are `protectedWrite`). `plan` denies writes and runs
+commands like auto, sandboxed with the project unwritable. Network requests are never
 settled: the URL is the model's. A mode from config may carry `decide`, a Lua function
 answering one ask ("allow", "deny", anything else sends it to the user whatever the base
 would settle, which is how a user gets every ask); it holds the
 interpreter with a 60s ceiling, long enough for a model call of its own, and cannot allow an
-`Unsandboxed` or `Network` request. Known ceiling: auto settles in-jail writes and project
-build/test commands, so the model can write code and run it unattended; that is the intended
-tradeoff, and plan asks. In an untrusted project (`settledCommand`), and in a
-trusted one with no sandbox backend, both modes settle only `ReadCommand` commands
-(`SafeCommand` whose every program only reads, named without a path; no builds, no git) and
-auto settles no writes, so `SafeCommand` is reached only for runs that will be sandboxed.
+`Unsandboxed` or `Network` request. In a trusted project with a live sandbox `unsettled`
+parses nothing: every command runs confined, except the short `perm.Destructive` list (forced
+or recursive `rm`, `git clean`, `find -delete`, `shred`, `truncate`, `dd`, `rsync --delete`,
+also behind `xargs`, `find -exec`, `sh -c`, `eval`) and, on a backend that cannot hide files,
+one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only
+limit, so the model can write code and run it unattended, rewrite any project file and read
+what the policy does not hide, outside the project too. In an untrusted project, and in a
+trusted one with no sandbox backend, both modes settle only `ReadCommand` commands (every
+program only reads, named without a path; no builds, no git) and auto settles no writes.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict
 a mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
@@ -209,22 +212,17 @@ asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the
 writable dirs and offers `network: true` first.
 
-`SafeCommand` is an allowlist (internal/perm/safe.go, table-tested): no shell expansion
-outside single quotes, no write redirects, no program named by a path, and every argument
-must pass `safeCommandPath` (inside the project and not secret-shaped — `h.secretPath`
-matches the resolved path too, so a symlink cannot hide one; a plain read may also reach the
-scratchpad and zemi's config tree, but code may never run from there). Project tools settle
-with any arguments: what they write and run is the sandbox's to confine, and plan mode stays
-read-only because its policy leaves the project unwritable, not because the parser refuses a
-flag. Readers instead keep their `refusedFlags` and script checks, since `ReadCommand` shares
-them and settles readers unconfined, and `perm.ArgUse` says how an argument is used, so a
-recursive search settles only over a tree with no secret-shaped file in it. Around git:
-nothing may point into `.git`, a command that may print file content settles only where the
-repository tracks no secret-shaped file (`trackedSecret`, which `repoNote` names in the ask
-reason when that is the only thing stopping it), `git config` never settles and `git remote`
-only bare, since `.git/config` may hold tokens. Known ceiling: a project tool runs code a
-flag or target names (`go test -exec`, `make --eval`), and that code reads whatever the
-sandbox lets it — seatbelt hides the strict secret shapes, Landlock cannot.
+`ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle
+unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),
+no write redirects (`2>/dev/null` and `2>&1` are none), no program named by a path, and every
+argument must pass `safeCommandPath` (inside the project and not secret-shaped —
+`h.secretPath` matches the resolved path too, so a symlink cannot hide one; a plain read may
+also reach the scratchpad and zemi's config tree, but `cd` may not enter them). Readers keep
+their `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a
+search pattern is no path, and a recursive search settles only over a tree with no
+secret-shaped file in it. Nothing may point into `.git`, since `.git/config` may hold
+tokens. Plan mode stays read-only because its policy leaves the project unwritable, not
+because a parser refuses a flag.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, as
 prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's two-word

@@ -80,7 +80,6 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 				t.Fatal(err)
 			}
 			h.noSecretsUnder(dir, []string{h.Dirs.ProjectDir}, true)
-			h.trackedSecret(dir)
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatal("git ran a program from the repository config")
 			}

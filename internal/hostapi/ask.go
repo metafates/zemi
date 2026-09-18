@@ -97,13 +97,12 @@ func (h *Host) askHook() tools.Asker {
 			// the host is the model's, like a fetch URL, so no mode settles it
 			req.Reason = "needs the network, staying sandboxed"
 		case base == "plan":
-			if req.Subject == "tool.bash" && h.settledCommand(req.Arg) {
-				return resolved(true, "mode:"+def.Name)
-			}
 			if req.Subject == "tool.bash" {
-				if note := h.repoNote(req.Arg); note != "" {
-					req.Reason = strings.TrimPrefix(req.Reason+"; not settled in plan mode: "+note, "; ")
+				why := h.unsettled(req.Arg)
+				if why == "" {
+					return resolved(true, "mode:"+def.Name)
 				}
+				req.Reason = strings.TrimPrefix(req.Reason+"; not settled: "+why, "; ")
 			}
 		case base == "auto":
 			if h.autoLocal(req) {
@@ -124,11 +123,7 @@ func (h *Host) askHook() tools.Asker {
 				// a settled command would run unconfined
 				note("not settled: no sandbox")
 			case req.Subject == "tool.bash":
-				reason := "not settled: auto mode runs only read-only, build and test commands on its own"
-				if repo := h.repoNote(req.Arg); repo != "" {
-					reason += " (" + repo + ")"
-				}
-				note(reason)
+				note("not settled: " + h.unsettled(req.Arg))
 			default:
 				note("not settled: auto mode settles reads and edits inside the project")
 			}

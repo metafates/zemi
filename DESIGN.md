@@ -310,7 +310,7 @@ command creates a protected path that did not exist when it started
 off for the process until `/trust` is answered, without saving: the tool
 result and a notification name the path, and the config watcher and the
 trust step check running commands before they read project config. There is no content hash:
-once the user lets auto mode run a repository's build and test commands,
+once the user lets auto mode run a repository's commands,
 re-asking about a pulled `.zemi/init.lua` protects nothing, and project
 origin is denylisted anyway (below).
 
@@ -1410,23 +1410,19 @@ configured provider later (`zemi.memory.search` signature does not change).
   survive the rules above and the `permission.request` veto (§6.2), and
   it can never overrule a `deny`. Three ship: `plan` (`fs.write` is denied even under an allow rule, bash
   and `mcp.*` allows flip to `ask` unless the bash command is a
-  `perm.ReadCommand`, and `perm.SafeCommand` commands run sandboxed with
+  `perm.ReadCommand`, and commands settle as in `auto` but run sandboxed with
   the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
   locally first, without a model: reads and writes inside the jail that
   are not secret-shaped (writes under any `.git` or `.zemi`, the git dir
   a project `.git` file names, or zemi's own config, data and state dirs
   excepted), workflow scripts (the
-  script is sandboxed and each agent it starts is gated), and `SafeCommand`
-  commands (no program named by a path; readers with their per-program
-  flag and script checks, project tools such as `make`, `pytest` or
-  `go test` with any arguments), whose arguments may not run code from the scratchpad and
-  whose recursive searches settle only over trees with no secret-shaped
-  file, whose arguments may not point into `.git`, and whose git commands
-  that may print file content (`grep`, `show`, `diff`, `cat-file`,
-  `stash show`, `stash list` with arguments, `status -v`, `log`/`reflog`
-  with `-p`, `-U`, `--binary` or another patch flag) settle only in a
-  repository tracking no secret-shaped file (`git config` never settles
-  and `git remote` only bare: `.git/config` may hold tokens). Anything a
+  script is sandboxed and each agent it starts is gated), and every bash
+  command, unparsed, since it runs sandboxed (below). Two kinds still ask
+  (`Host.unsettled`): the short `perm.Destructive` list (forced or
+  recursive `rm`, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
+  `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c` or `eval`),
+  and on a backend that cannot hide files a command naming an existing
+  secret-shaped file. Anything a
   mode cannot settle goes to the user's ask carrying the reason it did
   not: no model screens permission requests.
   A file request is judged and shown by its resolved path (relative to
@@ -1436,16 +1432,18 @@ configured provider later (`zemi.memory.search` signature does not change).
   and the scratchpad (`~/.gitconfig`, a shell rc file: the sandbox cannot
   confine the write tool), goes to the user.
   Network is never settled locally, because the URL is the model's.
-  Known ceiling: in-jail writes and project build and test commands both
-  settle, so the model can write code and run it unattended; that is the
-  auto-mode tradeoff, and `plan` asks, and such commands run
-  sandboxed (below).
+  Known ceiling: in-jail writes and commands both settle, so the model
+  can write code and run it unattended, rewrite any project file and read
+  what the sandbox does not hide, outside the project too; that is the
+  auto-mode tradeoff, and the sandbox policy (below) is its only limit.
   In a project the user has not trusted (§5) both modes settle less:
-  writes and every command but `perm.ReadCommand` (`SafeCommand` limited
-  to programs that only read, named without a path; no build tool and no
-  git, which runs programs `.git/config` names) go to the user.
+  writes and every command but `perm.ReadCommand` (an allowlist of
+  programs that only read, named without a path, with per-program flag
+  and script checks, arguments inside the project and not secret-shaped,
+  recursive searches only over trees with no secret-shaped file; no build
+  tool and no git, which runs programs `.git/config` names) go to the user.
   With no sandbox backend a trusted project also settles only
-  `ReadCommand` commands (`settledCommand`), which run unconfined, and
+  `ReadCommand` commands, which run unconfined, and
   auto mode sends every other command to the user ("not settled: no
   sandbox"), since an approved one would run unconfined.
   A mode added from config may carry a `decide` function that answers one
@@ -1552,14 +1550,10 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the live backend's limits and the retry, `network: true`
   first when the failure looks like a network one (`sandbox.LikelyNetwork`);
-  a timed-out bash run adopted as a job keeps it. Only a
-  sandboxed run reaches `SafeCommand`, so it has to keep secrets from
-  being read (the sandbox allows reads) but not writes or network; the
-  per-flag write and exec refusals for project tools are gone, and
-  readers keep theirs because `ReadCommand` shares them and runs
-  unconfined. Known ceiling: a project tool runs code a flag or target
-  names (`go test -exec`, `make --eval`), and on Linux, where Landlock
-  cannot hide `.env`, that code can read it in a trusted project.
+  a timed-out bash run adopted as a job keeps it. Known
+  ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
+  command in a trusted project can read it when it names it by a glob or
+  a variable, or runs code that opens it.
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
   where the kernel lands, case-folded on darwin and windows. Paths
@@ -1927,7 +1921,7 @@ internal/hostapi/           zemi.* namespaces and the host services behind them:
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
-internal/perm/              rules engine, bash normalizer, SafeCommand, env gates
+internal/perm/              rules engine, bash normalizer, ReadCommand, env gates
 internal/sandbox/           OS confinement for settled commands: seatbelt, Landlock +
                             seccomp, the namespace variant and the helper re-exec
 internal/ui/                program, regions, widgets, themes, palette, overlays,

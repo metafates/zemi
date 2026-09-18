@@ -28,8 +28,7 @@ type ArgUse int
 const (
 	// ArgRead is read at most, like cat reads a file.
 	ArgRead ArgUse = iota
-	// ArgRun may hold code the program runs: a test file, a build
-	// directory, a config, the directory cd enters.
+	// ArgRun is the directory cd enters.
 	ArgRun
 	// ArgWalk is searched recursively when it is a directory, and what
 	// matches is printed.
@@ -37,22 +36,18 @@ const (
 	// ArgSearch is ArgWalk minus hidden and gitignored entries below the
 	// argument, which rg skips unless told otherwise.
 	ArgSearch
-	// ArgRepo is the directory of a repository whose tracked files a git
-	// command may print without naming them (git grep, git show HEAD).
-	ArgRepo
+	// ArgText is a search pattern, never a path.
+	ArgText
 )
 
-// SafeCommand reports whether a bash command only reads or runs a project
-// tool (build, test, lint, format): every segment runs an allowlisted program
-// named without a path, nothing is written through a redirect, the shell
-// expands nothing, and every argument passes pathOK, so a reader cannot print
-// secrets or files outside the project. A nil pathOK refuses absolute, home
-// and parent paths. Auto and plan mode run these in the sandbox, which
-// confines what project tools write and run.
-// NOTE: a project tool runs code a flag or target may name (go test -exec,
-// make --eval), and the sandbox lets that code read the secrets the path
-// check keeps from readers.
-func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
+// ReadCommand reports whether a bash command only reads: every segment runs
+// an allowlisted reader named without a path (no build or test tool, which
+// runs the project's code, and no git, which runs programs the repository's
+// config names), nothing is written through a redirect, the shell expands
+// nothing, and every argument passes pathOK, so a reader cannot print secrets
+// or files outside the project. A nil pathOK refuses absolute, home and
+// parent paths. These settle where no sandbox would hold the command.
+func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	cmd = inlineVars(cmd)
 	if expands(cmd) {
 		return false
@@ -70,19 +65,9 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 	// every directory the shell may be in
 	dirs := []string{"."}
 	check := func(a string, use ArgUse) bool {
-		// git reads rev:path from the tree and :0:path from the index, so the
-		// text after every colon counts too
-		paths := []string{a}
-		for rest, ok := a, true; ok; {
-			if _, rest, ok = strings.Cut(rest, ":"); ok && rest != "" {
-				paths = append(paths, rest)
-			}
-		}
 		for _, d := range dirs {
-			for _, p := range paths {
-				if !pathOK(inDir(d, p), use) {
-					return false
-				}
+			if use != ArgText && !pathOK(inDir(d, a), use) {
+				return false
 			}
 		}
 		return true
@@ -99,9 +84,6 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		}) || (walkCwd && positional < 2 && !check(".", use(1))) {
 			return false
 		}
-		if repo, ok := gitContentDir(f); ok && !check(repo, ArgRepo) {
-			return false
-		}
 		if f[0] == "cd" {
 			for _, d := range dirs {
 				dirs = append(dirs, inDir(d, f[1]))
@@ -109,29 +91,6 @@ func SafeCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		}
 	}
 	return safeArgs(n.ReadPaths, func(_ int, a string) bool { return check(a, ArgRead) })
-}
-
-// ReadCommand is SafeCommand limited to programs that only read, found on
-// PATH by name: no build or test tool, which runs the project's code, and no
-// git, which runs programs the repository's config names (core.fsmonitor on
-// status, diff.external and textconv on diff). An untrusted project settles
-// only these.
-func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
-	if !SafeCommand(cmd, pathOK) {
-		return false
-	}
-	for _, f := range Normalize(inlineVars(cmd)).Args {
-		if !reader(f[0]) {
-			return false
-		}
-	}
-	return true
-}
-
-// reader reports a program that only reads its arguments; safeSegment
-// refuses the flags and scripts that would make one write or run code.
-func reader(name string) bool {
-	return readOnlyPrograms[name] || name == "sed" || name == "awk" || name == "uniq"
 }
 
 func relativeArg(a string, _ ArgUse) bool {
@@ -163,6 +122,20 @@ func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	}) {
 		first = 0
 	}
+	search := slices.Contains([]string{"grep", "egrep", "fgrep", "rg", "ag"}, name)
+	// the first operand is the pattern ("//|\* " is no path) unless -f may
+	// have taken it as a pattern file
+	if search && first == 1 && !hasFlag(rest, "-f", "--file", "--files") {
+		defer func() {
+			files := use
+			use = func(pos int) ArgUse {
+				if pos == 0 {
+					return ArgText
+				}
+				return files(pos)
+			}
+		}()
+	}
 	switch {
 	// globs, and a whitelist in an --ignore-file, override rg's ignore
 	// rules, so they walk everything too
@@ -177,7 +150,7 @@ func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 	// tree, du, find, fd and ls -R walk too but print names, never content
 	case name == "diff", name == "gofmt":
 		return walkFrom(0, ArgWalk), false
-	case name == "cd", !reader(name):
+	case name == "cd":
 		return func(int) ArgUse { return ArgRun }, false
 	}
 	return walkFrom(-1, ArgRead), false
@@ -293,6 +266,7 @@ var readOnlyPrograms = map[string]bool{
 	"cd": true, "uname": true, "id": true, "hostname": true, "column": true, "comm": true,
 	"paste": true, "fold": true, "sha256sum": true, "shasum": true, "md5sum": true, "type": true,
 	"sleep": true, "seq": true, "sort": true, "gofmt": true, "find": true,
+	"sed": true, "awk": true, "uniq": true,
 }
 
 // refusedFlags make an otherwise read-only program write a file, assign a
@@ -314,12 +288,6 @@ var refusedFlags = map[string][]string{
 	"awk":    {"-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec", "-W", "-o", "--pretty-print", "-p", "--profile", "-d", "--dump-variables", "-D", "--debug"},
 	"jq":     {"-f", "--from-file", "-L", "--library-path"},
 	"gofmt":  {"-w", "--w", "-cpuprofile", "--cpuprofile"},
-}
-
-// projectTools build, test, lint or format the project with any arguments.
-var projectTools = map[string]bool{
-	"pytest": true, "tox": true, "mypy": true, "eslint": true, "prettier": true, "vitest": true, "jest": true,
-	"golangci-lint": true, "staticcheck": true, "ruff": true, "tsc": true, "make": true,
 }
 
 // sedSafe reports whether every sed script (the -e values, or else the
@@ -525,112 +493,12 @@ func safeSegment(a []string) bool {
 			!slices.ContainsFunc(strings.Split(sub, "/"), func(p string) bool { return strings.EqualFold(p, ".git") })
 	case name == "jq":
 		return !jqUnsafe.MatchString(strings.Join(rest, " "))
-	case readOnlyPrograms[name], projectTools[name]:
-		return true
 	case name == "sed":
 		return sedSafe(rest)
 	case name == "awk":
 		return !awkUnsafe.MatchString(strings.Join(rest, " "))
-	case name == "git":
-		return safeGit(rest)
-	// run starts the program instead of building or testing it, and install
-	// and publish go to the user too
-	case name == "go":
-		return slices.Contains([]string{"build", "test", "vet", "list", "version", "doc", "env", "fmt", "mod"}, sub)
-	case name == "cargo":
-		return slices.Contains([]string{"build", "check", "test", "clippy", "doc", "tree", "metadata", "bench", "fmt"}, sub)
-	case name == "npm" || name == "pnpm" || name == "yarn" || name == "bun":
-		return slices.Contains([]string{"test", "lint", "build", "typecheck", "ls", "list", "outdated", "why", "run"}, sub)
-	case name == "python" || name == "python3":
-		return sub == "--version" || sub == "-V" ||
-			sub == "-m" && len(rest) > 1 && slices.Contains([]string{"pytest", "mypy", "unittest", "py_compile", "json.tool"}, rest[1])
-	case name == "node":
-		return len(rest) == 1 && (sub == "--version" || sub == "-v")
 	}
-	return false
-}
-
-// safeGit allows subcommands that read the repository.
-func safeGit(args []string) bool {
-	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-		switch args[0] {
-		case "--no-pager", "--no-optional-locks":
-			args = args[1:]
-		case "-C":
-			if len(args) < 2 {
-				return false
-			}
-			args = args[2:]
-		default: // gitContentDir finds the repository past these only
-			return false
-		}
-	}
-	if len(args) == 0 || hasFlag(args, "--no-index") {
-		return false
-	}
-	sub, rest := args[0], args[1:]
-	next := ""
-	if len(rest) > 0 {
-		next = rest[0]
-	}
-	switch sub {
-	// fetch is not here: it talks to the network and runs transport helpers
-	case "grep":
-		return !hasFlag(rest, "--untracked")
-	case "status", "diff", "log", "show", "blame", "describe", "rev-parse", "ls-files", "ls-tree",
-		"shortlog", "cat-file", "merge-base", "rev-list", "show-ref", "for-each-ref",
-		"name-rev", "count-objects":
-		return true
-	case "branch":
-		for i := 0; i < len(rest); i++ {
-			switch a := rest[i]; {
-			case a == "--contains" || a == "--merged" || a == "--no-merged" || a == "--points-at":
-				i++
-			case !strings.HasPrefix(a, "-") || hasFlag([]string{a}, "-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", "--copy", "--force", "--set-upstream-to", "-u", "--unset-upstream", "--edit-description"):
-				return false
-			}
-		}
-		return true
-	case "tag":
-		return len(rest) == 0 || slices.ContainsFunc(rest, func(a string) bool {
-			return a == "--list" || strings.HasPrefix(a, "-l") || strings.HasPrefix(a, "-n")
-		})
-	// config values and remote URLs ask: .git/config may hold tokens
-	// (http.extraheader from actions/checkout, https://user:token@ remotes)
-	case "remote":
-		return len(rest) == 0
-	case "stash", "worktree":
-		return next == "list" || (sub == "stash" && next == "show")
-	case "reflog":
-		return next == "" || next == "show"
-	case "submodule":
-		return next == "" || next == "status"
-	}
-	return false
-}
-
-// gitContentDir returns the directory (the -C values) a git segment reads
-// the repository from when it may print file content, and whether it may.
-func gitContentDir(f []string) (string, bool) {
-	if len(f) == 0 || f[0] != "git" {
-		return "", false
-	}
-	dir, args := ".", f[1:]
-	for len(args) > 1 && strings.HasPrefix(args[0], "-") {
-		if args[0] == "-C" {
-			dir, args = inDir(dir, args[1]), args[1:]
-		}
-		args = args[1:]
-	}
-	if len(args) == 0 {
-		return "", false
-	}
-	sub, rest := args[0], args[1:]
-	return dir, slices.Contains([]string{"grep", "show", "diff", "cat-file"}, sub) ||
-		sub == "stash" && (slices.Contains(rest, "show") || len(rest) > 1 && rest[0] == "list") ||
-		sub == "status" && hasFlag(rest, "-v", "--verbose") ||
-		(sub == "log" || sub == "reflog") && hasFlag(rest, "-p", "-u", "-U", "--patch", "--unified", "--binary", "-L", "--word-diff",
-			"--color-words", "--cc", "-c", "--dd", "--diff-merges", "--remerge-diff", "--patch-with-stat", "--patch-with-raw")
+	return readOnlyPrograms[name]
 }
 
 // hasFlag reports whether any argument may set one of flags: the flag with
@@ -655,4 +523,43 @@ func hasFlag(args []string, flags ...string) bool {
 		}
 	}
 	return false
+}
+
+// runners start the program their arguments name, so Destructive looks for
+// one past them.
+var runners = []string{"xargs", "find", "fd", "parallel", "env", "sudo", "nohup", "time", "timeout", "nice", "command", "exec"}
+
+// Destructive says why a command still goes to the user when a sandbox
+// confines it to the project: it may delete or empty many files at once.
+// Empty when it may run. Normalize already made sh -c bodies and
+// substitutions segments of their own.
+func Destructive(cmd string) string {
+	n := Normalize(cmd)
+	if n.Fail != "" {
+		return n.Fail
+	}
+	for _, f := range n.Args {
+		for i, w := range f {
+			if i > 0 && !slices.Contains(runners, filepath.Base(f[0])) {
+				break
+			}
+			name, rest := filepath.Base(w), f[i+1:]
+			switch {
+			case name == "eval":
+				if why := Destructive(strings.Join(rest, " ")); why != "" {
+					return why
+				}
+				continue
+			case name == "rm" && (i > 0 || hasFlag(rest, "-r", "-R", "-f", "--recursive", "--force")):
+			case name == "git" && slices.Contains(rest, "clean"):
+			case name == "find" && hasFlag(rest, "-delete"):
+			case name == "rsync" && slices.ContainsFunc(rest, func(a string) bool { return strings.HasPrefix(a, "--del") || strings.HasPrefix(a, "--remove") }):
+			case name == "shred", name == "truncate", name == "dd":
+			default:
+				continue
+			}
+			return strings.Join(f, " ") + " may delete many files"
+		}
+	}
+	return ""
 }

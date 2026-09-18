@@ -179,8 +179,8 @@ func TestJobLineChecksWhatRuns(t *testing.T) {
 			t.Errorf("%q %q %v: %q checks as %q, want %q", c.command, c.args, c.env, line, got, c.segs)
 		}
 	}
-	if perm.SafeCommand(jobLine("go test ./...", nil, map[string]any{"GOFLAGS": "-toolexec=./x.sh"}), nil) {
-		t.Error("an env extra must keep job_start from settling as a safe command")
+	if perm.ReadCommand(jobLine("rg foo", nil, map[string]any{"RIPGREP_CONFIG_PATH": "x"}), nil) {
+		t.Error("an env extra must keep job_start from settling as a read command")
 	}
 }
 

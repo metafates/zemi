@@ -407,13 +407,10 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 }
 
 // autoLocal is everything auto mode settles: reading and editing files
-// inside the jail that are not secret-shaped, read-only or build and test
-// commands, running workflows (their agents' tools are checked one by one)
-// and MCP tools their server marks read-only. Anything else goes to the
-// user with a reason (askHook); a network request always does, since the
-// URL is the model's. An untrusted project settles only reads and commands
-// that just read, and so does a trusted one without a sandbox backend for
-// commands.
+// inside the jail that are not secret-shaped, commands (unsettled), running
+// workflows (their agents' tools are checked one by one) and MCP tools their
+// server marks read-only. Anything else goes to the user with a reason
+// (askHook); a network request always does, since the URL is the model's.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case "fs.read":
@@ -423,7 +420,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// write there (init.lua, .zemi/) changes what zemi allows
 		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case "tool.bash":
-		return h.settledCommand(req.Arg)
+		return h.unsettled(req.Arg) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	case "tool.window":
@@ -446,15 +443,40 @@ func (h *Host) protectedWrite(p string) bool {
 		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
-// settledCommand reports a bash command auto and plan mode run without
-// asking. Build and test commands and git run the repository's code and
-// config, which only a trusted project may have them do, and only in the
-// sandbox (Pipeline.SandboxFor); without a backend only readers settle.
-func (h *Host) settledCommand(cmd string) bool {
-	if h.ProjectTrusted() && h.sandboxLive() {
-		return perm.SafeCommand(cmd, h.safeCommandPath)
+// unsettled says why auto and plan mode leave a bash command to the user,
+// or "" when they run it. In a trusted project with a sandbox every command
+// runs, confined (Pipeline.SandboxFor), but the few that delete in bulk.
+// Anywhere else it would run unconfined, so only readers settle.
+// NOTE: nothing parses what a sandboxed command does, so the sandbox policy
+// is the only limit: it may rewrite any project file (rewind does not track
+// bash), run the project's code, delete through a variable or an interpreter,
+// and read what the policy does not hide, outside the project too (without
+// HidesSecretFiles, a .env it names by a glob). Screening the text again
+// would bring the asks back; tighten sandboxPolicy instead.
+func (h *Host) unsettled(cmd string) string {
+	if !h.ProjectTrusted() || !h.sandboxLive() {
+		if perm.ReadCommand(cmd, h.safeCommandPath) {
+			return ""
+		}
+		return "only commands that just read run without a trusted project and a sandbox"
 	}
-	return perm.ReadCommand(cmd, h.safeCommandPath)
+	if why := perm.Destructive(cmd); why != "" {
+		return why
+	}
+	if h.sandbox.Load().backend.HidesSecretFiles {
+		return ""
+	}
+	for _, f := range perm.Normalize(cmd).Args {
+		for _, a := range f[1:] {
+			if !filepath.IsAbs(a) {
+				a = filepath.Join(h.Dirs.ProjectDir, a)
+			}
+			if _, err := os.Lstat(a); err == nil && perm.PathIsSecret(a) {
+				return a + " is secret-shaped and this sandbox cannot hide it"
+			}
+		}
+	}
+	return ""
 }
 
 // inDirNamed reports a path under a directory with one of names (or that
@@ -496,63 +518,9 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 		roots = append(append(roots, h.ScratchDir(), h.Dirs.ConfigHome), h.Dirs.UserTrees()...)
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
-	// a write flag the allowlist misses could still reach .git/config
+	// .git/config may hold tokens
 	return h.inJail(p, roots...) && !h.secretPath(p) && !inDirNamed(p, ".git") &&
-		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch)) && (use != perm.ArgRepo || h.trackedSecret(p) == "")
-}
-
-// trackedSecret says why git commands that print file content in the
-// repository around dir may not settle: it tracks a secret-shaped file, or
-// the listing failed (no repository too). Empty means they may.
-// NOTE: a secret committed and later deleted is not seen, and git log -p
-// still prints it; a history scan per command would be too slow.
-func (h *Host) trackedSecret(dir string) string {
-	// the pathspecs keep the listing short in a big repository
-	args := []string{"ls-files", "-z", "--recurse-submodules", "--"}
-	for _, s := range perm.SecretPathShape {
-		args = append(args, ":(top,icase,glob)**/"+s)
-	}
-	out, err := h.git(dir, args...)
-	if err != nil {
-		return "cannot list the files git tracks"
-	}
-	for _, f := range strings.Split(out, "\x00") {
-		if perm.PathIsSecret(f) {
-			return "the repository tracks " + f
-		}
-	}
-	return ""
-}
-
-// repoNote says why cmd did not settle when a tracked secret is the only
-// reason: every other check passes and a git command prints file content
-// from a repository that tracks one. Otherwise it is "".
-func (h *Host) repoNote(cmd string) string {
-	if !h.ProjectTrusted() || !h.sandboxLive() {
-		return ""
-	}
-	note := ""
-	ok := perm.SafeCommand(cmd, func(arg string, use perm.ArgUse) bool {
-		if use != perm.ArgRepo {
-			return h.safeCommandPath(arg, use)
-		}
-		// ArgRead runs every check ArgRepo does but the tracked-secret one
-		if !h.safeCommandPath(arg, perm.ArgRead) {
-			return false
-		}
-		if note == "" {
-			p := arg
-			if !filepath.IsAbs(p) {
-				p = h.Dirs.ProjectDir + string(filepath.Separator) + p // as safeCommandPath joins it
-			}
-			note = h.trackedSecret(p)
-		}
-		return true
-	})
-	if !ok {
-		return ""
-	}
-	return note
+		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
