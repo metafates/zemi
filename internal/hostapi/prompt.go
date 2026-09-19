@@ -199,7 +199,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if sections != "" {
 		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
 	}
-	env, luaSections, index := h.environmentPrompt(), h.assembleSections(), ""
+	env, luaSections, index := h.environmentPrompt(), h.assembleSections()+h.toolSections(toolset), ""
 	if hasTool(toolset, "skill") {
 		index = h.skillsIndexPrompt()
 	}

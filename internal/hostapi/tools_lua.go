@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ type luaTool struct {
 	Desc     string
 	Schema   map[string]any
 	Required []string
+	Prompt   string
 	Parallel bool
 	Timeout  time.Duration
 	Fn       *glua.LFunction
@@ -70,6 +72,21 @@ func (r *toolReg) list() []*luaTool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.SortedFunc(maps.Values(r.byName), func(a, b *luaTool) int { return cmp.Compare(a.Name, b.Name) })
+}
+
+// toolSections renders the prompt of each Lua tool in toolset, so a profile
+// that drops the tool drops its section. Name order and fixed text keep the
+// provider's prompt cache; project and learned prompts stay out, like their
+// agent.assemble sections.
+func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
+	var out string
+	for _, t := range h.luaTools.list() {
+		if t.Prompt == "" || t.Origin.Rank() <= lua.OriginProject.Rank() || !hasTool(toolset, t.Name) {
+			continue
+		}
+		out += "\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)]
+	}
+	return out
 }
 
 func (r *toolReg) addOverride(o *overrideRec) {
@@ -179,6 +196,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		lt := &luaTool{
 			Name: name, Desc: desc,
 			Schema: schema, Required: required,
+			Prompt:   strings.TrimSpace(rawString(spec, "prompt")),
 			Parallel: rawBool(spec, "parallel"),
 			Timeout:  timeout, Fn: fn,
 			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),

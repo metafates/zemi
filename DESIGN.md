@@ -743,7 +743,8 @@ tool-call telemetry.
 System prompts are Go string constants in `internal/hostapi/prompt.go`;
 there are no template files. They are assembled per session and pinned
 there, because anything that varies per turn busts the provider's prompt
-cache. Lua injects sections via the `agent.assemble` event (memory
+cache. Lua injects sections via the `agent.assemble` event and a Lua
+tool's `prompt`, which ships only with the tool (memory
 digest, skills index, project context ship as built-in sections).
 
 ### 6.4 Tools

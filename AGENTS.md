@@ -592,7 +592,8 @@ how many rows the frame takes, so nothing above it reflows.
   then `zemiPrompt`, plan mode, the per-session pinned `environmentPrompt`, instruction files
   under `# Project instructions` (the repository's files share a 32 KB budget spent deepest
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
-  `<config>/AGENTS.md` gets its own budget), Lua sections, skills, digest. It is built from the
+  `<config>/AGENTS.md` gets its own budget), Lua sections (`agent.assemble`, then the `prompt`
+  of each Lua tool in the tool set), skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
   or `todos` drops its "Using tools" line, and plan mode without the `plan` tool (headless, a
