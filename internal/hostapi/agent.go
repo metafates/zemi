@@ -75,7 +75,6 @@ type StreamTool struct {
 type agentHost struct {
 	mu        sync.Mutex
 	profiles  map[string]*Profile
-	defProf   string
 	runner    *agent.Runner
 	sessionID string
 
@@ -178,19 +177,19 @@ func newAgentHost() *agentHost {
 // Effort is the configured reasoning effort ("" = provider default).
 func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
 
-// resolveProfile returns the profile to run: explicit name, the default,
-// or the implicit shipped profile.
+// resolveProfile returns the profile to run: explicit name, else the
+// agent.profile key; nil is the implicit shipped profile.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if name == "" {
-		name = ag.defProf
+		name = h.Settings.Str("agent.profile")
 	}
 	if p, ok := ag.profiles[name]; ok {
 		return p, nil
 	}
-	if name != "" && name != "default" {
+	if name != "default" {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
 	}
 	return nil, nil
@@ -214,13 +213,13 @@ func (h *Host) currentModelID(p *Profile) string {
 }
 
 // liveModelID is the model turns run on: the running turn's, else the
-// default profile's (ag.mu held).
+// active profile's (ag.mu held).
 func (h *Host) liveModelID() string {
 	ag := h.agents
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	return h.currentModelID(ag.profiles[ag.defProf])
+	return h.currentModelID(ag.profiles[h.Settings.Str("agent.profile")])
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -379,11 +378,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 		h.refresh()
 		return err
 	}
-	ag.mu.Lock()
-	profName := ag.defProf
-	ag.mu.Unlock()
-
-	p, err := h.resolveProfile(profName)
+	p, err := h.resolveProfile("")
 	if err != nil {
 		return fail(err)
 	}
@@ -1093,7 +1088,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf,
-		Profile: ag.defProf,
+		Profile: h.Settings.Str("agent.profile"),
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
@@ -1396,26 +1391,11 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
-	tb.RawSetString("set_default", L.NewFunction(func(L *glua.LState) int {
-		name := L.CheckString(1)
-		h.refuseBelowUser(L, "agent.set_default")
-		h.agents.mu.Lock()
-		_, ok := h.agents.profiles[name]
-		if ok {
-			h.agents.defProf = name
-		}
-		h.agents.mu.Unlock()
-		if !ok {
-			L.RaiseError("zemi.agent.set_default: unknown profile %q", name)
-		}
-		return 0
-	}))
-
 	tb.RawSetString("current", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		ag := h.agents
 		ag.mu.Lock()
-		out.RawSetString("profile", glua.LString(ag.defProf))
+		out.RawSetString("profile", glua.LString(h.Settings.Str("agent.profile")))
 		sid, model := ag.sessionID, h.liveModelID()
 		ag.mu.Unlock()
 		out.RawSetString("id", glua.LString(sid))

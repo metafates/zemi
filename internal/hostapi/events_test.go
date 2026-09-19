@@ -82,7 +82,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	defer h.Wins.Close(w.ID)
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
-		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.agent.set_default("default")`,
+		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
 		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
 		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add({ kind = "fact", text = "x" })`,

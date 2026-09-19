@@ -1061,9 +1061,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("project", glua.LString(h.project()))
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	stream := h.AgentStream()
-	if stream.Profile == "" {
-		stream.Profile = "default"
-	}
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort()))
@@ -1409,7 +1406,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.52.0"))
+	api.RawSetString("version", glua.LString("0.53.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1516,6 +1513,9 @@ func (h *Host) PurgeGeneration() {
 	h.modes.mu.Lock()
 	h.modes.list = nil
 	h.modes.mu.Unlock()
+	h.agents.mu.Lock()
+	clear(h.agents.profiles)
+	h.agents.mu.Unlock()
 	h.luaRulesMu.Lock()
 	h.staleRules = append(h.staleRules, h.luaRules...)
 	h.luaRules = nil

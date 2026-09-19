@@ -197,6 +197,9 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{"an unchanged double set keeps a pick", []string{"p/c", "p/d"}, "p/e", "p/e"},
 		{"editing the second set wins", []string{"p/c", "p/f"}, "p/e", "p/f"},
 		{"dropping the second set wins", []string{"p/c"}, "p/e", "p/c"},
+		{"a pick outlives the last set", nil, "p/e", "p/e"},
+		{"a set comes back", []string{"p/c"}, "", "p/c"},
+		{"dropping every set returns the default", nil, "", ""},
 	} {
 		src := ""
 		for _, v := range c.config {
@@ -882,7 +885,7 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	reflectStub(t, h, "ok")
 	runUser(t, r, `
 		zemi.agent.profile("cheap", { model = "p/cheap" })
-		zemi.agent.set_default("cheap")
+		zemi.config.set("agent.profile", "cheap")
 	`)
 	if err := h.AgentSend("hi"); err != nil {
 		t.Fatal(err)
@@ -909,7 +912,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		} })
 		zemi.model.set("a/small")
 		zemi.agent.profile("p", { model = "a/big" })
-		zemi.agent.set_default("p")
+		zemi.config.set("agent.profile", "p")
 	`)
 	if s := h.AgentStream(); s.Model != "a/big" || s.CtxWindow != 200000 {
 		t.Fatalf("stream model %q window %d, want the profile's", s.Model, s.CtxWindow)
@@ -923,6 +926,53 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
 		t.Fatalf("subagent model %q, want the main tier", id)
+	}
+}
+
+// TestActiveProfileKey: agent.profile picks the profile a send runs as,
+// whatever order config defined things in, an unknown name fails the send,
+// and a reload onto a config without the profile runs the shipped one.
+func TestActiveProfileKey(t *testing.T) {
+	for _, c := range []struct {
+		name, src string
+		reload    bool
+		want      string // the resolved profile, "" for the shipped one
+		wantErr   bool
+	}{
+		{name: "unset runs the shipped profile"},
+		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
+		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
+		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
+		{name: "config dropped the profile", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, reload: true},
+	} {
+		h, r := newTestHost(t)
+		if c.reload {
+			dir, log := t.TempDir(), logging.New(t.TempDir())
+			h = NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}}), log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+			initLua := filepath.Join(dir, "init.lua")
+			steps := []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+			for _, src := range []string{c.src, ""} {
+				if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.ForceReload(t.Context(), steps); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := h.resolveProfile("p"); err == nil {
+				t.Errorf("%s: the definition survived", c.name)
+			}
+		} else {
+			runUser(t, r, c.src)
+		}
+		p, err := h.resolveProfile("")
+		got := ""
+		if p != nil {
+			got = p.Name
+		}
+		if (err != nil) != c.wantErr || got != c.want {
+			t.Errorf("%s: profile %q, err %v", c.name, got, err)
+		}
 	}
 }
 

@@ -56,6 +56,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the provider default"},
+		{Path: "agent.profile", Kind: "string", Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile"},
 		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call (the small tier)"},
 		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
@@ -92,6 +93,13 @@ func (s *Store) Schema() []Setting {
 	}
 	slices.SortFunc(out, func(a, b Setting) int { return cmp.Compare(a.Path, b.Path) })
 	return out
+}
+
+// Default is the schema default of path, nil for a key outside the schema.
+func (s *Store) Default(path string) any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.schema[path].Default
 }
 
 // Get looks up a dotted path over the merged values.

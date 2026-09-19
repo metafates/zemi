@@ -102,7 +102,8 @@ ships no providers and an empty config cannot answer a prompt. Config reload is 
 turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, the mode cycle and
-`-m`/`--mode` survive a reload until the config changes that key.
+`-m`/`--mode` survive a reload until the config changes that key. A key the config stopped
+writing returns to its schema default, unless a runtime pick moved it since.
 
 ## Architecture and control flow
 
@@ -375,6 +376,12 @@ lua-language-server is installed.
   live tally when that session is still open. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them; the reflector bills the session it
   read, closed or not.
+- **The active profile is a config key.** `agent.profile` names what `resolveProfile("")`
+  runs (`default` is the shipped shape), so only user config writes it and a reload keeps a
+  runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
+  a key config stopped writing to `default`, so deleting a profile and its `config.set` line
+  runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
+  fails the send.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction

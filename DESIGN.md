@@ -343,8 +343,8 @@ flagged reduced trust: its registrations are tagged `origin = "project"`
 ask rules and `not_match` guards; allow rules are user-config-only), and
 its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.tool.override` (same rewrite capability, same denial), no
-`zemi.provider.add`, no `zemi.agent.profile` /
-`zemi.agent.set_default` (prompt authorship is a stronger lever than any
+`zemi.provider.add`, no `zemi.agent.profile` and no `agent.profile`
+config write (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
 injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
 no `zemi.command.run` of a more trusted origin's command (its body runs
@@ -508,7 +508,8 @@ error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
 so a runtime pick (`/model`, `/effort`, the mode cycle, `-m`) is not reverted
 by an unrelated config edit; replaying `permissions.mode` over a plan-mode
-pick would loosen permissions silently.
+pick would loosen permissions silently. A key whose `set` line was deleted
+returns to its default on that reload, unless a runtime pick moved it since.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project, plugin and learned code may not, and the
 model's `Lua` tool asks before any such call. Persistent config changes are edits to
@@ -677,7 +678,8 @@ zemi.agent.profile("coder", {
   temperature = 0.2,
 })
 
-zemi.agent.set_default("coder")
+zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
+                                           -- and what deleting this line returns to
 zemi.agent.current()                 -- session handle: { id = "...", profile = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
@@ -2012,7 +2014,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   `:` commands, themes in Lua.
   Namespaces: `zemi.env`, `zemi.state`, `zemi.timer`, `zemi.fs`,
   `zemi.http`, `zemi.job`, `zemi.tool`, `zemi.model`, `zemi.provider`,
-  `zemi.agent` (profile/set_default/send/current/cancel), `zemi.session`,
+  `zemi.agent` (profile/send/current/cancel), `zemi.session`,
   `zemi.permission` (session-scope rules; overlays need them).
   Concurrency-core exit tests: a stuck Lua tool trips the watchdog and
   marks the runtime hot; force-reload recovers; a veto deadline is

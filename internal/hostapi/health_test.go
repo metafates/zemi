@@ -80,7 +80,7 @@ func TestHealthChecksProfileModel(t *testing.T) {
 		zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } })
 		zemi.model.set("a/m")
 		zemi.agent.profile("p", { model = "b/m" })
-		zemi.agent.set_default("p")
+		zemi.config.set("agent.profile", "p")
 	`)
 	got := map[string]healthCheck{}
 	for _, c := range h.healthChecks() {

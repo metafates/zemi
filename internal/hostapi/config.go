@@ -86,29 +86,39 @@ func (h *Host) purgeWatches() {
 func (h *Host) cfgReplayed(path string, v any) bool {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
-	if gen := h.currentGen(); gen != h.cfgGen {
-		if h.cfgNow == nil {
-			h.cfgNow = map[string][]any{}
-		}
-		h.cfgGen, h.cfgPrev = gen, h.cfgNow
-		h.cfgNow = map[string][]any{}
-	}
+	h.cfgRotate()
 	i := len(h.cfgNow[path])
 	h.cfgNow[path] = append(h.cfgNow[path], v)
 	if i < len(h.cfgPrev[path]) && reflect.DeepEqual(h.cfgPrev[path][i], v) {
 		return true
 	}
-	h.cfgPrev[path] = nil // diverged: every later write of this key applies
+	delete(h.cfgPrev, path) // diverged: every later write of this key applies
 	return false
+}
+
+// cfgRotate makes the last boot's writes cfgPrev on the first look of a new
+// generation. cfgSettle calls it too: a config with no set left never
+// reaches cfgReplayed.
+func (h *Host) cfgRotate() {
+	if gen := h.currentGen(); gen != h.cfgGen {
+		h.cfgGen, h.cfgPrev, h.cfgNow = gen, h.cfgNow, map[string][]any{}
+	}
 }
 
 // cfgSettle runs after a replay: a key whose every write matched the last
 // boot but whose config now writes it fewer times ends at a value nothing
-// applied, so its last write is applied here. Like a skipped write it
-// notifies no watcher: within one boot the value never changed.
+// applied, so its last write is applied here. A key config stopped writing
+// returns to its default unless a runtime pick moved it since. Like a
+// skipped write neither notifies a watcher.
 func (h *Host) cfgSettle() {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
+	h.cfgRotate()
+	for path, prev := range h.cfgPrev {
+		if live, _ := h.Settings.Get(path); len(prev) > 0 && len(h.cfgNow[path]) == 0 && reflect.DeepEqual(live, prev[len(prev)-1]) {
+			h.Settings.SetQuiet(path, h.Settings.Default(path))
+		}
+	}
 	for path, now := range h.cfgNow {
 		prev := h.cfgPrev[path]
 		if len(now) == 0 || len(prev) == 0 || reflect.DeepEqual(now[len(now)-1], prev[len(prev)-1]) {

@@ -1388,14 +1388,10 @@ function zemi.model.pick() end
 zemi.agent = {}
 
 --- Define a named profile (model, prompt, tool set). User or builtin origin
---- only.
+--- only. The `agent.profile` config key names the active one.
 ---@param name string
 ---@param spec zemi.ProfileSpec
 function zemi.agent.profile(name, spec) end
-
---- User or builtin origin only.
----@param name string
-function zemi.agent.set_default(name) end
 
 ---@return zemi.AgentCurrent
 function zemi.agent.current() end
