@@ -355,7 +355,11 @@ Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command)
 pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start` (its patterns match the
 program and its args as a normalized command line, like `tool.bash`). A subject ending in
 `.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
-beats allow; within one decision the most specific pattern wins.
+beats allow; within one decision the most specific pattern wins. In a command pattern `*`
+spans spaces and `/`, so `cat docs/*` also allows `cat docs/a /etc/passwd`; an argument that
+climbs with `..` is matched cleaned as well and the stricter verdict holds, so
+`cat docs/../.env` asks, and so does a path the shell still expands (`docs/{a,b}`, `docs/$X`,
+`docs/.*`).
 
 Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure and
 fast: a `zemi.*` call that changes anything (registering, `config.set`, `state.set`, `fs`

@@ -189,6 +189,10 @@ Bash is special: `perm.Store.CheckCommand` normalizes the command first (compoun
 redirect and env-assignment gates - internal/perm/bash.go, heavily table-tested; extend those
 tables when touching it). An assignment prefix the normalizer strips downgrades an allow
 verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
+A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
+and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word
+the shell could still expand into a climb (`{`, `$`, a glob after a leading dot) turns an allow
+into an ask (`expandsToDotDot`).
 
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file the
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get

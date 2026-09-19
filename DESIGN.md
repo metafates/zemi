@@ -1331,7 +1331,13 @@ configured provider later (`zemi.memory.search` signature does not change).
   inlining stops at it.
   Every segment is matched on its own: the call is allowed only if each
   segment matches an allow rule, so a compound payload (including
-  `cmd1\nrm -rf x` and `cmd1 & cmd2`) cannot ride a broad allow. The
+  `cmd1\nrm -rf x` and `cmd1 & cmd2`) cannot ride a broad allow. A
+  segment with a word that climbs (`docs/../x`) is matched as written and
+  again with that word cleaned, and the stricter verdict holds, so
+  `cat docs/*` does not allow `cat docs/../.env`; the cleaning is lexical,
+  the working directory being unknown to the rules, so a path word the
+  shell may still expand into a climb (`docs/{..,a}`, `docs/$X`,
+  `docs/.*`) turns an allow into an ask. The
   assignment gate is a token scan: every argv token of every collapsed
   segment, dequoted with full shell word semantics (embedded quotes
   removed, so `PA'TH'=/tmp/x` is the name `PATH`), shaped `NAME=value`

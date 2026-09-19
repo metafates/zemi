@@ -421,3 +421,40 @@ func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 		t.Error("a rule under a symlink loop allowed a path outside it")
 	}
 }
+
+func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
+	s := store(t,
+		Rule{Subject: "tool.bash", Pattern: "cat docs/*", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "gen --out=build/*", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "rm /tmp/*", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "rm /etc/*", Decision: Deny},
+		Rule{Subject: "tool.bash", Pattern: "ls *..*", Decision: Deny},
+	)
+	for _, c := range []struct {
+		cmd  string
+		want Decision
+	}{
+		{"cat docs/a.md", Allow},
+		{"cat docs/sub/../a.md", Allow},
+		{"cat docs/..hidden", Allow},
+		{"cat docs/../../.ssh/id_rsa", Ask},
+		{"cat docs/./../.env", Ask},
+		{"cat docs/..", Ask},
+		{"sh -c 'cat docs/../.env'", Ask},
+		{"cat docs/{..,a}/.env", Ask}, // the shell expands these after the rules saw them
+		{"cat docs/.?/.env", Ask},
+		{"cat docs/.*/.env", Ask},
+		{"cat docs/a{/.,}./.env", Ask},
+		{"cat docs/$X/.env", Ask},
+		{"cat docs/*.md", Allow},
+		{"rm /etc/{a,b}", Deny},
+		{"gen --out=build/x", Allow},
+		{"gen --out=build/../x", Ask},
+		{"rm /tmp/../etc/hosts", Deny},
+		{"ls a/../b", Deny}, // a deny the raw spelling meets holds
+	} {
+		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
+			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
+		}
+	}
+}
