@@ -79,6 +79,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
 		assert(type(zemi.health.add) == "function" and type(zemi.health.list) == "function", "zemi.health missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
+		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai" and zemi.provider.kind.GOOGLE == "google", "zemi.provider.kind missing")
 		for _, fn in ipairs({ "add", "del", "set", "list" }) do

@@ -376,6 +376,20 @@ func TrustUnsaved(root string) bool {
 // ProjectTrusted reports whether the user trusts this project.
 func (h *Host) ProjectTrusted() bool { return h.projectTrusted.Load() }
 
+// projectNamespace is zemi.project: what a job-starting plugin checks first.
+func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("trusted", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LBool(h.ProjectTrusted()))
+		return 1
+	}))
+	tb.RawSetString("root", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LString(h.Dirs.RepoRoot()))
+		return 1
+	}))
+	return tb
+}
+
 // Session is the session state (title, cwd, transcript).
 type Session struct {
 	Title      string
@@ -1410,6 +1424,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.learn", h.learnNamespace(L), nil},
 		{"zemi.health", h.healthNamespace(L), nil},
 		{"zemi.errors", h.errorsNamespace(L), nil},
+		{"zemi.project", h.projectNamespace(L), nil},
 	}
 	for _, p := range pairs {
 		if err := register(p.name, p.tbl, p.call); err != nil {

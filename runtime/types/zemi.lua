@@ -2174,3 +2174,16 @@ zemi.errors = {}
 --- keymap and event-handler errors, and recovered panics.
 ---@return zemi.ErrorEntry[]
 function zemi.errors.list() end
+
+---@class zemi.project
+zemi.project = {}
+
+--- Whether the user trusts this project. Untrusted, zemi loads nothing from
+--- it and runs no language server; a plugin should not run its code either.
+---@return boolean
+function zemi.project.trusted() end
+
+--- The repository root (the nearest `.git` at or above the launch dir, never
+--- `$HOME` or above), or the launch dir outside a repository.
+---@return string
+function zemi.project.root() end

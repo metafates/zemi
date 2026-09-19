@@ -1047,7 +1047,7 @@ commands and `!shell` and a paste reads the clipboard; the same actions are
 whose rows join the Go checks in `/health` and `zemi --health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
-`zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`),
+`zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.permission.mode` (`add`, `del`, `set`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
