@@ -578,3 +578,18 @@ func TestOverlayCloseRules(t *testing.T) {
 		t.Fatalf("on_close never ran: %+v", app.overlays)
 	}
 }
+
+func TestFieldRows(t *testing.T) {
+	var got []string
+	for _, r := range fieldRows("url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\n\nplain text", 40) {
+		hl := ""
+		if len(r) > 1 {
+			hl = " " + r[1].HL
+		}
+		got = append(got, plainSegs(r)+hl)
+	}
+	want := []string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "", "plain text"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("rows %q, want %q", got, want)
+	}
+}

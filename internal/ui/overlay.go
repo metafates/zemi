@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -516,7 +517,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		} else if st.o.BodyMD {
 			body = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), bodyW)
 		} else {
-			body = wrapText(st.o.Body, "", bodyW)
+			body = fieldRows(st.o.Body, bodyW)
 		}
 		// borders, the hint line and a blank row before it, and the list
 		room := h - 4
@@ -553,6 +554,45 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	st.width = max(st.width, segsWidth(hint))
 	body = append(append(body, list...), nil, padSegs(hint, min(st.width, boxInner(w))))
 	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
+}
+
+// fieldLine is a "key: value" line of a detail body.
+var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
+
+// fieldRows wraps a plain body, setting its "key: value" lines as a table:
+// dim keys in one column, each value wrapped beside its key, an error's in
+// the danger color.
+func fieldRows(body string, w int) [][]hostapi.Segment {
+	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+	kw := 0
+	for _, l := range lines {
+		if m := fieldLine.FindStringSubmatch(l); m != nil {
+			kw = max(kw, len(m[1])+2)
+		}
+	}
+	var rows [][]hostapi.Segment
+	for _, l := range lines {
+		m := fieldLine.FindStringSubmatch(l)
+		if m == nil || w-kw < 20 {
+			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
+			continue
+		}
+		hl := ""
+		switch {
+		case m[1] == "error", l == "status: failed":
+			hl = "Host:Danger"
+		case l == "status: ready":
+			hl = "Host:Ok"
+		}
+		for i, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: m[2], HL: hl}}, w-kw) {
+			key := ""
+			if i == 0 {
+				key = m[1]
+			}
+			rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, key), HL: "Host:Hint"}}, r...))
+		}
+	}
+	return rows
 }
 
 // spliceBox composites box rows centered over the chat area; what the box

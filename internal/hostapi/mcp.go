@@ -497,7 +497,7 @@ func (h *Host) openMCP() error {
 		}
 		detail += "\nstatus: " + status
 		if errText != "" {
-			detail += "\nerror: " + errText
+			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
 		if len(tools) > 20 {
 			tools = append(tools[:20], "...")
