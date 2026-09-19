@@ -94,6 +94,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, space toggles |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
+| one plugin fails at boot | the others still load; `/errors` has the message and the `/health` plugins row counts the failed files |
 | a plugin registers nothing, with no error | its file is not at `site/pack/<any>/start/<name>/plugin/*.lua`; the `/health` plugins row names a directory with nothing to load |
 
 ## Stores

@@ -153,6 +153,26 @@ func healthResult(v any) (level, detail string) {
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
+// PluginsStep loads site/pack/*/start/*/plugin/*.lua sorted, per the boot
+// order (DESIGN §5). A failing file does not stop the ones after it.
+func (h *Host) PluginsStep() lua.BootStep {
+	return lua.BootStep{
+		Name: "plugins",
+		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			files, err := filepath.Glob(filepath.Join(h.Dirs.PluginsDir(), "*", "start", "*", "plugin", "*.lua"))
+			slices.Sort(files)
+			var errs []error
+			for _, f := range files {
+				if err := lua.LoadFileStep("plugin "+f, f, lua.OriginPlugin).Run(ctx, r, g); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			h.pluginsFailed.Store(int32(len(errs)))
+			return errors.Join(append(errs, err)...)
+		},
+	}
+}
+
 func (h *Host) goHealthRows() []healthCheck {
 	var out []healthCheck
 	add := func(level, name, detail string) {
@@ -272,12 +292,15 @@ func (h *Host) goHealthRows() []healthCheck {
 			}
 			loaded += len(files)
 		}
-		if len(empty) > 0 {
-			add("warn", "plugins", fmt.Sprintf("%d %s loaded; nothing to load in %s: a plugin is site/pack/*/start/<name>/plugin/*.lua",
-				loaded, plural(loaded, "file", "files"), strings.Join(empty, ", ")))
-		} else {
-			add("ok", "plugins", fmt.Sprintf("%d %s loaded", loaded, plural(loaded, "file", "files")))
+		level, detail := "ok", fmt.Sprintf("%d %s loaded", loaded, plural(loaded, "file", "files"))
+		if failed := int(h.pluginsFailed.Load()); failed > 0 {
+			level, detail = "warn", fmt.Sprintf("%d of %d %s failed, see /errors", failed, loaded, plural(loaded, "file", "files"))
 		}
+		if len(empty) > 0 {
+			level = "warn"
+			detail += "; nothing to load in " + strings.Join(empty, ", ") + ": a plugin is site/pack/*/start/<name>/plugin/*.lua"
+		}
+		add(level, "plugins", detail)
 	}
 
 	h.errs.mu.Lock()

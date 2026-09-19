@@ -14,7 +14,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -111,7 +110,7 @@ func run(args []string) int {
 		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
 		lua.RequireStep("zemi.defaultui"),
 		soft(trust.step()),
-		soft(pluginsStep(dirs)),
+		soft(host.PluginsStep()),
 		soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 		soft(host.SkillsAuthoredHooksStep()),
 		soft(projectInitStep(host, dirs)),
@@ -414,27 +413,6 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 		return nil
 	}
 	return s
-}
-
-// pluginsStep loads site/pack/*/start/*/plugin/*.lua sorted, per the boot
-// order (DESIGN §5).
-func pluginsStep(dirs config.Dirs) lua.BootStep {
-	return lua.BootStep{
-		Name: "plugins",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			files, err := filepath.Glob(filepath.Join(dirs.PluginsDir(), "*", "start", "*", "plugin", "*.lua"))
-			if err != nil {
-				return err
-			}
-			slices.Sort(files)
-			for _, f := range files {
-				if err := lua.LoadFileStep("plugin "+f, f, lua.OriginPlugin).Run(ctx, r, g); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	}
 }
 
 // trustGate decides whether the user trusts the project (DESIGN §5): a
