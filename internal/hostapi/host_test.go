@@ -336,6 +336,21 @@ func TestKeymapFromLua(t *testing.T) {
 	}
 }
 
+// waitedCtx says when somebody starts waiting on it: Runtime.Do reads Done
+// only after its request is queued.
+type waitedCtx struct {
+	context.Context
+	waited chan struct{}
+}
+
+func (c *waitedCtx) Done() <-chan struct{} {
+	select {
+	case c.waited <- struct{}{}:
+	default:
+	}
+	return c.Context.Done()
+}
+
 // TestRenderGuardOnlyWhileRendering: a render queued behind other Lua does
 // not make that Lua look like render code (project config registering a
 // widget during the trust prompt was refused).
@@ -344,12 +359,13 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	w := h.Widgets.List()[0]
 	rendered := make(chan struct{})
+	ctx := &waitedCtx{Context: context.Background(), waited: make(chan struct{}, 1)}
 	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		go func() {
 			defer close(rendered)
-			h.RenderWidget(context.Background(), w, 40, 10, UIState{})
+			h.RenderWidget(ctx, w, 40, 10, UIState{})
 		}()
-		time.Sleep(50 * time.Millisecond) // the render is now queued behind this request
+		<-ctx.waited // the render is now queued behind this request
 		h.renderMu.Lock()
 		defer h.renderMu.Unlock()
 		if h.rendering {
