@@ -166,28 +166,37 @@ func TestCompactionMidTurn(t *testing.T) {
 
 // TestOverflowRecovery: a prompt the provider refuses as too long is
 // compacted and resent once without a second copy of the user message; a
-// second refusal is reported, not retried.
+// second refusal is reported, not retried. An earlier turn is summarized
+// while the refused request stays verbatim.
 func TestOverflowRecovery(t *testing.T) {
 	for _, c := range []struct {
 		name     string
+		earlier  bool
 		refusals int32
+		prompt   int32
 		wantErr  bool
 	}{
-		{"recovers", 1, false},
-		{"reports the second refusal", 2, true},
+		{"recovers", false, 1, 2, false},
+		{"reports the second refusal", false, 2, 2, true},
+		{"keeps the request verbatim", true, 1, 3, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			m := reflectStub(t, h, "ok")
-			m.overflow.Store(c.refusals)
 			h.reflectMu.Lock()
 			defer h.reflectMu.Unlock()
-			sender(t, h)("hi")
-			if n := m.streams.Load(); n != 2 {
+			send := sender(t, h)
+			if c.earlier {
+				send("earlier")
+			}
+			before := m.streams.Load()
+			m.overflow.Store(c.refusals)
+			send("hi")
+			if n := m.streams.Load() - before; n != 2 {
 				t.Fatalf("model streamed %d times, want 2", n)
 			}
-			if n := m.lastPrompt.Load(); n != 2 {
-				t.Fatalf("resent prompt has %d messages, want 2 (system, summary)", n)
+			if n := m.lastPrompt.Load(); n != c.prompt {
+				t.Fatalf("resent prompt has %d messages, want %d (system, summary, then the request when a turn came before it)", n, c.prompt)
 			}
 			errRow := false
 			for _, row := range h.Session().Transcript {

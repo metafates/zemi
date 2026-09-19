@@ -274,7 +274,13 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	}
 	start := tailStart(body, min(max(threshold/4, 2_000), 15_000))
 	if start == 0 {
-		start = len(body) // it all fits the tail, yet the context is full
+		// It all fits the tail, yet the context is full: the latest request
+		// stays verbatim, and a lone turn, with nothing older, goes whole.
+		for start = len(body) - 1; start > 0 && body[start].Role != fantasy.MessageRoleUser; start-- {
+		}
+		if start <= 0 {
+			start = len(body)
+		}
 	}
 	head, tail := body[:start], body[start:]
 	if len(head) == 0 {
