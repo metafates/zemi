@@ -79,7 +79,11 @@ func NewSandbox(originOf func() Origin) (*Sandbox, error) {
 	L := glua.NewState(glua.Options{
 		SkipOpenLibs:  true,
 		CallStackSize: 512,
-		RegistrySize:  1 << 20,
+		// grown on demand: every coroutine gets its own registry, and the
+		// full 1<<20 slots up front are 16 MB each
+		RegistrySize:     1 << 12,
+		RegistryMaxSize:  1 << 20,
+		RegistryGrowStep: 1 << 16,
 	})
 
 	// No package module: require is Go-owned, and package.loaded,
