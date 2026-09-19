@@ -357,8 +357,8 @@ func (h *Host) environmentPrompt() string {
 // h.gitStatus memoizes it for the process and boot warms it in the
 // background: run from the send it would cost the first token whatever
 // git status costs in this repository.
-func (h *Host) gitStatusSection() string {
-	out, err := h.git(h.Dirs.ProjectDir, "status", "--short", "--branch")
+func (h *Host) gitStatusSection(dir string) string {
+	out, err := h.git(dir, "status", "--short", "--branch")
 	if err != nil {
 		return "Git repository: no"
 	}

@@ -405,7 +405,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.Wins.OnExit = h.windowExited
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
-	h.gitStatus = sync.OnceValue(h.gitStatusSection)
+	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
 	if dirs.StateHome != "" {
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions
