@@ -28,6 +28,7 @@ type overlayState struct {
 	input  composerState // text of an input overlay
 	scroll int           // first body row shown
 	back   bool          // a detail view: esc and its actions return to the overlay under it
+	item   any           // a detail view's item: a reload can swap the parent's under it
 	// listH is the rows the unfiltered list took at width listW, which the
 	// box keeps while it is open
 	listH, listW int
@@ -224,7 +225,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	}
 	p := parent.o
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions, OnAction: p.OnAction})
-	st.back, st.width = true, parent.width
+	st.back, st.item, st.width = true, parent.o.Items[idx], parent.width
 	a.overlays = append(a.overlays, st)
 }
 
@@ -240,9 +241,8 @@ func (a *App) detailAction(idx int) {
 	fill, _ := m["fill"].(string)
 	pi := len(a.overlays) - 1 // the parent: a detail view opens right on top of it
 	if id, _ := m["id"].(string); id != "" && d.o.OnAction != nil {
-		p := a.overlays[pi]
-		item := p.o.Items[p.visible[p.selected]]
-		a.overlayCall(p.o, func() { a.host.OverlayAction(context.Background(), p.o, item, m) })
+		p := a.overlays[pi].o
+		a.overlayCall(p, func() { a.host.OverlayAction(context.Background(), p, d.item, m) })
 		return
 	}
 	switch {

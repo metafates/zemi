@@ -214,6 +214,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				if key := k.String(); utf8.RuneCountInString(key) != 1 || fn == nil {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] must be one character with { desc, fn }", key)
 				}
+				if strings.Contains("jk/yY", k.String()) {
+					L.RaiseError("zemi.ui.overlay.open: keys[%q] is the list's own key", k.String())
+				}
 				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(spec, "desc"), Fn: fn})
 			})
 			slices.SortFunc(o.Keys, func(a, b OverlayKey) int { return cmp.Compare(a.Key, b.Key) })

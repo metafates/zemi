@@ -553,7 +553,8 @@ func TestOverlayActionsAndKeys(t *testing.T) {
   keys = { e = { desc = "edit", fn = function(item) zemi.notify({ body = "e:" .. item.text }) end } } })`
 	runLua(t, app, open+`
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { esc = { fn = function() end } } }), "a key of several characters must raise")
-assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")`)
+assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")
+assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function() end } } }), "a key the list takes itself must raise")`)
 	box := app.overlayBox(&app.overlays[0], 60, 16)
 	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "e edit · esc close") {
 		t.Fatalf("footer: %q", hint)
@@ -586,6 +587,17 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn"
 		if got := lastToast(app); got != c.want || len(app.overlays) != 0 {
 			t.Fatalf("%s: got %q with %d overlays open, want %q and none", c.keys, got, len(app.overlays), c.want)
 		}
+	}
+	// a rebuild that empties the list under an open detail: the action still gets the detail's item
+	runLua(t, app, `zemi.ui.overlay.open({ id = "r", items = { { text = "gone", actions = { { text = "Delete", id = "del" } } } },
+  reload = function() return {} end, on_select = function() end,
+  on_action = function(item, action) zemi.notify({ body = item.text .. ":" .. action.id }) end })`)
+	pressKeys(app, "space", "enter")
+	for app.Pump() {
+	}
+	pressKeys(app, "1")
+	if got := lastToast(app); got != "gone:del" {
+		t.Fatalf("action under a rebuilt list: got %q", got)
 	}
 }
 

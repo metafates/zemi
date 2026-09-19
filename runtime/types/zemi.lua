@@ -786,7 +786,7 @@ function zemi.event.stats() end
 ---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
----@field keys? table<string, zemi.OverlayKey> One character each (j, k and / stay the list's, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.
+---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.
 ---@field on_close? fun()
 ---@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Both run off the key path; an error keeps the old items.
 
