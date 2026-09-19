@@ -254,8 +254,8 @@ function zemi.config.unwatch(id) end
 function zemi.config.schema() end
 
 --- Replay the boot steps, so config just written takes effect. Same as
---- /reload. Refused while config is still loading. User or builtin origin
---- only.
+--- /reload. It runs once the caller returns, so what follows the call still
+--- runs. Refused while config is still loading. User or builtin origin only.
 ---@return true|nil ok
 ---@return string|nil err
 function zemi.config.reload() end

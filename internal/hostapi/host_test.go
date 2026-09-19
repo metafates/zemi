@@ -163,23 +163,29 @@ func TestReloadDuringBootRefused(t *testing.T) {
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), cfg}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	if ui.reloads != 0 {
-		t.Fatalf("boot dispatched %d reloads", ui.reloads)
+	if n := ui.reloads.Load(); n != 0 {
+		t.Fatalf("boot dispatched %d reloads", n)
 	}
 	if err := h.ReloadConfig(); err != nil { // once boot is done it works
 		t.Fatalf("reload after boot: %v", err)
 	}
-	if ui.reloads != 1 {
-		t.Fatalf("reloads=%d, want 1", ui.reloads)
-	}
+	waitFor(t, func() error {
+		if n := ui.reloads.Load(); n != 1 {
+			return fmt.Errorf("reloads=%d, want 1", n)
+		}
+		return nil
+	})
 }
 
 // TestErrorsAndReloadFromLua: the agent reads zemi's own failures and
 // applies config it just wrote, both through namespaces the lua tool can
 // reach, so debugging zemi does not depend on the user reading the screen.
+// The reload waits for its caller, which it would cancel.
 func TestErrorsAndReloadFromLua(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
+	var mouse any
+	ui.onReload = func() { mouse, _ = h.Settings.Get("ui.mouse") }
 	h.SetUIHooks(ui)
 	h.RecordError("boot", `init.lua:1: zemi.provider.add: provider "x" already registered`)
 	runUser(t, r, `
@@ -188,9 +194,18 @@ func TestErrorsAndReloadFromLua(t *testing.T) {
 		assert(rows[1].source == "boot", "source=" .. tostring(rows[1].source))
 		assert(rows[1].message:find("already registered", 1, true) ~= nil, "message=" .. tostring(rows[1].message))
 		zemi.config.reload()
+		local t = os.clock()
+		while os.clock() - t < 0.05 do end
+		zemi.config.set("ui.mouse", false)
 	`)
-	if ui.reloads != 1 {
-		t.Fatalf("reload dispatched %d times, want 1", ui.reloads)
+	waitFor(t, func() error {
+		if n := ui.reloads.Load(); n != 1 {
+			return fmt.Errorf("reload dispatched %d times, want 1", n)
+		}
+		return nil
+	})
+	if mouse != false {
+		t.Fatalf("the reload ran before its caller returned: ui.mouse = %v", mouse)
 	}
 }
 

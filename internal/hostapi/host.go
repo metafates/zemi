@@ -1449,7 +1449,12 @@ func (h *Host) ReloadConfig() error {
 	if ui == nil {
 		return errors.New("reload needs the TUI")
 	}
-	ui.Reload()
+	h.GoSafe("reload", func() {
+		// a reload cancels what the interpreter runs, which is the caller when
+		// Lua asked for it: wait for it to return (a wedged one times out)
+		_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
+		ui.Reload()
+	})
 	return nil
 }
 

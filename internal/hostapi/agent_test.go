@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -570,7 +571,8 @@ type fakeUI struct {
 	opened       []Overlay
 	closed       []string
 	closedLua    int
-	reloads      int
+	reloads      atomic.Int32
+	onReload     func()
 	screenshot   string
 	copied       string
 	edit         func(path string) // what the user does in the editor
@@ -580,13 +582,18 @@ func (f *fakeUI) Notify(level, title, body string)     {}
 func (f *fakeUI) OpenOverlay(o Overlay)                { f.opened = append(f.opened, o) }
 func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
-func (f *fakeUI) Reload()                              { f.reloads++ }
-func (f *fakeUI) Refresh()                             {}
-func (f *fakeUI) Scroll(kind, id string)               {}
-func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }
-func (f *fakeUI) AgentStream()                         {}
-func (f *fakeUI) TurnDone(err string)                  {}
-func (f *fakeUI) ComposerEdit(string, string, int)     {}
+func (f *fakeUI) Reload() {
+	if f.onReload != nil {
+		f.onReload()
+	}
+	f.reloads.Add(1)
+}
+func (f *fakeUI) Refresh()                         {}
+func (f *fakeUI) Scroll(kind, id string)           {}
+func (f *fakeUI) LayoutRects() map[string]Rect     { return nil }
+func (f *fakeUI) AgentStream()                     {}
+func (f *fakeUI) TurnDone(err string)              {}
+func (f *fakeUI) ComposerEdit(string, string, int) {}
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {
 		f.edit(req.Path)
