@@ -232,7 +232,7 @@ type Host struct {
 	msgs  msgLog   // recent print and zemi.log lines for /messages
 	evlog eventLog // recent events and notifications for Lua reflection
 
-	pluginsFailed atomic.Int32 // plugin files the last boot could not load, for /health
+	pluginsBoot atomic.Pointer[[2]int] // plugin files the last boot failed to load and tried, for /health
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs

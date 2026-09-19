@@ -52,8 +52,8 @@ func (h *Host) HasCompletions(trigger, command string) bool {
 
 // Complete runs the Lua sources for trigger or command, each under its
 // origin, and returns their sanitized items in registration order. A
-// failing source offers nothing and lands in /errors. It waits on the interpreter: never call it
-// on the UI goroutine.
+// failing source offers nothing and lands in /errors. It waits on the
+// interpreter: never call it on the UI goroutine.
 func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string) []CompletionItem {
 	h.completions.mu.Lock()
 	var srcs []completionSource

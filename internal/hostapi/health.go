@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -164,7 +165,6 @@ func healthResult(v any) (level, detail string) {
 	return "ok", ""
 }
 
-// goHealthRows are the Go-side checks, in the order /health shows them.
 // PluginsStep loads site/pack/*/start/*/plugin/*.lua sorted, per the boot
 // order (DESIGN §5). A failing file does not stop the ones after it.
 func (h *Host) PluginsStep() lua.BootStep {
@@ -179,12 +179,13 @@ func (h *Host) PluginsStep() lua.BootStep {
 					errs = append(errs, err)
 				}
 			}
-			h.pluginsFailed.Store(int32(len(errs)))
+			h.pluginsBoot.Store(&[2]int{len(errs), len(files)})
 			return errors.Join(append(errs, err)...)
 		},
 	}
 }
 
+// goHealthRows are the Go-side checks, in the order /health shows them.
 func (h *Host) goHealthRows() []healthCheck {
 	var out []healthCheck
 	add := func(level, name, detail string) {
@@ -292,25 +293,25 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "layout", "every widget's region is drawn")
 	}
 
-	// a pack directory with no plugin/*.lua in it loads nothing, silently
+	// a pack directory with neither plugin/*.lua nor lua/ loads nothing, silently
 	if packs, _ := filepath.Glob(filepath.Join(h.Dirs.PluginsDir(), "*", "start", "*")); len(packs) > 0 {
-		var loaded int
 		var empty []string
 		for _, p := range packs {
 			files, _ := filepath.Glob(filepath.Join(p, "plugin", "*.lua"))
-			if len(files) == 0 {
+			if _, err := os.Stat(filepath.Join(p, "lua")); len(files) == 0 && err != nil {
 				empty = append(empty, filepath.Base(p))
-				continue
 			}
-			loaded += len(files)
 		}
-		level, detail := "ok", fmt.Sprintf("%d %s loaded", loaded, plural(loaded, "file", "files"))
-		if failed := int(h.pluginsFailed.Load()); failed > 0 {
-			level, detail = "warn", fmt.Sprintf("%d of %d %s failed, see /errors", failed, loaded, plural(loaded, "file", "files"))
+		// the boot's counts, so the pair agrees when files moved since
+		boot := cmp.Or(h.pluginsBoot.Load(), &[2]int{})
+		failed, total := boot[0], boot[1]
+		level, detail := "ok", fmt.Sprintf("%d %s loaded", total, plural(total, "file", "files"))
+		if failed > 0 {
+			level, detail = "warn", fmt.Sprintf("%d of %d %s failed, see /errors", failed, total, plural(total, "file", "files"))
 		}
 		if len(empty) > 0 {
 			level = "warn"
-			detail += "; nothing to load in " + strings.Join(empty, ", ") + ": a plugin is site/pack/*/start/<name>/plugin/*.lua"
+			detail += "; nothing to load in " + strings.Join(empty, ", ") + ": a plugin is site/pack/*/start/<name>/plugin/*.lua or lua/"
 		}
 		add(level, "plugins", detail)
 	}

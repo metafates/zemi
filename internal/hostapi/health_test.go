@@ -146,8 +146,16 @@ func TestPluginsStepContinues(t *testing.T) {
 	if h.Commands.Lookup("from-b") == nil {
 		t.Error("b.lua did not load after a.lua failed")
 	}
+	// made after boot: the counts stay the boot's, and only a pack with
+	// neither plugin/*.lua nor lua/ is named
+	for _, d := range []string{"lib/lua", "hollow", "c/plugin/c.lua"} {
+		if err := os.MkdirAll(filepath.Join(dirs.PluginsDir(), "p", "start", d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	i := slices.IndexFunc(h.goHealthRows(), func(c healthCheck) bool {
-		return c.name == "plugins" && c.level == "warn" && strings.Contains(c.detail, "1 of 2 files failed")
+		return c.name == "plugins" && c.level == "warn" && strings.Contains(c.detail, "1 of 2 files failed") &&
+			strings.Contains(c.detail, "nothing to load in hollow:")
 	})
 	if i < 0 {
 		t.Errorf("no plugins warn row in %+v", h.goHealthRows())
