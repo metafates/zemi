@@ -929,13 +929,18 @@ func (h *Host) gateMemory(res *learn.Result) (stored, queued bool, err error) {
 }
 
 // memoryAuto reports whether auto autonomy may skip review for what session
-// sid wrote. It may not in an untrusted project, or when the session or one
-// of its subagents read text from outside the machine (fetch, web_search, a
-// Lua or MCP tool, any tool zemi does not ship), where an injected memory
-// would come from.
-// NOTE: a bash command the user approved can fetch too and is not seen here.
+// sid wrote. It may not in an untrusted project, or when the session is not
+// local only.
 func (h *Host) memoryAuto(sid string) bool {
-	if h.Settings.Str("memory.autonomy") != "auto" || !h.ProjectTrusted() || h.DB == nil {
+	return h.Settings.Str("memory.autonomy") == "auto" && h.ProjectTrusted() && h.sessionLocalOnly(sid)
+}
+
+// sessionLocalOnly reports that neither session sid nor one of its subagents
+// read text from outside the machine (fetch, web_search, a Lua or MCP tool,
+// any tool zemi does not ship), where injected text would come from.
+// NOTE: a bash command the user approved can fetch too and is not seen here.
+func (h *Host) sessionLocalOnly(sid string) bool {
+	if h.DB == nil {
 		return false
 	}
 	sids := []string{sid}

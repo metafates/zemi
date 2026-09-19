@@ -75,6 +75,21 @@ description: when asked to run the local integration tests
   `.claude/skills/` at the repository root: always on, no Lua hook, and a user skill of the
   same name wins. zemi reads them at startup, on a reload and on `/trust`.
 
+## Recipes
+
+A recipe is a skill private to one trusted repository on this machine: an exact procedure
+that was costly to find (a local run rig, a release, a data fix), too long for a memory and
+not for the repository. A fact is a memory; a procedure for every project is a user skill.
+
+- Write `<Recipes>/<name>/SKILL.md` with `write`, in the format above (no Lua hook); the
+  `Recipes:` line of the environment names the directory. No rule and neither auto nor plan
+  settles the write; yolo still allows.
+- It loads with the `skill` tool at once and is listed under Skills from the next session.
+- Secret-shaped text is redacted after the write, and the result says so: name the env var
+  or use a placeholder like `$TOKEN`. Long hex and base64 runs (digests) are cut too.
+- Fix a stale step in place with `edit` and date the correction; link another recipe as
+  `[[name]]`.
+
 ## From Lua
 
 ```lua

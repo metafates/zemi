@@ -66,6 +66,8 @@ func (h *Host) askHook() tools.Asker {
 		// base would settle, so a decide that never answers is how a user
 		// asks to see every request.
 		base := def.Base
+		// a reason joins what the asker said (a subagent's name)
+		note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
 		if def.Decide != nil {
 			switch h.modeDecide(def, req) {
 			case "allow":
@@ -108,8 +110,6 @@ func (h *Host) askHook() tools.Asker {
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
-			// why it did not settle joins what the asker said (a subagent's name)
-			note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
 			switch {
 			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
 				note("not settled: this changes .git, .zemi or zemi's own files")
@@ -127,6 +127,11 @@ func (h *Host) askHook() tools.Asker {
 			default:
 				note("not settled: auto mode settles reads and edits inside the project")
 			}
+		}
+		// a recipe is followed by later sessions, so say when this one could
+		// carry injected text
+		if req.Subject == "fs.write" && h.inJail(req.Arg, h.recipesDir()) && !h.sessionLocalOnly(h.AgentSessionID()) {
+			note("this session read text from outside the machine")
 		}
 		ui := h.hooks()
 		if ui == nil {
@@ -227,6 +232,11 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		// the rule would be "*", which matches every path on disk
 		abs := perm.RealPath(req.Arg)
 		if abs == "" || strings.ContainsAny(abs, globMeta) {
+			return "", nil
+		}
+		// Pipeline.Check sends every such write back to the ask, so the rule
+		// would do nothing
+		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) {
 			return "", nil
 		}
 		dir := filepath.Dir(abs)

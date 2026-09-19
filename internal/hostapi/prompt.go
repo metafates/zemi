@@ -342,6 +342,9 @@ func (h *Host) environmentPrompt() string {
 	if dir := h.ensureScratch(); dir != "" {
 		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), scripts for the Lua tool. Reading and writing here never asks, even in plan mode. Write to this exact directory or below it: its parent and its siblings are not writable, and a sandboxed command also has $TMPDIR.\n", dir)
 	}
+	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
+		fmt.Fprintf(&b, "Recipes: %s\nA procedure for this repository that was costly to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. It is listed under Skills from the next session on. Fix a stale step in place with edit and date it. Link another recipe as [[name]]. No secrets: name the env var.\n", dir)
+	}
 	b.WriteString(h.gitStatus())
 	env = b.String()
 	ag.mu.Lock()

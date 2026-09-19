@@ -236,6 +236,48 @@ func (h *Host) discoverRecipes() []skills.Skill {
 	return h.discoverSkills(skills.Dir{Path: h.recipesDir(), Source: skills.Recipe})
 }
 
+// recipeAfterWrite checks a recipe the model just wrote and scrubs it where
+// it lies. After the write, not before: the session already holds the text,
+// and the ask showed the user the diff the model made.
+func (h *Host) recipeAfterWrite(path string) string {
+	if filepath.Base(path) != "SKILL.md" || !h.inJail(path, h.recipesDir()) {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	note := "\n\nrecipe: "
+	clean, cut := learn.ScrubSecrets(sanitize.String(string(data)))
+	switch {
+	case learn.IsOneBlob(clean):
+		os.Remove(path)
+		return note + "removed, it was mostly secret material"
+	case clean != string(data):
+		if err := os.WriteFile(path, []byte(clean), 0o644); err != nil {
+			return note + "could not be cleaned: " + err.Error()
+		}
+		if cut {
+			note += "secret-shaped text was redacted: name the env var or use a placeholder like $TOKEN, then re-check the commands; "
+		} else {
+			note += "control characters were removed; "
+		}
+	}
+	sk, err := skills.Parse(filepath.Dir(path), skills.Recipe)
+	loads := func(s skills.Skill) bool { return s.Source == skills.Recipe && s.Name == sk.Name }
+	switch {
+	case err != nil && !errors.Is(err, skills.ErrDescriptionCut):
+		return note + "will not load: " + strings.TrimPrefix(err.Error(), "skills: ")
+	case !slices.ContainsFunc(h.projectOnly(h.discoverRecipes()), loads):
+		return note + "will not load: another skill is named " + sk.Name + ", the project is untrusted, or the file is not <Recipes>/<name>/SKILL.md"
+	case len(clean) > tools.SkillMaxOut:
+		return note + fmt.Sprintf("over %d bytes, the skill tool cuts it: split it and link the parts by [[name]]", tools.SkillMaxOut)
+	case err != nil:
+		return note + strings.TrimPrefix(err.Error(), "skills: ")
+	}
+	return note + sk.Name + " saved; the skill tool loads it"
+}
+
 func (h *Host) pinnedRecipes() []skills.Skill {
 	if p := h.recipes.Load(); p != nil {
 		return *p

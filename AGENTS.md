@@ -286,7 +286,8 @@ directory rule is the same ask again one package over. No always option is offer
 gate-forced ask (heredoc, env assignment), a pattern holding a glob wildcard, an opaque segment
 (an inner `sh -c`, a stripped assignment) or a wrapper program that runs what it is handed
 (`wrapperPrograms`: shells, interpreters, `sudo`, `xargs`, ...) - no rule written from such a
-segment says what the next call would run. A directory glob cannot exclude the secret shapes
+segment says what the next call would run - nor for a `protectedWrite`, which `Pipeline.Check`
+asks about whatever rule allows it. A directory glob cannot exclude the secret shapes
 either, so `Pipeline.Check`'s loosen sends a file request a `model` rule allowed back to the
 ask when `Secret` matches; a user-config rule has no principal, stays authoritative, and shows
 read-only in `/permissions`, while a `model` rule gets a Remove action.
@@ -329,7 +330,12 @@ private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail
 policy can write): trusted only, body only, enabled, and they lose every name clash. The prompt
 lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, `compactDone`);
 `skillIndex` discovers the dir live, so a recipe written mid-session loads without moving the
-prompt, and `runSkill` marks the file read so an `edit` can follow. Invariants:
+prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
+the plain file tools (the environment prompt's `Recipes:` line says how); the dir is a
+`protectedWrite`: no rule and neither auto nor plan settles a write (yolo still allows), and the
+ask says when `sessionLocalOnly` fails.
+`recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
+rewrite the file) scrubs the file in place and tells the model what will not load. Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only user
   or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace boundary -

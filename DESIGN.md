@@ -1739,6 +1739,18 @@ startup, since the session still has unseen messages.
   `/memory forget <id>` are the other review actions: model proposals may
   never silently drop a user-attested (`/memory <note>`) memory, and a
   reflector retirement (§10.3) never drops any memory without review.
+- A recipe (§10.5) is written with the file tools, and every write asks:
+  the dir is under zemi's state, so auto mode never settles it, no
+  "always" is offered, and the ask says when the session read text from
+  outside the machine. A recipe is instructions a later unattended
+  session follows, which is worth a look each time. The secret scrub
+  runs after the write and redacts the file in place, telling the model
+  what it cut: the session store already holds the text, and scrubbing
+  first would make the diff the user approved differ from the `edit`
+  the model made. The same note says when the recipe will not load (a
+  frontmatter name that is not the directory's, a taken name, a body
+  over the `skill` tool's cap). Rewind (§8) reverts a recipe written
+  in the rewound turn like any other file.
 - Skill drafts always wait for review (§10.3, §10.5). A learned skill's
   `zemi-skill.lua` runs as `learned` origin under the §5 denylist, so it
   may not register tools or `tool.pre` rewrite handlers.

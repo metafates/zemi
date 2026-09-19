@@ -141,7 +141,8 @@ type Pipeline struct {
 	Instructions func(path string) string
 
 	// AfterWrite returns text to append to a successful write, edit or
-	// multiedit result (language server diagnostics); nil = nothing.
+	// multiedit result (language server diagnostics) and may rewrite the
+	// file (a recipe's scrub); nil = nothing.
 	AfterWrite func(path string) string
 
 	// Diagnostics backs the diagnostics tool; nil = unavailable.
@@ -922,7 +923,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. It may be queued for the user's review.",
+		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},

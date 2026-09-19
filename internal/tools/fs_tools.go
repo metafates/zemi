@@ -410,9 +410,7 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if err := writeGated(path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	fi, _ := os.Stat(path)
-	p.markRead(path, fi)
-	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content)) + p.afterWrite(path)), nil
+	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content)) + p.wrote(path)), nil
 }
 
 func (p *Pipeline) afterWrite(path string) string {
@@ -420,6 +418,15 @@ func (p *Pipeline) afterWrite(path string) string {
 		return ""
 	}
 	return p.AfterWrite(path)
+}
+
+// wrote runs the hook before recording the file as seen: the hook may
+// rewrite it, and the next edit must not find it stale.
+func (p *Pipeline) wrote(path string) string {
+	note := p.afterWrite(path)
+	fi, _ := os.Stat(path)
+	p.markRead(path, fi)
+	return note
 }
 
 func (p *Pipeline) checkpoint(path string) {
@@ -468,13 +475,11 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	if err := writeGated(path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	fi, _ = os.Stat(path)
-	p.markRead(path, fi)
 	res := fmt.Sprintf("%s %s (%d replacement%s)", verb, path, n, plural(n))
 	if tolerant {
 		res += "; matched ignoring whitespace, so check the indentation"
 	}
-	return fantasy.NewTextResponse(res + p.afterWrite(path)), nil
+	return fantasy.NewTextResponse(res + p.wrote(path)), nil
 }
 
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }

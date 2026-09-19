@@ -1712,6 +1712,14 @@ func (h *Host) seedReads(rows []*store.Message) {
 	}
 }
 
+// afterWrite is the pipeline's AfterWrite hook. The recipe check comes first:
+// it may rewrite the file.
+func (h *Host) afterWrite(path string) string {
+	note := h.recipeAfterWrite(path)
+	h.noteWrite(path)
+	return note + h.lspAfterWrite(path)
+}
+
 // PipelineFor builds the tools pipeline for the model's tool calls.
 func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
@@ -1719,7 +1727,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pre:         h.toolPreHook(),
 		Ask:         h.askHook(),
 		Checkpoint:  h.checkpointFile,
-		AfterWrite:  func(path string) string { h.noteWrite(path); return h.lspAfterWrite(path) },
+		AfterWrite:  h.afterWrite,
 		Changes:     h.bashChanges,
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
