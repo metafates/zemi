@@ -457,8 +457,9 @@ editor with `os.Environ()`.
   `.zemi`, `.agents`, `.claude`). They never get `agent`, `workflow`, `todos`, `question`,
   `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
-  tool output when the window fills. The delegation guidance lives in `delegationPrompt`:
-  without it models rarely delegate.
+  tool output when the window fills and, with none left to clear, drops the middle of the
+  history once, keeping the task and a recent tail. The delegation guidance lives in
+  `delegationPrompt`: without it models rarely delegate.
 - **Workflows** (workflow.go) are Lua scripts (model-written via the `workflow` tool, saved
   under `workflows/`, builtin in `runtime/workflows/`). They run in their **own** gopher-lua
   state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,

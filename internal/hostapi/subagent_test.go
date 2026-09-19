@@ -179,28 +179,49 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 }
 
 // TestSubagentSurvivesAFullWindow: a subagent has no summarizer, so a
-// context the provider refuses clears its old tool output and the run goes
-// on instead of throwing everything it read away.
+// context the provider refuses clears its old tool output, or with none to
+// clear drops the middle of its history once, and the run goes on.
 func TestSubagentSurvivesAFullWindow(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sends := 0
-	model := &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
-		if sends++; sends == 1 {
-			return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: &fantasy.ProviderError{StatusCode: 400, Message: "prompt is too long", ContextTooLargeErr: true}}}
-		}
-		return textParts("report")
-	}}
-	runner := agent.NewRunner(model, nil, "sys")
-	runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
-	runner.History = []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
-	if err := h.sendPruning(context.Background(), runner, "p/m", "go"); err != nil {
-		t.Fatalf("send: %v (streams %d)", err, sends)
-	}
-	if sends != 2 || lastAssistantText(runner.History) != "report" {
-		t.Fatalf("streams %d, last text %q", sends, lastAssistantText(runner.History))
-	}
-	if toolText(runner.History[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
-		t.Fatal("old tool output was kept, so the retry sent the same prompt")
+	big := agent.UserMessage(strings.Repeat("r", 120_000))
+	big.Role = fantasy.MessageRoleAssistant
+	for _, c := range []struct {
+		name     string
+		history  []fantasy.Message
+		refusals int
+		wantErr  bool
+		check    func([]fantasy.Message) bool
+	}{
+		{"old tool output is cleared", []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}, 1, false,
+			func(h []fantasy.Message) bool {
+				return toolText(h[1].Content[0].(fantasy.ToolResultPart)) == clearedOutput
+			}},
+		{"nothing to clear drops the middle, not the task", []fantasy.Message{agent.UserMessage("look"), big}, 1, false,
+			func(h []fantasy.Message) bool {
+				return concatText(h[0].Content) == "look" && estTokens(h...) < 1_000
+			}},
+		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, true,
+			func([]fantasy.Message) bool { return true }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			sends := 0
+			model := &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+				if sends++; sends <= c.refusals {
+					return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: &fantasy.ProviderError{StatusCode: 400, Message: "prompt is too long", ContextTooLargeErr: true}}}
+				}
+				return textParts("report")
+			}}
+			runner := agent.NewRunner(model, nil, "sys")
+			runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
+			runner.History = c.history
+			err := h.sendPruning(context.Background(), runner, "p/m", "go")
+			if (err != nil) != c.wantErr || sends != 2 {
+				t.Fatalf("send: %v (streams %d)", err, sends)
+			}
+			if !c.wantErr && lastAssistantText(runner.History) != "report" || !c.check(runner.History) {
+				t.Fatalf("history after the retry: %d messages, last text %q", len(runner.History), lastAssistantText(runner.History))
+			}
+		})
 	}
 }
 

@@ -371,9 +371,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 // sendPruning runs one subagent turn inside the context window: a run that
 // fills it clears its old tool output and goes on, and a cap the model
 // refuses is dropped once. A subagent has no summarizer: its history is its
-// own and only its report leaves the run, so pruning is all it needs.
+// own and only its report leaves the run, so pruning is all it needs. With
+// nothing to clear it drops the middle of the history, once: the task and a
+// recent tail stay.
 func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string) error {
-	for {
+	for dropped := false; ; {
 		err := runner.Send(ctx, text)
 		text = "" // history holds the prompt from here on
 		switch {
@@ -381,9 +383,19 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 			capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():
-			history, freed := pruneToolOutput(runner.History, h.contextWindow(modelID), true)
+			window := h.contextWindow(modelID)
+			history, freed := pruneToolOutput(runner.History, window, true)
 			if freed == 0 {
-				return err // nothing left to clear: the report is what it has
+				// tailStart never lands on a tool result, so the tail opens
+				// with a message a provider accepts after the task.
+				start := 1 + tailStart(history[1:], tailKeep(compactThreshold(window)))
+				if dropped || start == 1 {
+					return err // nothing left to drop: the report is what it has
+				}
+				// NOTE: the dropped steps are lost unsummarized, and a run
+				// that fills the window again ends with the error.
+				h.Log.Warn("agent", "subagent context full, dropping history", map[string]any{"messages": start - 1})
+				dropped, history = true, append(history[:1:1], history[start:]...)
 			}
 			runner.History = history
 		default:

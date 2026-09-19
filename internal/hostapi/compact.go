@@ -272,7 +272,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 			prev, body = s, body[1:]
 		}
 	}
-	start := tailStart(body, min(max(threshold/4, 2_000), 15_000))
+	start := tailStart(body, tailKeep(threshold))
 	if start == 0 {
 		// It all fits the tail, yet the context is full: the latest request
 		// stays verbatim, and a lone turn, with nothing older, goes whole.
@@ -423,6 +423,9 @@ func summaryOf(m fantasy.Message) (string, bool) {
 	}
 	return "", false
 }
+
+// tailKeep is the verbatim tail's token budget under a compaction threshold.
+func tailKeep(threshold int64) int64 { return min(max(threshold/4, 2_000), 15_000) }
 
 // tailStart is where the verbatim tail begins: the oldest message within
 // keep tokens of the end that is not a tool result, so a tool call always
