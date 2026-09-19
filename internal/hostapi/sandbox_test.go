@@ -16,6 +16,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
@@ -64,13 +65,9 @@ func TestUnsettled(t *testing.T) {
 	}
 }
 
-// TestSandboxedBash runs the real bash tool under seatbelt: a command a
-// mode settled writes the project and its own temp dir but nothing outside
-// them, the system temp dir included (xcrun_db there picks what /usr/bin/make
-// runs), gets the hint when denied, and sandbox: false goes to the user
-// instead. Plan mode keeps the project read-only, and go test and cargo build
-// still pass.
-func TestSandboxedBash(t *testing.T) {
+// sandboxedBash is a trusted host on the live seatbelt backend and its bash
+// tool.
+func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]any) fantasy.ToolResponse) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the end-to-end check drives seatbelt")
 	}
@@ -79,24 +76,12 @@ func TestSandboxedBash(t *testing.T) {
 		t.Skip("no sandbox:", err)
 	}
 	h, r := newTestHostDB(t)
-	outside := t.TempDir()
-	// a probe beside xcrun_db, not the file itself: the rule is for the dir
-	shared := filepath.Join(os.TempDir(), fmt.Sprintf("zemi-sandbox-probe-%d", os.Getpid()))
-	t.Cleanup(func() { os.Remove(shared) })
 	h.sandbox.Store(&sandboxProbe{backend: backend})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `
-		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
-		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
-	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
-	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
-	os.MkdirAll(venv, 0o755)
-	t.Setenv("PATH", venv+string(filepath.ListSeparator)+os.Getenv("PATH"))
-	private := filepath.Join(h.sandboxPolicy(false).Env["TMPDIR"], "made.txt")
-	run := func(in map[string]any) fantasy.ToolResponse {
+	return h, r, ui, func(in map[string]any) fantasy.ToolResponse {
 		input, _ := json.Marshal(in)
 		var bash fantasy.AgentTool
 		for _, tl := range tools.All(h.PipelineFor()) {
@@ -115,6 +100,27 @@ func TestSandboxedBash(t *testing.T) {
 		}
 		return resp
 	}
+}
+
+// TestSandboxedBash runs the real bash tool under seatbelt: a command a
+// mode settled writes the project and its own temp dir but nothing outside
+// them, the system temp dir included (xcrun_db there picks what /usr/bin/make
+// runs), gets the hint when denied, and sandbox: false goes to the user
+// instead. Plan mode keeps the project read-only.
+func TestSandboxedBash(t *testing.T) {
+	h, r, ui, run := sandboxedBash(t)
+	outside := t.TempDir()
+	// a probe beside xcrun_db, not the file itself: the rule is for the dir
+	shared := filepath.Join(os.TempDir(), fmt.Sprintf("zemi-sandbox-probe-%d", os.Getpid()))
+	t.Cleanup(func() { os.Remove(shared) })
+	runUser(t, r, `
+		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
+		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
+	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
+	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
+	os.MkdirAll(venv, 0o755)
+	t.Setenv("PATH", venv+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	private := filepath.Join(h.sandboxPolicy(false).Env["TMPDIR"], "made.txt")
 	for _, c := range []struct {
 		name, mode, path string
 		unsandboxed, net bool
@@ -165,29 +171,33 @@ func TestSandboxedBash(t *testing.T) {
 			t.Errorf("policy %+v: want the network with the file rules kept", pol)
 		}
 	})
+}
+
+// TestSandboxedBuilds: go test and cargo build pass in the sandbox without an
+// ask, side by side on one host.
+func TestSandboxedBuilds(t *testing.T) {
+	t.Parallel()
+	h, _, ui, run := sandboxedBash(t)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
 	t.Run("go test", func(t *testing.T) {
-		if err := h.SetPermMode("auto"); err != nil {
-			t.Fatal(err)
-		}
+		t.Parallel()
 		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "go.mod"), []byte("module m\n\ngo 1.22\n"), 0o644)
 		os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "m_test.go"), []byte(goTempTest), 0o644)
-		ui.asked = nil
 		if resp := run(map[string]any{"command": "cd " + h.Dirs.ProjectDir + " && go test -count=1 ./...", "timeout_ms": 300000.0}); resp.IsError || !strings.Contains(resp.Content, "ok") || len(ui.asked) > 0 {
 			t.Errorf("go test in the sandbox: %s, asked %+v", resp.Content, ui.asked)
 		}
 	})
 	t.Run("cargo build", func(t *testing.T) {
+		t.Parallel()
 		if _, err := exec.LookPath("cargo"); err != nil {
 			t.Skip("no cargo")
-		}
-		if err := h.SetPermMode("auto"); err != nil {
-			t.Fatal(err)
 		}
 		crate := filepath.Join(h.Dirs.ProjectDir, "crate")
 		os.MkdirAll(filepath.Join(crate, "src"), 0o755)
 		os.WriteFile(filepath.Join(crate, "Cargo.toml"), []byte("[package]\nname = \"c\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"), 0o644)
 		os.WriteFile(filepath.Join(crate, "src", "main.rs"), []byte("fn main() {}\n"), 0o644)
-		ui.asked = nil
 		resp := run(map[string]any{"command": "cd " + crate + " && cargo build --offline", "timeout_ms": 300000.0})
 		if _, err := os.Stat(filepath.Join(crate, "target", "debug", "c")); err != nil || resp.IsError || len(ui.asked) > 0 {
 			t.Errorf("cargo build in the sandbox: %v: %s, asked %+v", err, resp.Content, ui.asked)

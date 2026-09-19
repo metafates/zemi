@@ -48,6 +48,7 @@ func TestSystemPromptSections(t *testing.T) {
 // git calls run a program, trusted or not, and neither can a nested one a
 // sandboxed command planted inside a trusted project.
 func TestGitRunsNoRepoPrograms(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}

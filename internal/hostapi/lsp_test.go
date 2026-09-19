@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -21,53 +22,67 @@ import (
 // TestLSPDiagnostics: a server added from Lua reports on files the write
 // tool changes, and the diagnostics tool reads them back.
 func TestLSPDiagnostics(t *testing.T) {
-	h, r := newTestHostDB(t)
-	defer h.lsp.stopAll()
-	h.SetProjectTrusted(true)
-	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet", "hang" } })`, os.Args[0]))
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	byName := map[string]fantasy.AgentTool{}
-	for _, tl := range tools.All(h.PipelineFor()) {
-		byName[tl.Info().Name] = tl
-	}
-	path := filepath.Join(h.Dirs.ProjectDir, "a.txt")
-	run := func(tool, input string) string {
-		t.Helper()
-		resp, err := byName[tool].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: tool, Input: input})
-		if err != nil {
-			t.Fatal(err)
+	t.Parallel()
+	setup := func(t *testing.T) (*Host, func(tool, name, content string) string) {
+		h, r := newTestHostDB(t)
+		t.Cleanup(h.lsp.stopAll)
+		h.SetProjectTrusted(true)
+		runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet", "hang" } })`, os.Args[0]))
+		h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+		byName := map[string]fantasy.AgentTool{}
+		for _, tl := range tools.All(h.PipelineFor()) {
+			byName[tl.Info().Name] = tl
 		}
-		return resp.Content
-	}
-	for _, c := range []struct{ tool, input, want string }{
-		{"write", fmt.Sprintf(`{"path":%q,"content":"ok\nBROKEN"}`, path), "error a.txt:2:1: broken"},
-		{"diagnostics", fmt.Sprintf(`{"path":%q}`, path), `<diagnostics source="fake">`},
-		{"write", fmt.Sprintf(`{"path":%q,"content":"fixed"}`, path), "fake reports no problems in a.txt"},
-		{"write", fmt.Sprintf(`{"path":%q,"content":"BROKEN"}`, filepath.Join(h.Dirs.ProjectDir, "b.txt")), "error b.txt:1:1"},
-		{"write", fmt.Sprintf(`{"path":%q,"content":"still fine"}`, path), "errors in other files (a caller this change broke, or already broken):\nerror b.txt:1:1: broken"},
-		{"diagnostics", fmt.Sprintf(`{"path":%q}`, filepath.Join(h.Dirs.ProjectDir, "b.zzz")), "no language server for .zzz"},
-	} {
-		if got := run(c.tool, c.input); !strings.Contains(got, c.want) {
-			t.Fatalf("%s %s = %q, want %q", c.tool, c.input, got, c.want)
+		return h, func(tool, name, content string) string {
+			t.Helper()
+			input, _ := json.Marshal(map[string]string{"path": filepath.Join(h.Dirs.ProjectDir, name), "content": content})
+			resp, err := byName[tool].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return resp.Content
 		}
 	}
-	first := h.lsp.running["fake"]
+	t.Run("reports", func(t *testing.T) {
+		t.Parallel()
+		_, run := setup(t)
+		for _, c := range []struct{ tool, name, content, want string }{
+			{"write", "a.txt", "ok\nBROKEN", "error a.txt:2:1: broken"},
+			{"diagnostics", "a.txt", "", `<diagnostics source="fake">`},
+			{"write", "a.txt", "fixed", "fake reports no problems in a.txt"},
+			{"write", "b.txt", "BROKEN", "error b.txt:1:1"},
+			{"write", "a.txt", "still fine", "errors in other files (a caller this change broke, or already broken):\nerror b.txt:1:1: broken"},
+			{"diagnostics", "b.zzz", "", "no language server for .zzz"},
+		} {
+			if got := run(c.tool, c.name, c.content); !strings.Contains(got, c.want) {
+				t.Fatalf("%s %s = %q, want %q", c.tool, c.name, got, c.want)
+			}
+		}
+	})
+	// each silent touch waits out the client's floor, so the two run side by side
 	for _, ext := range []string{"quiet", "hang"} {
-		for i := range lspMaxStalls {
-			run("write", fmt.Sprintf(`{"path":%q,"content":"nothing"}`, filepath.Join(h.Dirs.ProjectDir, fmt.Sprintf("q%d.%s", i, ext))))
-		}
-		if alive := h.lsp.running["fake"] == first; alive != (ext == "quiet") {
-			t.Fatalf("only a server that answers nothing is dropped for a fresh start: after %s: %v", ext, h.lspRows())
-		}
-	}
-	if got := run("write", fmt.Sprintf(`{"path":%q,"content":"BROKEN"}`, path)); !strings.Contains(got, "error a.txt:1:1") {
-		t.Fatalf("restarted server = %q", got)
+		t.Run(ext, func(t *testing.T) {
+			t.Parallel()
+			h, run := setup(t)
+			run("write", "a.txt", "ok")
+			first := h.lsp.running["fake"]
+			for i := range lspMaxStalls {
+				run("write", fmt.Sprintf("q%d.%s", i, ext), "nothing")
+			}
+			if alive := h.lsp.running["fake"] == first; alive != (ext == "quiet") {
+				t.Fatalf("only a server that answers nothing is dropped for a fresh start: %v", h.lspRows())
+			}
+			if got := run("write", "a.txt", "BROKEN"); !strings.Contains(got, "error a.txt:1:1") {
+				t.Fatalf("restarted server = %q", got)
+			}
+		})
 	}
 }
 
 // TestLSPTool: symbols, definition, references and rename go through the
 // file's server by symbol name; rename writes every file the server names.
 func TestLSPTool(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
 	h.SetProjectTrusted(true)
@@ -294,6 +309,7 @@ func TestLSPSyncFromGit(t *testing.T) {
 // rust-analyzer under the live backend: each reports a problem, and the
 // build script rust-analyzer runs writes its OUT_DIR but not outside it.
 func TestLSPRealServersSandboxed(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("starts real language servers")
 	}
@@ -328,24 +344,31 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 			t.Fatalf("cargo generate-lockfile: %v: %s", err, out)
 		}
 	}
-	for _, c := range []struct{ server, file, want string }{
-		{"gopls", "main.go", "error main.go:3"},
-		{"pyright-langserver", "a.py", "error a.py:1"},
-		{"rust-analyzer", "src/main.rs", "error src/main.rs:1"},
-	} {
-		t.Run(c.server, func(t *testing.T) {
-			if _, err := exec.LookPath(c.server); err != nil {
-				t.Skip(c.server, " not installed")
-			}
-			got, err := "", error(nil)
-			for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !strings.Contains(got, c.want); time.Sleep(time.Second) {
-				got, err = h.lspDiagnostics(filepath.Join(proj, c.file))
-			}
-			if !strings.Contains(got, c.want) {
-				t.Fatalf("diagnostics %q (%v), want %q", got, err, c.want)
-			}
-		})
-	}
+	// the group returns once its parallel servers have all reported
+	t.Run("servers", func(t *testing.T) {
+		for _, c := range []struct{ server, file, want string }{
+			{"gopls", "main.go", "error main.go:3"},
+			{"pyright-langserver", "a.py", "error a.py:1"},
+			{"rust-analyzer", "src/main.rs", "error src/main.rs:1"},
+		} {
+			t.Run(c.server, func(t *testing.T) {
+				t.Parallel()
+				if _, err := exec.LookPath(c.server); err != nil {
+					t.Skip(c.server, " not installed")
+				}
+				got, err := "", error(nil)
+				for deadline := time.Now().Add(2 * time.Minute); ; time.Sleep(time.Second) {
+					got, err = h.lspDiagnostics(filepath.Join(proj, c.file))
+					if strings.Contains(got, c.want) || time.Now().After(deadline) {
+						break
+					}
+				}
+				if !strings.Contains(got, c.want) {
+					t.Fatalf("diagnostics %q (%v), want %q", got, err, c.want)
+				}
+			})
+		}
+	})
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		return
 	}

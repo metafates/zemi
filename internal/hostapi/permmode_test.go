@@ -139,6 +139,7 @@ func TestUntrustedModes(t *testing.T) {
 // from the scratchpad's directory, and a recursive search only over trees
 // without secret-shaped files.
 func TestAutoModeReadCommands(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	fakeSandbox(h, false)
 	h.SetProjectTrusted(true)

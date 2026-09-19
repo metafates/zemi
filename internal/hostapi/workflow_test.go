@@ -39,6 +39,7 @@ func echoAgents(h *Host) *atomic.Int32 {
 // TestWorkflowCancelBoundedDrain: an agent that never notices the cancel
 // must not hold runWorkflow open past the drain grace.
 func TestWorkflowCancelBoundedDrain(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -64,6 +65,7 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 }
 
 func TestWorkflowRun(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	peak := echoAgents(h)
 	for _, c := range []struct {
@@ -199,6 +201,7 @@ func TestAgentsOverlayConfigDir(t *testing.T) {
 // merge base with HEAD is the commit itself, so reading one as a base ref
 // would review everything since it plus the working tree.
 func TestReviewTargetsACommit(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
 	src, err := h.workflowSource("review")

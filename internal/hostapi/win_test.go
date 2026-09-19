@@ -201,6 +201,7 @@ func TestWindowFocus(t *testing.T) {
 // its subagents'; an editor window is hidden from Lua below user config and
 // from the Lua tool, and the user must close a running one twice.
 func TestWindowOwnership(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
 	h.Perm.Add(perm.Rule{Subject: "tool.window", Pattern: "*", Decision: perm.Allow})

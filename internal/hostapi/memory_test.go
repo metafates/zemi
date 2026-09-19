@@ -540,6 +540,7 @@ func TestMemoryReviewMoveOntoDuplicate(t *testing.T) {
 // TestEditMemory: e in /memory saves the editor's text as the user's own,
 // in place; empty, unchanged or refused text changes nothing.
 func TestEditMemory(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, row, text string
 		want            string // "" when nothing may change
