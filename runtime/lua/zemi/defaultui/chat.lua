@@ -65,7 +65,7 @@ zemi.ui.widget.add({
     -- activity (thinking and tools), the reply, its stats.
     ---@type string?
     local prev
-    ---@param block "user"|"activity"|"text"|"stats"
+    ---@param block "user"|"activity"|"text"|"stats"|"queued"
     local function gap(block)
       if prev then blank() end
       prev = block
