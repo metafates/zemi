@@ -50,7 +50,7 @@ func TestLuaToolFailures(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "tool.ticket", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `zemi.tool.add({
 		name = "ticket", description = "look up a ticket",
-		input = { id = { type = "string" } }, required = { "id" },
+		input = { id = { type = "string" }, n = { type = "integer" } }, required = { "id" },
 		execute = function(args)
 			if args.id == "raise" then error("boom") end
 			if args.id == "spin" then while true do end end
@@ -60,10 +60,12 @@ func TestLuaToolFailures(t *testing.T) {
 	})`)
 	tool := h.luaFantasyTools(h.PipelineFor())[0]
 	for input, want := range map[string]string{
-		`{"id":"raise"}`: "boom",
-		`{"id":"fail"}`:  "ticket: no such ticket",
-		`{}`:             `missing required field "id"`,
-		`{"id":1}`:       `field "id" must be string`,
+		`{"id":"raise"}`:               "boom",
+		`{"id":"fail","n":2,"x":null}`: "ticket: no such ticket",
+		`{}`:                           `missing required field "id"`,
+		`{"id":1}`:                     `field "id" must be string`,
+		`{"id":"a","n":"1"}`:           `field "n" must be integer`,
+		`{"id":"a","n":1.5}`:           `field "n" must be integer`,
 	} {
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: input})
 		if err != nil || !resp.IsError || !strings.HasSuffix(resp.Content, want) {

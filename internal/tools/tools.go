@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
@@ -514,28 +515,26 @@ func Validate(info fantasy.ToolInfo, input map[string]any) error {
 	return validateFields(info.Parameters, info.Required, input, "")
 }
 
-// validateFields checks required fields, then the required fields of every
-// object in an array: a lax provider can drop a nested field, and a
-// multiedit without new_string would delete the matched text.
+// validateFields checks required fields, the type of every field sent, then
+// the fields of every object in an array: a lax provider can drop a nested
+// field, and a multiedit without new_string would delete the matched text.
 func validateFields(props map[string]any, required []string, input map[string]any, at string) error {
 	for _, r := range required {
-		v, ok := input[r]
-		if !ok || v == nil {
+		if input[r] == nil {
 			return fmt.Errorf("missing required field %q", at+r)
-		}
-		if ps, ok := props[r].(map[string]any); ok {
-			if t, ok := ps["type"].(string); ok && !typeOK(t, v) {
-				return fmt.Errorf("field %q must be %s", at+r, t)
-			}
 		}
 	}
 	for k, v := range input {
 		ps, _ := props[k].(map[string]any)
+		// null is how some providers leave an optional field out
+		if t, _ := ps["type"].(string); v != nil && !typeOK(t, v) {
+			return fmt.Errorf("field %q must be %s", at+k, t)
+		}
 		items, _ := ps["items"].(map[string]any)
 		req, _ := items["required"].([]string)
 		list, _ := v.([]any)
 		for i, e := range list {
-			if m, ok := e.(map[string]any); ok && len(req) > 0 {
+			if m, ok := e.(map[string]any); ok {
 				iprops, _ := items["properties"].(map[string]any)
 				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i)); err != nil {
 					return err
@@ -560,6 +559,9 @@ func typeOK(want string, v any) bool {
 			return true
 		}
 		return false
+	case "integer":
+		f, ok := v.(float64)
+		return ok && f == math.Trunc(f)
 	case "array":
 		_, ok := v.([]any)
 		return ok
