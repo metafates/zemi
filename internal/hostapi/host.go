@@ -345,7 +345,7 @@ func (h *Host) SetProjectTrusted(ok bool) {
 	}
 	h.projectSkills.Store(&found)
 	// the trust step runs on every reload, which must not move the prompt
-	if prev != ok || h.recipes.Load() == nil {
+	if prev != ok {
 		h.pinRecipes()
 	}
 }

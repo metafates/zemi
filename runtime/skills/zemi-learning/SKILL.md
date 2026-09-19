@@ -85,12 +85,13 @@ not for the repository. A fact is a memory; a procedure for every project is a u
   `Recipes:` line of the environment names the directory. No rule and neither auto nor plan
   settles the write; yolo still allows.
 - It loads with the `skill` tool at once and is listed under Skills from the next session.
-- Secret-shaped text is redacted after the write, and the result says so: name the env var
-  or use a placeholder like `$TOKEN`. Long hex and base64 runs (digests) are cut too.
+- Secret-shaped text in any file there is redacted after the write, and the result names
+  the lines: name the env var or use a placeholder like `$TOKEN`. A run of 32+ hex or 40+
+  base64 characters (a digest) and the value after `token=` or `authorization:` are cut too.
 - Fix a stale step in place with `edit` and date the correction; link another recipe as
   `[[name]]`.
-- The user deletes one with `x` in `/skills` or `/skills delete <name>`; no other skill can
-  be deleted there.
+- The user deletes one with Delete (`x`) in its `/skills` detail view or
+  `/skills delete <name>`; no other skill can be deleted there.
 
 ## From Lua
 

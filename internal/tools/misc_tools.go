@@ -260,16 +260,13 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			if v := p.Check(Request{Subject: "fs.read", Arg: path, Reason: "load skill"}); v.Decision != perm.Allow {
 				return fantasy.NewTextErrorResponse("permission denied: " + v.Reason), nil
 			}
-			// stat before the read, so a write landing between them fails the next edit
-			fi, statErr := os.Stat(path)
+			fi, _ := os.Stat(path)
 			body, err := skills.Body(s.Path)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 			// loading is reading: a recipe can be corrected without a read
-			if statErr == nil {
-				p.markRead(path, fi)
-			}
+			p.markRead(path, fi)
 			// the body is the whole procedure, loaded once: a cut leaves the
 			// model acting on half of it, so say where the rest is
 			full := "Skill directory: " + s.Path + "\n\n" + body

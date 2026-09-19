@@ -335,7 +335,9 @@ the plain file tools (the environment prompt's `Recipes:` line says how); the di
 `protectedWrite`: no rule and neither auto nor plan settles a write (yolo still allows), and the
 ask says when `sessionLocalOnly` fails.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
-rewrite the file) scrubs the file in place and tells the model what will not load.
+rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
+pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
+lines and tells the model what will not load. `/skills` and its commands read the dir live.
 `/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one
 and pins the list again. Invariants:
 

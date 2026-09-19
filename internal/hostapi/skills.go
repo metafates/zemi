@@ -240,7 +240,7 @@ func (h *Host) discoverRecipes() []skills.Skill {
 // it lies. After the write, not before: the session already holds the text,
 // and the ask showed the user the diff the model made.
 func (h *Host) recipeAfterWrite(path string) string {
-	if filepath.Base(path) != "SKILL.md" || !h.inJail(path, h.recipesDir()) {
+	if !h.inJail(path, h.recipesDir()) {
 		return ""
 	}
 	data, err := os.ReadFile(path)
@@ -248,7 +248,7 @@ func (h *Host) recipeAfterWrite(path string) string {
 		return ""
 	}
 	note := "\n\nrecipe: "
-	clean, cut := learn.ScrubSecrets(sanitize.String(string(data)))
+	clean := learn.ScrubShapes(sanitize.String(string(data)))
 	switch {
 	case learn.IsOneBlob(clean):
 		os.Remove(path)
@@ -257,19 +257,26 @@ func (h *Host) recipeAfterWrite(path string) string {
 		if err := os.WriteFile(path, []byte(clean), 0o644); err != nil {
 			return note + "could not be cleaned: " + err.Error()
 		}
-		if cut {
-			note += "secret-shaped text was redacted: name the env var or use a placeholder like $TOKEN, then re-check the commands; "
-		} else {
-			note += "control characters were removed; "
+		var lines []int
+		for i, l := range strings.Split(clean, "\n") {
+			if strings.Contains(l, "[redacted ") {
+				lines = append(lines, i+1)
+			}
 		}
+		note += fmt.Sprintf("secret-shaped or control text was removed, redacted lines %v: name the env var or use a placeholder like $TOKEN, then re-check the commands; ", lines)
+	}
+	// a file beside SKILL.md is only cleaned; any case of the name is the
+	// same file where the filesystem folds case
+	if !strings.EqualFold(filepath.Base(path), "SKILL.md") {
+		return strings.TrimSuffix(note, "\n\nrecipe: ")
 	}
 	sk, err := skills.Parse(filepath.Dir(path), skills.Recipe)
 	loads := func(s skills.Skill) bool { return s.Source == skills.Recipe && s.Name == sk.Name }
 	switch {
 	case err != nil && !errors.Is(err, skills.ErrDescriptionCut):
 		return note + "will not load: " + strings.TrimPrefix(err.Error(), "skills: ")
-	case !slices.ContainsFunc(h.projectOnly(h.discoverRecipes()), loads):
-		return note + "will not load: another skill is named " + sk.Name + ", the project is untrusted, or the file is not <Recipes>/<name>/SKILL.md"
+	case !slices.ContainsFunc(h.projectOnlySkills(), loads):
+		return note + "will not load: another skill is named " + sk.Name + ", or the file is not <Recipes>/<name>/SKILL.md"
 	case len(clean) > tools.SkillMaxOut:
 		return note + fmt.Sprintf("over %d bytes, the skill tool cuts it: split it and link the parts by [[name]]", tools.SkillMaxOut)
 	case err != nil:
@@ -307,9 +314,10 @@ func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 	return found
 }
 
-// projectOnlySkills is the project's skills and pinned recipes whose names no
-// authored, builtin or learned skill takes, enabled or not.
-func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.pinnedRecipes()) }
+// projectOnlySkills is the project's skills and recipes whose names no
+// authored, builtin or learned skill takes, enabled or not. Recipes are read
+// live: only the prompt needs the pin.
+func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.discoverRecipes()) }
 
 // projectOnly puts recipes after the repository's skills: a recipe loses
 // every name clash.
@@ -480,7 +488,7 @@ func (h *Host) skillsCommand(args string) error {
 // once, by the user's own act. Every other source lives in files the user or
 // the repository owns.
 func (h *Host) deleteRecipe(name string) error {
-	for _, s := range h.projectOnly(h.discoverRecipes()) {
+	for _, s := range h.projectOnlySkills() {
 		if s.Name != name || s.Source != skills.Recipe {
 			continue
 		}

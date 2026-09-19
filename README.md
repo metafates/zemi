@@ -135,6 +135,9 @@ and `args` plus Lua's string, table and math libraries, with no file or network 
    (they start disabled).
 4. **Use.** Accepted memories reach the model as a labeled digest in the system prompt;
    enabled skills appear as an index the model loads on demand.
+5. **Recipes.** The agent can save a repository's exact procedure as a recipe, a private
+   skill kept outside the repo. Every write asks; `/skills` lists them and its Delete
+   action removes one.
 
 Every learned change is scrubbed for secrets, labeled `user` or `learned`, and
 reversible (`/memory`, `/skills disable <name>`).
@@ -277,7 +280,7 @@ origin (`user > builtin > plugin > project`), so project code cannot override yo
 | --- | --- |
 | `~/.config/zemi/` | `init.lua`, `.luarc.json`, authored `skills/`, `agents/`, `commands/`, `workflows/` |
 | `~/.local/share/zemi/` | plugins, learned `skills/`, `types/` (LuaLS annotations for `zemi.*`) |
-| `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust |
+| `~/.local/state/zemi/` | SQLite stores: sessions, memories, proposals, trust; per-project recipes (`projects/<hash>/skills`) |
 | `~/.cache/zemi/` | sandboxed language servers' caches and build output |
 
 Override with `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME`.

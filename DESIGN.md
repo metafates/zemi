@@ -1744,8 +1744,10 @@ startup, since the session still has unseen messages.
   "always" is offered, and the ask says when the session read text from
   outside the machine. A recipe is instructions a later unattended
   session follows, which is worth a look each time. The secret scrub
-  runs after the write and redacts the file in place, telling the model
-  what it cut: the session store already holds the text, and scrubbing
+  runs after the write, on any file in the dir, and redacts it in
+  place, telling the model which lines it cut. It keeps the key shapes
+  and drops the entropy pass, which would cut the long paths and
+  `NAME=url` values a procedure is made of. After, not before: the session store already holds the text, and scrubbing
   first would make the diff the user approved differ from the `edit`
   the model made. The same note says when the recipe will not load (a
   frontmatter name that is not the directory's, a taken name, a body
@@ -1823,7 +1825,7 @@ memory. They never enter the repository, no sandbox policy makes the dir
 writable, and they behave like project skills (body only, no toggle, no
 row), losing a name clash to those too. The index lists the recipes found
 when the environment section is pinned (new session, resume, compaction,
-§10.7), while the `skill` tool reads the dir on every call: a recipe
+§10.7), while the `skill` tool and `/skills` read the dir on every call: a recipe
 written mid-session loads at once and never moves the prompt. Loading a
 skill counts as reading its file, so a correction is one `edit`. Only a
 recipe has a Delete action in `/skills` (`/skills delete <name>`), which

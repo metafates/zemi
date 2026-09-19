@@ -22,8 +22,9 @@ var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`),
 	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b`),
 	regexp.MustCompile(`\b[0-9a-fA-F]{32,}\b`),
-	// no '/': long paths match otherwise; base64 with slashes falls to the entropy pass
-	regexp.MustCompile(`\b[A-Za-z0-9+_=-]{40,}\b`),
+	// no '/': long paths match otherwise; base64 with slashes falls to the
+	// entropy pass. No '=': a long NAME=value is no key
+	regexp.MustCompile(`\b[A-Za-z0-9+_-]{40,}\b`),
 }
 
 // urlPassword matches the userinfo of a URL (postgres://user:pass@host);
@@ -45,14 +46,7 @@ const (
 // reports whether anything was redacted. Redaction is per span, so
 // "[redacted 24 chars]" markers can coexist with surviving prose.
 func ScrubSecrets(text string) (string, bool) {
-	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
-		i := urlPassword.FindStringSubmatchIndex(m)
-		return m[:i[2]] + redactMarker(utf8.RuneCountInString(m[i[2]:i[3]])) + m[i[3]:]
-	})
-	for _, re := range keyShapes {
-		out = redactAll(out, re.FindAllString(out, -1))
-	}
-	out = redactAll(out, keyAssignments.FindAllString(out, -1))
+	out := ScrubShapes(text)
 	var toks []string
 	for tok := range strings.FieldsSeq(out) {
 		if len(tok) >= entropyFloorLen && shannon(tok) >= entropyThreshold {
@@ -61,6 +55,21 @@ func ScrubSecrets(text string) (string, bool) {
 	}
 	out = redactAll(out, toks)
 	return out, out != text
+}
+
+// ScrubShapes is ScrubSecrets without the entropy pass, for a recipe: there
+// a long path or NAME=https://... is a command, and cutting it breaks the step.
+// NOTE: a bare random token under 40 characters with no key name survives;
+// the user reads every recipe write in its ask.
+func ScrubShapes(text string) string {
+	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
+		i := urlPassword.FindStringSubmatchIndex(m)
+		return m[:i[2]] + redactMarker(utf8.RuneCountInString(m[i[2]:i[3]])) + m[i[3]:]
+	})
+	for _, re := range keyShapes {
+		out = redactAll(out, re.FindAllString(out, -1))
+	}
+	return redactAll(out, keyAssignments.FindAllString(out, -1))
 }
 
 // oneBlob strips every redaction marker; what remains must be whitespace.

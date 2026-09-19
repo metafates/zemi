@@ -365,6 +365,8 @@ func TestRecipes(t *testing.T) {
 		in, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, sub, "SKILL.md"), "content": "---\nname: " + name + "\ndescription: recipe " + name + "\n---\n\n" + body + "\n"})
 		return string(in)
 	}
+	// NAME=url is a command the entropy pass would cut
+	tok := md("tok", "tok", "step one: TOKEN=ghp_0123456789abcdefghijklmnopqrstuv make rig\nAUTH_ISSUER=http://127.0.0.1:8099/auth/realms/local make run")
 	edit, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, "tok", "SKILL.md"), "old_string": "step one", "new_string": "step 1"})
 	late := []string{"late", "rig"}
 	written := []string{"late", "rig", "tok"}
@@ -383,7 +385,8 @@ func TestRecipes(t *testing.T) {
 		{name: "written mid-session loads, the prompt stays", do: func() { writeSkill(t, dir, "late", "recipe late", "") }, prompt: []string{"rig"}, tool: late},
 		{name: "a reload's trust step keeps the pin", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: late},
 		{name: "compaction pins again", do: func() { h.compactDone(0, false); h.environmentPrompt() }, prompt: late, tool: late},
-		{name: "a secret is redacted", prompt: late, tool: written, call: "write", input: md("tok", "tok", "step one: TOKEN=ghp_0123456789abcdefghijklmnopqrstuv make rig"), out: "redacted"},
+		{name: "a secret is redacted", prompt: late, tool: written, call: "write", input: tok, out: "redacted lines [6]"},
+		{name: "any file there is scrubbed, whatever its name", prompt: late, tool: written, call: "write", input: strings.Replace(tok, "SKILL.md", "skill.md", 1), out: "redacted lines [6]"},
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
 		{name: "a name an authored skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
@@ -436,14 +439,14 @@ func TestRecipes(t *testing.T) {
 		slices.Sort(prompt)
 		slices.Sort(tool)
 		slices.Sort(items)
-		if !slices.Equal(prompt, c.prompt) || !slices.Equal(items, c.prompt) || !slices.Equal(tool, c.tool) {
+		if !slices.Equal(prompt, c.prompt) || !slices.Equal(items, c.tool) || !slices.Equal(tool, c.tool) {
 			t.Errorf("%s: prompt %v, /skills %v, tool %v", c.name, prompt, items, tool)
 		}
 		if got := h.fsDefault("fs.read", filepath.Join(dir, "rig", "SKILL.md")); got != cmp.Or(c.read, perm.Allow) {
 			t.Errorf("%s: read = %v, want %v", c.name, got, cmp.Or(c.read, perm.Allow))
 		}
 	}
-	if data, _ := os.ReadFile(filepath.Join(dir, "tok", "SKILL.md")); !strings.Contains(string(data), "step 1") || strings.Contains(string(data), "ghp_") {
+	if data, _ := os.ReadFile(filepath.Join(dir, "tok", "SKILL.md")); !strings.Contains(string(data), "step 1") || !strings.Contains(string(data), "realms/local") || strings.Contains(string(data), "ghp_") {
 		t.Errorf("tok on disk: %s", data)
 	}
 	if !strings.Contains(h.environmentPrompt(), "Recipes: "+dir+"\n") {
