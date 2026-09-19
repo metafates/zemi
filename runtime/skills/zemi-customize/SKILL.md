@@ -81,8 +81,8 @@ agent while it runs, and esc goes back. Background jobs
 ## A lean tool set (`init.lua`, or `tools:` in an agent file)
 
 ```lua
-zemi.agent.profile("lean", { tools = { "bash", "skill" } })  -- allowlist
-zemi.agent.profile("lean", { tools = { "-read", "-write", "-edit", "-multiedit", "-glob", "-grep" } })
+zemi.agent.profile("lean", { tools = { "bash", "skill" } })
+-- or drop tools from the default set: tools = { "-read", "-write", "-edit", "-multiedit", "-glob", "-grep" }
 zemi.agent.set_default("lean")
 ```
 

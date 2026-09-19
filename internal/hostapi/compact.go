@@ -428,10 +428,7 @@ func summaryOf(m fantasy.Message) (string, bool) {
 	p, ok := m.Content[0].(fantasy.TextPart)
 	switch {
 	case ok && strings.HasPrefix(p.Text, compactPrefix):
-		s := strings.TrimPrefix(p.Text, compactPrefix)
-		if i := strings.LastIndex(s, compactSuffix); i >= 0 {
-			s = s[:i]
-		}
+		s, _, _ := strings.Cut(strings.TrimPrefix(p.Text, compactPrefix), compactSuffix)
 		return s, true
 	case ok && strings.HasPrefix(p.Text, legacyCompactPrefix):
 		return strings.TrimPrefix(p.Text, legacyCompactPrefix), true

@@ -188,19 +188,17 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		name     string
 		history  []fantasy.Message
 		refusals int
-		wantErr  bool
 		check    func([]fantasy.Message) bool
 	}{
-		{"old tool output is cleared", []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}, 1, false,
+		{"old tool output is cleared", []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}, 1,
 			func(h []fantasy.Message) bool {
 				return toolText(h[1].Content[0].(fantasy.ToolResultPart)) == clearedOutput
 			}},
-		{"nothing to clear drops the middle, not the task", []fantasy.Message{agent.UserMessage("look"), big}, 1, false,
+		{"nothing to clear drops the middle, not the task", []fantasy.Message{agent.UserMessage("look"), big}, 1,
 			func(h []fantasy.Message) bool {
 				return concatText(h[0].Content) == "look" && estTokens(h...) < 1_000
 			}},
-		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, true,
-			func([]fantasy.Message) bool { return true }},
+		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -215,10 +213,11 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 			runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
 			runner.History = c.history
 			err := h.sendPruning(context.Background(), runner, "p/m", "go")
-			if (err != nil) != c.wantErr || sends != 2 {
+			wantErr := c.refusals > 1
+			if (err != nil) != wantErr || sends != 2 {
 				t.Fatalf("send: %v (streams %d)", err, sends)
 			}
-			if !c.wantErr && lastAssistantText(runner.History) != "report" || !c.check(runner.History) {
+			if !wantErr && lastAssistantText(runner.History) != "report" || c.check != nil && !c.check(runner.History) {
 				t.Fatalf("history after the retry: %d messages, last text %q", len(runner.History), lastAssistantText(runner.History))
 			}
 		})

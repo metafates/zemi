@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )

@@ -367,7 +367,8 @@ lua-language-server is installed.
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
   unknown window means no auto compaction. The summary row is followed by the verbatim tail
   stored with row role `tail`, which resume reads and transcript readers skip. An unfinished
-  todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never merged.
+  todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never
+  merged.
 - **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
   `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left
@@ -557,10 +558,10 @@ how many rows the frame takes, so nothing above it reflows.
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
   `<config>/AGENTS.md` gets its own budget), Lua sections, skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
-  `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence. Anything that varies
-  per turn must be pinned per session or it busts the provider's prompt cache - which is why
-  `gitStatusSection` runs once per process, warmed at boot so a big repository's `git status`
-  is not paid for at first token.
+  `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence. Anything
+  that varies per turn must be pinned per session or it busts the provider's prompt cache -
+  which is why `gitStatusSection` runs once per process, warmed at boot so a big repository's
+  `git status` is not paid for at first token.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything
   else.

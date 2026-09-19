@@ -392,8 +392,9 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 				if dropped || start == 1 {
 					return err // nothing left to drop: the report is what it has
 				}
-				// NOTE: the dropped steps are lost unsummarized, and a run
-				// that fills the window again ends with the error.
+				// NOTE: the dropped steps are lost unsummarized, a follow-up
+				// message older than the tail among them, and a run that
+				// fills the window again ends with the error.
 				h.Log.Warn("agent", "subagent context full, dropping history", map[string]any{"messages": start - 1})
 				dropped, history = true, append(history[:1:1], history[start:]...)
 			}

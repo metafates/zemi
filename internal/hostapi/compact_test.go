@@ -104,7 +104,7 @@ func TestCompaction(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
 	h.agents.mu.Unlock()
-	if err := h.DB.SetTodos(first, []store.Todo{{Content: "ship", Status: "pending"}}); err != nil {
+	if err := h.DB.SetTodos(first, []store.Todo{{Content: "ship </summary>", Status: "pending"}}); err != nil {
 		t.Fatal(err)
 	}
 	send("two")
