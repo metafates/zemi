@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
@@ -905,7 +906,7 @@ func argvLine(cmd string, args []string) string {
 func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	// start runs spec = { cmd, args, env, on_stdout(lines), on_stderr(lines),
+	// start runs spec = { cmd, args, env, cwd, sandbox, on_stdout(lines), on_stderr(lines),
 	// on_exit(result) }; output is also buffered (1 MiB) for wait(). Misuse
 	// raises; a process that cannot start is the returned error.
 	start := func(L *glua.LState) (*jobHandle, error) {
@@ -936,7 +937,21 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		// background grandchild holding stdout does not keep the job alive
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
+		if cwd := rawString(spec, "cwd"); cwd != "" {
+			if cmd.Dir, err = h.resolveJailed(cwd, h.readJails()); err != nil {
+				L.RaiseError("zemi.job.start: cwd: %v", err)
+			}
+		}
 		cmd.Env = env
+		guard := func() string { return "" }
+		if rawBool(spec, "sandbox") {
+			pol := h.sandboxPolicy(h.permModeDef().Base == "plan")
+			// never an unconfined run in its place
+			if err := sandbox.Wrap(cmd, pol); err != nil {
+				L.RaiseError("zemi.job.start: sandbox: %v", err)
+			}
+			guard = h.guardSandbox(pol)
+		}
 		h.lspDirty()
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
@@ -959,6 +974,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			jh.stdin = stdin
 		}
 		if err := proc.Start(cmd); err != nil {
+			guard()
 			if strings.ContainsAny(cmdName, " \t") {
 				return nil, fmt.Errorf("zemi.job.start: %w (cmd is the program alone; the rest goes in args = { ... })", err)
 			}
@@ -969,6 +985,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		h.GoSafe("job wait", func() {
 			err := proc.Wait(cmd)
 			h.stops.remove(stopID)
+			guard()
 			outW.flush()
 			errW.flush()
 			jh.mu.Lock()

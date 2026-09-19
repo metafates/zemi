@@ -1832,6 +1832,8 @@ function zemi.http.get(url, opts) end
 ---@field cmd string
 ---@field args? string[]
 ---@field env? table<string, string>
+---@field cwd? string The project dir by default; any dir `zemi.fs` reads.
+---@field sandbox? boolean Run under the sandbox policy a mode-settled bash command gets; raises when it cannot be confined.
 ---@field stdin? boolean Needed before `write`.
 ---@field timeout_ms? integer `out` only; 60000 by default.
 ---@field on_stdout? fun(lines: string[])

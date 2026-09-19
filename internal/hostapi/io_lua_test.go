@@ -95,3 +95,28 @@ func TestReadJailCoversRepo(t *testing.T) {
 		}
 	}
 }
+
+// TestJobCwdAndSandbox: cwd stays in the read jail, and sandbox = true runs
+// under the policy, which keeps writes inside it.
+func TestJobCwdAndSandbox(t *testing.T) {
+	h, r, _, _ := sandboxedBash(t)
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	runUser(t, r, `
+		local outside = "`+outside+`"
+		local res = assert(zemi.job.wait({ cmd = "pwd", cwd = "sub" }))
+		assert(res.stdout:match("/sub\n$"), res.stdout)
+		assert(not pcall(zemi.job.wait, { cmd = "pwd", cwd = outside }), "cwd outside the jail")
+		for _, c in ipairs({
+			{ "in.txt", true, 0 },
+			{ outside .. "/out.txt", true, 1 },
+			{ outside .. "/free.txt", false, 0 },
+		}) do
+			res = assert(zemi.job.wait({ cmd = "touch", args = { c[1] }, sandbox = c[2] }))
+			assert((res.code == 0) == (c[3] == 0), c[1] .. ": " .. res.stderr)
+		end
+	`)
+}
