@@ -36,11 +36,12 @@ func TestBackgroundAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var reportMsg string
+	release := make(chan struct{})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
 			case strings.Contains(system, "a subagent of zemi"):
-				time.Sleep(150 * time.Millisecond)
+				<-release
 				return textParts("found the thing")
 			case toolResult:
 				return textParts("started it")
@@ -58,6 +59,7 @@ func TestBackgroundAgent(t *testing.T) {
 	if n := h.tasks.running(); n != 1 {
 		t.Fatalf("background agents running = %d, want 1", n)
 	}
+	close(release)
 	waitFor(t, func() error {
 		if tr := h.Session().Transcript; tr[len(tr)-1].Text != "the agent reported: found the thing" || h.AgentActive() {
 			return fmt.Errorf("report never arrived: %+v", tr)
