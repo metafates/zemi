@@ -222,7 +222,7 @@ func TestPermissionTellNarrow(t *testing.T) {
 	waitPrompt(t, app, func() bool { return app.permAsk != nil && len(app.permQueue) == 1 })
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│ [y] Yes") || !strings.Contains(frame, "│ [t] No, and tell") {
+	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│ › [y] Yes") || !strings.Contains(frame, "│   [t] No, and") {
 		t.Fatalf("narrow box:\n%s", frame)
 	}
 	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 1 {

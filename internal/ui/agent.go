@@ -159,7 +159,7 @@ func wrapText(text, hl string, w int) [][]hostapi.Segment {
 type promptChoice struct{ key, label, desc string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
-// next to what it does, the selected one filled. Every row carries the
+// next to what it does, the selected one marked like a selected list row. Every row carries the
 // choice's 1-based Hit, so a click answers it. sel of -1 selects none.
 func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
 	kw := 0
@@ -170,20 +170,20 @@ func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
 		btn, textHL := []hostapi.Segment{
-			{Text: "[", HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: "]" + pad, HL: "Host:Hint"},
+			{Text: "  [", HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: "]" + pad, HL: "Host:Hint"},
 		}, "Normal"
-		if i == sel {
-			btn, textHL = []hostapi.Segment{{Text: "[" + c.key + "]", HL: "Host:BtnSel"}, {Text: pad}}, "Host:Bold"
+		if i == sel { // marked like a selected list row
+			btn, textHL = []hostapi.Segment{{Text: "› [" + c.key + "]" + pad, HL: "Host:Title"}}, "Host:Title"
 		}
 		line := []hostapi.Segment{{Text: c.label, HL: textHL}}
 		if c.desc != "" {
 			line = append(line, hostapi.Segment{Text: "  " + c.desc, HL: "Host:Hint"})
 		}
 		// a label wraps instead of ending in "…": the user answers what it says
-		for j, r := range hostapi.WrapSegs(line, max(w-kw-3, 8)) {
+		for j, r := range hostapi.WrapSegs(line, max(w-kw-5, 8)) {
 			row := slices.Concat(btn, r)
 			if j > 0 {
-				row = append([]hostapi.Segment{{Text: strings.Repeat(" ", kw+3)}}, r...)
+				row = append([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r...)
 			}
 			for k := range row {
 				row[k].Hit = i + 1

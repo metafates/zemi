@@ -1261,7 +1261,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
   (permission, trust, question) draws through one renderer, which puts
-  each answer's key in a filled cell beside its label. The overlay writes session rules only: `always`
+  each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The overlay writes session rules only: `always`
   adds allow rules to the rule store (§6.1), scoped to the
   `model` principal, with the prefix-glob patterns §6.2 lists. Lasting
   rules never come from the overlay; they are `zemi.permission.rule.add`
