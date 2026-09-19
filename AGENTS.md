@@ -620,7 +620,9 @@ how many rows the frame takes, so nothing above it reflows.
   generation, so steps sharing state must be passed in ONE call.
 - Agent-turn tests stub the model with `reflectStub` and wait with `waitIdle`. End to end,
   drive the real binary in tmux against a fake OpenAI-compatible server: pyte and friends
-  garble bubbletea's incremental renderer, tmux does not.
+  garble bubbletea's incremental renderer, tmux does not. Set the `ZEMI_*_HOME` variables
+  inside the pane's command: a tmux server that already runs does not pass the caller's
+  environment, and zemi would open the real config.
 - `internal/lua/sandbox_test.go` is adversarial by design: monkey-patching attempts must raise.
 
 ## Gotchas and non-obvious conventions

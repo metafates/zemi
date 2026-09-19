@@ -1672,7 +1672,7 @@ function zemi.permission.mode.list() end
 ---@field description string What the model reads to decide when to call it. Required.
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
 ---@field required? string[] Which of `input`'s parameters the model must send.
----@field prompt? string A system prompt section only a run that has the tool gets. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project and learned code.
+---@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project and learned code.
 ---@field execute fun(args: table, tool: { name: string, origin: zemi.Origin }): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It holds the interpreter while it runs.
 ---@field timeout_ms? integer 30000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.

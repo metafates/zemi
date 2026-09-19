@@ -411,7 +411,9 @@ handlers and `agent.assemble` sections, and read files in the project. It cannot
 - start a job or a window, make an HTTP request, or write a file: each raises until the
   user's init.lua has an allow rule for it (`lua.job.start`, `lua.http.<method>`,
   `lua.fs.write`), and a plugin cannot add allow rules. Print the rule in the plugin's
-  README, or return the specs from a function the user loops over.
+  README, or return the specs from a function the user loops over. No permission mode
+  settles these, yolo included. A plugin's tool needs the user's `tool.<name>` allow rule
+  the same way, or every call asks.
 - edit or submit the composer (an overlay item's `fill` still fills it), send to the agent
   (`zemi.agent.send`, `run`, `profile`, `zemi.workflow.run`), or use `zemi.fs.datadir`. No
   rule changes this.
@@ -419,6 +421,10 @@ handlers and `agent.assemble` sections, and read files in the project. It cannot
   model, session or permission mode, reload, register providers, MCP or LSP servers, enable
   skills, decide proposals, read secret-looking env vars, run a Go command or a more
   trusted origin's command, or replace anything user config or zemi registered.
+
+`plugin/*.lua` runs before init.lua, so it cannot read options: register with defaults
+there and make `setup(opts)` safe to call again from init.lua. The plugin tree is not
+watched; after editing a plugin, `/reload`.
 
 What runs is judged by who registered the callback, not by where the function was written.
 So a plugin that needs the second group ships it as a module and the user wires it in
