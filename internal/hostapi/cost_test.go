@@ -43,12 +43,12 @@ func TestAgentFinishUsage(t *testing.T) {
 		zemi.config.set("models.main", "p/m")
 		zemi.event.on("agent.finish", function(ev)
 			local u, s = ev.usage, zemi.agent.usage()
-			zemi.state.set("fin", table.concat({ ev.session, ev.model, u["in"], u.out, u.cost, s.cost, s.total, s.context_window }, " "))
+			zemi.state.set("fin", table.concat({ ev.session, ev.model, u["in"], u.out, u.total, u.cost, s.cost, s.total, s.context_window }, " "))
 		end)`)
 	for range 2 {
 		h.streamHooks().TurnDone(nil, fantasy.Usage{InputTokens: 1_000_000, CacheReadTokens: 5, OutputTokens: 500_000})
 	}
-	want := `"` + sid + ` p/m 1000005 500000 2 4 3000010 0"`
+	want := `"` + sid + ` p/m 1000005 500000 1500005 2 4 3000010 0"`
 	waitFor(t, func() error {
 		if v, _ := h.GlobalDB.GetKV("fin"); v != want {
 			return fmt.Errorf("agent.finish = %s, want %s", v, want)

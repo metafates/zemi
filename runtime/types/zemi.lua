@@ -423,7 +423,7 @@ function zemi.command.list() end
 ---@class zemi.ev.AgentFinish: zemi.Event
 ---@field session string
 ---@field model string
----@field usage { ["in"]: integer, out: integer, cost: number } This turn's own model calls; subagents and a step resent after compaction are only in `zemi.agent.usage()`.
+---@field usage zemi.Usage This turn's own model calls; subagents and a step resent after compaction are only in `zemi.agent.usage()`.
 
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string

@@ -805,7 +805,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.appendChatMessage(row)
 	} else {
 		h.EmitAsync("agent.finish", map[string]any{"session": sid, "model": model, "usage": map[string]any{
-			"in": billedInput(usage), "out": usage.OutputTokens, "cost": h.turnCost(model, usage),
+			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
+			"cost": h.turnCost(model, usage),
 		}})
 	}
 }
