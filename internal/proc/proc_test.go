@@ -34,11 +34,16 @@ func TestStoppable(t *testing.T) {
 		{"an orphan holding stdout does not block", "sleep 30 & echo $! > %s", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			pidFile := filepath.Join(t.TempDir(), "pid")
 			script := strings.ReplaceAll(c.script, "%s", pidFile)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			cmd := CommandContext(ctx, "sh", "-c", script)
+			if cmd.WaitDelay == 0 {
+				t.Fatal("no WaitDelay: an orphan holding a pipe blocks Wait forever")
+			}
+			cmd.WaitDelay = 100 * time.Millisecond // the orphan case waits all of it
 			var out Buffer
 			out.Max = 1 << 10
 			cmd.Stdout = &out
