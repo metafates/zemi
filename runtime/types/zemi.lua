@@ -2128,7 +2128,8 @@ function zemi.lsp.list() end
 zemi.health = {}
 
 --- Add a row to /health. The check runs under the 50 ms handler deadline
---- and may return a detail string instead of a table.
+--- and may return a detail string instead of a table. Adding a name again
+--- replaces its row; a name a more trusted origin holds raises.
 ---@param name string
 ---@param fn fun(): zemi.HealthResult|string
 function zemi.health.add(name, fn) end

@@ -19,12 +19,20 @@ import (
 func TestHealthLuaChecks(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
+		zemi.health.add("disk", function() return "replaced" end)
 		zemi.health.add("disk", function() return { level = "warn", detail = "low" } end)
 		zemi.health.add("note", function() return "plain detail" end)
 		zemi.health.add("boom", function() error("nope") end)
 	`)
+	err := r.ExecuteChunk(context.Background(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
+	if err == nil || !strings.Contains(err.Error(), "more trusted") {
+		t.Errorf("plugin replacing a user check: %v", err)
+	}
 	got := map[string]healthCheck{}
 	for _, c := range h.healthChecks() {
+		if _, dup := got[c.name]; dup {
+			t.Errorf("two %s rows", c.name)
+		}
 		got[c.name] = c
 	}
 	for _, c := range []struct{ name, level, detail string }{

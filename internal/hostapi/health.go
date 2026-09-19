@@ -49,7 +49,8 @@ func (r *healthReg) purge() {
 }
 
 // health.add(name, fn): fn returns { level = "ok"|"warn"|"error",
-// detail = "..." } or a bare detail string.
+// detail = "..." } or a bare detail string. A name is one row: a less
+// trusted origin is refused, anyone else replaces it.
 func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
@@ -57,11 +58,22 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		if strings.TrimSpace(name) == "" {
 			L.RaiseError("zemi.health.add: name is required")
 		}
-		h.healthReg.mu.Lock()
-		h.healthReg.list = append(h.healthReg.list, luaHealthCheck{
-			name: name, fn: fn, origin: h.RT.CurrentOrigin(L), gen: h.currentGen(),
-		})
-		h.healthReg.mu.Unlock()
+		c := luaHealthCheck{name: name, fn: fn, origin: h.RT.CurrentOrigin(L), gen: h.currentGen()}
+		reg := &h.healthReg
+		reg.mu.Lock()
+		i := slices.IndexFunc(reg.list, func(o luaHealthCheck) bool { return o.name == name })
+		refused := i >= 0 && reg.list[i].origin.Rank() > c.origin.Rank()
+		switch {
+		case refused:
+		case i >= 0:
+			reg.list[i] = c
+		default:
+			reg.list = append(reg.list, c)
+		}
+		reg.mu.Unlock()
+		if refused {
+			L.RaiseError("zemi.health.add: %s is already registered by a more trusted origin", name)
+		}
 		return 0
 	}))
 	// list() -> the rows /health shows, so config written from Lua can be
