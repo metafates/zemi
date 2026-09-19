@@ -318,7 +318,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def), nil))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def), nil, kept))
 	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -543,6 +543,10 @@ func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (
 		}
 	}
 	return kept, unknown
+}
+
+func hasTool(toolset []fantasy.AgentTool, name string) bool {
+	return slices.ContainsFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == name })
 }
 
 // setToolDetail updates the live progress line under a running tool row.

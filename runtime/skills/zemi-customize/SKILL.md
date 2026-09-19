@@ -78,6 +78,22 @@ the chat, shows that run's transcript in the chat, a message submitted there goe
 agent while it runs, and esc goes back. Background jobs
 (`job_start`, bash past its timeout) are listed there too, with a Stop action.
 
+## A lean tool set (`init.lua`, or `tools:` in an agent file)
+
+```lua
+zemi.agent.profile("lean", { tools = { "bash", "skill" } })  -- allowlist
+zemi.agent.profile("lean", { tools = { "-read", "-write", "-edit", "-multiedit", "-glob", "-grep" } })
+zemi.agent.set_default("lean")
+```
+
+Fewer tool schemas ride every request, and the prompt drops what names a missing tool
+(the skills index without `skill`, the delegation section without `agent`). It pays with a
+strong model that is good at the shell, on shell-centric work; a weaker model edits less
+accurately through sed and heredocs than through `edit`. Without the file tools there is
+no check that a file was read and unchanged before a write, no rewind checkpoint, no
+diagnostics after an edit, and a package's own AGENTS.md no longer rides the first read.
+Without `skill` no skill loads. bash output is cut at 10000 characters, `read` returns 50000.
+
 ## Prompt commands (`commands/<name>.md`)
 
 ```markdown

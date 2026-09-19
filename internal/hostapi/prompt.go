@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )
@@ -23,7 +24,7 @@ func (h *Host) defaultSystemPrompt() string {
 	if h.hooks() == nil {
 		ask = headlessAskingPrompt
 	}
-	return strings.NewReplacer("{ProjectDir}", h.Dirs.ProjectDir, "{Asking}", ask).Replace(basePrompt) + delegationPrompt
+	return strings.NewReplacer("{ProjectDir}", h.Dirs.ProjectDir, "{Asking}", ask).Replace(basePrompt)
 }
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no user and
@@ -74,13 +75,22 @@ Help with defensive security, authorized testing, CTFs and security education; r
 
 // zemiPrompt joins every main-agent prompt, a profile's own included: the
 // zemi skills and the exact config directories config-writing relies on.
-func (h *Host) zemiPrompt() string {
+// A skill or the Lua tool is named only to a run that has the tool.
+func (h *Host) zemiPrompt(toolset []fantasy.AgentTool) string {
 	pdir := h.Dirs.ProjectConfigDir()
 	if !h.ProjectTrusted() {
 		// so the model does not write config that never loads
 		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
 	}
-	return "\n\n# zemi\nYou run inside zemi. Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-customize before changing its behavior through config, which is the only way (never edit zemi's source), zemi-lua before running Lua with the Lua tool to read or change its live state." +
+	var skill string
+	if hasTool(toolset, "skill") {
+		skill = " Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-customize before changing its behavior through config, which is the only way (never edit zemi's source)"
+		if hasTool(toolset, "Lua") {
+			skill += ", zemi-lua before running Lua with the Lua tool to read or change its live state"
+		}
+		skill += "."
+	}
+	return "\n\n# zemi\nYou run inside zemi." + skill +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
 		" Reading the user config directory never asks; writing there does, so say what you are about to write." +
 		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "defaultui") + "."
@@ -111,12 +121,17 @@ type promptParts struct {
 // buildSystem renders the system prompt with context files appended
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
-	sys, _ := h.buildSystemParts(p)
+	sys, _ := h.buildSystemParts(p, h.profileTools(p))
 	return sys
 }
 
-func (h *Host) buildSystemParts(p *Profile) (string, promptParts) {
+// buildSystemParts takes the run's tool set so the prompt names no tool the
+// model does not have.
+func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string, promptParts) {
 	sys := h.defaultSystemPrompt()
+	if hasTool(toolset, "agent") {
+		sys += delegationPrompt
+	}
 	var files []string
 	if p != nil {
 		if p.System != "" {
@@ -124,7 +139,7 @@ func (h *Host) buildSystemParts(p *Profile) (string, promptParts) {
 		}
 		files = p.ContextFiles
 	}
-	sys += h.zemiPrompt()
+	sys += h.zemiPrompt(toolset)
 	def := h.permModeDef()
 	if def.Base == "plan" {
 		rest := planAsking
@@ -136,19 +151,19 @@ func (h *Host) buildSystemParts(p *Profile) (string, promptParts) {
 	if def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
-	return h.systemFor(sys, files)
+	return h.systemFor(sys, files, toolset)
 }
 
 // systemWith appends instruction files, the skills index and the session
 // digest to a base prompt. files names explicit project files (a profile's
 // context.files); nil means instructionFiles.
-func (h *Host) systemWith(sys string, files []string) string {
-	out, _ := h.systemFor(sys, files)
+func (h *Host) systemWith(sys string, files []string, toolset []fantasy.AgentTool) string {
+	out, _ := h.systemFor(sys, files, toolset)
 	return out
 }
 
 // systemFor is systemWith with the section sizes it assembled.
-func (h *Host) systemFor(sys string, files []string) (string, promptParts) {
+func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool) (string, promptParts) {
 	// a profile's files are repository content too
 	if len(files) == 0 || !h.ProjectTrusted() {
 		files = h.instructionFiles()
@@ -171,7 +186,10 @@ func (h *Host) systemFor(sys string, files []string) (string, promptParts) {
 	if sections != "" {
 		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
 	}
-	env, luaSections, index := h.environmentPrompt(), h.assembleSections(), h.skillsIndexPrompt()
+	env, luaSections, index := h.environmentPrompt(), h.assembleSections(), ""
+	if hasTool(toolset, "skill") {
+		index = h.skillsIndexPrompt()
+	}
 	out := h.withDigest(sys + env + sections + luaSections + index)
 	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index)}
 	parts.digest = len(out) - parts.base - parts.instructions - parts.lua - parts.skills

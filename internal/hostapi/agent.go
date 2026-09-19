@@ -277,8 +277,8 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	sys, parts := h.buildSystemParts(p)
 	toolset := h.profileTools(p)
+	sys, parts := h.buildSystemParts(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
 	sizes := promptSizes(parts, toolset)
 	chars := 0

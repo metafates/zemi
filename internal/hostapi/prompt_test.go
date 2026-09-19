@@ -30,6 +30,12 @@ func TestSystemPromptSections(t *testing.T) {
 			t.Errorf("default prompt misses %q", want)
 		}
 	}
+	lean := h.buildSystem(&Profile{Tools: []string{"bash"}})
+	for _, gone := range []string{"# Delegating", "zemi-customize", "Lua tool", "# Skills"} {
+		if strings.Contains(lean, gone) {
+			t.Errorf("a bash-only prompt names %q", gone)
+		}
+	}
 	if env := h.environmentPrompt(); env != h.environmentPrompt() {
 		t.Error("environment must be pinned")
 	}
@@ -121,7 +127,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := h.systemWith("base", nil)
+	got := h.systemWith("base", nil, nil)
 	if !strings.Contains(got, "my rules") {
 		t.Fatal("the repository file evicted the user's own instructions")
 	}
@@ -138,12 +144,12 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 func TestSendPrepCheap(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	h.buildSystemParts(nil)
-	h.profileTools(nil)
+	h.buildSystem(nil)
 	start := time.Now()
 	for range 5 {
-		_, parts := h.buildSystemParts(nil)
-		promptSizes(parts, h.profileTools(nil))
+		toolset := h.profileTools(nil)
+		_, parts := h.buildSystemParts(nil, toolset)
+		promptSizes(parts, toolset)
 	}
 	if d := time.Since(start); d > 200*time.Millisecond {
 		t.Fatalf("5 prompt builds took %s; something expensive is back on the send path", d)
