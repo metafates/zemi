@@ -369,12 +369,7 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	if len(lines) == 0 {
 		return nil
 	}
-	title := "Copied to the clipboard"
-	if all {
-		title = fmt.Sprintf("Copied %d lines to the clipboard", len(lines))
-	}
-	a.pushToast("info", title, "")
-	return copyCmd(strings.Join(lines, "\n"))
+	return a.copied(strings.Join(lines, "\n"))
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.

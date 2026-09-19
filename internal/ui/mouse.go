@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -121,8 +122,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.mouse = mouseSel{}
 			return nil
 		}
-		a.pushToast("info", "Copied to the clipboard", "")
-		return copyCmd(text)
+		return a.copied(text)
 	}
 	return nil
 }
@@ -519,11 +519,20 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 	})
 }
 
+// copied copies text and says how much it was.
+func (a *App) copied(text string) tea.Cmd {
+	size := fmt.Sprintf("%d chars", utf8.RuneCountInString(text))
+	if n := strings.Count(text, "\n") + 1; n > 1 {
+		size = fmt.Sprintf("%d lines, %s", n, size)
+	}
+	a.pushToast("info", "Copied", size)
+	return copyCmd(text)
+}
+
 // Copy implements hostapi.UIHooks (/copy).
 func (a *App) Copy(text string) {
 	a.dispatch(uiFunc(func() tea.Cmd {
-		a.pushToast("info", "Copied to the clipboard", "")
-		return copyCmd(text)
+		return a.copied(text)
 	}))
 }
 
