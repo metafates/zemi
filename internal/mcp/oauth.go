@@ -68,6 +68,12 @@ type Auth struct {
 
 var oauthHTTP = &http.Client{Timeout: 30 * time.Second}
 
+// tokenHTTP never follows a redirect: a token endpoint answers, and a 307
+// would re-send the grant and the client secret wherever it points.
+var tokenHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}}
+
 // load reads the stored grant once; a grant for another URL is ignored.
 // The caller holds mu.
 func (a *Auth) load() *Token {
@@ -444,7 +450,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	if t.ClientSecret != "" {
 		req.SetBasicAuth(url.QueryEscape(t.ClientID), url.QueryEscape(t.ClientSecret))
 	}
-	resp, err := oauthHTTP.Do(req)
+	resp, err := tokenHTTP.Do(req)
 	if err != nil {
 		return nil, redactURL(err)
 	}
