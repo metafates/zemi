@@ -1290,6 +1290,10 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.model.set: unknown model %q", id)
 			return 0
 		}
+		if err := h.ProfileModelErr(); err != nil {
+			L.RaiseError("zemi.model.set: %v", err)
+			return 0
+		}
 		fired, err := h.Settings.SetQuiet(h.ConversationKey(), id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
@@ -1312,7 +1316,8 @@ func (h *Host) OpenModelPicker() error {
 	if ui == nil {
 		return errors.New("no UI")
 	}
-	cur, sel := h.currentModelID(nil), 0
+	p, _ := h.resolveProfile("")
+	cur, sel := h.currentModelID(p), 0 // what the next send reads, not the running turn's
 	var items []any
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
@@ -1349,12 +1354,30 @@ func (h *Host) SetModel(id string) error {
 	if _, ok := h.modelSpec(id); !ok {
 		return fmt.Errorf("unknown model %q", id)
 	}
-	fired, err := h.Settings.SetQuiet(h.ConversationKey(), id)
+	if err := h.ProfileModelErr(); err != nil {
+		return err
+	}
+	return h.setWatched(h.ConversationKey(), id)
+}
+
+// ProfileModelErr refuses a tier write the active profile would hide: the
+// tier would change and the conversation would not.
+func (h *Host) ProfileModelErr() error {
+	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" {
+		return fmt.Errorf("profile %s sets its model; /profile default or drop model from it", p.Name)
+	}
+	return nil
+}
+
+// setWatched writes a config key from any goroutine: the watches it fires
+// run later on the interpreter queue.
+func (h *Host) setWatched(path, val string) error {
+	fired, err := h.Settings.SetQuiet(path, val)
 	if err != nil {
 		return err
 	}
 	if len(fired) > 0 {
-		h.GoSafe("model watches", func() {
+		h.GoSafe("config watches", func() {
 			_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 				h.deliverFired(L, fired)
 				return nil, nil
@@ -1362,6 +1385,44 @@ func (h *Host) SetModel(id string) error {
 		})
 	}
 	h.refresh()
+	return nil
+}
+
+// ProfileNames lists default and the defined profiles.
+func (h *Host) ProfileNames() []string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return append([]string{"default"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
+}
+
+// SetProfile switches the profile the next send runs as (/profile <name>).
+func (h *Host) SetProfile(name string) error {
+	name = cmp.Or(name, "default")
+	if _, err := h.resolveProfile(name); err != nil {
+		return fmt.Errorf("%w (want %s)", err, strings.Join(h.ProfileNames(), ", "))
+	}
+	return h.setWatched("agent.profile", name)
+}
+
+// OpenProfilePicker lists the profiles with what each changes; enter switches.
+func (h *Host) OpenProfilePicker() error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("no UI")
+	}
+	cur, sel := h.Settings.Str("agent.profile"), 0
+	var items []any
+	for i, name := range h.ProfileNames() {
+		item := map[string]any{"text": name, "run": "profile " + name}
+		if p, _ := h.resolveProfile(name); p != nil {
+			item["desc"] = strings.TrimSpace(p.Model + " " + strings.Join(p.Tools, " "))
+		}
+		if name == cur {
+			item["key"], sel = "current", i
+		}
+		items = append(items, item)
+	}
+	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
 	return nil
 }
 

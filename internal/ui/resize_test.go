@@ -201,6 +201,24 @@ func TestModeSwitchQuiet(t *testing.T) {
 	}
 }
 
+// TestProfileSegment: the statusline names a profile other than default.
+func TestProfileSegment(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	runLua(t, app, `zemi.agent.profile("terse", {})`)
+	for _, c := range []struct {
+		profile string
+		shown   bool
+	}{{"default", false}, {"terse", true}, {"default", false}} {
+		if err := host.SetProfile(c.profile); err != nil {
+			t.Fatal(err)
+		}
+		app.renderSync(t)
+		if got := strings.Contains(ansi.Strip(app.Frame()), "terse"); got != c.shown {
+			t.Errorf("profile %s: segment shown = %v", c.profile, got)
+		}
+	}
+}
+
 // TestToastCap: a long error keeps a few rows, drops its stack trace and
 // sends the reader to /errors, where the whole text was recorded.
 func TestToastCap(t *testing.T) {

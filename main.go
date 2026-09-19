@@ -317,6 +317,12 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			_, err := h.Settings.SetQuiet("agent.effort", args)
 			return err
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
+		{Name: "profile", Hidden: true, NArgs: "?", Desc: "choose the agent profile: model, prompt and tools", GoFn: func(h *hostapi.Host, args string) error {
+			if args = strings.TrimSpace(args); args == "" {
+				return h.OpenProfilePicker()
+			}
+			return h.SetProfile(args)
+		}, GoComplete: func(h *hostapi.Host, _, _ string) []string { return h.ProfileNames() }},
 		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenUsage()
 		}},

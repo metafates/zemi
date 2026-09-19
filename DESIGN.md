@@ -506,7 +506,7 @@ Config values from `init.lua` merge with the defaults in Go's schema.
 only, and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, the mode cycle, `-m`) is not reverted
+so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
 by an unrelated config edit; replaying `permissions.mode` over a plan-mode
 pick would loosen permissions silently. A key whose `set` line was deleted
 returns to its default on that reload, unless a runtime pick moved it since.
@@ -1219,6 +1219,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   shows, not on a row number, so a resize, an expanded thought or a new
   window splitting the chat leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
+  `/profile [name]` (the agent profile the next send runs as; a picker without a name),
   `/permissions` (the mode and the rules in force; a session rule an "always"
   answer wrote can be removed there),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`

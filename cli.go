@@ -36,6 +36,7 @@ Flags:
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: plan, auto or yolo
+      --profile name  agent profile defined with zemi.agent.profile
       --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
@@ -65,6 +66,7 @@ type options struct {
 	resume, model string
 	mode, prompt  string
 	output        string
+	profile       string
 	trust         *bool // --trust for this run; nil when not given
 }
 
@@ -77,7 +79,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	for name, p := range map[string]*bool{"p": &o.print, "print": &o.print, "c": &o.cont, "continue": &o.cont, "health": &o.health, "h": &help, "help": &help, "v": &ver, "version": &ver, "trust": &trust} {
 		fs.BoolVar(p, name, false, "")
 	}
-	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "output": &o.output} {
+	for name, p := range map[string]*string{"r": &o.resume, "resume": &o.resume, "m": &o.model, "model": &o.model, "mode": &o.mode, "profile": &o.profile, "output": &o.output} {
 		fs.StringVar(p, name, "", "")
 	}
 	bad := func(format string, a ...any) (options, int) {
@@ -194,7 +196,15 @@ func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 
 // applyOptions applies the flags after boot, so they win over init.lua.
 func applyOptions(h *hostapi.Host, o options) error {
+	if o.profile != "" {
+		if err := h.SetProfile(o.profile); err != nil {
+			return err
+		}
+	}
 	if o.model != "" {
+		if err := h.ProfileModelErr(); err != nil {
+			return err
+		}
 		if err := h.Settings.SetHost(h.ConversationKey(), o.model); err != nil {
 			return err
 		}

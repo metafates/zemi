@@ -194,6 +194,9 @@ zemi.ui.widget.add({
       dot(segs)
       segs[#segs + 1] = { text = text, hl = hl, click = click or "usage" }
     end
+    if ctx.profile ~= "default" then
+      add(ctx.profile, "Comment", "profile")
+    end
     if (ctx.model or "") ~= "" then
       add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model")
     end

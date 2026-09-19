@@ -83,7 +83,7 @@ agent while it runs, and esc goes back. Background jobs
 ```lua
 zemi.agent.profile("lean", { tools = { "bash", "skill" } })
 -- or drop tools from the default set: tools = { "-read", "-write", "-edit", "-multiedit", "-glob", "-grep" }
-zemi.config.set("agent.profile", "lean")
+zemi.config.set("agent.profile", "lean") -- or switch with /profile lean, or start with --profile lean
 ```
 
 Fewer tool schemas ride every request, and the prompt drops what names a missing tool

@@ -216,6 +216,7 @@ zemi -c                           # continue the last session (-r <id> for anoth
 zemi -p "explain main.go"         # answer on stdout, no TUI
 git diff | zemi -p "review this"  # piped stdin joins the prompt
 zemi -p --trust --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
+zemi -p --profile lean "..."      # run as a profile init.lua defines with zemi.agent.profile
 zemi --health                     # run the /health checks, exit 1 if any failed
 ```
 
@@ -244,7 +245,7 @@ token usage and cost as one JSON object for scripts. `zemi --help` lists every f
 | `!cmd` | run a shell command; its output goes to the agent with your next message |
 
 Commands: `/help`, `/model`, `/mode`, `/new`, `/sessions`, `/resume [id]`, `/compact`,
-`/effort`, `/usage`, `/prompt`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/memory`, `/skills`, `/reflect`,
+`/effort`, `/profile`, `/usage`, `/prompt`, `/init`, `/review`, `/rewind`, `/fork`, `/export`, `/agents`, `/workflow`, `/mcp`, `/lsp`, `/memory`, `/skills`, `/reflect`,
 `/health`, `/errors`, `/messages`, `/quit`.
 
 ## Lua

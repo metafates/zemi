@@ -1340,8 +1340,8 @@ zemi.model = {}
 function zemi.model.list() end
 
 --- Switch the model the main conversation runs on: it writes models.smart
---- when config set that tier, else models.main. Raises for an unknown id.
---- User or builtin origin only.
+--- when config set that tier, else models.main. Raises for an unknown id,
+--- and while the active profile sets its own model. User or builtin origin only.
 ---@param id string
 function zemi.model.set(id) end
 

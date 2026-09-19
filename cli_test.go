@@ -299,3 +299,18 @@ func TestSendPromptRunsCommands(t *testing.T) {
 		t.Fatalf("an unknown command ran one: %q", got)
 	}
 }
+
+// TestModelFlagUnderProfile: -m is refused when --profile names a profile
+// with its own model, since the run would measure the profile's.
+func TestModelFlagUnderProfile(t *testing.T) {
+	_, h, r := newTrustGate(t)
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ExecuteChunk(context.Background(), `zemi.agent.profile("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err == nil || !strings.Contains(err.Error(), "sets its model") {
+		t.Fatalf("err = %v", err)
+	}
+}

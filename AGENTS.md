@@ -87,7 +87,12 @@ it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git ho
 lists the flags. Piped stdin is appended to the prompt and is a usage error without `-p`. Flags
 apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `-m` and `/model` write the tier the conversation reads (`Host.ConversationKey`:
-`models.smart` when config set it, else `models.main`).
+`models.smart` when config set it, else `models.main`). Both, and `zemi.model.set`, refuse
+while the active profile sets its own model (`Host.ProfileModelErr`; `--profile` applies
+before `-m`), since the tier would change and the conversation would not. `--profile` and
+`/profile` (`Host.SetProfile`; no argument opens the picker, which the statusline's profile
+segment clicks into) write `agent.profile` for the next send: a switch changes the prompt
+and the tool set, so it busts the provider's prompt cache once and has no cycle key.
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
 reports on stderr how many tool calls the gate denied - nobody can answer an ask headless, so
@@ -101,8 +106,8 @@ ships no providers and an empty config cannot answer a prompt. Config reload is 
 `watchConfig` walks the config trees once a second and reloads when a fingerprint moved and no
 turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
-times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, the mode cycle and
-`-m`/`--mode` survive a reload until the config changes that key. A key the config stopped
+times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
+cycle and the flags survive a reload until the config changes that key. A key the config stopped
 writing returns to its schema default, unless a runtime pick moved it since.
 
 ## Architecture and control flow

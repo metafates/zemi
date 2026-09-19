@@ -976,6 +976,49 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
+// TestProfileSwitch: /profile refuses a name nobody defined, /model and
+// zemi.model.set refuse under a profile that sets its own model, and both
+// pickers mark what the next send runs on.
+func TestProfileSwitch(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `
+		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
+		zemi.config.set("models.main", "a/main")
+		zemi.agent.profile("cheap", { model = "a/cheap" })`)
+	for _, c := range []struct {
+		name    string
+		do      func() error
+		wantErr string
+	}{
+		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, cheap"},
+		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
+		{"switch", func() error { return h.SetProfile("cheap") }, ""},
+		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
+		{"zemi.model.set under it", func() error {
+			return r.ExecuteChunk(context.Background(), `zemi.model.set("a/main")`, "test.lua", lua.OriginUser)
+		}, "profile cheap sets its model"},
+	} {
+		err := c.do()
+		if (c.wantErr == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), c.wantErr) {
+			t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
+		}
+	}
+	if h.OpenProfilePicker() != nil || h.OpenModelPicker() != nil {
+		t.Fatal("a picker did not open")
+	}
+	for _, o := range ui.opened {
+		item := o.Items[o.Selected].(map[string]any)
+		if item["key"] != "current" || !strings.Contains(item["text"].(string), "cheap") {
+			t.Errorf("%s picker marks %v", o.ID, item)
+		}
+	}
+	if err := h.SetProfile(""); err != nil || h.Settings.Str("agent.profile") != "default" {
+		t.Errorf("empty name: err %v, profile %q", err, h.Settings.Str("agent.profile"))
+	}
+}
+
 // TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
 // profile's context files as written, or the second build joins them to the
 // project directory twice and silently reads nothing.
