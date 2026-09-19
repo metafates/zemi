@@ -171,7 +171,7 @@ func TestCallCancelNotifies(t *testing.T) {
 func TestStdioBroken(t *testing.T) {
 	for name, script := range map[string]string{
 		"exit":     "exit 3",
-		"oversize": "head -c 40000000 /dev/zero | tr '\\0' a; sleep 30",
+		"oversize": "head -c 40000000 /dev/zero; sleep 30",
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
