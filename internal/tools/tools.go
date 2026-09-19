@@ -84,7 +84,7 @@ type Pipeline struct {
 	Store     *perm.Store
 	Pre       PreHook // nil = no tool.pre events
 	Ask       Asker   // nil = asks fail closed
-	Post      func(tool string, input map[string]any, ok bool, output string)
+	Post      func(tool string, input map[string]any, ok bool, output string, changed []string)
 	Principal string
 
 	// TodosRead/TodosWrite back the session todo list; nil = todos error.
@@ -190,8 +190,11 @@ type Pipeline struct {
 	Guard func(sandbox.Policy) func() string
 	// Changes runs before a bash command starts in dir; the func it returns
 	// runs once it ended and reports the files it changed: a line for the
-	// model and a diff for the row (the result's Metadata). nil = none.
-	Changes func(dir string) func() (note, diff string)
+	// model, a diff for the row (the result's Metadata) and every path. nil = none.
+	Changes func(dir string) func() (note, diff string, paths []string)
+
+	// changed is what a bash run found changed, kept on its per-run copy for post
+	changed []string
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -487,8 +490,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			pipe = &rp
 		}
 	}
-	res, err := t.run(ctx, pipe, input)
-	return t.post(pipe, input, res), err
+	run := *pipe
+	res, err := t.run(ctx, &run, input)
+	return t.post(&run, input, res), err
 }
 
 // post delivers the tool.post notification with a text summary of the
@@ -497,7 +501,11 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 	if p.Post == nil {
 		return res
 	}
-	p.Post(t.info.Name, input, !res.IsError, res.Content)
+	changed := p.changed
+	if t.edits && !res.IsError {
+		changed = []string{str(input["path"])}
+	}
+	p.Post(t.info.Name, input, !res.IsError, res.Content, changed)
 	return res
 }
 

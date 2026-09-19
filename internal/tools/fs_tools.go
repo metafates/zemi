@@ -68,12 +68,13 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		return after()
 	}
-	changes := func() (string, string) { return "", "" }
+	changes := func() (string, string, []string) { return "", "", nil }
 	if p != nil && p.Changes != nil {
 		changes = p.Changes(c.Dir)
 	}
 	changed := func(res fantasy.ToolResponse) (fantasy.ToolResponse, error) {
-		note, diff := changes()
+		note, diff, paths := changes()
+		p.changed = paths
 		if note != "" {
 			res.Content += "\n" + note
 		}

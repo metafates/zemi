@@ -766,7 +766,7 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) 
 func (h *Host) postNotify(tool, input string, reply *fantasy.ToolResponse) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
-	h.toolPostHook()(tool, m, !reply.IsError, reply.Content)
+	h.toolPostHook()(tool, m, !reply.IsError, reply.Content, nil)
 }
 
 func fmtDuration(d time.Duration) string {

@@ -86,7 +86,7 @@ func (h *Host) snapshot(dir string) (root, tree string) {
 // bashChanges is the pipeline's Changes hook: it snapshots dir now, and the
 // func it returns snapshots again and reports what differs, as one line for
 // the model and a diff for the row.
-func (h *Host) bashChanges(dir string) func() (note, diff string) {
+func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string) {
 	s := &h.snaps
 	s.state.Lock()
 	s.open++
@@ -94,7 +94,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string) {
 	s.state.Unlock()
 	jobs := h.jobsRunning()
 	root, before := h.snapshot(dir)
-	return func() (string, string) {
+	return func() (string, string, []string) {
 		_, after := h.snapshot(dir)
 		s.state.Lock()
 		mixed, wrote := s.mixed || jobs || h.jobsRunning(), s.wrote
@@ -103,7 +103,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string) {
 		}
 		s.state.Unlock()
 		if before == "" || after == "" || before == after {
-			return "", ""
+			return "", "", nil
 		}
 		return h.treeDiff(root, before, after, mixed, wrote)
 	}
@@ -131,10 +131,10 @@ func (h *Host) noteWrite(path string) {
 	}
 }
 
-func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string][32]byte) (note, diff string) {
+func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string][32]byte) (note, diff string, changed []string) {
 	out, err := h.git(root, "diff", "--name-status", "--no-renames", "-z", before, after)
 	if err != nil {
-		return "", ""
+		return "", "", nil
 	}
 	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
 	var paths, shown, lines []string
@@ -145,7 +145,9 @@ func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string
 				continue
 			}
 		}
-		paths = append(paths, fields[i+1])
+		// NOTE: changed is uncapped; a branch switch in a huge repo marshals every
+		// path once per tool.post handler. Cap it here if that shows up.
+		paths, changed = append(paths, fields[i+1]), append(changed, abs)
 		switch {
 		case len(paths) > snapFiles:
 		case h.secretPath(abs):
@@ -156,7 +158,7 @@ func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string
 		}
 	}
 	if len(paths) == 0 {
-		return "", ""
+		return "", "", nil
 	}
 	note = "files changed: " + strings.Join(paths[:min(len(paths), snapNoteMax)], ", ")
 	if more := len(paths) - snapNoteMax; more > 0 {
@@ -202,5 +204,5 @@ func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string
 	if more := len(paths) - snapFiles; more > 0 {
 		fmt.Fprintf(&b, "%d more %s\n", more, plural(more, "file", "files"))
 	}
-	return note, strings.TrimRight(b.String(), "\n")
+	return note, strings.TrimRight(b.String(), "\n"), changed
 }

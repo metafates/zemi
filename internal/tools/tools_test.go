@@ -469,16 +469,27 @@ func TestValidationErrors(t *testing.T) {
 
 func TestPostHookRuns(t *testing.T) {
 	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow})
+		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow},
+		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var posts []string
-	p.Post = func(tool string, input map[string]any, ok bool, output string) {
-		posts = append(posts, fmt.Sprintf("%s ok=%v %s", tool, ok, output))
+	p.Post = func(tool string, input map[string]any, ok bool, output string, changed []string) {
+		posts = append(posts, fmt.Sprintf("%s ok=%v %s changed=%v", tool, ok, output, changed))
+	}
+	p.Changes = func(string) func() (string, string, []string) {
+		return func() (string, string, []string) { return "", "", []string{"/by/bash"} }
 	}
 	ag := All(p)[0]
 	call(t, ag, `{"command":"echo posted"}`)
 	call(t, ag, `{"command":"echo nope; rm x"}`)
-	if len(posts) != 2 {
+	file := perm.RealPath(filepath.Join(t.TempDir(), "f.txt"))
+	call(t, toolNamed(t, "write", p), `{"path":"`+file+`","content":"x"}`)
+	if len(posts) != 3 {
 		t.Fatalf("post must run for success and denial: %+v", posts)
+	}
+	for i, want := range []string{"changed=[/by/bash]", "changed=[]", "changed=[" + file + "]"} {
+		if !strings.HasSuffix(posts[i], want) {
+			t.Errorf("post %d = %q, want %s", i, posts[i], want)
+		}
 	}
 	if !strings.Contains(posts[0], "ok=true") || !strings.Contains(posts[0], "posted") {
 		t.Fatalf("success post: %+v", posts)

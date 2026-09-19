@@ -3,8 +3,11 @@ package hostapi
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 func TestBashChanges(t *testing.T) {
@@ -22,7 +25,7 @@ func TestBashChanges(t *testing.T) {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
-	if note, diff := h.bashChanges(dir)(); note != "" || diff != "" {
+	if note, diff, _ := h.bashChanges(dir)(); note != "" || diff != "" {
 		t.Fatalf("nothing changed, got %q %q", note, diff)
 	}
 	done := h.bashChanges(dir)
@@ -32,10 +35,14 @@ func TestBashChanges(t *testing.T) {
 	write("ignored", "x\n")
 	write("tool.txt", "by the edit tool\n")
 	h.noteWrite(filepath.Join(dir, "tool.txt"))
-	note, diff := done()
+	note, diff, paths := done()
 
 	if note != "files changed: .env, a.txt, new.txt" {
 		t.Errorf("note: %q", note)
+	}
+	root := perm.RealPath(dir)
+	if want := []string{filepath.Join(root, ".env"), filepath.Join(root, "a.txt"), filepath.Join(root, "new.txt")}; !slices.Equal(paths, want) {
+		t.Errorf("paths = %v, want %v", paths, want)
 	}
 	for _, want := range []string{"A .env (content hidden", "M a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO", "A new.txt\n@@ -0,0 +1 @@\n+hi"} {
 		if !strings.Contains(diff, want) {
@@ -55,10 +62,10 @@ func TestBashChanges(t *testing.T) {
 	first, second := h.bashChanges(dir), h.bashChanges(dir)
 	write("b.txt", "b\n")
 	first()
-	if _, diff := second(); !strings.HasPrefix(diff, snapOverlap) {
+	if _, diff, _ := second(); !strings.HasPrefix(diff, snapOverlap) {
 		t.Errorf("overlap not labeled:\n%s", diff)
 	}
-	if _, diff := h.bashChanges(t.TempDir())(); diff != "" {
+	if _, diff, _ := h.bashChanges(t.TempDir())(); diff != "" {
 		t.Errorf("no repository, got %q", diff)
 	}
 }

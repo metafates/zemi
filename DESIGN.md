@@ -640,7 +640,7 @@ otherwise return a decision table:
   and re-entry still terminates (§6.4);
   `{ decision = "halt", reason = "..." }` ends the turn after this tool call
   (fantasy `StopTurn`). `tool.post` is a notification: its return value is
-  ignored. There is no `allow`
+  ignored, and `ev.changed` lists the files the call changed. There is no `allow`
   decision: absence of denial is the only pass, so a Lua hook can never
   pre-approve a permission (crush's `allow` does pre-approve; zemi
   deliberately diverges). A `rewrite` from a non-user principal

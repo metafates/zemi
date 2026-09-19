@@ -206,7 +206,8 @@ bash command still running at its timeout is handed to `Jobs.Adopt` instead of b
 (which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the
 repository before and after, written through a warm temp index so the user's index is never
-touched, diffed into the result's `Metadata`; the model gets one line of paths. `read` carries
+touched, diffed into the result's `Metadata`; the model gets one line of paths and
+`tool.post` every path as `ev.changed`, next to the file tools' own. `read` carries
 the nearest instruction file not already in the prompt, once per session, so a monorepo
 package's own AGENTS.md reaches the model.
 

@@ -1693,14 +1693,14 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 // permission gate for model tool calls
 
 // toolPostHook emits tool.post after every builtin tool run.
-func (h *Host) toolPostHook() func(string, map[string]any, bool, string) {
-	return func(name string, input map[string]any, ok bool, output string) {
+func (h *Host) toolPostHook() func(string, map[string]any, bool, string, []string) {
+	return func(name string, input map[string]any, ok bool, output string, changed []string) {
 		if !lspQuietTool[name] {
 			h.lspDirty()
 		}
 		h.EmitAsync("tool.post", map[string]any{
 			"tool": name, "input": input, "ok": ok,
-			"output": truncRunes(output, 4096),
+			"output": truncRunes(output, 4096), "changed": changed,
 		})
 	}
 }
