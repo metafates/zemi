@@ -203,6 +203,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		SB:      sb,
 		L:       sb.L,
 		modules: map[string]glua.LValue{},
+		packs:   map[string][]string{},
 		signal:  make(chan struct{}, 1),
 		stop:    make(chan struct{}),
 	}
@@ -438,7 +439,7 @@ func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, erro
 			return r.readEmbedded(name)
 		})
 	}
-	path, origin, err := r.findModule(gen.L, name)
+	path, origin, err := r.findModule(gen, name)
 	if err != nil {
 		return glua.LNil, err
 	}
@@ -514,7 +515,8 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 // names ("./util", "../lib/x") resolve against the requiring file and must
 // stay inside its origin's tree, so a path cannot reach code of another
 // trust class; dotted names search <root>/lua over the runtimepath.
-func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error) {
+func (r *Runtime) findModule(gen *Generation, name string) (string, Origin, error) {
+	L := gen.L
 	var bases []string
 	var from string
 	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
@@ -526,7 +528,7 @@ func (r *Runtime) findModule(L *glua.LState, name string) (string, Origin, error
 		bases = []string{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua")))}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
-		for _, root := range r.runtimepath(L) {
+		for _, root := range r.runtimepath(gen) {
 			bases = append(bases, filepath.Join(root, "lua", rel))
 		}
 	}
@@ -594,17 +596,27 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 
 // runtimepath lists require roots in order: the project's .zemi for project
 // code only (user and plugin requires never resolve into a repository's
-// untrusted files), then config home and plugins; the embedded runtime is
-// consulted separately (DESIGN §5).
-func (r *Runtime) runtimepath(L *glua.LState) []string {
+// untrusted files), then config home and each plugin (site/pack/*/start/*,
+// globbed once per generation); the embedded runtime is consulted separately
+// (DESIGN §5).
+func (r *Runtime) runtimepath(gen *Generation) []string {
 	var out []string
 	for _, want := range []Origin{OriginProject, OriginUser, OriginPlugin} {
-		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
+		if want == OriginProject && r.CurrentOrigin(gen.L) != OriginProject {
 			continue
 		}
 		for _, c := range r.paths {
-			if c.Origin == want && c.Prefix != "" {
+			switch {
+			case c.Origin != want || c.Prefix == "":
+			case want != OriginPlugin:
 				out = append(out, c.Prefix)
+			default:
+				packs, ok := gen.packs[c.Prefix]
+				if !ok {
+					packs, _ = filepath.Glob(filepath.Join(c.Prefix, "*", "start", "*"))
+					gen.packs[c.Prefix] = packs
+				}
+				out = append(out, packs...)
 			}
 		}
 	}

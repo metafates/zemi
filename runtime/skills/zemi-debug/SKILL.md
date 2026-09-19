@@ -93,6 +93,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.zemi` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, space toggles |
+| `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
 | a plugin registers nothing, with no error | its file is not at `site/pack/<any>/start/<name>/plugin/*.lua`; the `/health` plugins row names a directory with nothing to load |
 
 ## Stores

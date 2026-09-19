@@ -27,7 +27,8 @@ time). Lua calls to gated APIs never open a prompt: an "ask" decision raises
 ## Modules
 
 `require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
-plugin; project code also searches `.zemi/lua/` first. `require("./x")` and
+plugin's own directory (`start/<name>/lua/`); project code also searches `.zemi/lua/`
+first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
 tree. Builtin modules load once, and plugin, project and learned code get them read-only;
 any other file loads once, except that code below the file's origin gets its own instance

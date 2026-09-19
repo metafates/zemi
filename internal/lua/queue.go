@@ -123,6 +123,7 @@ type Generation struct {
 	SB      *Sandbox
 	L       *glua.LState
 	modules map[string]glua.LValue
+	packs   map[string][]string // plugin dirs per plugin prefix, see runtimepath
 
 	mu      sync.Mutex
 	heap    []*request

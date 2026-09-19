@@ -207,7 +207,7 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 // reports user).
 func TestRequireOriginFollowsFile(t *testing.T) {
 	r, _, plugin := newRequireRuntime(t)
-	writeFile(t, filepath.Join(plugin, "lua", "omod.lua"),
+	writeFile(t, filepath.Join(plugin, "p", "start", "omod", "lua", "omod.lua"),
 		"print(\"hello from plugin\")\n")
 
 	var mu sync.Mutex
