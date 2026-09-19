@@ -82,9 +82,14 @@ func TestHealthChecksProfileModel(t *testing.T) {
 		zemi.agent.profile("p", { model = "b/m" })
 		zemi.agent.set_default("p")
 	`)
+	got := map[string]healthCheck{}
 	for _, c := range h.healthChecks() {
-		if c.name == "model" && (c.level != "error" || c.detail != "b/m: api key not set") {
-			t.Errorf("model = %+v, want b/m without a key", c)
-		}
+		got[c.name] = c
+	}
+	if c := got["model"]; c.level != "error" || c.detail != "b/m: api key not set" {
+		t.Errorf("model = %+v, want b/m without a key", c)
+	}
+	if c := got["context window"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m, a/m:") {
+		t.Errorf("context window = %+v, want a warning naming both models", c)
 	}
 }

@@ -1221,7 +1221,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/health` (one row per
-  check, problems first: store, model key, git, ripgrep,
+  check, problems first: store, model key, context window, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the

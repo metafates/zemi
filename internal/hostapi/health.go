@@ -4,6 +4,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -174,6 +175,21 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("error", "model", id+": api key not set")
 	default:
 		add("ok", "model", id)
+	}
+
+	// compactDue never fires on an unknown window, so the turn runs until
+	// the provider refuses it
+	var unknown []string
+	for _, tier := range append([]string{""}, Tiers...) {
+		m := cmp.Or(h.tierModel(tier), id) // "" is no tier: the conversation's model
+		if m != "" && h.contextWindow(m) == 0 && !slices.Contains(unknown, m) {
+			unknown = append(unknown, m)
+		}
+	}
+	if len(unknown) > 0 {
+		add("warn", "context window", "unknown for "+strings.Join(unknown, ", ")+": no context percent, no auto compaction; set context_window on the model entry, or agent.context_window")
+	} else if id != "" {
+		add("ok", "context window", "known, auto compaction on")
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
