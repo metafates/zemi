@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -156,7 +157,7 @@ func wrapText(text, hl string, w int) [][]hostapi.Segment {
 }
 
 // promptChoice is one answer of a Go-owned prompt.
-type promptChoice struct{ key, label, desc string }
+type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
 // next to what it does, the selected one marked like a selected list row. Every row carries the
@@ -175,7 +176,7 @@ func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
 		if i == sel { // marked like a selected list row
 			btn, textHL = []hostapi.Segment{{Text: "› [" + c.key + "]" + pad, HL: "Host:Title"}}, "Host:Title"
 		}
-		line := []hostapi.Segment{{Text: c.label, HL: textHL}}
+		line := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
 		if c.desc != "" {
 			line = append(line, hostapi.Segment{Text: "  " + c.desc, HL: "Host:Hint"})
 		}

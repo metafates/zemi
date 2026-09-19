@@ -762,11 +762,17 @@ function zemi.event.stats() end
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
 
---- A detail view action; with neither fill nor run it goes back.
+--- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
 ---@field text string
+---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
+---@field hl? string highlight group of the label, such as "Danger"
 ---@field fill? string
 ---@field run? string
+
+---@class zemi.OverlayKey
+---@field desc? string named next to the key in the footer
+---@field fn fun(item: any) Gets the selected item, nil on an empty list.
 
 ---@class zemi.OverlaySpec
 ---@field id string
@@ -779,6 +785,8 @@ function zemi.event.stats() end
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
+---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
+---@field keys? table<string, zemi.OverlayKey> One character each (j, k and / stay the list's, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.
 ---@field on_close? fun()
 ---@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Both run off the key path; an error keeps the old items.
 

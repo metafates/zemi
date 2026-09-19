@@ -90,7 +90,9 @@ type Overlay struct {
 	Items    []any
 	ItemText [][]Segment // render_item's row per item, rendered when it opened
 	OnSelect *glua.LFunction
+	OnAction *glua.LFunction // on_action(item, action), for a detail action with an id
 	OnClose  *glua.LFunction
+	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
 	Anchor   string // "bottom": over the chat's bottom-left, by the statusline; "" centered
 
@@ -114,6 +116,12 @@ type Overlay struct {
 	// command or on_select and rebuild the items, keeping the overlay open.
 	// It runs on the UI worker, never on the key path.
 	Reload func() (items []any, text [][]Segment)
+}
+
+// OverlayKey is one character that runs Fn(selected item) on a list.
+type OverlayKey struct {
+	Key, Desc string
+	Fn        *glua.LFunction
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
@@ -1270,42 +1278,45 @@ func (h *Host) staleOverlay(o Overlay) bool {
 }
 
 func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
-	if o.OnSelect == nil || h.staleOverlay(o) {
+	h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
+}
+
+// OverlayAction runs on_action with the item and the action chosen in its
+// detail view.
+func (h *Host) OverlayAction(ctx context.Context, o Overlay, item, action any) {
+	h.callOverlay(ctx, o, "on_action", o.OnAction, item, action)
+}
+
+// OverlayKey runs a list-level key's function with the selected item.
+func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item any) {
+	h.callOverlay(ctx, o, "key "+k.Key, k.Fn, item)
+}
+
+// CancelOverlay runs on_close if present.
+func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
+	h.callOverlay(ctx, o, "on_close", o.OnClose)
+}
+
+// callOverlay runs one of an overlay's callbacks under the overlay's origin;
+// a failure goes to /errors.
+func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua.LFunction, args ...any) {
+	if fn == nil || h.staleOverlay(o) {
 		return
 	}
 	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		defer h.RT.PushFrame(L, o.Origin, o.Path)()
 		base := L.GetTop()
-		var itemV glua.LValue = glua.LNil
-		if item != nil {
-			itemV = lua.FromGo(L, item)
+		L.Push(fn)
+		for _, arg := range args {
+			L.Push(lua.FromGo(L, arg))
 		}
-		L.Push(o.OnSelect)
-		L.Push(itemV)
-		if err := L.PCall(1, 0, nil); err != nil {
-			h.Log.Error("ui", "overlay on_select failed", map[string]any{"id": o.ID, "error": err.Error()})
-			h.RecordError("overlay "+o.ID+" on_select", err.Error())
+		if err := L.PCall(len(args), 0, nil); err != nil {
+			h.Log.Error("ui", "overlay "+what+" failed", map[string]any{"id": o.ID, "error": err.Error()})
+			h.RecordError("overlay "+o.ID+" "+what, err.Error())
 		}
 		L.SetTop(base)
 		return nil, nil
 	})
-}
-
-// CancelOverlay closes an overlay and runs on_close if present.
-func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
-	if o.OnClose != nil && !h.staleOverlay(o) {
-		_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			defer h.RT.PushFrame(L, o.Origin, o.Path)()
-			base := L.GetTop()
-			L.Push(o.OnClose)
-			if err := L.PCall(0, 0, nil); err != nil {
-				h.Log.Error("ui", "overlay on_close failed", map[string]any{"id": o.ID, "error": err.Error()})
-				h.RecordError("overlay "+o.ID+" on_close", err.Error())
-			}
-			L.SetTop(base)
-			return nil, nil
-		})
-	}
 }
 
 // ---------------------------------------------------------------------------

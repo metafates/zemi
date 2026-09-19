@@ -167,9 +167,9 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		later, laterDesc = "Keep as is", ""
 	}
 	list := choiceRows([]promptChoice{
-		{"y", "Trust", saved},
-		{"n", "Don't trust", saved},
-		{"esc", later, laterDesc},
+		{key: "y", label: "Trust", desc: saved},
+		{key: "n", label: "Don't trust", desc: saved},
+		{key: "esc", label: later, desc: laterDesc},
 	}, -1, width)
 	for drop := 1; drop <= 8 && len(body)+len(list)+2 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })

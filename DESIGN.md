@@ -1147,7 +1147,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open); Go still draws the box, the origin badge, the
-  filter and the hints. A detail view's rows are actions, so they draw as
+  filter and the hints, where a list's own `keys` are named. A detail view's rows are actions
+  (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
   position.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands

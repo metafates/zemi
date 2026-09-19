@@ -543,6 +543,52 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 	}
 }
 
+// TestOverlayActionsAndKeys: an action with an id goes to on_action with
+// its item and draws in its hl, and a list key, named in the footer, runs
+// its fn with the selected item; both close the list like on_select.
+func TestOverlayActionsAndKeys(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 16)
+	open := `zemi.ui.overlay.open({ id = "k", items = { "a", { text = "b", actions = { { text = "Delete", id = "del", hl = "Danger" }, { text = "Back" } } } },
+  on_action = function(item, action) zemi.notify({ body = item.text .. ":" .. action.id }) end,
+  keys = { e = { desc = "edit", fn = function(item) zemi.notify({ body = "e:" .. item.text }) end } } })`
+	runLua(t, app, open+`
+assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { esc = { fn = function() end } } }), "a key of several characters must raise")
+assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")`)
+	box := app.overlayBox(&app.overlays[0], 60, 16)
+	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "e edit · esc close") {
+		t.Fatalf("footer: %q", hint)
+	}
+	for _, c := range []struct{ keys, want string }{
+		{"j enter 2", "k"}, // Back has no id: it returns to the list
+		{"j enter 1", "b:del"},
+		{"j e", "e:b"},
+	} {
+		if len(app.overlays) == 0 {
+			runLua(t, app, open)
+		}
+		keys := strings.Fields(c.keys)
+		pressKeys(app, keys[:len(keys)-1]...)
+		if len(keys) == 3 {
+			box := slices.Concat(app.overlayBox(&app.overlays[1], 60, 16)...)
+			if i := slices.IndexFunc(box, func(s hostapi.Segment) bool { return s.Text == "Delete" }); i < 0 || box[i].HL != "Danger" {
+				t.Fatalf("action rows: %+v", box)
+			}
+		}
+		pressKeys(app, keys[len(keys)-1])
+		for app.Pump() {
+		}
+		if c.want == "k" {
+			if len(app.overlays) != 1 {
+				t.Fatalf("%s: %d overlays, want the list", c.keys, len(app.overlays))
+			}
+			continue
+		}
+		if got := lastToast(app); got != c.want || len(app.overlays) != 0 {
+			t.Fatalf("%s: got %q with %d overlays open, want %q and none", c.keys, got, len(app.overlays), c.want)
+		}
+	}
+}
+
 // TestLuaOverlayReload: a Lua overlay with reload stays open on space and
 // enter, runs on_select, then shows the items reload returns, rendered
 // again, and keeps its items when reload fails.

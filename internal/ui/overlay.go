@@ -136,6 +136,9 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			row[i] = hostapi.Segment{Text: sanitize.String(row[i].Text), HL: row[i].HL}
 		}
 	}
+	for i := range o.Keys {
+		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), sanitize.Line(o.Keys[i].Desc)
+	}
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
@@ -189,7 +192,7 @@ func (st *overlayState) enterVerb(idx int) string {
 	switch {
 	case has("detail") || m["actions"] != nil:
 		return "open"
-	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil:
+	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
 		return cmp.Or(st.o.Verb, "select")
 	case st.back:
 		return "back"
@@ -220,14 +223,15 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " › " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions, OnAction: p.OnAction})
 	st.back, st.width = true, parent.width
 	a.overlays = append(a.overlays, st)
 }
 
 // detailAction runs action idx of the detail view on top. An action that
 // runs or fills something ends the parent too, unless it only runs a
-// command in a toggle list, which rebuilds; one that does neither goes back.
+// command in a toggle list, which rebuilds; one with an id goes to
+// on_action; one that does none of it goes back.
 func (a *App) detailAction(idx int) {
 	d := a.overlays[len(a.overlays)-1]
 	a.closeOverlayByID(d.o.ID)
@@ -235,25 +239,42 @@ func (a *App) detailAction(idx int) {
 	run := rowRun(d.o, m)
 	fill, _ := m["fill"].(string)
 	pi := len(a.overlays) - 1 // the parent: a detail view opens right on top of it
+	if id, _ := m["id"].(string); id != "" && d.o.OnAction != nil {
+		p := a.overlays[pi]
+		item := p.o.Items[p.visible[p.selected]]
+		a.overlayCall(p.o, func() { a.host.OverlayAction(context.Background(), p.o, item, m) })
+		return
+	}
 	switch {
 	case run == "" && fill == "":
 		return
 	case fill == "" && a.overlays[pi].o.Reload != nil:
 		a.runOverlayRow(d.o, idx)
-		a.reloadOverlay(a.overlays[pi].o, -1)
+		a.reloadOverlay(a.overlays[pi].o, nil)
 	default:
 		a.cancelOverlay(a.overlays[pi].o)
 		a.runOverlayRow(d.o, idx)
 	}
 }
 
-// reloadOverlay runs the on_select of item idx (-1 for none) of a toggle
-// list and rebuilds its items, both on the worker, then swaps the items in
-// while it is still open, keeping selection and filter.
-func (a *App) reloadOverlay(o hostapi.Overlay, idx int) {
+// overlayCall runs a Lua callback of a list on the worker: a toggle list
+// stays open and rebuilds, any other closes first, like on_select.
+func (a *App) overlayCall(o hostapi.Overlay, call func()) {
+	if o.Reload != nil {
+		a.reloadOverlay(o, call)
+		return
+	}
+	a.closeOverlayByID(o.ID)
+	a.background(call)
+}
+
+// reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
+// both on the worker, then swaps the items in while it is still open,
+// keeping selection and filter.
+func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 	a.background(func() {
-		if idx >= 0 && o.OnSelect != nil {
-			a.host.SelectOverlay(context.Background(), o, idx)
+		if call != nil {
+			call()
 		}
 		items, text := o.Reload()
 		a.do(func() {
@@ -311,6 +332,14 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			break
 		}
 	}
+	if i := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
+		var item any
+		if len(st.visible) > 0 {
+			item = o.Items[st.visible[st.selected]]
+		}
+		a.overlayCall(o, func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) })
+		return nil
+	}
 	switch key {
 	case "y", "Y":
 		return a.copyOverlay(st, key == "Y")
@@ -328,7 +357,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.detailAction(idx)
 		case o.Reload != nil:
 			a.runOverlayRow(o, idx)
-			a.reloadOverlay(o, idx)
+			a.reloadOverlay(o, func() { a.host.SelectOverlay(context.Background(), o, idx) })
 		case verb == "":
 		default:
 			a.closeOverlayByID(o.ID)
@@ -459,7 +488,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		// page them like the list below).
 		choices := make([]promptChoice, 0, len(st.visible))
 		for n, i := range st.visible {
-			choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc})
+			m, _ := st.o.Items[i].(map[string]any)
+			hl, _ := m["hl"].(string)
+			choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
 		}
 		list = choiceRows(choices, st.selected, boxInner(w))
 		if len(st.visible) > 0 {
@@ -479,6 +510,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if st.o.Reload != nil {
 				hints = append(hints, "space", "toggle")
 			}
+		}
+		for _, k := range st.o.Keys {
+			hints = append(hints, k.Key, k.Desc)
 		}
 		list = st.filterRows(list)
 		// The list keeps the height it had unfiltered, so the box does not

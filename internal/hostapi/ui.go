@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -196,8 +197,26 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if fn, ok := tb.RawGetString("on_select").(*glua.LFunction); ok {
 			o.OnSelect = fn
 		}
+		if fn, ok := tb.RawGetString("on_action").(*glua.LFunction); ok {
+			o.OnAction = fn
+		}
 		if fn, ok := tb.RawGetString("on_close").(*glua.LFunction); ok {
 			o.OnClose = fn
+		}
+		if keys, ok := tb.RawGetString("keys").(*glua.LTable); ok {
+			keys.ForEach(func(k, v glua.LValue) {
+				spec, _ := v.(*glua.LTable)
+				if spec == nil {
+					spec = L.NewTable()
+				}
+				fn, _ := spec.RawGetString("fn").(*glua.LFunction)
+				// one character, so no overlay can take esc or ctrl+c
+				if key := k.String(); utf8.RuneCountInString(key) != 1 || fn == nil {
+					L.RaiseError("zemi.ui.overlay.open: keys[%q] must be one character with { desc, fn }", key)
+				}
+				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(spec, "desc"), Fn: fn})
+			})
+			slices.SortFunc(o.Keys, func(a, b OverlayKey) int { return cmp.Compare(a.Key, b.Key) })
 		}
 		if o.ID == "" {
 			L.RaiseError("zemi.ui.overlay.open: id is required")
