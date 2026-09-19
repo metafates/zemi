@@ -44,7 +44,7 @@ var luaReadOnly = map[string]bool{
 	"config.get": true, "config.schema": true,
 	"errors.list": true, "event.log": true, "event.stats": true,
 	"health.list": true,
-	"fs.exists":   true, "fs.glob": true, "fs.grep": true, "fs.list": true, "fs.read": true, "fs.stat": true,
+	"fs.datadir":  true, "fs.exists": true, "fs.glob": true, "fs.grep": true, "fs.list": true, "fs.read": true, "fs.stat": true,
 	"json.decode": true, "json.encode": true,
 	"keymap.get": true, "keymap.list": true, "learn.proposals": true,
 	"log": true, "log.list": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,

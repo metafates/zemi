@@ -1020,10 +1020,10 @@ function zemi.ui.input(opts, on_confirm) end
 ---@field line? integer 1-based line to start at
 ---@field title? string window title ("Edit <title>") and working-row label (default: the file name)
 
---- Open a project file in the user's editor (editor.command, $VISUAL, $EDITOR)
+--- Open a project file, or one under `zemi.fs.datadir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
 --- in a focused float over zemi, and call on_done when it exits: on_done(),
 --- or on_done(err) when it failed or exited non-zero.
---- Never blocks the interpreter. Raises for a path outside the project.
+--- Never blocks the interpreter. Raises for a path outside both.
 ---@param path string
 ---@param opts? zemi.EditOpts
 ---@param on_done fun(err: string|nil)
@@ -1760,6 +1760,15 @@ function zemi.fs.stat(path) end
 ---@param path string
 ---@return boolean
 function zemi.fs.exists(path) end
+
+--- `<data>/lua/<name>`, where config code keeps its files: inside the
+--- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
+--- outside the config tree, so a write never reloads the config. Reads
+--- settle; writes need a `lua.fs.write` rule like any other. Nothing is
+--- created: `write` makes the parents.
+---@param name string One directory name, no separators.
+---@return string path
+function zemi.fs.datadir(name) end
 
 ---@param path string
 ---@return true|nil ok

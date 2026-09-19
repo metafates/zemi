@@ -311,7 +311,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		path := L.CheckString(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
-		resolved, err := h.resolveJailed(path, h.writeJails())
+		resolved, err := h.resolveJailed(path, h.luaJails(L, true))
 		if err != nil {
 			L.RaiseError("zemi.ui.edit: %v", err)
 		}

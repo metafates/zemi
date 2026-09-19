@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	glua "github.com/yuin/gopher-lua"
 )
@@ -119,4 +120,35 @@ func TestJobCwdAndSandbox(t *testing.T) {
 			assert((res.code == 0) == (c[3] == 0), c[1] .. ": " .. res.stderr)
 		end
 	`)
+}
+
+// TestFsDatadir: user code reads and, with a rule, writes its data dir and
+// may hand it to the editor; plugin code gets neither the path nor the jail.
+func TestFsDatadir(t *testing.T) {
+	h, r := newTestHost(t)
+	h.Dirs.DataHome = t.TempDir()
+	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `
+		local dir = zemi.fs.datadir("notes")
+		assert(zemi.fs.write(dir .. "/a.txt", "hi"))
+		assert(zemi.fs.read(dir .. "/a.txt") == "hi")
+		zemi.ui.edit(dir .. "/a.txt", {}, function() end)
+		for _, bad in ipairs({ "", "..", "a/b" }) do
+			assert(not pcall(zemi.fs.datadir, bad), bad)
+		end
+	`)
+	file := filepath.Join(h.Dirs.DataHome, "lua", "notes", "a.txt")
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal(err)
+	}
+	err := r.ExecuteChunk(context.Background(), `
+		assert(not pcall(zemi.fs.datadir, "notes"), "datadir")
+		for _, call in ipairs({ "read", "write" }) do
+			local ok, err = pcall(zemi.fs[call], "`+file+`", "x")
+			assert(not ok and tostring(err):find("outside the jail"), call .. ": " .. tostring(err))
+		end
+	`, "p.lua", lua.OriginPlugin)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

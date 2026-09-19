@@ -89,6 +89,29 @@ func (h *Host) writeJails() []string {
 	return []string{h.Dirs.ProjectDir}
 }
 
+// luaDataRoot holds the zemi.fs.datadir dirs. It sits outside the config
+// tree, so a write there never reloads the config.
+func (h *Host) luaDataRoot() string {
+	if h.Dirs.DataHome == "" {
+		return ""
+	}
+	return filepath.Join(h.Dirs.DataHome, "lua")
+}
+
+// luaJails are the roots a zemi.fs call resolves in: the tools' jails, plus
+// the data root for user and builtin code only, so the model's file tools
+// and less trusted Lua never reach it.
+func (h *Host) luaJails(L *glua.LState, write bool) []string {
+	roots := h.readJails()
+	if write {
+		roots = h.writeJails()
+	}
+	if o := h.RT.CurrentOrigin(L); o == lua.OriginUser || o == lua.OriginBuiltin {
+		roots = append(roots, h.luaDataRoot())
+	}
+	return roots
+}
+
 // fsDefault implements the §9 built-in defaults for fs subjects: reads
 // inside the jail allow except secret-shaped paths, writes allow only in the
 // session scratchpad; everything else asks.
@@ -98,7 +121,7 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 		if h.secretPath(arg) {
 			return perm.Ask
 		}
-		if h.inJail(arg, h.readJails()...) {
+		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":
@@ -381,12 +404,12 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	resolve := func(L *glua.LState, api string, write bool) string {
-		roots, subject := h.readJails(), "lua.fs.read"
+		subject := "lua.fs.read"
 		if write {
-			roots, subject = h.writeJails(), "lua.fs.write"
+			subject = "lua.fs.write"
 			h.refuseDuringRender(L, "zemi.fs."+api)
 		}
-		resolved, err := h.resolveJailed(L.CheckString(1), roots)
+		resolved, err := h.resolveJailed(L.CheckString(1), h.luaJails(L, write))
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
@@ -465,6 +488,17 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
 		path := resolve(L, "remove", true)
 		return luaResult(L, os.Remove(path))
+	}))
+
+	// datadir(name) is where config code keeps its files; nothing is created.
+	tb.RawSetString("datadir", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "fs.datadir")
+		name := L.CheckString(1)
+		if !filepath.IsLocal(name) || filepath.Base(name) != name || h.luaDataRoot() == "" {
+			L.RaiseError("zemi.fs.datadir: %q is not a plain directory name", name)
+		}
+		L.Push(glua.LString(filepath.Join(h.luaDataRoot(), name)))
+		return 1
 	}))
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
