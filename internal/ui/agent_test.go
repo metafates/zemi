@@ -638,12 +638,10 @@ func TestWorkingRowRetry(t *testing.T) {
 	}
 }
 
-// TestWorkingRowMascot: the snail stays in the left corner and the turn shows
-// in its eyes and in the rule beside it - ripples running out while it works
-// and back while it compacts, its head pulled in while a prompt waits on the
-// user, a bow once the turn is over.
+// TestWorkingRowMascot: the snail stays in the left corner on a plain rule
+// and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·◐◓◑◒¬-!─^><?" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·.◐◓◑◒¬-─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -676,7 +674,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(800); !strings.HasPrefix(a, "@<<─") || !strings.HasPrefix(b, "@>>─") {
+	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
@@ -697,7 +695,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// thinking blinks in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})
-	if a, b := row(3200), row(3600); !strings.HasPrefix(a, "@??") || !strings.HasPrefix(b, "@?!") {
+	if a, b := row(3200), row(3600); !strings.HasPrefix(a, "@..") || !strings.HasPrefix(b, "@?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
 }

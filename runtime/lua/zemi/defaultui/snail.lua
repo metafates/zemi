@@ -8,9 +8,9 @@ local M = {}
 ---@type table<string, { [integer]: string, ticks: integer }>
 local HEADS = {
 	idle = { "··", ticks = 1 },
-	thinking = { "??", "?!", "!!", "..", ticks = 8 },
+	thinking = { ".?", "?.", "..", "?.", ".?", "..", ticks = 8 },
 	working = { "◐◐", "◓◓", "◑◑", "◒◒", ticks = 3 },
-	reading = { "<<", "··", ">>", "··", ticks = 8 },
+	reading = { "··", "..", "..", "..", ticks = 8 },
 	asking = { "??", ticks = 1 },
 	error = { "><", ticks = 1 },
 	done = { "^^", ticks = 1 }
