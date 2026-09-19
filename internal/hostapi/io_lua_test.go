@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,6 +112,8 @@ func TestJobCwdAndSandbox(t *testing.T) {
 		local res = assert(zemi.job.wait({ cmd = "pwd", cwd = "sub" }))
 		assert(res.stdout:match("/sub\n$"), res.stdout)
 		assert(not pcall(zemi.job.wait, { cmd = "pwd", cwd = outside }), "cwd outside the jail")
+		local h, err = zemi.job.start({ cmd = "zz-no-such-program", sandbox = true })
+		assert(not h and err:find("not found"), err)
 		for _, c in ipairs({
 			{ "in.txt", true, 0 },
 			{ outside .. "/out.txt", true, 1 },
@@ -128,10 +131,12 @@ func TestFsDatadir(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
 	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "pwd", Decision: perm.Allow})
 	runUser(t, r, `
 		local dir = zemi.fs.datadir("notes")
 		assert(zemi.fs.write(dir .. "/a.txt", "hi"))
 		assert(zemi.fs.read(dir .. "/a.txt") == "hi")
+		assert(zemi.job.wait({ cmd = "pwd", cwd = dir }).stdout:find("/lua/notes\n$"))
 		zemi.ui.edit(dir .. "/a.txt", {}, function() end)
 		for _, bad in ipairs({ "", "..", "a/b" }) do
 			assert(not pcall(zemi.fs.datadir, bad), bad)
@@ -140,6 +145,9 @@ func TestFsDatadir(t *testing.T) {
 	file := filepath.Join(h.Dirs.DataHome, "lua", "notes", "a.txt")
 	if _, err := os.Stat(file); err != nil {
 		t.Fatal(err)
+	}
+	if out, err := h.runModelLua(context.Background(), `return zemi.fs.read(zemi.fs.datadir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
+		t.Fatalf("an unapproved Lua tool script read the data dir: %q %v", out, err)
 	}
 	err := r.ExecuteChunk(context.Background(), `
 		assert(not pcall(zemi.fs.datadir, "notes"), "datadir")

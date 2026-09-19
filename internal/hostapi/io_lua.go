@@ -99,14 +99,15 @@ func (h *Host) luaDataRoot() string {
 }
 
 // luaJails are the roots a zemi.fs call resolves in: the tools' jails, plus
-// the data root for user and builtin code only, so the model's file tools
-// and less trusted Lua never reach it.
+// the data root for user and builtin code only, so the model's file tools,
+// its unapproved Lua tool scripts and less trusted Lua never reach it.
 func (h *Host) luaJails(L *glua.LState, write bool) []string {
 	roots := h.readJails()
 	if write {
 		roots = h.writeJails()
 	}
-	if o := h.RT.CurrentOrigin(L); o == lua.OriginUser || o == lua.OriginBuiltin {
+	tool, approved := h.modelLuaRun(L)
+	if o := h.RT.CurrentOrigin(L); (o == lua.OriginUser || o == lua.OriginBuiltin) && (!tool || approved) {
 		roots = append(roots, h.luaDataRoot())
 	}
 	return roots
@@ -494,8 +495,11 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("datadir", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "fs.datadir")
 		name := L.CheckString(1)
-		if !filepath.IsLocal(name) || filepath.Base(name) != name || h.luaDataRoot() == "" {
+		if !filepath.IsLocal(name) || filepath.Base(name) != name {
 			L.RaiseError("zemi.fs.datadir: %q is not a plain directory name", name)
+		}
+		if h.luaDataRoot() == "" {
+			L.RaiseError("zemi.fs.datadir: no data dir")
 		}
 		L.Push(glua.LString(filepath.Join(h.luaDataRoot(), name)))
 		return 1
@@ -972,18 +976,23 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		if cwd := rawString(spec, "cwd"); cwd != "" {
-			if cmd.Dir, err = h.resolveJailed(cwd, h.readJails()); err != nil {
+			if cmd.Dir, err = h.resolveJailed(cwd, h.luaJails(L, false)); err != nil {
 				L.RaiseError("zemi.job.start: cwd: %v", err)
 			}
 		}
 		cmd.Env = env
 		guard := func() string { return "" }
-		if rawBool(spec, "sandbox") {
+		// a program that was not found is proc.Start's returned error, not a
+		// sandbox failure
+		if rawBool(spec, "sandbox") && cmd.Err == nil {
 			pol := h.sandboxPolicy(h.permModeDef().Base == "plan")
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {
 				L.RaiseError("zemi.job.start: sandbox: %v", err)
 			}
+			// NOTE: on a namespace backend with a writable project this walks
+			// the project (sandboxWalkMax entries) while holding the interpreter;
+			// a snapshot taken off it would need start to return before the run.
 			guard = h.guardSandbox(pol)
 		}
 		h.lspDirty()

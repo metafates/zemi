@@ -1587,7 +1587,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   is the one path model `fs.write` allows by default (`fsDefault`;
   `zemi.fs` cannot write there), and user config's `zemi.fs` also
   reaches `<data>/lua` (`zemi.fs.datadir(name)`, outside the watched config
-  tree, never a root of the model's file tools); the read jail is wider: project
+  tree, never a root of the model's file tools or of a Lua tool script the
+  user did not approve); the read jail is wider: project
   roots, the config dir, the project's `.zemi`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI). `site/pack` and the rest of the state dir are never
