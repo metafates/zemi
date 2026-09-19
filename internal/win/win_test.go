@@ -151,11 +151,31 @@ func TestSynchronizedOutput(t *testing.T) {
 		t.Fatalf("mode report:\n%s", text)
 	}
 	w.SendKey(uv.KeyPressEvent{Code: 'x', Text: "x"})
-	time.Sleep(300 * time.Millisecond)
+	// the test moves the update's start instead of waiting out the second, so
+	// neither check depends on when this goroutine gets to run
+	drawn := func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if c := w.term.CellAt(12, 0); c == nil || c.Content != "X" || w.syncSince.IsZero() {
+			return false
+		}
+		w.syncSince = time.Now().Add(time.Hour)
+		return true
+	}
+	for !drawn() {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("the update never arrived:\n%s", w.Text())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 	if text := w.Text(); strings.Contains(text, "X") {
 		t.Fatalf("drew inside the update:\n%s", text)
 	}
-	if text, ok := w.WaitText(ctx, "X"); !ok {
+	w.mu.Lock()
+	w.syncSince = time.Now().Add(-time.Second)
+	w.mu.Unlock()
+	if text := w.Text(); !strings.Contains(text, "X") {
 		t.Fatalf("an update never ended must show after a second:\n%s", text)
 	}
 }
