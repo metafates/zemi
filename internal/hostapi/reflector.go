@@ -45,7 +45,7 @@ Rules:
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - When the session shows an indexed memory is no longer true and nothing replaces it, retire it with an entry whose "supersedes" is its id and whose "text" is empty. The user reviews every retirement.
 - Each memory is one self-contained single line, at most 500 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
-- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not.
+- Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not. A procedure specific to this repository is a recipe the live agent writes: do not draft a skill for it.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything the instruction files below or tool descriptions already say.
 - Propose nothing rather than something weak.
 
@@ -259,11 +259,11 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		}
 	}
 	// disabled drafts count too, or the reflector drafts them again
-	if all := h.skillsReg.list(); len(all) > 0 {
+	if all := append(h.skillsReg.list(), h.projectOnlySkills()...); len(all) > 0 {
 		b.WriteString("\n# Skills\n")
 		for _, s := range all {
 			state := "disabled"
-			if h.skillsReg.isEnabled(s.Name) {
+			if !s.Source.Stored() || h.skillsReg.isEnabled(s.Name) {
 				state = "enabled"
 			}
 			fmt.Fprintf(&b, "- %s (%s): %s\n", s.Name, state, truncRunes(s.Description, reflectIndexText))

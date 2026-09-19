@@ -388,6 +388,16 @@ func TestRecipes(t *testing.T) {
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
 		{name: "a name an authored skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
 		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, "c1", "fetch", "", true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load", outside: true},
+		{name: "only a recipe is deleted", do: func() {
+			if h.skillsCommand("delete ship") == nil || h.skillsCommand("delete lint") == nil {
+				t.Error("deleted a skill that is no recipe")
+			}
+		}, prompt: late, tool: written},
+		{name: "delete removes it and pins again", do: func() {
+			if err := h.skillsCommand("delete late"); err != nil {
+				t.Error(err)
+			}
+		}, prompt: []string{"rig", "tok"}, tool: []string{"rig", "tok"}},
 	} {
 		if c.do != nil {
 			c.do()
@@ -438,5 +448,15 @@ func TestRecipes(t *testing.T) {
 	}
 	if !strings.Contains(h.environmentPrompt(), "Recipes: "+dir+"\n") {
 		t.Error("the environment of a trusted project names the recipes dir")
+	}
+	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.authoredSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills", "lint")} {
+		if _, err := os.Stat(d); (err == nil) == (d == filepath.Join(dir, "late")) {
+			t.Errorf("after the deletes: stat %s: %v", d, err)
+		}
+	}
+	seedTranscript(t, h, sid)
+	// or the reflector drafts a global skill for what the project already has
+	if p, _, err := h.reflectPrompt(sid); err != nil || !strings.Contains(p, "- rig (enabled)") || !strings.Contains(p, "- lint (enabled)") {
+		t.Errorf("reflector prompt: %v\n%s", err, p)
 	}
 }

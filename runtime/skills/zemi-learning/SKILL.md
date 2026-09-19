@@ -89,6 +89,8 @@ not for the repository. A fact is a memory; a procedure for every project is a u
   or use a placeholder like `$TOKEN`. Long hex and base64 runs (digests) are cut too.
 - Fix a stale step in place with `edit` and date the correction; link another recipe as
   `[[name]]`.
+- The user deletes one with `x` in `/skills` or `/skills delete <name>`; no other skill can
+  be deleted there.
 
 ## From Lua
 

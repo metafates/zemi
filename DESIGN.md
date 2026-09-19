@@ -1825,7 +1825,11 @@ row), losing a name clash to those too. The index lists the recipes found
 when the environment section is pinned (new session, resume, compaction,
 §10.7), while the `skill` tool reads the dir on every call: a recipe
 written mid-session loads at once and never moves the prompt. Loading a
-skill counts as reading its file, so a correction is one `edit`.
+skill counts as reading its file, so a correction is one `edit`. Only a
+recipe has a Delete action in `/skills` (`/skills delete <name>`), which
+lists the recipes again: the index moves once, by the user's own act. The
+reflector's skills index carries the project's skills and recipes, and its
+prompt leaves a repository's own procedure to the live agent's recipe.
 
 ### 10.6 Evals
 

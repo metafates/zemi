@@ -335,7 +335,9 @@ the plain file tools (the environment prompt's `Recipes:` line says how); the di
 `protectedWrite`: no rule and neither auto nor plan settles a write (yolo still allows), and the
 ask says when `sessionLocalOnly` fails.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
-rewrite the file) scrubs the file in place and tells the model what will not load. Invariants:
+rewrite the file) scrubs the file in place and tells the model what will not load.
+`/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one
+and pins the list again. Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only user
   or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace boundary -
@@ -405,12 +407,13 @@ lua-language-server is installed.
   latest session (once per process, not on a reload), never on quit; `reflectDue` compares the
   message count with kv `reflector.seen.<sid>`, so a session is reflected again only after new
   messages. Its prompt carries the instruction files (`instructionSections`, shared with
-  `systemWith`) and a memory index; an entry with empty text and `supersedes` queues a forget
-  proposal, never auto-applied. It proposes memories and skills only, always for review (DESIGN
-  §10.4): there is no config-patch pipeline and no `/config` command, the agent edits config
-  files directly. `digestFor(query)` ranks by the FTS score against the session's first message
-  (bm25 stays near zero for common words, so they lift nothing), user origin x2 and recency
-  over 30 days.
+  `systemWith`), a memory index and a skills index that includes the project's skills and
+  recipes, so it drafts no global skill for a procedure the repository has; an entry with
+  empty text and `supersedes` queues a forget proposal, never auto-applied. It proposes
+  memories and skills only, always for review (DESIGN §10.4): there is no config-patch
+  pipeline and no `/config` command, the agent edits config files directly.
+  `digestFor(query)` ranks by the FTS score against the session's first message (bm25 stays
+  near zero for common words, so they lift nothing), user origin x2 and recency over 30 days.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).

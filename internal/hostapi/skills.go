@@ -469,9 +469,29 @@ func (h *Host) skillsCommand(args string) error {
 		return h.setSkillEnabled(nil, fields[1], !h.skillsReg.isEnabled(fields[1]))
 	case len(fields) == 2 && fields[0] == "open":
 		return h.openSkillFile(fields[1])
+	case len(fields) == 2 && fields[0] == "delete":
+		return h.deleteRecipe(fields[1])
 	default:
-		return errors.New("usage: /skills | /skills enable|disable|open <name> | /skills use <name> [request]")
+		return errors.New("usage: /skills | /skills enable|disable|open|delete <name> | /skills use <name> [request]")
 	}
+}
+
+// deleteRecipe removes a recipe and pins the list again: the index moves
+// once, by the user's own act. Every other source lives in files the user or
+// the repository owns.
+func (h *Host) deleteRecipe(name string) error {
+	for _, s := range h.projectOnly(h.discoverRecipes()) {
+		if s.Name != name || s.Source != skills.Recipe {
+			continue
+		}
+		if err := os.RemoveAll(s.Dir); err != nil {
+			return err
+		}
+		h.pinRecipes()
+		h.Notify("info", "Skills", "deleted "+name)
+		return nil
+	}
+	return fmt.Errorf("no recipe %q: only a recipe can be deleted here", name)
 }
 
 // openSkillFile opens a skill's SKILL.md in the user's editor, so its
@@ -582,6 +602,9 @@ func (h *Host) skillItems() []any {
 			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name},
 			map[string]any{"text": "Use now", "hotkey": "u", "fill": "/skills use " + s.Name + " "},
 		)
+		if s.Source == skills.Recipe {
+			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "run": "skills delete " + s.Name})
+		}
 		// the description leads, then where it comes from and where it lives;
 		// the markdown renderer keeps the line break inside the paragraph
 		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
@@ -596,7 +619,7 @@ func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
 		Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
 		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-		GoComplete: subcommandCompleter([]string{"enable", "disable", "use", "open"}, func(h *Host, _ string) []string {
+		GoComplete: subcommandCompleter([]string{"enable", "disable", "use", "open", "delete"}, func(h *Host, _ string) []string {
 			var names []string
 			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 				names = append(names, s.Name)
