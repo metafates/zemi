@@ -409,6 +409,24 @@ func TestFloatDrag(t *testing.T) {
 	}
 }
 
+// TestTextWindowCloseKeys: q and esc close a focused text window, other
+// keys leave it open.
+func TestTextWindowCloseKeys(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	defer a.host.Wins.CloseAll()
+	for key, closes := range map[string]bool{"q": true, "esc": true, "x": false} {
+		wn, err := a.host.Wins.OpenText(win.Spec{Text: "body"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.setFocusWin(wn.ID)
+		pressKeys(a, key)
+		if _, open := a.host.Wins.Get(wn.ID); open == closes || closes && a.focusWin != 0 {
+			t.Errorf("%s: open %v, focus %d", key, open, a.focusWin)
+		}
+	}
+}
+
 // TestTextWindowRenders: a text window draws its body through the chat's
 // markdown renderer, a replacement shows in place, the text re-wraps when
 // the window narrows and scrolling moves the view.

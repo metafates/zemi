@@ -402,7 +402,7 @@ func (a *App) windowKey(key string, msg uv.KeyPressEvent) bool {
 	switch {
 	case key == a.unfocusKey():
 		a.setFocusWin(0)
-	case wn.Exited():
+	case wn.Exited(), wn.IsText() && (key == "q" || key == "esc"): // a text window takes no input, so q and esc are free to close it
 		a.host.CloseWindow(wn.ID)
 		a.focusWin = 0
 	default:

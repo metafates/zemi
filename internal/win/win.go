@@ -51,7 +51,8 @@ type Spec struct {
 	Env    []string
 	Kind   string // KindSplit, KindVSplit or KindFloat
 	Title  string
-	Cols   int // requested size, 0 = the layout's choice
+	Name   string // Lua's handle on it: one window per name and origin
+	Cols   int    // requested size, 0 = the layout's choice
 	Rows   int
 	Owner  string // who opened it: "model", "agent:<name>", "user", "lua" or "editor"
 	Origin string // the Lua origin that opened a "lua" window
@@ -95,6 +96,7 @@ type Window struct {
 	Cmd    string
 	Owner  string
 	Origin string
+	Name   string
 	// Sandboxed says the program started under Spec.Wrap
 	Sandboxed bool
 
@@ -208,7 +210,7 @@ func (m *Manager) OpenText(spec Spec) (*Window, error) {
 		return nil, err
 	}
 	w := &Window{
-		m: m, ID: id, Owner: spec.Owner, Origin: spec.Origin,
+		m: m, ID: id, Owner: spec.Owner, Origin: spec.Origin, Name: spec.Name,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		body:   &body{text: capBody(sanitize.String(spec.Text)), md: spec.Markdown},
 		w:      cmp.Or(spec.Cols, defaultCols), h: cmp.Or(spec.Rows, defaultRows),
@@ -333,7 +335,7 @@ func (m *Manager) Open(spec Spec) (*Window, error) {
 		rows = defaultRows
 	}
 	w := &Window{
-		m: m, ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin, Sandboxed: spec.Wrap != nil,
+		m: m, ID: id, Cmd: spec.Cmd, Owner: spec.Owner, Origin: spec.Origin, Name: spec.Name, Sandboxed: spec.Wrap != nil,
 		layout: Layout{Kind: spec.Kind, Cols: spec.Cols, Rows: spec.Rows, X: -1, Y: -1},
 		term:   vt.NewEmulator(cols, rows), w: cols, h: rows,
 		done: make(chan struct{}), inReady: make(chan struct{}, 1),

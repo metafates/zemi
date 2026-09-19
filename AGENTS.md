@@ -445,9 +445,10 @@ lua-language-server is installed.
 
 A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go emulator
 (charmbracelet/x/vt), or text (`Manager.OpenText`): no pty, no emulator, the UI renders and
-wraps the body itself, so a text window never exits and refuses program input. `win.Manager` on
-the host owns windows; they outlive turns and reloads (only Lua `on_exit` callbacks are
-generation-tagged). Each carries a `Layout` the UI reads per frame: splits and vsplits go where
+wraps the body itself, so a text window never exits and refuses program input (focused, q and
+esc close it). A Lua window's `name` is one window per origin: opening it again replaces it.
+`win.Manager` on the host owns windows; they outlive turns and reloads (only Lua `on_exit`
+callbacks are generation-tagged). Each carries a `Layout` the UI reads per frame: splits and vsplits go where
 the layout tree has a `windows` slot of their kind, floats over everything in list order
 (`Manager.Raise` puts a focused or clicked one on top), and overlays, popups and prompts draw
 above every window. Hidden windows get a label on the dock row (`dockRow`) that shows them

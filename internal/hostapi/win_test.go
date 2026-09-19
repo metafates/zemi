@@ -349,7 +349,16 @@ func TestWindowTextTool(t *testing.T) {
 		assert(w:append(" now"))
 		assert(w:text() == "bye now", w:text())
 		assert(w:info().text == true, "info.text")
+		-- a name is one window: opening it again replaces it, get finds it
+		local a = assert(zemi.win.panel({ text = "one", name = "notes" }))
+		local b = assert(zemi.win.panel({ text = "two", name = "notes" }))
+		assert(zemi.win.get(a.id) == nil and zemi.win.get("notes").id == b.id, "the second notes must replace the first")
+		assert(not zemi.win.panel({ text = "three", name = "notes", kind = "bad" }) and zemi.win.get("notes").id == b.id, "a failed open must keep the old window")
+		assert(zemi.win.get("none") == nil)
 	`)
+	if err := r.ExecuteChunk(t.Context(), `assert(zemi.win.get("notes") == nil, "a name is per origin")`, "p.lua", lua.OriginProject); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.ExecuteChunk(t.Context(), `zemi.win.get(3):set_text("x")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "may not set_text") {
 		t.Fatalf("project code wrote to another origin's window: %v", err)
 	}

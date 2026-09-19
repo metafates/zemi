@@ -362,7 +362,26 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		return t
 	}
 
-	// open(spec): spec = { cmd, kind, title, cols, rows, focus, on_exit(info) }
+	// named is the caller's own window opened with name. Names are per
+	// origin, so no origin finds or replaces another's.
+	named := func(L *glua.LState, name string) *win.Window {
+		origin := string(h.RT.CurrentOrigin(L))
+		for _, w := range h.Wins.List() {
+			if name != "" && w.Name == name && w.Owner == "lua" && w.Origin == origin {
+				return w
+			}
+		}
+		return nil
+	}
+	// replace closes the window a new one with the same name took over
+	// from: after the open, so a failed one leaves the old window running
+	replace := func(old *win.Window) {
+		if old != nil {
+			h.closeWindow(old.ID)
+		}
+	}
+
+	// open(spec): spec = { cmd, name, kind, title, cols, rows, focus, on_exit(info) }
 	tb.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.win.open")
 		spec, ok := L.Get(1).(*glua.LTable)
@@ -384,8 +403,9 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		at := h.callerOf(L)
 		origin := h.RT.CurrentOrigin(L)
 		tool, _ := h.modelLuaRun(L)
+		old := named(L, rawString(spec, "name"))
 		w, err := h.openWindow(win.Spec{
-			Cmd: cmd, Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
+			Cmd: cmd, Name: rawString(spec, "name"), Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
 			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"), Owner: "lua",
 			Origin:    string(origin),
 			Clipboard: (origin == lua.OriginUser || origin == lua.OriginBuiltin) && !tool,
@@ -393,6 +413,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			return luaResult(L, err)
 		}
+		replace(old)
 		if rawBool(spec, "hidden") {
 			_ = h.applyLayout(w, layoutPatch{Hidden: new(true)})
 		}
@@ -410,15 +431,16 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	// panel(spec): a window showing text instead of a program.
-	// spec = { text, markdown, kind, title, cols, rows, focus, hidden }
+	// spec = { text, markdown, name, kind, title, cols, rows, focus, hidden }
 	tb.RawSetString("panel", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.win.panel")
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.win.panel: spec must be a table")
 		}
+		old := named(L, rawString(spec, "name"))
 		w, err := h.openTextWindow(win.Spec{
-			Text: rawString(spec, "text"), Markdown: rawBool(spec, "markdown"),
+			Text: rawString(spec, "text"), Markdown: rawBool(spec, "markdown"), Name: rawString(spec, "name"),
 			Kind: rawString(spec, "kind"), Title: rawString(spec, "title"),
 			Cols: rawInt(spec, "cols"), Rows: rawInt(spec, "rows"),
 			Owner: "lua", Origin: string(h.RT.CurrentOrigin(L)),
@@ -426,6 +448,7 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			return luaResult(L, err)
 		}
+		replace(old)
 		if rawBool(spec, "hidden") {
 			_ = h.applyLayout(w, layoutPatch{Hidden: new(true)})
 		}
@@ -437,7 +460,13 @@ func (h *Host) winNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		if w, ok := h.Wins.Get(L.CheckInt(1)); ok && !h.hiddenWin(L, w) {
+		var w *win.Window
+		if name, ok := L.Get(1).(glua.LString); ok {
+			w = named(L, string(name))
+		} else {
+			w, _ = h.Wins.Get(L.CheckInt(1))
+		}
+		if w != nil && !h.hiddenWin(L, w) {
 			L.Push(handle(L, w))
 			return 1
 		}

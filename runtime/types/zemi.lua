@@ -1086,6 +1086,7 @@ zemi.win = {}
 
 ---@class zemi.WinSpec
 ---@field cmd string Run with sh -c in the project directory.
+---@field name? string One window per name and origin: opening the name again replaces the window, zemi.win.get(name) finds it.
 ---@field kind? "split"|"vsplit"|"float" In the layout's split (default) or vsplit slot, by default below the chat and beside it, or over it.
 ---@field title? string Default: the command; the program's own title replaces it.
 ---@field cols? integer Float only: requested width.
@@ -1097,11 +1098,12 @@ zemi.win = {}
 ---@class zemi.WinTextSpec
 ---@field text string The body. Replaced in place by Win:set_text.
 ---@field markdown? boolean Render it as markdown (the chat's renderer: headings, lists, tables, code); plain text is only wrapped.
+---@field name? string As for zemi.win.open.
 ---@field kind? "split"|"vsplit"|"float" As for zemi.win.open.
 ---@field title? string Default: "text".
 ---@field cols? integer Float only: requested width; unset, the window sizes to the text.
 ---@field rows? integer Float only: requested height; unset, the window sizes to the text.
----@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it).
+---@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it, q and esc close it).
 ---@field hidden? boolean Start off screen.
 
 ---@class zemi.WinLayout
@@ -1196,8 +1198,8 @@ function Win:close() end
 --- that keeps running while zemi works. Needs `lua.job.start` allowed for
 --- the command. A window user config opens may set the clipboard (OSC 52
 --- writes; reads get no answer). Returns nil, err when it cannot start. Windows survive
---- reloads, so init.lua should open one only when `zemi.win.list()` has
---- no window with its title yet.
+--- reloads, so init.lua should give one a `name` and open it only when
+--- `zemi.win.get(name)` is nil.
 ---@param spec zemi.WinSpec
 ---@return zemi.Win|nil, string|nil
 function zemi.win.open(spec) end
@@ -1209,7 +1211,7 @@ function zemi.win.open(spec) end
 ---@return zemi.Win|nil, string|nil
 function zemi.win.panel(spec) end
 
----@param id integer
+---@param id integer|string an id, or the `name` the calling origin opened it with
 ---@return zemi.Win|nil
 function zemi.win.get(id) end
 
