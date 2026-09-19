@@ -224,7 +224,7 @@ Regions: `header`, `chat`, `working` (above the composer), `statusline.left`,
 ## Events
 
 `app.ready`, `session.new`, `session.open`, `session.close`, `agent.start`,
-`agent.finish`, `agent.error`, `agent.subagent.start`, `agent.subagent.finish`,
+`agent.finish` (session, model, `usage = { ["in"], out, cost }` for this turn), `agent.error`, `agent.subagent.start`, `agent.subagent.finish`,
 `agent.assemble` (return a string or `{ title, text }` to add a system prompt section;
 user, builtin and plugin handlers only), `composer.change`, `tool.denied` (tool, subject, arg, by,
 reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`

@@ -420,6 +420,11 @@ function zemi.command.list() end
 ---@class zemi.ev.AgentError: zemi.Event
 ---@field error string
 
+---@class zemi.ev.AgentFinish: zemi.Event
+---@field session string
+---@field model string
+---@field usage { ["in"]: integer, out: integer, cost: number } This turn's own model calls; subagents and a step resent after compaction are only in `zemi.agent.usage()`.
+
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string
 
@@ -536,6 +541,7 @@ zemi.event = {}
 ---@return string id
 ---@overload fun(name: "session.new"|"session.open"|"session.close", fn: (fun(ev: zemi.ev.Session): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.start"|"agent.text_delta"|"agent.reasoning_delta", fn: (fun(ev: zemi.ev.Text): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.finish", fn: (fun(ev: zemi.ev.AgentFinish): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.error", fn: (fun(ev: zemi.ev.AgentError): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.assemble", fn: (fun(ev: zemi.ev.Assemble): string|{ title?: string, text: string }|nil), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.subagent.start"|"agent.subagent.finish", fn: (fun(ev: zemi.ev.Subagent): any), opts?: zemi.EventOpts): string
@@ -1363,10 +1369,7 @@ function zemi.model.pick() end
 ---@field model string
 ---@field profile string
 
----@class zemi.AgentUsage
----@field ["in"] integer
----@field out integer
----@field total integer
+---@class zemi.AgentUsage: zemi.Usage
 ---@field context_tokens integer
 ---@field context_window integer
 ---@field context_pct number

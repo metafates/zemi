@@ -804,7 +804,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		}
 		h.appendChatMessage(row)
 	} else {
-		h.EmitAsync("agent.finish", map[string]any{})
+		h.EmitAsync("agent.finish", map[string]any{"session": sid, "model": model, "usage": map[string]any{
+			"in": billedInput(usage), "out": usage.OutputTokens, "cost": h.turnCost(model, usage),
+		}})
 	}
 }
 
@@ -1532,17 +1534,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("usage", L.NewFunction(func(L *glua.LState) int {
 		s := h.AgentStream()
-		out := L.NewTable()
-		out.RawSetString("in", glua.LNumber(s.SessionIn))
-		out.RawSetString("out", glua.LNumber(s.SessionOut))
-		out.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
-		out.RawSetString("context_tokens", glua.LNumber(s.LastIn))
-		out.RawSetString("context_window", glua.LNumber(s.CtxWindow))
-		pct := 0.0
-		if s.CtxWindow > 0 {
-			pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
-		}
-		out.RawSetString("context_pct", glua.LNumber(pct))
+		out := usageTable(L, s)
+		contextTable(L, s).ForEach(func(k, v glua.LValue) { out.RawSetString("context_"+k.String(), v) })
 		L.Push(out)
 		return 1
 	}))
