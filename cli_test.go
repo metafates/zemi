@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
@@ -223,28 +224,30 @@ func TestTrustCommand(t *testing.T) {
 		{"untrust", "untrusted", false},
 		{"later", "", false},
 	} {
-		tg, _, _ := newTrustGate(t)
-		tg.ask = func(_, _, state string) string {
-			if state != "not trusted" {
-				t.Errorf("/trust shows state %q", state)
+		tg, _, _ := newTrustGate(t) // outside the bubble, which waits for every goroutine in it: a host's never exit
+		synctest.Test(t, func(t *testing.T) {
+			tg.ask = func(_, _, state string) string {
+				if state != "not trusted" {
+					t.Errorf("/trust shows state %q", state)
+				}
+				return c.answer
 			}
-			return c.answer
-		}
-		reloaded := make(chan struct{}, 1)
-		tg.command(func() { reloaded <- struct{}{} })()
-		select {
-		case <-reloaded:
-			if !c.reloads {
-				t.Errorf("%s: reloaded", c.answer)
+			reloaded := make(chan struct{}, 1)
+			tg.command(func() { reloaded <- struct{}{} })()
+			select {
+			case <-reloaded:
+				if !c.reloads {
+					t.Errorf("%s: reloaded", c.answer)
+				}
+			case <-time.After(500 * time.Millisecond):
+				if c.reloads {
+					t.Errorf("%s: no reload", c.answer)
+				}
 			}
-		case <-time.After(500 * time.Millisecond):
-			if c.reloads {
-				t.Errorf("%s: no reload", c.answer)
+			if got := readTrust(tg.dirs.TrustFile())[tg.dirs.TrustRoot()]; got != c.wantSaved {
+				t.Errorf("%s: saved %q", c.answer, got)
 			}
-		}
-		if got := readTrust(tg.dirs.TrustFile())[tg.dirs.TrustRoot()]; got != c.wantSaved {
-			t.Errorf("%s: saved %q", c.answer, got)
-		}
+		})
 	}
 }
 
