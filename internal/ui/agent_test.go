@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -560,15 +561,17 @@ func TestPromptKeyGrace(t *testing.T) {
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
-	for len(app.testQueue) < cap(app.testQueue) {
+	synctest.Test(t, func(t *testing.T) {
+		// a queue made in the bubble, so Wait sees the ask blocked on it
+		app.testQueue = make(chan tea.Msg, 1)
 		app.do(func() {})
-	}
-	done := make(chan string, 1)
-	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
-	time.Sleep(50 * time.Millisecond) // let the ask reach the full queue before it drains
-	waitPrompt(t, app, func() bool { return app.trust != nil })
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	<-done
+		done := make(chan string, 1)
+		go func() { done <- app.AskTrust("/proj", "/proj", "") }()
+		synctest.Wait()
+		waitPrompt(t, app, func() bool { return app.trust != nil })
+		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+		<-done
+	})
 }
 
 // TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
