@@ -1107,13 +1107,15 @@ func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment
 
 // statusClusters are the statusline's two sides fitted into w cells: the
 // focused window and the left region's widgets followed by the pills that
-// report a broken Lua layer, then the right region's widgets. They need a
-// blank cell between them or they read as one word.
+// report a broken Lua layer, then the right region's widgets.
 func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
 	left, right = a.statuslineSegments(leftRegion), a.statuslineSegments(rightRegion)
 	pills := a.pills()
 	if len(pills) > 0 && pills[0].HL == "Host:BtnSel" {
-		left = append([]hostapi.Segment{pills[0], {Text: " "}}, left...)
+		if len(left) > 0 {
+			left = append([]hostapi.Segment{statusDot}, left...)
+		}
+		left = append([]hostapi.Segment{pills[0]}, left...)
 		pills = pills[1:]
 	}
 	left = append(left, pills...)
@@ -1129,6 +1131,8 @@ func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right
 	return truncateSegs(left, w), nil
 }
 
+var statusDot = hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true}
+
 func (a *App) statuslineSegments(region string) []hostapi.Segment {
 	var out []hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
@@ -1137,7 +1141,7 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 			continue
 		}
 		if len(out) > 0 {
-			out = append(out, hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true})
+			out = append(out, statusDot)
 		}
 		out = append(out, lines[0]...)
 	}

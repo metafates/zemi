@@ -410,16 +410,24 @@ func TestFloatDrag(t *testing.T) {
 }
 
 // TestTextWindowCloseKeys: q and esc close a focused text window, other
-// keys leave it open.
+// keys leave it open. The statusline notes the focus like any other part.
 func TestTextWindowCloseKeys(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
+	a, _ := bootAgentApp(t, 100, 24)
 	defer a.host.Wins.CloseAll()
+	src := `zemi.ui.widget.add({ id = "a", region = "statusline.left", render = function() return {{{ text = "part" }}} end })`
+	if err := a.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
 	for key, closes := range map[string]bool{"q": true, "esc": true, "x": false} {
 		wn, err := a.host.Wins.OpenText(win.Spec{Text: "body"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		a.setFocusWin(wn.ID)
+		a.renderSync(t)
+		if frame := ansi.Strip(a.Frame()); !strings.Contains(frame, "to leave  · part") {
+			t.Fatalf("no separator after the window note:\n%s", frame)
+		}
 		pressKeys(a, key)
 		if _, open := a.host.Wins.Get(wn.ID); open == closes || closes && a.focusWin != 0 {
 			t.Errorf("%s: open %v, focus %d", key, open, a.focusWin)
