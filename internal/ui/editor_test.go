@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -35,13 +36,23 @@ func TestEditFileWindow(t *testing.T) {
 	a.CaptureHooks()
 	defer a.host.Wins.CloseAll()
 	dir := t.TempDir()
+	// the editor stays open until the test has seen its window focused
+	fifo := filepath.Join(dir, "seen")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seen, err := os.OpenFile(fifo, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seen.Close()
 	for _, c := range []struct {
 		code    string
 		cancel  bool
 		wantErr bool
 	}{{"0", false, false}, {"3", false, true}, {"0", true, true}} {
 		script := filepath.Join(dir, "ed"+c.code)
-		if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 0.2\necho edited >\"$1\"\nexit "+c.code+"\n"), 0o755); err != nil {
+		if err := os.WriteFile(script, []byte("#!/bin/sh\nread x <"+fifo+"\necho edited >\"$1\"\nexit "+c.code+"\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		a.host.Settings.SetQuiet("editor.command", script)
@@ -68,6 +79,9 @@ func TestEditFileWindow(t *testing.T) {
 					time.Sleep(5 * time.Millisecond)
 				}
 				if wn := a.focusedWin(); wn != nil && wn.Owner == "editor" && wn.Title() == "Edit f.txt" {
+					if !focused {
+						seen.WriteString("\n")
+					}
 					focused = true
 					if c.cancel {
 						cancel()

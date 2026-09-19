@@ -286,6 +286,7 @@ func TestHoverTargets(t *testing.T) {
 		{"a window's title is not", window, "sleep", 0, 0, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 24)
 			c.open(app)
 			app.renderSync(t)
