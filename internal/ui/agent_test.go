@@ -448,7 +448,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	for _, k := range "/greet b" {
 		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
 	}
-	if !app.palette.open || len(app.palette.args) != 1 || app.palette.args[0] != "bob" || len(app.palette.matches) != 0 {
+	if !app.palette.open || len(app.palette.args) != 1 || app.palette.args[0].Text != "bob" || len(app.palette.matches) != 0 {
 		t.Fatalf("palette args = %+v, matches = %d (open=%v)", app.palette.args, len(app.palette.matches), app.palette.open)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})

@@ -18,8 +18,8 @@ import (
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
-	args     []string // argument candidates once the cursor is past "/name "
-	argStart int      // rune index where the argument under the cursor starts
+	args     []hostapi.CompletionItem // argument candidates once the cursor is past "/name "
+	argStart int                      // rune index where the argument under the cursor starts
 	selected int
 	top      int // first row shown
 }
@@ -55,11 +55,11 @@ func (a *App) updatePalette() {
 		start--
 	}
 	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
-	show := func(cands []string) {
+	show := func(cands []hostapi.CompletionItem) {
 		lead := strings.ToLower(typed)
-		args := []string{}
+		args := []hostapi.CompletionItem{}
 		for _, c := range cands {
-			if strings.HasPrefix(strings.ToLower(c), lead) {
+			if strings.HasPrefix(strings.ToLower(c.Text), lead) {
 				args = append(args, c)
 			}
 		}
@@ -79,9 +79,7 @@ func (a *App) updatePalette() {
 	a.background(func() {
 		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
 		if lua {
-			for _, it := range a.host.Complete(context.Background(), "", name, typed, line) {
-				cands = append(cands, it.Text)
-			}
+			cands = append(cands, a.host.Complete(context.Background(), "", name, typed, line)...)
 		}
 		a.do(func() {
 			if string(a.composer.runes()[:a.composer.cursor]) == line {
@@ -124,7 +122,7 @@ func (a *App) acceptPalette() {
 		return
 	}
 	if p.args != nil {
-		a.composer.replace(p.argStart, p.args[p.selected]+" ")
+		a.composer.replace(p.argStart, p.args[p.selected].Text+" ")
 	} else {
 		a.composer.text = "/" + p.matches[p.selected].Name + " "
 		a.composer.moveEnd()
@@ -142,8 +140,8 @@ func (a *App) paletteRows() [][]hostapi.Segment {
 	for _, c := range p.matches {
 		items = append(items, listItem{label: "/" + c.Name, desc: c.Desc})
 	}
-	for _, s := range p.args {
-		items = append(items, listItem{label: s})
+	for _, c := range p.args {
+		items = append(items, listItem{label: c.Text, desc: c.Desc})
 	}
 	return listRows(items, p.selected, &p.top, 8)
 }

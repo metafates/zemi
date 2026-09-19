@@ -58,7 +58,7 @@ assert(not ok and tostring(err):find("one punctuation"), tostring(err))`)
 	pressKeys(app, "/greet ")
 	for app.Pump() {
 	}
-	if p := app.palette; !p.open || len(p.args) != 1 || p.args[0] != "bob" {
+	if p := app.palette; !p.open || len(p.args) != 1 || p.args[0].Text != "bob" {
 		t.Fatalf("argument candidates: %+v", p)
 	}
 

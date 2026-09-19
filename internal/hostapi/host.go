@@ -1283,9 +1283,8 @@ func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
 		L.Push(o.OnSelect)
 		L.Push(itemV)
 		if err := L.PCall(1, 0, nil); err != nil {
-			h.Log.Error("ui", "overlay on_select failed", map[string]any{
-				"id": o.ID, "error": err.Error(),
-			})
+			h.Log.Error("ui", "overlay on_select failed", map[string]any{"id": o.ID, "error": err.Error()})
+			h.RecordError("overlay "+o.ID+" on_select", err.Error())
 		}
 		L.SetTop(base)
 		return nil, nil
@@ -1300,9 +1299,8 @@ func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
 			base := L.GetTop()
 			L.Push(o.OnClose)
 			if err := L.PCall(0, 0, nil); err != nil {
-				h.Log.Error("ui", "overlay on_close failed", map[string]any{
-					"id": o.ID, "error": err.Error(),
-				})
+				h.Log.Error("ui", "overlay on_close failed", map[string]any{"id": o.ID, "error": err.Error()})
+				h.RecordError("overlay "+o.ID+" on_close", err.Error())
 			}
 			L.SetTop(base)
 			return nil, nil
@@ -1408,7 +1406,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.53.0"))
+	api.RawSetString("version", glua.LString("0.54.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

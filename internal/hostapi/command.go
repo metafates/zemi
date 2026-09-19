@@ -151,17 +151,19 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 }
 
 // CompleteCommand returns argument candidates for a command line from the
-// command's Go completer or its Lua complete(arg_lead, cmdline). Results are
-// sanitized and capped; a failing completer offers nothing.
-func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []string {
+// command's Go completer or its Lua complete(arg_lead, cmdline), sanitized
+// and capped; a failing completer offers nothing and lands in /errors.
+func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []CompletionItem {
 	cmd := h.Commands.Lookup(name)
 	if cmd == nil {
 		return nil
 	}
-	var out []string
+	var out []CompletionItem
 	switch {
 	case cmd.GoComplete != nil:
-		out = cmd.GoComplete(h, lead, line)
+		for _, s := range cmd.GoComplete(h, lead, line) {
+			out = append(out, CompletionItem{Text: sanitize.String(s)})
+		}
 	case cmd.Complete != nil:
 		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 			// looked up before a reload, the function belongs to a dropped LState
@@ -181,22 +183,15 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []s
 			return []any{v}, err
 		})
 		if err != nil {
+			if !isQuietLuaErr(err) {
+				h.Log.Error("ui", "command completer failed", map[string]any{"command": name, "error": err.Error()})
+				h.RecordError("command "+name+" complete", err.Error())
+			}
 			return nil
 		}
-		list, _ := res[0].([]any)
-		for _, v := range list {
-			if s, ok := v.(string); ok {
-				out = append(out, s)
-			}
-		}
+		out = completionItems(res[0])
 	}
-	if len(out) > 50 {
-		out = out[:50]
-	}
-	for i := range out {
-		out[i] = sanitize.String(out[i])
-	}
-	return out
+	return out[:min(len(out), maxCompletions)]
 }
 
 // subcommandCompleter completes the first argument from a fixed list and,

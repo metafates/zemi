@@ -203,7 +203,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 			t.Fatal("the completer never answered")
 		}
 	}
-	if len(app.palette.args) != 1 || app.palette.args[0] != "bob" {
+	if len(app.palette.args) != 1 || app.palette.args[0].Text != "bob" {
 		t.Fatalf("palette args %v", app.palette.args)
 	}
 }

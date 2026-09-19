@@ -73,7 +73,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.53.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.54.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -696,5 +696,29 @@ func TestShortOutput(t *testing.T) {
 	}
 	if got := shortOutput("a\nb"); got != "a\nb" {
 		t.Errorf("short output changed: %q", got)
+	}
+}
+
+// TestOverlayCallbackErrorsRecorded: a raising on_select or on_close reaches
+// /errors, like a timer's or an event handler's.
+func TestOverlayCallbackErrorsRecorded(t *testing.T) {
+	h, r := newTestHost(t)
+	var boom *glua.LFunction
+	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		boom = L.NewFunction(func(L *glua.LState) int { L.RaiseError("nope"); return 0 })
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: boom, OnClose: boom, Items: []any{"a"}}
+	for source, run := range map[string]func(){
+		"overlay x on_select": func() { h.SelectOverlay(context.Background(), o, 0) },
+		"overlay x on_close":  func() { h.CancelOverlay(context.Background(), o) },
+	} {
+		h.errs.entries = nil
+		run()
+		if len(h.errs.entries) != 1 || h.errs.entries[0].source != source {
+			t.Errorf("%s: errors = %+v", source, h.errs.entries)
+		}
 	}
 }

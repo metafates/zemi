@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,12 +15,18 @@ import (
 // argument candidates; Go subcommand completers switch lists by position.
 func TestCompleteCommand(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.command.add("greet", function() end, {
-		nargs = "*",
-		complete = function(lead, line) return { "alice", "bob", lead } end,
-	})`)
-	if got := h.CompleteCommand(context.Background(), "greet", "a", "/greet a"); strings.Join(got, ",") != "alice,bob,a" {
-		t.Fatalf("lua complete = %q", got)
+	runUser(t, r, `
+		zemi.command.add("greet", function() end, {
+			nargs = "*",
+			complete = function(lead, line) return { "alice", { text = "bob", desc = "builder" }, lead } end,
+		})
+		zemi.command.add("boom", function() end, { nargs = "*", complete = function() error("nope") end })
+	`)
+	if got := fmt.Sprint(h.CompleteCommand(context.Background(), "greet", "a", "/greet a")); got != "[{alice } {bob builder} {a }]" {
+		t.Fatalf("lua complete = %s", got)
+	}
+	if got := h.CompleteCommand(context.Background(), "boom", "", "/boom "); got != nil || !strings.Contains(h.errs.entries[0].msg, "nope") {
+		t.Fatalf("failing completer = %v, errors %+v", got, h.errs.entries)
 	}
 
 	comp := subcommandCompleter([]string{"enable", "disable"}, func(*Host, string) []string { return []string{"lint"} })

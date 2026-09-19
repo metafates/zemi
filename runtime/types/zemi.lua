@@ -355,7 +355,7 @@ function zemi.keymap.list() end
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
 ---@field nargs? ""|"?"|"*"|"+" Arguments the command takes: "" none (the default), "?" at most one, "+" one or more, "*" any. A line with the wrong count is refused and the handler never runs.
----@field complete? fun(lead: string, line: string): string[]
+---@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; the palette keeps the rows that start with `lead`. An error lands in /errors.
 
 ---@class zemi.Command
 ---@field name string

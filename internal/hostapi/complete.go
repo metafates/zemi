@@ -52,7 +52,7 @@ func (h *Host) HasCompletions(trigger, command string) bool {
 
 // Complete runs the Lua sources for trigger or command, each under its
 // origin, and returns their sanitized items in registration order. A
-// failing source offers nothing. It waits on the interpreter: never call it
+// failing source offers nothing and lands in /errors. It waits on the interpreter: never call it
 // on the UI goroutine.
 func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string) []CompletionItem {
 	h.completions.mu.Lock()
@@ -74,7 +74,8 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 			}
 			items, err := h.callSource(L, s, lead, line)
 			if err != nil {
-				h.Log.Debug("ui", "completion source failed", map[string]any{"id": s.id, "error": err.Error()})
+				h.Log.Error("ui", "completion source failed", map[string]any{"id": s.id, "error": err.Error()})
+				h.RecordError("completion "+s.id, err.Error())
 				continue
 			}
 			out = append(out, items...)
@@ -98,6 +99,12 @@ func (h *Host) callSource(L *glua.LState, s completionSource, lead, line string)
 	if err != nil {
 		return nil, err
 	}
+	return completionItems(v), nil
+}
+
+// completionItems reads what a completer returned: a list of strings or
+// { text, desc } rows, sanitized, rows without text dropped.
+func completionItems(v any) []CompletionItem {
 	list, _ := v.([]any)
 	var out []CompletionItem
 	for _, item := range list {
@@ -110,7 +117,7 @@ func (h *Host) callSource(L *glua.LState, s completionSource, lead, line string)
 			out = append(out, CompletionItem{Text: sanitize.Line(text), Desc: sanitize.Line(desc)})
 		}
 	}
-	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" }), nil
+	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" })
 }
 
 // addCompletion is zemi.composer.complete(spec).
