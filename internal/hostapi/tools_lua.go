@@ -274,6 +274,9 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 	}
+	if err := tools.Validate(a.Info(), input); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
 	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
 		return resp, err
 	}
@@ -292,7 +295,9 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 // runLuaTool executes the Lua callback on the interpreter (the fantasy
 // tool goroutine blocks here; one interpreter serializes Lua tools), so an
 // interrupt preempts it. A string result or a table's output field is the
-// output; anything else is sent as JSON.
+// output; anything else is sent as JSON. nil, err fails the call with err
+// alone (DESIGN §6.0). A raised error reaches the model without its
+// traceback, which names the user's config paths; /errors keeps it.
 func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any) (string, error) {
 	res, err := h.RT.Do(ctx, lua.ClassAgent, t.Timeout, 5*time.Second,
 		func(L *glua.LState) ([]any, error) {
@@ -306,10 +311,18 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any)
 			L.Push(t.Fn)
 			L.Push(lua.FromGo(L, input))
 			L.Push(lua.FromGo(L, map[string]any{"name": t.Name, "origin": string(t.Origin)}))
-			if err := L.PCall(2, 1, nil); err != nil {
+			if err := L.PCall(2, 2, nil); err != nil {
+				// an interrupt or timeout raises too, and is no config bug
+				if ae, ok := errors.AsType[*glua.ApiError](err); ok && L.Context().Err() == nil {
+					h.RecordError("tool "+t.Name, err.Error())
+					return nil, errors.New(ae.Object.String())
+				}
 				return nil, err
 			}
-			v, err := lua.ToGo(L.Get(-1))
+			if msg := L.Get(-1); L.Get(-2) == glua.LNil && msg != glua.LNil {
+				return nil, errors.New(msg.String())
+			}
+			v, err := lua.ToGo(L.Get(-2))
 			return []any{v}, err
 		})
 	if err != nil {

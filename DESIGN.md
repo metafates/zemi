@@ -757,7 +757,8 @@ zemi.tool.add({
   parallel = false,
   timeout_ms = 5000,
   -- execute returns a string, { output = string }, or a table sent as JSON;
-  -- errors: `error(msg)` is caught and becomes a tool error result.
+  -- `nil, err` is a tool error result (§6.0); a raise is one too, its
+  -- traceback kept for /errors.
   execute = function(args, call)             -- call: { name, origin }
     -- zemi.job.wait blocks the queue; timeout_ms bounds it
     return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }

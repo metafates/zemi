@@ -121,7 +121,7 @@ it did. `event.on` and `config.watch` hand back the id their `off` and `unwatch`
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule.add({ subject, pattern, decision, match, not_match, not_match_example })` (any origin may add deny and ask rules; allow rules need user config; the subject starts with `tool. fs. net. lua. mcp. memory.`; `match` is required and is an argument the pattern must catch, checked here, and `not_match` needs `not_match_example` too), `rule.list()`, `mode.add(name, spec)`, `mode.del(name)`, `mode.list()` (modes: user config only; see zemi-config) |
-| `zemi.tool` | `add({ name, description, input, required, execute, timeout_ms, parallel })` (`input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises), `override(name, { pre = fn })` (not from project or learned code), `list` |
+| `zemi.tool` | `add({ name, description, input, required, execute, timeout_ms, parallel })` (`input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises; the call is checked against `required` and the types before `execute` runs, which fails with `return nil, err`: a raise works too but puts file and line in front of the message; a string parameter named `about` is the row's label), `override(name, { pre = fn })` (not from project or learned code), `list` |
 | `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep` |
 | `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })`. http/https only, no userinfo, and loopback, RFC1918 and metadata addresses are refused at connect time, per redirect hop; an explicit user allow rule for the host is the localhost opt-in (project and learned code never get it) |
 | `zemi.win` | `open({ cmd, kind = "split"/"vsplit"/"float", title, cols, rows, focus, hidden, on_exit(info) })` -> `{ id, keys(notation), mouse({ x, y, kind, button, mod }), send(text), text(), wait_text(want, ms), info(), focus(), set({ kind, hidden, frac, cols, rows, x, y, title }), close() }` (a program in a real terminal drawn inside zemi; needs `lua.job.start` allowed; from user config its OSC 52 clipboard writes reach the host; windows survive reloads, so init.lua opens one only when `list()` has none with its title), `panel({ text, markdown, kind, title, cols, rows, focus, hidden })` -> the same handle plus `set_text(text)` and `append(text)` (a window whose body is text, not a program: markdown renders like the chat and re-wraps on resize, one with no size takes the cells the text needs, at most half its box, arrows and page keys scroll it, `append` follows the end unless the user scrolled up), `get(id)`, `list()` (editor windows only for user config), `close(id)`, `focus(id)` |
@@ -175,7 +175,10 @@ zemi.tool.add({
   name = "ticket", description = "look up a ticket title by id",
   input = { id = { type = "string" } },   -- the parameters, flat
   required = { "id" },
-  execute = function(args) return "ticket " .. args.id end,
+  execute = function(args)
+    if not args.id:match("^%u+-%d+$") then return nil, "not a ticket id: " .. args.id end
+    return "ticket " .. args.id
+  end,
 })
 
 -- Subagents and workflows run off the interpreter; callbacks fire when done

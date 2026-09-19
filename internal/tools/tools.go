@@ -426,7 +426,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 	}
-	if err := validate(t.info, input); err != nil {
+	if err := Validate(t.info, input); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	pipe := t.pipe
@@ -442,7 +442,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 				// The rewritten input re-enters at the permission gate
 				// below (never skips it, DESIGN §6.4); a per-run pipeline
 				// copy keeps concurrent tools race-free.
-				if err := validate(t.info, rewritten); err != nil {
+				if err := Validate(t.info, rewritten); err != nil {
 					return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
 				}
 				input = rewritten
@@ -501,7 +501,8 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 	return res
 }
 
-func validate(info fantasy.ToolInfo, input map[string]any) error {
+// Validate is the schema check every tool call passes before its events and gate.
+func Validate(info fantasy.ToolInfo, input map[string]any) error {
 	return validateFields(info.Parameters, info.Required, input, "")
 }
 

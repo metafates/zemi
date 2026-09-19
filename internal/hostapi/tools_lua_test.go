@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -41,6 +42,41 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	}
 	if len(ui.asked) != 1 || ui.asked[0].Preview != input {
 		t.Fatalf("asked %+v", ui.asked)
+	}
+}
+
+func TestLuaToolFailures(t *testing.T) {
+	h, r := newTestHost(t)
+	h.Perm.Add(perm.Rule{Subject: "tool.ticket", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `zemi.tool.add({
+		name = "ticket", description = "look up a ticket",
+		input = { id = { type = "string" } }, required = { "id" },
+		execute = function(args)
+			if args.id == "raise" then error("boom") end
+			if args.id == "spin" then while true do end end
+			if args.id == "fail" then return nil, "no such ticket" end
+			return "ticket " .. args.id
+		end,
+	})`)
+	tool := h.luaFantasyTools(h.PipelineFor())[0]
+	for input, want := range map[string]string{
+		`{"id":"raise"}`: "boom",
+		`{"id":"fail"}`:  "ticket: no such ticket",
+		`{}`:             `missing required field "id"`,
+		`{"id":1}`:       `field "id" must be string`,
+	} {
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: input})
+		if err != nil || !resp.IsError || !strings.HasSuffix(resp.Content, want) {
+			t.Errorf("%s: resp = %+v, %v, want an error ending in %q", input, resp, err, want)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if resp, err := tool.Run(ctx, fantasy.ToolCall{Input: `{"id":"spin"}`}); err != nil || !resp.IsError {
+		t.Errorf("interrupted: resp = %+v, %v, want an error result", resp, err)
+	}
+	if errs := h.errs.entries; len(errs) != 1 || !strings.Contains(errs[0].msg, "stack traceback") {
+		t.Errorf("/errors = %+v, want the raise with its traceback", errs)
 	}
 }
 

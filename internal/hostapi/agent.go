@@ -844,17 +844,20 @@ func capLines(s string, n int) string {
 	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... %d more lines", len(lines)-n)
 }
 
-// toolLabel is what a model says a command is about (bash, job_start),
-// shown in place of the command; "" for other tools. Rows stored before the
-// argument was renamed hold "description".
+// toolLabel is what a model says a call is about, shown in place of its
+// input. Command rows stored before the argument was renamed hold
+// "description", which other tools use for something else.
 func toolLabel(input string) string {
 	var in struct {
 		Command     string `json:"command"`
 		About       string `json:"about"`
 		Description string `json:"description"`
 	}
-	if json.Unmarshal([]byte(input), &in) != nil || in.Command == "" {
+	if json.Unmarshal([]byte(input), &in) != nil {
 		return ""
+	}
+	if in.Command == "" {
+		in.Description = ""
 	}
 	return cleanLabel(cmp.Or(in.About, in.Description))
 }
