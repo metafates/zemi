@@ -208,7 +208,7 @@ func TestProfileSegment(t *testing.T) {
 	for _, c := range []struct {
 		profile string
 		shown   bool
-	}{{"default", false}, {"terse", true}, {"default", false}} {
+	}{{"terse", true}, {"default", false}} {
 		if err := host.SetProfile(c.profile); err != nil {
 			t.Fatal(err)
 		}

@@ -1397,9 +1397,8 @@ func (h *Host) ProfileNames() []string {
 
 // SetProfile switches the profile the next send runs as (/profile <name>).
 func (h *Host) SetProfile(name string) error {
-	name = cmp.Or(name, "default")
 	if _, err := h.resolveProfile(name); err != nil {
-		return fmt.Errorf("%w (want %s)", err, strings.Join(h.ProfileNames(), ", "))
+		return fmt.Errorf("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
 	return h.setWatched("agent.profile", name)
 }
@@ -1413,9 +1412,9 @@ func (h *Host) OpenProfilePicker() error {
 	cur, sel := h.Settings.Str("agent.profile"), 0
 	var items []any
 	for i, name := range h.ProfileNames() {
-		item := map[string]any{"text": name, "run": "profile " + name}
+		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
 		if p, _ := h.resolveProfile(name); p != nil {
-			item["desc"] = strings.TrimSpace(p.Model + " " + strings.Join(p.Tools, " "))
+			item["desc"] = profileDesc(p)
 		}
 		if name == cur {
 			item["key"], sel = "current", i
@@ -1424,6 +1423,21 @@ func (h *Host) OpenProfilePicker() error {
 	}
 	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
 	return nil
+}
+
+// profileDesc says in words what a profile changes, for its picker row.
+func profileDesc(p *Profile) string {
+	tools := "every tool"
+	if len(p.Tools) > 0 {
+		tools = "only " + strings.Join(p.Tools, ", ")
+		if !slices.ContainsFunc(p.Tools, func(t string) bool { return !strings.HasPrefix(t, "-") }) {
+			tools = "every tool but " + strings.ReplaceAll(tools[len("only -"):], ", -", ", ")
+		}
+	}
+	if p.Model != "" {
+		return p.Model + " - " + tools
+	}
+	return tools
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {

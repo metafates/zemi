@@ -935,7 +935,6 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 func TestActiveProfileKey(t *testing.T) {
 	for _, c := range []struct {
 		name, src string
-		reload    bool
 		want      string // the resolved profile, "" for the shipped one
 		wantErr   bool
 	}{
@@ -943,28 +942,9 @@ func TestActiveProfileKey(t *testing.T) {
 		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
 		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
-		{name: "config dropped the profile", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, reload: true},
 	} {
 		h, r := newTestHost(t)
-		if c.reload {
-			dir, log := t.TempDir(), logging.New(t.TempDir())
-			h = NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}}), log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-			initLua := filepath.Join(dir, "init.lua")
-			steps := []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
-			for _, src := range []string{c.src, ""} {
-				if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				if err := h.ForceReload(t.Context(), steps); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if _, err := h.resolveProfile("p"); err == nil {
-				t.Errorf("%s: the definition survived", c.name)
-			}
-		} else {
-			runUser(t, r, c.src)
-		}
+		runUser(t, r, c.src)
 		p, err := h.resolveProfile("")
 		got := ""
 		if p != nil {
@@ -973,6 +953,12 @@ func TestActiveProfileKey(t *testing.T) {
 		if (err != nil) != c.wantErr || got != c.want {
 			t.Errorf("%s: profile %q, err %v", c.name, got, err)
 		}
+	}
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.agent.profile("p", {})`)
+	h.PurgeGeneration()
+	if _, err := h.resolveProfile("p"); err == nil {
+		t.Error("a purge kept the definition")
 	}
 }
 
@@ -1005,6 +991,15 @@ func TestProfileSwitch(t *testing.T) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
 		}
 	}
+	for p, want := range map[*Profile]string{
+		{}:                                   "every tool",
+		{Tools: []string{"-window", "-Lua"}}: "every tool but window, Lua",
+		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m - only bash, read",
+	} {
+		if got := profileDesc(p); got != want {
+			t.Errorf("desc %q, want %q", got, want)
+		}
+	}
 	if h.OpenProfilePicker() != nil || h.OpenModelPicker() != nil {
 		t.Fatal("a picker did not open")
 	}
@@ -1013,9 +1008,6 @@ func TestProfileSwitch(t *testing.T) {
 		if item["key"] != "current" || !strings.Contains(item["text"].(string), "cheap") {
 			t.Errorf("%s picker marks %v", o.ID, item)
 		}
-	}
-	if err := h.SetProfile(""); err != nil || h.Settings.Str("agent.profile") != "default" {
-		t.Errorf("empty name: err %v, profile %q", err, h.Settings.Str("agent.profile"))
 	}
 }
 

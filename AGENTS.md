@@ -387,10 +387,8 @@ lua-language-server is installed.
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
   fails the send. `defaultui/init.lua` ships one, `lean`: a `-name` denylist of the heavy,
-  rarely called schemas (`window`, `workflow`, `Lua`, `job_start`, `open_in_editor`, `lsp`,
-  7.2k of 17.2k schema characters), so a new tool is in it by default and user config
-  redefines it by name. `job_read` and `job_kill` stay because bash hands a command past its
-  timeout to them.
+  rarely called schemas, so a new tool is in it by default and user config redefines it by
+  name.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
