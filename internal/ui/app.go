@@ -1042,24 +1042,25 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	return lines
 }
 
-// pills are the Go-drawn statusline pills: the focused window, then what
-// reports a broken Lua layer (DESIGN §8).
+// pills are the Go-drawn statusline notes: the focused window, then what
+// reports a broken Lua layer (DESIGN §8), as plain text after a dot like the
+// rest of the rule.
 func (a *App) pills() []hostapi.Segment {
 	var out []hostapi.Segment
 	if wn := a.focusedWin(); wn != nil {
 		out = append(out, hostapi.Segment{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"})
 	}
 	pill := func(text, click string) {
-		out = append(out, hostapi.Segment{Text: "  "}, hostapi.Segment{Text: text, HL: "ToastError", Click: click})
+		out = append(out, hostapi.Segment{Text: " · ", HL: "Comment"}, hostapi.Segment{Text: text, HL: "Danger", Click: click})
 	}
 	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
-		pill(" boot failed ", "errors")
+		pill("boot failed", "errors")
 	} else if a.host.RT.IsHot() {
-		pill(" stuck: /reload ", "reload")
+		pill("stuck: /reload", "reload")
 	}
 	if a.host.HasUnseenErrors() {
-		pill(" errors: /errors ", "errors")
+		pill("errors: /errors", "errors")
 	}
 	return out
 }

@@ -16,6 +16,7 @@ local function theme(palette)
     Rule = { fg = "rule" },
     -- the composer frame while the draft goes to the shell, not the model
     RuleShell = { fg = "yellow" },
+    RuleCommand = { fg = "accent" },
     Title = { fg = "accent", bold = true },
     Selected = { fg = "accent", bold = true },
     Button = { fg = "accent" },
@@ -27,7 +28,6 @@ local function theme(palette)
     ToastInfo = { fg = "accent", bold = true },
     ToastWarn = { fg = "yellow", bold = true },
     ToastErr = { fg = "red", bold = true },
-    ToastError = { fg = "red", bg = "panel", bold = true },
     MarkdownHeading = { link = "Title" },
     -- an inline span reads by its color: glamour pads it with a space either
     -- side, and a filled background would hang off the text as a stray block
@@ -66,6 +66,7 @@ local function theme(palette)
     PromptYolo = { fg = "red", bold = true },
     -- the shell glyph: what follows goes to the shell, not to the model
     PromptShell = { fg = "yellow", bold = true },
+    PromptCommand = { fg = "accent", bold = true },
     Queued = { link = "Dim" },
     SplashKey = { link = "Button" },
     ScrollbarTrack = { link = "Dim" },

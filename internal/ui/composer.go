@@ -379,9 +379,9 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	if promptHL == "" {
 		promptHL = "Comment"
 	}
-	if strings.HasPrefix(a.composer.text, "!") && len(rows) > 0 && len(rows[0]) > 0 {
-		// the glyph stands for the draft's own "!", so the row leaves it out
-		prefix, promptHL = "! ", "PromptShell"
+	if glyph, hl, _ := a.draftMode(); glyph != "" && len(rows) > 0 && len(rows[0]) > 0 {
+		// the glyph stands for the draft's own first character, so the row leaves it out
+		prefix, promptHL = glyph+" ", hl
 		rows[0] = rows[0][1:]
 		if cursorRow == 0 {
 			cursorCol = max(cursorCol-1, 0)
@@ -410,6 +410,18 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	return out
 }
 
+// draftMode is what a draft's first character turns the composer into: "!"
+// runs a shell command, "/" a slash command; neither reaches the model.
+func (a *App) draftMode() (glyph, promptHL, ruleHL string) {
+	switch {
+	case strings.HasPrefix(a.composer.text, "!"):
+		return "!", "PromptShell", "RuleShell"
+	case strings.HasPrefix(a.composer.text, "/"):
+		return "/", "PromptCommand", "RuleCommand"
+	}
+	return "", "", ""
+}
+
 // frameInner is the cells a row inside the composer frame may use: the two
 // border columns and a space beside each.
 func frameInner(w int) int { return max(w-4, 1) }
@@ -420,8 +432,8 @@ func frameInner(w int) int { return max(w-4, 1) }
 // and never how many rows the frame takes, so nothing above it reflows.
 func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 	hl := "Rule"
-	if strings.HasPrefix(a.composer.text, "!") {
-		hl = "RuleShell" // a shell draft tints the whole frame, not just its glyph
+	if _, _, rule := a.draftMode(); rule != "" {
+		hl = rule // a shell or command draft tints the whole frame, not just its glyph
 	}
 	inner := frameInner(w)
 	// the top region draws its rule corner to corner; its "Rule" cells take
