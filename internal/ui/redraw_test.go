@@ -32,8 +32,10 @@ func TestRedrawAfterCallbacks(t *testing.T) {
 	runLua(t, app, `
 local n = 0
 zemi.ui.widget.add({ id = "n", region = "header", render = function() return { { { text = "n=" .. n } } } end })
-zemi.timer.after(0, function() n = 10 end)`)
+zemi.event.on("user.tick", function() zemi.timer.after(0, function() n = 10 end) end)`)
+	// Read before the timer exists: its refresh can land while runLua still pumps.
 	gen := app.frameGen
+	runLua(t, app, `zemi.event.emit("user.tick")`)
 	for deadline := time.Now().Add(3 * time.Second); app.frameGen == gen; time.Sleep(5 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the timer callback did not redraw")
