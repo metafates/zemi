@@ -244,19 +244,24 @@ func TestTailStart(t *testing.T) {
 func TestPruneToolOutput(t *testing.T) {
 	for _, c := range []struct {
 		name      string
+		window    int64
+		kept      int
 		oldTokens int
 		wantFreed int64
 	}{
-		{"a small saving clears nothing", 10_000, 0},
-		{"old output past the kept 40k is cleared", 30_000, 30_000},
+		{"a small saving clears nothing", 0, toolKeepTokens, 10_000, 0},
+		{"old output past the kept 40k is cleared", 0, toolKeepTokens, 30_000, 30_000},
+		{"a 200k window keeps 40k too", 200_000, toolKeepTokens, 10_000, 0},
+		{"a 32k window keeps 4k", 32_000, 4_000, 10_000, 10_000},
+		{"a small window's saving has a floor", 32_000, 4_000, 3_000, 0},
 	} {
-		history := []fantasy.Message{toolResult("old", c.oldTokens), toolResult("new", toolKeepTokens)}
-		out, freed := pruneToolOutput(history, false)
+		history := []fantasy.Message{toolResult("old", c.oldTokens), toolResult("new", c.kept)}
+		out, freed := pruneToolOutput(history, c.window, false)
 		if freed != c.wantFreed {
 			t.Errorf("%s: freed %d, want %d", c.name, freed, c.wantFreed)
 		}
 		cleared := toolText(out[0].Content[0].(fantasy.ToolResultPart)) == clearedOutput
-		if cleared != (c.wantFreed > 0) || estTokens(out[1]) != toolKeepTokens || estTokens(history[0]) != int64(c.oldTokens) {
+		if cleared != (c.wantFreed > 0) || estTokens(out[1]) != int64(c.kept) || estTokens(history[0]) != int64(c.oldTokens) {
 			t.Errorf("%s: cleared %v, newest %d tokens, input %d tokens", c.name, cleared, estTokens(out[1]), estTokens(history[0]))
 		}
 	}
@@ -271,7 +276,7 @@ func TestPruneKeepsUserWords(t *testing.T) {
 		}},
 		toolResult("old", 30_000), toolResult("new", toolKeepTokens),
 	}
-	if _, freed := pruneToolOutput(history, true); freed != 0 {
+	if _, freed := pruneToolOutput(history, 0, true); freed != 0 {
 		t.Fatalf("the user's answer was cleared: %d tokens", freed)
 	}
 }
@@ -284,7 +289,7 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 		agent.UserMessage("old ask"), toolResult("old", 30_000),
 		agent.UserMessage("live ask"), toolResult("live", 50_000),
 	}
-	out, freed := pruneToolOutput(history, false)
+	out, freed := pruneToolOutput(history, 0, false)
 	if freed != 30_000 {
 		t.Fatalf("freed %d tokens, want the old 30000", freed)
 	}
@@ -300,10 +305,10 @@ func TestPruneKeepsRunningTurn(t *testing.T) {
 // so clearing its old output cannot wait for a user message that never comes.
 func TestPruneInTurnClearsSubagentOutput(t *testing.T) {
 	history := []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}
-	if _, freed := pruneToolOutput(history, false); freed != 0 {
+	if _, freed := pruneToolOutput(history, 0, false); freed != 0 {
 		t.Fatalf("a running turn's output was cleared: %d tokens", freed)
 	}
-	out, freed := pruneToolOutput(history, true)
+	out, freed := pruneToolOutput(history, 0, true)
 	if freed != 30_000 || toolText(out[1].Content[0].(fantasy.ToolResultPart)) != clearedOutput {
 		t.Fatalf("freed %d tokens, old output %q", freed, toolText(out[1].Content[0].(fantasy.ToolResultPart)))
 	}

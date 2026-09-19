@@ -26,8 +26,8 @@ const (
 	compactBuffer   = 13_000
 	compactMaxFails = 3
 	summaryMaxOut   = compactReserve // the reply room compaction plans for
-	toolKeepTokens  = 40_000         // newest tool output pruning leaves alone
-	pruneMinTokens  = 20_000         // a smaller saving is not worth a prompt cache miss
+	toolKeepTokens  = 40_000         // ceiling on the newest tool output pruning leaves alone
+	pruneMinTokens  = 4_000          // a smaller saving is not worth a prompt cache miss
 
 	compactAuto     = "auto"
 	compactOverflow = "overflow"
@@ -252,7 +252,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	window := h.AgentStream().CtxWindow
 	threshold := compactThreshold(window)
 	if reason != compactManual {
-		pruned, freed := pruneToolOutput(history, false)
+		pruned, freed := pruneToolOutput(history, window, false)
 		h.agents.mu.Lock()
 		used := h.agents.lastIn - freed
 		h.agents.mu.Unlock()
@@ -448,12 +448,18 @@ func tailStart(history []fantasy.Message, keep int64) int {
 // words, which nothing else in the history holds.
 var keptTools = []string{"skill", "question", "plan", "open_in_editor"}
 
-// pruneToolOutput clears tool results older than the newest toolKeepTokens
-// of them when that frees at least pruneMinTokens, and returns what it
-// freed. inTurn also clears what the running turn produced, which only a
-// subagent asks for: its whole run is one turn. The input history is not
-// modified.
-func pruneToolOutput(history []fantasy.Message, inTurn bool) ([]fantasy.Message, int64) {
+// pruneToolOutput clears tool results older than the newest kept tokens of
+// them when that frees at least max(kept/2, pruneMinTokens), and returns
+// what it freed. kept is a quarter of the compaction threshold capped at
+// toolKeepTokens, so a small window can prune and a 200k one is unchanged;
+// an unknown window keeps the cap. inTurn also clears what the running turn
+// produced, which only a subagent asks for: its whole run is one turn. The
+// input history is not modified.
+func pruneToolOutput(history []fantasy.Message, window int64, inTurn bool) ([]fantasy.Message, int64) {
+	kept := int64(toolKeepTokens)
+	if window > 0 {
+		kept = min(kept, compactThreshold(window)/4)
+	}
 	keep := map[string]bool{}
 	for _, m := range history {
 		for _, part := range m.Content {
@@ -485,12 +491,12 @@ func pruneToolOutput(history []fantasy.Message, inTurn bool) ([]fantasy.Message,
 				continue
 			}
 			n := int64(len(text) / 4)
-			if seen += n; seen > toolKeepTokens && i < live {
+			if seen += n; seen > kept && i < live {
 				old, freed = append(old, loc{i, j}), freed+n
 			}
 		}
 	}
-	if freed < pruneMinTokens {
+	if freed < max(kept/2, pruneMinTokens) {
 		return history, 0
 	}
 	out := slices.Clone(history)

@@ -381,7 +381,7 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 			capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():
-			history, freed := pruneToolOutput(runner.History, true)
+			history, freed := pruneToolOutput(runner.History, h.contextWindow(modelID), true)
 			if freed == 0 {
 				return err // nothing left to clear: the report is what it has
 			}
