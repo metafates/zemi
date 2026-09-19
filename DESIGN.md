@@ -1140,7 +1140,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   the context-window percent, warning colors past 80%/95%).
   Overlays float, centered or anchored (`anchor = "bottom"`: bottom-left
   of the chat, over the statusline that opened it). A Lua overlay has
-  every field a Go-built menu uses (`anchor`, `selected`, `render_item`
+  every field a Go-built menu uses (`anchor`, `selected`, a `body` of
+  styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row outside a filter,
   and the toggle-list `reload` `/skills` uses: a function returning the

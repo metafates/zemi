@@ -132,7 +132,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	o.Title, o.Body, o.Empty = sanitize.Line(o.Title), sanitize.String(o.Body), sanitize.String(o.Empty)
 	for _, row := range o.BodySegs { // drawn in Body's place, so it needs Body's scrubbing
 		for i := range row {
-			row[i].Text = sanitize.String(row[i].Text)
+			// only text and hl: a click id or effect here would act as Go chrome's
+			row[i] = hostapi.Segment{Text: sanitize.String(row[i].Text), HL: row[i].HL}
 		}
 	}
 	st := overlayState{o: o}

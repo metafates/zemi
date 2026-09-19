@@ -524,6 +524,25 @@ func TestOverlaySegmentLabel(t *testing.T) {
 	}
 }
 
+// TestOverlayBodyLines: a body of lines keeps its highlights and nothing
+// else, y copies its text, and markdown reaches the detail views.
+func TestOverlayBodyLines(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 16)
+	runLua(t, app, `zemi.ui.overlay.open({ id = "b", markdown = true,
+  body = { { { text = "red", hl = "Danger", click = "quit" }, " plain" }, { "two" } },
+  items = { { text = "a", detail = "**bold**" } } })
+assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that is no list of lines must raise")`)
+	st := &app.overlays[0]
+	row := app.overlayBox(st, 60, 16)[1]
+	if st.o.Body != "red plain\ntwo\n" || row[1].Text != "red" || row[1].HL != "Danger" || row[1].Click != "" {
+		t.Fatalf("body %q, row %+v", st.o.Body, row)
+	}
+	pressKeys(app, "enter")
+	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(plainSegs(app.overlayBox(&d, 60, 16)[1]), "*") {
+		t.Fatalf("detail: %+v", d.o)
+	}
+}
+
 // TestLuaOverlayReload: a Lua overlay with reload stays open on space and
 // enter, runs on_select, then shows the items reload returns, rendered
 // again, and keeps its items when reload fails.

@@ -149,6 +149,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			ID:     rawString(tb, "id"),
 			Title:  rawString(tb, "title"),
 			Body:   rawString(tb, "body"),
+			BodyMD: tb.RawGetString("markdown") == glua.LTrue,
 			Empty:  rawString(tb, "empty"),
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
@@ -157,6 +158,21 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if o.Anchor != "" && o.Anchor != "bottom" {
 			L.RaiseError("zemi.ui.overlay.open: anchor must be \"bottom\" or nil, got %q", o.Anchor)
+		}
+		if lines, ok := tb.RawGetString("body").(*glua.LTable); ok {
+			v, err := lua.ToGo(lines)
+			if err == nil {
+				o.BodySegs, err = convertSegments(v, "")
+			}
+			if err != nil {
+				L.RaiseError("zemi.ui.overlay.open: body: %v", err)
+			}
+			for _, row := range o.BodySegs {
+				for _, seg := range row {
+					o.Body += seg.Text
+				}
+				o.Body += "\n"
+			}
 		}
 		if n, ok := tb.RawGetString("selected").(glua.LNumber); ok {
 			o.Selected = int(n) - 1

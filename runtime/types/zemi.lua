@@ -771,7 +771,8 @@ function zemi.event.stats() end
 ---@class zemi.OverlaySpec
 ---@field id string
 ---@field title? string
----@field body? string text above the items; with no items a read-only view
+---@field body? string|zemi.Line[] text above the items, or styled lines (text and hl only); with no items a read-only view
+---@field markdown? boolean render a string `body` and every item's `detail` as markdown
 ---@field empty? string the line shown when there are no items
 ---@field items? zemi.OverlayItem[]|any[]
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
