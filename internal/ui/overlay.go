@@ -33,13 +33,6 @@ type overlayState struct {
 	listH, listW int
 }
 
-func btoi(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (st *overlayState) refilter() { st.apply(st.texts) }
 
 // listFilter narrows a list as the user types: visible holds the indices of
@@ -109,17 +102,18 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 	return true
 }
 
-// filterRows renders the query line (when set) above rows, or a no-match
-// note. rows come from listRowsW with f.width.
+// filterRows renders the query line above rows, a hint while no query is
+// open so opening one adds no row, and a no-match note. rows come from
+// listRowsW with f.width.
 func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	for _, r := range rows {
 		f.width = max(f.width, segsWidth(r))
 	}
-	var out [][]hostapi.Segment
+	query := []hostapi.Segment{{Text: "/", HL: "Host:HintKey"}, {Text: " filter", HL: "Comment"}}
 	if f.active {
-		out = append(out, append([]hostapi.Segment{{Text: "/ ", HL: "Comment"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...))
+		query = append([]hostapi.Segment{{Text: "/ ", HL: "Comment"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...)
 	}
-	out = append(out, rows...)
+	out := append([][]hostapi.Segment{query}, rows...)
 	if len(f.visible) == 0 {
 		out = append(out, padSegs([]hostapi.Segment{{Text: "  no matches", HL: "Comment"}}, f.width))
 	}
@@ -475,7 +469,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		for _, i := range st.visible {
 			items = append(items, st.items[i])
 		}
-		list = listRowsW(items, st.selected, &st.top, limit, st.width, boxInner(w))
+		list = listRowsW(items, st.items, st.selected, &st.top, limit, st.width, boxInner(w))
 		if len(st.visible) > 0 {
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {
@@ -485,17 +479,14 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, "space", "toggle")
 			}
 		}
-		if len(list) > limit && !st.active {
-			hints = append(hints, "/", "filter")
-		}
 		list = st.filterRows(list)
 		// The list keeps the height it had unfiltered, so the box does not
 		// resize under the pointer on every keystroke of a filter; only a
 		// terminal resize measures it again.
 		if st.listH == 0 || st.listW != w {
-			st.listH, st.listW = len(list)-btoi(st.active), w
+			st.listH, st.listW = len(list), w
 		}
-		for n := min(st.listH+btoi(st.active), limit+1); len(list) < n; {
+		for n := min(st.listH, limit+2); len(list) < n; {
 			list = append(list, padSegs(nil, st.width))
 		}
 	case st.o.Body == "":

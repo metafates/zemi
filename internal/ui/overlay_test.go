@@ -405,7 +405,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 30), Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter select · / filter · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -413,27 +413,30 @@ func TestOverlayHints(t *testing.T) {
 	}
 }
 
-// TestOverlayFilterKeepsWidth: filtering, down to no match, never narrows
-// the box, and the list grows with the screen.
-func TestOverlayFilterKeepsWidth(t *testing.T) {
+// TestOverlayFilterKeepsSize: filtering, down to no match, never resizes
+// the box or moves the description column, and the list grows with the screen.
+func TestOverlayFilterKeepsSize(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 40)
 	var items []any
 	for i := range 15 {
-		items = append(items, fmt.Sprintf("item %02d", i))
+		items = append(items, map[string]any{"text": fmt.Sprintf("item %02d", i), "desc": "about"})
 	}
-	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, "a much longer row than the others")})
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, map[string]any{"text": "a much longer row than the others", "desc": "x"})})
 	st := &app.overlays[0]
 	box := app.overlayBox(st, 80, 40)
 	if !strings.Contains(fmt.Sprint(box), "item 14") {
 		t.Fatalf("a tall screen still scrolls: %v", box)
 	}
+	col := func(box [][]hostapi.Segment) int { return strings.Index(plainSegs(box[2]), "about") }
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
 		st.apply(st.texts)
 		got := app.overlayBox(st, 80, 40)
-		// the filter line adds one row; everything else keeps its size
-		if segsWidth(got[0]) != segsWidth(box[0]) || len(got) != len(box)+1 {
-			t.Fatalf("filter %q: %dx%d, want %dx%d", q, segsWidth(got[0]), len(got), segsWidth(box[0]), len(box)+1)
+		if segsWidth(got[0]) != segsWidth(box[0]) || len(got) != len(box) {
+			t.Fatalf("filter %q: %dx%d, want %dx%d", q, segsWidth(got[0]), len(got), segsWidth(box[0]), len(box))
+		}
+		if q == "item" && col(got) != col(box) {
+			t.Fatalf("filter %q moved the description column from %d to %d", q, col(box), col(got))
 		}
 	}
 }
@@ -484,8 +487,8 @@ func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
 		before, _, _ := strings.Cut(plainSegs(row), s)
 		return ansi.StringWidth(before)
 	}
-	if a, b := col(rows[1], "now"), col(rows[2], "1m ago"); a != b {
-		t.Fatalf("descriptions at %d and %d:\n%s\n%s", a, b, plainSegs(rows[1]), plainSegs(rows[2]))
+	if a, b := col(rows[2], "now"), col(rows[3], "1m ago"); a != b {
+		t.Fatalf("descriptions at %d and %d:\n%s\n%s", a, b, plainSegs(rows[2]), plainSegs(rows[3]))
 	}
 }
 
@@ -512,7 +515,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 		{{Text: "a label far too long for a forty cell wide box", HL: "Title"}},
 	}})
 	rows := app.overlayBox(&app.overlays[0], 40, 20)
-	first, second := rows[1], rows[2]
+	first, second := rows[2], rows[3]
 	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Normal" {
 		t.Fatalf("first row: %+v", first)
 	}

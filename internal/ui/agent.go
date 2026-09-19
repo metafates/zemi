@@ -261,15 +261,16 @@ type listItem struct {
 // moves only when the selection leaves it and a click never moves the item
 // under the pointer (nil for a list that never scrolls).
 func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segment {
-	return listRowsW(items, sel, top, limit, 0, 0)
+	return listRowsW(items, items, sel, top, limit, 0, 0)
 }
 
 // listRowsW is listRows padded to at least minW cells and, when maxW is
 // set, cut to at most maxW: a long label gives way to its description, and
-// a key column always shows.
-func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]hostapi.Segment {
+// a key column always shows. all is the unfiltered list, which sets the
+// description column, so filtering never moves it.
+func listRowsW(items, all []listItem, sel int, top *int, limit, minW, maxW int) [][]hostapi.Segment {
 	labelW := 0
-	for _, it := range items {
+	for _, it := range all {
 		if it.desc != "" { // a row with no description needs no column
 			labelW = max(labelW, ansi.StringWidth(it.label))
 		}
@@ -279,7 +280,7 @@ func listRowsW(items []listItem, sel int, top *int, limit, minW, maxW int) [][]h
 	column := 24
 	if maxW > 0 {
 		right := 0
-		for _, it := range items {
+		for _, it := range all {
 			right = max(right, ansi.StringWidth(it.desc)+map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""])
 		}
 		column = max(column, maxW-4-right)

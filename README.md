@@ -238,7 +238,7 @@ token usage and cost as one JSON object for scripts. `zemi --help` lists every f
 | `tab` / `shift+tab`, `ctrl+y` | next / previous permission mode, yolo until the next press (in popups tab accepts) |
 | `ctrl+o` | expand reasoning and every tool call (a click opens one tool row) |
 | `ctrl+k` `ctrl+j` (or `ctrl+p` `ctrl+n`) | move in lists and popups; `space` toggles in `/skills` |
-| typing in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |
+| `/` in a list | filters it (`/sessions`, `/agents`, `/mcp`, pickers); `esc` clears, then closes |
 | `pgup` `pgdown` `ctrl+home` `ctrl+end` | scroll the transcript |
 | `/` | command palette (tab completes names and arguments) |
 | `@` | attach a project file (images go to vision models as images); `enter` accepts the highlighted one |
