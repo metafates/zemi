@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	glua "github.com/yuin/gopher-lua"
@@ -18,6 +19,8 @@ func newTestRuntime(t *testing.T) *Runtime {
 	if err := r.Boot(context.Background(), nil); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
+	// a synctest bubble does not end while the dispatcher waits for requests
+	t.Cleanup(func() { close(r.current().stop) })
 	return r
 }
 
@@ -50,53 +53,55 @@ func TestRetiredGenerationFrames(t *testing.T) {
 // the interpreter is occupied, requests queue; on drain the queue pops ui
 // first, then agent, then io, FIFO within a class.
 func TestQueuePriorityOrder(t *testing.T) {
-	r := newTestRuntime(t)
+	synctest.Test(t, func(t *testing.T) {
+		r := newTestRuntime(t)
 
-	var mu sync.Mutex
-	var order []string
-	record := func(label string) Fn {
-		return func(L *glua.LState) ([]any, error) {
-			mu.Lock()
-			order = append(order, label)
-			mu.Unlock()
+		var mu sync.Mutex
+		var order []string
+		record := func(label string) Fn {
+			return func(L *glua.LState) ([]any, error) {
+				mu.Lock()
+				order = append(order, label)
+				mu.Unlock()
+				return nil, nil
+			}
+		}
+
+		started := make(chan struct{})
+		sleepDo := func(L *glua.LState) ([]any, error) {
+			_, _ = record("io:sleep")(L)
+			close(started)
+			time.Sleep(150 * time.Millisecond)
 			return nil, nil
 		}
-	}
+		var wg sync.WaitGroup
+		wg.Add(4)
+		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, sleepDo) }()
 
-	started := make(chan struct{})
-	sleepDo := func(L *glua.LState) ([]any, error) {
-		_, _ = record("io:sleep")(L)
-		close(started)
-		time.Sleep(150 * time.Millisecond)
-		return nil, nil
-	}
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, sleepDo) }()
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("sleeper never started")
+		}
+		// Enqueued in reverse priority order while the interpreter is busy.
+		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassAgent, 0, 0, record("agent")) }()
+		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, record("io")) }()
+		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassUI, 0, 0, record("ui")) }()
 
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("sleeper never started")
-	}
-	// Enqueued in reverse priority order while the interpreter is busy.
-	go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassAgent, 0, 0, record("agent")) }()
-	go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, record("io")) }()
-	go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassUI, 0, 0, record("ui")) }()
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("requests did not drain")
+		}
 
-	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("requests did not drain")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if want := []string{"io:sleep", "ui", "agent", "io"}; !slices.Equal(order, want) {
-		t.Fatalf("execution order %v, want %v", order, want)
-	}
+		mu.Lock()
+		defer mu.Unlock()
+		if want := []string{"io:sleep", "ui", "agent", "io"}; !slices.Equal(order, want) {
+			t.Fatalf("execution order %v, want %v", order, want)
+		}
+	})
 }
 
 // TestQueueCancellationPreempts verifies §4 cancellation: the context is
@@ -175,74 +180,80 @@ func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
 // exceeding ceiling+grace is abandoned hard, the runtime goes hot (every
 // Lua request fails fast), and ForceReload recovers.
 func TestQueueWatchdogAbandonHot(t *testing.T) {
-	r := newTestRuntime(t)
+	synctest.Test(t, func(t *testing.T) {
+		r := newTestRuntime(t)
+		release := make(chan struct{})
+		defer close(release)
 
-	start := time.Now()
-	_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
-		func(L *glua.LState) ([]any, error) {
-			time.Sleep(750 * time.Millisecond)
-			return nil, nil
-		})
-	elapsed := time.Since(start)
-	if !errors.Is(err, ErrAbandoned) {
-		t.Fatalf("expected ErrAbandoned, got %v", err)
-	}
-	if elapsed < 90*time.Millisecond || elapsed > 500*time.Millisecond {
-		t.Fatalf("abandon fired at %s, want ~100ms", elapsed)
-	}
-	if !r.IsHot() {
-		t.Fatal("runtime not hot after abandon")
-	}
-	if _, err := r.Do(context.Background(), ClassUI, 0, 0,
-		func(L *glua.LState) ([]any, error) { return nil, nil }); !errors.Is(err, ErrHot) {
-		t.Fatalf("expected ErrHot while hot, got %v", err)
-	}
+		start := time.Now()
+		_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+			func(L *glua.LState) ([]any, error) {
+				<-release
+				return nil, nil
+			})
+		elapsed := time.Since(start)
+		if !errors.Is(err, ErrAbandoned) {
+			t.Fatalf("expected ErrAbandoned, got %v", err)
+		}
+		if elapsed < 90*time.Millisecond || elapsed > 500*time.Millisecond {
+			t.Fatalf("abandon fired at %s, want ~100ms", elapsed)
+		}
+		if !r.IsHot() {
+			t.Fatal("runtime not hot after abandon")
+		}
+		if _, err := r.Do(context.Background(), ClassUI, 0, 0,
+			func(L *glua.LState) ([]any, error) { return nil, nil }); !errors.Is(err, ErrHot) {
+			t.Fatalf("expected ErrHot while hot, got %v", err)
+		}
 
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
-		t.Fatalf("ForceReload: %v", err)
-	}
-	if r.IsHot() {
-		t.Fatal("runtime still hot after ForceReload")
-	}
-	vals, err := r.Do(context.Background(), ClassUI, 0, 0,
-		func(L *glua.LState) ([]any, error) {
-			return []any{L.GetGlobal("bootmark") == glua.LNil}, nil
-		})
-	if err != nil {
-		t.Fatalf("Do after reload: %v", err)
-	}
-	if fresh, _ := vals[0].(bool); !fresh {
-		t.Fatal("reloaded generation is not fresh")
-	}
+		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+			t.Fatalf("ForceReload: %v", err)
+		}
+		if r.IsHot() {
+			t.Fatal("runtime still hot after ForceReload")
+		}
+		vals, err := r.Do(context.Background(), ClassUI, 0, 0,
+			func(L *glua.LState) ([]any, error) {
+				return []any{L.GetGlobal("bootmark") == glua.LNil}, nil
+			})
+		if err != nil {
+			t.Fatalf("Do after reload: %v", err)
+		}
+		if fresh, _ := vals[0].(bool); !fresh {
+			t.Fatal("reloaded generation is not fresh")
+		}
+	})
 }
 
 // TestRetiredWatchdogLeavesFreshRuntime: a request wedged across a reload
 // is abandoned by its old generation's watchdog, which must not put the
 // fresh generation hot.
 func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
-	r := newTestRuntime(t)
-	started, release := make(chan struct{}), make(chan struct{})
-	defer close(release)
-	errc := make(chan error, 1)
-	go func() {
-		_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
-			func(L *glua.LState) ([]any, error) {
-				close(started)
-				<-release
-				return nil, nil
-			})
-		errc <- err
-	}()
-	<-started
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
-		t.Fatalf("ForceReload: %v", err)
-	}
-	if err := <-errc; !errors.Is(err, ErrAbandoned) {
-		t.Fatalf("wedged request: %v, want ErrAbandoned", err)
-	}
-	if r.IsHot() {
-		t.Fatal("retired generation's watchdog put the fresh runtime hot")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		r := newTestRuntime(t)
+		started, release := make(chan struct{}), make(chan struct{})
+		defer close(release)
+		errc := make(chan error, 1)
+		go func() {
+			_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+				func(L *glua.LState) ([]any, error) {
+					close(started)
+					<-release
+					return nil, nil
+				})
+			errc <- err
+		}()
+		<-started
+		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+			t.Fatalf("ForceReload: %v", err)
+		}
+		if err := <-errc; !errors.Is(err, ErrAbandoned) {
+			t.Fatalf("wedged request: %v, want ErrAbandoned", err)
+		}
+		if r.IsHot() {
+			t.Fatal("retired generation's watchdog put the fresh runtime hot")
+		}
+	})
 }
 
 // TestQueuePendingDroppedOnReload verifies that requests queued behind a
@@ -365,39 +376,42 @@ func TestQueueForceReloadReplays(t *testing.T) {
 // fails fast the Do calls that arrive later, so without the drain these
 // would wait on their reply channel forever.
 func TestQueueHotAnswersQueued(t *testing.T) {
-	r := newTestRuntime(t)
+	synctest.Test(t, func(t *testing.T) {
+		r := newTestRuntime(t)
 
-	started := make(chan struct{})
-	go func() {
-		_, _ = r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
-			func(L *glua.LState) ([]any, error) {
-				close(started)
-				time.Sleep(700 * time.Millisecond)
-				return nil, nil
-			})
-	}()
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("wedger never started")
-	}
-
-	queued := make(chan error, 1)
-	go func() {
-		_, err := r.Do(context.Background(), ClassUI, 0, 0,
-			func(L *glua.LState) ([]any, error) { return nil, nil })
-		queued <- err
-	}()
-	time.Sleep(20 * time.Millisecond) // reach the heap before the abandon
-
-	select {
-	case err := <-queued:
-		if !errors.Is(err, ErrHot) {
-			t.Fatalf("queued request got %v, want ErrHot", err)
+		started, release := make(chan struct{}), make(chan struct{})
+		defer close(release)
+		go func() {
+			_, _ = r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+				func(L *glua.LState) ([]any, error) {
+					close(started)
+					<-release
+					return nil, nil
+				})
+		}()
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("wedger never started")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("queued request never answered after the wedge")
-	}
+
+		queued := make(chan error, 1)
+		go func() {
+			_, err := r.Do(context.Background(), ClassUI, 0, 0,
+				func(L *glua.LState) ([]any, error) { return nil, nil })
+			queued <- err
+		}()
+		time.Sleep(20 * time.Millisecond) // reach the heap before the abandon
+
+		select {
+		case err := <-queued:
+			if !errors.Is(err, ErrHot) {
+				t.Fatalf("queued request got %v, want ErrHot", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("queued request never answered after the wedge")
+		}
+	})
 }
 
 // TestQueueIntegrityGoesHot: a frozen namespace mutated behind the
