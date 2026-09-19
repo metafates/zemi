@@ -13,6 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
 )
 
@@ -334,5 +335,59 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 	}
 	if got := classes.Classify(hook); got != lua.OriginUser {
 		t.Errorf("hook origin = %q, want user", got)
+	}
+}
+
+// TestRecipes: the steps share one host, in order. The prompt lists the
+// recipes pinned with the environment; the skill tool resolves them live.
+func TestRecipes(t *testing.T) {
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
+	h.syncSkills()
+	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills"), "lint", "project lint", "")
+	dir := h.recipesDir()
+	for _, name := range []string{"rig", "deploy", "lint"} {
+		writeSkill(t, dir, name, "recipe "+name, "")
+	}
+
+	for _, c := range []struct {
+		name         string
+		do           func()
+		prompt, tool []string
+		read         perm.Decision
+	}{
+		{"untrusted project is inert", func() { h.SetProjectTrusted(false) }, nil, nil, perm.Ask},
+		{"trusted lists it, a taken name is dropped", func() { h.SetProjectTrusted(true); h.environmentPrompt() }, []string{"rig"}, []string{"rig"}, perm.Allow},
+		{"written mid-session loads, the prompt stays", func() { writeSkill(t, dir, "late", "recipe late", "") }, []string{"rig"}, []string{"late", "rig"}, perm.Allow},
+		{"a reload's trust step keeps the pin", func() { h.SetProjectTrusted(true) }, []string{"rig"}, []string{"late", "rig"}, perm.Allow},
+		{"compaction pins again", func() { h.compactDone(0, false); h.environmentPrompt() }, []string{"late", "rig"}, []string{"late", "rig"}, perm.Allow},
+	} {
+		c.do()
+		var prompt, tool, items []string
+		for line := range strings.Lines(h.skillsIndexPrompt()) {
+			if name, _, ok := strings.Cut(strings.TrimPrefix(line, "- "), ": recipe "); ok {
+				prompt = append(prompt, name)
+			}
+		}
+		for _, s := range h.skillIndex() {
+			if filepath.Dir(s.Path) == dir {
+				tool = append(tool, s.Name)
+			}
+		}
+		for _, it := range h.skillItems() {
+			// a recipe has no stored state, so its row must not toggle
+			if m := it.(map[string]any); m["section"] == "Recipe" && m["run"] == nil {
+				items = append(items, m["text"].(string))
+			}
+		}
+		slices.Sort(prompt)
+		slices.Sort(tool)
+		slices.Sort(items)
+		if !slices.Equal(prompt, c.prompt) || !slices.Equal(items, c.prompt) || !slices.Equal(tool, c.tool) {
+			t.Errorf("%s: prompt %v, /skills %v, tool %v", c.name, prompt, items, tool)
+		}
+		if got := h.fsDefault("fs.read", filepath.Join(dir, "rig", "SKILL.md")); got != c.read {
+			t.Errorf("%s: read = %v, want %v", c.name, got, c.read)
+		}
 	}
 }

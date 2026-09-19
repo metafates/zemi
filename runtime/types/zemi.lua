@@ -2029,7 +2029,7 @@ function zemi.learn.decide(id, action) end
 ---@class zemi.Skill
 ---@field name string
 ---@field description string
----@field source "authored"|"builtin"|"learned"|"project" A project skill is always enabled and cannot be toggled.
+---@field source "authored"|"builtin"|"learned"|"project"|"recipe" A project skill or recipe is always enabled and cannot be toggled.
 ---@field enabled boolean
 ---@field path string
 

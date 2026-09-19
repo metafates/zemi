@@ -332,7 +332,9 @@ func (h *Host) compactDone(used int64, manual bool) {
 	digest := h.digestFor(first)
 	h.forgetInstructions()
 	ag.mu.Lock()
-	ag.lastIn, ag.digest, ag.compacted = used, digest, true
+	// the prompt cache is gone anyway, so the environment and the recipes
+	// list may move with the digest
+	ag.lastIn, ag.digest, ag.env, ag.compacted = used, digest, "", true
 	if manual {
 		ag.compactFails = 0
 	}

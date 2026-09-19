@@ -79,7 +79,7 @@ func (h *Host) readJails() []string {
 	if h.ProjectTrusted() {
 		// the decision covers the repository, so starting in a subdirectory
 		// must not ask for every sibling package the task reaches
-		roots = append(roots, h.Dirs.RepoRoot())
+		roots = append(roots, h.Dirs.RepoRoot(), h.recipesDir())
 	}
 	return roots
 }

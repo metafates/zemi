@@ -331,17 +331,28 @@ type Host struct {
 	// projectSkills is a trusted project's skills, found when the decision
 	// is set so a command writing a skill mid-session cannot change the prompt
 	projectSkills atomic.Pointer[[]skills.Skill]
+	// recipes is the recipes the prompt lists, pinned with agentState.env
+	recipes atomic.Pointer[[]skills.Skill]
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
 // skills.
 func (h *Host) SetProjectTrusted(ok bool) {
-	h.projectTrusted.Store(ok)
+	prev := h.projectTrusted.Swap(ok)
 	var found []skills.Skill
 	if ok {
 		found = h.discoverProjectSkills()
 	}
 	h.projectSkills.Store(&found)
+	// the trust step runs on every reload, which must not move the prompt
+	if prev != ok || h.recipes.Load() == nil {
+		h.pinRecipes()
+	}
+}
+
+func (h *Host) pinRecipes() {
+	found := h.discoverRecipes()
+	h.recipes.Store(&found)
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home

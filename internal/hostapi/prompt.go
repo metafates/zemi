@@ -325,9 +325,9 @@ func (h *Host) instructionFile(p string) bool {
 	return err == nil && fi.Mode().IsRegular() && !h.secretPath(p) && h.inJail(p, h.Dirs.RepoRoot())
 }
 
-// environmentPrompt describes the machine and repository. It is computed
-// once per session and pinned like the digest, so a changing git status
-// does not bust the prompt cache every turn.
+// environmentPrompt describes the machine and repository. It is pinned per
+// session and again after a compaction, like the digest, so a changing git
+// status does not bust the prompt cache every turn.
 func (h *Host) environmentPrompt() string {
 	ag := h.agents
 	ag.mu.Lock()
@@ -336,6 +336,7 @@ func (h *Host) environmentPrompt() string {
 	if env != "" {
 		return env
 	}
+	h.pinRecipes()
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
 	if dir := h.ensureScratch(); dir != "" {

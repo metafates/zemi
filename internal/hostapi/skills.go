@@ -204,16 +204,43 @@ func (h *Host) learnedSkillsDir() string { return joinIf(h.Dirs.DataHome, "skill
 // discovery lists only enabled skills to the model).
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
-	for _, s := range h.enabledSkills() {
+	// recipes are read live: one written this session loads at once, while
+	// the prompt keeps the pinned list
+	for _, s := range h.enabled(h.discoverRecipes()) {
 		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir})
 	}
 	return out
 }
 
 // enabledSkills is the registry's enabled skills, then the project's.
-func (h *Host) enabledSkills() []skills.Skill {
+func (h *Host) enabledSkills() []skills.Skill { return h.enabled(h.pinnedRecipes()) }
+
+func (h *Host) enabled(recipes []skills.Skill) []skills.Skill {
 	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
-	return append(enabled, h.projectOnlySkills()...)
+	return append(enabled, h.projectOnly(recipes)...)
+}
+
+// recipesDir holds a project's recipes: skills private to this machine, kept
+// outside the repository where no sandboxed command can write.
+func (h *Host) recipesDir() string {
+	if h.Dirs.StateHome == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot())), "skills")
+}
+
+func (h *Host) discoverRecipes() []skills.Skill {
+	if !h.ProjectTrusted() || h.recipesDir() == "" {
+		return nil
+	}
+	return h.discoverSkills(skills.Dir{Path: h.recipesDir(), Source: skills.Recipe})
+}
+
+func (h *Host) pinnedRecipes() []skills.Skill {
+	if p := h.recipes.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // discoverProjectSkills scans the repository's skill dirs, which other
@@ -227,6 +254,10 @@ func (h *Host) discoverProjectSkills() []skills.Skill {
 	for _, d := range []string{".zemi", ".agents", ".claude"} {
 		dirs = append(dirs, skills.Dir{Path: filepath.Join(root, d, "skills"), Source: skills.Project})
 	}
+	return h.discoverSkills(dirs...)
+}
+
+func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 	found, warns := skills.Discover(dirs...)
 	for _, w := range warns {
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
@@ -234,15 +265,24 @@ func (h *Host) discoverProjectSkills() []skills.Skill {
 	return found
 }
 
-// projectOnlySkills is the project's skills whose names no authored, builtin
-// or learned skill takes, enabled or not.
-func (h *Host) projectOnlySkills() []skills.Skill {
-	p := h.projectSkills.Load()
-	if p == nil {
-		return nil
+// projectOnlySkills is the project's skills and pinned recipes whose names no
+// authored, builtin or learned skill takes, enabled or not.
+func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.pinnedRecipes()) }
+
+// projectOnly puts recipes after the repository's skills: a recipe loses
+// every name clash.
+func (h *Host) projectOnly(recipes []skills.Skill) []skills.Skill {
+	var all []skills.Skill
+	if p := h.projectSkills.Load(); p != nil {
+		all = slices.Clone(*p)
 	}
-	return slices.DeleteFunc(slices.Clone(*p), func(s skills.Skill) bool {
+	seen := map[string]bool{}
+	// NOTE: every recipe is a line of every prompt; past a few dozen, rank
+	// them with FTS over the descriptions.
+	return slices.DeleteFunc(append(all, recipes...), func(s skills.Skill) bool {
 		_, taken := h.skillsReg.get(s.Name)
+		taken = taken || seen[s.Name]
+		seen[s.Name] = true
 		return taken
 	})
 }
@@ -479,7 +519,7 @@ func (h *Host) skillItems() []any {
 		item := map[string]any{"text": s.Name, "desc": s.Description, "section": sourceSection(string(s.Source))}
 		state, actions := "enabled", []any{}
 		switch {
-		case s.Source == skills.Project: // no stored state to toggle
+		case !s.Source.Stored(): // no state to toggle
 			item["key"] = "on"
 		case h.skillsReg.isEnabled(s.Name):
 			item["key"], item["run"] = "on", toggle
@@ -535,7 +575,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 		for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 			rows = append(rows, map[string]any{
 				"name": s.Name, "description": s.Description, "source": string(s.Source),
-				"enabled": s.Source == skills.Project || h.skillsReg.isEnabled(s.Name), "path": s.Dir,
+				"enabled": !s.Source.Stored() || h.skillsReg.isEnabled(s.Name), "path": s.Dir,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))

@@ -25,7 +25,11 @@ const (
 	Builtin  Source = "builtin" // shipped with zemi, enabled by default
 	Learned  Source = "learned"
 	Project  Source = "project" // a trusted project's, body only, never stored
+	Recipe   Source = "recipe"  // a trusted project's, kept in zemi's state dir, body only, never stored
 )
+
+// Stored reports a source with a row in the skills table, so an enabled flag.
+func (s Source) Stored() bool { return s != Project && s != Recipe }
 
 // Dir is a directory of skill directories from one source.
 type Dir struct {

@@ -128,6 +128,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 
 func TestSkillLoadIndexAndGate(t *testing.T) {
 	p, _ := testPipeline(t, false)
+	p.Seen = &sync.Map{}
 	data := t.TempDir()
 	cfg := t.TempDir()
 	mk := func(root, name, body string) string {
@@ -160,6 +161,10 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 	resp := call(t, skill, `{"name":"alpha"}`)
 	if resp.IsError || resp.Content != "Skill directory: "+alpha+"\n\nalpha body" {
 		t.Fatalf("load alpha must strip frontmatter and name the directory: %+v", resp)
+	}
+	// a loaded body was read: an edit of it needs no read first
+	if fi, _ := os.Stat(filepath.Join(alpha, "SKILL.md")); p.stale(filepath.Join(alpha, "SKILL.md"), fi) != "" {
+		t.Fatal("a loaded skill must count as read")
 	}
 	resp = call(t, skill, `{"name":"dup"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "config body") {

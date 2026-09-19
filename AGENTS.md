@@ -324,7 +324,12 @@ rewritten to `<data>/builtin-skills/` on every sync, enabled by default), learne
 drafts, body only, no Lua hook, scrubbed, start disabled) under `<data>/skills/`. A trusted
 project adds its own (`.zemi/skills`, `.agents/skills`, `.claude/skills`): body only, enabled,
 never in the table or `skillsReg`, scanned by `SetProjectTrusted`, so a skill a command writes
-mid-session waits for the next boot or `/trust`. Invariants:
+mid-session waits for the next boot or `/trust`. Recipes (`skills.Recipe`) are the project's
+private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
+policy can write): trusted only, body only, enabled, and they lose every name clash. The prompt
+lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, `compactDone`);
+`skillIndex` discovers the dir live, so a recipe written mid-session loads without moving the
+prompt, and `runSkill` marks the file read so an `edit` can follow. Invariants:
 
 - **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only user
   or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace boundary -
