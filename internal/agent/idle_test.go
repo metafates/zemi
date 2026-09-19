@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -48,30 +49,33 @@ func TestIdleModelCutsAStalledStream(t *testing.T) {
 			}
 		}, false},
 	} {
+		// a fake clock: a starved machine cannot stretch a sleep past idle
 		t.Run(c.name, func(t *testing.T) {
-			m := idleModel{LanguageModel: streamStub{stream: c.stream}, idle: idle}
-			seq, err := m.Stream(t.Context(), fantasy.Call{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var last fantasy.StreamPart
-			n := 0
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				for p := range seq {
-					last, n = p, n+1
+			synctest.Test(t, func(t *testing.T) {
+				m := idleModel{LanguageModel: streamStub{stream: c.stream}, idle: idle}
+				seq, err := m.Stream(t.Context(), fantasy.Call{})
+				if err != nil {
+					t.Fatal(err)
 				}
-			}()
-			select {
-			case <-done:
-			case <-time.After(5 * time.Second):
-				t.Fatal("the stream never ended")
-			}
-			gotErr := errors.Is(last.Error, errModelIdle)
-			if gotErr != c.wantErr {
-				t.Fatalf("last part %+v (%d parts), want idle error: %v", last, n, c.wantErr)
-			}
+				var last fantasy.StreamPart
+				n := 0
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					for p := range seq {
+						last, n = p, n+1
+					}
+				}()
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("the stream never ended")
+				}
+				gotErr := errors.Is(last.Error, errModelIdle)
+				if gotErr != c.wantErr {
+					t.Fatalf("last part %+v (%d parts), want idle error: %v", last, n, c.wantErr)
+				}
+			})
 		})
 	}
 }
