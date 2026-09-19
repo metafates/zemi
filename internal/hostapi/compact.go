@@ -358,10 +358,6 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // context-too-long refusal, up to three times. An empty or cut-off reply is
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
-	model, err := h.modelFor("compact.model", "models.small")
-	if err != nil {
-		return "", err
-	}
 	maxOut := int64(summaryMaxOut)
 	transcript := transcriptText(head)
 	budget := len(transcript)
@@ -386,11 +382,7 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 		if focus != "" {
 			fmt.Fprintf(&b, "\n\nAdditional focus: %s", focus)
 		}
-		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(compactSystem)).Generate(ctx, fantasy.AgentCall{
-			Messages:        []fantasy.Message{agent.UserMessage(b.String())},
-			MaxOutputTokens: &maxOut,
-			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
-		})
+		res, err := h.generate(ctx, h.AgentSessionID(), compactSystem, b.String(), &maxOut, "compact.model", "models.small")
 		switch {
 		case contextTooLarge(err) && tries < 3:
 			budget = len(text) * 4 / 5

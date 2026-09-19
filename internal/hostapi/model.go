@@ -4,6 +4,7 @@ package hostapi
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -29,14 +30,55 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 }
 
 // modelFor resolves the model the first set key names, the session's model
-// when none is set.
-func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, error) {
+// when none is set, and returns its id for pricing.
+func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 	for _, key := range keys {
 		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
-			return h.Providers.Resolve(id)
+			m, err := h.Providers.Resolve(id)
+			return m, id, err
 		}
 	}
-	return h.resolveModel(&Profile{Model: h.sessionModelID()})
+	id := h.sessionModelID()
+	m, err := h.resolveModel(&Profile{Model: id})
+	return m, id, err
+}
+
+// generate runs one tool-less, single-step call (summaries, titles, the
+// reflector) on the model the first set key names and bills it to sid.
+func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, keys ...string) (*fantasy.AgentResult, error) {
+	model, id, err := h.modelFor(keys...)
+	if err != nil {
+		return nil, err
+	}
+	res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system)).Generate(ctx, fantasy.AgentCall{
+		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
+		MaxOutputTokens: maxOut,
+		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
+	})
+	if err == nil {
+		h.bill(sid, id, res.TotalUsage)
+	}
+	return res, err
+}
+
+// bill adds a model call's usage to session sid, and to the live tally when
+// sid is still the open session: a background run or the reflector may
+// outlive it.
+func (h *Host) bill(sid, modelID string, u fantasy.Usage) float64 {
+	cost := h.turnCost(modelID, u)
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.sessionID == sid {
+		ag.sessCost += cost
+		ag.sessIn += billedInput(u)
+		ag.sessOut += u.OutputTokens
+		ag.cacheRead, ag.cacheBilled = ag.cacheRead+u.CacheReadTokens, ag.cacheBilled+billedInput(u)
+	}
+	ag.mu.Unlock()
+	if sid != "" && h.DB != nil {
+		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, cost)
+	}
+	return cost
 }
 
 // Tiers are the model tiers config names, in the order a picker shows them:

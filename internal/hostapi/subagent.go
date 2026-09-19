@@ -485,22 +485,9 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
-	cost := h.turnCost(s.modelID, usage)
-	ag := h.agents
-	ag.mu.Lock()
-	if ag.sessionID == s.run.parent { // a background run may outlive its session
-		ag.sessIn += billedInput(usage)
-		ag.sessOut += usage.OutputTokens
-		ag.cacheRead, ag.cacheBilled = ag.cacheRead+usage.CacheReadTokens, ag.cacheBilled+billedInput(usage)
-		ag.sessCost += cost
-	}
-	ag.mu.Unlock()
-	if h.DB != nil {
-		for _, id := range []string{s.sid, s.run.parent} {
-			if id != "" {
-				_ = h.DB.AddUsage(id, billedInput(usage), usage.OutputTokens, cost)
-			}
-		}
+	cost := h.bill(s.run.parent, s.modelID, usage)
+	if s.sid != "" && h.DB != nil {
+		_ = h.DB.AddUsage(s.sid, billedInput(usage), usage.OutputTokens, cost)
 	}
 	_, n, _, _ := s.run.state()
 	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, plural(n, "call", "calls")))

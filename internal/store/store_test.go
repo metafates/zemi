@@ -169,6 +169,16 @@ func TestSessionLifecycle(t *testing.T) {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
 	}
+	// only a message makes a session recent: a late bill for a closed one must not
+	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
+	_ = db.AddUsage("s1", 1, 1, 0)
+	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 {
+		t.Fatalf("usage bumped updated_at to %d", s.UpdatedAt)
+	}
+	_ = db.AddMessage(&Message{SessionID: "s1", Role: "user", PartsJSON: "[]"})
+	if s, _ = db.GetSession("s1"); s.UpdatedAt == 1 {
+		t.Fatal("a message did not bump updated_at")
+	}
 	if err := db.CreateSession("top", "", "top", ""); err != nil {
 		t.Fatal(err)
 	}

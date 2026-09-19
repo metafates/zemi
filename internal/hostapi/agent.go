@@ -763,13 +763,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if model == "" {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
-	cost := h.turnCost(model, usage)
 	ag.mu.Lock()
 	ag.endThinking()
-	ag.sessCost += cost
-	ag.sessIn += billedInput(usage)
-	ag.sessOut += usage.OutputTokens
-	ag.cacheRead, ag.cacheBilled = ag.cacheRead+usage.CacheReadTokens, ag.cacheBilled+billedInput(usage)
 	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
 	stat := TurnStat{
 		In:        usage.InputTokens,
@@ -787,9 +782,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Unlock()
 
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
-	if sid != "" && h.DB != nil {
-		_ = h.DB.AddUsage(sid, billedInput(usage), usage.OutputTokens, cost)
-	}
+	h.bill(sid, model, usage)
 	if hold {
 		return
 	}

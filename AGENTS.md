@@ -356,6 +356,10 @@ lua-language-server is installed.
   compaction summaries, the builtin `web` agent) and `models.smart` (the main conversation)
   fall back to it. Anything that takes a model - an agent definition, the `agent` tool, a
   workflow - takes a tier name or a `provider/model` id (`modelRef`).
+- **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
+  live tally when that session is still open. Calls outside a runner (summary, title,
+  reflector) go through `Host.generate`, which bills them; the reflector bills the session it
+  read, closed or not.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction

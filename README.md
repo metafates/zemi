@@ -219,8 +219,8 @@ zemi --health                     # run the /health checks, exit 1 if any failed
 With `-p` nobody can answer a permission ask, so asks are denied unless `--mode` is
 `auto` or `yolo`; a project you have not trusted in the TUI needs `--trust` for auto mode
 to run builds and tests. Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
-`--output json` prints the reply, the tool calls, token usage and cost as one JSON object
-for scripts. `zemi --help` lists every flag.
+`--output json` prints the reply, the tool calls, how many times the window was compacted,
+token usage and cost as one JSON object for scripts. `zemi --help` lists every flag.
 
 ## Keys and commands
 

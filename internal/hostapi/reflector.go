@@ -146,15 +146,11 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	model, err := h.modelFor("reflector.model")
+	res, err := h.generate(ctx, sid, reflectorSystem, prompt, nil, "reflector.model")
 	if err != nil {
 		return err
 	}
-	out, err := generateText(ctx, model, reflectorSystem, prompt)
-	if err != nil {
-		return err
-	}
-	proposal, err := parseReflectProposal(out)
+	proposal, err := parseReflectProposal(concatText(res.Response.Content))
 	if err != nil {
 		return err
 	}
@@ -312,23 +308,6 @@ func truncRunes(s string, n int) string {
 		return c + "..."
 	}
 	return s
-}
-
-// generateText runs one tool-less, single-step model call (reflector,
-// session titles) and returns its text.
-func generateText(ctx context.Context, model fantasy.LanguageModel, system, prompt string) (string, error) {
-	ag := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system))
-	res, err := ag.Generate(ctx, fantasy.AgentCall{
-		Messages: []fantasy.Message{{
-			Role:    fantasy.MessageRoleUser,
-			Content: []fantasy.MessagePart{fantasy.TextPart{Text: prompt}},
-		}},
-		StopWhen: []fantasy.StopCondition{fantasy.StepCountIs(1)},
-	})
-	if err != nil {
-		return "", err
-	}
-	return concatText(res.Response.Content), nil
 }
 
 // parseReflectProposal extracts the JSON object from the model output

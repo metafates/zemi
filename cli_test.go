@@ -101,9 +101,10 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err"},
 		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
 			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
+		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},
 	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || len(rep.Tools) != 3 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
+	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 3 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
 		t.Fatalf("report = %+v", rep)
 	}
 	if rep.denied != 1 {

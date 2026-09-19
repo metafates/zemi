@@ -58,6 +58,7 @@ func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fanta
 	return &fantasy.Response{
 		Content:      fantasy.ResponseContent{fantasy.TextContent{Text: m.resp}},
 		FinishReason: finish,
+		Usage:        fantasy.Usage{OutputTokens: 7},
 	}, nil
 }
 

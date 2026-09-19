@@ -115,9 +115,8 @@ func (s *DB) AddUsage(id string, prompt, completion int64, cost float64) error {
 	return s.execOne("add usage", `UPDATE sessions SET
 		prompt_tokens = prompt_tokens + ?,
 		completion_tokens = completion_tokens + ?,
-		cost = cost + ?,
-		updated_at = ?
-		WHERE id = ?`, prompt, completion, cost, now(), id)
+		cost = cost + ?
+		WHERE id = ?`, prompt, completion, cost, id)
 }
 
 // Message is one persisted message: role plus fantasy content parts as JSON.
@@ -144,6 +143,11 @@ func insertMessage(ex execer, m *Message) error {
 	_, err := ex.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		m.ID, m.SessionID, m.Role, m.PartsJSON, m.CreatedAt)
+	if err == nil {
+		// updated_at means new messages: a late bill for a closed session
+		// must not make it the most recent one.
+		_, err = ex.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now(), m.SessionID)
+	}
 	if err != nil {
 		return fmt.Errorf("store: add message: %w", err)
 	}
@@ -167,9 +171,6 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 		if err := insertMessage(tx, m); err != nil {
 			return err
 		}
-	}
-	if _, err := tx.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now(), sessionID); err != nil {
-		return fmt.Errorf("store: add compaction: %w", err)
 	}
 	return tx.Commit()
 }

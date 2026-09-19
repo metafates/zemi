@@ -36,7 +36,7 @@ Flags:
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: plan, auto or yolo
-      --output fmt    with -p: text (the reply) or json (reply, tools, usage)
+      --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
@@ -341,7 +341,9 @@ type report struct {
 	SessionID  string       `json:"session_id"`
 	DurationMS int64        `json:"duration_ms"`
 	Tools      []reportTool `json:"tools"`
-	Usage      struct {
+	// times the turn compacted or cleared old tool output to fit the window
+	Compactions int `json:"compactions"`
+	Usage       struct {
 		Input   int64   `json:"input_tokens"`
 		Output  int64   `json:"output_tokens"`
 		CostUSD float64 `json:"cost_usd"`
@@ -379,6 +381,8 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				}
 			}
 			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
+		case m.Kind == "compact":
+			rep.Compactions++
 		case m.Kind == "error":
 			rep.IsError, rep.Error = true, m.Text
 		}

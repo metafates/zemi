@@ -47,7 +47,7 @@ func TestCompactModelSetting(t *testing.T) {
 			models = { { id = "sum" } } })
 		zemi.config.set("compact.model", "p/sum")
 	`)
-	m, err := h.modelFor("compact.model")
+	m, _, err := h.modelFor("compact.model")
 	if err != nil || m.Model() != "sum" {
 		t.Fatalf("summarizer model = %v, err %v", m, err)
 	}
@@ -65,6 +65,9 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "## Goal") || !strings.Contains(out, "cut off") {
 		t.Fatalf("summary = %q", out)
+	}
+	if got := h.AgentStream().SessionOut; got != 7 {
+		t.Fatalf("the summary call billed %d output tokens to the session, want 7", got)
 	}
 }
 

@@ -916,7 +916,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		t.Fatal("the profile's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if m, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
+	if m, _, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
 		t.Fatalf("summary model %v, err %v, want the profile's", m, err)
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
