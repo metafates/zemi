@@ -507,7 +507,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if verb != "" {
 				hints = append(hints, "enter", verb)
 			}
-			if st.o.Reload != nil {
+			m, _ := st.o.Items[st.visible[st.selected]].(map[string]any)
+			if st.o.Reload != nil && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
 				hints = append(hints, "space", "toggle")
 			}
 		}
@@ -524,7 +525,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		for n := min(st.listH, limit+2); len(list) < n; {
 			list = append(list, padSegs(nil, st.width))
 		}
-	case st.o.Body == "":
+	case st.o.Body == "" || st.o.Empty != "":
 		for l := range strings.SplitSeq(cmp.Or(st.o.Empty, "Nothing here."), "\n") {
 			list = append(list, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: "Comment"}}, boxInner(w))...)
 		}

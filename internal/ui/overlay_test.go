@@ -279,6 +279,18 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
+		{"an empty list under a body keeps its empty line",
+			hostapi.Overlay{Body: "header", Empty: "Nothing cached yet."}, nil,
+			func(a *App) string {
+				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
+				return map[bool]string{false: box}[strings.Contains(box, "header") && strings.Contains(box, "Nothing cached yet.")]
+			}},
+		{"a reload list whose rows only open says nothing of space",
+			hostapi.Overlay{Items: []any{detail()}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }}, nil,
+			func(a *App) string {
+				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
+				return map[bool]string{true: box}[strings.Contains(box, "toggle")]
+			}},
 		{"enter opens the detail and esc goes back with the selection kept",
 			hostapi.Overlay{Title: "Errors", Items: []any{"a", detail()}}, []string{"down", "enter", "esc"},
 			func(a *App) string {
