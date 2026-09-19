@@ -216,7 +216,7 @@ zemi -c                           # continue the last session (-r <id> for anoth
 zemi -p "explain main.go"         # answer on stdout, no TUI
 git diff | zemi -p "review this"  # piped stdin joins the prompt
 zemi -p --trust --mode auto -m anthropic/claude-haiku-4-5 "run the tests and fix failures"
-zemi -p --profile lean "..."      # run as a profile init.lua defines with zemi.agent.profile
+zemi -p --profile lean "..."      # run as a profile: the shipped lean one, or one init.lua defines
 zemi --health                     # run the /health checks, exit 1 if any failed
 ```
 

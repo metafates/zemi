@@ -386,7 +386,11 @@ lua-language-server is installed.
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send.
+  fails the send. `defaultui/init.lua` ships one, `lean`: a `-name` denylist of the heavy,
+  rarely called schemas (`window`, `workflow`, `Lua`, `job_start`, `open_in_editor`, `lsp`,
+  7.2k of 17.2k schema characters), so a new tool is in it by default and user config
+  redefines it by name. `job_read` and `job_kill` stay because bash hands a command past its
+  timeout to them.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
@@ -586,10 +590,13 @@ how many rows the frame takes, so nothing above it reflows.
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
   `<config>/AGENTS.md` gets its own budget), Lua sections, skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
-  `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence. Anything
-  that varies per turn must be pinned per session or it busts the provider's prompt cache -
-  which is why `gitStatusSection` runs once per process, warmed at boot so a big repository's
-  `git status` is not paid for at first token.
+  `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
+  or `todos` drops its "Using tools" line, and plan mode without the `plan` tool (headless, a
+  profile) ends in `planHeadless`. No kept tool's description names a tool the shipped
+  `lean` profile drops (`TestPromptFollowsToolSet`). Anything that varies per turn must be
+  pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
+  runs once per process, warmed at boot so a big repository's `git status` is not paid for at
+  first token.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything
   else.

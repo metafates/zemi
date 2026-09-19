@@ -1,12 +1,19 @@
 package hostapi
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // TestSystemPromptSections: the environment is pinned per session, project
@@ -41,6 +48,55 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	if sys := h.buildSystem(&Profile{System: "custom"}); !strings.HasPrefix(sys, "custom") || !strings.Contains(sys, "# zemi") {
 		t.Errorf("profile prompt: %.200q", sys)
+	}
+}
+
+// TestPromptFollowsToolSet: the prompt and the kept tools' descriptions name
+// no tool the profile dropped, the shipped lean one included, which must
+// keep the file tools and what bash hands a timed out command to.
+func TestPromptFollowsToolSet(t *testing.T) {
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
+	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
+		t.Fatal(err)
+	}
+	h.SetUIHooks(&fakeUI{})
+	if err := h.SetPermMode("plan"); err != nil {
+		t.Fatal(err)
+	}
+	lean, err := h.resolveProfile("lean")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		p    *Profile
+		keep []string
+		gone []string
+	}{
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", "plan tool", `"job_start"`, `"window"`}, nil},
+		{"lean", lean, []string{"offset and limit", "plan tool", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
+			[]string{`"window"`, "workflow", "Lua tool", "job_start", "open_in_editor", `"lsp"`}},
+		{"no plan", &Profile{Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
+		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}},
+	} {
+		toolset := h.profileTools(c.p)
+		text, _ := h.buildSystemParts(c.p, toolset)
+		for _, tool := range toolset {
+			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
+		}
+		for _, want := range c.keep {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: misses %q", c.name, want)
+			}
+		}
+		for _, gone := range c.gone {
+			if strings.Contains(text, gone) {
+				t.Errorf("%s: names %q", c.name, gone)
+			}
+		}
 	}
 }
 

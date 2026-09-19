@@ -680,6 +680,8 @@ zemi.agent.profile("coder", {
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
                                            -- and what deleting this line returns to
+-- The shipped UI defines one, "lean": the default set minus window, workflow, Lua,
+-- job_start, open_in_editor and lsp. Defining "lean" in user config replaces it.
 zemi.agent.current()                 -- session handle: { id = "...", profile = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
