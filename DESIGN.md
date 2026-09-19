@@ -1581,8 +1581,9 @@ configured provider later (`zemi.memory.search` signature does not change).
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
   where the kernel lands, case-folded on darwin and windows. Paths
-  outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the project
-  root; the per-session scratchpad
+  outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the launch
+  directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
+  whole trusted repository: the user does that writing); the per-session scratchpad
   (`<state>/projects/<hash>/scratch/<session id>`, §5) is outside it but
   is the one path model `fs.write` allows by default (`fsDefault`;
   `zemi.fs` cannot write there), and user config's `zemi.fs` also

@@ -114,6 +114,8 @@ func TestJobCwdAndSandbox(t *testing.T) {
 		assert(not pcall(zemi.job.wait, { cmd = "pwd", cwd = outside }), "cwd outside the jail")
 		local h, err = zemi.job.start({ cmd = "zz-no-such-program", sandbox = true })
 		assert(not h and err:find("not found"), err)
+		h, err = zemi.job.start({ cmd = "pwd", cwd = "gone", sandbox = true })
+		assert(not h and err:find("cwd: .*gone"), err)
 		for _, c in ipairs({
 			{ "in.txt", true, 0 },
 			{ outside .. "/out.txt", true, 1 },
@@ -158,5 +160,27 @@ func TestFsDatadir(t *testing.T) {
 	`, "p.lua", lua.OriginPlugin)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestEditRepoRoot: started in a subdirectory of a trusted repository,
+// zemi.ui.edit reaches the root and zemi.fs.write stays in the launch dir.
+func TestEditRepoRoot(t *testing.T) {
+	h, r := newTestHost(t)
+	root := h.Dirs.ProjectDir
+	h.Dirs.ProjectDir = filepath.Join(root, "sub")
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(h.Dirs.ProjectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
+	for _, trusted := range []string{"false", "true"} {
+		h.SetProjectTrusted(trusted == "true")
+		runUser(t, r, `
+			local file = "`+root+`/a.txt"
+			assert(not pcall(zemi.fs.write, file, "x"), "write")
+			assert(pcall(zemi.ui.edit, file, {}, function() end) == `+trusted+`, "edit, trusted `+trusted+`")`)
 	}
 }

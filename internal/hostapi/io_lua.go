@@ -979,6 +979,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			if cmd.Dir, err = h.resolveJailed(cwd, h.luaJails(L, false)); err != nil {
 				L.RaiseError("zemi.job.start: cwd: %v", err)
 			}
+			// exec blames the program for a directory it cannot enter
+			if _, err := os.Stat(cmd.Dir); err != nil {
+				return nil, fmt.Errorf("zemi.job.start: cwd: %w", err)
+			}
 		}
 		cmd.Env = env
 		guard := func() string { return "" }

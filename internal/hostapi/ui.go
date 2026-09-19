@@ -311,7 +311,13 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		path := L.CheckString(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
-		resolved, err := h.resolveJailed(path, h.luaJails(L, true))
+		roots := h.luaJails(L, true)
+		if h.ProjectTrusted() {
+			// the editor is the user's own hands, and zemi.project.root() is
+			// where a job's paths are relative to
+			roots = append(roots, h.Dirs.RepoRoot())
+		}
+		resolved, err := h.resolveJailed(path, roots)
 		if err != nil {
 			L.RaiseError("zemi.ui.edit: %v", err)
 		}
