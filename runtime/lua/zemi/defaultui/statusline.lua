@@ -8,12 +8,6 @@ local function run_click(ev)
   assert(zemi.command.run(ev.id))
 end
 
---- Separates statusline groups with a dot.
----@param segs zemi.Line
-local function dot(segs)
-  if #segs > 0 then segs[#segs + 1] = { text = " · ", hl = "Comment", copy = false } end
-end
-
 -- Statusline left starts with the permission mode as a pill (tab cycles
 -- it), colored like the composer prompt. A click opens the mode picker.
 zemi.ui.widget.add({
@@ -53,7 +47,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if (ctx.key_seq or "") == "" then return {} end
-    return { { { text = ctx.key_seq .. " ... ", hl = "Title" } } }
+    return { { { text = ctx.key_seq .. " ...", hl = "Title" } } }
   end,
 })
 
@@ -67,7 +61,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if (ctx.rows_below or 0) == 0 then return {} end
-    return { { { text = " ↓ " .. ctx.rows_below .. " · ctrl+end", hl = "Title" } } }
+    return { { { text = "↓ " .. ctx.rows_below .. " · ctrl+end", hl = "Title" } } }
   end,
 })
 -- Then the project: its path when short, else its name (the splash has
@@ -176,50 +170,48 @@ end)
 -- Statusline right: "model · 24.5k/200k ctx · 45%", falling back to the
 -- session token total when the model's context window is unknown. The
 -- percent colors by threshold: muted, warn at 80%, err at 95%. A click on
--- the model opens the model picker, on the rest /usage.
-zemi.ui.widget.add({
-  id = "statusline.info",
-  region = "statusline.right",
-  priority = 10,
-  on_click = run_click,
-  ---@param ctx zemi.WidgetCtx
-  ---@return zemi.Line[]
-  render = function(ctx)
-    ---@type zemi.Line
-    local segs = {}
-    ---@param text string
-    ---@param hl string
-    ---@param click? string The command a click runs; /usage by default.
-    local function add(text, hl, click)
-      dot(segs)
-      segs[#segs + 1] = { text = text, hl = hl, click = click or "usage" }
-    end
-    if ctx.profile ~= "default" then
-      add(ctx.profile, "Comment", "profile")
-    end
-    if (ctx.model or "") ~= "" then
-      add(ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model")
-    end
-    -- how much of the window is in use, not a running token total: the
-    -- total says nothing about how much room is left
+-- the model opens the model picker, on the rest /usage. One widget per
+-- part, so config can replace or delete any of them.
+---@type { [1]: string, [2]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
+local right = {
+  { "profile", function(ctx)
+    if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
+  end },
+  { "model", function(ctx)
+    if (ctx.model or "") == "" then return end
+    return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
+  end },
+  -- how much of the window is in use, not a running token total: the
+  -- total says nothing about how much room is left
+  { "context", function(ctx)
     local cx = ctx.context or {}
     local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)
     local total = fmt.tokens((ctx.usage or {}).total)
-    if used and window then
-      add(used .. "/" .. window .. " ctx", "Comment")
-    elseif total then
-      add(total .. " tok", "Comment")
-    end
-    if used or total then
-      local pct = tonumber(cx.pct or 0) or 0
-      if pct >= 1 then
-        local hl = pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
-        add(string.format("%d%%", pct), hl)
-      end
-      local cost = tonumber((ctx.usage or {}).cost or 0) or 0
-      if cost > 0 then add(string.format("$%.2f", cost), "Comment") end
-    end
-    if #segs == 0 then return {} end
-    return { segs }
-  end,
-})
+    if used and window then return used .. "/" .. window .. " ctx" end
+    return total and total .. " tok"
+  end },
+  { "percent", function(ctx)
+    local pct = tonumber((ctx.context or {}).pct or 0) or 0
+    if pct < 1 then return end
+    return string.format("%d%%", pct), pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
+  end },
+  { "cost", function(ctx)
+    local cost = tonumber((ctx.usage or {}).cost or 0) or 0
+    if cost > 0 then return string.format("$%.2f", cost) end
+  end },
+}
+for i, part in ipairs(right) do
+  zemi.ui.widget.add({
+    id = "statusline." .. part[1],
+    region = "statusline.right",
+    priority = 9 + i,
+    on_click = run_click,
+    ---@param ctx zemi.WidgetCtx
+    ---@return zemi.Line[]
+    render = function(ctx)
+      local text, hl, click = part[2](ctx)
+      if not text then return {} end
+      return { { { text = text, hl = hl or "Comment", click = click or "usage" } } }
+    end,
+  })
+end

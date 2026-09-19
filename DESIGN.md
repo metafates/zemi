@@ -1127,12 +1127,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   never moves with agent state, so no turn adds or removes a row.
   Statusline
   (`statusline.left` / `statusline.right` widgets ordered by
-  `priority` ascending, overflow truncates the lowest-priority ones; the
+  `priority` ascending, Go joins the ones that draw with a dim " · ",
+  overflow truncates the lowest-priority ones; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
   (`rows_below`); only the focused window pill (window focus chrome) and
   the boot failed, stuck and errors pills are Go-drawn; the
-  shipped `statusline.info` widget shows the model, the session token tally, the
+  shipped right widgets (`statusline.profile`, `model`, `context`, `percent`,
+  `cost`) show the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`), and
   the context-window percent, warning colors past 80%/95%).

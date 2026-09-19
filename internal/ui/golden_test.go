@@ -42,7 +42,7 @@ zemi.ui.widget.add({
   region = "statusline.left",
   priority = 90,
   render = function(ctx)
-    return { { { text = " [rebound]", hl = "Comment" } } }
+    return { { { text = "[rebound]", hl = "Comment" } } }
   end,
 })
 `

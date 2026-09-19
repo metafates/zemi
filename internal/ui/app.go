@@ -1137,7 +1137,7 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 			continue
 		}
 		if len(out) > 0 {
-			out = append(out, hostapi.Segment{Text: " "})
+			out = append(out, hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true})
 		}
 		out = append(out, lines[0]...)
 	}

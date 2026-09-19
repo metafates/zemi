@@ -155,7 +155,9 @@ Everything on screen except the composer and the Go-drawn prompts is a Lua widge
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
 `splash`, `chat`, `working` (the composer frame's whole top rule, `ctx.width` cells: the mascot in its left corner, its eyes showing the turn state, and the turn status at its right end), `statusline.quit`,
 `statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
-`statusline.learn`, `statusline.keys`, `statusline.scroll`, `statusline.info`. Regions: `header`,
+`statusline.learn`, `statusline.keys`, `statusline.scroll`, and on the right `statusline.profile`,
+`statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`. zemi puts a dim
+` · ` between the statusline widgets that draw, so a widget returns its text alone. Regions: `header`,
 `chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
