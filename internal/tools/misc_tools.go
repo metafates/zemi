@@ -63,6 +63,11 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if len(rows) == 0 {
 		return fantasy.NewTextResponse("(no todos)"), nil
 	}
+	return fantasy.NewTextResponse(TodoList(rows)), nil
+}
+
+// TodoList is the list as the todos tool reports it.
+func TodoList(rows []store.Todo) string {
 	var b strings.Builder
 	for _, td := range rows {
 		mark := " "
@@ -74,7 +79,7 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		}
 		fmt.Fprintf(&b, "[%s] %s\n", mark, td.Content)
 	}
-	return fantasy.NewTextResponse(b.String()), nil
+	return b.String()
 }
 
 // PlanVerdict is the user's answer to a presented plan.

@@ -11,6 +11,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestContextEstimateCountsPrompt: the estimate a compaction installs counts
@@ -103,9 +104,16 @@ func TestCompaction(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
 	h.agents.mu.Unlock()
+	if err := h.DB.SetTodos(first, []store.Todo{{Content: "ship", Status: "pending"}}); err != nil {
+		t.Fatal(err)
+	}
 	send("two")
 	if n := m.lastPrompt.Load(); n != 4 {
 		t.Fatalf("compacted prompt has %d messages, want 4 (system, summary, ok, two)", n)
+	}
+	summary := h.agents.runner.History[0]
+	if prev, _ := summaryOf(summary); !strings.Contains(concatText(summary.Content), "[ ] ship") || strings.Contains(prev, "ship") {
+		t.Fatalf("the todo list must follow the summary and stay out of the next merge: %q", concatText(summary.Content))
 	}
 	compacted := false
 	for _, c := range h.Session().Transcript {

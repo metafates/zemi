@@ -366,7 +366,8 @@ lua-language-server is installed.
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
   unknown window means no auto compaction. The summary row is followed by the verbatim tail
-  stored with row role `tail`, which resume reads and transcript readers skip.
+  stored with row role `tail`, which resume reads and transcript readers skip. An unfinished
+  todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never merged.
 - **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
   `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left

@@ -1854,7 +1854,8 @@ least half of it, never when the window is unknown; once after a
 provider's context-too-long refusal; or by `/compact [focus]`: Go clears
 old tool output and, when that is not enough, summarizes all but a
 verbatim tail (at least the latest user message on, when a turn came
-before it) with one model call, stores the summary and a copy of the
+before it) with one model call, stores the summary (an unfinished todo
+list follows it, outside what the next compaction merges) and a copy of the
 tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps

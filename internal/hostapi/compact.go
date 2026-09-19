@@ -19,6 +19,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -297,7 +298,17 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	default:
 		return err
 	}
-	summary := agent.UserMessage(compactPrefix + out + compactSuffix)
+	// The summarizer keeps what it chooses of the todos calls in head; the
+	// stored list goes after the summary, where summaryOf leaves it behind,
+	// so the next compaction never merges a stale one forward.
+	var todos string
+	if h.DB != nil {
+		rows, _ := h.DB.Todos(h.AgentSessionID())
+		if slices.ContainsFunc(rows, func(td store.Todo) bool { return td.Status != "done" }) {
+			todos = "\n\nThe todo list as of this compaction:\n" + tools.TodoList(rows)
+		}
+	}
+	summary := agent.UserMessage(compactPrefix + out + compactSuffix + todos)
 	if err := h.storeCompaction(summary, tail); err != nil {
 		return err
 	}
@@ -417,7 +428,11 @@ func summaryOf(m fantasy.Message) (string, bool) {
 	p, ok := m.Content[0].(fantasy.TextPart)
 	switch {
 	case ok && strings.HasPrefix(p.Text, compactPrefix):
-		return strings.TrimSuffix(strings.TrimPrefix(p.Text, compactPrefix), compactSuffix), true
+		s := strings.TrimPrefix(p.Text, compactPrefix)
+		if i := strings.LastIndex(s, compactSuffix); i >= 0 {
+			s = s[:i]
+		}
+		return s, true
 	case ok && strings.HasPrefix(p.Text, legacyCompactPrefix):
 		return strings.TrimPrefix(p.Text, legacyCompactPrefix), true
 	}
