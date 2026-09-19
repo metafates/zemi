@@ -485,9 +485,9 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
-	cost := h.bill(s.run.parent, s.modelID, usage)
-	if s.sid != "" && h.DB != nil {
-		_ = h.DB.AddUsage(s.sid, billedInput(usage), usage.OutputTokens, cost)
+	h.bill(s.run.parent, s.modelID, usage)
+	if s.sid != "" {
+		h.bill(s.sid, s.modelID, usage)
 	}
 	_, n, _, _ := s.run.state()
 	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, plural(n, "call", "calls")))

@@ -238,6 +238,9 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	if h.agents.memAuto != 0 {
 		t.Fatalf("closed session spent the live budget: memAuto=%d", h.agents.memAuto)
 	}
+	if s, _ := h.DB.GetSession(sid); s == nil || s.CompletionTokens != 7 || h.agents.sessOut != 0 {
+		t.Fatalf("reflector usage goes to the session it read: %+v live=%d", s, h.agents.sessOut)
+	}
 }
 
 // TestReflectPromptWindow: tool rows stay out, the newest messages win the

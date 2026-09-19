@@ -64,7 +64,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 // bill adds a model call's usage to session sid, and to the live tally when
 // sid is still the open session: a background run or the reflector may
 // outlive it.
-func (h *Host) bill(sid, modelID string, u fantasy.Usage) float64 {
+func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	cost := h.turnCost(modelID, u)
 	ag := h.agents
 	ag.mu.Lock()
@@ -78,7 +78,6 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) float64 {
 	if sid != "" && h.DB != nil {
 		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, cost)
 	}
-	return cost
 }
 
 // Tiers are the model tiers config names, in the order a picker shows them:

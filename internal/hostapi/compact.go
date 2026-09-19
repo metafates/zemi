@@ -448,11 +448,10 @@ var keptTools = []string{"skill", "question", "plan", "open_in_editor"}
 
 // pruneToolOutput clears tool results older than the newest kept tokens of
 // them when that frees at least max(kept/2, pruneMinTokens), and returns
-// what it freed. kept is a quarter of the compaction threshold capped at
-// toolKeepTokens, so a small window can prune and a 200k one is unchanged;
-// an unknown window keeps the cap. inTurn also clears what the running turn
-// produced, which only a subagent asks for: its whole run is one turn. The
-// input history is not modified.
+// what it freed. kept is a quarter of the compaction threshold, at most
+// toolKeepTokens, which an unknown window gets. inTurn also clears what the
+// running turn produced, which only a subagent asks for: its whole run is
+// one turn. The input history is not modified.
 func pruneToolOutput(history []fantasy.Message, window int64, inTurn bool) ([]fantasy.Message, int64) {
 	kept := int64(toolKeepTokens)
 	if window > 0 {
