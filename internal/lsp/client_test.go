@@ -60,6 +60,7 @@ func serveBlocking(in io.Reader, out io.Writer) {
 // output drains, and asks for configuration while the client is sending it
 // a large document, must not deadlock the client's reader and writer.
 func TestServerRequestWhileWriting(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -98,6 +99,7 @@ func start(t *testing.T, ctx context.Context, root string) *lsp.Client {
 // TestBadFrameEndsServer: a frame the client refuses ends the connection
 // at once, though the server itself keeps running.
 func TestBadFrameEndsServer(t *testing.T) {
+	t.Parallel()
 	for _, length := range []string{"999999999999", "12abc"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -112,6 +114,7 @@ func TestBadFrameEndsServer(t *testing.T) {
 // TestTouchNoPublishReturnsEarly: a file the server says nothing about
 // ends the wait on the floor timer, not on the caller's whole timeout.
 func TestTouchNoPublishReturnsEarly(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -133,6 +136,7 @@ func TestTouchNoPublishReturnsEarly(t *testing.T) {
 // TestTouchThroughSymlink: a server that answers with the canonicalized
 // path still keys the file the caller asked about.
 func TestTouchThroughSymlink(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	real := filepath.Join(root, "real")
 	if err := os.Mkdir(real, 0o755); err != nil {
@@ -157,6 +161,7 @@ func TestTouchThroughSymlink(t *testing.T) {
 // TestTouchConcurrentVersions: concurrent syncs of one file must reach the
 // server with increasing versions; the fake reports any regression.
 func TestTouchConcurrentVersions(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -182,6 +187,7 @@ func TestTouchConcurrentVersions(t *testing.T) {
 // TestOthers: errors in other files the server published since this one's
 // sync are reported for it, and go away once they are fixed.
 func TestOthers(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -208,6 +214,7 @@ func TestOthers(t *testing.T) {
 
 // TestTouch: opening and changing a file brings its fresh diagnostics.
 func TestTouch(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -236,6 +243,7 @@ func TestTouch(t *testing.T) {
 // TestTouchSymlinkSpellings: a file touched through a symlink and then by
 // its real path is one document to the server.
 func TestTouchSymlinkSpellings(t *testing.T) {
+	t.Parallel()
 	real, link := t.TempDir(), filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(real, link); err != nil {
 		t.Skip(err)
@@ -283,6 +291,7 @@ func TestOffsetPos(t *testing.T) {
 // it (a rename's edits to other files, a formatter) is sent again before
 // the next query, so the server never answers from a stale copy.
 func TestRefreshStaleDocuments(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -311,6 +320,7 @@ func TestRefreshStaleDocuments(t *testing.T) {
 // opened reaches it only through NotifyChanged, filtered by its globs, and
 // a deleted open document is closed on the next touch.
 func TestWatchedFiles(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
