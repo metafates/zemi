@@ -39,7 +39,7 @@ func (h *Host) openWindow(spec win.Spec) (*win.Window, error) {
 	}
 	if spec.Env == nil {
 		// secret-shaped names stay out, as for bash and jobs: the screen is read back
-		spec.Env, _ = perm.ChildEnv(nil)
+		spec.Env, _ = h.Perm.ChildEnv(nil)
 	}
 	return h.openedWindow(h.Wins.Open(spec))
 }

@@ -48,7 +48,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	c.Dir = workdir()
 	// secret-shaped variables stay out of the child, as they do for jobs:
 	// the model reads whatever the command prints
-	env, err := perm.ChildEnv(nil)
+	env, err := p.Store.ChildEnv(nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

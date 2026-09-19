@@ -15,7 +15,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -236,7 +235,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	if m, ok := input["env"].(map[string]any); ok {
 		extras = m
 	}
-	env, err := perm.ChildEnv(extras)
+	env, err := p.Store.ChildEnv(extras)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

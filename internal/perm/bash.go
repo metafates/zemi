@@ -565,16 +565,11 @@ func EnvIsSecret(name string) bool {
 		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
-// EnvKeep returns the comma-separated names ChildEnv passes through despite
-// their secret shape; the host reads permissions.env_keep from user config,
-// so a build that needs its own NPM_TOKEN has a way back.
-var EnvKeep func() string
-
-func envKept(name string) bool {
-	if EnvKeep == nil {
+func (st *Store) envKept(name string) bool {
+	if st == nil || st.EnvKeep == nil {
 		return false
 	}
-	for s := range strings.SplitSeq(EnvKeep(), ",") {
+	for s := range strings.SplitSeq(st.EnvKeep(), ",") {
 		if strings.EqualFold(strings.TrimSpace(s), name) {
 			return true
 		}
@@ -585,10 +580,10 @@ func envKept(name string) bool {
 // ChildEnv is a child process environment: zemi's own minus secret-shaped
 // names the user did not keep, plus extras that pass the secret and
 // assignment gates.
-func ChildEnv(extras map[string]any) ([]string, error) {
+func (st *Store) ChildEnv(extras map[string]any) ([]string, error) {
 	var out []string
 	for _, kv := range os.Environ() {
-		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || envKept(name)) {
+		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || st.envKept(name)) {
 			out = append(out, kv)
 		}
 	}

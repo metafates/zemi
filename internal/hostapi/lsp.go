@@ -330,7 +330,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 	if !ok {
 		h.GoSafe("lsp start "+def.Name, func() {
 			defer close(p.ready)
-			env, _ := perm.ChildEnv(nil)
+			env, _ := h.Perm.ChildEnv(nil)
 			for k, v := range def.Env {
 				env = append(env, k+"="+v)
 			}

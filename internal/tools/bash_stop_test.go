@@ -28,7 +28,7 @@ func TestBashStops(t *testing.T) {
 				time.AfterFunc(200*time.Millisecond, cancel)
 			}
 			start := time.Now()
-			res, err := runBash(ctx, nil, c.input)
+			res, err := runBash(ctx, &Pipeline{}, c.input)
 			if err != nil || time.Since(start) > 5*time.Second || !strings.Contains(res.Content, c.want) {
 				t.Fatalf("after %s: %v %q", time.Since(start), err, res.Content)
 			}

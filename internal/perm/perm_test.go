@@ -327,9 +327,8 @@ func TestEnvIsSecret(t *testing.T) {
 func TestChildEnvKeeps(t *testing.T) {
 	t.Setenv("ZEMI_TEST_NPM_TOKEN", "t")
 	t.Setenv("ZEMI_TEST_API_KEY", "k")
-	EnvKeep = func() string { return "zemi_test_npm_token, OTHER" }
-	t.Cleanup(func() { EnvKeep = nil })
-	env, err := ChildEnv(nil)
+	st := &Store{EnvKeep: func() string { return "zemi_test_npm_token, OTHER" }}
+	env, err := st.ChildEnv(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +350,7 @@ func TestChildEnvRefusesGatedExtras(t *testing.T) {
 		{"PATH=/tmp/x:", false},
 		{"API_TOKEN", false},
 	} {
-		if _, err := ChildEnv(map[string]any{c.key: "1"}); (err == nil) != c.ok {
+		if _, err := (*Store)(nil).ChildEnv(map[string]any{c.key: "1"}); (err == nil) != c.ok {
 			t.Errorf("%q: err %v, want ok=%v", c.key, err, c.ok)
 		}
 	}

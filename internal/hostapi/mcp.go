@@ -91,7 +91,7 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 }
 
 func (h *Host) startMCP(s *mcpServer) {
-	env, _ := perm.ChildEnv(nil)
+	env, _ := h.Perm.ChildEnv(nil)
 	env = append(env, "ZEMI_PROJECT_DIR="+h.Dirs.ProjectDir)
 	for k, v := range s.spec.Env {
 		env = append(env, k+"="+v)

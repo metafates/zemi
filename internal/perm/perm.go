@@ -60,6 +60,11 @@ type Store struct {
 	// paths). It never overrides a matched rule, and an explicit
 	// not_match exclusion still asks.
 	Default func(subject, arg string) Decision
+
+	// EnvKeep returns the comma-separated names ChildEnv passes through
+	// despite their secret shape; the host reads permissions.env_keep from
+	// user config, so a build that needs its own NPM_TOKEN has a way back.
+	EnvKeep func() string
 }
 
 // NewStore returns an empty store.

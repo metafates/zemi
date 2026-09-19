@@ -928,7 +928,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 		}
-		env, err := perm.ChildEnv(extras)
+		env, err := h.Perm.ChildEnv(extras)
 		if err != nil {
 			L.RaiseError("zemi.job.start: %v", err)
 		}
