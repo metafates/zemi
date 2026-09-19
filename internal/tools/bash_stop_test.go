@@ -12,6 +12,7 @@ import (
 // TestBashStops: an interrupt or a timeout ends a command whose children
 // keep its output pipe open, instead of waiting on them forever.
 func TestBashStops(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name   string
 		input  map[string]any
@@ -22,6 +23,7 @@ func TestBashStops(t *testing.T) {
 		{"timeout", map[string]any{"command": "sleep 30 & wait", "timeout_ms": float64(300)}, false, "timed out"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if c.cancel {

@@ -97,6 +97,7 @@ func TestJobReadSandboxHint(t *testing.T) {
 // TestBashTimeoutBecomesJob: a command still running at its timeout keeps
 // going as a job, so a slow build is not thrown away half done.
 func TestBashTimeoutBecomesJob(t *testing.T) {
+	t.Parallel()
 	p := &Pipeline{Jobs: NewJobs()}
 	res, _ := runBash(context.Background(), p, map[string]any{
 		"command": "echo started; sleep 30", "timeout_ms": float64(400)})
@@ -179,6 +180,7 @@ func TestJobReadSpillsTheCut(t *testing.T) {
 // symlink out of the jail while write, edit and read run never lets one of
 // them act outside.
 func TestFileToolsSymlinkRace(t *testing.T) {
+	t.Parallel()
 	proj, outside := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600)
 	s := perm.NewStore()
