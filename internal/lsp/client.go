@@ -232,6 +232,14 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 	}
 }
 
+// Alive reports whether the server replies to a request before ctx ends.
+// The method is unknown to every server: the error reply a live one owes
+// it costs nothing, where a real query waits for the workspace to load.
+func (c *Client) Alive(ctx context.Context) bool {
+	_ = c.Call(ctx, "zemi/alive", nil, nil)
+	return ctx.Err() == nil
+}
+
 // Open syncs path's current content to the server without waiting for
 // diagnostics, so a query that follows sees the text on disk.
 func (c *Client) Open(path, languageID string) error {

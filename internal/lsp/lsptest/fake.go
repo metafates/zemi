@@ -46,7 +46,7 @@ func Serve(in io.Reader, out io.Writer) {
 	// publish carries the regression so the client's last read sees it.
 	seen := map[string]int{}
 	texts := map[string]string{}
-	regressed := false
+	regressed, hung := false, false
 	for {
 		body, err := lsp.ReadMessage(r)
 		if err != nil {
@@ -75,10 +75,14 @@ func Serve(in io.Reader, out io.Writer) {
 				} `json:"changes"`
 			} `json:"params"`
 		}
-		if json.Unmarshal(body, &m) != nil {
+		if json.Unmarshal(body, &m) != nil || hung {
 			continue
 		}
 		switch m.Method {
+		default:
+			if m.Method != "" && len(m.ID) > 0 {
+				write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
+			}
 		case "initialize":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"capabilities": map[string]any{"textDocumentSync": 1}}})
 		case "initialized":
@@ -175,6 +179,11 @@ func Serve(in io.Reader, out io.Writer) {
 		case "exit":
 			return
 		case "textDocument/didOpen", "textDocument/didChange":
+			// A .hang document wedges the server: it reads on and answers nothing.
+			if strings.HasSuffix(m.Params.TextDocument.URI, ".hang") {
+				hung = true
+				continue
+			}
 			// A .quiet document is one the server has nothing to say about.
 			if strings.HasSuffix(m.Params.TextDocument.URI, ".quiet") {
 				continue

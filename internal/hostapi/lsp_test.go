@@ -24,7 +24,7 @@ func TestLSPDiagnostics(t *testing.T) {
 	h, r := newTestHostDB(t)
 	defer h.lsp.stopAll()
 	h.SetProjectTrusted(true)
-	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet" } })`, os.Args[0]))
+	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet", "hang" } })`, os.Args[0]))
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	byName := map[string]fantasy.AgentTool{}
 	for _, tl := range tools.All(h.PipelineFor()) {
@@ -52,11 +52,13 @@ func TestLSPDiagnostics(t *testing.T) {
 		}
 	}
 	first := h.lsp.running["fake"]
-	for i := range lspMaxStalls {
-		run("write", fmt.Sprintf(`{"path":%q,"content":"nothing"}`, filepath.Join(h.Dirs.ProjectDir, fmt.Sprintf("q%d.quiet", i))))
-	}
-	if h.lsp.running["fake"] != nil || first.stalls != lspMaxStalls {
-		t.Fatalf("a silent server must be dropped for a fresh start: %v", h.lspRows())
+	for _, ext := range []string{"quiet", "hang"} {
+		for i := range lspMaxStalls {
+			run("write", fmt.Sprintf(`{"path":%q,"content":"nothing"}`, filepath.Join(h.Dirs.ProjectDir, fmt.Sprintf("q%d.%s", i, ext))))
+		}
+		if alive := h.lsp.running["fake"] == first; alive != (ext == "quiet") {
+			t.Fatalf("only a server that answers nothing is dropped for a fresh start: after %s: %v", ext, h.lspRows())
+		}
 	}
 	if got := run("write", fmt.Sprintf(`{"path":%q,"content":"BROKEN"}`, path)); !strings.Contains(got, "error a.txt:1:1") {
 		t.Fatalf("restarted server = %q", got)
@@ -335,12 +337,12 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 			if _, err := exec.LookPath(c.server); err != nil {
 				t.Skip(c.server, " not installed")
 			}
-			got := ""
+			got, err := "", error(nil)
 			for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !strings.Contains(got, c.want); time.Sleep(time.Second) {
-				got, _ = h.lspDiagnostics(filepath.Join(proj, c.file))
+				got, err = h.lspDiagnostics(filepath.Join(proj, c.file))
 			}
 			if !strings.Contains(got, c.want) {
-				t.Fatalf("diagnostics %q, want %q", got, c.want)
+				t.Fatalf("diagnostics %q (%v), want %q", got, err, c.want)
 			}
 		})
 	}

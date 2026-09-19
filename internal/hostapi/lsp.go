@@ -72,9 +72,9 @@ type lspProc struct {
 	stalls int // touches in a row the server answered nothing to
 }
 
-// lspMaxStarts caps the restarts of a server that keeps dying or going
-// quiet, so a crash loop cannot respawn it on every edit; lspMaxStalls
-// silent touches in a row count as one death.
+// lspMaxStarts caps the restarts of a server that keeps dying or hanging,
+// so a crash loop cannot respawn it on every edit; after lspMaxStalls
+// silent touches in a row a server that answers no request counts as dead.
 const (
 	lspMaxStarts = 3
 	lspMaxStalls = 3
@@ -378,18 +378,27 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 
 // lspAnswered records whether a touch got fresh diagnostics. Answers clear
 // the start counter, so three crashes over a long session do not disable
-// the server for good; lspMaxStalls silences in a row stop it, so the next
-// file starts a fresh one instead of waiting on a wedged process forever.
-func (h *Host) lspAnswered(p *lspProc, fresh bool) {
+// the server for good. Silence alone proves nothing, a server loading its
+// workspace publishes nothing either, so after lspMaxStalls silent touches
+// the server is asked directly, and only one that does not reply before ctx
+// ends is stopped, for the next file to start a fresh one.
+func (h *Host) lspAnswered(ctx context.Context, p *lspProc, fresh bool) {
 	h.lsp.mu.Lock()
-	defer h.lsp.mu.Unlock()
-	if fresh {
+	if p.stalls++; fresh {
 		p.stalls = 0
 		delete(h.lsp.attempts, p.def.Name)
+	}
+	quiet := p.stalls >= lspMaxStalls
+	if quiet {
+		p.stalls = 0
+	}
+	h.lsp.mu.Unlock()
+	if !quiet || p.client.Alive(ctx) {
 		return
 	}
-	p.stalls++
-	if p.stalls < lspMaxStalls || h.lsp.running[p.def.Name] != p {
+	h.lsp.mu.Lock()
+	defer h.lsp.mu.Unlock()
+	if h.lsp.running[p.def.Name] != p {
 		return
 	}
 	delete(h.lsp.running, p.def.Name)
@@ -441,7 +450,7 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	}
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
-	h.lspAnswered(p, err == nil)
+	h.lspAnswered(ctx, p, err == nil)
 	if err != nil {
 		return "", false
 	}
