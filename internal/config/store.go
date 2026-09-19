@@ -65,6 +65,7 @@ func (s *Store) defineDefaults() {
 		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
+		{Path: "ui.window_shadow", Kind: "bool", Default: true, Desc: "shade the cells right of and under a floating window so it stands off what it covers"},
 		{Path: "ui.progress", Kind: "bool", Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
 		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
 		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},

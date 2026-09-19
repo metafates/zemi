@@ -618,3 +618,23 @@ func TestTextPanelWrapCache(t *testing.T) {
 		t.Fatalf("an unchanged frame re-wrapped the panel: widths %d, %d", after[0].width, after[1].width)
 	}
 }
+
+func TestShadow(t *testing.T) {
+	rows := [][]hostapi.Segment{{{Text: "aaaaaaaa"}}, {{Text: "bbbbbbbb", Click: "x"}}, {{Text: "cccccccc"}}}
+	shadow(rows, 1, 0, 3, 2, 8) // a 3 by 2 box at column 1
+	var got []string
+	for _, r := range rows {
+		line := ""
+		for _, s := range r {
+			if s.HL == "WinShadow" && s.Click == "" {
+				line += strings.ToUpper(s.Text)
+			} else {
+				line += s.Text
+			}
+		}
+		got = append(got, line)
+	}
+	if want := []string{"aaaaaaaa", "bbbbBBbb", "cccCCCcc"}; !slices.Equal(got, want) {
+		t.Fatalf("shaded %q, want %q", got, want)
+	}
+}

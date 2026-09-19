@@ -738,6 +738,9 @@ func (a *App) compose(w, h int) string {
 		box, x0, y0, r := a.floatBox(wn, stage)
 		a.winRects = append(a.winRects, r)
 		rows = placeBox(rows, box, x0, y0, w)
+		if len(box) > 0 && a.host.Settings.Bool("ui.window_shadow") {
+			shadow(rows, x0, y0, segsWidth(box[0]), len(box), w)
+		}
 	}
 	if dock := a.dockRow(stage.Dx()); dock != nil {
 		rows = placeBox(rows, [][]hostapi.Segment{dock}, stage.Min.X, stage.Max.Y-1, w)
@@ -883,6 +886,32 @@ func (a *App) Screenshot() string {
 		b.WriteString(strings.TrimRight(line, " "))
 	}
 	return b.String()
+}
+
+// shadow shades what shows right of and under a box, two cells and one row
+// (a cell is about twice as tall as wide), so a float stands off the text
+// it covers. The text stays; only its style goes.
+func shadow(rows [][]hostapi.Segment, x0, y0, bw, bh, w int) {
+	shade := func(y, x, n int) {
+		if y < 0 || y >= len(rows) || x >= w {
+			return
+		}
+		n = min(n, w-x)
+		row := padSegs(rows[y], w)
+		cut := [][]hostapi.Segment{truncateSegs(dropCells(row, x), n)}
+		dimRows(cut) // drops the click targets with the style
+		mid := cut[0]
+		for i := range mid {
+			if mid[i].HL == "Host:Dim" { // an image placeholder keeps its color
+				mid[i].HL = "WinShadow"
+			}
+		}
+		rows[y] = append(append(truncateSegs(row, x), mid...), dropCells(row, x+n)...)
+	}
+	for y := y0 + 1; y < y0+bh; y++ {
+		shade(y, x0+bw, 2)
+	}
+	shade(y0+bh, x0+2, bw)
 }
 
 // dimRows repaints rows in one fixed color. It copies each row: rows share
