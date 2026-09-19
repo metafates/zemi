@@ -1092,7 +1092,7 @@ zemi.win = {}
 ---@field cols? integer Float only: requested width.
 ---@field rows? integer Float only: requested height.
 ---@field focus? boolean Give the user's keys to the window at once.
----@field hidden? boolean Start off screen (running); show with set({ hidden = false }).
+---@field hidden? boolean Start off screen (running), as a label on the dock row that shows it on a click; or set({ hidden = false }).
 ---@field on_exit? fun(info: zemi.WinInfo) Runs when the program exits.
 
 ---@class zemi.WinTextSpec
@@ -1104,7 +1104,7 @@ zemi.win = {}
 ---@field cols? integer Float only: requested width; unset, the window sizes to the text.
 ---@field rows? integer Float only: requested height; unset, the window sizes to the text.
 ---@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it, q and esc close it).
----@field hidden? boolean Start off screen.
+---@field hidden? boolean Start off screen, as for zemi.win.open.
 
 ---@class zemi.WinLayout
 ---@field kind? "split"|"vsplit"|"float"
@@ -1845,16 +1845,16 @@ function zemi.http.get(url, opts) end
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads.
 ---@field sandbox? boolean Run under the sandbox policy a mode-settled bash command gets; raises when it cannot be confined.
 ---@field stdin? boolean Needed before `write`.
----@field timeout_ms? integer `out` only; 60000 by default.
----@field on_stdout? fun(lines: string[])
+---@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
+---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.
 ---@field on_stderr? fun(lines: string[])
----@field on_exit? fun(res: zemi.JobResult)
+---@field on_exit? fun(res: zemi.JobResult) Runs after the last output callback, also for a job `kill` ended (code -1).
 
 ---@class zemi.JobResult
 ---@field id integer
----@field stdout string
----@field stderr string
----@field code integer
+---@field stdout string The first 1 MiB; the rest is dropped.
+---@field stderr string As stdout.
+---@field code integer -1 when a signal ended it.
 ---@field error string
 
 ---@class zemi.JobHandle

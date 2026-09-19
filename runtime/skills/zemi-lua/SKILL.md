@@ -5,8 +5,8 @@ description: Reference for zemi's Lua API (zemi.* namespaces, events, widgets, o
 
 # zemi Lua API
 
-zemi runs Lua 5.1 (gopher-lua) in a sandbox. There is no `io`, `os.execute` or
-`require` of arbitrary C modules; filesystem, network and processes go through
+zemi runs Lua 5.1 (gopher-lua) in a sandbox. There is no `io` and no C modules, and `os`
+keeps only `time`, `date` and `clock`; filesystem, network and processes go through
 `zemi.fs`, `zemi.http` and `zemi.job`, each behind the permission engine. The `zemi.*`
 tables are frozen: you cannot add or replace members, and reading a member a namespace
 does not have raises with the list of the ones it does.
@@ -21,8 +21,10 @@ its own, and a binding may not be a prefix or an extension of a more trusted key
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, run a more trusted
 origin's command with `zemi.command.run`, or close, focus or `set` a window another origin
 opened. Project and learned handlers cannot deny `app.quit` (a plugin denial holds every
-time). Lua calls to gated APIs never open a prompt: an "ask" decision raises
-`permission ask required` unless an allow rule exists.
+time). Lua calls to gated APIs (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.win`)
+never open a prompt: an "ask" decision raises `permission ask required` with the
+`zemi.permission.rule.add` line that allows it, which only the user's init.lua may add.
+zemi-config lists what a plugin cannot do.
 
 ## Modules
 
@@ -51,6 +53,12 @@ loads fresh.
 - Removal reports a boolean and never raises for "not there" (`keymap.del`, `event.off`,
   `widget.del`, `config.unwatch`), so a reloaded config unbinds idempotently.
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
+- Once a `pcall` catches an error, closures made before it stop sharing locals with the
+  function that made them (gopher-lua): a later `n = n + 1` inside one is lost outside it.
+  Share state through a table (`local got = {}`), or return values out of the `pcall`.
+- Module locals die on a reload. `zemi.state` is persisted and shared by every project and
+  running zemi, so put the project in the key (`"branch:" .. zemi.project.root()`) and keep
+  what only this run needs in a local.
 - Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette
   key or an ANSI color name, a rule subject outside `tool. fs. net. lua. mcp. memory.`, a printable key
   with no `focus`, a `zemi.config.watch` path outside the schema, and a tool spec with no
@@ -96,8 +104,9 @@ without asking, the reference for how a widget is written.
 The verbs are regular: `add` registers (`command`, `tool`, `provider`, `health`, `mcp`,
 `lsp`, `ui.widget`, `ui.theme`, `permission.rule`, `permission.mode`), `set` writes a
 value (`config`, `state`, `keymap`, `ui.hl`, `ui.focus`, `ui.layout`, `ui.theme`), `get`
-and `list` read back, and `del` removes where anything can be removed, returning whether
-it did. `event.on` and `config.watch` hand back the id their `off` and `unwatch` take.
+and `list` read back, and `del` removes where anything can be removed (`command`, `keymap`, `state`,
+`ui.widget`, `permission.mode`), returning whether it did; a tool, provider or health row goes with the
+reload that no longer adds it. `event.on` and `config.watch` hand back the id their `off` and `unwatch` take.
 
 | Namespace | Members |
 | --- | --- |
@@ -122,11 +131,11 @@ it did. `event.on` and `config.watch` hand back the id their `off` and `unwatch`
 | `zemi.mcp` | `add(name, { command, args, env, url, headers, enabled_tools, disabled_tools, timeout })` (user config only), `list()` -> `{ name, status, error, source, tools }` (status: starting, ready, needs sign-in, failed, stopped) |
 | `zemi.memory`, `zemi.learn`, `zemi.skills` | see the zemi-learning skill |
 | `zemi.permission` | `rule.add({ subject, pattern, decision, match, not_match, not_match_example })` (any origin may add deny and ask rules; allow rules need user config; the subject starts with `tool. fs. net. lua. mcp. memory.`; `match` is required and is an argument the pattern must catch, checked here, and `not_match` needs `not_match_example` too), `rule.list()`, `mode.add(name, spec)`, `mode.del(name)`, `mode.list()` (modes: user config only; see zemi-config) |
-| `zemi.tool` | `add({ name, description, input, required, execute, prompt, timeout_ms, parallel })` (`prompt` is a system prompt section that ships only while the tool is in the run's tool set, so guidance on using the tool goes there and not in an `agent.assemble` handler; keep it fixed text; `input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises; the call is checked against `required` and the types before `execute` runs, which fails with `return nil, err`: a raise works too but puts file and line in front of the message; a string parameter named `about` is the row's label), `override(name, { pre = fn })` (not from project or learned code), `list` |
-| `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep`, `datadir(name)` -> `<data>/lua/<name>` (user config only: the one place outside the project `zemi.fs` writes, with a `lua.fs.write` rule, and `zemi.ui.edit` opens; keep state files there, since a write under `~/.config/zemi` reloads the config) |
-| `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })`. http/https only, no userinfo, and loopback, RFC1918 and metadata addresses are refused at connect time, per redirect hop; an explicit user allow rule for the host is the localhost opt-in (project and learned code never get it) |
+| `zemi.tool` | `add({ name, description, input, required, execute, prompt, timeout_ms, parallel })` (`prompt` is a system prompt section that ships only while the tool is in the run's tool set, so guidance on using the tool goes there and not in an `agent.assemble` handler; keep it fixed text; `input` maps a parameter name to its JSON Schema, flat; `required` lists parameter names; a missing `description` or an `input` holding `properties` raises; the call is checked against `required` and the types before `execute` runs, which fails with `return nil, err`: a raise works too but puts file and line in front of the message; a string parameter named `about` is the row's label; `execute` holds the interpreter until it returns, so keep a `wait` in it short), `override(name, { pre = fn })` (not from project or learned code), `list` |
+| `zemi.fs` | `read`, `write`, `list`, `stat`, `exists`, `mkdir`, `remove`, `glob` (`**` spans directories), `grep`, `datadir(name)` -> `<data>/lua/<name>` (user config only); writes reach the project dir and a datadir only, each needs a `lua.fs.write` allow rule for the path, and `zemi.ui.edit` opens both; keep state files in a datadir, since a write under `~/.config/zemi` reloads the config |
+| `zemi.http` | `request({ method, url, headers, body, timeout_ms, on_done })` -> handle with `wait()`; `get(url, { on_done })`. http/https only, no userinfo, and loopback, RFC1918 and metadata addresses are refused at connect time, per redirect hop. Gated as `lua.http.<method>` with the URL as the pattern (`net.<host>` is the model's `fetch` only), redirects included; a user allow rule that matches a localhost URL is the localhost opt-in (project and learned code never get it) |
 | `zemi.win` | `open({ cmd, name, kind = "split"/"vsplit"/"float", title, cols, rows, focus, hidden, on_exit(info) })` -> `{ id, keys(notation), mouse({ x, y, kind, button, mod }), send(text), text(), wait_text(want, ms), info(), focus(), set({ kind, hidden, frac, cols, rows, x, y, title }), close() }` (a program in a real terminal drawn inside zemi; needs `lua.job.start` allowed; from user config its OSC 52 clipboard writes reach the host; `name` is one window per origin: opening it again replaces the window and `get(name)` finds it; windows survive reloads, so init.lua opens a program only when `get(name)` is nil), `panel({ text, markdown, name, kind, title, cols, rows, focus, hidden })` -> the same handle plus `set_text(text)` and `append(text)` (a window whose body is text, not a program: markdown renders like the chat and re-wraps on resize, one with no size takes the cells the text needs, at most half its box, arrows and page keys scroll it, q and esc close it while it has the keys, `append` follows the end unless the user scrolled up), `get(id or name)`, `list()` (editor windows only for user config), `close(id)`, `focus(id)` |
-| `zemi.job` | `start({ cmd, args, env, cwd, sandbox, stdin, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }` (`write` needs `stdin = true`; `cwd` is the project dir unless given, any dir `zemi.fs` reads; `sandbox = true` confines the program like a bash command auto mode settled and raises when no sandbox can, which is what a job running model-written code unattended wants); `wait(spec)` runs it to completion and blocks the interpreter while it does, so keep it to tools and short commands. Both `zemi.job` and `zemi.win` need `lua.job.start` allowed for the whole command line, matched like `tool.bash` (normalized segments, so `go test *` covers `{ cmd = "go", args = { "test", "./..." } }`) |
+| `zemi.job` | `start({ cmd, args, env, cwd, sandbox, stdin, on_stdout(lines), on_stderr(lines), on_exit(result) })` -> `{ id, wait(ms), kill(), write(s), close_stdin() }` (`write` needs `stdin = true`; `cwd` is the project dir unless given, any dir `zemi.fs` reads; `sandbox = true` confines the program like a bash command auto mode settled and raises when no sandbox can, which is what a job running model-written code unattended wants; `on_exit` gets `{ id, stdout, stderr, code, error }` after the last output callback, also after `kill()` (code -1), and `stdout`/`stderr` hold the first 1 MiB whether or not `on_stdout` is set); `wait(spec)` runs it to completion and blocks the interpreter while it does, so keep it to tools and short commands. Both `zemi.job` and `zemi.win` need `lua.job.start` allowed for the whole command line, matched like `tool.bash` (normalized segments, so `go test *` covers `{ cmd = "go", args = { "test", "./..." } }`) |
 | `zemi.timer` | `after(ms, fn)` (0 ms = next tick), `every(ms, fn)` -> `{ stop }` |
 | `zemi.state`, `zemi.env` | `set`, `get`, `del`, `keys(prefix)` (persisted kv; a key nobody set is nil with no error); `get(name)` (filtered environment; nil when the variable is not set, so `zemi.env.get("K") or error("set K")` works) |
 
@@ -183,6 +192,33 @@ zemi.tool.add({
     return "ticket " .. args.id
   end,
 })
+
+-- Guidance ships with the tool; state lives in a datadir (the rule is the user's to add)
+zemi.permission.rule.add({ subject = "lua.fs.write", pattern = zemi.fs.datadir("tickets") .. "/*",
+  decision = "allow", match = zemi.fs.datadir("tickets") .. "/seen.json" })
+zemi.tool.add({
+  name = "ticket_seen", description = "mark a ticket as seen",
+  prompt = "Call ticket_seen after you read a ticket, once per ticket.",
+  input = { id = { type = "string" }, about = { type = "string" } }, required = { "id" },
+  execute = function(args)
+    local ok, err = zemi.fs.write(zemi.fs.datadir("tickets") .. "/seen.json", zemi.json.encode({ args.id }))
+    if not ok then return nil, err end
+    return "seen " .. args.id
+  end,
+})
+
+-- Run the project's tests after the model changes Go files: only in a trusted project,
+-- confined, from the repository root. A named panel is replaced, not stacked.
+zemi.event.on("tool.post", function(ev)
+  if not zemi.project.trusted() or not table.concat(ev.changed, " "):find("%.go") then return end
+  zemi.job.start({ cmd = "go", args = { "test", "./..." }, cwd = zemi.project.root(), sandbox = true,
+    on_exit = function(res)
+      zemi.win.panel({ name = "tests", title = "go test", text = res.stdout .. res.stderr })
+    end })
+end)
+
+-- Spend per turn
+zemi.event.on("agent.finish", function(ev) zemi.log.info(ev.model .. " $" .. ev.usage.cost) end)
 
 -- Subagents and workflows run off the interpreter; callbacks fire when done
 zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -241,7 +277,22 @@ change), `reflector.start`, `reflector.done`, `job.exit`, `win.open`, `win.exit`
 opened with `zemi.win` or the window tool), `lsp.request` (server, path, kind
 `diagnostics` after a write or `tool`), and your own `user.*` names. A vetoable handler vetoes
 by returning `{ decision = "deny", reason = "..." }` (`tool.pre` also takes `"halt"`, and
-`"rewrite"` with `input`); any other return lets the event through.
+`"rewrite"` with `input`); any other return lets the event through. A handler has 50 ms, so
+it cannot wait for an answer. A denied `composer.submit` keeps the draft, so to confirm a
+send: deny, ask, and let the same text through once.
+
+```lua
+local pass
+zemi.event.on("composer.submit", function(ev)
+  if pass == ev.text or not ev.text:find("prod") then pass = nil return end
+  zemi.ui.select({ "send", "cancel" }, { prompt = "This mentions prod" }, function(choice)
+    if choice ~= "send" then return end
+    pass = ev.text
+    zemi.composer.submit()   -- user config only; from a plugin, tell the user to press enter
+  end)
+  return { decision = "deny", reason = "confirm first" }
+end)
+```
 
 Every event is recorded whether or not anything listens: `zemi.event.log({ name, limit })`
 returns the last 500 newest first, each the table a handler would have seen plus `at` and

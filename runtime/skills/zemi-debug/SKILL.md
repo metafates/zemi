@@ -59,6 +59,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an
    event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first.
+   Headless (`-p`, `--health`) it goes only to the log file, as `print: ...` lines.
 
 6. Read the log of the run (reading the log directory asks: MCP and LSP server output is
    logged as written and may hold tokens). One file per start:
@@ -94,6 +95,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
 | learned skill not used | drafted skills start disabled: `/skills`, space toggles |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
+| `zemi -p "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
 | one plugin fails at boot | the others still load; `/errors` has the message and the `/health` plugins row counts the failed files |
 | a plugin registers nothing, with no error | its file is not at `site/pack/<any>/start/<name>/plugin/*.lua` (a library-only plugin has just `lua/`); the `/health` plugins row names a directory with neither |
 

@@ -262,20 +262,23 @@ zemi.ui.widget.add({
 })
 zemi.timer.every(30000, zemi.ui.redraw)
 
--- Slow work belongs in a job whose callback writes zemi.state; the widget
--- only reads it. A job started from config needs its own allow rule.
+-- Slow work belongs in a job whose callback sets a local; the widget only reads
+-- it. A local dies with a reload and the timer fills it again; zemi.state is
+-- persisted and shared by every project, so a branch kept there shows up in the
+-- wrong repository. A job started from config needs its own allow rule.
 zemi.permission.rule.add({
   subject = "lua.job.start", pattern = "git rev-parse *", decision = "allow",
   match = "git rev-parse --abbrev-ref HEAD",
 })
+local branch = ""
 zemi.ui.widget.add({
   id = "statusline.branch", region = "statusline.right", priority = 2,
-  render = function(ctx) return { { { text = zemi.state.get("branch") or "", hl = "Comment" } } } end,
+  render = function(ctx) return { { { text = branch, hl = "Comment" } } } end,
 })
 zemi.timer.every(30000, function()
   zemi.job.start({ cmd = "git", args = { "rev-parse", "--abbrev-ref", "HEAD" },
     on_exit = function(res)
-      zemi.state.set("branch", (res.stdout or ""):gsub("%s+$", ""))
+      branch = res.stdout:gsub("%s+$", "")
       zemi.ui.redraw()
     end })
 end)
@@ -302,7 +305,7 @@ marks decoration a selection skips, `soft_wrap = true` a line that continues on 
 row), must be pure
 (registering, `config.set`, `state.set`, `fs` writes, jobs, http and `agent.send` raise
 during render) and fast (about 10 ms): do slow work in `zemi.job` or `zemi.timer`
-callbacks and read the result from `zemi.state`, as the branch widget above does.
+callbacks and read the result from a local, as the branch widget above does.
 A widget redraws only when something else does; one that changes on its own calls
 `zemi.ui.redraw` from a `zemi.timer.every` callback. The theme groups the UI
 uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable give it

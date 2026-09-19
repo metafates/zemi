@@ -239,10 +239,8 @@ zemi.ui.theme.set("mine")
 ```
 
 Widgets replace or extend the screen. Registering a widget with an existing id from
-`init.lua` replaces the builtin one (`chat`, `splash`, `statusline.mode`, `statusline.cwd`,
-`statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`,
-`statusline.cost`, `statusline.learn`, `statusline.agents`, `statusline.reflect`,
-`statusline.view`):
+`init.lua` replaces the builtin one (zemi-customize lists the ids, the regions and the
+rules a `render` follows):
 
 ```lua
 zemi.ui.widget.add({
@@ -351,21 +349,26 @@ Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides i
 Subagents cannot ask.
 
 Rule subjects: `tool.<name>` (`tool.bash` patterns match the normalized command),
-`fs.read`, `fs.write` (path patterns), `net.<host>`, `mcp.<server>` (tool name as
-pattern), `lua.<ns.call>` such as `lua.fs.write`, `lua.job.start` (its patterns match the
-program and its args as a normalized command line, like `tool.bash`). A subject ending in
-`.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
+`fs.read`, `fs.write` (path patterns), `net.<host>` (the model's `fetch` and `web_search`),
+`mcp.<server>` (tool name as pattern), `lua.<ns.call>` for calls config code makes:
+`lua.fs.write` (path), `lua.job.start` (the program and its args as a normalized command
+line, like `tool.bash`), `lua.http.<method>` (the URL; `net.<host>` does not cover
+`zemi.http`). Such a call never prompts: without an allow rule it raises, and the error
+holds the rule to add.
+
+```lua
+zemi.permission.rule.add({ subject = "lua.http.get", pattern = "https://api.github.com/*",
+  decision = "allow", match = "https://api.github.com/repos/o/r" })
+```
+
+A subject ending in `.*` covers its family, so one `net.*` rule answers every `net.<host>` ask. Deny beats ask
 beats allow; within one decision the most specific pattern wins. In a command pattern `*`
 spans spaces and `/`, so `cat docs/*` also allows `cat docs/a /etc/passwd`; an argument that
 climbs with `..` is matched cleaned as well and the stricter verdict holds, so
 `cat docs/../.env` asks, and so does a path the shell still expands (`docs/{a,b}`, `docs/$X`,
 `docs/.*`).
 
-Regions: `header`, `chat`, `statusline.left`, `statusline.right`. `render` must be pure and
-fast: a `zemi.*` call that changes anything (registering, `config.set`, `state.set`, `fs`
-writes, jobs, http, `agent.send`) raises inside it. A widget redraws only when something
-else does, so one with its own clock calls `zemi.ui.redraw` from a `zemi.timer.every`
-callback. For the full API see the zemi-lua skill.
+For the full API see the zemi-lua skill.
 
 ## Project config
 
@@ -396,6 +399,36 @@ call `zemi.agent.run`, `zemi.agent.send`, `zemi.agent.profile`, `zemi.workflow.r
 `zemi.model.set`, `zemi.config.reload`, `zemi.memory.add` or the `zemi.session` and
 `zemi.composer` mutators, run a Go command or a more trusted origin's command, touch windows
 it did not open, deny quitting, read secret-looking env vars, or override user registrations; put personal settings in `~/.config/zemi/init.lua` instead.
+
+## Plugins
+
+A plugin is a directory `~/.local/share/zemi/site/pack/<any>/start/<name>/`: its
+`plugin/*.lua` files run at startup, before init.lua, with the `plugin` origin, and its
+`lua/` holds modules anyone can `require`. A plugin may add commands, keymaps on free keys,
+widgets, overlays, panels, health rows, tools, completions, deny and ask rules, event
+handlers and `agent.assemble` sections, and read files in the project. It cannot, today:
+
+- start a job or a window, make an HTTP request, or write a file: each raises until the
+  user's init.lua has an allow rule for it (`lua.job.start`, `lua.http.<method>`,
+  `lua.fs.write`), and a plugin cannot add allow rules. Print the rule in the plugin's
+  README, or return the specs from a function the user loops over.
+- edit or submit the composer (an overlay item's `fill` still fills it), send to the agent
+  (`zemi.agent.send`, `run`, `profile`, `zemi.workflow.run`), or use `zemi.fs.datadir`. No
+  rule changes this.
+- set settings, the theme, a highlight, the layout, the focus or the tab title, switch the
+  model, session or permission mode, reload, register providers, MCP or LSP servers, enable
+  skills, decide proposals, read secret-looking env vars, run a Go command or a more
+  trusted origin's command, or replace anything user config or zemi registered.
+
+What runs is judged by who registered the callback, not by where the function was written.
+So a plugin that needs the second group ships it as a module and the user wires it in
+init.lua, where it runs as user config:
+
+```lua
+-- ~/.config/zemi/init.lua
+local snippets = require("snippets")   -- site/pack/x/start/snippets/lua/snippets/init.lua
+zemi.command.add("snip", snippets.pick, { desc = "insert a snippet" })   -- may call zemi.composer.insert
+```
 
 ## Splitting config into files
 
