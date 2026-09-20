@@ -10,7 +10,7 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
 1. **Capture.** `/memory <note>` stores a project fact immediately (`s` in `/memory` makes it apply everywhere). You (the agent)
    can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
    `decision`) and one specific fact (up to 500 characters); under the default autonomy it
-   is queued for the user's review. `memory_search` finds earlier memories. `memory_update`
+   stores at once when policy-clean. `memory_search` finds earlier memories. `memory_update`
    rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
    show; the change asks the user unless autonomy is `auto` (and would store at once, see
    below) and the memory is `learned`.
@@ -31,11 +31,11 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own; a disabled skill works too (keep a rarely used one off the
      index and name it on the day it applies), except an unreviewed learned draft.
-   - Autonomy (`memory.autonomy = "auto"` in user config) stores proposed memories without
-     review, except instruction-shaped text, retirements, replacements of the user's own
-     memories, and anything from an untrusted project or a session that used `fetch`,
-     `web_search`, the `Lua` tool or a tool zemi does not ship, MCP and `zemi.tool` ones
-     included (itself or through a subagent).
+   - Autonomy (the default `memory.autonomy = "auto"`, or set `ask` to review every one)
+     stores proposed memories without review, except instruction-shaped text, retirements,
+     replacements of the user's own memories, and anything from an untrusted project or a
+     session that used `fetch`, `web_search`, the `Lua` tool or a tool zemi does not ship,
+     MCP and `zemi.tool` ones included (itself or through a subagent).
 4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
    session start (new memories apply from the next session or compaction). The digest
    (`memory.digest_lines`, 12 by default, 0 off) favors memories about the session's first

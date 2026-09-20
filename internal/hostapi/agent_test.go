@@ -659,6 +659,9 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 func TestMemoryToolsThroughPipeline(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
+	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+		t.Fatal(err)
+	}
 	run := func(name, input string) fantasy.ToolResponse {
 		t.Helper()
 		for _, ag := range tools.All(h.PipelineFor()) {

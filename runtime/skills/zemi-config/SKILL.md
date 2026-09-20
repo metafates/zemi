@@ -131,10 +131,11 @@ guessing. Common keys:
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.max_items`
 - `memory.digest_lines` (12): lines of the memory digest; 0 leaves it out of the prompt
-- `memory.autonomy` (`ask`): `auto` stores memories the model or the reflector propose
-  without review, except instruction-shaped text, retirements, replacements of the user's
-  own memories, and anything from an untrusted project or a session that used `fetch`,
-  `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`)
+- `memory.autonomy` (`auto`): memories the model or the reflector propose
+  store at once unless policy flags them (instruction-shaped text, retirements,
+  replacements of the user's, an untrusted project, or a session that used `fetch`,
+  `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`));
+  set `ask` to review every one in `/memory`
 - `permissions.mode` (`auto`, which an unknown value also reads as): `auto` (reads, edits
   inside the project and commands run on their own, the commands sandboxed; bulk deletes
   like `rm -rf`, `git clean` or `find -delete` and everything

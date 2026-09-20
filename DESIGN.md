@@ -1778,9 +1778,9 @@ startup, since the session still has unseen messages.
 Autonomy is one knob that only user config sets:
 
 ```
-memory.autonomy = "ask"      -- model-proposed memories wait for review;
-                             -- "auto" applies them directly unless the
-                             -- instruction-shaped heuristic flags them
+memory.autonomy = "auto"      -- reflects/model-proposed memories store at
+                              -- once when policy-clean; "ask" queues them
+                              -- for /memory review instead
 ```
 
 `/memory <note>` is not governed by the knob: it is the user's own

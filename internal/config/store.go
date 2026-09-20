@@ -72,7 +72,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
 		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses models.main)"},
 		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses the small tier)"},
-		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
+		{Path: "memory.autonomy", Kind: "string", Default: "auto", Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once (see DESIGN 10.4), ask waits for /memory review; both skip an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, Desc: "memory digest lines in the system prompt (0 leaves it out)"},
 	}
 	for _, def := range defaults {
