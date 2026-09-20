@@ -552,10 +552,10 @@ func (h *Host) Session() Session {
 }
 
 func (h *Host) AppendMessage(role, text string) {
-	h.appendChatMessage(ChatMessage{Role: role, Text: text})
+	h.AppendChat(ChatMessage{Role: role, Text: text})
 }
 
-func (h *Host) appendChatMessage(m ChatMessage) {
+func (h *Host) AppendChat(m ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, m)
 	h.tMu.Unlock()
@@ -565,14 +565,14 @@ func (h *Host) appendChatMessage(m ChatMessage) {
 // AppendTurnResult adds the assistant reply with its turn stats (tokens,
 // thought time, elapsed time) for the chat widget to render.
 func (h *Host) AppendTurnResult(text string, stat TurnStat) {
-	h.appendChatMessage(ChatMessage{Role: "assistant", Text: text, Stat: &stat})
+	h.AppendChat(ChatMessage{Role: "assistant", Text: text, Stat: &stat})
 }
 
 // AppendReasoning adds the persisted thinking block of a finished turn:
 // the chat widget collapses it to a one-line summary unless the reasoning
 // toggle is on (§8). Called by the agent loop's TurnDone.
 func (h *Host) AppendReasoning(text string, stat TurnStat) {
-	h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
 
 // goKeys are the bindings the key router owns (internal/ui/keys.go): they

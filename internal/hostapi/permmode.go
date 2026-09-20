@@ -246,7 +246,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 			v.Path = path
 		}
 	}
-	h.appendChatMessage(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
+	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
 	q := tools.Question{Question: "Implement this plan?", Other: "No, change it: type what to change"}
 	var modes []string
 	if h.permModeDef().Base == "plan" {

@@ -802,7 +802,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		if errors.Is(err, context.Canceled) {
 			row.Status = "cancelled"
 		}
-		h.appendChatMessage(row)
+		h.AppendChat(row)
 	} else {
 		h.EmitAsync("agent.finish", map[string]any{"session": sid, "model": model, "usage": map[string]any{
 			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
@@ -831,7 +831,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 			status = "err"
 			t.Diff = ""
 		}
-		h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		h.AppendChat(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)

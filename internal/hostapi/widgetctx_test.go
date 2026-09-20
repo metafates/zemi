@@ -28,9 +28,9 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			}
 			diff := strings.Repeat("- old line of code here\n+ new line of code here\n", 20)
 			for i := range rows {
-				h.appendChatMessage(ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/x.go", Label: "edit x", Status: "ok", Diff: diff, Output: "done\nok"})
+				h.AppendChat(ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/x.go", Label: "edit x", Status: "ok", Diff: diff, Output: "done\nok"})
 				if i%2 == 0 {
-					h.appendChatMessage(ChatMessage{Role: "user", Text: "please change the thing in the other place " + fmt.Sprint(i)})
+					h.AppendChat(ChatMessage{Role: "user", Text: "please change the thing in the other place " + fmt.Sprint(i)})
 				}
 			}
 			w := h.Widgets.Get("m")

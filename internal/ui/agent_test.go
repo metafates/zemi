@@ -58,25 +58,38 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	return app, host
 }
 
-// seedLongChat fills the session with a long conversation.
+// seedLongChat fills the session with turns of reasoning, tool rows, a diff
+// and a markdown reply.
 func seedLongChat(host *hostapi.Host, turns int) {
+	const reply = "## Heading\n\nA paragraph of the reply with `inline code` and **bold** that wraps across the chat width and then some more words.\n\n```go\nfunc example(a, b int) int {\n\tif a > b {\n\t\treturn a - b\n\t}\n\treturn b - a\n}\n```\n\n- item one\n- item two\n"
+	const diff = "--- a/x.go\n+++ b/x.go\n@@ -1,6 +1,7 @@\n package x\n \n-func a() {}\n+func a() int { return 1 }\n+func b() {}\n \n // tail\n"
 	for i := range turns {
 		host.AppendMessage("user", fmt.Sprintf("question %d about the build", i))
-		host.AppendTurnResult(strings.Repeat("a paragraph of the reply that wraps across the chat width. ", 6),
-			hostapi.TurnStat{Out: 200})
+		host.AppendReasoning("thinking about it for a while", hostapi.TurnStat{})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "internal/ui/app.go", Status: "ok"})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/ui/x.go", Status: "ok", Diff: diff})
+		host.AppendTurnResult(reply, hostapi.TurnStat{Out: 200})
 	}
 }
 
+// frameTurns: a frame must cost the same over a short and a long transcript.
+var frameTurns = []int{10, 500}
+
 // BenchmarkStreamingFrame is one frame while a reply streams: the widget
-// re-renders and the transcript is re-wrapped.
+// re-renders and only the streamed rows are converted and wrapped again.
 func BenchmarkStreamingFrame(b *testing.B) {
-	app, host := bootAgentApp(b, 100, 40)
-	seedLongChat(host, 100)
-	for i := 0; b.Loop(); i++ {
-		host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: fmt.Sprintf("streaming token %d", i)})
-		app.frameGen++
-		app.renderSync(b)
-		_ = app.Frame()
+	for _, turns := range frameTurns {
+		b.Run(fmt.Sprint(turns), func(b *testing.B) {
+			app, host := bootAgentApp(b, 140, 40)
+			seedLongChat(host, turns)
+			app.renderSync(b)
+			for i := 0; b.Loop(); i++ {
+				host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: fmt.Sprintf("streaming token %d", i)})
+				app.frameGen++
+				app.renderSync(b)
+				_ = app.Frame()
+			}
+		})
 	}
 }
 
@@ -100,11 +113,15 @@ func BenchmarkWindowFrame(b *testing.B) {
 
 // BenchmarkIdleFrame is a frame with nothing changed since the last one.
 func BenchmarkIdleFrame(b *testing.B) {
-	app, host := bootAgentApp(b, 100, 40)
-	seedLongChat(host, 100)
-	app.renderSync(b)
-	for b.Loop() {
-		_ = app.Frame()
+	for _, turns := range frameTurns {
+		b.Run(fmt.Sprint(turns), func(b *testing.B) {
+			app, host := bootAgentApp(b, 140, 40)
+			seedLongChat(host, turns)
+			app.renderSync(b)
+			for b.Loop() {
+				_ = app.Frame()
+			}
+		})
 	}
 }
 

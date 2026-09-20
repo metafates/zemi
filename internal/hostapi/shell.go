@@ -48,7 +48,7 @@ func (h *Host) RunShell(cmd string) {
 		}
 		// the transcript keeps the head and the tail, where the failure is;
 		// the model gets the whole output through shellNotes
-		h.appendChatMessage(ChatMessage{Role: "user", Kind: "shell", Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
+		h.AppendChat(ChatMessage{Role: "user", Kind: "shell", Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
 		ag.mu.Lock()
 		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<shell command=%q status=%q>\n%s\n</shell>", cmd, status, text))
