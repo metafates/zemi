@@ -1045,9 +1045,9 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		if c == nil {
 			continue
 		}
-		lines := expandTabs(c.lines)
+		lines := c.lines
 		if !wgt.Wrap {
-			for _, line := range lines {
+			for _, line := range expandTabs(lines) {
 				out = append(out, truncateSegs(line, width))
 			}
 			continue
@@ -1075,14 +1075,19 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 			}
 			c.wrapped, c.wrapW, c.lineRows = rows, width, next
 		}
+		// the chat is alone in its region: its rows are not copied per frame
+		if out == nil {
+			out = slices.Clip(c.wrapped)
+			continue
+		}
 		out = append(out, c.wrapped...)
 	}
 	return out
 }
 
-// expandTabs turns tabs into four spaces, in place (every render hands the
-// cache fresh lines): a tab has no cell width, so layout and drawing would
-// both lose it.
+// expandTabs turns tabs into four spaces, in place: a tab has no cell width,
+// so layout and drawing would both lose it. A wrapped widget needs none,
+// WrapSegs expands its own.
 func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	for _, line := range lines {
 		for j := range line {
