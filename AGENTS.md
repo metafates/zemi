@@ -74,6 +74,9 @@ make golden             # regenerate internal/ui/testdata/*.golden, then read th
 make fmt                # gofmt -w over the tracked Go files
 ```
 
+git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside the
+sandbox, so a confined `git commit` fails on `index.lock`.
+
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
 `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go); most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted
