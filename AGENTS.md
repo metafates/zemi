@@ -180,7 +180,7 @@ Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lu
 rewritten input **re-enters at the permission gate** (per-run pipeline copy with
 `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); an ask with no
 overlay available fails closed; a denied result says who decided and why; errors become
-tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `window`, `Lua`,
+tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `Lua`,
 MCP and Lua tools) call the gate themselves and run the events through `preCheck` (which
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
@@ -228,7 +228,7 @@ is no fail-open path. New host-API side effects need the same `lua.` subject.
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
 allows. `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
-(`unsettled`), input to a window that already runs sandboxed, and MCP tools a server annotates
+(`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git`, `.zemi` or zemi's own dirs are `protectedWrite`, checkouts in `.zemi/worktrees` aside).
 `plan` denies writes and runs commands like auto, sandboxed with the project unwritable.
@@ -267,7 +267,7 @@ its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewri
 each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
-`/trust`. Bash, `job_start` and `window` take two escapes no mode settles and each of which
+`/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the writable
 dirs and offers `network: true` first.
@@ -324,7 +324,7 @@ origin it is last-writer-wins. Project origin additionally cannot register provi
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
 events. A keymap that is a prefix or an extension of a more trusted key is refused,
 `zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that
-origin), windows and overlays can be closed only by user, builtin or the origin that opened
+origin), overlays can be closed only by user, builtin or the origin that opened
 them, and `app.quit` denials from project or learned handlers are ignored. When adding a
 registry, follow `internal/hostapi/registry.go`.
 
@@ -441,52 +441,6 @@ lua-language-server is installed.
 - **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
   `resolveJailed` and `@file` attachments all rely on it.
 
-### Windows (internal/win, internal/hostapi/win.go, internal/ui/win.go)
-
-A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go emulator
-(charmbracelet/x/vt), or text (`Manager.OpenText`): no pty, no emulator, the UI renders and
-wraps the body itself, so a text window never exits and refuses program input (focused, q and
-esc close it). A Lua window's `name` is one window per origin: opening it again replaces it.
-`win.Manager` on the host owns windows; they outlive turns and reloads (only Lua `on_exit`
-callbacks are generation-tagged). Each carries a `Layout` the UI reads per frame: splits and vsplits go where
-the layout tree has a `windows` slot of their kind, floats over everything in list order
-(`Manager.Raise` puts a focused or clicked one on top), and overlays, popups and prompts draw
-above every window. Hidden windows get a label on the dock row (`dockRow`) that shows them
-again.
-
-`Screen()` turns cells into `sgr:` segments so colors reach the renderer untouched. Keys go the
-xterm way, and as CSI u while the program keeps kitty keyboard flag 1 on for the screen it is
-on (a bool per screen like zellij, no flag stack), so nvim tells esc, ctrl+i and shift+enter
-apart. OSC 52 writes reach the host clipboard only from a window whose `Spec.Clipboard` is set:
-the editor and `zemi.win.open` from user or builtin code outside the Lua tool, never a window
-the model drives, which could plant a command the user pastes. Input queues and a `writeLoop`
-goroutine feeds the pty, because the emulator writes under the screen lock and a program that
-does not read stdin must not wedge it. A window's env drops the host terminal's identity, or
-image tools emit protocols x/vt drops. Images (kitty.go) are kitty Unicode placeholders, on
-ghostty and kitty only: the APC handler takes direct base64 transmissions and never `t=f/t/s`,
-which the unconfined host would read from disk; the cells are plain text, so clipping and
-scrolling need nothing image-specific and every text reader sees blanks, while
-`sanitize.String` blanks them everywhere else, so model text cannot draw an image in chrome.
-
-A focused window takes every key, ctrl+c included, until `ui.window.unfocus`. A press on a
-title, separator or float border starts a `winDrag`; a release without motion focuses,
-minimizes to the dock, or closes on ×. A left drag over an **unfocused** window's cells is
-zemi's own selection instead, so the user can copy what a window printed; the press reaches the
-program only when the release comes without a drag. `UIHooks.Screenshot` hands back the last
-composed frame stripped of styling, so `zemi.ui.screenshot()` works from the interpreter
-goroutine without either side waiting; it is how the agent debugs its own widgets and layout.
-Editor windows come out blank.
-
-The model's `window` tool gates `open` as `tool.bash` (same rules and modes, and a mode-settled
-open runs sandboxed through `win.Spec.Wrap`) and `keys`/`mouse`/`send` as `tool.window`,
-`Unsandboxed` (so no mode settles them) unless the window runs sandboxed. `focus` asks always
-unsandboxed and only for a shown window: it hands the user's own keyboard over.
-`text`/`set_text` ask `tool.window.text` with the body as preview, which every mode settles: a
-text window runs nothing and reads nothing. Subagents' asks carry the agent name and their
-windows open hidden; the tool sees only windows it may act on (`windowTool.mine`), never the
-user's, Lua's, or the editor windows `App.EditFile` (ui/editor.go) opens for the user's own
-editor with `os.Environ()`.
-
 ### Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
@@ -566,8 +520,8 @@ may replace it, lower origins are refused. A reload keeps the old layout drawn (
 plain data, safe across generations); `ForceReload` drops one the replay did not set again and
 `DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
 cells, percent, content and weighted fill, takes cells back from fill first when they do not
-fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays, toasts and
-centered window floats go. A content-sized node's height is the most rows it could get, never
+fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and toasts
+go. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
 layout does not draw. A `composer` node with `frame` draws the square frame around the composer

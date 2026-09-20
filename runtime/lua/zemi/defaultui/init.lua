@@ -14,7 +14,7 @@ require("zemi.defaultui.keymaps")
 -- The schemas a coding turn rarely calls, about 40% of the builtin ones.
 -- job_read and job_kill stay: bash hands a command past its timeout to them.
 zemi.agent.profile("lean", {
-  tools = { "-window", "-workflow", "-Lua", "-job_start", "-open_in_editor", "-lsp" },
+  tools = { "-workflow", "-lua", "-job_start", "-lsp" },
 })
 
 ---@class zemi.defaultui

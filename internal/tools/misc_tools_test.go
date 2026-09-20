@@ -7,7 +7,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http/httptest"
@@ -422,49 +421,5 @@ func TestSearchParsers(t *testing.T) {
 	}
 	if got := formatHits(nil, 10); got != "(no results)" {
 		t.Fatalf("empty: %q", got)
-	}
-}
-
-func TestOpenInEditor(t *testing.T) {
-	p, _ := testPipeline(t, true)
-	p.Seen = &sync.Map{}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.txt")
-	write := func(s string) func(context.Context, string, int, string) error {
-		return func(_ context.Context, got string, line int, title string) error {
-			if got != path || line != 2 || title != "fix it" {
-				t.Fatalf("hook got %q line %d title %q", got, line, title)
-			}
-			return os.WriteFile(path, []byte(s), 0o644)
-		}
-	}
-	in := func() string { return fmt.Sprintf(`{"path":%q,"line":2,"reason":"fix it"}`, path) }
-
-	resp := call(t, toolNamed(t, "open_in_editor", p), in())
-	if !strings.Contains(resp.Content, "No editor is available") {
-		t.Fatalf("headless: %+v", resp)
-	}
-
-	p.Edit = write("")
-	resp = call(t, toolNamed(t, "open_in_editor", p), in())
-	if _, err := os.Stat(path); !os.IsNotExist(err) || !strings.Contains(resp.Content, "not kept") {
-		t.Fatalf("empty new file must be removed: %+v %v", resp, err)
-	}
-
-	if err := os.WriteFile(path, []byte("a\nb\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	p.Edit = write("a\nc\n")
-	resp = call(t, toolNamed(t, "open_in_editor", p), in())
-	if !strings.Contains(resp.Content, "-b") || !strings.Contains(resp.Content, "+c") {
-		t.Fatalf("diff: %+v", resp)
-	}
-	if fi, _ := os.Stat(path); p.stale(path, fi) != "" {
-		t.Fatal("the edited file must count as read")
-	}
-
-	p.Edit = func(context.Context, string, int, string) error { return errors.New("the editor exited with code 1") }
-	if resp = call(t, toolNamed(t, "open_in_editor", p), in()); !resp.StopTurn || !strings.Contains(resp.Content, "the editor exited with code 1") {
-		t.Fatalf("editor failure must stop the turn: %+v", resp)
 	}
 }

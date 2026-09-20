@@ -587,10 +587,6 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 		title = "Use a " + strings.TrimPrefix(req.Subject, "mcp.") + " tool?"
 	case req.Subject == "tool.workflow":
 		title = "Run this workflow?"
-	case req.Subject == "tool.window.text":
-		title = "Show this panel?"
-	case req.Subject == "tool.window":
-		title = "Control this window?"
 	case req.Subject == "tool.lua":
 		title = "Run Lua inside zemi?"
 	case req.Subject == "memory.write":

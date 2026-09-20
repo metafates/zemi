@@ -82,18 +82,11 @@ func (h *Host) askHook() tools.Asker {
 		switch {
 		case base == "yolo":
 			return resolved(true, "mode:"+def.Name)
-		case req.Subject == "tool.window.text":
-			// a text window runs nothing and reads nothing: it draws on the
-			// screen, sanitized, so every mode settles it
-			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
 			// gives its own reason
-			switch req.Subject {
-			case "tool.bash":
+			if req.Subject == "tool.bash" {
 				req.Reason = "run outside the sandbox"
-			case "tool.window":
-				req.Reason += " (not sandboxed)"
 			}
 		case req.Network:
 			// the host is the model's, like a fetch URL, so no mode settles it
@@ -138,7 +131,7 @@ func (h *Host) askHook() tools.Asker {
 			// only a command's sandbox escape is a sandbox matter; a Lua
 			// script or a memory edit is Unsandboxed for another reason and
 			// must not be reported as one
-			if req.Unsandboxed && (req.Subject == "tool.bash" || req.Subject == "tool.window") {
+			if req.Unsandboxed && req.Subject == "tool.bash" {
 				return resolved(false, "unsandboxed")
 			}
 			if req.Network {

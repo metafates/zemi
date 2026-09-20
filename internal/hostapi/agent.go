@@ -230,12 +230,12 @@ func (h *Host) sessionModelID() string {
 }
 
 func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
-	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool())
+	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool())
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a print run does not pay for their schemas every step.
-var headlessExcluded = map[string]bool{"window": true, "question": true, "plan": true, "open_in_editor": true}
+var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
 
 // toolSkip adds the language server tools to skip when no server can start
 // in this project (untrusted, or none installed for it): both could then
@@ -244,7 +244,7 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 	if len(h.lspDefs("")) > 0 {
 		return base
 	}
-	skip := map[string]bool{"lsp": true, "diagnostics": true}
+	skip := map[string]bool{tools.ToolLSP: true, tools.ToolDiagnostics: true}
 	maps.Copy(skip, base)
 	return skip
 }
@@ -679,7 +679,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	// the diff reads the file: outside the lock, which UI readers share
 	diff := ""
-	if name == "write" || name == "edit" || name == "multiedit" {
+	if name == tools.ToolWrite || name == tools.ToolEdit || name == tools.ToolMultiedit {
 		var in map[string]any
 		if json.Unmarshal([]byte(input), &in) == nil {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
@@ -1737,7 +1737,7 @@ func (h *Host) seedReads(rows []*store.Message) {
 		}
 		for _, part := range m.Content {
 			call, ok := part.(fantasy.ToolCallPart)
-			if !ok || !slices.Contains([]string{"read", "write", "edit", "multiedit"}, call.ToolName) {
+			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit, tools.ToolMultiedit}, call.ToolName) {
 				continue
 			}
 			var in struct {
@@ -1826,9 +1826,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion
 		p.ApprovePlan = h.approvePlan
-		p.Edit = func(ctx context.Context, path string, line int, title string) error {
-			return ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
-		}
 	}
 	if h.DB != nil {
 		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }

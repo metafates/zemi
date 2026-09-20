@@ -21,7 +21,6 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // mousePress is the last button press, for the event a widget on_click gets.
@@ -218,7 +217,7 @@ func (a *App) selectionText() string {
 				break // what follows on the row is padding or another column
 			}
 		}
-		text := win.StripPlaceholders(line.String())
+		text := line.String()
 		if !soft {
 			text = strings.TrimRight(text, " ")
 		}
@@ -297,8 +296,8 @@ func (a *App) hover(x, y int) tea.Cmd {
 		a.hoverKey = key
 		a.frameGen++
 	}
-	shape := a.edgeShape(x, y)
-	if shape == "" && ok {
+	shape := ""
+	if ok {
 		shape = "pointer"
 	}
 	return a.setPointer(shape)
@@ -376,7 +375,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	button, onButton := a.winButtonAt(x, y)
 	switch top := a.topChrome(); {
 	case top == "perm":
 		pa := a.permAsk
@@ -419,11 +417,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
-	case top == "" && onButton:
-		// the button under the pointer, of the two the title row ends with
-		lo := button.x + button.w - winButtons + (x-(button.x+button.w-winButtons))/3*3
-		return []cellSpan{{y, lo, lo + 3}}, func() { a.titleClick(button.id, x) }, true
-	case under.Click != "":
+	case top == "" && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command
 			name, args := splitCommand(under.Click)

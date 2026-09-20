@@ -102,11 +102,9 @@ guessing. Common keys:
   zemi-customize. `/profile` picks one.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort.
-- `ui.window.unfocus` (ctrl+\): the key that takes typing back from a focused window.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
-  `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). It runs in a focused
-  float over zemi with the user's full environment; ctrl+c goes to the editor, `ui.window.unfocus`
-  shrinks it to uncover the composer, and the window closes when it exits. × or `/win close <id>` kills a running editor only when repeated.
+  `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). It runs fullscreen
+  over zemi and the TUI resumes when it exits; ctrl+c is the editor's to use.
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `models.small`)
 - `session.auto_title` (true): name sessions from the first exchange with `models.small`
@@ -130,8 +128,6 @@ guessing. Common keys:
 - `ui.notify` (true): terminal notification when zemi is unfocused and a turn ends or a
   prompt waits
 - `ui.progress` (true): OSC 9;4 while a turn runs, which taskbars and tab bars draw
-- `ui.window_shadow` (true): shade the cells right of and under a floating window (group
-  `WinShadow`)
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.max_items`
 - `memory.digest_lines` (12): lines of the memory digest; 0 leaves it out of the prompt
@@ -148,7 +144,7 @@ guessing. Common keys:
   proposes a plan) or `yolo` (every ask is allowed; deny rules still apply).
   In a project the user has not trusted (`/trust`), auto and plan mode run only commands
   that just read (no builds, tests or git), auto edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
-  anything that is not a read (config, providers, permissions, jobs, windows, servers, the
+  anything that is not a read (config, providers, permissions, jobs, servers, the
   composer, ...). Commands auto and plan mode run without asking run in a
   sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
   mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
@@ -164,10 +160,7 @@ guessing. Common keys:
   `git remote -v` and git commands that print file content in a repository tracking a
   secret-shaped file always ask the user. On Linux the sandbox cannot hide `.env`, so a
   build or test flag that runs code can read it in a trusted project. A command that needs the network is retried with `network: true` (the sandbox stays, sockets are added); one that needs more with `sandbox: false`, which asks the
-  user (not with `-p`, where nobody can answer). Typing into a window auto mode settles only
-  when the window itself runs sandboxed; a text window (`tool.window.text`) runs nothing, so
-  every mode settles it. Giving a window the user's keyboard (`focus`) always asks,
-  whatever the mode. Without a sandbox (`/health` sandbox row) they run only commands that just read,
+  user (not with `-p`, where nobody can answer). Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
   `/mode <name>`, `tab` (next), `shift+tab` (previous) or `ctrl+y` (yolo until the next
   press); for one run: `zemi --mode auto`. `/permissions` lists the mode and every rule in
@@ -177,7 +170,7 @@ guessing. Common keys:
   command that runs whatever it is handed (a shell, an interpreter, sudo, xargs) is
   offered no always answer at all. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
-- `permissions.env_keep` (empty): comma-separated env var names a command, job, window or
+- `permissions.env_keep` (empty): comma-separated env var names a command, job or
   language server keeps although they look secret-shaped (`*KEY*`, `*TOKEN*`, `*SECRET*`,
   `*PASSWORD*`, ...), which zemi otherwise drops from every child. Name only what a build
   really needs: whatever is kept, the model can print.
@@ -258,7 +251,7 @@ Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/mod
 `/mode`, `/permissions`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/prompt`, `/copy`, `/trust`, `/health`, `/errors`, `/messages`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
-`/reload`, `/win` (a menu of windows; `focus`, `hide`, `show <id>`, `close <id|all>`). Arguments:
+`/reload`). Arguments:
 
 - `/sessions`: enter on an earlier session offers Resume and Delete. Delete removes its
   messages, subagent runs and scratchpad from disk; memories learned from it stay.
@@ -302,7 +295,7 @@ as itself, not as a placeholder.
 ## Tools and permission rules
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
-`web_search`, `todos`, `question`, `plan`, `open_in_editor`, `window`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`web_search`, `todos`, `question`, `plan`, `open_in_editor`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin; read-only calls run at
 once, a script that calls anything else asks the user once, and plan mode or an untrusted
@@ -319,29 +312,6 @@ every answer; enter on a row there reopens that question, and submit sends them 
 ones included. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
 type what to change and the agent revises it. In plan mode each approval names the mode to
 implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
-`window` runs a program in a real terminal drawn inside zemi (a split below the chat, a vsplit
-sidebar beside it, or a float over it; `zemi.win` is the same from Lua): open, read the screen
-as text (`expect` waits for text to appear, `scrollback` adds lines that scrolled off), press
-keys in neovim notation (`ihello<esc>:wq<cr>`, `<c-x>`, `<s-tab>`), click or scroll at a cell,
-`set` the kind, size (`frac`, `cols`, `rows`), position (`x`, `y`) or title of an open window,
-`hide` and `show` it (it keeps running off screen, with a label on the dock row at the
-bottom that shows it again), wait for exit, close. It sees only the
-windows the model opened: the user's, Lua's and the editor's are not its to read or close.
-Subagents have the tool too; their windows open hidden until shown. The user drags a float by its title, resizes it by
-its border or a corner, a vsplit by its separator and a split by its title, and a click
-raises a float over the others. The user clicks a window to type into it and presses
-`ui.window.unfocus` (default ctrl+\) to come back; a click on × closes it, the button beside
-it minimizes it to the dock, and a drag over a window nobody is typing in copies its text. Use it to show a TUI
-you built, a log, a REPL, then read it back to see what the user sees.
-`text` opens a panel that shows text instead of a program (`markdown` renders it like the chat),
-and `set_text` rewrites it in place while the work runs: benchmark or test numbers refreshed as
-each run finishes, the handful of lines that matter out of a long build or log, the checklist
-being ticked off. A panel nobody gave a `frac`, `cols` or `rows` fits its body, at most half the
-area it sits in, and re-wraps when the user resizes; panels survive `/reload` and a new session.
-Nothing you can simply say in a reply is worth a panel, and one that stops changing is worth
-closing. Images (`chafa x.png`)
-show as pixels when zemi runs directly in Ghostty or kitty, and as colored symbols elsewhere
-(tmux and NO_COLOR included); a window's text reads an image's cells as blanks.
 `open_in_editor` opens a file in the user's editor (`editor.command`) and waits
 until they close it; the result is a diff of what they changed. It is for changes only the user
 can make, or when they ask to edit something themselves; subagents never get it.

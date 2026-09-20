@@ -294,7 +294,6 @@ func TestToolRegisterValidation(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`{ name = "x" }`, "execute callback is required"},
 		{`{ name = "bash", execute = function() end }`, "builtin tool name"},
-		{`{ name = "window", execute = function() end }`, "builtin tool name"},
 		{`{ name = "my tool", execute = function() end }`, "identifier"},
 		{`{ name = "x", execute = function() end }`, "description is required"},
 		{`{ name = "x", description = "d", execute = function() end,
@@ -600,7 +599,6 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	}
 	return nil
 }
-func (f *fakeUI) FocusWindow(int)  {}
 func (f *fakeUI) Copy(text string) { f.copied = text }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
@@ -824,7 +822,6 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && ls ?"}, "", nil},
-		{tools.Request{Subject: "tool.window", Arg: "*"}, "", nil},
 		{tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "*", "notes.md")}, "", nil},
 		{tools.Request{Subject: "net.*", Arg: "https://*/"}, "", nil},
 	} {

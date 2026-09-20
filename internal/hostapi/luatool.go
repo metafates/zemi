@@ -54,7 +54,6 @@ var luaReadOnly = map[string]bool{
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
 	"skills.list": true, "state.get": true, "tool.list": true,
 	"ui.focus.get": true, "ui.hl.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.width": true, "ui.screenshot": true, "ui.theme.get": true, "ui.theme.list": true, "ui.widget.list": true,
-	"win.get": true, "win.list": true, "win:text": true, "win:wait_text": true, "win:info": true,
 	"workflow.list": true, "job:wait": true, "http:wait": true,
 }
 
@@ -146,7 +145,7 @@ func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
-		Name: "Lua",
+		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops, start slow work with zemi.job or zemi.timer." +
 			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
@@ -173,10 +172,10 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
 		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
 	}
-	if resp, stop, err := h.preCheck("Lua", call.Input); stop {
+	if resp, stop, err := h.preCheck("lua", call.Input); stop {
 		return resp, err
 	}
-	defer h.postNotify("Lua", call.Input, &reply)
+	defer h.postNotify("lua", call.Input, &reply)
 	src := in.Script
 	if in.Path != "" {
 		path := in.Path
@@ -204,7 +203,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			arg = in.Path
 		}
 		preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-		req := tools.Request{Tool: "Lua", Subject: "tool.lua", Arg: arg, Reason: in.Description, Preview: preview}
+		req := tools.Request{Tool: "lua", Subject: "tool.lua", Arg: arg, Reason: in.Description, Preview: preview}
 		if len(unlisted) > 0 {
 			req.Unsandboxed = true
 			req.Reason = strings.TrimSuffix("uses "+strings.Join(unlisted, ", ")+", which can change zemi or start programs outside the sandbox: "+in.Description, ": ")

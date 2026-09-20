@@ -7,8 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
-
-	"github.com/metafates/zemi/internal/win"
 )
 
 // sidebarConfig is a user init.lua that rebuilds the screen: the statusline
@@ -32,9 +30,7 @@ zemi.ui.layout.set({
       { kind = "region", id = "side", region = "side", size = 20, min = 16, collapse = true, scroll = "top" },
       { kind = "box", dir = "col", stage = true, min = 20, children = {
         { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
-        { kind = "windows", slot = "split" },
       } },
-      { kind = "windows", slot = "vsplit" },
     } },
     { kind = "composer" },
   } },
@@ -60,7 +56,6 @@ func rowOf(frame, text string) (y, x int) {
 // collapses the sidebar.
 func TestRelayout(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 24)
-	defer host.Wins.CloseAll()
 	host.AppendMessage("user", "hello from the middle")
 	runLua(t, app, sidebarConfig)
 	for range 2 {
@@ -109,18 +104,6 @@ func TestRelayout(t *testing.T) {
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
-	for _, kind := range []string{win.KindSplit, win.KindVSplit} {
-		if _, err := host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: kind}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	app.Frame()
-	split, vsplit := app.winRects[0], app.winRects[1]
-	if split.x != app.stage.Min.X || split.y+split.h > app.stage.Max.Y || vsplit.x < app.stage.Max.X || vsplit.titleY != 1 {
-		t.Fatalf("split %+v, vsplit %+v, stage %v", split, vsplit, app.stage)
-	}
-
-	host.Wins.CloseAll()
 	app.Update(tea.WindowSizeMsg{Width: 30, Height: 24})
 	app.Frame()
 	if _, ok := app.LayoutRects()["side"]; ok {
@@ -165,33 +148,5 @@ zemi.ui.layout.set({
 	}
 	if !strings.Contains(lines[len(lines)-1], "errors: /errors") {
 		t.Fatalf("no statusline, yet the error pill is missing:\n%s", frame)
-	}
-
-}
-
-// TestVsplitLeftDrag: a vsplit slot left of the chat is resized by the
-// separator on its right.
-func TestVsplitLeftDrag(t *testing.T) {
-	app, host := bootAgentApp(t, 120, 30)
-	defer host.Wins.CloseAll()
-	runLua(t, app, `zemi.ui.layout.set({ root = { kind = "box", dir = "row", sep = true, children = {
-  { kind = "windows", slot = "vsplit" },
-  { kind = "box", dir = "col", stage = true, children = {
-    { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
-    { kind = "composer" },
-  } },
-} } })`)
-	if _, err := host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindVSplit}); err != nil {
-		t.Fatal(err)
-	}
-	app.Frame()
-	r := app.winRects[0]
-	if r.x != 0 || r.sepX != r.w {
-		t.Fatalf("vsplit %+v should sit left with its separator on the right", r)
-	}
-	dragTo(app, r.sepX, 10, r.sepX+10, 10)
-	app.Frame()
-	if got := app.winRects[0]; got.sepX != r.sepX+10 {
-		t.Fatalf("separator at %d after dragging it from %d by 10", got.sepX, r.sepX)
 	}
 }

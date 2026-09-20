@@ -13,7 +13,6 @@ import (
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // TestAgentSelfAccess covers what the agent reaches of zemi itself: the lua
@@ -76,18 +75,13 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer h.Wins.Close(w.ID)
 	marker := filepath.Join(t.TempDir(), "made")
 	tool := h.luaEvalTool()
 	run := func(script string, allow bool) (*fakeUI, string) {
 		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
 		h.SetUIHooks(ui)
 		input, _ := json.Marshal(map[string]string{"description": "x", "script": strings.ReplaceAll(script, "MARKER", marker)})
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: string(input)})
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,8 +95,6 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.small", "e/m")`, "zemi.provider.add", "provider.add"},
 		{"allow rule", `zemi.permission.rule.add({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
 		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
-		{"window", `zemi.win.open({ cmd = "sleep 1" })`, "zemi.win.open", "win.open"},
-		{"window input", `zemi.win.get(1):send("x")`, ":send", "win:send"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -140,9 +132,6 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		if ui, _ := run(hidden, false); len(ui.asked) != 1 {
 			t.Errorf("%s: no ask", hidden)
 		}
-	}
-	if _, err := h.runModelLua(context.Background(), `local s = zemi.win.get(1) s.send(s, "x")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi.win:send") {
-		t.Errorf("a method called as a field slips the scan but must raise: %v", err)
 	}
 
 	// a callback an approved run left behind loses the approval with the run

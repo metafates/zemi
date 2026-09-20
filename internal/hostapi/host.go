@@ -24,7 +24,6 @@ import (
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/win"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -66,8 +65,6 @@ type UIHooks interface {
 	// EditFile opens a file in the user's editor and blocks until it exits.
 	// Never call it on the UI goroutine.
 	EditFile(ctx context.Context, req EditRequest) error
-	// FocusWindow gives the user's keys to a window (0 = back to zemi).
-	FocusWindow(id int)
 	// Copy puts text on the clipboard and says so.
 	Copy(text string)
 }
@@ -271,7 +268,6 @@ type Host struct {
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
 	lsp   *lspReg  // language servers
-	Wins  *win.Manager
 
 	todoMu     sync.Mutex
 	todoSID    string
@@ -331,10 +327,6 @@ type Host struct {
 	// were missing when it started (guardSandbox)
 	guardMu sync.Mutex
 	guards  map[*sandboxGuard]bool
-	// winGuards maps a sandboxed window's id to its guardSandbox check
-	winGuards sync.Map
-	// closeArm is the running editor window a close was last refused for
-	closeArm atomic.Pointer[winArm]
 	// trustHeld keeps the project untrusted until /trust, after a sandboxed
 	// command created a protected path
 	trustHeld atomic.Bool
@@ -422,11 +414,9 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		mcp:       newMCPReg(),
 		tasks:     newTaskReg(),
 		lsp:       newLSPReg(),
-		Wins:      &win.Manager{},
 	}
 	h.Perm.Default = h.fsDefault
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
-	h.Wins.OnExit = h.windowExited
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
 	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
@@ -1488,7 +1478,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.fs", h.fsNamespace(L), nil},
 		{"zemi.http", h.httpNamespace(L), nil},
 		{"zemi.job", h.jobNamespace(L), nil},
-		{"zemi.win", h.winNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
 		{"zemi.permission", h.permissionNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
@@ -1513,7 +1502,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.60.0"))
+	api.RawSetString("version", glua.LString("0.61.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

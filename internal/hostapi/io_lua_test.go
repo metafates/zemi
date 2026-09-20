@@ -39,7 +39,7 @@ func TestJobHandleColonCalls(t *testing.T) {
 }
 
 // TestJobGateSeesCommandLine: lua.job.start rules match the whole normalized
-// line, so arguments are scoped and a compound window command cannot ride.
+// line, so arguments are scoped and a compound command cannot ride.
 func TestJobGateSeesCommandLine(t *testing.T) {
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
@@ -47,7 +47,6 @@ func TestJobGateSeesCommandLine(t *testing.T) {
 	runUser(t, r, `
 		assert(zemi.job.wait({ cmd = "true", args = { "x" } }), "allowed")
 		assert(not pcall(zemi.job.wait, { cmd = "echo", args = { "true" } }), "the program leads the line")
-		assert(not pcall(zemi.win.open, { cmd = "true; echo" }), "a second command asks")
 	`)
 }
 

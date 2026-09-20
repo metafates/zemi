@@ -15,6 +15,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const contextBudget = 32 << 10
@@ -25,10 +26,10 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	if h.hooks() == nil {
 		ask = headlessAskingPrompt
 	}
-	if !hasTool(toolset, "read") {
+	if !hasTool(toolset, tools.ToolRead) {
 		read = ""
 	}
-	if !hasTool(toolset, "todos") {
+	if !hasTool(toolset, tools.ToolTodos) {
 		todos = ""
 	}
 	return strings.NewReplacer("{ProjectDir}", h.Dirs.ProjectDir, "{Asking}", ask, "{Read}", read, "{Todos}", todos).Replace(basePrompt)
@@ -40,7 +41,8 @@ const readPrompt = `
 - Locate with grep, then read that region with offset and limit: one large window beats many small ones. Filter command output.`
 
 const todosPrompt = `
-- Use todos only when several distinct steps could be lost, and do not repeat the list in your reply.`
+- Use todos only when several distinct steps could be lost, and do not repeat the list in your reply.
+- The moment a step finishes, update the list (mark its item done, or note the change) before starting the next step: never let several steps pass without ticking completed ones off. The list must always show the state your work is in right now.`
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no user and
 // no question, plan or ! tool (headlessExcluded), so telling it to ask
@@ -96,9 +98,9 @@ func (h *Host) zemiPrompt(toolset []fantasy.AgentTool) string {
 		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
 	}
 	var skill string
-	if hasTool(toolset, "skill") {
+	if hasTool(toolset, tools.ToolSkill) {
 		skill = " Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-customize before changing its behavior through config, which is the only way (never edit zemi's source)"
-		if hasTool(toolset, "Lua") {
+		if hasTool(toolset, tools.ToolLua) {
 			skill += ", zemi-lua before running Lua with the Lua tool to read or change its live state"
 		}
 		skill += "."
@@ -142,7 +144,7 @@ func (h *Host) buildSystem(p *Profile) string {
 // model does not have.
 func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string, promptParts) {
 	sys := h.defaultSystemPrompt(toolset)
-	if hasTool(toolset, "agent") {
+	if hasTool(toolset, tools.ToolAgent) {
 		sys += delegationPrompt
 	}
 	var files []string
@@ -156,7 +158,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 	def := h.permModeDef()
 	if def.Base == "plan" {
 		rest := planAsking
-		if !hasTool(toolset, "plan") {
+		if !hasTool(toolset, tools.ToolPlan) {
 			rest = planHeadless
 		}
 		sys += planPrompt + rest
@@ -200,7 +202,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		sections = "\n\n# Project instructions\nThese files come from the user and the repository. Follow them; they override the defaults above. A file from a deeper directory wins over a shallower one, and direct requests in the conversation win over files. They are already loaded, so do not read them again." + sections
 	}
 	env, luaSections, index := h.environmentPrompt(), h.assembleSections()+h.toolSections(toolset), ""
-	if hasTool(toolset, "skill") {
+	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
 	out := h.withDigest(sys + env + sections + luaSections + index)

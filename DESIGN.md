@@ -55,9 +55,8 @@ EXISTS` plus an append-only `migrations` list keyed on `PRAGMA
 user_version`, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
-for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty` and
-`charmbracelet/x/vt` (windows: a program on a pseudo-terminal drawn through
-a Go terminal emulator; the user's editor runs in one too), and
+for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
+(sandbox tests), and
 `go-readability` with `html-to-markdown` (the `fetch` tool: the article
 out of a page, as markdown the model can read). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. Not taken:
@@ -327,7 +326,7 @@ would otherwise run unconfined on zemi's next `git status`.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
-file's: memory, reflector, skills, agents, workflow, mcp, lsp, window) -> the
+file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
@@ -348,8 +347,7 @@ config write (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
 injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
 no `zemi.command.run` of a more trusted origin's command (its body runs
-under that origin), no closing, focusing or moving a window another origin
-opened, no keymap that is a prefix or an extension of a more trusted
+under that origin), no keymap that is a prefix or an extension of a more trusted
 binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
 (builtin ids are reserved; last-writer-wins applies only within one
 origin; cross-origin profile id collisions are refused, §11). The same
@@ -472,7 +470,7 @@ in which milestone.
   whether it did. A new call takes the verb its shape already has, so the
   surface stays guessable without the type annotations open.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
-  timer, session, window) is a handle with colon-call methods (`h:wait()`,
+  timer, session) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
 - **Never silently accept**: a call that can never do what it says raises
@@ -794,8 +792,7 @@ memory edits re-run intake and ask, §10.4), `diagnostics` (language
 server errors for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
 four the host adds: `agent` (delegate to a subagent), `workflow` (write
-or run a workflow script), `window` (a program in a terminal drawn inside
-zemi, or text the UI renders, markdown included, and replaces in place) and `Lua` (run Lua inside zemi, main agent only, as user origin:
+or run a workflow script), and `Lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or plan mode, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9).
@@ -816,7 +813,7 @@ gate; it never skips them. On re-entry the `tool.pre` handlers run again
 in deny-only mode (deny decisions are re-checked against the rewritten
 input; rewrite and halt do not re-fire, §6.2), so a rewrite cannot
 silence another origin's deny hook and re-entry still terminates. Tools
-the host runs itself (`agent`, `workflow`, `window`, `Lua`, MCP and Lua
+the host runs itself (`agent`, `workflow`, `Lua`, MCP and Lua
 tools) refuse a rewrite with an error result instead. `zemi.tool.override(name, { pre })` wraps a
 builtin: its `pre` is a scoped handler for that tool only, running right
 after the global `tool.pre` events under the same decision contract.
@@ -919,7 +916,7 @@ zemi.ui.theme.set("tokyonight")
 UI extensibility contract:
 
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
-  `statusline`, or any name) and window slots that Lua sets with `zemi.ui.layout.set`
+  `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
   and Go solves and paints every frame (§8), plus an overlay stack. The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/defaultui/` (one module per part), replaceable by id. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
@@ -968,7 +965,7 @@ UI extensibility contract:
   8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
   `curl`, `dotted`, `dashed`). Hover draws the theme's `Hover` (widget click
-  segments, statusline pills, a window's close mark) or `HoverItem` (list rows,
+  segments, statusline pills) or `HoverItem` (list rows,
   menus, memory items) over the text's own style: keys a hover group leaves out
   keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
   (toward black on a lighter fill) and `replace` draws the group alone. A theme
@@ -985,8 +982,7 @@ UI extensibility contract:
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question/memory overlays) -> the topmost overlay (Lua, or Go-built
-  lists like the mode and model pickers) -> a focused window ->
-  a focused layout node (its scoped keymaps, then the global ones; an
+  lists like the mode and model pickers) -> a focused layout node (its scoped keymaps, then the global ones; an
   unbound key does nothing, an unbound esc gives the keys back) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
@@ -996,7 +992,7 @@ UI extensibility contract:
   take the keys. `zemi.ui.focus.set(id)` (nil for the composer), `get`,
   `next` and `prev` (drawn focusable nodes in tree then float order, the
   composer counting as one), the `zemi.ui.focus.*` host actions and a
-  click on the node move it; a click on the composer, focusing a window, a
+  click on the node move it; a click on the composer, a
   layout without the node, or esc give it back. The focus lives in Go and
   every key still goes through normal keymap dispatch, so a panel costs no
   Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
@@ -1048,7 +1044,7 @@ commands and `!shell` and a paste reads the clipboard; the same actions are
 whose rows join the Go checks in `/health` and `zemi --health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
-`zemi.mcp` (`add`, `list`), `zemi.win` (windows: `open` a program, `text` a rendered body), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
+`zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.permission.mode` (`add`, `del`, `set`, `list`; user config only, §9).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
@@ -1132,8 +1128,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   overflow truncates the lowest-priority ones; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`); only the focused window pill (window focus chrome) and
-  the boot failed, stuck and errors pills are Go-drawn; the
+  (`rows_below`); only the boot failed, stuck and errors pills are Go-drawn; the
   shipped right widgets (`statusline.profile`, `model`, `context`, `percent`,
   `cost`) show the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
@@ -1157,7 +1152,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
   separators) hold leaves: a widget region (optionally scrolled, by node id), the
   composer (exactly one, never hidden, optionally framed with a region in each rule),
-  the statusline bar, a window slot, a spacer.
+  the statusline bar, a spacer.
   Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
   content and cells, the last child first, down to min and then to 0, and hides its last
@@ -1171,16 +1166,14 @@ configured provider later (`zemi.memory.search` signature does not change).
   stage node, or the whole screen when it is under 40 by 12; toasts stack in the stage;
   completion popups go over the stage's bottom when it is above the composer, else beside
   the composer on the side with room; Lua floats never cover the composer or the alarm
-  pills, and without a bar the pills float at the bottom-left; windows of a kind with no
-  slot float, a clicked or focused float comes to the front, and a hidden window keeps a
-  label on a dock row at the bottom of the stage that shows it again. A scrolled region
+  pills, and without a bar the pills float at the bottom-left. A scrolled region
   draws a thin scrollbar in its last column. Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message (a refresh from any goroutine waits in
   the hook queue at most once); keymaps, widget clicks, one-shot timers,
-  async Lua callbacks (job, http, window, agent) and async event handlers
+  async Lua callbacks (job, http, agent) and async event handlers
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
   repeating timer calls it itself, so an idle tick costs nothing). A
   render's ctx builds `transcript`, `agent`, `todos` and `recent` on first
@@ -1233,7 +1226,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback). A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
-  window splitting the chat leaves the same content in view.
+  turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
   `/profile [name]` (the agent profile the next send runs as; a picker without a name),
   `/permissions` (the mode and the rules in force; a session rule an "always"
@@ -1291,7 +1284,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   chrome (answer keys, subject, badge) renders in fixed host colors no
   theme group can change; Go draws it itself and Lua text never renders
   inside that chrome, so a widget cannot fake a permission prompt. Modal
-  chrome (overlays and prompts) draws over everything, windows included,
+  chrome (overlays and prompts) draws over everything,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, is dimmed in a fixed host color; at any other time a plugin
@@ -1503,8 +1496,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   `auto`, the default. A mode's `decide` that answers neither `allow` nor
   `deny` sends the ask to the user whatever its base settles, so a mode
   whose `decide` answers nothing is how a user gets every ask.
-- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`,
-  `job_start` or window-open call whose verdict a mode gave
+- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`
+  or `job_start` call whose verdict a mode gave
   (`DecidedBy` `mode:<name>`, any base but `yolo`) runs confined; rule-allowed
   and user-approved runs, `!command`, `zemi.job`, MCP servers and
   zemi's own git stay unconfined. Stdio MCP servers start in the data dir
@@ -1564,7 +1557,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   every inet socket is refused. zemi's own temp files (the ctrl+g draft, a pasted image)
   live in `<state>/tmp`. A
   wrap that fails is a tool error, never an unconfined run.
-  While a backend is live, bash, `job_start` and `window` take two escapes,
+  While a backend is live, bash and `job_start` take two escapes,
   fixed per process so the prompt cache holds. `network: true`
   (`Request.Network`) keeps the sandbox and adds sockets (`Policy.Network`),
   which is all a dependency fetch or a `gh` call needs, and it stays confined
@@ -1573,11 +1566,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   Neither is settled by mode rules or by a base other than `yolo`: they go to
   the user with the reason "needs the network, staying sandboxed" or "run
   outside the sandbox" (headless nobody can answer, so the parameters and the
-  retry line are left out and the denial is by `network` or `unsandboxed`). Window `keys`,
-  `mouse` and `send` settle through a mode only for a window that started
-  sandboxed; input to an unconfined one is `Unsandboxed` and asks. A text
-  window (`tool.window.text`) runs nothing and reads nothing, so every mode
-  settles it. A
+  retry line are left out and the denial is by `network` or `unsandboxed`). A
   confined run that fails with output that looks like a denial
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the live backend's limits and the retry, `network: true`
@@ -2001,8 +1990,6 @@ internal/store/             sqlite schema, user_version migrations and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)
-internal/win/               windows: a pty per program, drawn by a Go terminal emulator,
-                            or text the UI renders and re-wraps
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors
@@ -2020,7 +2007,7 @@ provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
 and the LSP client are in; the plugin manager and embeddings-backed
 search are not. Shipped outside every milestone: permission modes (§9),
 workflows, rewind and checkpoints, per-session scratchpads, background
-agents with the `/agents` transcript view, windows, the `Lua` tool, markdown
+agents with the `/agents` transcript view, the `Lua` tool, markdown
 commands and `agents/*.md`, headless print mode (`-p`) and `--health`,
 and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
@@ -2070,7 +2057,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
 ## 14. Open questions
 
-- Multi-window future (two projects side by side): per-project Lua states?
+- Two projects side by side in one zemi: per-project Lua states?
   Defer, but keep session/store APIs project-scoped from day one.
 - When, if ever, learned skills may register `tool.pre` rewrite handlers
   (v1 answer: never, §10.4); revisit with a linter pass for common

@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -48,15 +47,7 @@ type AgentDef struct {
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, and the user's attention (questions, plan approval, editor).
-var subagentExcluded = map[string]bool{"agent": true, "workflow": true, "todos": true, "question": true, "plan": true, "open_in_editor": true}
-
-// subagentHeadless drops the window tool too: with no TUI it could only
-// refuse, and its schema is a tenth of the payload every step pays for.
-var subagentHeadless = func() map[string]bool {
-	m := maps.Clone(subagentExcluded)
-	m["window"] = true
-	return m
-}()
+var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow: true, tools.ToolTodos: true, tools.ToolQuestion: true, tools.ToolPlan: true}
 
 var builtinAgents = []AgentDef{
 	{
@@ -309,10 +300,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
-	all = append(all, h.windowToolFor(def.Name, pipe))
 	skip := subagentExcluded
 	if h.hooks() == nil {
-		skip = subagentHeadless
+		skip = subagentExcluded
 	}
 	kept, unknown := filterTools(all, def.Tools, h.toolSkip(skip))
 	if len(unknown) > 0 {
@@ -654,7 +644,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		params["send_to"] = map[string]any{"type": "string", "description": "id of a running background agent to send prompt to"}
 	}
 	return fantasy.ToolInfo{
-		Name:        "agent",
+		Name:        tools.ToolAgent,
 		Description: b.String(),
 		Parameters:  params,
 		Required:    []string{"prompt"},

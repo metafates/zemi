@@ -400,7 +400,7 @@ function zemi.command.list() end
 ---| "ui.resize" | "ui.theme" | "overlay.open" | "overlay.close"
 ---| "composer.change" | "composer.submit"
 ---| "memory.written" | "skill.learned" | "reflector.start" | "reflector.done"
----| "job.exit" | "win.open" | "win.exit" | "win.close" | "lsp.request"
+---| "job.exit" | "lsp.request"
 
 --- The payload every handler receives, plus the event's own fields.
 ---@class zemi.Event
@@ -506,13 +506,6 @@ function zemi.command.list() end
 ---@field cmd string
 ---@field code integer
 
----@class zemi.ev.Win: zemi.Event
----@field id integer
----@field cmd? string win.open and win.exit.
----@field title? string win.open and win.exit.
----@field kind? string win.open only.
----@field code? integer win.exit only.
-
 ---@class zemi.ev.LspRequest: zemi.Event
 ---@field server string
 ---@field path string
@@ -562,7 +555,6 @@ zemi.event = {}
 ---@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "job.exit", fn: (fun(ev: zemi.ev.JobExit): any), opts?: zemi.EventOpts): string
----@overload fun(name: "win.open"|"win.exit"|"win.close", fn: (fun(ev: zemi.ev.Win): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "lsp.request", fn: (fun(ev: zemi.ev.LspRequest): any), opts?: zemi.EventOpts): string
 function zemi.event.on(name, fn, opts) end
 
@@ -831,7 +823,6 @@ function zemi.ui.widget.list() end
 ---| zemi.LayoutRegion
 ---| zemi.LayoutBar
 ---| zemi.LayoutComposer
----| zemi.LayoutWindows
 ---| zemi.LayoutSpacer
 
 --- Fields every node takes. A box too small for its children takes cells
@@ -839,19 +830,19 @@ function zemi.ui.widget.list() end
 --- child first: down to `min`, then to 0.
 ---@class zemi.LayoutBase
 ---@field id? string Unique; names the node for rects, scroll actions and float `relative`.
----@field size? zemi.Size Default: "fill" for a box, a window slot and anything in a row; 1 for a spacer; "content" otherwise.
+---@field size? zemi.Size Default: "fill" for a box and anything in a row; 1 for a spacer; "content" otherwise.
 ---@field weight? integer A "fill" node's share, default 1.
 ---@field min? integer
 ---@field max? integer
 ---@field hidden? boolean Takes no cells and draws nothing.
 ---@field collapse? boolean Hidden when its box cannot give every child its `min` (the last collapsing child first), instead of squeezing them.
----@field stage? boolean Prompts, overlays, toasts, completion popups and centered window floats go over this node (the screen when none, or when it is under 40 by 12 cells). At most one.
+---@field stage? boolean Prompts, overlays, toasts and completion popups go over this node (the screen when none, or when it is under 40 by 12 cells). At most one.
 
 --- Children laid out left to right ("row") or top to bottom ("col").
 ---@class zemi.LayoutBox: zemi.LayoutBase
 ---@field kind "box"
 ---@field dir "row"|"col"
----@field sep? boolean A one-cell separator between children; a window slot's separator drags to resize it.
+---@field sep? boolean A one-cell separator between children.
 ---@field children zemi.LayoutNode[]
 
 --- The widgets registered in `region`, stacked by priority. A region is drawn at most once.
@@ -861,9 +852,9 @@ function zemi.ui.widget.list() end
 ---@field scroll? "top"|"bottom" Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it; "bottom" follows the tail.
 ---@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
 
---- One row: the first line of each widget in `left`, then Go's pills (the
---- focused window, boot failed, stuck, errors), then `right` aligned to the
---- right edge, truncated first. Without a bar the pills draw over the bottom-left cell.
+--- One row: the first line of each widget in `left`, then Go's pills (boot
+--- failed, stuck, errors), then `right` aligned to the right edge, truncated
+--- first. Without a bar the pills draw over the bottom-left cell.
 ---@class zemi.LayoutBar: zemi.LayoutBase
 ---@field kind "bar"
 ---@field left string Region name.
@@ -880,13 +871,6 @@ function zemi.ui.widget.list() end
 ---@field top? string Region name; needs `frame`. Drawn flush from the left corner at `ctx.width` cells, the whole rule: a widget fills it with its own "─" in `Rule`, or leaves the rest to zemi.
 ---@field left? string Region name; needs `frame`.
 ---@field right? string Region name; needs `frame`.
-
---- Where windows of that kind go: one child per shown window, its `frac`
---- of the box's cells or an equal fill share. Windows of a kind with no slot
---- float over the stage.
----@class zemi.LayoutWindows: zemi.LayoutBase
----@field kind "windows"
----@field slot "split"|"vsplit"
 
 ---@class zemi.LayoutSpacer: zemi.LayoutBase
 ---@field kind "spacer"
@@ -945,8 +929,8 @@ function zemi.ui.layout.rects() end
 --- to it and then the global ones; an unbound key does nothing and an
 --- unbound esc gives the keys back to the composer. Prompts and overlays
 --- still take keys first. A click on a focusable node focuses it, a click
---- on the composer focuses the composer, and focusing a window unfocuses
---- the node. A node the frame does not draw gives its keys to the composer.
+--- on the composer focuses the composer, and the keys come back. A node the
+--- frame does not draw gives its keys to the composer.
 ---@class zemi.ui.focus
 zemi.ui.focus = {}
 
@@ -957,7 +941,7 @@ zemi.ui.focus = {}
 function zemi.ui.title(text) end
 
 --- Render every widget again on the next frame. Keymaps, clicks, one-shot
---- timers, job, http, window and agent callbacks and event handlers redraw
+--- timers, job, http and agent callbacks and event handlers redraw
 --- on their own when they return; a repeating timer or a widget fed by
 --- other state calls this. Raises inside render.
 function zemi.ui.redraw() end
@@ -1022,7 +1006,7 @@ function zemi.ui.input(opts, on_confirm) end
 
 ---@class zemi.EditOpts
 ---@field line? integer 1-based line to start at
----@field title? string window title ("Edit <title>") and working-row label (default: the file name)
+---@field title? string working-row label while the editor is open (default: the file name)
 
 --- Open a file in the project dir, anywhere in a trusted repository (`zemi.project.root()`), or under
 --- `zemi.fs.datadir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
@@ -1068,8 +1052,8 @@ function zemi.ui.width(text) end
 function zemi.ui.markdown(text, width) end
 
 --- The drawn screen as plain text, one line per row, styling and trailing
---- padding dropped, an editor window's cells blank. This is how zemi reads
---- its own UI instead of asking what the user sees.
+--- padding dropped. This is how zemi reads its own UI instead of asking what
+--- the user sees.
 ---@return string|nil screen
 ---@return string|nil err
 function zemi.ui.screenshot() end
@@ -1083,157 +1067,6 @@ zemi.ui.reasoning = {}
 --- Show or hide finished reasoning and every tool call (ctrl+o).
 function zemi.ui.reasoning.toggle() end
 
--- ---------------------------------------------------------------------------
--- zemi.win: programs and text in windows over the chat
-
----@class zemi.win
-zemi.win = {}
-
----@class zemi.WinSpec
----@field cmd string Run with sh -c in the project directory.
----@field name? string One window per name and origin: opening the name again replaces the window, zemi.win.get(name) finds it.
----@field kind? "split"|"vsplit"|"float" In the layout's split (default) or vsplit slot, by default below the chat and beside it, or over it.
----@field title? string Default: the command; the program's own title replaces it.
----@field cols? integer Float only: requested width.
----@field rows? integer Float only: requested height.
----@field focus? boolean Give the user's keys to the window at once.
----@field hidden? boolean Start off screen (running), as a label on the dock row that shows it on a click; or set({ hidden = false }).
----@field on_exit? fun(info: zemi.WinInfo) Runs when the program exits.
-
----@class zemi.WinTextSpec
----@field text string The body. Replaced in place by Win:set_text.
----@field markdown? boolean Render it as markdown (the chat's renderer: headings, lists, tables, code); plain text is only wrapped.
----@field name? string As for zemi.win.open.
----@field kind? "split"|"vsplit"|"float" As for zemi.win.open.
----@field title? string Default: "text".
----@field cols? integer Float only: requested width; unset, the window sizes to the text.
----@field rows? integer Float only: requested height; unset, the window sizes to the text.
----@field focus? boolean Give the user's keys to the window at once (arrows, page keys, home and end scroll it, q and esc close it).
----@field hidden? boolean Start off screen, as for zemi.win.open.
-
----@class zemi.WinLayout
----@field kind? "split"|"vsplit"|"float"
----@field hidden? boolean
----@field frac? number 0.1 to 0.9: a split or vsplit's share of the cells of the layout box its slot is in (separators excluded); unset, an equal share of what is left with that box's fill nodes.
----@field cols? integer A float's width.
----@field rows? integer A float's height.
----@field x? integer A float's left column, -1 centers.
----@field y? integer A float's top row, -1 centers.
----@field title? string
-
----@class zemi.WinInfo
----@field id integer
----@field title string
----@field kind string
----@field cmd string
----@field owner string "model", "lua", "editor", or "agent:<name>" for a subagent's window.
----@field cols integer
----@field rows integer
----@field running boolean
----@field hidden boolean
----@field frac? number
----@field x? integer
----@field y? integer
----@field code? integer Exit code once it exited.
----@field text? true A text window: it runs no program.
----@field cursor { x: integer, y: integer, visible: boolean }
-
----@class zemi.Win
----@field id integer
-local Win = {}
---- Type text into the program (control characters included).
----@param text string
----@return true|nil, string|nil
-function Win:send(text) end
---- Press keys in neovim notation: plain characters type themselves,
---- <esc> <cr> <tab> <bs> <up> <f1> name keys, <c-x> <a-x> <s-tab> add
---- modifiers, <lt> is a literal <. Raises nothing; returns nil, err for a
---- name it does not know.
----@param keys string
----@return true|nil, string|nil
-function Win:keys(keys) end
---- A mouse event at 0-based cell x, y: kind click (default: press and
---- release), press, release, move or wheel; button left (default), middle,
---- right, wheel_up, wheel_down; mod such as "ctrl" or "shift+alt".
----@param spec { x: integer, y: integer, kind?: string, button?: string, mod?: string }
----@return true|nil, string|nil
-function Win:mouse(spec) end
---- The screen as plain text, or a text window's body.
----@return string
-function Win:text() end
---- Replace a text window's body; it redraws in place and re-wraps on
---- resize. Returns nil, err for a window running a program.
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
----@param text string
----@return true|nil, string|nil
-function Win:set_text(text) end
---- Add to a text window's body, as set_text does for the whole of it. The
---- view follows the end unless the user scrolled up; set_text goes back to
---- the top. A body past 256 KB drops its oldest lines.
----@param text string
----@return true|nil, string|nil
-function Win:append(text) end
---- Block until the screen shows want (default 5000 ms). Blocks the
---- interpreter: keep it short, prefer zemi.timer for long waits. It also
---- ends when the request does (its ceiling, or an interrupt).
----@param want string
----@param timeout_ms? integer
----@return boolean shown, string text
-function Win:wait_text(want, timeout_ms) end
----@return zemi.WinInfo
-function Win:info() end
---- Give the user's keys to this window.
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
-function Win:focus() end
---- Change where or how the window shows, or hide and show it; the program
---- keeps running. Like nvim_win_set_config for a terminal buffer.
----@param layout zemi.WinLayout
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
----@return true|nil, string|nil
-function Win:set(layout) end
---- End the program (if still running) and remove the window.
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
-function Win:close() end
-
---- Open a window: a real terminal (TERM=xterm-256color) drawn inside zemi
---- that keeps running while zemi works. Needs `lua.job.start` allowed for
---- the command. A window user config opens may set the clipboard (OSC 52
---- writes; reads get no answer). Returns nil, err when it cannot start. Windows survive
---- reloads, so init.lua should give one a `name` and open it only when
---- `zemi.win.get(name)` is nil.
----@param spec zemi.WinSpec
----@return zemi.Win|nil, string|nil
-function zemi.win.open(spec) end
-
---- Open a window whose body is text, not a program: no pty, nothing to
---- exit, and Win:set_text replaces the text while it shows. One nobody
---- sized takes the cells the text needs, at most half the box it sits in.
----@param spec zemi.WinTextSpec
----@return zemi.Win|nil, string|nil
-function zemi.win.panel(spec) end
-
----@param id integer|string an id, or the `name` the calling origin opened it with
----@return zemi.Win|nil
-function zemi.win.get(id) end
-
----@return zemi.WinInfo[]
-function zemi.win.list() end
-
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
----@param id integer
----@return boolean
-function zemi.win.close(id) end
-
---- Focus a window by id; 0 or nothing gives the keys back to zemi.
---- Raises unless user config, builtin code or the origin that opened the
---- window calls it.
----@param id? integer
-function zemi.win.focus(id) end
 
 -- ---------------------------------------------------------------------------
 -- zemi.notify and zemi.log

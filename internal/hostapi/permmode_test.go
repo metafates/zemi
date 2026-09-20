@@ -128,7 +128,7 @@ func TestUntrustedModes(t *testing.T) {
 	} {
 		h.SetPermMode(c.mode)
 		h.SetProjectTrusted(c.trusted)
-		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: `{"description":"x","script":"return 1"}`})
+		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"description":"x","script":"return 1"}`})
 		if err != nil || strings.Contains(resp.Content, "return: 1") != c.ran {
 			t.Errorf("Lua in %s trusted=%v: %q %v", c.mode, c.trusted, resp.Content, err)
 		}

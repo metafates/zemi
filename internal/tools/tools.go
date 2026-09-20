@@ -29,6 +29,39 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// Builtin tool names, one definition each: everything that refers to a tool
+// by name (the registry here, and the host's gate, prompt and history logic)
+// uses these, so renaming a tool is one line, not a recount of literals.
+const (
+	ToolBash         = "bash"
+	ToolRead         = "read"
+	ToolWrite        = "write"
+	ToolEdit         = "edit"
+	ToolMultiedit    = "multiedit"
+	ToolGlob         = "glob"
+	ToolGrep         = "grep"
+	ToolFetch        = "fetch"
+	ToolWebSearch    = "web_search"
+	ToolTodos        = "todos"
+	ToolQuestion     = "question"
+	ToolPlan         = "plan"
+	ToolSkill        = "skill"
+	ToolJobStart     = "job_start"
+	ToolJobRead      = "job_read"
+	ToolJobList      = "job_list"
+	ToolJobKill      = "job_kill"
+	ToolMemoryAdd    = "memory_add"
+	ToolMemorySearch = "memory_search"
+	ToolMemoryUpdate = "memory_update"
+	ToolMemoryForget = "memory_forget"
+	ToolDiagnostics  = "diagnostics"
+	ToolLSP          = "lsp"
+	// Host tools built by the host, not here, but named by the same rule.
+	ToolAgent    = "agent"
+	ToolWorkflow = "workflow"
+	ToolLua      = "lua"
+)
+
 // Request is one permission check the pipeline needs answered.
 type Request struct {
 	Tool    string // the tool asking (bash, edit, mcp_github_search); set by the pipeline
@@ -95,9 +128,6 @@ type Pipeline struct {
 	// Question asks the user and returns one answer per question; false =
 	// dismissed. nil = nobody can answer (headless).
 	Question func(qs []Question) (answers []string, ok bool)
-	// Edit opens path in the user's editor and returns when it closes.
-	// nil = nobody is at a terminal (headless, subagent).
-	Edit func(ctx context.Context, path string, line int, title string) error
 	// ApprovePlan shows a plan and asks the user to approve it; false =
 	// dismissed. nil = nobody can answer (headless).
 	ApprovePlan func(plan string) (PlanVerdict, bool)
@@ -702,7 +732,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk("bash", `Run a command with sh -c in the project directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over; stdin is empty and there is no terminal. stdout and stderr are merged and long output is cut, with the whole of it saved to a file the result names. At the timeout the command is not killed but handed on as a background job whose id the result gives you.
+		mk(ToolBash, `Run a command with sh -c in the project directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over; stdin is empty and there is no terminal. stdout and stderr are merged and long output is cut, with the whole of it saved to a file the result names. At the timeout the command is not killed but handed on as a background job whose id the result gives you.
 Not for anything that does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help. Not for interactive programs (vim, less, REPLs, git rebase -i): use the non-interactive form (git --no-pager, -m, --yes, CI=1). Not for files when you have read, grep, glob, edit and write: what a command prints does not count as reading a file.
 Chain dependent steps with &&; independent commands are separate calls in one response.`,
 			false,
@@ -719,7 +749,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runBash),
 
-		gated(mk("read", "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
+		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
@@ -731,7 +761,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runRead)),
 
-		gated(edits(mk("write", "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for an existing file, which must have been read this session or the call is refused.", true,
+		gated(edits(mk(ToolWrite, "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for an existing file, which must have been read this session or the call is refused.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -742,7 +772,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runWrite))),
 
-		gated(edits(mk("edit", "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since; otherwise read it and retry. old_string must match exactly once, indentation included (never read's line-number prefix): add surrounding lines to make it unique, or set replace_all. Keep it as small as still unique; whole lines also match when only whitespace differs. A failed match means the text differs: read that region again and copy it, never guess. Do not re-read after success.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since; otherwise read it and retry. old_string must match exactly once, indentation included (never read's line-number prefix): add surrounding lines to make it unique, or set replace_all. Keep it as small as still unique; whole lines also match when only whitespace differs. A failed match means the text differs: read that region again and copy it, never guess. Do not re-read after success.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -755,7 +785,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runEdit))),
 
-		gated(edits(mk("multiedit", "Apply several edits to one file in order, each seeing the result of the one before, under edit's rules. Prefer it over several edit calls to one file. If any edit fails, nothing is written.", true,
+		gated(edits(mk(ToolMultiedit, "Apply several edits to one file in order, each seeing the result of the one before, under edit's rules. Prefer it over several edit calls to one file. If any edit fails, nothing is written.", true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 				"edits": map[string]any{"type": "array", "items": map[string]any{
@@ -774,7 +804,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runMultiedit))),
 
-		mk("glob", "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth.", true,
+		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
@@ -785,7 +815,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runGlob),
 
-		mk("grep", "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. A match is not a read: edit still needs the read tool.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. A match is not a read: edit still needs the read tool.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
@@ -797,7 +827,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runGrep),
 
-		mk("fetch", "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused.",
+		mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -814,7 +844,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runFetch),
 
-		mk("todos", "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress and mark each done as soon as it is. Without todos it returns the list.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress and mark each done the moment it finishes, before the next step's call, so the visible list always matches your current state. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{
@@ -831,20 +861,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk("open_in_editor", `Open a file in the user's own editor and wait until they close it, then continue with what they wrote. Only for a change only they can make: wording they own, a conflict you cannot resolve, or when they ask to edit something themselves. It stops everything until they are done. The result is a diff of what they changed, and the file counts as read.`,
-			false,
-			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "a missing file is created"},
-				"line":   map[string]any{"type": "number", "description": "1-based line to start at"},
-				"reason": map[string]any{"type": "string", "description": "what the user should change, in a few words; shown while the editor is open"},
-			},
-			[]string{"path", "reason"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "open in the user's editor"}}
-			},
-			runOpenInEditor),
-
-		mk("question", `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Give 2-4 mutually exclusive options with 1-5 word labels, the one you recommend first and its label ending in "(Recommended)"; omit options for an open question. The user can always type their own answer, so never add an "Other".`,
+		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Give 2-4 mutually exclusive options with 1-5 word labels, the one you recommend first and its label ending in "(Recommended)"; omit options for an open question. The user can always type their own answer, so never add an "Other".`,
 			false,
 			map[string]any{
 				"questions": map[string]any{"type": "array", "description": "1 to 4, shown as tabs the user moves between before submitting", "items": map[string]any{
@@ -869,7 +886,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk("plan", `Present an implementation plan and wait for the user to approve it before changing anything. In plan mode, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. In plan mode, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
 
 The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. The user approves it (implement it, and plan mode ends), asks for changes (revise and call again), or dismisses it (stop and wait).`,
 			false,
@@ -878,7 +895,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runPlan),
 
-		mk("web_search", "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
+		mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
 			true,
 			map[string]any{
 				"query":       map[string]any{"type": "string"},
@@ -894,7 +911,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			runWebSearch),
 
-		mk("job_start", "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
 				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
@@ -909,7 +926,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			runJobStart),
 
-		mk("job_read", "Read what a background job printed since your last read of it, and whether it is still running.",
+		mk(ToolJobRead, "Read what a background job printed since your last read of it, and whether it is still running.",
 			true,
 			map[string]any{
 				"id": map[string]any{"type": "string"},
@@ -918,14 +935,14 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobRead),
 
-		mk("job_list", "List background jobs with their state.",
+		mk(ToolJobList, "List background jobs with their state.",
 			true,
 			map[string]any{},
 			nil,
 			func(in map[string]any) []Request { return nil },
 			runJobList),
 
-		mk("job_kill", "Stop a background job and everything it started.",
+		mk(ToolJobKill, "Stop a background job and everything it started.",
 			false,
 			map[string]any{
 				"id": map[string]any{"type": "string"},
@@ -934,7 +951,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk("memory_add", "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
+		mk(ToolMemoryAdd, "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
@@ -946,7 +963,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runMemoryAdd),
 
-		mk("memory_search", "Search memories saved in earlier sessions.",
+		mk(ToolMemorySearch, "Search memories saved in earlier sessions.",
 			true,
 			map[string]any{
 				"query": map[string]any{"type": "string"},
@@ -956,7 +973,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runMemorySearch),
 
-		mk("memory_update", "Rewrite a saved memory that is outdated or incomplete, by its id. Keep it one specific fact.",
+		mk(ToolMemoryUpdate, "Rewrite a saved memory that is outdated or incomplete, by its id. Keep it one specific fact.",
 			false,
 			map[string]any{
 				"id":   map[string]any{"type": "string"},
@@ -971,7 +988,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				return runMemoryEdit(p, str(in["id"]), str(in["text"]))
 			}),
 
-		mk("memory_forget", "Delete a saved memory that is wrong or no longer true, by its id.",
+		mk(ToolMemoryForget, "Delete a saved memory that is wrong or no longer true, by its id.",
 			false,
 			map[string]any{"id": map[string]any{"type": "string"}},
 			[]string{"id"},
@@ -980,7 +997,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				return runMemoryEdit(p, str(in["id"]), "")
 			}),
 
-		mk("diagnostics", "Report a file's compiler and linter diagnostics from its language server. write, edit and multiedit already append errors for the file they change, so use this for a file you did not change.",
+		mk(ToolDiagnostics, "Report a file's compiler and linter diagnostics from its language server. write, edit and multiedit already append errors for the file they change, so use this for a file you did not change.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
@@ -1000,9 +1017,9 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				return fantasy.NewTextResponse(out), nil
 			}),
 
-		mk("lsp", lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
+		mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
 
-		mk("skill", "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill covers, even a small one you know how to do: the description is the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded.",
+		mk(ToolSkill, "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill covers, even a small one you know how to do: the description is the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},

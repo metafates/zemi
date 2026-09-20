@@ -176,6 +176,17 @@ zemi.ui.widget.add({
     ---@param t zemi.defaultui.Tool
     ---@return string
     local function tool_name(t) return t.tool or t.name or "?" end
+    -- title-case a tool name for the chat: underscores split into words
+    -- ("web_search" -> "Web Search", "mcp_foo_bar" -> "Mcp Foo Bar").
+    ---@param name string
+    ---@return string
+    local function title(name)
+      local out = {}
+      for w in name:gmatch("[^_]+") do
+        out[#out + 1] = w:sub(1, 1):upper() .. w:sub(2)
+      end
+      return table.concat(out, " ")
+    end
     ---@param t zemi.defaultui.Tool
     ---@return boolean
     local function collapsible(t)
@@ -240,7 +251,7 @@ zemi.ui.widget.add({
       if label ~= "" then
         head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
       else
-        local verb = VERB[name] or name
+        local verb = VERB[name] or title(name)
         head[#head + 1] = { text = verb, hl = "AgentToolName" }
         if input ~= "" then head[#head + 1] = { text = " " .. fit(input, width - fmt.cells(verb) - 12), hl = "Comment" } end
       end

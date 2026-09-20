@@ -17,7 +17,6 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/win"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
@@ -158,24 +157,6 @@ func TestChatExpandSettledRow(t *testing.T) {
 	}
 	if open := rows(); open != closed+2 {
 		t.Fatalf("%d rows closed, %d open, want the two output lines more", closed, open)
-	}
-}
-
-// BenchmarkWindowFrame is an idle frame with a long transcript and three
-// text panels: their bodies must come from the wrap cache, not be re-wrapped
-// once per measure and once per draw.
-func BenchmarkWindowFrame(b *testing.B) {
-	app, host := bootAgentApp(b, 120, 40)
-	defer host.Wins.CloseAll()
-	seedLongChat(host, 100)
-	for _, kind := range []string{win.KindSplit, win.KindVSplit, win.KindFloat} {
-		if _, err := host.Wins.OpenText(win.Spec{Kind: kind, Text: strings.Repeat("a line of panel output that wraps\n", 200)}); err != nil {
-			b.Fatal(err)
-		}
-	}
-	app.renderSync(b)
-	for b.Loop() {
-		_ = app.Frame()
 	}
 }
 
@@ -1053,10 +1034,8 @@ func TestPermTitle(t *testing.T) {
 	}{
 		{hostapi.PermRequest{Subject: "tool.bash", Arg: "make", Description: "Build"}, "Run this command?", ""},
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "a.go"},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
-		{hostapi.PermRequest{Subject: "tool.window.text", Arg: "Results"}, "Show this panel?", "Results"},
-		{hostapi.PermRequest{Subject: "tool.window", Arg: "hello<cr>"}, "Control this window?", "hello<cr>"},
+		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
+		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
 		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "x"},
 	} {
 		if verb, target := permTitle(c.req, "/p"); verb != c.verb || target != c.target {

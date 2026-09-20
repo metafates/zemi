@@ -15,9 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // findCell returns the screen cell where text first appears in the frame.
@@ -180,25 +178,6 @@ func TestComposerCursorColumn(t *testing.T) {
 	}
 }
 
-// TestPopupClickOverWindow: a completion row drawn over a split window
-// takes the click, not the window under it.
-func TestPopupClickOverWindow(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	host.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
-	if err := host.RT.ExecuteChunk(context.Background(), `zemi.win.open({ cmd = "sleep 2", kind = "split" })`, "w.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
-	// the window exits on its own: closing it races inside vt's Emulator
-	app.completion.files = []string{"a.go", "b.go", "c.go"}
-	app.Update(tea.KeyPressMsg{Code: '@', Text: "@"})
-	app.renderSync(t)
-	x, y := findCell(t, app, "b.go")
-	clickAt(app, x+1, y)
-	if app.focusWin != 0 || app.composer.text != "@b.go " {
-		t.Fatalf("focusWin=%d composer=%q", app.focusWin, app.composer.text)
-	}
-}
-
 func TestFilterKeys(t *testing.T) {
 	for _, c := range []struct{ query, key, want string }{
 		{"foo bar", "ctrl+w", "foo "},
@@ -247,13 +226,6 @@ func TestHoverTargets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	window := func(app *App) {
-		app.CaptureHooks()
-		if _, err := app.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat}); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(app.host.Wins.CloseAll)
-	}
 	for _, c := range []struct {
 		name string
 		open func(app *App)
@@ -281,9 +253,6 @@ func TestHoverTargets(t *testing.T) {
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
 		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
 		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
-		{"a window's close mark is a target", window, "×", 0, 1, "Hover"},
-		{"the cell right of the close mark closes too", window, "×", 1, 1, "Hover"},
-		{"a window's title is not", window, "sleep", 0, 0, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -379,41 +348,6 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 			if rows := listRows(items, sel, &top, limit); !strings.Contains(plainSegs(rows[0]), "item") {
 				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, plainSegs(rows[0]))
 			}
-		}
-	}
-}
-
-// TestFloatEdgePointer: the pointer turns into a resize arrow over a float's
-// border and back to the default over its cells.
-func TestFloatEdgePointer(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	a.CaptureHooks()
-	defer a.host.Wins.CloseAll()
-	wn, err := a.host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = wn.SetLayout(func(l *win.Layout) { l.X, l.Y, l.Cols, l.Rows = 10, 4, 30, 8 })
-	a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
-	a.Frame()
-	for _, c := range []struct {
-		x, y int
-		want string
-	}{
-		{10, 8, "ew-resize"},
-		{43, 13, "nwse-resize"},
-		{10, 13, "nesw-resize"},
-		{20, 13, "ns-resize"},
-		{20, 8, "default"},
-		{20, 13, "ns-resize"},
-	} {
-		_, cmd := a.Update(tea.MouseMotionMsg{X: c.x, Y: c.y})
-		got := ""
-		if cmd != nil {
-			got = fmt.Sprint(cmd().(tea.RawMsg).Msg)
-		}
-		if got != "\x1b]22;"+c.want+"\x07" {
-			t.Errorf("%d,%d: %q, want %s", c.x, c.y, got, c.want)
 		}
 	}
 }

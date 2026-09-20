@@ -76,9 +76,9 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		keep []string
 		gone []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", "plan tool", `"job_start"`, `"window"`}, nil},
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", "plan tool", `"job_start"`}, nil},
 		{"lean", lean, []string{"offset and limit", "plan tool", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{`"window"`, "workflow", "Lua tool", "job_start", "open_in_editor", `"lsp"`}},
+			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}},
 		{"no plan", &Profile{Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
 		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}},
 	} {

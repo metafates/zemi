@@ -13,7 +13,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // TestToolDeniedEvent: a call the gate refuses reaches tool.denied
@@ -75,11 +74,6 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
 	h.Commands.Add(&Command{Name: "gocmd", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
 	t.Setenv("ZEMI_TEST_API_KEY", "k")
-	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer h.Wins.Close(w.ID)
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
 		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
@@ -87,7 +81,6 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add({ kind = "fact", text = "x" })`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
-		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
@@ -111,13 +104,6 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")
 		assert(zemi.command.run("gocmd"))
 		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
-	own, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "lua", Origin: string(lua.OriginProject)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := r.ExecuteChunk(context.Background(), fmt.Sprintf(`assert(zemi.win.close(%d))`, own.ID), "p.lua", lua.OriginProject); err != nil {
-		t.Errorf("project closing its own window: %v", err)
-	}
 	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatal(err)
 	}

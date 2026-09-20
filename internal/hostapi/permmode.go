@@ -423,10 +423,6 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.unsettled(req.Arg) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
-	case "tool.window":
-		// input to a window running unconfined is Unsandboxed and never
-		// reaches here, so this drives a program the sandbox already holds
-		return true
 	}
 	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {
 		return h.mcpReadOnly(server, req.Arg)

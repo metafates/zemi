@@ -10,24 +10,17 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
 
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
-// the chrome drawn on top (topChrome), a focused window, a focused layout
-// node's keymaps, then keymaps and the composer.
+// the chrome drawn on top (topChrome), a focused layout node's keymaps,
+// then keymaps and the composer.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
 	top := a.topChrome()
-
-	// A focused window takes every key, ctrl+c included: the program in it
-	// decides what they mean.
-	if top == "" && a.windowKey(key, uv.KeyPressEvent(msg)) {
-		return nil
-	}
 
 	// A focused node takes every key but ctrl+c: its own keymaps, then the
 	// global ones. Unbound keys do nothing, and an unbound esc gives the
