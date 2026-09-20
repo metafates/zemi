@@ -73,7 +73,7 @@ var pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
 // paste inserts s, folding a large paste (over 10 lines or 1000 chars)
 // into a "[Pasted text #N +L lines]" token that expand restores on submit.
 func (c *composerState) paste(s string) {
-	lines := strings.Count(s, "\n") + 1
+	lines := strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
 	if lines <= 10 && len(s) <= 1000 {
 		c.insert(s)
 		return
