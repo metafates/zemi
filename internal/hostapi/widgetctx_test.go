@@ -3,8 +3,11 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
+
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
@@ -107,5 +110,57 @@ func TestConvertSegments(t *testing.T) {
 				t.Fatalf("got %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// TestTableSegments: the direct path gives what ToGo and convertSegments
+// give, sanitizing included, leaves odd shapes to them, and converts a line
+// table it saw in the last render only once.
+func TestTableSegments(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		local kept = { { text = "kept" } }
+		local shapes = {
+			{ { "a\27[31m", { text = "b\27]0;x\7", hl = "Host:BtnSel", click = "go", copy = false, hover = false, soft_wrap = true, effect = "shimmer" } }, kept },
+			{ kept },
+			{ {} },
+			{ { { "nested" } } },
+			{ { "a", x = 1 } },
+			"bare",
+		}
+		local n = 0
+		zemi.ui.widget.add({ id = "s", region = "header", render = function()
+			n = n + 1
+			if n == 2 then kept[1].text = "changed" end
+			return shapes[n]
+		end })`)
+	w := h.Widgets.Get("s")
+	for i, direct := range []bool{true, true, false, false, false, false} {
+		var got [][]Segment
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			if err := L.CallByParam(glua.P{Fn: w.Render, NRet: 1, Protect: true}); err != nil {
+				return nil, err
+			}
+			ret := L.Get(-1)
+			L.Pop(1)
+			lines, ok := w.tableSegments(ret)
+			if ok != direct {
+				t.Errorf("shape %d: direct = %v, want %v", i+1, ok, direct)
+			}
+			if v, err := lua.ToGo(ret); ok && err == nil {
+				got, _ = convertSegments(v, w.ID)
+				if i == 0 && (!reflect.DeepEqual(lines, got) || strings.ContainsRune(lines[0][0].Text+lines[0][1].Text, 0x1b)) {
+					t.Errorf("direct %+v, generic %+v", lines, got)
+				}
+				got = lines
+			}
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 && got[0][0].Text != "kept" {
+			t.Errorf("a line table seen last render was converted again: %q", got[0][0].Text)
+		}
 	}
 }

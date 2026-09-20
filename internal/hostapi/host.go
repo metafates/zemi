@@ -894,8 +894,12 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 			L.SetTop(base)
 			return nil, err
 		}
-		v, err := lua.ToGo(L.Get(-1))
+		ret := L.Get(-1)
 		L.SetTop(base)
+		if lines, ok := w.tableSegments(ret); ok {
+			return []any{lines}, nil
+		}
+		v, err := lua.ToGo(ret)
 		if err != nil {
 			return nil, err
 		}
@@ -907,7 +911,97 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 	if len(linesAny) == 0 || linesAny[0] == nil {
 		return nil, nil
 	}
+	if lines, ok := linesAny[0].([][]Segment); ok {
+		return lines, nil
+	}
 	return convertSegments(linesAny[0], w.ID)
+}
+
+// isList reports whether t holds exactly the keys 1..n, the tables ToGo
+// turns into a list, and n.
+func isList(t *glua.LTable) (int, bool) {
+	keys := 0
+	t.ForEach(func(_, _ glua.LValue) { keys++ })
+	return keys, keys == t.Len()
+}
+
+// tableSegments converts the usual render result, a list of lines of
+// segments, without marshaling it through ToGo; ok is false for every other
+// shape, which convertSegments handles and names in its errors. A line table
+// seen in the last render keeps its segments: a widget must not change a
+// line it already returned (a long chat returns the same thousands each
+// frame). Interpreter goroutine only.
+func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
+	top, isTable := v.(*glua.LTable)
+	if !isTable {
+		return nil, false
+	}
+	n, list := isList(top)
+	if !list || n == 0 {
+		return nil, false
+	}
+	seen := make(map[*glua.LTable][]Segment, n)
+	out = make([][]Segment, 0, n)
+	for i := 1; i <= n; i++ {
+		lt, isTable := top.RawGetInt(i).(*glua.LTable)
+		if !isTable {
+			return nil, false
+		}
+		line, hit := w.lines[lt]
+		if !hit {
+			m, list := isList(lt)
+			if !list || m == 0 {
+				return nil, false
+			}
+			line = make([]Segment, 0, m)
+			for j := 1; j <= m; j++ {
+				switch c := lt.RawGetInt(j).(type) {
+				case glua.LString:
+					line = append(line, Segment{Text: sanitize.String(string(c))})
+				case *glua.LTable:
+					if c.Len() > 0 {
+						return nil, false
+					}
+					line = append(line, segment(func(k string) any {
+						switch f := c.RawGetString(k).(type) {
+						case glua.LString:
+							return string(f)
+						case glua.LBool:
+							return bool(f)
+						}
+						return nil
+					}, w.ID))
+				default:
+					return nil, false
+				}
+			}
+		}
+		seen[lt] = line
+		out = append(out, line)
+	}
+	w.lines = seen
+	return out, true
+}
+
+// segment builds one segment from a { text = ... } table's fields.
+func segment(field func(string) any, widget string) Segment {
+	seg := Segment{}
+	if t, ok := field("text").(string); ok {
+		seg.Text = sanitize.String(t)
+	}
+	if hl, ok := field("hl").(string); ok {
+		seg.HL = UserHL(hl)
+	}
+	if e, ok := field("effect").(string); ok {
+		seg.Effect = e
+	}
+	seg.NoCopy = field("copy") == false
+	seg.NoHover = field("hover") == false
+	seg.Soft = field("soft_wrap") == true
+	if id, ok := field("click").(string); ok && id != "" {
+		seg.Click, seg.Widget = id, widget
+	}
+	return seg
 }
 
 // ClickWidget runs the on_click of widget id with ev under the widget's
@@ -1011,23 +1105,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 			case string:
 				line = append(line, Segment{Text: sanitize.String(c)})
 			case map[string]any:
-				seg := Segment{}
-				if t, ok := c["text"].(string); ok {
-					seg.Text = sanitize.String(t)
-				}
-				if hl, ok := c["hl"].(string); ok {
-					seg.HL = UserHL(hl)
-				}
-				if e, ok := c["effect"].(string); ok {
-					seg.Effect = e
-				}
-				seg.NoCopy = c["copy"] == false
-				seg.NoHover = c["hover"] == false
-				seg.Soft = c["soft_wrap"] == true
-				if id, ok := c["click"].(string); ok && id != "" {
-					seg.Click, seg.Widget = id, widget
-				}
-				line = append(line, seg)
+				line = append(line, segment(func(k string) any { return c[k] }, widget))
 			default:
 				return nil, fmt.Errorf("widget segment must be a string or a { text = ... } table, got %s", luaShape(cell))
 			}
@@ -1432,7 +1510,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.58.0"))
+	api.RawSetString("version", glua.LString("0.59.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -707,7 +707,7 @@ function zemi.event.stats() end
 ---@class zemi.WidgetSpec
 ---@field id string
 ---@field region zemi.Region
----@field render fun(ctx: zemi.WidgetCtx): zemi.Line[]
+---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[] Never change a line table after returning it: one seen in the last render is converted only once. Build a new table for a line that changed.
 ---@field priority? integer Lower draws first within a region.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.

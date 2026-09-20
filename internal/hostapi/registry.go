@@ -233,6 +233,8 @@ type Widget struct {
 	Origin   lua.Origin
 	Path     string
 	Gen      Gen
+	// the last render's line tables and their segments, see tableSegments
+	lines map[*glua.LTable][]Segment
 }
 
 // WidgetRegistry stores widgets with cross-origin id collision rules
