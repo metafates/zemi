@@ -31,11 +31,7 @@ zemi.ui.widget.add({
       for _, t in ipairs(ag.tools or {}) do
         if t.status == "run" then
           label = t.label ~= "" and t.label or ("Running " .. t.name)
-          if READS[t.name] then
-            state = "reading"
-          elseif (t.elapsed or 0) >= 5 then
-            state = "waiting"
-          end
+          if READS[t.name] then state = "reading" end
         end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end

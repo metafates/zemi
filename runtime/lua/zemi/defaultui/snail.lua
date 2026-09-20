@@ -9,22 +9,20 @@ local M = {}
 local HEADS = {
 	idle = { "··", ticks = 1 },
 	thinking = { ".?", "?.", "..", "?.", ".?", "..", ticks = 8 },
-	working = { "◐◐", "◓◓", "◑◑", "◒◒", ticks = 3 },
+	working = { "··", ".·", "..", "·.", ticks = 6 },
 	reading = { "··", "..", "..", "..", ticks = 8 },
 	asking = { "??", ticks = 1 },
 	error = { "><", ticks = 1 },
 	done = { "^^", ticks = 1 }
 }
 
----@alias zemi.defaultui.SnailState "idle" | "thinking" | "working" | "waiting" | "reading" | "asking" | "error" | "done"
+---@alias zemi.defaultui.SnailState "idle" | "thinking" | "working" | "reading" | "asking" | "error" | "done"
 
 --- The eyes of `state` at `frame`.
 ---@param state zemi.defaultui.SnailState
 ---@param frame integer                   ctx.frame
 ---@return string
 function M.eyes(state, frame)
-	-- waiting on a long command: a 200ms blink every 3s
-	if state == "waiting" then return frame % 60 >= 56 and "--" or "¬¬" end
 	local heads = HEADS[state] or HEADS.idle
 	return heads[math.floor(frame / heads.ticks) % #heads + 1]
 end

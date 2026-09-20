@@ -710,7 +710,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·.◐◓◑◒¬-─^><?" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·.─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -730,16 +730,16 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(7000); a != want || b != want {
 		t.Fatalf("idle rule moved: %q then %q", a, b)
 	}
-	// working swaps the eyes in place
+	// working drifts the two eye dots in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(150); !strings.HasPrefix(a, "@◐◐─") || !strings.HasPrefix(b, "@◓◓─") {
-		t.Fatalf("the working eyes do not spin: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
 	}
-	// a command running for a while is waited on, with a blink every 3s
+	// a long command keeps the working drift, there is no waiting state
 	long := []hostapi.StreamTool{{Name: "bash", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(2900); !strings.HasPrefix(a, "@¬¬─") || !strings.HasPrefix(b, "@--─") {
-		t.Fatalf("the snail does not wait out a long command: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
