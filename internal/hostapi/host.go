@@ -540,14 +540,16 @@ func (h *Host) scroll(kind, id string) {
 	}
 }
 
-// Session returns a snapshot of the session state.
+// Session returns a snapshot of the session state. The transcript is only
+// appended to or replaced whole, never written in place, so the snapshot
+// shares its rows: every widget render takes one.
 func (h *Host) Session() Session {
 	h.tMu.Lock()
 	defer h.tMu.Unlock()
 	return Session{
 		Title:      h.session.Title,
 		CWD:        h.session.CWD,
-		Transcript: append([]ChatMessage(nil), h.session.Transcript...),
+		Transcript: slices.Clip(h.session.Transcript),
 	}
 }
 

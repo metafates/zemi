@@ -331,14 +331,9 @@ zemi.ui.widget.add({
       return i + 1
     end
 
-    local tr = ctx.transcript or {}
-    if #tr == 0 and not ctx.agent_active then
+    local count = ctx.transcript_count or 0
+    if count == 0 and not ctx.agent_active then
       return {} -- the splash widget fills the empty chat
-    end
-    -- Only the latest collapsed reasoning line carries the expand hint.
-    local last_reason = 0
-    for i, m in ipairs(tr) do
-      if m.kind == "reasoning" then last_reason = i end
     end
     -- An agent run's transcript mutates in place and reports epoch 0, so
     -- only the session's settled rows are cached.
@@ -359,13 +354,20 @@ zemi.ui.widget.add({
     for n in pairs(expanded) do marks[#marks + 1] = n end
     table.sort(marks)
     local key = epoch ~= 0 and table.concat({
-      epoch, #tr, width, tostring(ctx.show_reasoning), table.concat(marks, ","), ctx.cwd or "" }, "|") or nil
+      epoch, count, width, tostring(ctx.show_reasoning), table.concat(marks, ","), ctx.cwd or "" }, "|") or nil
     local cached = key and chat_cache[key]
     if cached then
       for _, l in ipairs(cached.lines) do lines[#lines + 1] = l end
       prev = cached.prev
     end
-    local i = cached and (#tr + 1) or 1
+    -- ctx.transcript copies every row into Lua, so only a miss reads it
+    local tr = cached and {} or ctx.transcript or {}
+    -- Only the latest collapsed reasoning line carries the expand hint.
+    local last_reason = 0
+    for n, m in ipairs(tr) do
+      if m.kind == "reasoning" then last_reason = n end
+    end
+    local i = 1
     while i <= #tr do
       local m = tr[i]
       local next_i = i + 1
