@@ -435,8 +435,24 @@ func TestPaletteComplete(t *testing.T) {
 
 // TestPasteToken: a large paste stands in the composer as one token that
 // backspace removes whole and submit expands; small pastes stay inline.
+// TestSubmitFailed: the test app has no model, so every send fails.
+func TestSubmitFailed(t *testing.T) {
+	for _, text := range []string{"send with no model keeps the text", "an empty popup still sends @nope.txt"} {
+		app := newTestApp(t, t.TempDir())
+		app.completion.files = []string{"main.go"}
+		for _, r := range text {
+			app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+		}
+		app.composerKey("enter", tea.KeyPressMsg{})
+		c := app.composer
+		if c.text != text || c.cursor != len(c.runes()) || len(c.history) != 1 || app.completion.open {
+			t.Errorf("%s: text %q cursor %d history %v popup %v", text, c.text, c.cursor, c.history, app.completion.open)
+		}
+	}
+}
+
 func TestPasteToken(t *testing.T) {
-	big := strings.Repeat("line\n", 11) + "end"
+	big := strings.Repeat("line\n", 12) // the trailing newline is no line of its own
 	var c composerState
 	c.insert("see ")
 	c.paste(big)
@@ -471,7 +487,10 @@ func TestPasteSurvivesSubmit(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	big := strings.Repeat("line\n", 40) + "end"
 	app.Update(tea.PasteMsg{Content: big})
-	app.composerKey("enter", tea.KeyPressMsg{})
+	// what a sent message does; the test app has no model to send to
+	prev := composerSnap{app.composer.text, app.composer.cursor}
+	app.clearComposer()
+	app.composer.snapshot(prev, false)
 	app.composerKey("ctrl+z", tea.KeyPressMsg{})
 	if got := app.composer.expand(app.composer.text); got != big {
 		t.Fatalf("restored draft expands to %q", got)

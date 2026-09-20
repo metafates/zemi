@@ -209,6 +209,7 @@ func (a *App) sendMessage(text string) {
 		a.pushToast("warn", "Message blocked", res.Reason)
 		return
 	}
+	draft := a.composer.text
 	a.composer.pushHistory(text, a.historySize())
 	a.clearComposer()
 	if id := a.host.ViewedAgent(); id != "" {
@@ -219,6 +220,9 @@ func (a *App) sendMessage(text string) {
 	}
 	if err := a.host.AgentSend(text); err != nil {
 		a.pushToast("error", "Could not send", err.Error())
+		a.composer.text = draft
+		a.composer.cursor = len(a.composer.runes())
+		a.publishComposer()
 	}
 }
 

@@ -198,13 +198,16 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			moveSel(&a.completion.selected, a.completion.count(), key)
 			return nil
 		}
-		switch key {
-		case "tab", "enter":
-			a.acceptCompletion()
-			return nil
-		case "esc":
+		switch {
+		case key == "esc":
 			a.completion.close()
 			return nil
+		case key != "tab" && key != "enter":
+		case a.completion.count() > 0:
+			a.acceptCompletion()
+			return nil
+		default: // no matches: the key is the composer's
+			a.completion.close()
 		}
 	}
 
