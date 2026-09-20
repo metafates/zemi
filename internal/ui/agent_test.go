@@ -116,6 +116,29 @@ func TestColdChatRender(t *testing.T) {
 	}
 }
 
+// TestChatExpandSettledRow: a click on a settled tool row renders that
+// unit again, the rest of the transcript coming from the chat's cache.
+func TestChatExpandSettledRow(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "run it")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "bash", Text: "make", Status: "ok", Output: "built\nok"})
+	host.AppendTurnResult("done", hostapi.TurnStat{})
+	rows := func() int {
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(lines)
+	}
+	closed := rows()
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "tool:2"}); err != nil {
+		t.Fatal(err)
+	}
+	if open := rows(); open != closed+2 {
+		t.Fatalf("%d rows closed, %d open, want the two output lines more", closed, open)
+	}
+}
+
 // BenchmarkWindowFrame is an idle frame with a long transcript and three
 // text panels: their bodies must come from the wrap cache, not be re-wrapped
 // once per measure and once per draw.
