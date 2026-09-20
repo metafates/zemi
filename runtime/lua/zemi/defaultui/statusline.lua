@@ -25,11 +25,12 @@ zemi.ui.widget.add({
   end,
 })
 
--- A first idle ctrl+c arms quit; say what the second one does.
+-- A first idle ctrl+c arms quit; say what the second one does. Last in the
+-- rule, so nothing before it moves when it comes and goes.
 zemi.ui.widget.add({
   id = "statusline.quit",
   region = "statusline.left",
-  priority = 0,
+  priority = 110,
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
