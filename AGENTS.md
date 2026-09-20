@@ -691,9 +691,10 @@ how many rows the frame takes, so nothing above it reflows.
   converts one it saw last render only once and `widgetCache.lineRows` wraps it once per width,
   and `Host.Session` shares the transcript rows, which are appended or replaced whole, never
   written in place. A render returning `true` second runs again next frame, which is how
-  `chat.lua` fills a long session under a 30 ms budget, latest units first. A turn's
-  `turnScope` context (host.go) covers compaction, the model and tools, so esc stops all of
-  them; a second ctrl+c while "Cancelling" quits.
+  `chat.lua` fills a long session under a 30 ms budget, latest units first; a region scrolled
+  up keeps the last whole render until the fill ends (`App.scrolledUp`), so the reader's rows
+  stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
+  esc stops all of them; a second ctrl+c while "Cancelling" quits.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `defaultui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget

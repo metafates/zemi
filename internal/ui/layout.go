@@ -448,6 +448,7 @@ type scrollState struct {
 	anchor           []string
 	anchorOff        int
 	rect             uv.Rectangle // where it was drawn on the last frame
+	region           string
 }
 
 // anchorRows is how many rows identify the viewport. One is not enough:
@@ -460,7 +461,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	st := a.scrollOf(n)
 	lines := a.regionLines(n.Region, w)
 	prevRows := st.rows
-	st.rows, st.viewH, st.rect = len(lines), h, r
+	st.rows, st.viewH, st.rect, st.region = len(lines), h, r, n.Region
 	a.scrollIDs = append(a.scrollIDs, n.ID)
 	if st.follow {
 		st.top = st.rows - h

@@ -114,6 +114,28 @@ func TestColdChatRender(t *testing.T) {
 			t.Fatalf("render %d: %d lines in %v", n, len(lines), took)
 		}
 	}
+
+	// a reader scrolled up keeps their place while a render fills in again
+	app.renderSync(t)
+	app.Frame()
+	for range 60 {
+		app.applyScroll("up", "")
+	}
+	app.Frame()
+	st := app.scrolls[app.scrollDef]
+	top, anchor := st.top, slices.Clone(st.anchor)
+	host.ToggleReasoning()
+	app.frameGen++
+	for more := true; more; app.Frame() {
+		var err error
+		if lines, more, err = host.RenderWidget(t.Context(), chat, st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
+			t.Fatal(err)
+		}
+		app.onWidgetRendered(widgetRenderedMsg{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
+	}
+	if st.top != top || !slices.Equal(st.anchor, anchor) {
+		t.Fatalf("view moved from row %d %q to row %d %q", top, anchor, st.top, st.anchor)
+	}
 }
 
 // TestChatExpandSettledRow: a click on a settled tool row renders that

@@ -1185,12 +1185,15 @@ configured provider later (`zemi.memory.search` signature does not change).
   repeating timer calls it itself, so an idle tick costs nothing). A
   render's ctx builds `transcript`, `agent`, `todos` and `recent` on first
   read: over a 500-row transcript a widget that reads only scalars renders
-  in 25 µs instead of 1 ms (`BenchmarkWidgetCtx`). A line table a widget
-  returned is never changed by it: Go converts one it saw in the last render
-  only once and wraps it only once per width, so a frame of a streaming reply
-  over 500 turns costs 1.5 ms, not 40 (`BenchmarkStreamingFrame`). A render returning `true` as a second
-  result runs again next frame, that widget alone: the chat fills a long
-  resumed session that way, latest messages first, 30 ms at a time; `View`
+  in under 20 µs instead of 1 ms (`BenchmarkWidgetCtx`). A line table a
+  widget returned is never changed by it: Go converts one it saw in the last
+  render only once and wraps it only once per width, so a frame of a
+  streaming reply over 500 turns costs 1.5 ms, not 40
+  (`BenchmarkStreamingFrame`). A render returning `true` as a second result
+  runs again next frame, that widget alone: the chat fills a long resumed
+  session that way, latest messages first, 30 ms at a time, and a region
+  scrolled up keeps the last whole render until the new one is whole, so
+  the reader's rows do not move; `View`
   asks each visible region for its cached widget lines; Lua `render` runs
   only when invalidated: v1 re-renders on every generation change (cheap:
   render is pure and cached by `(id, width, height, generation)`), plus resize

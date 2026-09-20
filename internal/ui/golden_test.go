@@ -92,7 +92,7 @@ func (a *App) renderSync(tb testing.TB) {
 			if lines, more, err = a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, a.uiState()); err != nil {
 				tb.Fatalf("render widget %s: %v", w.ID, err)
 			}
-			a.onWidgetRendered(widgetRenderedMsg{id: w.ID, lines: lines, width: w.width, height: w.height, gen: gen})
+			a.onWidgetRendered(widgetRenderedMsg{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen})
 		}
 	}
 }

@@ -576,11 +576,17 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 		return
 	}
 	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
+	old := a.caches[msg.id]
+	if old != nil {
+		c.wrapW, c.lineRows = old.wrapW, old.lineRows
+	}
 	if msg.more {
 		c.gen-- // stale, so the next frame renders this widget alone again
-	}
-	if old := a.caches[msg.id]; old != nil {
-		c.wrapW, c.lineRows = old.wrapW, old.lineRows
+		// A reader scrolled up keeps the last whole render until the new one
+		// is whole: anchoring on partial rows would lose their place.
+		if old != nil && len(old.lines) > 0 && a.scrolledUp(msg.id) {
+			c.lines, c.wrapped = old.lines, old.wrapped
+		}
 	}
 	a.caches[msg.id] = c
 }
@@ -984,6 +990,17 @@ func (a *App) rowsBelow() int {
 		return 0
 	}
 	return max(0, st.rows-st.top-st.viewH)
+}
+
+// scrolledUp reports whether the region a widget draws in is off its tail.
+func (a *App) scrolledUp(widget string) bool {
+	w := a.host.Widgets.Get(widget)
+	for _, st := range a.scrolls {
+		if w != nil && st.region == w.Region && !st.follow {
+			return true
+		}
+	}
+	return false
 }
 
 // scrollAt is the scrolled region drawn under (x, y), else the default one.
