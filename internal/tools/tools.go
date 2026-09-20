@@ -951,7 +951,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk(ToolMemoryAdd, "Save a durable lesson for future sessions: something the user taught you or you verified. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
+		mk(ToolMemoryAdd, "Save a durable lesson for future sessions: something the user taught you or you verified, never what you inferred or suggested. Record what the user said or did; 'decision' and 'preference' only when the user actually stated one - a discussion, an audit or your own recommendation is not one. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
 			false,
 			map[string]any{
 				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
