@@ -453,6 +453,40 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	}
 }
 
+// TestOverlayRowsBuiltOnce: a frame that moved nothing builds no list rows,
+// so an open picker costs the same at 10 items and 10000.
+func TestOverlayRowsBuiltOnce(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	var items []any
+	for i := range 50 {
+		items = append(items, fmt.Sprintf("item %02d", i))
+	}
+	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: items})
+	st := &app.overlays[0]
+	for _, c := range []struct {
+		name  string
+		step  func()
+		built bool
+	}{
+		{"first frame", func() {}, true},
+		{"the width it measured", func() {}, true},
+		{"same frame", func() {}, false},
+		{"move", func() { st.selected = 30 }, true},
+		{"filter", func() { st.query = "item 4"; st.refilter() }, true},
+		{"resize", func() {}, true},
+	} {
+		c.step()
+		before := st.rows
+		app.overlayBox(st, map[bool]int{true: 60, false: 80}[c.name == "resize"], 20)
+		if built := before == nil || &before[0] != &st.rows[0]; built != c.built {
+			t.Errorf("%s: rows built %v, want %v", c.name, built, c.built)
+		}
+	}
+	if got := plainSegs(st.rows[0]); !strings.Contains(got, "item 04") {
+		t.Errorf("filtered list starts with %q", got)
+	}
+}
+
 // TestOverlayClosesOnOutsideClick: a click beside a menu closes it, a click
 // inside does not, and a blocking ask ignores both.
 func TestOverlayClosesOnOutsideClick(t *testing.T) {

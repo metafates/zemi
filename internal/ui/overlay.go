@@ -32,6 +32,16 @@ type overlayState struct {
 	// listH is the rows the unfiltered list took at width listW, which the
 	// box keeps while it is open
 	listH, listW int
+	// the list rows as last built and what they were built from: items live
+	// as long as the state and visible follows query, so a frame that moved
+	// nothing measures no item
+	rowsKey listKey
+	rows    [][]hostapi.Segment
+}
+
+type listKey struct {
+	query                       string
+	sel, top, limit, minW, maxW int
 }
 
 func (st *overlayState) refilter() { st.apply(st.texts) }
@@ -497,11 +507,16 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			hints = append(hints, "enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back"))
 		}
 	case len(st.o.Items) > 0:
-		items := make([]listItem, 0, len(st.visible))
-		for _, i := range st.visible {
-			items = append(items, st.items[i])
+		if key := (listKey{st.query, st.selected, st.top, limit, st.width, boxInner(w)}); st.rows == nil || key != st.rowsKey {
+			items := make([]listItem, 0, len(st.visible))
+			for _, i := range st.visible {
+				items = append(items, st.items[i])
+			}
+			st.rows = listRowsW(items, st.items, st.selected, &st.top, limit, st.width, boxInner(w))
+			key.top = st.top
+			st.rowsKey = key
 		}
-		list = listRowsW(items, st.items, st.selected, &st.top, limit, st.width, boxInner(w))
+		list = st.rows
 		if len(st.visible) > 0 {
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {
