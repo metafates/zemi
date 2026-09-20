@@ -1067,7 +1067,7 @@ func TildePath(p string) string {
 // render returned, so a ctx kept in an upvalue pins nothing. done ends it.
 func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
 	sess := h.Session()
-	tb = L.NewTable()
+	tb = L.CreateTable(0, 32)
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("frame", glua.LNumber(state.Frame))
@@ -1174,12 +1174,12 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 
 // agentTable is ctx.agent: the live turn.
 func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
-	at := L.NewTable()
+	at := L.CreateTable(0, 12)
 	at.RawSetString("active", glua.LBool(stream.Active))
 	at.RawSetString("model", glua.LString(stream.Model))
 	at.RawSetString("text", glua.LString(stream.Text))
 	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
-	steering := L.NewTable()
+	steering := L.CreateTable(len(stream.Steering), 0)
 	for _, s := range stream.Steering {
 		steering.Append(glua.LString(s))
 	}
@@ -1189,15 +1189,15 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at.RawSetString("reports", glua.LNumber(stream.Reports))
 	at.RawSetString("compacting", glua.LBool(stream.Compacting))
 	if stream.RetryIn > 0 {
-		retry := L.NewTable()
+		retry := L.CreateTable(0, 3)
 		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
 		retry.RawSetString("why", glua.LString(sanitize.String(stream.RetryWhy)))
 		retry.RawSetString("next_in", glua.LNumber(stream.RetryIn.Round(time.Second).Seconds()))
 		at.RawSetString("retry", retry)
 	}
-	toolsTb := L.NewTable()
+	toolsTb := L.CreateTable(len(stream.Tools), 0)
 	for _, t := range stream.Tools {
-		row := L.NewTable()
+		row := L.CreateTable(0, 9)
 		row.RawSetString("name", glua.LString(t.Name))
 		row.RawSetString("input", glua.LString(t.Input))
 		row.RawSetString("status", glua.LString(t.Status))
@@ -1217,9 +1217,9 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 
 // transcriptTable is ctx.transcript.
 func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
-	tr := L.NewTable()
+	tr := L.CreateTable(len(transcript), 0)
 	for _, m := range transcript {
-		row := L.NewTable()
+		row := L.CreateTable(0, 14)
 		row.RawSetString("role", glua.LString(m.Role))
 		row.RawSetString("kind", glua.LString(m.Kind))
 		row.RawSetString("text", glua.LString(m.Text))
@@ -1244,7 +1244,7 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 // usageTable is the session token tally for widgets (DESIGN §8): totals
 // across all turns of this session.
 func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
-	u := L.NewTable()
+	u := L.CreateTable(0, 4)
 	u.RawSetString("in", glua.LNumber(s.SessionIn))
 	u.RawSetString("out", glua.LNumber(s.SessionOut))
 	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
@@ -1255,7 +1255,7 @@ func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 // contextTable is the current-context estimate: the last prompt size
 // against the model's context window, with the percent for the statusline.
 func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
-	c := L.NewTable()
+	c := L.CreateTable(0, 3)
 	c.RawSetString("tokens", glua.LNumber(s.LastIn))
 	c.RawSetString("window", glua.LNumber(s.CtxWindow))
 	pct := 0.0

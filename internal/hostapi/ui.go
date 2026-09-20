@@ -357,11 +357,14 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
 		width := L.CheckInt(2)
-		out := L.NewTable()
-		for _, line := range h.Markdown(text, width) {
-			row := L.NewTable()
+		lines := h.Markdown(text, width)
+		// NewTable reserves 32 array and 32 hash slots, which a long chat
+		// pays for once per segment
+		out := L.CreateTable(len(lines), 0)
+		for _, line := range lines {
+			row := L.CreateTable(len(line), 0)
 			for _, s := range line {
-				seg := L.NewTable()
+				seg := L.CreateTable(0, 4)
 				seg.RawSetString("text", glua.LString(s.Text))
 				if s.HL != "" {
 					seg.RawSetString("hl", glua.LString(s.HL))

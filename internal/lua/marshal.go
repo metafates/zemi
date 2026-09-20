@@ -137,26 +137,26 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 		return lua.LNumber(t)
 	case []any:
 		defer delete(seen, enterGo(L, v, depth, seen))
-		tb := L.NewTable()
+		tb := L.CreateTable(len(t), 0)
 		for _, item := range t {
 			tb.Append(fromGo(L, item, depth+1, seen))
 		}
 		return tb
 	case []string:
-		tb := L.NewTable()
+		tb := L.CreateTable(len(t), 0)
 		for _, item := range t {
 			tb.Append(fromGo(L, item, depth+1, seen))
 		}
 		return tb
 	case map[string]any:
 		defer delete(seen, enterGo(L, v, depth, seen))
-		tb := L.NewTable()
+		tb := L.CreateTable(0, len(t))
 		for k, item := range t {
 			tb.RawSetString(k, fromGo(L, item, depth+1, seen))
 		}
 		return tb
 	case map[string]string:
-		tb := L.NewTable()
+		tb := L.CreateTable(0, len(t))
 		for k, item := range t {
 			tb.RawSetString(k, fromGo(L, item, depth+1, seen))
 		}
