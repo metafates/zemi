@@ -704,10 +704,14 @@ function zemi.event.stats() end
 ---@field waiting string "approval" or "answer" while a prompt holds the turn, else "".
 ---@field focus string Id of the layout node that has the keys, "" while the composer has them.
 
+--- `render` may return true as a second result to render again next frame:
+--- return what is ready and do the rest then. Never change a line table after
+--- returning it, one seen in the last render is converted only once: build a
+--- new table for a line that changed.
 ---@class zemi.WidgetSpec
 ---@field id string
 ---@field region zemi.Region
----@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean? A second result of true renders the widget again next frame: return what is ready and do the rest then. Never change a line table after returning it: one seen in the last render is converted only once. Build a new table for a line that changed.
+---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?
 ---@field priority? integer Lower draws first within a region.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.
