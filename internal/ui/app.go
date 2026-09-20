@@ -151,6 +151,10 @@ type widgetCache struct {
 	// every frame and wrapping the transcript is its biggest cost.
 	wrapped [][]hostapi.Segment
 	wrapW   int
+	// lineRows is each line's rows at wrapW, by the address of its first
+	// segment: a render hands back the lines it did not change
+	// (Widget.tableSegments), so a new reply wraps only its own lines.
+	lineRows map[*hostapi.Segment][][]hostapi.Segment
 }
 
 // NewApp builds the root model; host hooks are attached by the caller via
@@ -570,7 +574,11 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 	if c := a.caches[msg.id]; c != nil && c.gen > msg.gen {
 		return
 	}
-	a.caches[msg.id] = &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
+	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
+	if old := a.caches[msg.id]; old != nil {
+		c.wrapW, c.lineRows = old.wrapW, old.lineRows
+	}
+	a.caches[msg.id] = c
 }
 
 // isTolerableRenderErr reports failures the UI expects under load (hot
@@ -1048,11 +1056,24 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		// wrapped tail (bottom-anchored). The rows change only when the
 		// widget renders again or the width does.
 		if c.wrapped == nil || c.wrapW != width {
-			var rows [][]hostapi.Segment
-			for _, line := range lines {
-				rows = append(rows, hostapi.WrapSegs(line, width)...)
+			if c.wrapW != width {
+				c.lineRows = nil
 			}
-			c.wrapped, c.wrapW = rows, width
+			var rows [][]hostapi.Segment
+			next := make(map[*hostapi.Segment][][]hostapi.Segment, len(lines))
+			for _, line := range lines {
+				if len(line) == 0 {
+					rows = append(rows, hostapi.WrapSegs(line, width)...)
+					continue
+				}
+				wr, ok := c.lineRows[&line[0]]
+				if !ok {
+					wr = hostapi.WrapSegs(line, width)
+				}
+				next[&line[0]] = wr
+				rows = append(rows, wr...)
+			}
+			c.wrapped, c.wrapW, c.lineRows = rows, width, next
 		}
 		out = append(out, c.wrapped...)
 	}
