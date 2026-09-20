@@ -73,7 +73,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.59.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.60.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -436,7 +436,7 @@ func TestRenderRefusesMutations(t *testing.T) {
 		t.Fatalf("widgets not registered (mutating=%v writing=%v clean=%v)", mutating, writing, clean)
 	}
 
-	if _, err := h.RenderWidget(context.Background(), mutating, 40, 10, UIState{}); err == nil ||
+	if _, _, err := h.RenderWidget(context.Background(), mutating, 40, 10, UIState{}); err == nil ||
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("mutation during render: err = %v", err)
 	}
@@ -444,12 +444,12 @@ func TestRenderRefusesMutations(t *testing.T) {
 		t.Fatal("refused bind still landed in the keymap registry")
 	}
 	// the store is the mutation a widget author reaches for first
-	if _, err := h.RenderWidget(context.Background(), writing, 40, 10, UIState{}); err == nil ||
+	if _, _, err := h.RenderWidget(context.Background(), writing, 40, 10, UIState{}); err == nil ||
 		!strings.Contains(err.Error(), "not allowed during widget render") {
 		t.Fatalf("zemi.state.set during render: err = %v", err)
 	}
 
-	lines, err := h.RenderWidget(context.Background(), clean, 40, 10, UIState{})
+	lines, _, err := h.RenderWidget(context.Background(), clean, 40, 10, UIState{})
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestClickWidget(t *testing.T) {
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}
-			lines, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
+			lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -38,7 +38,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			}
 			w := h.Widgets.Get("m")
 			for b.Loop() {
-				if _, err := h.RenderWidget(context.Background(), w, 40, 1, UIState{}); err != nil {
+				if _, _, err := h.RenderWidget(context.Background(), w, 40, 1, UIState{}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -63,7 +63,7 @@ func TestWidgetCtxLazy(t *testing.T) {
 			assert(kept.transcript ~= nil and kept.agent ~= nil and kept.width == 10, "what render read stays")
 			assert(kept.todos == nil, "the rest reads nil")
 		end)`)
-	if _, err := h.RenderWidget(t.Context(), h.Widgets.Get("k"), 10, 1, UIState{}); err != nil {
+	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("k"), 10, 1, UIState{}); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, `assert(zemi.command.run("check"))`)

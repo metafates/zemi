@@ -867,8 +867,10 @@ type Segment struct {
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
-// it and returns sanitized segment lines (DESIGN §6.6, §8).
-func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) ([][]Segment, error) {
+// it and returns sanitized segment lines (DESIGN §6.6, §8). more is render's
+// second result: the lines are what its time allowed and it wants to run
+// again, which is how a long chat draws its latest rows first.
+func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) (lines [][]Segment, more bool, err error) {
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		// a frame queued before a reload holds the old generation's function
 		if w.Gen != h.currentGen() {
@@ -892,31 +894,30 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 		ctxTb, done := h.widgetCtxTable(L, width, height, state)
 		defer done()
 		L.Push(ctxTb)
-		if err := L.PCall(1, 1, nil); err != nil {
+		if err := L.PCall(1, 2, nil); err != nil {
 			L.SetTop(base)
 			return nil, err
 		}
-		ret := L.Get(-1)
+		ret, more := L.Get(-2), L.Get(-1) == glua.LTrue
 		L.SetTop(base)
 		if lines, ok := w.tableSegments(ret); ok {
-			return []any{lines}, nil
+			return []any{lines, more}, nil
 		}
 		v, err := lua.ToGo(ret)
 		if err != nil {
 			return nil, err
 		}
-		return []any{v}, nil
+		return []any{v, more}, nil
 	})
-	if err != nil {
-		return nil, err
+	if err != nil || linesAny[0] == nil {
+		return nil, false, err
 	}
-	if len(linesAny) == 0 || linesAny[0] == nil {
-		return nil, nil
-	}
+	more = linesAny[1].(bool)
 	if lines, ok := linesAny[0].([][]Segment); ok {
-		return lines, nil
+		return lines, more, nil
 	}
-	return convertSegments(linesAny[0], w.ID)
+	lines, err = convertSegments(linesAny[0], w.ID)
+	return lines, more, err
 }
 
 // isList reports whether t holds exactly the keys 1..n, the tables ToGo
@@ -1512,7 +1513,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.59.0"))
+	api.RawSetString("version", glua.LString("0.60.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

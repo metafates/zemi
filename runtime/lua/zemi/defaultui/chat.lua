@@ -4,11 +4,20 @@ local fmt = require("zemi.defaultui.text")
 -- A tool row: a settled transcript row or a call of the live turn.
 ---@alias zemi.defaultui.Tool zemi.TranscriptRow|zemi.ToolCall
 
--- Rows of the settled transcript, kept across frames: while a reply
--- streams the widget renders many times a second and only the live turn
--- changes. One entry, replaced whenever its key changes.
----@type table<string, { lines: zemi.Line[], prev: string? }>
-local chat_cache = {}
+-- The settled transcript is rendered in units, a message or a run of tool
+-- rows, kept across frames by the index of their first message: while a
+-- reply streams the widget renders many times a second and only the live
+-- turn changes. `settled` is the units' lines in order, which a render hands
+-- back as they are while the transcript has `count` rows.
+---@class zemi.defaultui.ChatUnit
+---@field lines zemi.Line[]
+---@field next integer Index of the message after the unit.
+---@field hint boolean The unit is the reasoning line that carries the expand hint.
+---@type table<integer, zemi.defaultui.ChatUnit>
+local units = {}
+local units_key = ""
+---@type { count: integer, lines: zemi.Line[], n: integer }?
+local settled
 
 -- Tool rows the user opened, by transcript index (negative for the live
 -- turn's calls): a click shows that one row's whole command and output and
@@ -51,11 +60,18 @@ zemi.ui.widget.add({
       zemi.ui.reasoning.toggle()
     else
       local n = tonumber(ev.id:match("^tool:(-?%d+)$"))
-      if n then expanded[n] = not expanded[n] or nil end
+      if n then
+        expanded[n] = not expanded[n] or nil
+        for first, u in pairs(units) do
+          if first <= n and n < u.next then units[first] = nil end
+        end
+        settled = nil
+      end
     end
   end,
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
+  ---@return boolean more
   render = function(ctx)
     local width = ctx.width or 80
     ---@type zemi.Line[]
@@ -349,37 +365,27 @@ zemi.ui.widget.add({
       end
     end
     live_tools = ntools
-    ---@type integer[]
-    local marks = {}
-    for n in pairs(expanded) do marks[#marks + 1] = n end
-    table.sort(marks)
-    local key = epoch ~= 0 and table.concat({
-      epoch, count, width, tostring(ctx.show_reasoning), table.concat(marks, ","), ctx.cwd or "" }, "|") or nil
-    local cached = key and chat_cache[key]
-    if cached then
-      for _, l in ipairs(cached.lines) do lines[#lines + 1] = l end
-      prev = cached.prev
-    end
-    -- ctx.transcript copies every row into Lua, so only a miss reads it
-    local tr = cached and {} or ctx.transcript or {}
-    -- Only the latest collapsed reasoning line carries the expand hint.
-    local last_reason = 0
-    for n, m in ipairs(tr) do
-      if m.kind == "reasoning" then last_reason = n end
-    end
-    local i = 1
-    while i <= #tr do
-      local m = tr[i]
-      local next_i = i + 1
+    -- The messages first..last as one unit: a run of tool rows, else one.
+    ---@param tr zemi.TranscriptRow[]
+    ---@param first integer
+    ---@param last integer
+    ---@param hinted boolean
+    ---@return zemi.defaultui.ChatUnit
+    local function unit(tr, first, last, hinted)
+      local m = tr[first]
+      lines, prev = {}, first > 1 and "above" or nil
       if m.kind == "reasoning" then
         gap("activity")
         local secs = fmt.secs(m.thought)
         local label = secs and ("Thought for " .. secs) or "Thought"
-        local hint = (i == last_reason and not ctx.show_reasoning) and "click or ctrl+o to read" or nil
+        local hint = (hinted and not ctx.show_reasoning) and "click or ctrl+o to read" or nil
         add_reasoning(label, hint, m.text)
       elseif m.kind == "tool" then
-        gap("activity")
-        next_i = add_tools(tr, i)
+        local i = first
+        while i <= last do
+          gap("activity")
+          i = add_tools(tr, i)
+        end
       elseif m.kind == "shell" then
         -- a !command: the command, then its output, already cut to a head
         -- and a tail by the host
@@ -425,14 +431,56 @@ zemi.ui.widget.add({
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
         end
       end
-      i = next_i
+      return { lines = lines, next = last + 1, hint = hinted }
     end
-    if key and not cached then
+
+    local key = table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "" }, "|")
+    if key ~= units_key or epoch == 0 then units, units_key, settled = {}, key, nil end
+    -- A long session resumed, a new width or ctrl+o leave every unit to
+    -- render, far more than one render may take: the latest come first, and
+    -- past the budget the render returns them and asks for another.
+    local more = false
+    local done = settled and settled.count == count and settled
+    if not done then
+      -- ctx.transcript copies every row into Lua, so only a miss reads it
+      local tr = ctx.transcript or {}
+      -- Only the latest collapsed reasoning line carries the expand hint.
+      local last_reason = 0
+      for n, m in ipairs(tr) do
+        if m.kind == "reasoning" then last_reason = n end
+      end
+      local deadline = epoch ~= 0 and os.clock() + 0.03
+      ---@type zemi.defaultui.ChatUnit[]
+      local shown = {}
+      local rendered = 0
+      local last = #tr
+      while last >= 1 do
+        local first = last
+        while first > 1 and tr[first].kind == "tool" and tr[first - 1].kind == "tool" do first = first - 1 end
+        local u = units[first]
+        if not u or u.next ~= last + 1 or u.hint ~= (first == last_reason) then
+          if deadline and rendered > 0 and os.clock() > deadline then
+            more = true
+            break
+          end
+          u = unit(tr, first, last, first == last_reason)
+          units[first] = u
+          rendered = rendered + 1
+        end
+        shown[#shown + 1] = u
+        last = first - 1
+      end
       ---@type zemi.Line[]
-      local snap = {}
-      for n, l in ipairs(lines) do snap[n] = l end
-      chat_cache = { [key] = { lines = snap, prev = prev } }
+      local all = {}
+      for n = #shown, 1, -1 do
+        for _, l in ipairs(shown[n].lines) do all[#all + 1] = l end
+      end
+      done = { count = count, lines = all, n = #all }
+      settled = not more and done or nil
     end
+    -- the live turn's lines go after the settled ones in the same list
+    lines, prev = done.lines, count > 0 and "settled" or nil
+    for n = #lines, done.n + 1, -1 do lines[n] = nil end
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot; the Go
     -- working row above the composer carries status and elapsed time.
@@ -495,6 +543,6 @@ zemi.ui.widget.add({
         lines[#lines + 1] = { { text = mark, hl = mhl, copy = false }, { text = item, hl = hl } }
       end
     end
-    return lines
+    return lines, more
   end,
 })

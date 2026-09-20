@@ -309,6 +309,9 @@ callbacks and read the result from a local, as the branch widget above does.
 A line table it returned is never changed afterwards: zemi converts a line it saw in the
 last render only once, so a widget may keep finished lines and return them again for free,
 and builds a new table for a line that changed.
+A render with more work than its 10 ms returns what is ready and `true` as a second result;
+zemi then renders that widget again next frame. The shipped chat fills a long session in
+that way, latest messages first.
 A widget redraws only when something else does; one that changes on its own calls
 `zemi.ui.redraw` from a `zemi.timer.every` callback. The theme groups the UI
 uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable give it

@@ -687,8 +687,13 @@ how many rows the frame takes, so nothing above it reflows.
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
   callbacks call `refresh` when they return. A render's ctx builds `transcript`, `agent`,
   `todos` and `recent` on first read (`widgetCtxTable`, `BenchmarkWidgetCtx`): keep new
-  expensive fields lazy. A turn's `turnScope` context (host.go) covers compaction, the model
-  and tools, so esc stops all of them; a second ctrl+c while "Cancelling" quits.
+  expensive fields lazy. A widget never changes a line table it returned: `Widget.tableSegments`
+  converts one it saw last render only once and `widgetCache.lineRows` wraps it once per width,
+  and `Host.Session` shares the transcript rows, which are appended or replaced whole, never
+  written in place. A render returning `true` second runs again next frame, which is how
+  `chat.lua` fills a long session under a 30 ms budget, latest units first. A turn's
+  `turnScope` context (host.go) covers compaction, the model and tools, so esc stops all of
+  them; a second ctrl+c while "Cancelling" quits.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `defaultui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget

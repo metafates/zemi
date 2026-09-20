@@ -93,6 +93,29 @@ func BenchmarkStreamingFrame(b *testing.B) {
 	}
 }
 
+// TestColdChatRender: the first chat render of a long resumed session shows
+// its latest messages well under the 1s ceiling that cancels a UI handler,
+// and the renders it asks for fill in the rest.
+func TestColdChatRender(t *testing.T) {
+	app, host := bootAgentApp(t, 140, 40)
+	for i := range 500 {
+		host.AppendMessage("user", fmt.Sprintf("question %d", i))
+		host.AppendTurnResult(strings.Repeat(fmt.Sprintf("A paragraph of reply %d with `code` and **bold** that wraps across the chat width.\n\n", i), 28), hostapi.TurnStat{})
+	}
+	chat := host.Widgets.Get("chat")
+	var lines [][]hostapi.Segment
+	for n := 0; n == 0 || len(lines) == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
+		start := time.Now()
+		var err error
+		if lines, _, err = host.RenderWidget(t.Context(), chat, 138, 30, app.uiState()); err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(start); len(lines) == 0 || n == 0 && took > 300*time.Millisecond || n > 500 {
+			t.Fatalf("render %d: %d lines in %v", n, len(lines), took)
+		}
+	}
+}
+
 // BenchmarkWindowFrame is an idle frame with a long transcript and three
 // text panels: their bodies must come from the wrap cache, not be re-wrapped
 // once per measure and once per draw.

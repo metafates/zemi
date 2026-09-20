@@ -86,11 +86,14 @@ zemi.ui.widget.add({
 func (a *App) renderSync(tb testing.TB) {
 	gen := a.frameGen
 	for _, w := range a.shownWidgets() {
-		lines, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, a.uiState())
-		if err != nil {
-			tb.Fatalf("render widget %s: %v", w.ID, err)
+		for more := true; more; {
+			var lines [][]hostapi.Segment
+			var err error
+			if lines, more, err = a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, a.uiState()); err != nil {
+				tb.Fatalf("render widget %s: %v", w.ID, err)
+			}
+			a.onWidgetRendered(widgetRenderedMsg{id: w.ID, lines: lines, width: w.width, height: w.height, gen: gen})
 		}
-		a.onWidgetRendered(widgetRenderedMsg{id: w.ID, lines: lines, width: w.width, height: w.height, gen: gen})
 	}
 }
 

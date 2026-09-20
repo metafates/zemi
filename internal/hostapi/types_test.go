@@ -201,7 +201,7 @@ func TestTypesWidgetCtx(t *testing.T) {
 			end
 			return {}
 		end })`)
-	if _, err := h.RenderWidget(t.Context(), h.Widgets.Get("types"), 40, 10, UIState{}); err != nil {
+	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("types"), 40, 10, UIState{}); err != nil {
 		t.Fatal(err)
 	}
 }

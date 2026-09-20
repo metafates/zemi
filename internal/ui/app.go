@@ -244,6 +244,7 @@ type frameTickMsg struct{}
 type widgetRenderedMsg struct {
 	id            string
 	lines         [][]hostapi.Segment
+	more          bool // the render wants to run again
 	width, height int
 	gen           int64
 	err           error
@@ -575,6 +576,9 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 		return
 	}
 	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
+	if msg.more {
+		c.gen-- // stale, so the next frame renders this widget alone again
+	}
 	if old := a.caches[msg.id]; old != nil {
 		c.wrapW, c.lineRows = old.wrapW, old.lineRows
 	}
@@ -606,8 +610,8 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 		}
 		a.pending[w.ID] = gen
 		cmds = append(cmds, func() tea.Msg {
-			lines, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
-			return widgetRenderedMsg{id: w.ID, lines: lines, width: w.width, height: w.height, gen: gen, err: err}
+			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
+			return widgetRenderedMsg{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, err: err}
 		})
 	}
 	return tea.Batch(cmds...)
