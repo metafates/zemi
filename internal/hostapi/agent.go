@@ -936,8 +936,8 @@ func toolSummary(input string) string {
 		}
 		return cmd
 	}
-	// the window and lsp tools name what they do in "action"; without it a
-	// window row would read as the whole panel body it is about to show
+	// the lsp tool names what it does in "action"; without it a row would
+	// read as the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {
 		for _, k := range []string{"cmd", "keys", "title", "symbol", "path", "id"} {
 			if v, ok := m[k]; ok {

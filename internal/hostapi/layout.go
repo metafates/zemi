@@ -32,7 +32,7 @@ type Size struct {
 // lays its children out along Dir, a leaf names what fills its cells.
 type LayoutNode struct {
 	ID       string
-	Kind     string // box, region, composer, bar, windows or spacer
+	Kind     string // box, region, composer, bar or spacer
 	Dir      string // box: row or col
 	Sep      bool   // box: a one-cell separator between children
 	Children []*LayoutNode

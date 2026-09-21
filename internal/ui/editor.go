@@ -45,7 +45,7 @@ type editorDoneMsg struct {
 // work stays the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
-	c := exec.Command("sh", "-c", editorScript(editor, req.Line)+` "$1"`, "sh", req.Path)
+	c := exec.Command("sh", "-c", editorScript(editor, req.Line), "sh", req.Path)
 	errc := make(chan error, 1)
 	a.await(func() tea.Cmd {
 		a.editing = sanitize.String(req.Title)

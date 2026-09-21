@@ -72,10 +72,9 @@ type Request struct {
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string
-	// Unsandboxed is the model's sandbox: false, input to a window that runs
-	// unconfined, a Lua tool script that widens what zemi allows, or a model
-	// memory edit zemi does not apply on its own: no mode
-	// settles the request, the user answers it
+	// Unsandboxed is the model's sandbox: false, a Lua tool script that
+	// widens what zemi allows, or a model memory edit zemi does not apply on
+	// its own: no mode settles the request, the user answers it
 	Unsandboxed bool
 	// Network is the model's network: true, which keeps the sandbox and adds
 	// outbound sockets. The URL is the model's, so no mode settles it either.
@@ -202,8 +201,8 @@ type Pipeline struct {
 	// Sandbox is the policy a command a permission mode settled runs under;
 	// nil or a nil result = unconfined (no backend, yolo).
 	Sandbox func() *sandbox.Policy
-	// SandboxParam gives bash, job_start and window the sandbox: false
-	// escape; set while a backend is live and someone can answer the ask.
+	// SandboxParam gives bash and job_start the sandbox: false escape; set
+	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
@@ -385,8 +384,7 @@ func NetworkProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "keeps the sandbox and adds the network (go mod download, npm install, curl); asks the user. Try this before sandbox: false, which drops every limit."}
 }
 
-// SandboxProp is the escape bash, job_start and window take while a
-// backend is live.
+// SandboxProp is the escape bash and job_start take while a backend is live.
 func SandboxProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "a command zemi settles on its own runs sandboxed (" + sandboxLimits() + "); false runs it unconfined and asks the user. Only after network: true was not enough."}
 }

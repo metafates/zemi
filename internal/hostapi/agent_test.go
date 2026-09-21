@@ -999,8 +999,8 @@ func TestProfileSwitch(t *testing.T) {
 		}
 	}
 	for p, want := range map[*Profile]string{
-		{}:                                   "every tool",
-		{Tools: []string{"-window", "-Lua"}}: "every tool but window, Lua",
+		{}:                        "every tool",
+		{Tools: []string{"-lua"}}: "every tool but lua",
 		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m - only bash, read",
 	} {
 		if got := profileDesc(p); got != want {
