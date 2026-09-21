@@ -83,14 +83,11 @@ zemi.ui.widget.add({
       end
       return false
     end
-    -- A reply: its first line carries the bullet, the rest indent under it.
+    -- A reply is indented, not bulleted: its lines share the user's left edge.
     ---@param text string
-    ---@param mark boolean Put the bullet on the first line with text.
-    local function add_markdown(text, mark)
+    local function add_markdown(text)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
-        local lead = "  "
-        if mark and has_text(segs) then lead, mark = "● ", false end
-        local row = { { text = lead, hl = "Normal", copy = false } }
+        local row = { { text = "  ", hl = "Normal", copy = false } }
         for _, sg in ipairs(segs) do row[#row + 1] = sg end
         lines[#lines + 1] = row
       end
@@ -212,7 +209,7 @@ zemi.ui.widget.add({
       end
       local summary = table.concat(parts, ", ")
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
-      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false, click = click },
+      lines[#lines + 1] = { { text = "✓ ", hl = "AgentToolOk", copy = false, click = click },
         { text = fmt.clip(summary, width - 4), hl = "Normal", click = click } }
     end
     ---@param t zemi.defaultui.Tool
@@ -220,11 +217,11 @@ zemi.ui.widget.add({
     local function add_tool(t, idx)
       local name = tool_name(t)
       local open = ctx.show_reasoning or expanded[idx] or false
-      local mark, hl = ctx.frame % 20 >= 10 and "◦ " or "● ", "AgentToolRun"
+      local mark, hl = "● ", "AgentToolRun"
       if t.status == "ok" then
-        mark, hl = "● ", "AgentToolOk"
+        mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
-        mark, hl = "● ", "AgentToolErr"
+        mark, hl = "× ", "AgentToolErr"
       end
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""
@@ -411,7 +408,7 @@ zemi.ui.widget.add({
         end
       else
         gap("text")
-        add_markdown(m.text, true)
+        add_markdown(m.text)
         ---@type string[]
         local parts = {}
         local telapsed, tout = fmt.secs(m.elapsed), fmt.tokens(m.out)
@@ -492,7 +489,7 @@ zemi.ui.widget.add({
       end
       if text ~= "" then
         gap("text")
-        add_markdown(text, true)
+        add_markdown(text)
       end
       -- queued messages are the user's own words waiting their turn, so they
       -- carry the user row's accent bar, marked queued, apart from the

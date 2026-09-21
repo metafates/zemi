@@ -896,11 +896,11 @@ func TestFileRowClickIDs(t *testing.T) {
 		}
 	}
 	for text, want := range map[string]string{
-		"● Edit /w/a.go":  "tool:-1",
+		"✓ Edit /w/a.go":  "tool:-1",
 		"7 - old":         "tool:-1",
 		"7 + new":         "tool:-1",
 		"8 keep":          "tool:-1",
-		"● Ran 1 command": "tool:-2",
+		"✓ Ran 1 command": "tool:-2",
 	} {
 		if click[text] != want {
 			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
@@ -924,7 +924,7 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Edit a.go", "7 - old", "7 + new", "× Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
@@ -935,7 +935,7 @@ func TestToolRows(t *testing.T) {
 	host.ToggleReasoning()
 	app.renderSync(t)
 	frame = ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
+	if !strings.Contains(frame, "✓ Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
 	// an expanded long input wraps instead of ending in an ellipsis
