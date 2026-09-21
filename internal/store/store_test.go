@@ -383,6 +383,29 @@ func TestKVRoundtrip(t *testing.T) {
 	}
 }
 
+func TestKVOnceClaim(t *testing.T) {
+	db := openTest(t)
+	// only the first of two claims on the same key wins (a cross-process
+	// reflection claim relies on this being atomic)
+	if ok, err := db.SetKVOnce("claim:x", "1"); err != nil || !ok {
+		t.Fatalf("first claim: ok=%v err=%v", ok, err)
+	}
+	if ok, err := db.SetKVOnce("claim:x", "2"); err != nil || ok {
+		t.Fatalf("second claim must not win: ok=%v err=%v", ok, err)
+	}
+	// a claim its owner crashed leaving is reclaimable once stale, not while fresh
+	nowMs := time.Now().UnixMilli()
+	if _, err := db.db.Exec(`UPDATE kv SET updated_at = ? WHERE key = 'claim:x'`, nowMs-60000); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := db.ReclaimKVIfStale("claim:x", "3", nowMs-30000); !ok {
+		t.Fatal("a stale claim must be reclaimed")
+	}
+	if ok, _ := db.ReclaimKVIfStale("claim:x", "4", time.Now().UnixMilli()); ok {
+		t.Fatal("a fresh claim must not be reclaimed")
+	}
+}
+
 func TestProjectDBPath(t *testing.T) {
 	if got := ProjectDBPath("/state", ""); got != "/state/zemi.db" {
 		t.Fatalf("global path: %s", got)

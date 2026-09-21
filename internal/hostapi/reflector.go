@@ -71,14 +71,25 @@ type reflectProposal struct {
 	} `json:"skills"`
 }
 
-const reflectTimeout = 2 * time.Minute
+const (
+	reflectTimeout = 2 * time.Minute
+	// reflectLease is how long a reflection claim may stand without its
+	// owner: a process that took the claim and then crashed leaves one,
+	// and after this long another run may reclaim it.
+	// NOTE: the claim is not refreshed while a run is live, so a process
+	// paused past the lease (a long laptop sleep, SIGSTOP) mid-run could be
+	// reclaimed and both runs would apply their proposals. Proposals are
+	// deduped by text, so the cost is a duplicate, not corruption.
+	reflectLease = 30 * time.Minute
+)
 
 // reflectOnClose is the session-close trigger (/new, /resume, startup):
 // the closed session is reflected when it has messages the reflector has
-// not seen.
+// not seen. The cross-process claim makes two windows on the same
+// repository reflect those messages once between them, not once each.
 func (h *Host) reflectOnClose(prevID string) {
-	if h.reflectDue(prevID) {
-		h.runReflectDetached(prevID)
+	if claim := h.claimReflect(prevID); claim != "" {
+		h.runReflectDetached(prevID, claim)
 	}
 }
 
@@ -108,15 +119,49 @@ func (h *Host) reflectDue(sid string) bool {
 	return seen != strconv.Itoa(len(msgs))
 }
 
+// claimReflect atomically claims the right to reflect the unseen messages
+// of sid and returns the claim key when this process won it ("" to skip).
+// The claim is an INSERT OR IGNORE keyed by the message count in the
+// shared kv, so two processes that both see the session as unreflected can
+// still not reflect it twice: only one inserts. A claim its owner crashes
+// leaving is reclaimed after reflectLease, so a failed run can be retried.
+func (h *Host) claimReflect(sid string) string {
+	if h.reflectDue(sid) == false {
+		return ""
+	}
+	msgs, _ := h.DB.Messages(sid)
+	n := len(msgs)
+	key := reflectClaimKey(sid, n)
+	if claimed, _ := h.DB.SetKVOnce(key, "1"); claimed {
+		return key
+	}
+	// a claim for this count stands: another window is on it, or its owner
+	// crashed long ago and the lease lets us take over
+	if ok, _ := h.DB.ReclaimKVIfStale(key, "1", time.Now().Add(-reflectLease).UnixMilli()); ok {
+		return key
+	}
+	return ""
+}
+
 func reflectSeenKey(sid string) string { return "reflector.seen." + sid }
+func reflectClaimKey(sid string, n int) string {
+	return "reflector.claim." + sid + ":" + strconv.Itoa(n)
+}
 
 // runReflectDetached starts one reflect run on its own goroutine and
 // reports whether it started; a second concurrent run is skipped (one
 // reflector at a time). Progress reaches Lua as ctx.reflecting plus the
 // reflector.start / reflector.done events (done carries error on failure).
-func (h *Host) runReflectDetached(sid string) bool {
+// claim is the claim key this run will release when it ends, or "" when
+// there is none to release.
+func (h *Host) runReflectDetached(sid, claim string) bool {
 	if !h.reflectMu.TryLock() {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
+		// this run never starts, so a just-won claim must not be left to
+		// the lease: release it so a later close can reflect again
+		if claim != "" {
+			h.DB.DelKV(claim)
+		}
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
@@ -128,6 +173,11 @@ func (h *Host) runReflectDetached(sid string) bool {
 		defer cancel()
 		defer h.refresh()
 		defer h.reflecting.Store(false)
+		if claim != "" {
+			// released on success (the seen marker keeps the result) and on
+			// failure (so a later run can retry); a crash leaves it to the lease
+			defer h.DB.DelKV(claim)
+		}
 		err := h.reflectSession(ctx, sid)
 		h.agents.mu.Lock()
 		h.agents.reflectErr = errString(err)
@@ -429,7 +479,7 @@ func (h *Host) reflectCommand() error {
 	if sid == "" {
 		return errors.New("no session to reflect on")
 	}
-	if !h.runReflectDetached(sid) {
+	if !h.runReflectDetached(sid, "") {
 		return errors.New("a reflect run is already active")
 	}
 	return nil

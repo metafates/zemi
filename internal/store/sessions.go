@@ -421,6 +421,33 @@ func (s *DB) SetKV(key, valueJSON string) error {
 	return err
 }
 
+// SetKVOnce inserts a json value by key only when absent, reporting
+// whether this call inserted it. One INSERT OR IGNORE is atomic across
+// processes (SQLite serializes writers), so it is the primitive a
+// cross-process claim uses: two processes claiming the same key, one wins.
+func (s *DB) SetKVOnce(key, valueJSON string) (bool, error) {
+	res, err := s.db.Exec(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO NOTHING`, key, valueJSON, now())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ReclaimKVIfStale overwrites key when its updated_at is older than
+// olderThan, in one statement; it reports whether it did. The lease an
+// owner that crashed leaves behind is reclaimed this way.
+func (s *DB) ReclaimKVIfStale(key, valueJSON string, olderThan int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ? AND updated_at < ?`,
+		valueJSON, now(), key, olderThan)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // DelKV drops a key, reporting whether there was one.
 func (s *DB) DelKV(key string) (bool, error) {
 	res, err := s.db.Exec(`DELETE FROM kv WHERE key = ?`, key)
