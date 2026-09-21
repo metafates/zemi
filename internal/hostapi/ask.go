@@ -206,9 +206,10 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				if len(f) == 0 {
 					return "", nil
 				}
-				// a deleter must not broaden to arbitrary later targets: the
-				// rule runs unconfined and has no write path to re-ask on
-				if f[0] == "rm" || perm.Destructive(seg) != "" {
+				// a program that can delete or overwrite must not broaden to
+				// arbitrary later targets: the rule runs unconfined, and such
+				// a command has no write path to re-ask on
+				if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
 					rules = append(rules, rule("tool.bash", seg))
 					unnamed++
 					continue
@@ -341,6 +342,20 @@ var wrapperPrograms = map[string]bool{
 
 func wrapperProgram(prog string) bool {
 	return wrapperPrograms[strings.ToLower(filepath.Base(prog))]
+}
+
+// destructivePrograms are programs that, with one more argument, can delete
+// or overwrite without a write path the pipeline would re-ask on (rm and
+// friends delete by syscall, find -exec and rsync run real deleters). An
+// always-allow keeps a command by one of them exact.
+var destructivePrograms = map[string]bool{
+	"rm": true, "rmdir": true, "unlink": true, "mv": true, "cp": true, "install": true,
+	"find": true, "tar": true, "rsync": true, "shred": true, "truncate": true, "dd": true,
+	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true, "git": true,
+}
+
+func destructiveProgram(prog string) bool {
+	return destructivePrograms[prog]
 }
 
 // commandPrefix is the two-word prefix the always answer allows for a

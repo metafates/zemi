@@ -803,6 +803,9 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "make *", "ls", "ls *"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
+		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
+		{tools.Request{Subject: "tool.bash", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
+		{tools.Request{Subject: "tool.bash", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
 		{tools.Request{Subject: "tool.bash", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
