@@ -36,7 +36,7 @@ Flags:
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: plan, auto or yolo
-      --profile name  agent profile: lean, or one init.lua defines
+      --profile name  agent profile: one init.lua defines
       --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)

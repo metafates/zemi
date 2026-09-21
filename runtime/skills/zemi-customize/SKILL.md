@@ -78,20 +78,22 @@ the chat, shows that run's transcript in the chat, a message submitted there goe
 agent while it runs, and esc goes back. Background jobs
 (`job_start`, bash past its timeout) are listed there too, with a Stop action.
 
-## A lean tool set (`/profile lean`, `init.lua`, or `tools:` in an agent file)
+## A lean tool set (`/profile <name>`, `init.lua`, or `tools:` in an agent file)
 
-zemi ships the `lean` profile: `/profile lean`, `--profile lean`, or
-`zemi.config.set("agent.profile", "lean")` in `init.lua`. It is the default set minus
-`workflow`, `Lua`, `job_start`, `open_in_editor` and `lsp`, about 40% of the
-builtin schema text (1.8k tokens a request). It gives up workflow scripts, reading
-or changing zemi's live state, starting a server or watcher in the background (bash still
-hands a command past its timeout to `job_read` and `job_kill`), handing a file to the user's
-editor and language server queries; diagnostics after an edit stay. Redefine it by name:
+Profiles are defined with `zemi.agent.profile`; a lean one (the default tool set minus
+the schemas a coding turn rarely calls) looks like:
 
 ```lua
-zemi.agent.profile("lean", { tools = { "-workflow", "-lua", "-memory_add" } })
+zemi.agent.profile("lean", { tools = { "-workflow", "-lua", "-job_start", "-lsp" } })
 -- or an allowlist, strong models only: tools = { "bash", "skill" }
 ```
+
+The default set minus `workflow`, `Lua`, `job_start` and `lsp` is about 40% of the builtin
+schema text (1.8k tokens a request). It gives up workflow scripts, reading or changing
+zemi's live state, starting a server or watcher in the background (bash still hands a
+command past its timeout to `job_read` and `job_kill`), and language server queries;
+diagnostics after an edit stay. Apply it with `/profile lean`, `--profile lean`, or
+`zemi.config.set("agent.profile", "lean")` in `init.lua`.
 
 The prompt drops what names a missing tool (the skills index without `skill`, the
 delegation section without `agent`, plan mode replies in text without `plan`). A bash-only

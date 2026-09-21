@@ -98,8 +98,8 @@ guessing. Common keys:
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.profile`: the profile the main conversation runs as, `default` or a name defined
-  with `zemi.agent.profile`; a name nothing defines fails the send. `lean` ships, see
-  zemi-customize. `/profile` picks one.
+  with `zemi.agent.profile`; a name nothing defines fails the send. `/profile` picks one;
+  zemi-customize shows how to define one.
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for

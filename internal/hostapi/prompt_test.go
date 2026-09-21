@@ -62,6 +62,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
 		t.Fatal(err)
 	}
+	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
 	h.SetUIHooks(&fakeUI{})
 	if err := h.SetPermMode("plan"); err != nil {
 		t.Fatal(err)
