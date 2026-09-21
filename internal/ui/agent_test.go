@@ -896,11 +896,11 @@ func TestFileRowClickIDs(t *testing.T) {
 		}
 	}
 	for text, want := range map[string]string{
-		"● Edit /w/a.go": "file:0:/w/a.go",
-		"7 - old":        "file:7:/w/a.go",
-		"7 + new":        "file:7:/w/a.go",
-		"8 keep":         "file:8:/w/a.go",
-		"● Run go test":  "",
+		"● Edit /w/a.go":  "tool:-1",
+		"7 - old":         "tool:-1",
+		"7 + new":         "tool:-1",
+		"8 keep":          "tool:-1",
+		"● Ran 1 command": "tool:-2",
 	} {
 		if click[text] != want {
 			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)

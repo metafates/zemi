@@ -678,8 +678,6 @@ zemi.agent.profile("coder", {
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
                                            -- and what deleting this line returns to
--- The shipped UI defines one, "lean" (runtime/lua/zemi/defaultui/init.lua); defining
--- "lean" in user config replaces it.
 zemi.agent.current()                 -- session handle: { id = "...", profile = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
@@ -1254,10 +1252,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a reasoning line
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
-  from the row's `run` field, opens that run's transcript) and a file
-  tool's rows (`file:<line>:<path>`, `zemi.ui.edit`: the head row opens the
-  file, a diff row opens it at its line on a double click, so a single
-  click can still start a selection). The boot
+  from the row's `run` field, opens that run's transcript) and a tool row
+  (`tool:<idx>`, expands that row). The boot
   failed, stuck and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on boot failed or
   errors opens `/errors`, on stuck reloads.
