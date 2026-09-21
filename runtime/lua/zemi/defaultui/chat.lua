@@ -75,14 +75,6 @@ zemi.ui.widget.add({
       if prev then blank() end
       prev = block
     end
-    ---@param segs zemi.Line
-    ---@return boolean
-    local function has_text(segs)
-      for _, sg in ipairs(segs) do
-        if (sg.text or ""):match("%S") then return true end
-      end
-      return false
-    end
     -- A reply is indented, not bulleted: its lines share the user's left edge.
     ---@param text string
     local function add_markdown(text)
