@@ -351,7 +351,7 @@ func wrapperProgram(prog string) bool {
 var destructivePrograms = map[string]bool{
 	"rm": true, "rmdir": true, "unlink": true, "mv": true, "cp": true, "install": true,
 	"find": true, "tar": true, "rsync": true, "shred": true, "truncate": true, "dd": true,
-	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true, "git": true,
+	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true,
 }
 
 func destructiveProgram(prog string) bool {
