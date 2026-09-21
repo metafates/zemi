@@ -842,7 +842,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runFetch),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress and mark each done the moment it finishes, before the next step's call, so the visible list always matches your current state. Without todos it returns the list.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress while work remains; mark each done the moment it finishes, as the very next tool call, never batching the updates, so the visible list always equals your current state - never report a step done in your reply before the list shows it. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{

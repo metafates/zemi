@@ -42,7 +42,7 @@ const readPrompt = `
 
 const todosPrompt = `
 - Use todos only when several distinct steps could be lost, and do not repeat the list in your reply.
-- The moment a step finishes, update the list (mark its item done, or note the change) before starting the next step: never let several steps pass without ticking completed ones off. The list must always show the state your work is in right now.`
+- Keep the list the live state of the work. Exactly one item is in_progress while work remains; the moment a step is done, the very next tool call updates the list (that one marked done, the next in_progress). Never batch the updates, never start the next step, and never claim a step done in your reply while the list does not yet show it.`
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no user and
 // no question, plan or ! tool (headlessExcluded), so telling it to ask
