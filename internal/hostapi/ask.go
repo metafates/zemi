@@ -168,10 +168,12 @@ func (h *Host) shownArg(req tools.Request) string {
 
 // alwaysChoice is the "for this session" option for a request: what it
 // allows, as the prompt shows it ("allow `go test`"), and the session rules
-// (model principal) accepting it adds. Subcommand programs allow their two-word prefix ("go test"), file access its
-// directory, fetches their host; the rest the exact request. Gate-forced
-// asks (environment assignments, heredocs) and text with a glob wildcard,
-// which the rule would widen, offer no choice.
+// (model principal) accepting it adds. A command is allowed as a whole (its
+// program, plus the subcommand when it has one) whatever the arguments,
+// since arguments differ every run; file access its directory, fetches
+// their host; the rest the exact request. Deleting programs and text with a
+// glob wildcard stay exact or offer no choice, so the rule never widens to
+// a command the user did not see.
 func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	rule := func(subject, pattern string) perm.Rule {
 		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: "model"}
@@ -187,19 +189,31 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var names []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
-		unnamed := 0 // segments allowed exactly as written, with no prefix to name
+		unnamed := 0 // segments allowed exactly as written, named only by count
 		for i, seg := range n.Segments {
 			if wrapperProgram(n.Args[i][0]) {
 				return "", nil
 			}
+			// a glob would make the exact rule itself widen
+			if strings.ContainsAny(seg, globMeta) {
+				return "", nil
+			}
+			// Allow the command as a whole, not this argv: arguments differ
+			// every run, so a rule for one set never matches the next.
 			p := commandPrefix(seg)
 			if p == "" {
-				if strings.ContainsAny(seg, globMeta) {
+				f := strings.Fields(seg)
+				if len(f) == 0 {
 					return "", nil
 				}
-				rules = append(rules, rule("tool.bash", seg))
-				unnamed++
-				continue
+				// a deleter must not broaden to arbitrary later targets: the
+				// rule runs unconfined and has no write path to re-ask on
+				if f[0] == "rm" || perm.Destructive(seg) != "" {
+					rules = append(rules, rule("tool.bash", seg))
+					unnamed++
+					continue
+				}
+				p = f[0]
 			}
 			rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
 			if !seen[p] {

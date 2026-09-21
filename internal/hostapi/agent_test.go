@@ -798,9 +798,12 @@ func TestAlwaysChoice(t *testing.T) {
 		patterns []string
 	}{
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow `go test` and `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow this exact command", []string{"ls -la"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow this exact command", []string{"cat notes"}},
-		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls"}},
+		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow `ls`", []string{"ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow `cat`", []string{"cat", "cat *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "make *", "ls", "ls *"}},
+		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
+		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
+		{tools.Request{Subject: "tool.bash", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run
@@ -836,6 +839,24 @@ func TestAlwaysChoice(t *testing.T) {
 		if label != c.label || strings.Join(pats, "|") != strings.Join(c.patterns, "|") {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
 		}
+	}
+	// a whole-command rule lets the next run differ in its arguments
+	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "ls -la"})
+	s := perm.NewStore()
+	for _, r := range rules {
+		s.Add(r)
+	}
+	if o := s.CheckCommand("ls -R src", "model"); o.Decision != perm.Allow {
+		t.Errorf("ls -R src after allow `ls` = %v, want allow", o)
+	}
+	// a deleter's exact rule does not cover another target
+	_, del := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"})
+	s2 := perm.NewStore()
+	for _, r := range del {
+		s2.Add(r)
+	}
+	if o := s2.CheckCommand("rm src.orig", "model"); o.Decision == perm.Allow {
+		t.Errorf("rm src.orig after allow `rm build.tmp` must ask, got %v", o)
 	}
 	// a read deep in a tree also offers the whole repository
 	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
