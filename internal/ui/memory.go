@@ -57,7 +57,7 @@ func (a *App) answerMemReview() {
 	if mr != nil && mr.answer != nil {
 		mr.answer <- append(mr.items, mr.gone...)
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // editMemory hands the selected row to the host for editing.

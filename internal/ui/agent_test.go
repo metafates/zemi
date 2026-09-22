@@ -131,7 +131,7 @@ func TestColdChatRender(t *testing.T) {
 		if lines, more, err = host.RenderWidget(t.Context(), chat, st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
 			t.Fatal(err)
 		}
-		app.onWidgetRendered(widgetRenderedMsg{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
+		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
 	}
 	if st.top != top || !slices.Equal(st.anchor, anchor) {
 		t.Fatalf("view moved from row %d %q to row %d %q", top, anchor, st.top, st.anchor)
@@ -1080,19 +1080,8 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 	for range 10 {
 		for app.Pump() {
 		}
-		cmd := app.renderStaleWidgetsCmd()
-		if cmd == nil {
-			continue
-		}
-		msg := cmd()
-		batch, ok := msg.(tea.BatchMsg)
-		if !ok {
-			batch = tea.BatchMsg{func() tea.Msg { return msg }}
-		}
-		for _, c := range batch {
-			if c != nil {
-				app.Update(c())
-			}
+		if cmd := app.renderStaleWidgetsCmd(); cmd != nil {
+			app.Update(cmd())
 		}
 	}
 	run(`local n = #zemi.errors.list(); assert(n == 1, "errors: " .. n)`)

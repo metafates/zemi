@@ -85,7 +85,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
-		a.frameGen++
+		a.bump()
 	case tea.MouseMotionMsg:
 		if a.barDrag != "" {
 			a.dragScrollbar(a.barDrag, m.Y)
@@ -96,7 +96,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		}
 		if m.X != a.mouse.x1 || m.Y != a.mouse.y1 {
 			a.mouse.x1, a.mouse.y1, a.mouse.dragged = m.X, m.Y, true
-			a.frameGen++
+			a.bump()
 		}
 	case tea.MouseReleaseMsg:
 		if a.barDrag != "" {
@@ -107,7 +107,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		a.mouse.pressed = false
-		a.frameGen++
+		a.bump()
 		if !a.mouse.dragged {
 			a.mouse = mouseSel{}
 			if !a.dismissOutside(m.X, m.Y) {
@@ -174,7 +174,7 @@ func (a *App) dismissOutside(x, y int) bool {
 	default:
 		return false
 	}
-	a.frameGen++
+	a.bump()
 	return true
 }
 
@@ -294,7 +294,7 @@ func (a *App) hover(x, y int) tea.Cmd {
 	}
 	if key != a.hoverKey {
 		a.hoverKey = key
-		a.frameGen++
+		a.bump()
 	}
 	shape := ""
 	if ok {
@@ -320,7 +320,7 @@ func (a *App) click(x, y int) {
 		act()
 		a.publishComposer()
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // cellSpan is the cells [lo, hi) of screen row y.

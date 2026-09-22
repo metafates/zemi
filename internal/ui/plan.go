@@ -52,14 +52,14 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 	if p != nil && p.answer != nil {
 		p.answer <- planAnswer{v, ok}
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // planKey handles a key on the plan popup: scrolling, approve, open the
 // changes input with e, or dismiss. Only in the changes input do keys type.
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
-	defer func() { a.frameGen++ }()
+	defer a.bump()
 	if p.typing {
 		switch key {
 		case "enter":

@@ -78,10 +78,16 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if app.frameGen != gen {
 		t.Fatalf("idle: %d redraws over 10s of ticks", app.frameGen-gen)
 	}
+	if app.tickInterval() != idleInterval {
+		t.Fatal("idle should tick slowly")
+	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.Update(frameTickMsg{})
 	if app.frameGen == gen {
 		t.Fatal("a running turn does not tick the working row")
+	}
+	if app.tickInterval() != frameInterval {
+		t.Fatal("a running turn should tick at frame rate")
 	}
 
 	host.SeedStream(hostapi.StreamSnapshot{})
@@ -92,5 +98,28 @@ func TestIdleDrawsNothing(t *testing.T) {
 	app.Update(frameTickMsg{})
 	if app.frameGen != gen+1 {
 		t.Fatalf("the done frame cost %d redraws, want 1", app.frameGen-gen)
+	}
+}
+
+// TestBumpWakesIdleTick: a change while the tick sleeps idle reaches the
+// screen at frame rate, and every stale widget comes back in one message.
+func TestBumpWakesIdleTick(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	tick := app.frameTickCmd(idleInterval)
+	start := time.Now()
+	app.bump()
+	tick()
+	if d := time.Since(start); d >= idleInterval {
+		t.Fatalf("the bump waited out the idle tick: %v", d)
+	}
+	if msg, ok := app.renderStaleWidgetsCmd()().(widgetsRenderedMsg); !ok || len(msg) < 2 {
+		t.Fatalf("stale widgets should render as one message, got %T %v", msg, msg)
+	}
+	tick = app.frameTickCmd(idleInterval)
+	start = time.Now()
+	app.onWidgetRendered(widgetRender{id: "chat", more: true})
+	tick()
+	if d := time.Since(start); d >= idleInterval {
+		t.Fatalf("a render asking to run again waited out the idle tick: %v", d)
 	}
 }

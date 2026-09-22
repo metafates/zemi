@@ -99,7 +99,7 @@ func (a *App) answerTrust(answer string) {
 	if tp != nil && tp.answer != nil {
 		tp.answer <- answer
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // trustAnswers are the trust prompt's rows, in order: a click on row i

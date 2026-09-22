@@ -86,7 +86,7 @@ func (a *App) finishQuestion(ok bool) {
 		}
 		qp.answer <- ans
 	}
-	a.frameGen++
+	a.bump()
 }
 
 func (qp *questionPrompt) reviewing() bool { return qp.at == len(qp.qs) }
@@ -112,7 +112,7 @@ func (qp *questionPrompt) switchTab(d int) {
 // (the marked options in a multi-select) or starts typing on the last row.
 func (a *App) questionKey(key, text string) {
 	qp := a.question
-	defer func() { a.frameGen++ }()
+	defer func() { a.bump() }()
 	switch key {
 	case "tab":
 		qp.switchTab(1)

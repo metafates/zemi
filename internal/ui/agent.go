@@ -122,7 +122,7 @@ func (a *App) answerPerm(ok bool, by string) {
 		a.permAsk, a.permQueue = a.permQueue[0], a.permQueue[1:]
 		a.permAsk.opened = a.now()
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // ---------------------------------------------------------------------------

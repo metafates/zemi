@@ -166,8 +166,8 @@ func TestResizeStartsNoTick(t *testing.T) {
 func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.pending = map[string]int64{"w": 7}
-	app.Update(widgetRenderedMsg{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, gen: 6})
-	app.Update(widgetRenderedMsg{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, gen: 5})
+	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, gen: 6}})
+	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, gen: 5}})
 	if got := plainSegs(app.widgetLines("w")[0]); got != "new" || app.pending["w"] != 7 {
 		t.Fatalf("lines %q, pending %v", got, app.pending)
 	}

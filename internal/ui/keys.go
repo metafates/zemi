@@ -30,7 +30,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.keySequence(key, f) && key == "esc" {
 			a.host.SetFocus("")
 		}
-		a.frameGen++
+		a.bump()
 		return nil
 	}
 
@@ -42,7 +42,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.shown() || !a.keySequence(key, "")) {
 		return a.composerKey(key, msg)
 	}
-	a.frameGen++
+	a.bump()
 
 	// Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
@@ -503,7 +503,7 @@ func (a *App) wheelChrome(step int) bool {
 	default:
 		return false
 	}
-	a.frameGen++
+	a.bump()
 	return true
 }
 
@@ -538,6 +538,6 @@ func (a *App) pasteChrome(text string) bool {
 			st.edit("", line, st.texts)
 		}
 	}
-	a.frameGen++
+	a.bump()
 	return true
 }

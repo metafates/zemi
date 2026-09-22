@@ -318,7 +318,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		a.inputKey(st, key, text)
 		return nil
 	}
-	a.frameGen++
+	a.bump()
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
@@ -422,14 +422,14 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 			in.insert(strings.ReplaceAll(text, "\n", " "))
 		}
 	}
-	a.frameGen++
+	a.bump()
 }
 
 // cancelOverlay closes o and runs its on_close. The overlay's Lua
 // callbacks run on the background worker: the key loop never waits on Lua.
 func (a *App) cancelOverlay(o hostapi.Overlay) {
 	a.closeOverlayByID(o.ID)
-	a.frameGen++
+	a.bump()
 	if o.OnClose != nil {
 		a.background(func() { a.host.CancelOverlay(context.Background(), o) })
 	}

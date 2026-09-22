@@ -35,8 +35,9 @@ const (
 	// Terminals hide the OSC 9;4 spinner after a few seconds unless the
 	// program keeps sending it, so it is resent on this interval while running.
 	progressInterval = 2 * time.Second
-	frameMS          = 50              // one animation tick: the mascot's frames are multiples of it
-	doneLinger       = 3 * time.Second // how long the mascot bows after a turn
+	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
+	frameMS          = 50                     // one animation tick: the mascot's frames are multiples of it
+	doneLinger       = 3 * time.Second        // how long the mascot bows after a turn
 	toastTTL         = 4 * time.Second
 	hookQueueSize    = 64
 	chatWheelStep    = 1
@@ -121,8 +122,9 @@ type App struct {
 	colors     colorprofile.Profile // what the terminal can show; bubbletea downsamples cells, not OSC 11
 
 	bootErr        error
-	streamPending  atomic.Bool // a stream agentStreamMsg is queued
-	refreshPending atomic.Bool // a Refresh is queued
+	streamPending  atomic.Bool   // a stream agentStreamMsg is queued
+	wake           chan struct{} // a bump while the frame tick sleeps idle
+	refreshPending atomic.Bool   // a Refresh is queued
 
 	// the last composed frame, published for Screenshot: reading a
 	// snapshot is what lets any goroutine ask what the screen says
@@ -163,6 +165,7 @@ func NewApp(host *hostapi.Host, log *logging.Logger) *App {
 		log:      log,
 		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}},
 		caches:   map[string]*widgetCache{},
+		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
 		scrolls:  map[string]*scrollState{},
 		timeStr:  "--:--",
@@ -235,7 +238,11 @@ func (a *App) leave() {
 
 type frameTickMsg struct{}
 
-type widgetRenderedMsg struct {
+// widgetsRenderedMsg carries every stale widget's render at once: one
+// message, one compose, where one per widget cost a compose each.
+type widgetsRenderedMsg []widgetRender
+
+type widgetRender struct {
 	id            string
 	lines         [][]hostapi.Segment
 	more          bool // the render wants to run again
@@ -269,24 +276,26 @@ type hookMsg struct{ inner tea.Msg }
 
 func (a *App) Init() tea.Cmd {
 	// the background query also picks the theme's light variant
-	return tea.Batch(a.frameTickCmd(), a.drainHooksCmd(), tea.RequestBackgroundColor)
+	return tea.Batch(a.frameTickCmd(frameInterval), a.drainHooksCmd(), tea.RequestBackgroundColor)
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case frameTickMsg:
 		return a, a.onFrame()
-	case widgetRenderedMsg:
-		a.onWidgetRendered(msg)
+	case widgetsRenderedMsg:
+		for _, r := range msg {
+			a.onWidgetRendered(r)
+		}
 	case uiFunc:
-		a.frameGen++
+		a.bump()
 		return a, msg()
 	case agentStreamMsg:
 		// Stream state lives in the host; just invalidate the frame.
-		a.frameGen++
+		a.bump()
 		a.streamPending.Store(false)
 	case turnDoneMsg:
-		a.frameGen++
+		a.bump()
 		text := "zemi finished"
 		if msg.err != "" {
 			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "...")
@@ -309,7 +318,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
-		a.frameGen++
+		a.bump()
 		// render now rather than start a tick: each tick schedules the next,
 		// so every resize would add a frame loop that never stops
 		return a, a.renderStaleWidgetsCmd()
@@ -375,7 +384,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.updateCompletion()
 	case filesScannedMsg:
 		a.onFilesScanned(msg)
-		a.frameGen++
+		a.bump()
 	}
 	return a, nil
 }
@@ -441,11 +450,40 @@ func (a *App) Frame() string {
 // ---------------------------------------------------------------------------
 // frame loop and widget rendering
 
-func (a *App) frameTickCmd() tea.Cmd {
+// bump invalidates the frame. It also wakes the tick, so a change never
+// waits out idleInterval; onFrame's own bumps need no waking.
+func (a *App) bump() {
+	a.frameGen++
+	a.wakeTick()
+}
+
+func (a *App) wakeTick() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
+	last := time.Now()
 	return func() tea.Msg {
-		time.Sleep(frameInterval)
+		select {
+		case <-a.wake:
+			time.Sleep(time.Until(last.Add(frameInterval))) // a storm of bumps still ticks at 30 fps
+		case <-time.After(d):
+		}
 		return frameTickMsg{}
 	}
+}
+
+// tickInterval is idleInterval unless something on screen moves by itself:
+// a turn's readouts, a toast's or the done frame's expiry. Everything else bumps.
+func (a *App) tickInterval() time.Duration {
+	st := a.lastState
+	if a.turnActive || a.host.Reflecting() || st.Done || st.QuitArmed || st.KeySeq != "" || len(a.toasts) > 0 {
+		return frameInterval
+	}
+	return idleInterval
 }
 
 func (a *App) onFrame() tea.Cmd {
@@ -477,7 +515,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.lastState = st
 		a.frameGen++
 	}
-	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd()}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
@@ -524,7 +562,7 @@ func (a *App) frame() int {
 	return int(a.now().UnixMilli() / frameMS)
 }
 
-func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
+func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == msg.gen {
 		delete(a.pending, msg.id)
 	}
@@ -559,6 +597,7 @@ func (a *App) onWidgetRendered(msg widgetRenderedMsg) {
 	}
 	if msg.more {
 		c.gen-- // stale, so the next frame renders this widget alone again
+		a.wakeTick()
 		// A reader scrolled up keeps the last whole render until the new one
 		// is whole: anchoring on partial rows would lose their place.
 		if old != nil && len(old.lines) > 0 && a.scrolledUp(msg.id) {
@@ -574,11 +613,11 @@ func isTolerableRenderErr(err error) bool {
 	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
-// renderStaleWidgetsCmd enqueues ui-class renders for widgets whose cache
-// is missing or stale for the current frame generation.
+// renderStaleWidgetsCmd renders, as ui-class requests, the widgets whose
+// cache is missing or stale for the current frame generation.
 func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 	gen, st := a.frameGen, a.uiState()
-	var cmds []tea.Cmd
+	var stale []shownWidget
 	for _, w := range a.shownWidgets() {
 		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == w.width && c.height == w.height {
 			continue
@@ -592,12 +631,19 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 			a.pending = map[string]int64{}
 		}
 		a.pending[w.ID] = gen
-		cmds = append(cmds, func() tea.Msg {
-			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
-			return widgetRenderedMsg{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, err: err}
-		})
+		stale = append(stale, w)
 	}
-	return tea.Batch(cmds...)
+	if len(stale) == 0 {
+		return nil
+	}
+	return func() tea.Msg {
+		out := make(widgetsRenderedMsg, 0, len(stale))
+		for _, w := range stale {
+			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
+			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, err: err})
+		}
+		return out
+	}
 }
 
 // widgetLines returns the last-good cached lines of a widget (the render
@@ -934,7 +980,7 @@ func (a *App) scrollRows(id string, n int) {
 	}
 	st.top = max(0, min(st.top+n, st.rows-st.viewH))
 	st.follow = st.bottom && st.top+st.viewH >= st.rows
-	a.frameGen++
+	a.bump()
 }
 
 // followStage pins the default scrolled region back to its tail (a submit).
