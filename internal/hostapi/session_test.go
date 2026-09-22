@@ -63,6 +63,11 @@ func TestSessionLifecycle(t *testing.T) {
 	if tr := h.Session().Transcript; len(tr) != 2 || tr[0].Text != "one" || tr[1].Text != "ok" {
 		t.Fatalf("resumed transcript = %+v", tr)
 	}
+	// The context readout needs a window before the first new step; the
+	// estimate must survive a resume, not wait for the next turn.
+	if got := h.AgentStream().LastIn; got == 0 {
+		t.Fatal("resume left the context estimate at 0")
+	}
 	send("three")
 	if n := m.lastPrompt.Load(); n != 4 {
 		t.Fatalf("resumed prompt has %d messages, want 4", n)
