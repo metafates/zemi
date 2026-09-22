@@ -1170,7 +1170,9 @@ func TestProfileSwitch(t *testing.T) {
 		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
 		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider in `},
-		{"unlisted model under a registered provider is taken and warned about", func() error {
+		{"unlisted model under a registered provider is taken and warned about, mid-turn too", func() error {
+			h.agents.active, h.agents.turnModel = true, "a/main"
+			defer func() { h.agents.active, h.agents.turnModel = false, "" }()
 			if err := h.SetModel("a/nope"); err != nil {
 				return err
 			}

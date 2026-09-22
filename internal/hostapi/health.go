@@ -402,16 +402,21 @@ func (h *Host) goHealthRows() []healthCheck {
 func (h *Host) modelRow() healthCheck {
 	h.agents.mu.Lock()
 	id := h.liveModelID()
-	profile := h.agents.profiles[h.Settings.Str("agent.profile")]
 	h.agents.mu.Unlock()
 	_, known := h.modelSpec(id)
-	switch err := h.modelErr(id, profile); {
+	switch err := h.modelErr(id); {
 	case err != nil:
 		return healthCheck{level: "error", name: "model", detail: err.Error()}
 	case !known:
-		return healthCheck{level: "warn", name: "model", detail: id + ": not in the provider's models list; the provider decides whether it exists"}
+		return healthCheck{level: "warn", name: "model", detail: unlistedDetail(id)}
 	}
 	return healthCheck{level: "ok", name: "model", detail: id}
+}
+
+// unlistedDetail is the warning for an id the provider's models list
+// does not carry: the pick is taken, since the provider decides.
+func unlistedDetail(id string) string {
+	return id + ": not in the provider's models list; the provider decides whether it exists"
 }
 
 // ModelWarning is the model row's detail when it is not ok, "" when it is.

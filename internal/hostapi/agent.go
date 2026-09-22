@@ -1433,7 +1433,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.deliverFired(L, fired)
-		h.WarnModel()
+		h.warnUnlisted(id)
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
@@ -1526,8 +1526,16 @@ func (h *Host) SetModel(id string) error {
 	if err := h.setWatched(h.ConversationKey(), id); err != nil {
 		return err
 	}
-	h.WarnModel()
+	h.warnUnlisted(id)
 	return nil
+}
+
+// warnUnlisted toasts a pick the provider does not list. It reads the pick,
+// not the model row: mid-turn the row is the running turn's model.
+func (h *Host) warnUnlisted(id string) {
+	if _, ok := h.modelSpec(id); !ok {
+		h.Notify("warn", "Model", unlistedDetail(id))
+	}
 }
 
 // modelSetErr refuses a model pick under a provider nobody registered, or
@@ -1536,13 +1544,13 @@ func (h *Host) SetModel(id string) error {
 func (h *Host) modelSetErr(id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok {
-		return h.modelErr(id, nil)
+		return h.modelErr(id)
 	}
 	return h.ProfileModelErr()
 }
 
-// WarnModel toasts the model row's warning, if any: a pick or a config
-// the provider does not list would otherwise run silently until the
+// WarnModel toasts the model row's warning after a reload, if any: a
+// config the provider does not list would otherwise run silently until the
 // provider refuses it.
 func (h *Host) WarnModel() {
 	if w := h.ModelWarning(); w != "" {

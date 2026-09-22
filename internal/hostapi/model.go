@@ -23,7 +23,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 		return h.modelFn()
 	}
 	id := h.currentModelID(p)
-	if err := h.modelErr(id, p); err != nil {
+	if err := h.modelErr(id); err != nil {
 		return nil, err
 	}
 	return h.Providers.Resolve(id)
@@ -61,9 +61,8 @@ func (h *Host) noModelHint(short bool) string {
 
 // modelErr says why id cannot run, before a provider is built: an SDK
 // would otherwise fail with its own words ("run ant auth login"). /health
-// and a failed send share it. p is the profile that named the model, nil
-// for the conversation's tier.
-func (h *Host) modelErr(id string, p *Profile) error {
+// and a failed send share it.
+func (h *Host) modelErr(id string) error {
 	if id == "" {
 		return fmt.Errorf("%w: %s", ErrNoModel, h.noModelHint(true))
 	}
