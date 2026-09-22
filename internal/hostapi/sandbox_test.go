@@ -222,7 +222,7 @@ func TestTemp(t *testing.T) {
 `
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
-// plan mode, with a backend that keeps .git and .zemi read-only inside it,
+// a read-only agent, with a backend that keeps .git and .zemi read-only inside it,
 // when it neither holds nor sits in one of zemi's dirs, holds no hidden path
 // on a backend that cannot hide inside a write root, and its .git is not a
 // symlink; zemi's dirs are hidden unless they hold the project, and builds

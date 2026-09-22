@@ -95,7 +95,7 @@ diagnostics after an edit stay. Apply it with `/profile lean`, `--profile lean`,
 `zemi.config.set("agent.profile", "lean")` in `init.lua`.
 
 The prompt drops what names a missing tool (the skills index without `skill`, the
-delegation section without `agent`, plan mode replies in text without `plan`). A bash-only
+delegation section without `agent`, a read-only agent replies in text without `plan`). A bash-only
 set pays with a strong model that is good at the shell, on shell-centric work; a weaker
 model edits less accurately through sed and heredocs than through `edit`. Without the file
 tools there is no check that a file was read and unchanged before a write, no rewind

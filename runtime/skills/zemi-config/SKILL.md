@@ -151,17 +151,17 @@ guessing. Common keys:
   set `ask` to review every one in `/memory`
 - `permissions.mode` (`auto`, which an unknown value also reads as): `auto` (reads, edits
   inside the project and commands run on their own, the commands sandboxed; bulk deletes
-  like `rm -rf`, `git clean` or `find -delete` and everything
-  else go to the user), `plan` (file writes are refused,
-  commands run sandboxed with the project read-only,
-  MCP calls ask, so the agent investigates and
-  proposes a plan) or `yolo` (every ask is allowed; deny rules still apply).
-  In a project the user has not trusted (`/trust`), auto and plan mode run only commands
-  that just read (no builds, tests or git), auto edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
+  like `rm -rf`, `git clean` or `find -delete`, git commands that write `.git` and everything
+  else go to the user) or `yolo` (every ask is allowed; deny rules still apply). Planning is
+  not a mode but the read-only `planner` profile (`/profile planner`, or any profile with
+  `read_only`): file writes are refused, commands that change things and MCP calls ask, so
+  the agent investigates and proposes a plan, whatever the mode.
+  In a project the user has not trusted (`/trust`), auto runs only commands
+  that just read (no builds, tests or git), edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
   anything that is not a read (config, providers, permissions, jobs, servers, the
-  composer, ...). Commands auto and plan mode run without asking run in a
-  sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not in plan
-  mode), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
+  composer, ...). Commands auto runs without asking run in a
+  sandbox (seatbelt on macOS, Landlock on Linux): writes only in the project (not for a
+  read-only agent), the scratchpad and temp dirs, `.git` and `.zemi` read-only, no network beyond
   localhost, credential files in the home dir and zemi's own dirs unreadable; Go builds get
   a cache of their own. On Linux with user namespaces (`landlock + namespaces` in
   `/health`) localhost is the sandbox's own, so servers already running on the machine are
@@ -313,8 +313,8 @@ Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetc
 `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `lua` (runs Lua inside zemi as user origin; read-only calls run at
-once, a script that calls anything else asks the user once, and plan mode or an untrusted
-project asks for every script), plus
+once, a script that calls anything else asks the user once, and a read-only agent or an
+untrusted project asks for every script), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter and a profile's
 `tools` use these names: a plain name allowlists, `-name` removes one and keeps the rest, so a
 list that only removes still gets whatever a later release adds. A name nothing answers to
@@ -326,8 +326,8 @@ Several questions show as tabs (tab/shift+tab, or left/right) ending in a review
 every answer; enter on a row there reopens that question, and submit sends them all, unanswered
 ones included. `plan` opens a "Plan" popup with the full plan as scrollable
 markdown: enter approves, typing asks for changes (the agent revises and presents again), and
-esc dismisses. The mode to implement in is remembered when plan mode starts (never yolo), so
-approving leaves plan mode without a per-plan mode prompt.
+esc dismisses. The agent and mode that ran before the planner are remembered (never yolo), so
+approving returns to them without a per-plan prompt.
 Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.
 Subagents cannot ask.
 

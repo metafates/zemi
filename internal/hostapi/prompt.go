@@ -171,11 +171,11 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 // the pipeline enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
 const planPrompt = `
 
-# Plan mode
+# Planning
 You are planning: work out the plan with the user and do not do it until they approve one. The project is read-only and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
 1. Read the code the task touches first. Never ask what reading it would tell you. For anything more than a focused fix, delegate the reading and plan drafting to the plan subagent (agent, name "plan"): it is a read-only architect who reports a concrete plan with a Critical Files section. Use its report as the plan.`
 
-// planAsking is the rest of plan mode for a run with the plan tool; a
+// planAsking is the rest of the planning prompt for a run with the plan tool; a
 // headless run and a profile that drops it have none.
 const planAsking = `
 2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
@@ -370,7 +370,7 @@ func (h *Host) environmentPrompt() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
 	if dir := h.ensureScratch(); dir != "" {
-		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), scripts. Reading and writing here never asks, even in plan mode. Write to this exact directory or below it: its parent and its siblings are not writable, and a sandboxed command also has $TMPDIR.\n", dir)
+		fmt.Fprintf(&b, "Scratchpad: %s\nPut temporary files here instead of /tmp or the project: notes, drafts, long command output (redirect it and grep the file), scripts. Reading and writing here never asks, even for a read-only agent. Write to this exact directory or below it: its parent and its siblings are not writable, and a sandboxed command also has $TMPDIR.\n", dir)
 	}
 	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
 		fmt.Fprintf(&b, "Recipes: %s\nA procedure for this repository that was costly to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once; Skills lists it from the next session on. Fix a stale step in place with edit and date it. Link another recipe as [[name]]. No secrets: name the env var; a long hex or base64 run is cut as one.\n", dir)

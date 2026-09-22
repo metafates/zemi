@@ -75,7 +75,7 @@ values (as JSON) come back. A script that only reads (`zemi.config.get`, `zemi.s
 `zemi.log`, a field such as `zemi.api.version`, `require("zemi.util")`, ...) runs at
 once in a trusted project. Anything else asks the user once for the whole script: write every
 call out by name (`zemi.job.start(...)`, `w:send(...)`), since a call reached through a name
-built from strings, `_G` or `load` asks too, and one the scan misses raises. Plan mode and a
+built from strings, `_G` or `load` asks too, and one the scan misses raises. A read-only agent (the planner) and a
 project that is not trusted ask for every script. Callbacks a script registers (keymaps,
 timers, event handlers) keep only the read-only calls once the run ends, so put lasting
 behavior in `init.lua`.
