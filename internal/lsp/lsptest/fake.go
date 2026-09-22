@@ -79,6 +79,7 @@ func Serve(in io.Reader, out io.Writer) {
 					Range struct {
 						Start struct{ Line, Character int }
 					} `json:"range"`
+					SelectionRange json.RawMessage `json:"selectionRange"`
 				} `json:"item"`
 			} `json:"params"`
 		}
@@ -161,9 +162,15 @@ func Serve(in io.Reader, out io.Writer) {
 		case "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls":
 			res := func(result any) { write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}) }
 			itemJSON := func(name string, u string, r lsp.Range) map[string]any {
-				return map[string]any{"name": name, "kind": 12, "uri": u, "range": map[string]any{
+				rng := map[string]any{
 					"start": map[string]any{"line": r.Start.Line, "character": r.Start.Character},
-					"end":   map[string]any{"line": r.End.Line, "character": r.End.Character}}}
+					"end":   map[string]any{"line": r.End.Line, "character": r.End.Character}}
+				return map[string]any{"name": name, "kind": 12, "uri": u, "range": rng, "selectionRange": rng}
+			}
+			// rust-analyzer refuses an item sent back without the field
+			if m.Method != "textDocument/prepareCallHierarchy" && m.Params.Item.SelectionRange == nil {
+				write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32602, "message": "missing field selectionRange"}})
+				break
 			}
 			switch m.Method {
 			case "textDocument/prepareCallHierarchy":

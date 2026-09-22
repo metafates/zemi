@@ -134,9 +134,10 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextResponse(fmt.Sprintf("%d references\n%s%s", len(locs), formatLocations(locs, 100), note)), nil
 	case "call_hierarchy":
 		// the server re-resolves incoming/outgoing from the prepared item
-		// (its data field is opaque), so round-trip it unchanged
+		// (its data field is opaque, selectionRange required), so round-trip
+		// it untouched
 		var b strings.Builder
-		var prepared []callHierarchyItem
+		var prepared []json.RawMessage
 		if err := c.Call(ctx, "textDocument/prepareCallHierarchy", params, &prepared); err != nil {
 			return fail(err)
 		}
@@ -363,14 +364,11 @@ func formatLocations(locs []lsp.Location, limit int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// callHierarchyItem is the LSP CallHierarchyItem; Data is opaque and
-// round-tripped so the server can correlate incoming/outgoing calls.
+// callHierarchyItem is what the tool prints of an LSP CallHierarchyItem.
 type callHierarchyItem struct {
-	Name  string          `json:"name"`
-	Kind  int             `json:"kind"`
-	URI   string          `json:"uri"`
-	Range lsp.Range       `json:"range"`
-	Data  json.RawMessage `json:"data,omitempty"`
+	Name  string    `json:"name"`
+	URI   string    `json:"uri"`
+	Range lsp.Range `json:"range"`
 }
 
 // symbolKinds names the LSP SymbolKind values.
