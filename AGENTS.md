@@ -106,8 +106,8 @@ runs untrusted and says so.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
 ships no providers and an empty config cannot answer a prompt. Config reload is not fsnotify:
-`watchConfig` walks the config trees once a second and reloads when a fingerprint moved and no
-turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
+`watchConfig` walks the config trees once a second (past dot-directories and `node_modules`)
+and reloads when a fingerprint moved and no turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
@@ -392,13 +392,13 @@ lua-language-server is installed.
 ### Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
 - **Models are tiers.** `models.main` runs everything; `models.small` (session titles,
-  compaction summaries, the builtin `web` agent) and `models.smart` (the main conversation)
-  fall back to it. Anything that takes a model - an agent definition, the `agent` tool, a
+  compaction summaries, the reflector, the builtin `web` agent) and `models.smart` (the main
+  conversation) fall back to it. Anything that takes a model - an agent definition, the `agent` tool, a
   workflow - takes a tier name or a `provider/model` id (`modelRef`).
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. Calls outside a runner (summary, title,
-  reflector) go through `Host.generate`, which bills them; the reflector bills the session it
-  read, closed or not.
+  reflector) go through `Host.generate`, which bills them and sends the provider's body fields
+  without the effort; the reflector bills the session it read, closed or not.
 - **The active profile is a config key.** `agent.profile` names what `resolveProfile("")`
   runs (`default` is the shipped shape), so only user config writes it and a reload keeps a
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
@@ -439,7 +439,10 @@ lua-language-server is installed.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for the
   latest session (once per process, not on a reload), never on quit; `reflectDue` compares the
   message count with kv `reflector.seen.<sid>`, so a session is reflected again only after new
-  messages. Its prompt carries the instruction files (`instructionSections`, shared with
+  messages, and skips one exchange that went fine (under two user messages, no failed tool
+  call): it would cost a model call at every launch. It runs on `reflector.model`, then the
+  small tier, and a reply that is not the JSON document asked for is the `/health` reflector
+  row's news, never an `/errors` entry. Its prompt carries the instruction files (`instructionSections`, shared with
   `systemWith`), a memory index and a skills index that includes the project's skills and
   recipes, so it drafts no global skill for a procedure the repository has; an entry with
   empty text and `supersedes` queues a forget proposal, never auto-applied. It proposes

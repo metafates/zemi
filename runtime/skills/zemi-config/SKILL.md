@@ -96,7 +96,7 @@ guessing. Common keys:
     on `models.main`.
   `/model` and `-m` write the tier the conversation reads: smart when it is set, else main.
   Agent definitions, the `agent` tool and workflows take a tier name where they take a model.
-- `reflector.model` (empty: `models.main`)
+- `reflector.model` (empty: `models.small`, then `models.main`)
 - `web.search_url`: a SearXNG endpoint (`http://localhost:8888/search`, json format enabled)
   for `web_search`; empty uses DuckDuckGo Lite, which blocks some networks with a bot check.
 - `agent.profile`: the profile the main conversation runs as, `default` or a name defined
