@@ -135,6 +135,7 @@ func TestProjectChoice(t *testing.T) {
 		{"wrapper", tools.Request{Subject: "tool.bash", Arg: "sh -c 'x'"}, ""},
 		{"file write", tools.Request{Subject: "fs.write", Arg: "/x"}, ""},
 		{"destructive", tools.Request{Subject: "tool.bash", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
+		{"destructive subcommand", tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command"},
 		// a line continuation would load as two wider commands next boot
 		{"multi-line", tools.Request{Subject: "tool.bash", Arg: "git \\\npush"}, ""},
 	} {

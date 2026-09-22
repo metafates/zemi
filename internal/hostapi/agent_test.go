@@ -885,6 +885,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
 		{tools.Request{Subject: "tool.bash", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
 		{tools.Request{Subject: "tool.bash", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
+		// a destructive subcommand too: `git clean` as a whole covers -fdx
+		{tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run

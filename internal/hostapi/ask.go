@@ -293,14 +293,14 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	if wrapperProgram(filepath.Base(f[0])) {
 		return nil, false
 	}
+	// a program or subcommand that can delete or overwrite must not broaden
+	// to arbitrary later targets: the rule runs unconfined, and such a
+	// command has no write path to re-ask on
+	if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
+		return []string{seg}, true
+	}
 	p := commandPrefix(seg)
 	if p == "" {
-		// a program that can delete or overwrite must not broaden to
-		// arbitrary later targets: the rule runs unconfined, and such a
-		// command has no write path to re-ask on
-		if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
-			return []string{seg}, true
-		}
 		p = f[0]
 	}
 	return []string{p, p + " *"}, true
