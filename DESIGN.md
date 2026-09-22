@@ -1699,13 +1699,22 @@ session summaries. Additional signals: explicit user teaching
 The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin
 and not a profile: one tool-less model call over a closed session. With
 no tools it cannot act at all, so its only output is the proposal
-document below. Triggered on `session.close`: `/new`,
-`/resume`, and at startup (once, not on a reload) for the most recent session, so quitting never
-waits on a model call (`/reflect` runs it by hand); a session is reflected again only once it has messages the
-reflector has not seen (the seen count persists in kv).
+document below. Triggered on `session.close` (`/new`, `/resume`) and by a
+startup sweep (once per process, not on a reload) over the newest sessions
+nothing has touched for ten minutes, at most three, so quitting never waits
+on a model call and a session a quit, a crash or a `-p` run left behind is
+still read; `/reflect` runs it by hand. It reads the delta since the seen
+count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it), and
+only when that delta holds two user messages (compaction summaries do not
+count) and a tool call, or one failed tool call; `/reflect` skips that
+floor. One run per delta across windows: an atomic kv claim keyed by the
+message count, leased for the run's timeout plus a minute. A reply that is
+not the JSON asked for marks the delta seen, as does a second failed try
+(kv `reflector.tries.<sid>`), so a delta a provider refuses does not cost a
+call at every close; `/health` shows the last outcome.
 
-Input: the transcript tail (the last 120 user and assistant messages,
-each truncated) + tool-call stats + the instruction files the agent's
+Input: the tail of the delta since the seen count (its last 120 user and
+assistant messages, each truncated) + tool-call stats + the instruction files the agent's
 prompt carries (the same trust gate, 16 KiB), so the reflector can see
 what it must not repeat + this session's memories awaiting review (another
 session's may hold outside text, and this session's autonomy would store
@@ -1745,8 +1754,8 @@ directory and no path into the config dir. Skill drafts are body only,
 never Lua: Go sanitizes and scrubs the description and body with the
 memory scrubber, writes them under the data dir's `skills/`, and they stay
 disabled until the user enables them in `/skills`. The reflector runs
-detached with a timeout; a run cut off by exit is retried at the next
-startup, since the session still has unseen messages.
+detached with a timeout; a run cut off by exit is retried by the next
+startup sweep, since the session still has unseen messages.
 
 ### 10.4 Proposal, review, apply
 

@@ -209,14 +209,23 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if msgs[0].ID != m.ID {
 		t.Fatalf("messages not in order: %+v", msgs)
 	}
+	if n, err := db.MessageCount("s1"); err != nil || n != 2 {
+		t.Fatalf("count = %d %v", n, err)
+	}
 	// Tool telemetry rows stay out of the picker preview; the call and the
 	// message it points at land together.
 	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
 		&ToolCall{Tool: "bash", OK: false}); err != nil {
 		t.Fatal(err)
 	}
-	if stats, err := db.ToolCallStats("s1"); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
+	if stats, err := db.ToolCallStats("s1", ""); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
 		t.Fatalf("tool stats = %+v, %v", stats, err)
+	}
+	if stats, err := db.ToolCallStats("s1", msgs[1].ID); err != nil || len(stats) != 1 || stats[0].Failed != 1 {
+		t.Fatalf("tool stats after a message = %+v, %v", stats, err)
+	}
+	if stats, err := db.ToolCallStats("s1", "nope"); err != nil || len(stats) != 0 {
+		t.Fatalf("tool stats after an unknown message = %+v, %v", stats, err)
 	}
 	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
 		&ToolCall{Tool: "bash", OK: true}); err == nil {

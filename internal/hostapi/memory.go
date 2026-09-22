@@ -986,7 +986,7 @@ func (h *Host) sessionLocalOnly(sid string) bool {
 	}
 	local := h.builtinToolNames()
 	for _, id := range sids {
-		stats, err := h.DB.ToolCallStats(id)
+		stats, err := h.DB.ToolCallStats(id, "")
 		if err != nil {
 			return false
 		}

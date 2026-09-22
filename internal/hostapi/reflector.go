@@ -1,5 +1,6 @@
-// reflector.go: after a session closes, a tool-less model call reads the
-// transcript, tool stats and memory and skill indexes, and proposes
+// reflector.go: after a session closes, or at startup once it sat idle, a
+// tool-less model call reads what it added since the last read, tool
+// stats and the memory and skill indexes, and proposes
 // memories and skills (DESIGN §10.3). Memories go through intake and the
 // autonomy gate; skills land as disabled drafts.
 package hostapi
@@ -68,140 +69,213 @@ type reflectProposal struct {
 const (
 	reflectTimeout = 2 * time.Minute
 	// reflectLease is how long a reflection claim may stand without its
-	// owner: a process that took the claim and then crashed leaves one,
-	// and after this long another run may reclaim it.
-	// NOTE: the claim is not refreshed while a run is live, so a process
-	// paused past the lease (a long laptop sleep, SIGSTOP) mid-run could be
-	// reclaimed and both runs would apply their proposals. Proposals are
-	// deduped by text, so the cost is a duplicate, not corruption.
-	reflectLease = 30 * time.Minute
+	// owner: a run ends at reflectTimeout, so an older claim belongs to a
+	// process that died or was paused, and another run may take it over.
+	// NOTE: a paused process that resumes applies its proposals too; the
+	// near-duplicate check turns the repeat into a skip, not a second row.
+	reflectLease = reflectTimeout + time.Minute
+	// reflectIdle is how long a session must have been quiet before the
+	// startup sweep reflects it: another window may still be typing in it.
+	reflectIdle = 10 * time.Minute
+	// reflectSweepMax bounds the model calls one startup makes.
+	reflectSweepMax = 3
+	// reflectTries is how many failed runs a delta gets before it is marked
+	// seen, so a provider that refuses it does not cost a call at every close.
+	// NOTE: counted per session, not per delta: a delta that grows between
+	// two failures is given up on after one try over its new rows.
+	reflectTries = 2
 )
 
-// reflectOnClose is the session-close trigger (/new, /resume, startup):
-// the closed session is reflected when it has messages the reflector has
-// not seen. The cross-process claim makes two windows on the same
-// repository reflect those messages once between them, not once each.
+// reflectOnClose is the session-close trigger (/new, /resume): the closed
+// session is reflected when it has messages the reflector has not seen.
+// The cross-process claim makes two windows on the same repository reflect
+// those messages once between them, not once each.
 func (h *Host) reflectOnClose(prevID string) {
-	if claim := h.claimReflect(prevID); claim != "" {
-		h.runReflectDetached(prevID, claim)
+	if n, claim := h.claimReflect(prevID, h.reflectDue(prevID)); claim != "" {
+		h.GoSafe("reflector", func() { h.reflectClaimed(prevID, claim, n) })
 	}
 }
 
-// ReflectLastSession runs at startup: the most recent session gets the
-// session-close treatment, so quitting never waits on a model call and
-// its proposals land in the persistent review queue (DESIGN §10.3).
-func (h *Host) ReflectLastSession() {
+// ReflectSweep runs at startup, in the background so quitting never waits
+// on a model call (DESIGN §10.3): the newest due sessions that no window
+// has touched for reflectIdle are reflected in turn, which covers what a
+// quit, a crash or a -p run left unreflected.
+func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-reflectIdle)) }
+
+// reflectSweep reflects the due sessions quiet since before idle.
+func (h *Host) reflectSweep(idle time.Time) {
 	if h.DB == nil {
 		return
 	}
-	if list, err := h.DB.ListSessions(1); err == nil && len(list) == 1 {
-		h.reflectOnClose(list[0].ID)
+	list, err := h.DB.ListSessions(20)
+	if err != nil {
+		return
+	}
+	runs := 0
+	for _, s := range list {
+		if runs == reflectSweepMax {
+			return
+		}
+		if s.UpdatedAt > idle.UnixMilli() {
+			continue
+		}
+		if n, claim := h.claimReflect(s.ID, h.reflectDue(s.ID)); claim != "" && h.reflectClaimed(s.ID, claim, n) {
+			runs++
+		}
 	}
 }
 
-// reflectDue returns a session's message count when the reflector has not
-// seen it at that count, 0 otherwise; the seen count lives in kv, so a
-// restart does not re-reflect. One exchange that went fine teaches nothing
-// and would cost a model call at every launch, so it waits for a second
-// user message or a tool failure.
+// reflectDelta returns a session's messages and how many of them the
+// reflector has seen (kv, so a restart does not re-reflect). A seen count
+// past the end (a rewind in another process) reads as none, since the
+// alternative is to never reflect the session again.
+func (h *Host) reflectDelta(sid string) ([]*store.Message, int, error) {
+	if h.DB == nil {
+		return nil, 0, errors.New("reflector: session store unavailable")
+	}
+	msgs, err := h.DB.Messages(sid)
+	if err != nil {
+		return nil, 0, err
+	}
+	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
+	n, _ := strconv.Atoi(seen)
+	if n < 0 || n > len(msgs) {
+		n = 0
+	}
+	return msgs, n, nil
+}
+
+// reflectDue returns a session's message count when what came after the
+// seen count is worth a model call, 0 otherwise: two user messages and a
+// tool call, or one failed tool call. One exchange that went fine teaches
+// nothing, and a compaction summary is not the user speaking.
 func (h *Host) reflectDue(sid string) int {
 	if h.DB == nil {
 		return 0
 	}
-	msgs, err := h.DB.Messages(sid)
-	if err != nil || len(msgs) == 0 {
+	// the sweep asks about many sessions and nearly all are seen: count
+	// before loading a transcript over the store's one connection
+	count, err := h.DB.MessageCount(sid)
+	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); err != nil || seen == strconv.Itoa(count) {
 		return 0
 	}
-	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); seen == strconv.Itoa(len(msgs)) {
+	msgs, seen, err := h.reflectDelta(sid)
+	if err != nil || seen == len(msgs) {
 		return 0
 	}
-	users := 0
-	for _, m := range msgs {
-		if m.Role == "user" {
+	users, after := 0, ""
+	if seen > 0 {
+		after = msgs[seen-1].ID
+	}
+	for _, m := range msgs[seen:] {
+		if _, ok := userText(m); ok {
 			users++
 		}
 	}
-	if users < 2 {
-		stats, _ := h.DB.ToolCallStats(sid)
-		if !slices.ContainsFunc(stats, func(s store.ToolStat) bool { return s.Failed > 0 }) {
-			return 0
-		}
+	stats, _ := h.DB.ToolCallStats(sid, after)
+	calls, failed := 0, 0
+	for _, s := range stats {
+		calls, failed = calls+s.Calls, failed+s.Failed
 	}
-	return len(msgs)
+	if failed > 0 || (users >= 2 && calls > 0) {
+		return len(msgs)
+	}
+	return 0
 }
 
-// claimReflect atomically claims the right to reflect the unseen messages
-// of sid and returns the claim key when this process won it ("" to skip).
-// The claim is an INSERT OR IGNORE keyed by the message count in the
-// shared kv, so two processes that both see the session as unreflected can
-// still not reflect it twice: only one inserts. A claim its owner crashes
-// leaving is reclaimed after reflectLease, so a failed run can be retried.
-func (h *Host) claimReflect(sid string) string {
-	n := h.reflectDue(sid)
+// claimReflect atomically claims the right to reflect sid up to its n-th
+// message and returns n with the claim key when this process won it ("" to
+// skip; n of 0 never claims). The claim is an INSERT OR IGNORE keyed by the
+// message count in the shared kv, so two processes that both see the
+// session as unreflected can still not reflect it twice: only one inserts.
+// A claim its owner crashes leaving is reclaimed after reflectLease, so a
+// failed run can be retried.
+func (h *Host) claimReflect(sid string, n int) (int, string) {
 	if n == 0 {
-		return ""
+		return 0, ""
 	}
 	key := reflectClaimKey(sid, n)
 	if claimed, _ := h.DB.SetKVOnce(key, "1"); claimed {
-		return key
+		return n, key
 	}
 	// a claim for this count stands: another window is on it, or its owner
 	// crashed long ago and the lease lets us take over
 	if ok, _ := h.DB.ReclaimKVIfStale(key, "1", time.Now().Add(-reflectLease).UnixMilli()); ok {
-		return key
+		return n, key
 	}
-	return ""
+	return 0, ""
 }
 
-func reflectSeenKey(sid string) string { return "reflector.seen." + sid }
+func reflectSeenKey(sid string) string  { return "reflector.seen." + sid }
+func reflectTriesKey(sid string) string { return "reflector.tries." + sid }
 func reflectClaimKey(sid string, n int) string {
 	return "reflector.claim." + sid + ":" + strconv.Itoa(n)
 }
 
-// runReflectDetached starts one reflect run on its own goroutine and
-// reports whether it started; a second concurrent run is skipped (one
-// reflector at a time). Progress reaches Lua as ctx.reflecting plus the
-// reflector.start / reflector.done events (done carries error on failure).
-// claim is the claim key this run will release when it ends, or "" when
-// there is none to release.
-func (h *Host) runReflectDetached(sid, claim string) bool {
+// reflectSeen marks sid reflected up to n messages and forgets its failed
+// tries, so the next delta gets its own.
+func (h *Host) reflectSeen(sid string, n int) {
+	_ = h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(n))
+	_, _ = h.DB.DelKV(reflectTriesKey(sid))
+}
+
+// clampReflectSeen keeps the seen count within a session a rewind cut, so
+// what comes after the cut is a delta of its own.
+func (h *Host) clampReflectSeen(sid string, n int) {
+	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); seen != "" {
+		if s, _ := strconv.Atoi(seen); s > n {
+			_ = h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(n))
+		}
+	}
+}
+
+// reflectClaimed runs one reflect run over the claim's session, synchronous
+// on the caller's goroutine, and reports whether it ran: a run while another
+// is active is skipped and its claim released, so a later close can reflect
+// again (one reflector at a time). Progress reaches Lua as ctx.reflecting
+// plus the reflector.start / reflector.done events (done carries error on
+// failure). The claim is released when the run ends: on success the seen
+// marker keeps the result, on failure a later run retries; a crash leaves
+// it to the lease. n is the message count the claim covers.
+func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	if !h.reflectMu.TryLock() {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
-		// this run never starts, so a just-won claim must not be left to
-		// the lease: release it so a later close can reflect again
-		if claim != "" {
-			h.DB.DelKV(claim)
-		}
+		h.DB.DelKV(claim)
 		return false
 	}
+	defer h.reflectMu.Unlock()
+	defer h.DB.DelKV(claim)
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
+	defer cancel()
 	h.reflecting.Store(true)
 	h.refresh()
+	defer h.refresh()
+	defer h.reflecting.Store(false)
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})
-	h.GoSafe("reflector", func() {
-		defer h.reflectMu.Unlock()
-		defer cancel()
-		defer h.refresh()
-		defer h.reflecting.Store(false)
-		if claim != "" {
-			// released on success (the seen marker keeps the result) and on
-			// failure (so a later run can retry); a crash leaves it to the lease
-			defer h.DB.DelKV(claim)
-		}
-		err := h.reflectSession(ctx, sid)
-		h.agents.mu.Lock()
-		h.agents.reflectErr = err
-		h.agents.mu.Unlock()
-		if err != nil {
-			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
-			// a model that answered in prose is the /health row's news,
-			// not a zemi error the badge asks the agent to fix
-			if !errors.Is(err, errNoProposal) {
-				h.RecordError("reflector", err.Error())
-			}
-			h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
-		}
-	})
+	tries, _ := h.DB.GetKV(reflectTriesKey(sid))
+	try, _ := strconv.Atoi(tries)
+	try++
+	_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try))
+	err := h.reflectSession(ctx, sid)
+	switch {
+	case errors.Is(err, errNoProposal):
+		// prose is the model's answer, not a run to repeat, and the /health
+		// row's news rather than a zemi error the badge asks the agent to fix
+		h.reflectSeen(sid, n)
+	case err != nil && try >= reflectTries:
+		h.reflectSeen(sid, n)
+		err = fmt.Errorf("gave up after %d tries: %w", try, err)
+		h.RecordError("reflector", err.Error())
+	case err != nil:
+		h.RecordError("reflector", err.Error())
+	}
+	h.agents.mu.Lock()
+	h.agents.reflectErr = err
+	h.agents.mu.Unlock()
+	if err != nil {
+		h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
+		h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
+	}
 	return true
 }
 
@@ -224,7 +298,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	drafted := h.applySkillDrafts(sid, proposal)
 	// what the prompt held, not the count now: the live session may have
 	// grown during the model call
-	_ = h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(seen))
+	h.reflectSeen(sid, seen)
 	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped, "skills_drafted": drafted,
@@ -234,30 +308,22 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	return nil
 }
 
-// reflectPrompt builds the reflect prompt for sid and returns how many of
-// its stored messages that covers.
+// reflectPrompt builds the reflect prompt over what sid holds past the seen
+// count and returns how many of its stored messages that covers.
 func (h *Host) reflectPrompt(sid string) (string, int, error) {
-	if h.DB == nil {
-		return "", 0, errors.New("reflector: session store unavailable")
-	}
-	all, err := h.DB.Messages(sid)
+	all, seen, err := h.reflectDelta(sid)
 	if err != nil {
 		return "", 0, err
 	}
-	// a session reflected before only shows what came after that run
-	msgs := all
-	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
-	if n, err := strconv.Atoi(seen); err == nil && n <= len(msgs) {
-		msgs = msgs[n:]
+	msgs, after := all[seen:], ""
+	if seen > 0 {
+		after = all[seen-1].ID
 	}
 	var lines []string
 	for _, m := range msgs {
 		if line := reflectLine(m); line != "" {
 			lines = append(lines, line)
 		}
-	}
-	if len(lines) == 0 {
-		return "", 0, fmt.Errorf("reflector: session %s has no messages", sid)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Project\n%s\n\n", h.Session().CWD)
@@ -267,7 +333,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		lines = lines[len(lines)-reflectMsgsMax:]
 	}
 	b.WriteString(strings.Join(lines, "\n") + "\n")
-	if stats, err := h.DB.ToolCallStats(sid); err == nil && len(stats) > 0 {
+	if stats, err := h.DB.ToolCallStats(sid, after); err == nil && len(stats) > 0 {
 		b.WriteString("\n# Tool usage\n")
 		for _, s := range stats {
 			line := fmt.Sprintf("- %s: %d calls", s.Tool, s.Calls)
@@ -322,11 +388,14 @@ func reflectLine(m *store.Message) string {
 	if err := json.Unmarshal([]byte(m.PartsJSON), &fm); err != nil {
 		return ""
 	}
-	text := strings.TrimSpace(concatText(fm.Content))
-	if text == "" {
+	role, text := m.Role, concatText(fm.Content)
+	if s, ok := summaryOf(fm); ok {
+		role, text = "summary", s
+	}
+	if text = strings.TrimSpace(text); text == "" {
 		return ""
 	}
-	return m.Role + ": " + truncRunes(text, reflectMsgMax)
+	return role + ": " + truncRunes(text, reflectMsgMax)
 }
 
 // concatText joins the text parts of a fantasy content slice.
@@ -466,15 +535,30 @@ func (h *Host) reflectorCommands() []*Command {
 	}}
 }
 
-// reflectCommand starts a detached reflect run over the live session. Go
-// commands run on the key loop, so the run must never block it.
+// reflectCommand starts a detached reflect run over the live session at
+// its current count, floor or not. Go commands run on the key loop, so the
+// run must never block it.
 func (h *Host) reflectCommand() error {
 	sid := h.AgentSessionID()
 	if sid == "" {
 		return errors.New("no session to reflect on")
 	}
-	if !h.runReflectDetached(sid, "") {
+	msgs, seen, err := h.reflectDelta(sid)
+	if err != nil {
+		return err
+	}
+	if seen == len(msgs) {
+		return errors.New("nothing new to reflect")
+	}
+	// the claim alone would let this run start, then skip under the lock
+	// with only a log; a stale read here costs nothing but a repeat
+	if h.reflecting.Load() {
 		return errors.New("a reflect run is already active")
 	}
+	n, claim := h.claimReflect(sid, len(msgs))
+	if claim == "" {
+		return errors.New("a reflect run is already active")
+	}
+	h.GoSafe("reflector", func() { h.reflectClaimed(sid, claim, n) })
 	return nil
 }

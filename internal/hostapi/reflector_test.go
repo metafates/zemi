@@ -165,8 +165,8 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 	if m.calls.Load() != 1 {
 		t.Fatalf("model calls=%d", m.calls.Load())
 	}
-	if h.reflectDue(sid) == 0 {
-		t.Fatal("a message the run never read was marked seen")
+	if msgs, seen, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
+		t.Fatalf("seen=%d of %d: a message the run never read was marked seen", seen, len(msgs))
 	}
 	props := h.memoryProposals()
 	if len(props) != 1 {
@@ -244,8 +244,9 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 	}
 }
 
-// TestReflectPromptWindow: tool rows stay out, the newest messages win the
-// budget, and a re-reflection only shows messages after the last run.
+// TestReflectPromptWindow: tool rows stay out, a compaction summary is
+// labeled as one, the newest messages win the budget, and a re-reflection
+// only shows messages after the last run.
 func TestReflectPromptWindow(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
@@ -253,13 +254,14 @@ func TestReflectPromptWindow(t *testing.T) {
 	for i := range reflectMsgsMax + 5 {
 		addText(t, h, sid, "user", fmt.Sprintf("note %d.", i))
 	}
+	addText(t, h, sid, "user", compactPrefix+"the gist"+compactSuffix)
 	msgs, _ := h.DB.Messages(sid)
 	for _, tc := range []struct {
 		name, seen   string
 		want, absent []string
 	}{
-		{"last messages", "", []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted"}, []string{"tool bash", "deploy script keeps failing", "note 0."}},
-		{"after seen", fmt.Sprint(len(msgs) - 2), []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
+		{"last messages", "", []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted", "summary: the gist"}, []string{"tool bash", "deploy script keeps failing", "note 0.", "user: The earlier part"}},
+		{"after seen", fmt.Sprint(len(msgs) - 3), []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := h.DB.SetKV(reflectSeenKey(sid), tc.seen); err != nil {
@@ -552,38 +554,17 @@ func TestReflectScrubAndInstructionShape(t *testing.T) {
 	}
 }
 
-// TestReflectBadOutput pins the failure path: prose without JSON, broken
-// JSON and an empty session all fail the run without storing anything.
+// TestReflectBadOutput pins the failure path: prose without JSON and broken
+// JSON fail the run without storing anything.
 func TestReflectBadOutput(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
-
 	for _, out := range []string{"no json here at all", `{"memories": [`} {
 		reflectStub(t, h, out)
 		if err := h.reflectSession(context.Background(), sid); !errors.Is(err, errNoProposal) {
 			t.Fatalf("%q: %v, want errNoProposal", out, err)
 		}
-	}
-	// prose from the model is the /health row's news, not a zemi error
-	h.runReflectDetached(sid, "")
-	waitFor(t, func() error {
-		if h.reflecting.Load() {
-			return errors.New("still reflecting")
-		}
-		return nil
-	})
-	if h.errs.entries != nil || h.agents.reflectErr == nil {
-		t.Fatalf("errors = %+v, reflectErr = %v", h.errs.entries, h.agents.reflectErr)
-	}
-
-	reflectStub(t, h, `{"memories":[]}`)
-	empty := store.NewID()
-	if err := h.DB.CreateSession(empty, "", "empty", ""); err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	if err := h.reflectSession(context.Background(), empty); err == nil || !strings.Contains(err.Error(), "no messages") {
-		t.Fatalf("empty session: %v", err)
 	}
 }
 
@@ -603,99 +584,177 @@ func TestReflectTimeout(t *testing.T) {
 	}
 }
 
-// TestReflectSerializesRuns pins the one-run-at-a-time rule: a second
-// detached run while one holds the lock is skipped without touching the
-// model.
-func TestReflectSerializesRuns(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	m := reflectStub(t, h, `{"memories":[]}`)
-	h.reflectMu.Lock()
-	if h.runReflectDetached(sid, "") || m.calls.Load() != 0 {
-		t.Fatal("second run was not skipped")
-	}
-	h.reflectMu.Unlock()
+// reflectNow is reflectOnClose run inline: it reports whether a run
+// happened.
+func reflectNow(h *Host, sid string) bool {
+	n, claim := h.claimReflect(sid, h.reflectDue(sid))
+	return claim != "" && h.reflectClaimed(sid, claim, n)
 }
 
-// TestReflectClaimsOnce pins the cross-process guard: two claims on the
-// same unseen session, the way two windows starting at once would take
-// them, hand the run to only one; a finished run's seen marker stops any
-// further claim; a new message starts a fresh claimable count.
-func TestReflectClaimsOnce(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	c1, c2 := h.claimReflect(sid), h.claimReflect(sid)
-	if c1 == "" || c2 != "" {
-		t.Fatalf("claims = %q %q, want only the first to win", c1, c2)
+func addTool(t *testing.T, h *Host, sid string, ok bool) {
+	t.Helper()
+	if err := h.DB.AddToolCall(&store.Message{SessionID: sid, Role: "tool", PartsJSON: `{}`}, &store.ToolCall{Tool: "bash", OK: ok}); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.HasPrefix(c1, "reflector.claim."+sid+":") {
-		t.Fatalf("claim key %q must carry the session and count", c1)
-	}
-	// a run that finished wrote the seen marker: nothing more is claimable
+}
+
+func setSeen(t *testing.T, h *Host, sid string) {
+	t.Helper()
 	msgs, _ := h.DB.Messages(sid)
-	if err := h.DB.SetKV("reflector.seen."+sid, strconv.Itoa(len(msgs))); err != nil {
+	if err := h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(len(msgs))); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := h.DB.DelKV(c1); err != nil {
-		t.Fatal(err)
-	}
-	if c := h.claimReflect(sid); c != "" {
-		t.Fatalf("claimed an already-seen session: %q", c)
-	}
-	// a new message makes the session claimable again under a fresh count
-	addText(t, h, sid, "user", "one more")
-	if c := h.claimReflect(sid); c == "" || c == c1 {
-		t.Fatalf("a new message must be claimable under a fresh count, got %q", c)
 	}
 }
 
-// TestReflectCommand covers :reflect: no session errors, live session
-// starts a detached run.
-func TestReflectCommand(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	if err := h.reflectCommand(); err == nil {
-		t.Fatal("expected error without a session")
+// TestReflectTrigger pins when a session is reflected: the delta since the
+// seen count needs two user messages and a tool call or one failed tool
+// call, the startup sweep takes only idle sessions, a claim runs once
+// across windows and runs, and a failed delta is given up on.
+func TestReflectTrigger(t *testing.T) {
+	exchange := func(t *testing.T, h *Host, sid string) {
+		addText(t, h, sid, "user", "hi")
+		addText(t, h, sid, "assistant", "hello")
 	}
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	m := reflectStub(t, h, `{"memories":[]}`)
-	if err := h.reflectCommand(); err != nil {
-		t.Fatalf("reflectCommand: %v", err)
+	twoUsers := func(t *testing.T, h *Host, sid string) {
+		exchange(t, h, sid)
+		addText(t, h, sid, "user", "and this")
 	}
-	waitFor(t, func() error {
-		if m.calls.Load() != 1 {
-			return errors.New("detached run never started")
-		}
-		return nil
-	})
-}
-
-// TestReflectDueFloor: one exchange that went fine is not reflected; a
-// second user message or a failed tool call makes it due.
-func TestReflectDueFloor(t *testing.T) {
 	for _, c := range []struct {
-		name string
-		seed func(t *testing.T, h *Host, sid string)
-		due  bool
+		name  string
+		seed  func(t *testing.T, h *Host, sid string)
+		act   func(t *testing.T, h *Host, sid string, m *reflectStubModel)
+		due   bool  // after act
+		calls int32 // model calls act made
+		badge bool  // act left an /errors entry
 	}{
-		{"one exchange", func(t *testing.T, h *Host, sid string) {
-			addText(t, h, sid, "user", "hi")
-			addText(t, h, sid, "assistant", "hello")
-		}, false},
-		{"two user messages", func(t *testing.T, h *Host, sid string) {
-			addText(t, h, sid, "user", "hi")
-			addText(t, h, sid, "assistant", "hello")
-			addText(t, h, sid, "user", "and this")
-		}, true},
-		{"one exchange with a failed tool", seedTranscript, true},
+		{name: "one user row and an ok tool", seed: func(t *testing.T, h *Host, sid string) {
+			exchange(t, h, sid)
+			addTool(t, h, sid, true)
+		}},
+		{name: "two user rows and no tool", seed: twoUsers},
+		{name: "two user rows and a tool", seed: func(t *testing.T, h *Host, sid string) {
+			twoUsers(t, h, sid)
+			addTool(t, h, sid, true)
+		}, due: true},
+		{name: "one user row and a failed tool", seed: seedTranscript, due: true},
+		{name: "a summary row is not the user", seed: func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", compactPrefix+"earlier"+compactSuffix)
+			exchange(t, h, sid)
+			addTool(t, h, sid, true)
+		}},
+		{name: "seen leaves only tool rows", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			setSeen(t, h, sid)
+			addTool(t, h, sid, true)
+		}},
+		{name: "rewind clamps seen", seed: func(t *testing.T, h *Host, sid string) {
+			twoUsers(t, h, sid)
+			addText(t, h, sid, "assistant", "sure")
+			addTool(t, h, sid, true)
+		}, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			setSeen(t, h, sid)
+			msgs, _ := h.DB.Messages(sid)
+			if _, err := h.RewindTo(msgs[2].ID); err != nil {
+				t.Fatal(err)
+			}
+			// one user row after the cut: not due unless the whole session counts again
+			addText(t, h, sid, "user", "again")
+			addTool(t, h, sid, true)
+		}},
+		{name: "sweep skips a session touched a minute ago", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectSweep(time.Now().Add(-time.Minute))
+		}, due: true},
+		{name: "sweep runs an idle due session", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectSweep(time.Now().Add(time.Minute))
+		}, calls: 1},
+		{name: "prose sets seen without an error badge", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.resp = "no json here"
+			if !reflectNow(h, sid) || h.agents.reflectErr == nil {
+				t.Fatal("run did not happen or left no /health news")
+			}
+		}, calls: 1},
+		{name: "two provider errors set seen", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.err = errors.New("boom")
+			if !reflectNow(h, sid) || h.reflectDue(sid) == 0 {
+				t.Fatal("the first failure must leave the delta due")
+			}
+			reflectNow(h, sid)
+		}, calls: 2, badge: true},
+		{name: "two concurrent /reflect start one run", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.block = 100 * time.Millisecond
+			if err := h.reflectCommand(); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.reflectCommand(); err == nil {
+				t.Fatal("the second /reflect must be refused")
+			}
+			waitFor(t, func() error {
+				if m.calls.Load() == 0 || h.reflecting.Load() {
+					return errors.New("still reflecting")
+				}
+				return nil
+			})
+		}, calls: 1},
+		{name: "/reflect while a run is active is refused before it claims", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflecting.Store(true)
+			defer h.reflecting.Store(false)
+			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "already active") {
+				t.Fatalf("err = %v", err)
+			}
+			if v, _ := h.DB.GetKV(reflectClaimKey(sid, h.reflectDue(sid))); v != "" {
+				t.Fatal("a refused /reflect left a claim")
+			}
+		}, due: true},
+		{name: "/reflect skips the floor", seed: exchange, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			if err := h.reflectCommand(); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, func() error {
+				if m.calls.Load() == 0 || h.reflecting.Load() {
+					return errors.New("still reflecting")
+				}
+				return nil
+			})
+		}, calls: 1},
+		{name: "/reflect with nothing new says so", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			setSeen(t, h, sid)
+			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "nothing new") {
+				t.Fatalf("err = %v", err)
+			}
+		}},
+		{name: "another window's claim at the same count is skipped", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			if _, err := h.DB.SetKVOnce(reflectClaimKey(sid, h.reflectDue(sid)), "1"); err != nil {
+				t.Fatal(err)
+			}
+			if reflectNow(h, sid) {
+				t.Fatal("ran over another window's claim")
+			}
+		}, due: true},
+		{name: "a run while another is active is skipped and releases its claim", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectMu.Lock()
+			ran := reflectNow(h, sid)
+			h.reflectMu.Unlock()
+			if ran || !reflectNow(h, sid) {
+				t.Fatalf("ran under the lock %v, or the claim was not released", ran)
+			}
+		}, calls: 1},
 	} {
-		h, _ := newTestHostDB(t)
-		sid := seedSession(t, h)
-		c.seed(t, h, sid)
-		if (h.reflectDue(sid) != 0) != c.due {
-			t.Errorf("%s: due = %v, want %v", c.name, !c.due, c.due)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			sid := seedSession(t, h)
+			m := reflectStub(t, h, `{"memories":[]}`)
+			c.seed(t, h, sid)
+			if c.act != nil {
+				c.act(t, h, sid, m)
+			}
+			if due := h.reflectDue(sid) != 0; due != c.due {
+				t.Errorf("due = %v, want %v", due, c.due)
+			}
+			if m.calls.Load() != c.calls {
+				t.Errorf("model calls = %d, want %d", m.calls.Load(), c.calls)
+			}
+			if badge := h.errs.entries != nil; badge != c.badge {
+				t.Errorf("error badge = %v, want %v: %+v", badge, c.badge, h.errs.entries)
+			}
+		})
 	}
 }

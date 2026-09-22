@@ -149,6 +149,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if err := h.DB.TruncateMessages(sid, id); err != nil {
 		return 0, err
 	}
+	h.clampReflectSeen(sid, cut)
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {
 		return 0, err

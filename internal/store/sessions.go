@@ -266,6 +266,14 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	})
 }
 
+// MessageCount is how many rows Messages would return, tool telemetry
+// included, without loading them.
+func (s *DB) MessageCount(sessionID string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ?`, sessionID).Scan(&n)
+	return n, err
+}
+
 // UserMessages returns the newest top-level session user messages, newest
 // first, for the composer history: what the user typed survives the session
 // it was typed in. Subagent (child) sessions are excluded, since their user
@@ -393,13 +401,14 @@ type ToolStat struct {
 }
 
 // ToolCallStats aggregates a session's tool_calls rows per tool, busiest
-// first (reflector input, DESIGN §10.3).
-func (s *DB) ToolCallStats(sessionID string) ([]ToolStat, error) {
+// first (reflector input, DESIGN §10.3); afterID limits it to the calls
+// stored after that message, "" counts them all.
+func (s *DB) ToolCallStats(sessionID, afterID string) ([]ToolStat, error) {
 	rows, err := s.db.Query(`SELECT t.tool, COUNT(*),
 			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END)
 		FROM tool_calls t JOIN messages m ON m.id = t.message_id
-		WHERE m.session_id = ?
-		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID)
+		WHERE m.session_id = ? AND (? = '' OR m.rowid > (SELECT rowid FROM messages WHERE id = ?))
+		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID, afterID, afterID)
 	return collect(rows, err, func(r scanner) (st ToolStat, err error) {
 		err = r.Scan(&st.Tool, &st.Calls, &st.Failed)
 		return

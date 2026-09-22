@@ -17,10 +17,11 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    once for a `learned` memory under `auto`, proposed for review otherwise, and one the user
    saved asks. Each scope holds 3 KB of lines; a write past that queues for review and
    names the oldest ids to replace, and the review refuses to accept into a full scope.
-2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
-   reflector reads it and proposes memories and skill drafts, and retirements of memories
-   the session showed are no longer true (they wait for review as `forget:` rows).
-   `/reflect` runs it on demand.
+2. **Reflect.** When a session closes (`/new`, `/resume`), and at startup for sessions
+   idle ten minutes, the reflector reads what was added since it last read the session,
+   once it holds two user messages and a tool call or one failed tool call, and proposes
+   memories and skill drafts, and retirements of memories the session showed are no longer
+   true (they wait for review as `forget:` rows). `/reflect` runs it on demand, floor or not.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
    - `/memory`: every memory whole, as plain text, with its quote, scope, origin and age
      under it and each scope's budget use in the Remembered title; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or

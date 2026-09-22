@@ -444,13 +444,17 @@ lua-language-server is installed.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `e` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.
-- **Reflector timing.** It runs on session close (`/new`, `/resume`) and at startup for the
-  latest session (once per process, not on a reload), never on quit; `reflectDue` compares the
-  message count with kv `reflector.seen.<sid>`, so a session is reflected again only after new
-  messages, and skips one exchange that went fine (under two user messages, no failed tool
-  call): it would cost a model call at every launch. It runs on `reflector.model`, then the
-  small tier, and a reply that is not the JSON document asked for is the `/health` reflector
-  row's news, never an `/errors` entry. Its prompt carries the instruction files (`instructionSections`, shared with
+- **Reflector timing.** It runs on session close (`/new`, `/resume`) and in a startup sweep
+  (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle for ten
+  minutes, at most three, never on quit. `reflectDue` reads the delta past kv
+  `reflector.seen.<sid>` (`RewindTo` clamps it) and is due only when the delta has two user
+  messages that are not compaction summaries and a tool call, or one failed tool call: one
+  exchange that went fine would cost a model call at every launch; `/reflect` skips the floor.
+  `claimReflect` takes an atomic kv claim per message count, so two windows reflect a delta
+  once between them, and `reflectClaimed` runs it (one at a time; a skipped run releases its
+  claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
+  document asked for marks the delta seen and is the `/health` reflector row's news, never an
+  `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the instruction files (`instructionSections`, shared with
   `systemWith`), a memory index and a skills index that includes the project's skills and
   recipes, so it drafts no global skill for a procedure the repository has; an entry with
   empty text and `supersedes` queues a forget proposal, never auto-applied. It proposes

@@ -569,9 +569,8 @@ func writeTrust(path string, m map[string]string) error {
 // app.ready. Only the TUI reflects at startup: -p and --health exit before
 // it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
-	// once per process: a reload replays the step, and the newest session
-	// is then the open one
-	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect last session", h.ReflectLastSession) })
+	// once per process: a reload replays the step
+	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -579,8 +578,8 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 				h.Providers.DropBuiltin()
 			}
 			h.EmitOnState(g.L, "app.ready", nil)
-			// The last session is reflected in the background at startup,
-			// so quitting never waits on the reflector (DESIGN §10.3).
+			// idle sessions are reflected in the background at startup,
+			// so quitting never waits on the reflector (DESIGN §10.3)
 			if reflect {
 				reflectLast()
 			}
