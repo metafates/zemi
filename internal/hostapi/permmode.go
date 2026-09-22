@@ -23,8 +23,8 @@ import (
 
 // PermModeDef is one permission mode. Base picks the behavior: auto
 // (deterministic local checks answer routine asks) or yolo (every ask
-// allowed). A profile's against it; read-only agents deny writes and force
-// asks on their own (see Profile.ReadOnly). Every mode only answers asks:
+// allowed). A read-only profile denies writes and forces asks on its own,
+// whatever the mode (Profile.ReadOnly). Every mode only answers asks:
 // deny rules and the tool.pre/permission.request vetoes still run first.
 // Rules answer asks before the base does, and Prompt joins the system
 // prompt while the mode is on.

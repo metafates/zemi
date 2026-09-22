@@ -177,12 +177,9 @@ end)
 local right = {
   { "profile", function(ctx)
     if ctx.profile_read_only then
-      return ctx.profile .. " ⌖", "ModePlan", "profile"
+      return ctx.profile, "ModePlan", "profile"
     end
-    if ctx.profile ~= "default" then
-      return ctx.profile, "Comment", "profile"
-    end
-    return "general", "Dim", "profile"
+    return ctx.profile, ctx.profile ~= "default" and "Comment" or "Dim", "profile"
   end },
   { "model", function(ctx)
     if (ctx.model or "") == "" then return end
