@@ -1,13 +1,15 @@
 // Package agent is the chat core (DESIGN §6.3): a provider registry
-// (kinds: anthropic, openai, openai_compat, google; populated only from user
-// config), model catalog and the turn runner that streams fantasy agent
-// output into the UI and persists messages.
+// (kinds: anthropic, openai, openai_compat, google; seeded from the
+// builtin catwalk catalog, then user config), model catalog and the turn
+// runner that streams fantasy agent output into the UI and persists
+// messages.
 package agent
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"slices"
@@ -16,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"charm.land/catwalk/pkg/catwalk"
+	"charm.land/catwalk/pkg/embedded"
 	"charm.land/fantasy"
 
 	anthropic "charm.land/fantasy/providers/anthropic"
@@ -64,6 +68,87 @@ type Spec struct {
 	// Only KindsWithBody carry it.
 	Body   map[string]any `json:"-"`
 	Models []Model        `json:"models"`
+	// Builtin marks a catalog spec; Register clears it, so a user spec
+	// under a builtin id survives DropBuiltin.
+	Builtin      bool   `json:"builtin,omitempty"`
+	DefaultLarge string `json:"default_large,omitempty"` // the model Default picks for the main tier
+	DefaultSmall string `json:"default_small,omitempty"` // and for the small tier
+}
+
+// Catalog is the builtin providers with their env vars resolved: a
+// provider whose key is exported is a Spec with its key in Keys, one
+// without is Missing, so /health can name the variable to export.
+type Catalog struct {
+	Specs   []Spec
+	Keys    map[string]string
+	Missing []MissingKey
+}
+
+// MissingKey is a builtin provider whose key env var is not exported.
+type MissingKey struct{ ID, Env string }
+
+// builtinKinds maps catwalk types to zemi kinds. NOTE: azure, bedrock,
+// google-vertex and copilot are left out: they need more than one key
+// (endpoint and API version, an AWS credential chain, ADC, OAuth) and a
+// fantasy package each. openrouter and vercel are OpenAI-shaped, so
+// openai_compat talks to them; its usage has no cached-tokens field, so
+// OpenRouter cache reads bill as input.
+var builtinKinds = map[catwalk.Type]string{
+	catwalk.TypeAnthropic:    KindAnthropic,
+	catwalk.TypeOpenAI:       KindOpenAI,
+	catwalk.TypeGoogle:       KindGoogle,
+	catwalk.TypeOpenAICompat: KindOpenAICompat,
+	catwalk.TypeOpenRouter:   KindOpenAICompat,
+	catwalk.TypeVercel:       KindOpenAICompat,
+}
+
+// Builtin converts the embedded catwalk catalog, resolving its "$NAME" key
+// and endpoint references through getenv, the only place Go itself reads a
+// key env var. The catalog's order is kept (anthropic, openai, gemini
+// first, then the rest), which is the order Default prefers. Catalog
+// default_headers are dropped: they attribute requests to crush, and zemi
+// sends no header the user did not write. NOTE: model options
+// (temperature, top_p) and reasoning levels are not carried; /effort sends
+// its level to every model.
+func Builtin(getenv func(string) string) Catalog {
+	return builtin(embedded.GetAll(), getenv)
+}
+
+func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
+	env := func(ref string) (name, value string) {
+		if !strings.HasPrefix(ref, "$") {
+			return "", ref
+		}
+		return ref[1:], getenv(ref[1:])
+	}
+	c := Catalog{Keys: map[string]string{}}
+	for _, p := range providers {
+		kind, ok := builtinKinds[p.Type]
+		if !ok || p.APIKey == "" {
+			continue
+		}
+		name, key := env(p.APIKey)
+		if key == "" {
+			c.Missing = append(c.Missing, MissingKey{string(p.ID), name})
+			continue
+		}
+		_, base := env(p.APIEndpoint)
+		// Reset skips Register's guard, and the fantasy default is
+		// api.openai.com, which would get the key
+		if kind == KindOpenAICompat && base == "" {
+			continue
+		}
+		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true,
+			DefaultLarge: p.DefaultLargeModelID, DefaultSmall: p.DefaultSmallModelID}
+		for _, m := range p.Models {
+			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
+				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
+				TextOnly: !m.SupportsImages})
+		}
+		c.Specs = append(c.Specs, spec)
+		c.Keys[spec.ID] = key
+	}
+	return c
 }
 
 // KindsWithBody are the kinds whose fantasy options take Spec.Body.
@@ -79,20 +164,81 @@ type Registry struct {
 	keys  map[string]string
 }
 
-// NewRegistry returns an empty registry. zemi ships no providers: every
-// provider, its key and its model catalog come from user config
-// (zemi.provider.add); without one the agent fails closed with "no
-// models registered".
+// NewRegistry returns an empty registry; Reset seeds it and user config
+// (zemi.provider.add) adds to it. With nothing usable the agent fails
+// closed with "no models registered".
 func NewRegistry() *Registry {
 	return &Registry{keys: map[string]string{}}
+}
+
+// Reset replaces every spec and key with the catalog, so a provider config
+// stopped adding disappears on reload like any other registration. NOTE: a
+// turn running through a reload sees an empty registry until init.lua
+// replays, so one step may bill at 0 and read no context window.
+func (r *Registry) Reset(c Catalog) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.specs = slices.Clone(c.Specs)
+	r.keys = maps.Collect(maps.All(c.Keys))
+}
+
+// Delete removes a provider and its key; an absent id is a no-op, since
+// init.lua must survive a machine where that builtin's key is not exported.
+func (r *Registry) Delete(providerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool { return s.ID == providerID })
+	delete(r.keys, providerID)
+}
+
+// DropBuiltin removes every catalog spec user config did not replace.
+func (r *Registry) DropBuiltin() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool {
+		if s.Builtin {
+			delete(r.keys, s.ID)
+		}
+		return s.Builtin
+	})
+}
+
+// Default is the "provider/model" a tier runs when config names none: the
+// default model of the first spec the user added that has one, else of the
+// first such builtin (the catalog's order); "" when none has a model. A
+// user spec wins because the user typed it, while a builtin's key may be
+// exported for other tools.
+func (r *Registry) Default(small bool) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, builtin := range []bool{false, true} {
+		for _, spec := range r.specs {
+			if spec.Builtin != builtin {
+				continue
+			}
+			model := spec.DefaultLarge
+			if small {
+				model = spec.DefaultSmall
+			}
+			if model == "" && len(spec.Models) > 0 {
+				model = spec.Models[0].ID
+			}
+			if model != "" {
+				return spec.ID + "/" + model
+			}
+		}
+	}
+	return ""
 }
 
 // Register adds a provider spec and its API key. Registering an id again
 // replaces it: config is declarative and every reload replays the file, so
 // raising here would abort init.lua on the second run and drop everything
-// after it. Only user config may register (the Lua boundary enforces it,
-// DESIGN §6.3).
+// after it; a builtin id is replaced whole, key included, so a gateway
+// base_url works. Only user config may register (the Lua boundary enforces
+// it, DESIGN §6.3).
 func (r *Registry) Register(spec Spec, apiKey string) error {
+	spec.Builtin = false
 	if spec.ID == "" || spec.Kind == "" {
 		return errors.New("provider needs id and kind")
 	}
@@ -145,8 +291,8 @@ func (r *Registry) Lookup(providerID string) (Spec, bool) {
 	return Spec{}, false
 }
 
-// HasKey reports whether user config gave the provider an API key. Values
-// are never exposed.
+// HasKey reports whether the provider has an API key. Values are never
+// exposed.
 func (r *Registry) HasKey(providerID string) bool {
 	_, ok := r.Lookup(providerID)
 	return ok && r.apiKey(providerID) != ""

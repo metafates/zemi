@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	charm.land/bubbletea/v2 v2.0.9
+	charm.land/catwalk v0.52.49
 	charm.land/fantasy v0.43.2
 	charm.land/glamour/v2 v2.0.1
 	codeberg.org/readeck/go-readability/v2 v2.1.2
@@ -51,6 +52,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/charmbracelet/x/etag v0.2.0 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250904123553-b4e2667e5ad5 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect

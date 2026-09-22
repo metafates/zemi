@@ -4,10 +4,12 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 
+	"charm.land/catwalk/pkg/catwalk"
 	"charm.land/fantasy/providers/openaicompat"
 )
 
@@ -77,5 +79,93 @@ func TestModelErrorFinal(t *testing.T) {
 		if errors.As(err, &ne) != c.retry || !errors.Is(err, c.err) {
 			t.Errorf("%v: net.Error %v, want %v", c.err, errors.As(err, &ne), c.retry)
 		}
+	}
+}
+
+// TestBuiltin: the catalog resolves keys and endpoints through getenv, a
+// provider with no exported key is Missing, unsupported types are absent
+// and no catalog header is carried.
+func TestBuiltin(t *testing.T) {
+	env := map[string]string{"ANTHROPIC_API_KEY": "sk-a", "OPENAI_API_KEY": "sk-o", "OPENAI_API_ENDPOINT": "http://gw/v1", "OPENROUTER_API_KEY": "sk-r",
+		"AZURE_OPENAI_API_KEY": "az", "AWS_ACCESS_KEY_ID": "aws", "PIONEER_API_KEY": "pi"}
+	c := Builtin(func(k string) string { return env[k] })
+	byID := map[string]Spec{}
+	for _, s := range c.Specs {
+		byID[s.ID] = s
+		if !s.Builtin || len(s.Headers) > 0 || len(s.Models) == 0 || s.DefaultLarge == "" || c.Keys[s.ID] == "" {
+			t.Errorf("%s: %+v key %q", s.ID, s, c.Keys[s.ID])
+		}
+	}
+	for _, tc := range []struct{ id, kind, base string }{
+		{"anthropic", KindAnthropic, ""},
+		{"openai", KindOpenAI, "http://gw/v1"},
+		{"openrouter", KindOpenAICompat, "https://openrouter.ai/api/v1"},
+		{"deepseek", "", ""}, {"azure", "", ""}, {"bedrock", "", ""}, {"vertexai", "", ""}, {"copilot", "", ""}, {"pioneer", "", ""},
+	} {
+		s, ok := byID[tc.id]
+		if ok != (tc.kind != "") || s.Kind != tc.kind || s.BaseURL != tc.base {
+			t.Errorf("%s: present %v, %+v", tc.id, ok, s)
+		}
+	}
+	if c.Keys["anthropic"] != "sk-a" || !slices.Contains(c.Missing, MissingKey{"deepseek", "DEEPSEEK_API_KEY"}) || slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "azure" || m.ID == "bedrock" }) {
+		t.Errorf("keys %d, missing %v", len(c.Keys), c.Missing)
+	}
+	if c.Specs[0].ID != "anthropic" || c.Specs[1].ID != "openai" {
+		t.Errorf("order: %s, %s", c.Specs[0].ID, c.Specs[1].ID)
+	}
+	// an openai-compat entry whose endpoint resolves to "" is never a spec
+	bare := builtin([]catwalk.Provider{{ID: "bare", Type: catwalk.TypeOpenAICompat, APIKey: "$BARE_KEY", APIEndpoint: "$BARE_URL"}}, func(k string) string { return map[string]string{"BARE_KEY": "k"}[k] })
+	if len(bare.Specs) != 0 || len(bare.Keys) != 0 {
+		t.Errorf("bare openai-compat: %+v", bare)
+	}
+}
+
+// TestRegistryBuiltin: Default prefers a user spec over the catalog and
+// the tier's default model, Register clears Builtin so DropBuiltin keeps
+// the override, Delete drops one.
+func TestRegistryBuiltin(t *testing.T) {
+	r := NewRegistry()
+	r.Reset(Catalog{Specs: []Spec{
+		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultLarge: "big", DefaultSmall: "tiny", Models: []Model{{ID: "big"}}},
+		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},
+	}, Keys: map[string]string{"a": "ka", "o": "ko"}})
+	if r.Default(false) != "a/big" || r.Default(true) != "a/tiny" || !r.HasKey("o") {
+		t.Fatalf("seed: %s %s", r.Default(false), r.Default(true))
+	}
+	r.Delete("a")
+	r.Delete("nope")
+	if r.Default(false) != "o/first" || r.HasKey("a") {
+		t.Fatalf("after delete: %s", r.Default(false))
+	}
+	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if r.Default(false) != "o/first" {
+		t.Fatalf("model-less user spec ahead of a builtin: %s", r.Default(false))
+	}
+	r.Delete("empty")
+	if err := r.Register(Spec{ID: "local", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Builtin: true, Models: []Model{{ID: "q"}}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if r.Default(false) != "local/q" {
+		t.Fatalf("user spec after a builtin: %s", r.Default(false))
+	}
+	if err := r.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: "http://gw/v1", Models: []Model{{ID: "g"}}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if r.Default(false) != "o/g" || r.HasKey("o") {
+		t.Fatalf("override: %s", r.Default(false))
+	}
+	r.DropBuiltin()
+	ids := []string{}
+	for _, s := range r.List() {
+		ids = append(ids, s.ID)
+	}
+	if !slices.Equal(ids, []string{"o", "local"}) || r.Default(true) != "o/g" {
+		t.Fatalf("after drop: %v", ids)
+	}
+	r.Reset(Catalog{})
+	if r.Default(false) != "" || len(r.List()) != 0 {
+		t.Fatal("reset to empty")
 	}
 }
