@@ -16,6 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const usage = `zemi - a terminal coding agent that learns how you work
@@ -386,7 +387,7 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				switch {
 				case strings.Contains(m.Output, "permission denied (unsandboxed)"):
 					rep.unsandboxed++
-				case m.Tool == "Lua" || strings.HasPrefix(m.Tool, "memory_"):
+				case m.Tool == tools.ToolLua || strings.HasPrefix(m.Tool, "memory_"):
 					rep.tuiOnly++
 				}
 			}

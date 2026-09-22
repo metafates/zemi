@@ -16,6 +16,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestFailPrintJSON: a failure before the turn still reaches a script on
@@ -102,14 +103,16 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err"},
 		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
 			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
+		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
+			Output: "permission denied (mode): tool.lua: print mode cannot ask"},
 		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},
 	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 3 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
+	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 4 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
 		t.Fatalf("report = %+v", rep)
 	}
-	if rep.denied != 1 {
-		t.Fatalf("denied = %d, want 1", rep.denied)
+	if rep.denied != 2 || rep.tuiOnly != 1 {
+		t.Fatalf("denied = %d tuiOnly = %d, want 2 and 1", rep.denied, rep.tuiOnly)
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)
