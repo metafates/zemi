@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"charm.land/fantasy/providers/openaicompat"
@@ -8,10 +9,13 @@ import (
 
 func TestCallOptions(t *testing.T) {
 	r := NewRegistry()
-	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat"}, {ID: "g", Kind: "google"}} {
+	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := r.Register(Spec{ID: "bare", Kind: "openai_compat"}, "k"); err == nil || !strings.Contains(err.Error(), "base_url is required") {
+		t.Fatalf("openai_compat without base_url: %v", err)
 	}
 	for _, c := range []struct {
 		model, effort, key string
@@ -41,7 +45,7 @@ func TestCallOptions(t *testing.T) {
 // or without a reasoning effort.
 func TestCallOptionsBody(t *testing.T) {
 	r := NewRegistry()
-	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, Body: map[string]any{"service_tier": "flex"}}, "k"); err != nil {
+	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Body: map[string]any{"service_tier": "flex"}}, "k"); err != nil {
 		t.Fatal(err)
 	}
 	for _, effort := range []string{"", "high"} {

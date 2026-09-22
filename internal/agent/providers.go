@@ -100,6 +100,10 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if !slices.Contains(kinds, spec.Kind) {
 		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(kinds, ", "))
 	}
+	// the fantasy default is api.openai.com, which would get the key
+	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {
+		return errors.New("base_url is required for OPENAI_COMPAT")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	replaced := false
