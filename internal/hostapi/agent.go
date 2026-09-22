@@ -992,9 +992,14 @@ func toolSummary(input string) string {
 		return s
 	}
 	if plan, ok := m["plan"].(string); ok {
-		// the plan itself shows as a message above the row: name its first line
+		// the plan itself shows as a message above the row: name its first
+		// line, less a "Plan" the row's verb already says
 		for line := range strings.Lines(plan) {
 			if line = strings.TrimSpace(strings.TrimLeft(line, "# \t")); line != "" {
+				if rest, ok := strings.CutPrefix(strings.ToLower(line), "plan"); ok && (rest == "" || rest[0] == ':' || rest[0] == ' ') {
+					line = strings.TrimSpace(line[len(line)-len(rest):])
+					line = strings.TrimSpace(strings.TrimPrefix(line, ":"))
+				}
 				return line
 			}
 		}
