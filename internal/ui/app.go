@@ -40,7 +40,7 @@ const (
 	doneLinger       = 3 * time.Second // how long the mascot bows after a turn
 	toastTTL         = 4 * time.Second
 	hookQueueSize    = 64
-	chatWheelStep    = 3
+	chatWheelStep    = 1
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
