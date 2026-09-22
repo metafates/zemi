@@ -26,6 +26,7 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if p.TodosRead == nil {
 		return fantasy.NewTextErrorResponse("todos unavailable"), nil
 	}
+	note := ""
 	if list, ok := input["todos"].([]any); ok {
 		if p.TodosWrite == nil {
 			return fantasy.NewTextErrorResponse("todos unavailable"), nil
@@ -54,6 +55,16 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		if err := p.TodosWrite(out); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		// the write stands; the model fixes the list on its next call
+		active := 0
+		for _, td := range out {
+			if td.Status == "in_progress" {
+				active++
+			}
+		}
+		if active > 1 {
+			note = fmt.Sprintf("%d items are in_progress; keep exactly one\n", active)
+		}
 	}
 	rows, err := p.TodosRead()
 	if err != nil {
@@ -62,7 +73,7 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if len(rows) == 0 {
 		return fantasy.NewTextResponse("(no todos)"), nil
 	}
-	return fantasy.NewTextResponse(TodoList(rows)), nil
+	return fantasy.NewTextResponse(TodoList(rows) + note), nil
 }
 
 // TodoList is the list as the todos tool reports it.
