@@ -731,6 +731,12 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if err != nil {
 		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil
 	}
+	// a file root is searched as one file of its directory, so rel keeps
+	// its shape
+	file := ""
+	if fi, err := os.Stat(root); err == nil && fi.Mode().IsRegular() {
+		root, file = filepath.Dir(root), filepath.Base(root)
+	}
 	var hits []string
 	hidden, ruledOut := map[string]bool{}, p.ruledOut()
 	add := func(rel string, line int, text string) bool {
@@ -749,6 +755,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if include != "" {
 		args = append(args, "--glob", include)
 	}
+	if file != "" {
+		args = append(args, "--with-filename", "--", file)
+	}
 	ok := ripgrep(ctx, root, func(out string) bool {
 		rel, rest, _ := strings.Cut(out, "\x00")
 		n, text, _ := strings.Cut(rest, ":")
@@ -763,7 +772,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 		}
-		err = walk(ctx, root, func(path, rel string) error {
+		visit := func(path, rel string) error {
 			if !match(rel) || !isTextFile(path) {
 				return nil
 			}
@@ -777,8 +786,13 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 				}
 			}
 			return nil
-		})
-		if err != nil {
+		}
+		if file != "" {
+			err = visit(filepath.Join(root, file), file)
+		} else {
+			err = walk(ctx, root, visit)
+		}
+		if err != nil && !errors.Is(err, filepath.SkipAll) {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}

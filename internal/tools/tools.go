@@ -807,7 +807,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 		mk(ToolGrep, "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. A match is not a read: edit still needs the read tool.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
-				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
+				"path":    map[string]any{"type": "string", "description": "file or directory to search; default the project root"},
 				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},

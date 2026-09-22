@@ -306,8 +306,12 @@ func TestGlobAndGrep(t *testing.T) {
 			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
+			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
 		} {
 			input := strings.Replace(c.input, "{", `{"path":"`+dir+`",`, 1)
+			if strings.Contains(c.input, `"path":`) {
+				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
+			}
 			resp := call(t, c.tool, input)
 			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, c.not) {
 				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
