@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -678,14 +679,45 @@ func TestReasoningExpanded(t *testing.T) {
 	}
 }
 
-// TestReasoningLiveTail: while the model thinks, only its last lines show.
+// TestReasoningLiveTail: while the model thinks, only its last lines show, and
+// the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\n"})
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "✻ Thinking") || strings.Contains(frame, "│ one") || !strings.Contains(frame, "│ four") {
+	render := func(ms int64) string {
+		app.now = func() time.Time { return time.UnixMilli(ms) }
+		app.renderSync(t)
+		return ansi.Strip(app.Frame())
+	}
+	// the default now is 500ms -> frame 10 -> braille index 1
+	frame := render(500)
+	if strings.Contains(frame, "✻ ") || !strings.Contains(frame, "Thinking") {
+		t.Fatalf("live mark is not the braille spinner:\n%s", frame)
+	}
+	if strings.Contains(frame, "│ one") || !strings.Contains(frame, "│ four") {
 		t.Fatalf("live thinking tail:\n%s", frame)
+	}
+	// the spinner cycles a frameMS apart while the header and tail stay put
+	a, b := render(500), render(750)
+	headOf := func(s string) string {
+		for _, l := range strings.Split(s, "\n") {
+			if strings.Contains(l, "Thinking") {
+				return l
+			}
+		}
+		return ""
+	}
+	headA, headB := headOf(a), headOf(b)
+	_, restA := utf8.DecodeRuneInString(headA)
+	_, restB := utf8.DecodeRuneInString(headB)
+	if headA == headB {
+		t.Fatalf("live mark does not animate:\n%s", a)
+	}
+	if restA != restB {
+		t.Fatalf("header moved while animating:\n%s\n%s", a, b)
+	}
+	if strings.Replace(a, headA, "", 1) != strings.Replace(b, headB, "", 1) {
+		t.Fatalf("tail moved while animating:\n%s\n%s", a, b)
 	}
 }
 

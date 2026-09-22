@@ -120,8 +120,10 @@ zemi.ui.widget.add({
     ---@param hint string? The expand hint after the label.
     ---@param text string
     ---@param tail integer? Show only the last this many lines while collapsed.
-    local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning", copy = false, hover = false }, { text = label, hl = "AgentReason", click = "reasoning", hover = false } }
+    ---@param spin boolean? Animate the mark with the braille spinner (live only).
+    local function add_reasoning(label, hint, text, tail, spin)
+      local mark = spin and (BRAILLE[ctx.frame % #BRAILLE + 1] .. " ") or "✻ "
+      local head = { { text = mark, hl = "ThinkingMark", click = "reasoning", copy = false, hover = false }, { text = label, hl = "AgentReason", click = "reasoning", hover = false } }
       if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning", hover = false } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
@@ -235,7 +237,7 @@ zemi.ui.widget.add({
         if input ~= "" then head[#head + 1] = { text = " " .. fit(input, width - fmt.cells(verb) - 12), hl = "Comment" } end
       end
       if t.status == "run" and (t.elapsed or 0) >= 1 then
-        head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
+        head[#head + 1] = { text = " · " .. fmt.elapsed(t.elapsed), hl = "Comment" }
       end
       -- an agent's rows open its transcript (ids must differ between adjacent rows),
       -- every other row (file tools included) expands the call
@@ -481,7 +483,7 @@ zemi.ui.widget.add({
       -- the tail only while the model is thinking, not while a tool runs
       if (ag.reasoning or "") ~= "" and text == "" and not waiting then
         gap("activity")
-        add_reasoning("Thinking", nil, ag.reasoning, 3)
+        add_reasoning("Thinking", nil, ag.reasoning, 3, true)
       end
       if text ~= "" then
         gap("text")
