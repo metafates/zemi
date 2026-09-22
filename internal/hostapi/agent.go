@@ -387,14 +387,6 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
-	// this session's background agents still running: the message waits for
-	// them (drainQueue, when the last one ends)
-	if h.tasks.runningFor(ag.sessionID) > 0 {
-		ag.steering = append(ag.steering, text)
-		ag.mu.Unlock()
-		h.refresh()
-		return nil
-	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
 	ag.active = true
@@ -403,9 +395,10 @@ func (h *Host) AgentSend(text string) error {
 	return h.sendClaimed(scope, text)
 }
 
-// drainQueue starts a turn for what queued behind the session's background
-// agents once none is left and no turn holds the agent. Runs on the run's
-// goroutine: the send waits on the interpreter.
+// drainQueue starts a turn for what a background agent's report left queued
+// (it arrived under a claim that ran no turn, the plan popup's) once none is
+// left and no turn holds the agent. Runs on the run's goroutine: the send
+// waits on the interpreter.
 func (h *Host) drainQueue() {
 	ag := h.agents
 	ag.mu.Lock()
