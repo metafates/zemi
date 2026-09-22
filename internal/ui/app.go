@@ -12,7 +12,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"image/color"
 	"slices"
 	"strings"
@@ -51,8 +50,8 @@ type App struct {
 
 	// termBG is the terminal's own background color as it answered an OSC
 	// 11 query; nil means the terminal does not answer, so zemi leaves its
-	// background alone. paintedTermBG is the last color zemi set it to.
-	termBG, paintedTermBG color.Color
+	// background alone.
+	termBG color.Color
 
 	width, height int
 
@@ -118,8 +117,8 @@ type App struct {
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
-	quitArmed  time.Time // a second idle ctrl+c before this quits
-	colors     colorprofile.Profile
+	quitArmed  time.Time            // a second idle ctrl+c before this quits
+	colors     colorprofile.Profile // what the terminal can show; bubbletea downsamples cells, not OSC 11
 
 	bootErr        error
 	streamPending  atomic.Bool // a stream agentStreamMsg is queued
@@ -224,13 +223,7 @@ func (a *App) leave() {
 	if a.program == nil {
 		return
 	}
-	// restore the terminal's own background before leaving the alternate
-	// screen; then clear the progress report
-	var out string
-	if a.termBG != nil && a.paintedTermBG != nil {
-		out += termBytes(a.termBG)
-	}
-	a.program.Send(tea.RawMsg{Msg: out + "\x1b]9;4;0\x07"})
+	a.program.Send(tea.RawMsg{Msg: "\x1b]9;4;0\x07"})
 	// NOTE: raw output is written on the next frame and quitting leaves the
 	// alternate screen first, so wait out a frame
 	time.Sleep(50 * time.Millisecond)
@@ -304,6 +297,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
+	case tea.ColorProfileMsg:
+		a.colors = msg.Profile
 	case tea.BackgroundColorMsg:
 		// The answer picks the light variant and means the terminal replies
 		// to OSC 11, so its own background can be repainted to match the theme.
@@ -395,6 +390,8 @@ func (a *App) View() tea.View {
 		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
+	// bubbletea resets it (OSC 111) on every exit path, a signal included
+	v.BackgroundColor = a.termBackground()
 	v.WindowTitle = a.host.TerminalTitle()
 	return v
 }
@@ -481,38 +478,21 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
-	if a.termBG != nil { // the terminal answers OSC 11: keep its bg the theme's own
-		if bg := a.syncedTermBG(); !sameColor(bg, a.paintedTermBG) {
-			a.paintedTermBG = bg
-			cmds = append(cmds, setTermBG(bg))
-		}
-	}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
 	return tea.Batch(cmds...)
 }
 
-// syncedTermBG is the theme's canvas color when it has one; a theme with no
-// bg (the terminal shows its own) keeps the terminal's color, not ours.
-func (a *App) syncedTermBG() color.Color {
-	if theme := a.thm.active(); theme != nil {
-		if spec, ok := a.host.Themes.Group(theme, "Normal"); ok && spec.Bg != "" {
-			return appBG(a.thm, theme)
-		}
+// termBackground is what the terminal's own background is set to (OSC 11)
+// so margins and scrollback match the theme's canvas: only on a terminal
+// that answered the query and shows the color, nil (its own) otherwise or
+// for a theme with no bg.
+func (a *App) termBackground() color.Color {
+	if a.termBG == nil || a.colors < colorprofile.ANSI256 {
+		return nil
 	}
-	return a.termBG
-}
-
-// setTermBG paints the terminal's own background (OSC 11) so everything
-// outside the painted cells - margins, scrollback - matches the theme too.
-func setTermBG(c color.Color) tea.Cmd {
-	return tea.Raw(termBytes(c))
-}
-
-func termBytes(c color.Color) string {
-	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("\x1b]11;#%02x%02x%02x\x07", r>>8, g>>8, b>>8)
+	return appBG(a.thm, a.thm.active())
 }
 
 func (a *App) uiState() hostapi.UIState {
