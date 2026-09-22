@@ -182,38 +182,26 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, named only by count
-		for i, seg := range n.Segments {
+		for _, seg := range n.Segments {
 			// a segment this manager already lets through, by a session rule or
 			// a user rule, is not new: add neither a name nor a rule for it
 			if h.Perm.CheckCommandFor("tool.bash", seg, "model").Decision == perm.Allow {
 				continue
 			}
-			if wrapperProgram(n.Args[i][0]) {
+			patterns, ok := bashAlwaysPatterns(seg)
+			if !ok {
 				return "", nil
 			}
-			// a glob would make the exact rule itself widen
-			if strings.ContainsAny(seg, globMeta) {
-				return "", nil
+			for _, p := range patterns {
+				rules = append(rules, rule("tool.bash", p))
 			}
-			// Allow the command as a whole, not this argv: arguments differ
-			// every run, so a rule for one set never matches the next.
-			p := commandPrefix(seg)
-			if p == "" {
-				f := strings.Fields(seg)
-				if len(f) == 0 {
-					return "", nil
-				}
-				// a program that can delete or overwrite must not broaden to
-				// arbitrary later targets: the rule runs unconfined, and such
-				// a command has no write path to re-ask on
-				if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
-					rules = append(rules, rule("tool.bash", seg))
-					unnamed++
-					continue
-				}
-				p = f[0]
+			// one pattern is the exact form of a deleting command, named only
+			// by count; two (p, "p *") is a command allowed as a whole
+			if len(patterns) == 1 {
+				unnamed++
+				continue
 			}
-			rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
+			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
 				names = append(names, "`"+truncRunes(p, 24)+"`")
@@ -280,6 +268,37 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return "", nil
 	}
 	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
+}
+
+// bashAlwaysPatterns turns one command segment into the allow-lookup patterns
+// the "always" answer (and a project permissions file) uses: it allows the
+// command as a whole, its program plus the subcommand when it has one,
+// whatever the arguments, since arguments differ every run. A deleting program
+// stays exact, and a wrapper program (sh -c, node -e) or a glob offers
+// nothing: a rule from those would widen to a command the user did not see.
+// ok is false when there is no safe rule.
+func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
+	if strings.ContainsAny(seg, globMeta) {
+		return nil, false
+	}
+	f := strings.Fields(seg)
+	if len(f) == 0 {
+		return nil, false
+	}
+	if wrapperProgram(filepath.Base(f[0])) {
+		return nil, false
+	}
+	p := commandPrefix(seg)
+	if p == "" {
+		// a program that can delete or overwrite must not broaden to
+		// arbitrary later targets: the rule runs unconfined, and such a
+		// command has no write path to re-ask on
+		if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
+			return []string{seg}, true
+		}
+		p = f[0]
+	}
+	return []string{p, p + " *"}, true
 }
 
 // repoChoice is the wider "always" answer for a file read: its whole

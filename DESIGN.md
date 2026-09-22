@@ -537,6 +537,14 @@ Lua can forge one. Only the user's own config and `always` answers
 write allow rules (the widening direction; plugin, project, and learned
 rules are deny/ask only, so their globs can only tighten).
 
+A project's `.zemi/permissions` file (§5) is a list of bash commands
+zemi always allows in that project, read as a boot step only when the
+project is trusted. Each line is allowed as a whole with the overlay's
+rule shape (§8): no rule is written from a wrapper or deleting program
+or a line carrying a glob. Because the file is gitignored (user-local)
+and trust-gated, allow rules from it are safe where project `.zemi`
+Lua above is not; the step appends the file to `.zemi/.gitignore`.
+
 ### 6.2 Keys, commands, events
 
 ```lua

@@ -267,7 +267,8 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 `.zemi` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
 `.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
-its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten), with
+its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten; the
+project `permissions` file is listed the same way), with
 each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
@@ -288,10 +289,14 @@ in it. Nothing may point into `.git`, since `.git/config` may hold tokens.
 
 Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot,
 and an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git
-commits (`scope = "permanent"` raises and points at init.lua). Only `user` origin may add allow
-rules (project may tighten only) or switch the mode (`zemi.permission.mode.set`, which the
-shipped ctrl+y yolo toggle uses); the gate lives at the namespace closure, same
-off-interpreter-`OriginHost` reasoning as skills.
+commits (`scope = "permanent"` raises and points at init.lua). Untouched by that "no rule
+file": a trusted project's gitignored `.zemi/permissions` (`ProjectPermissionsStep`,
+internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
+the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
+it is read as a Go boot step, so it never goes through the Lua origin gate below. Only `user`
+origin may add allow rules (project may tighten only) or switch the mode
+(`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); the gate lives at the
+namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, as
 prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's two-word

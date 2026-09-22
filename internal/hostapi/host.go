@@ -292,10 +292,11 @@ type Host struct {
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
 	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
 
-	// luaRules are the rules zemi.permission.rule added: a reload replays
-	// the config that adds them. PurgeGeneration moves them to staleRules,
-	// which stay in Perm until the replay is done so no call runs without
-	// them; ForceReload then drops those the replay did not add again.
+	// luaRules are the rules zemi.permission.rule.add and the project
+	// permissions file registered: a reload replays the config that adds them.
+	// PurgeGeneration moves them to staleRules, which stay in Perm until the
+	// replay is done so no call runs without them; ForceReload then drops those
+	// the replay did not add again.
 	luaRulesMu sync.Mutex
 	luaRules   []perm.Rule
 	staleRules []perm.Rule
@@ -1583,6 +1584,18 @@ func (h *Host) claimStale(r perm.Rule) bool {
 		h.staleRules = slices.Delete(h.staleRules, i, i+1)
 	}
 	return i >= 0
+}
+
+// addPermissionRule registers a config rule (from zemi.permission.rule.add or
+// the project permissions file) and keeps an equal "always" answer alive: a
+// reload replays the config that adds these, PurgeGeneration moves them to
+// staleRules, and claimStale drops each one the replay adds again.
+func (h *Host) addPermissionRule(r perm.Rule) {
+	if h.Perm.Add(r) || h.claimStale(r) {
+		h.luaRulesMu.Lock()
+		h.luaRules = append(h.luaRules, r)
+		h.luaRulesMu.Unlock()
+	}
 }
 
 // awaitReload waits out running reloads and returns how many have started.

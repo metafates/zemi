@@ -1806,13 +1806,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
 			return 0
 		}
-		if h.Perm.Add(r) || h.claimStale(r) {
-			// only rules this call added: an equal one answered "always"
-			// must survive a reload
-			h.luaRulesMu.Lock()
-			h.luaRules = append(h.luaRules, r)
-			h.luaRulesMu.Unlock()
-		}
+		h.addPermissionRule(r)
 		return 0
 	}))
 

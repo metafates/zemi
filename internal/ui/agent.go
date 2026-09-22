@@ -460,7 +460,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	// everything, in red on the panel, so it cannot be missed
 	var banner [][]hostapi.Segment
 	if req.Outside {
-		for _, r := range wrapText("RUNS OUTSIDE THE SANDBOX - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner) {
+		for _, r := range wrapText("Runs outside the sandbox - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner) {
 			banner = append(banner, r)
 		}
 	}
