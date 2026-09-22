@@ -25,9 +25,10 @@ func FuzzNormalize(f *testing.F) {
 	f.Fuzz(func(t *testing.T, cmd string) {
 		n := Normalize(cmd)
 		// a command Normalize gates (fail or a forced ask) must never be
-		// allowed through by the full decision path
-		if (n.Fail != "" || n.ForceAsk != "") &&
-			NewStore().CheckCommandFor("tool.bash", cmd, "").Decision == Allow {
+		// allowed through by the full decision path, whatever the rules say
+		s := NewStore()
+		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
+		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommandFor("tool.bash", cmd, "").Decision == Allow {
 			t.Fatalf("gated command allowed: %q (%s %s)", cmd, n.Fail, n.ForceAsk)
 		}
 	})
