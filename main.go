@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/signal"
@@ -91,7 +92,11 @@ func run(args []string) int {
 	// untrusted instead of asking. Say so, or the run looks like it applied
 	// the project's setup.
 	quit := func() {}
-	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(os.Stderr)}
+	notice := io.Writer(os.Stderr)
+	if opts.health {
+		notice = io.Discard // the trust row says it
+	}
+	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(notice)}
 	if opts.trust != nil {
 		trust.session.Store(opts.trust)
 	}
