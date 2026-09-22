@@ -335,7 +335,7 @@ func TestModelNamespace(t *testing.T) {
 
 	runUser(t, r, `assert(#zemi.model.list() == 0, "registry must start empty")`)
 
-	runExpectErr(t, r, `zemi.model.set("myllm/main")`, "unknown model")
+	runExpectErr(t, r, `zemi.model.set("myllm/main")`, `provider "myllm" is not registered`)
 
 	runUser(t, r, `zemi.provider.add({
 		id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1",
@@ -1131,7 +1131,7 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
-		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["desc"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
+		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["copy"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
 			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
 		}
 	}
@@ -1143,7 +1143,7 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	o := ui.opened[2]
 	row := o.Items[0].(map[string]any)
-	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["key"] != "current, not in the list" {
+	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
 	if w := h.ModelWarning(); !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
@@ -1169,6 +1169,14 @@ func TestProfileSwitch(t *testing.T) {
 	}{
 		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
+		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider in `},
+		{"unlisted model under a registered provider is taken and warned about", func() error {
+			if err := h.SetModel("a/nope"); err != nil {
+				return err
+			}
+			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model" and n.body:match("^a/nope: not in the provider's models list"), tostring(n and n.body))`)
+			return nil
+		}, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
 		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
 		{"zemi.model.set under it", func() error {

@@ -568,9 +568,6 @@ func TestSetModelFiresWatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("p/m")
-	if h.SetModel("p/nope") == nil {
-		t.Fatal("an unknown model was stored")
-	}
 	runUser(t, r, `zemi.model.set("p/o")`)
 	check("p/o")
 }

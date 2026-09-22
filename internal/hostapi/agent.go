@@ -1423,11 +1423,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "model.set")
 		id := L.CheckString(1)
-		if _, ok := h.modelSpec(id); !ok {
-			L.RaiseError("zemi.model.set: unknown model %q", id)
-			return 0
-		}
-		if err := h.ProfileModelErr(); err != nil {
+		if err := h.modelSetErr(id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
 		}
@@ -1437,6 +1433,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.deliverFired(L, fired)
+		h.WarnModel()
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
@@ -1476,13 +1473,13 @@ func (h *Host) OpenModelPicker() error {
 	prov, _, _ := strings.Cut(cur, "/")
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
-		// config named it by hand: shown so the typo is in view, not run
-		o.Items = append([]any{map[string]any{"text": cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, items...)
+		// config named it by hand: shown so the typo is in view
+		o.Items = append([]any{map[string]any{"text": cur, "run": "model " + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, items...)
 	} else if len(items) == 0 {
 		// with nothing usable the rows are the builtin providers and their
 		// keys, so a user of one finds its name here rather than in the catalog
 		for _, m := range h.Providers.Missing() {
-			o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env})
+			o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
 		}
 		if len(o.Items) > 0 {
 			o.Body = "No model yet: export one of these keys, or " + h.addProvider()
@@ -1523,13 +1520,34 @@ func (h *Host) ConversationKey() string {
 // SetModel switches the conversation's tier (/model <id>) from any
 // goroutine: the config watches it fires run later on the interpreter queue.
 func (h *Host) SetModel(id string) error {
-	if _, ok := h.modelSpec(id); !ok {
-		return fmt.Errorf("unknown model %q", id)
-	}
-	if err := h.ProfileModelErr(); err != nil {
+	if err := h.modelSetErr(id); err != nil {
 		return err
 	}
-	return h.setWatched(h.ConversationKey(), id)
+	if err := h.setWatched(h.ConversationKey(), id); err != nil {
+		return err
+	}
+	h.WarnModel()
+	return nil
+}
+
+// modelSetErr refuses a model pick under a provider nobody registered, or
+// one the active profile would hide. An id the provider does not list is
+// taken and warned about, like -m and config: the provider decides.
+func (h *Host) modelSetErr(id string) error {
+	prov, _, _ := strings.Cut(id, "/")
+	if _, ok := h.Providers.Lookup(prov); !ok {
+		return h.modelErr(id, nil)
+	}
+	return h.ProfileModelErr()
+}
+
+// WarnModel toasts the model row's warning, if any: a pick or a config
+// the provider does not list would otherwise run silently until the
+// provider refuses it.
+func (h *Host) WarnModel() {
+	if w := h.ModelWarning(); w != "" {
+		h.Notify("warn", "Model", w)
+	}
 }
 
 // ProfileModelErr refuses a tier write the active profile would hide: the
