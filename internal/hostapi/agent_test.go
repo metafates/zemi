@@ -808,6 +808,24 @@ func TestTodoNag(t *testing.T) {
 		}
 	})
 
+	t.Run("a closed session takes its tracker with it", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter-1)
+		h.agents.mu.Lock()
+		h.agents.active = false
+		h.agents.mu.Unlock()
+		if err := h.closeSession(nil); err != nil {
+			t.Fatal(err)
+		}
+		seedSession(t, h)
+		engage(h, 1)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("the old session's item nagged the new one: %q", got)
+		}
+	})
+
 	t.Run("a single in_progress item or none never nags", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)

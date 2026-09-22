@@ -1073,10 +1073,10 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 // NOTE: a fixed knob, not config; every todos write resets the count.
 const todoNagAfter = 3
 
-// maybeNagTodos nudges a stale in_progress todo. It is the only "real-time"
-// guarantee the todos list has: the model is free to forget, and this keeps
-// reminding until it engages. The remind rides the model-only steering
-// channel (attachMarker), so it never reads as the user's own message.
+// maybeNagTodos nudges a stale in_progress todo, once per todos write: the
+// model is free to forget, and the next write re-arms the remind. It rides
+// the model-only steering channel (attachMarker), so it never reads as the
+// user's own message.
 func (h *Host) maybeNagTodos() {
 	ag := h.agents
 	ag.mu.Lock()
