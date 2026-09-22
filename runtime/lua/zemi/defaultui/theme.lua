@@ -90,7 +90,6 @@ zemi.ui.theme.add("default", theme({
   rule = "#3a3a3a",
   accent = "#9aa5f2",
   panel = "#1e1e1e",
-  shadow = "#000000",
   addbg = "#1b2417",
   delbg = "#2a1a1a",
 }))
@@ -103,7 +102,6 @@ zemi.ui.theme.add("default-light", theme({
   rule = "#cfcfcf",
   accent = "#6b78d6",
   panel = "#f0f0f0",
-  shadow = "#c8c8c8",
   addbg = "#e7f2e2",
   delbg = "#fae7e7",
 }))

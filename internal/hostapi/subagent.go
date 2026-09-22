@@ -311,11 +311,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
-	skip := subagentExcluded
-	if h.hooks() == nil {
-		skip = subagentExcluded
-	}
-	kept, unknown := filterTools(all, def.Tools, h.toolSkip(skip))
+	kept, unknown := filterTools(all, def.Tools, h.toolSkip(subagentExcluded))
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
