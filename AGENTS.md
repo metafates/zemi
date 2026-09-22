@@ -656,7 +656,7 @@ how many rows the frame takes, so nothing above it reflows.
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
   cannot render at 30 fps is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets OSC 9 (notify when unfocused) and OSC 9;4 (`ui.progress`: a running turn as taskbar
-  progress), both written only when the state changed and cleared on quit.
+  progress, resent every few seconds so terminals do not hide it, cleared on quit).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
   attachment tokens. Files from outside the project are copied to `<data>/drops` and referenced
   as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a

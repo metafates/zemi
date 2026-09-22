@@ -31,11 +31,14 @@ import (
 
 const (
 	frameInterval = time.Second / 30
-	frameMS       = 50              // one animation tick: the mascot's frames are multiples of it
-	doneLinger    = 3 * time.Second // how long the mascot bows after a turn
-	toastTTL      = 4 * time.Second
-	hookQueueSize = 64
-	chatWheelStep = 3
+	// Terminals hide the OSC 9;4 spinner after a few seconds unless the
+	// program keeps sending it, so it is resent on this interval while running.
+	progressInterval = 2 * time.Second
+	frameMS          = 50              // one animation tick: the mascot's frames are multiples of it
+	doneLinger       = 3 * time.Second // how long the mascot bows after a turn
+	toastTTL         = 4 * time.Second
+	hookQueueSize    = 64
+	chatWheelStep    = 3
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
@@ -103,6 +106,7 @@ type App struct {
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	progress   bool             // the terminal was told a turn is running (OSC 9;4)
+	progressAt time.Time        // when the running sequence was last sent (progressInterval)
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
@@ -382,17 +386,26 @@ func (a *App) View() tea.View {
 }
 
 // progressCmd tells the terminal a turn is running with OSC 9;4, which
-// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar; it
-// writes only when the state changed, and clears on quit.
+// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar. It sends
+// the running sequence when the turn starts and then every progressInterval,
+// since those terminals hide the indicator once it stops being sent, and sends
+// the clear once when the turn stops.
 func (a *App) progressCmd(running bool) tea.Cmd {
 	if running && !a.host.Settings.Bool("ui.progress") {
 		running = false
 	}
-	if running == a.progress {
+	if !running {
+		if !a.progress {
+			return nil
+		}
+		a.progress = false
+		return tea.Raw("\x1b]9;4;0\x07")
+	}
+	if a.progress && a.now().Sub(a.progressAt) < progressInterval {
 		return nil
 	}
-	a.progress = running
-	return tea.Raw("\x1b]9;4;" + map[bool]string{true: "3", false: "0"}[running] + "\x07")
+	a.progress, a.progressAt = true, a.now()
+	return tea.Raw("\x1b]9;4;3\x07")
 }
 
 // notifyIfAway alerts through the terminal when zemi needs attention while
