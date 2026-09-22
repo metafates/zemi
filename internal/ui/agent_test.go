@@ -321,6 +321,8 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"EOT ", "enter confirm · esc deny"}},
 		{"always label wraps", 70, 30, hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/"},
 			[]string{"session", "esc deny"}},
+		{"runs outside sandbox", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "git push origin main", Outside: true, Reason: "run outside the sandbox"},
+			[]string{"OUTSIDE THE SANDBOX", "Run this command outside the sandbox?"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -852,6 +854,25 @@ func TestPermissionChoices(t *testing.T) {
 		if ok, by := ask(bash, c.keys...); ok != c.ok || by != c.by {
 			t.Errorf("%s: %v %q", c.name, ok, by)
 		}
+	}
+}
+
+// TestPermissionWidthKey: the repo-wide read choice ("r") answers directly,
+// like the other one-letter choice keys.
+func TestPermissionWidthKey(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	done := make(chan struct{})
+	var ok bool
+	var by string
+	go func() {
+		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/", Wider: "allow reads anywhere in /repo/"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	<-done
+	if !ok || by != "user:wider" {
+		t.Fatalf("r: ok=%v by=%q", ok, by)
 	}
 }
 

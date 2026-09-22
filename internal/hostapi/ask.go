@@ -133,7 +133,7 @@ func (h *Host) askHook() tools.Asker {
 		}
 		label, rules := h.alwaysChoice(req)
 		wider, wideRules := h.repoChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description})
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == "tool.bash"})
 		if by == "user:wider" {
 			rules = wideRules
 		}
@@ -183,6 +183,11 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, named only by count
 		for i, seg := range n.Segments {
+			// a segment this manager already lets through, by a session rule or
+			// a user rule, is not new: add neither a name nor a rule for it
+			if h.Perm.CheckCommandFor("tool.bash", seg, "model").Decision == perm.Allow {
+				continue
+			}
 			if wrapperProgram(n.Args[i][0]) {
 				return "", nil
 			}

@@ -973,6 +973,24 @@ func TestAlwaysChoice(t *testing.T) {
 			}
 		}
 	}
+	// a segment this manager already allows for the session is not listed or
+	// re-ruled: only the still-new programs get a name and a rule
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
+	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x && go vet"})
+	if label != "allow `go vet`" {
+		t.Errorf("already-allowed segment must not be listed: %q", label)
+	}
+	var pats []string
+	for _, r := range rules {
+		pats = append(pats, r.Pattern)
+	}
+	if strings.Join(pats, "|") != "go vet|go vet *" {
+		t.Errorf("already-allowed segment must not get a rule: %q", pats)
+	}
+	// when everything is already allowed, no rule is offered
+	if _, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); len(rules) != 0 {
+		t.Errorf("all-allowed command must offer no rules: %+v", rules)
+	}
 }
 
 // TestSendWithoutModelLeavesNoSession: a send that cannot resolve a model

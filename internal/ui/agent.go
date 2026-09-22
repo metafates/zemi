@@ -456,6 +456,14 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	blank := []hostapi.Segment{{Text: ""}}
 
 	title, target := permTitle(req, a.host.Dirs.ProjectDir)
+	// a command that escapes the sandbox gets a full-width warning band above
+	// everything, in red on the panel, so it cannot be missed
+	var banner [][]hostapi.Segment
+	if req.Outside {
+		for _, r := range wrapText("RUNS OUTSIDE THE SANDBOX - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner) {
+			banner = append(banner, r)
+		}
+	}
 	var head [][]hostapi.Segment
 	if target != "" {
 		head = append(head, ellipsizeSegs([]hostapi.Segment{{Text: target, HL: "Host:Value"}}, inner))
@@ -475,7 +483,8 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	if req.Description != "" {
 		words = append(words, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
 	}
-	if note, hl := permNote(req.Reason); note != "" {
+	// the banner carries the sandbox escape, so the dim reason note is skipped
+	if note, hl := permNote(req.Reason); note != "" && !req.Outside {
 		words = append(words, capRows(wrapText(note, hl, inner), 3, inner)...)
 	}
 	choices := pa.choices()
@@ -491,6 +500,9 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	fixed := len(head) + len(list) + 5
 	if len(head) > 0 && len(content) > 0 {
 		fixed++ // the blank row between them
+	}
+	if len(banner) > 0 {
+		fixed += len(banner) + 1 // the sandbox band and the blank row after it
 	}
 	words = capRows(words, chatH-fixed-min(len(content), 2)-1, inner)
 	tail := [][]hostapi.Segment{blank}
@@ -517,14 +529,21 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
-	for _, r := range slices.Concat(head, tail, [][]hostapi.Segment{hint}) {
+	for _, r := range slices.Concat(banner, head, tail, [][]hostapi.Segment{hint}) {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	body := head
+	for i := range banner {
+		banner[i] = padPanel(banner[i], fit)
+	}
+	body := banner
+	if len(body) > 0 {
+		body = append(body, blank)
+	}
+	body = append(body, head...)
 	if len(head) > 0 && len(content) > 0 {
 		body = append(body, blank)
 	}
@@ -572,6 +591,9 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 	title, target = "Allow "+req.Subject+"?", req.Arg
 	switch {
 	case req.Subject == "tool.bash":
+		if req.Outside {
+			return "Run this command outside the sandbox?", ""
+		}
 		return "Run this command?", ""
 	case req.Tool == "write":
 		title = "Write this file?"

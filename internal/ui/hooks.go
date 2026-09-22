@@ -57,6 +57,7 @@ func chromeStyles(c chrome) map[string]uv.Style {
 		"Host:Warn":        {Fg: ansi.Yellow, Bg: c.bg},
 		"Host:Ok":          {Fg: ansi.Green, Bg: c.bg},
 		"Host:Danger":      {Fg: ansi.Red, Bg: c.bg},
+		"Host:DangerPanel": {Fg: ansi.Red, Bg: c.panel, Attrs: uv.AttrBold},
 		"Host:Panel":       {Fg: c.fg, Bg: c.panel},
 		"Host:PanelTitle":  {Fg: c.accent, Bg: c.panel, Attrs: uv.AttrBold},
 		"Host:DiffAdd":     {Bg: c.add},

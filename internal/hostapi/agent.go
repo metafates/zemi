@@ -56,6 +56,9 @@ type PermRequest struct {
 	Preview string // file tools: the proposed change as "- "/"+ " lines
 	// Description is the model's summary of a command, not checked against it
 	Description string
+	// Outside means this bash command escapes the sandbox and can reach the
+	// whole machine; the prompt shows a warning band for it
+	Outside bool
 }
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).

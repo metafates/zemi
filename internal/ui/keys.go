@@ -103,24 +103,26 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if moveSel(&pa.sel, len(choices), key) {
 			return nil
 		}
-		switch key {
-		case "enter":
+		// any single-letter choice key answers directly (y, a, r, t; "o" is
+		// "y"), so a new one-letter choice needs no new case here
+		switch {
+		case key == "enter":
 			a.choosePerm(choices[pa.sel])
-		case "y", "o", "a", "t":
+		case len(key) == 1 && key != "n":
 			for _, c := range choices {
 				if c.key == key || key == "o" && c.key == "y" {
 					a.choosePerm(c)
 				}
 			}
-		case "n", "esc":
+		case key == "n" || key == "esc":
 			a.answerPerm(false, "user")
-		case "shift+down":
+		case key == "shift+down":
 			pa.scroll++
-		case "shift+up":
+		case key == "shift+up":
 			pa.scroll = max(0, pa.scroll-1)
-		case "pgdown":
+		case key == "pgdown":
 			pa.scroll += 10
-		case "pgup":
+		case key == "pgup":
 			pa.scroll = max(0, pa.scroll-10)
 		}
 	case "memReview":
