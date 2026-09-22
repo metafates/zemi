@@ -431,7 +431,7 @@ func TestKVOnceClaim(t *testing.T) {
 	if ok, _ := db.ReclaimKVIfStale("claim:x", "3", nowMs-30000); !ok {
 		t.Fatal("a stale claim must be reclaimed")
 	}
-	if ok, _ := db.ReclaimKVIfStale("claim:x", "4", time.Now().UnixMilli()); ok {
+	if ok, _ := db.ReclaimKVIfStale("claim:x", "4", nowMs-30000); ok {
 		t.Fatal("a fresh claim must not be reclaimed")
 	}
 }
