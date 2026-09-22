@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"charm.land/fantasy"
-	"github.com/aymanbagabas/go-udiff"
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
@@ -85,7 +84,8 @@ func TodoList(rows []store.Todo) string {
 // PlanVerdict is the user's answer to a presented plan.
 type PlanVerdict struct {
 	Approved bool
-	Mode     string // permission mode chosen on approval, "" when unchanged
+	Mode     string // permission mode restored on approval, "" when unchanged
+	Profile  string // agent restored on approval, "" when unchanged
 	Feedback string // what to change, when not approved
 	Path     string // where the plan was saved, "" when not saved
 }
@@ -107,8 +107,12 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	switch {
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
+	case v.Approved && v.Profile != "":
+		// the read-only turn that proposed this ends here; the run's planFollowup
+		// starts implementation as the restored agent, so do not keep going
+		return endTurn("The user approved the plan; you are back as the " + v.Profile + " agent. Implementation runs in the next turn." + saved), nil
 	case v.Approved && v.Mode != "":
-		return fantasy.NewTextResponse("The user approved the plan and plan mode is off; the permission mode is now " + v.Mode + "." + implement), nil
+		return fantasy.NewTextResponse("The user approved the plan; the permission mode is now " + v.Mode + "." + implement), nil
 	case v.Approved:
 		return fantasy.NewTextResponse("The user approved the plan." + implement), nil
 	}
@@ -123,22 +127,56 @@ func stopTurn(text string) fantasy.ToolResponse {
 	return resp
 }
 
+// endTurn ends the turn on a success note: a plain reply with no error mark
+// (an approved plan is not a failure), still stopping the loop.
+func endTurn(text string) fantasy.ToolResponse {
+	resp := fantasy.NewTextResponse(text)
+	resp.StopTurn = true
+	return resp
+}
+
 // QuestionOption is one answer choice for a question ask.
 type QuestionOption struct {
 	Label       string
 	Description string
 }
 
+// QuestionType is how a question is asked; runQuestion maps it onto the
+// overlay's list model.
+type QuestionType string
+
+const (
+	TypeYesNo    QuestionType = "yes_no"
+	TypeSingle   QuestionType = "single_choice"
+	TypeMulti    QuestionType = "multi_choice"
+	TypeFreeText QuestionType = "free_text"
+)
+
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
-// The user picks options (several when Multi) or types an answer on a
-// last row named Other ("" = the default name); no options means an open
-// question.
+// Type must be one of the four: yes_no and single_choice ask one option,
+// multi_choice marks several, free_text answers on a typed row. Options may
+// carry a short Description shown under their label.
 type Question struct {
-	Question string
-	Header   string // the tab label in a batch
-	Options  []QuestionOption
-	Multi    bool
-	Other    string
+	Type        QuestionType
+	Question    string
+	Description string // markdown, shown under the question
+	Header      string // the tab label in a batch
+	Options     []QuestionOption
+}
+
+func (q Question) Multi() bool { return q.Type == TypeMulti }
+
+// ListRows is how many rows the selection list shows: the options plus a
+// "type your own" tail row for the choice types; yes_no and free_text have
+// no tail (yes_no is its two options, free_text only the typed row).
+func (q Question) ListRows() int {
+	if q.Type == TypeYesNo {
+		return len(q.Options)
+	}
+	if q.Type == TypeFreeText {
+		return 0
+	}
+	return len(q.Options) + 1
 }
 
 const maxQuestions = 4
@@ -154,7 +192,21 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		if str(m["question"]) == "" {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: the question text is required", i+1)), nil
 		}
-		q := Question{Question: str(m["question"]), Header: str(m["header"]), Multi: m["multi_select"] == true}
+		q := Question{
+			Type:        QuestionType(str(m["type"])),
+			Question:    str(m["question"]),
+			Description: str(m["description"]),
+			Header:      str(m["header"]),
+		}
+		switch q.Type {
+		case TypeYesNo, TypeSingle, TypeMulti, TypeFreeText:
+		default:
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be yes_no, single_choice, multi_choice or free_text", i+1)), nil
+		}
+		if q.Type == TypeFreeText {
+			qs = append(qs, q)
+			continue
+		}
 		opts, _ := m["options"].([]any)
 		for j, o := range opts {
 			om, _ := o.(map[string]any)
@@ -162,6 +214,9 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d, option %d: label is required", i+1, j+1)), nil
 			}
 			q.Options = append(q.Options, QuestionOption{Label: str(om["label"]), Description: str(om["description"])})
+		}
+		if q.Type == TypeYesNo && len(q.Options) == 0 {
+			q.Options = []QuestionOption{{Label: "Yes"}, {Label: "No"}}
 		}
 		qs = append(qs, q)
 	}
@@ -182,58 +237,6 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
-}
-
-// runOpenInEditor hands the file to the user and reports what they changed.
-// The user's own edit is not a model write, so it needs no fs.write ask,
-// and the file is marked read at its new mtime so the next edit tool call
-// is not refused as stale.
-func runOpenInEditor(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	if p.Edit == nil {
-		return fantasy.NewTextResponse("No editor is available in this run. Make the change yourself with edit or write, or ask the user."), nil
-	}
-	path, err := filepath.Abs(str(input["path"]))
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	line, _ := input["line"].(float64)
-	created := false
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
-		if err := os.WriteFile(path, nil, 0o644); err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
-		created = true
-	}
-	before, _ := os.ReadFile(path)
-	unlock := lockFile(path)
-	err = p.Edit(ctx, path, int(line), str(input["reason"]))
-	unlock()
-	if err != nil {
-		if created {
-			_ = os.Remove(path)
-		}
-		if ctx.Err() != nil {
-			return stopTurn("Interrupted while the file was open in the editor, which stays open for the user. Stop and wait for the user."), nil
-		}
-		return stopTurn("The editor failed: " + err.Error() + ". Stop and wait for the user."), nil
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	after, _ := os.ReadFile(path)
-	if created && len(after) == 0 {
-		_ = os.Remove(path)
-		return fantasy.NewTextResponse("The user closed the editor without writing anything; the new file was not kept."), nil
-	}
-	p.markRead(path, fi)
-	if string(before) == string(after) {
-		return fantasy.NewTextResponse("The user closed the editor without changing " + path + "."), nil
-	}
-	return fantasy.NewTextResponse("The user edited " + path + ":\n" + udiff.Unified(path, path, lf(string(before)), lf(string(after)))), nil
 }
 
 // SkillInfo is one resolvable skill: name plus the directory holding

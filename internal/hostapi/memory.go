@@ -958,7 +958,7 @@ func (h *Host) sessionLocalOnly(sid string) bool {
 			return false
 		}
 		for _, s := range stats {
-			if s.Tool == "fetch" || s.Tool == "web_search" || s.Tool == "Lua" || !slices.Contains(local, s.Tool) {
+			if s.Tool == tools.ToolFetch || s.Tool == tools.ToolWebSearch || s.Tool == tools.ToolLua || !slices.Contains(local, s.Tool) {
 				return false
 			}
 		}

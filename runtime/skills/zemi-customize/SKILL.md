@@ -1,6 +1,6 @@
 ---
 name: zemi-customize
-description: Extend or restyle zemi without editing its source - workflows, subagents, prompt commands, splash, statusline, chat, theme, keys, and the windows and text panels the window tool opens. Load before creating any.
+description: Extend or restyle zemi without editing its source - workflows, subagents, prompt commands, splash, statusline, chat, theme, keys. Load before creating any.
 ---
 
 # Customizing zemi
@@ -78,20 +78,22 @@ the chat, shows that run's transcript in the chat, a message submitted there goe
 agent while it runs, and esc goes back. Background jobs
 (`job_start`, bash past its timeout) are listed there too, with a Stop action.
 
-## A lean tool set (`/profile lean`, `init.lua`, or `tools:` in an agent file)
+## A lean tool set (`/profile <name>`, `init.lua`, or `tools:` in an agent file)
 
-zemi ships the `lean` profile: `/profile lean`, `--profile lean`, or
-`zemi.config.set("agent.profile", "lean")` in `init.lua`. It is the default set minus
-`window`, `workflow`, `Lua`, `job_start`, `open_in_editor` and `lsp`, about 40% of the
-builtin schema text (1.8k tokens a request). It gives up windows, workflow scripts, reading
-or changing zemi's live state, starting a server or watcher in the background (bash still
-hands a command past its timeout to `job_read` and `job_kill`), handing a file to the user's
-editor and language server queries; diagnostics after an edit stay. Redefine it by name:
+Profiles are defined with `zemi.agent.profile`; a lean one (the default tool set minus
+the schemas a coding turn rarely calls) looks like:
 
 ```lua
-zemi.agent.profile("lean", { tools = { "-window", "-workflow", "-Lua", "-memory_add" } })
+zemi.agent.profile("lean", { tools = { "-workflow", "-lua", "-job_start", "-lsp" } })
 -- or an allowlist, strong models only: tools = { "bash", "skill" }
 ```
+
+The default set minus `workflow`, `Lua`, `job_start` and `lsp` is about 40% of the builtin
+schema text (1.8k tokens a request). It gives up workflow scripts, reading or changing
+zemi's live state, starting a server or watcher in the background (bash still hands a
+command past its timeout to `job_read` and `job_kill`), and language server queries;
+diagnostics after an edit stay. Apply it with `/profile lean`, `--profile lean`, or
+`zemi.config.set("agent.profile", "lean")` in `init.lua`.
 
 The prompt drops what names a missing tool (the skills index without `skill`, the
 delegation section without `agent`, plan mode replies in text without `plan`). A bash-only
@@ -117,8 +119,7 @@ the file is saved (zemi reloads config on change).
 
 ## Permission modes (`init.lua`, user config only)
 
-`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (plan, auto,
-yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
+`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (auto, yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
 that the rules left open. `decide` runs off the UI with a 60s ceiling, so it may ask a model
 of its own; it holds the interpreter while it runs, so the rest of zemi waits on it.
 
@@ -165,7 +166,7 @@ Where things go is a layout tree, `defaultui/layout.lua` by default. `zemi.ui.la
 in `init.lua` replaces it whole (the types file has every field): boxes (`dir = "row"` or
 `"col"`, `sep`) hold a `region`, the one `composer` (with `frame = true` it draws in a
 square frame whose `top`, `left` and `right` rules hold regions, which is where the shipped
-layout puts the mascot and the statusline), a statusline `bar`, window `slot`s
+layout puts the mascot and the statusline), a statusline `bar`
 and `spacer`s, each sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with
 `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and
 toasts go. `floats` put a region over the tree. A scrolled region takes keys by id:
@@ -188,10 +189,8 @@ local layout = {
       { kind = "box", dir = "col", stage = true, min = 40, children = {
         { kind = "region", region = "header" },
         { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
-        { kind = "windows", slot = "split" },
         { kind = "composer", frame = true, top = "working" },
       } },
-      { kind = "windows", slot = "vsplit" },
     } },
   } },
 }
@@ -221,7 +220,6 @@ zemi.keymap.set("k", function() sel = math.max(1, sel - 1) end, { focus = "sideb
 -- when ctx.focus == "sidebar"
 ```
 
-Keep a `windows` slot of each kind, or windows opened by the model float over the stage.
 Check the result with `zemi.ui.screenshot()` and `zemi.ui.layout.rects()`.
 
 The shipped UI is Lua too: `types/zemi/defaultui/` under the data directory (the system
@@ -323,28 +321,6 @@ for a tool row with a `run` id and `zemi.ui.edit(path, { line = n }, cb)` for a 
 edit or multiedit row (the shipped one opens the file on a click on the head row and at the
 diff row's line on a double click).
 Full API: the zemi-lua skill.
-
-## Windows and panels (the `window` tool)
-
-A window is a real terminal running a program; a panel (`action: "text"`) is text you draw
-and keep current, with no program behind it. Open a panel for what the user should be able to
-watch while you work and what you will rewrite as results land:
-
-- benchmark or test numbers, rewritten as each run finishes, so old and new stay side by side
-- the few lines that matter out of a long build, log or migration, refreshed as it goes
-- the plan or checklist you are working through, ticked off step by step
-
-Open it before the work starts and `set_text` it as results land; `append` for a running
-trail (a body past 256 KB drops its oldest lines). Do not open one for something you can just
-say: a result stated once belongs in your reply, and a panel that never changes only steals
-rows from the chat. Close it when the thing it watches is done.
-
-A `split` takes rows at the bottom of the chat and a `vsplit` a full-height column beside it,
-each where the user's layout has a slot of that kind, a centered float when it has none;
-`frac` is its share of that area, and an unsized panel fits its body up to half of it. A
-`float` sits over everything at `x`/`y` (`-1` centers) in `cols` by `rows` cells. The program
-sees `TERM=xterm-256color` and the window's size; the user can click a window and type into
-it, and `ctrl+\` brings their keys back to zemi.
 
 ## After writing
 

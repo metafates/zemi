@@ -31,12 +31,15 @@ import (
 )
 
 // Profile is one named agent shape: model, system prompt, tools.
+// ReadOnly makes it a planning agent: the project is read-only to it and
+// the pipeline denies file changes and forces asks (see h.readOnly).
 type Profile struct {
 	Name         string   `json:"name"`
 	Model        string   `json:"model"`
 	System       string   `json:"system"`
 	Tools        []string `json:"tools"`
 	ContextFiles []string `json:"context_files"`
+	ReadOnly     bool     `json:"read_only"`
 	Temperature  *float64 `json:"temperature,omitempty"`
 }
 
@@ -46,13 +49,19 @@ type PermRequest struct {
 	Always string // what the session-long choice allows ("allow `go test`"), "" when none is offered
 	// Wider is a second session-long choice covering more than Always (a
 	// read's whole repository), "" when there is none
-	Wider   string
+	Wider string
+	// Project is a persistent choice covering Always's scope but written to
+	// the project's permissions file (a trusted bash command), "" when none
+	Project string
 	Subject string
 	Arg     string
 	Reason  string
 	Preview string // file tools: the proposed change as "- "/"+ " lines
 	// Description is the model's summary of a command, not checked against it
 	Description string
+	// Outside means this bash command escapes the sandbox and can reach the
+	// whole machine; the prompt shows a warning band for it
+	Outside bool
 }
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
@@ -160,6 +169,18 @@ type agentHost struct {
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
+	// todoNag nudges a stale in_progress todo: the item it was set for,
+	// how many tool calls have run since, and whether a remind is already
+	// queued. Any todos write resets it, so an update (or a tick) stops it.
+	todoInProgress string
+	todoCalls      int
+	todoPending    bool
+
+	// planApproved is set when a read-only agent's plan is approved; the ended
+	// turn's planFollowup starts implementation as the restored agent. Cleared
+	// by takePlanApproved.
+	planApproved string
+
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
 	titled    bool
@@ -178,13 +199,17 @@ func newAgentHost() *agentHost {
 func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
 
 // resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key; nil is the implicit shipped profile.
+// agent.profile key. default is the implicit shipped shape (nil); planner
+// is the shipped read-only agent. Any other name must be defined.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
+	}
+	if name == "planner" {
+		return &Profile{Name: "planner", ReadOnly: true}, nil
 	}
 	if p, ok := ag.profiles[name]; ok {
 		return p, nil
@@ -193,6 +218,13 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
 	}
 	return nil, nil
+}
+
+// readOnly reports whether the active agent is read-only: the project is
+// read-only to it and file changes are denied regardless of the mode.
+func (h *Host) readOnly() bool {
+	p, _ := h.resolveProfile("")
+	return p != nil && p.ReadOnly
 }
 
 // currentModelID picks the model the main conversation runs on: a profile
@@ -230,12 +262,12 @@ func (h *Host) sessionModelID() string {
 }
 
 func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
-	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool(), h.windowTool())
+	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool())
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a print run does not pay for their schemas every step.
-var headlessExcluded = map[string]bool{"window": true, "question": true, "plan": true, "open_in_editor": true}
+var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
 
 // toolSkip adds the language server tools to skip when no server can start
 // in this project (untrusted, or none installed for it): both could then
@@ -244,7 +276,7 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 	if len(h.lspDefs("")) > 0 {
 		return base
 	}
-	skip := map[string]bool{"lsp": true, "diagnostics": true}
+	skip := map[string]bool{tools.ToolLSP: true, tools.ToolDiagnostics: true}
 	maps.Copy(skip, base)
 	return skip
 }
@@ -362,6 +394,16 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
+	// background sub-agents still running: note the message and act once they finish
+	// (finish() runs before the last report, so its AgentSend lands with running()==0
+	// and starts the turn that drains the queue). NOTE: tasks.running() is global, so
+	// a background agent from another session also holds the queue.
+	if h.tasks.running() > 0 {
+		ag.steering = append(ag.steering, text)
+		ag.mu.Unlock()
+		h.refresh()
+		return nil
+	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
 	ag.active = true
@@ -407,7 +449,10 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	h.GoSafe("agent turn", func() { h.runTurns(runner, scope, text) })
+	h.GoSafe("agent turn", func() {
+		h.runTurns(runner, scope, text)
+		h.planFollowup(runner)
+	})
 	return nil
 }
 
@@ -536,6 +581,9 @@ func (h *Host) deliverSteering() []string {
 	}
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	for _, s := range shown {
+		if s == "" {
+			continue // a model-only message (attachMarker, no shown part)
+		}
 		h.AppendMessage("user", s)
 	}
 	return msgs // Runner.Compose expands them
@@ -679,7 +727,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	// the diff reads the file: outside the lock, which UI readers share
 	diff := ""
-	if name == "write" || name == "edit" || name == "multiedit" {
+	if name == tools.ToolWrite || name == tools.ToolEdit || name == tools.ToolMultiedit {
 		var in map[string]any
 		if json.Unmarshal([]byte(input), &in) == nil {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
@@ -745,6 +793,20 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
 }
 
+// StepDone bills a completed step's usage to the live session tally, so the
+// token count moves during the turn instead of only at TurnDone.
+func (s *streamAdapter) StepDone(usage fantasy.Usage) {
+	h := s.h
+	ag := h.agents
+	ag.mu.Lock()
+	sid, model := ag.sessionID, ag.turnModel
+	ag.mu.Unlock()
+	if model == "" {
+		model = h.currentModelID(nil) // a turn the host did not start (tests)
+	}
+	h.bill(sid, model, usage)
+}
+
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
@@ -777,7 +839,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Unlock()
 
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
-	h.bill(sid, model, usage)
 	if hold {
 		return
 	}
@@ -936,8 +997,8 @@ func toolSummary(input string) string {
 		}
 		return cmd
 	}
-	// the window and lsp tools name what they do in "action"; without it a
-	// window row would read as the whole panel body it is about to show
+	// the lsp tool names what it does in "action"; without it a row would
+	// read as the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {
 		for _, k := range []string{"cmd", "keys", "title", "symbol", "path", "id"} {
 			if v, ok := m[k]; ok {
@@ -1001,6 +1062,56 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
+	}
+	if name != tools.ToolTodos {
+		h.maybeNagTodos()
+	}
+}
+
+// todoNagAfter is how many tool calls an in_progress todo may stay static
+// before zemi nudges the model to tick it (a "force live todos" remind).
+// NOTE: a fixed knob, not config; every todos write resets the count.
+const todoNagAfter = 3
+
+// maybeNagTodos nudges a stale in_progress todo. It is the only "real-time"
+// guarantee the todos list has: the model is free to forget, and this keeps
+// reminding until it engages. The remind rides the model-only steering
+// channel (attachMarker), so it never reads as the user's own message.
+func (h *Host) maybeNagTodos() {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if ag.todoInProgress == "" || ag.todoPending {
+		return
+	}
+	ag.todoCalls++
+	if ag.todoCalls < todoNagAfter {
+		return
+	}
+	ag.todoPending = true
+	if ag.active {
+		ag.steering = append(ag.steering, attachMarker+"\n"+fmt.Sprintf(
+			"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+			ag.todoInProgress, ag.todoCalls)+"\n</attached-files>")
+	}
+}
+
+// resetTodoNag re-arms the staleness tracker from a fresh todo write. A
+// next turn's first todos write is what started counting, so this also stops
+// the nag whenever the model engages at all.
+func (h *Host) resetTodoNag(todos []store.Todo) {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.todoInProgress, ag.todoCalls, ag.todoPending = "", 0, false
+	if len(todos) < 2 {
+		return
+	}
+	for _, td := range todos {
+		if td.Status == "in_progress" {
+			ag.todoInProgress = td.Content
+			return
+		}
 	}
 }
 
@@ -1394,19 +1505,132 @@ func (h *Host) setWatched(path, val string) error {
 	return nil
 }
 
-// ProfileNames lists default and the defined profiles.
+// ProfileNames lists default, the shipped planner, and the defined profiles.
 func (h *Host) ProfileNames() []string {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	return append([]string{"default"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
+	return append([]string{"default", "planner"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
 }
 
 // SetProfile switches the profile the next send runs as (/profile <name>).
+// Picking a read-only agent remembers the one it replaced, so approving a
+// plan can return to it (approvePlan).
 func (h *Host) SetProfile(name string) error {
 	if _, err := h.resolveProfile(name); err != nil {
 		return fmt.Errorf("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
+	next, _ := h.resolveProfile(name)
+	if next != nil && next.ReadOnly && !h.readOnly() {
+		h.modes.mu.Lock()
+		h.modes.prePlanProfile = h.Settings.Str("agent.profile")
+		h.modes.prePlanMode = h.Settings.Str("permissions.mode")
+		h.modes.mu.Unlock()
+	}
 	return h.setWatched("agent.profile", name)
+}
+
+// cycleProfile steps through the agents (a key binding, like cyclePermMode):
+// default, planner, then profiles in definition order, and back.
+func (h *Host) cycleProfile(step int) error {
+	names := h.ProfileNames()
+	n := len(names)
+	cur := h.Settings.Str("agent.profile")
+	i := slices.Index(names, cur)
+	if i < 0 {
+		i = 0
+	}
+	return h.SetProfile(names[((i+step)%n+n)%n])
+}
+
+// implementNow is the message a fresh send carries to the restored agent after
+// its plan is approved; the plan itself stays in history.
+const implementNow = "The user approved the plan above. Implement it: track its steps with todos, carry them through, verify, and report."
+
+func (h *Host) setPlanApproved(msg string) {
+	h.agents.mu.Lock()
+	h.agents.planApproved = msg
+	h.agents.mu.Unlock()
+}
+
+func (h *Host) takePlanApproved() string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	msg := ag.planApproved
+	ag.planApproved = ""
+	return msg
+}
+
+// planFollowup runs after a turn goroutine ends. An approved plan (presentPlan
+// set planApproved) is sent to the restored agent to implement; otherwise a
+// read-only agent that ended in plain text instead of the plan tool has the
+// text presented for approval. Runs on the turn goroutine, never the UI one.
+func (h *Host) planFollowup(runner *agent.Runner) {
+	if msg := h.takePlanApproved(); msg != "" {
+		h.startImplementation(msg)
+		return
+	}
+	if !h.readOnly() {
+		return
+	}
+	text := plainTextEnd(runner)
+	if text == "" {
+		return
+	}
+	// the popup blocks this goroutine, so claim the agent while it is up; a
+	// submit then queues instead of starting a second send under the popup.
+	// Released on every path, including a panic mid-popup.
+	scope := h.beginScope()
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.mu.Unlock()
+	ended := false
+	defer func() { // released on every path, including a panic mid-popup
+		if !ended {
+			h.endScope(scope)
+		}
+	}()
+	v, ok := h.presentPlan(text)
+	h.endScope(scope)
+	ended = true
+	if !ok { // dismissed, or the switch failed: the planner stays
+		return
+	}
+	if v.Approved {
+		h.startImplementation(h.takePlanApproved())
+	} else if v.Feedback != "" {
+		// the user asked for changes: hand them back to the still-read-only planner
+		if err := h.AgentSend("The user did not approve the plan and asked for changes: " + v.Feedback + "\nRevise it and present the plan again."); err != nil {
+			h.Log.Error("agent", "plan-feedback send failed", map[string]any{"error": err.Error()})
+		}
+	}
+}
+
+// startImplementation sends the approved-plan handoff to the restored agent.
+func (h *Host) startImplementation(msg string) {
+	if err := h.AgentSend(msg); err != nil {
+		h.Log.Error("agent", "implementation send failed", map[string]any{"error": err.Error()})
+	}
+}
+
+// plainTextEnd returns the final plain-text reply of an idle run, or "" when
+// it ended in a tool call (an approved or dismissed plan). A read-only agent
+// is told to end every turn with the plan tool; one that ended in text forgot.
+func plainTextEnd(runner *agent.Runner) string {
+	h := runner.History
+	if len(h) == 0 || h[len(h)-1].Role != fantasy.MessageRoleAssistant {
+		return ""
+	}
+	var text strings.Builder
+	for _, p := range h[len(h)-1].Content {
+		if _, ok := p.(fantasy.ToolCallPart); ok {
+			return ""
+		}
+		if tp, ok := p.(fantasy.TextPart); ok {
+			text.WriteString(tp.Text)
+		}
+	}
+	return strings.TrimSpace(text.String())
 }
 
 // OpenProfilePicker lists the profiles with what each changes; enter switches.
@@ -1419,7 +1643,9 @@ func (h *Host) OpenProfilePicker() error {
 	var items []any
 	for i, name := range h.ProfileNames() {
 		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
-		if p, _ := h.resolveProfile(name); p != nil {
+		if name == "planner" {
+			item["desc"] = "read-only: plan and present for approval"
+		} else if p, _ := h.resolveProfile(name); p != nil {
 			item["desc"] = profileDesc(p)
 		}
 		if name == cur {
@@ -1457,7 +1683,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.refuseBelowUser(L, "agent.profile")
-		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system")}
+		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system"), ReadOnly: rawBool(spec, "read_only")}
 		if temp, ok := spec.RawGetString("temperature").(glua.LNumber); ok {
 			t := float64(temp)
 			p.Temperature = &t
@@ -1578,13 +1804,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
 			return 0
 		}
-		if h.Perm.Add(r) || h.claimStale(r) {
-			// only rules this call added: an equal one answered "always"
-			// must survive a reload
-			h.luaRulesMu.Lock()
-			h.luaRules = append(h.luaRules, r)
-			h.luaRulesMu.Unlock()
-		}
+		h.addPermissionRule(r)
 		return 0
 	}))
 
@@ -1737,7 +1957,7 @@ func (h *Host) seedReads(rows []*store.Message) {
 		}
 		for _, part := range m.Content {
 			call, ok := part.(fantasy.ToolCallPart)
-			if !ok || !slices.Contains([]string{"read", "write", "edit", "multiedit"}, call.ToolName) {
+			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit, tools.ToolMultiedit}, call.ToolName) {
 				continue
 			}
 			var in struct {
@@ -1772,8 +1992,12 @@ func (h *Host) afterWrite(path string) string {
 	return note + h.lspAfterWrite(path)
 }
 
-// PipelineFor builds the tools pipeline for the model's tool calls.
+// PipelineFor builds the tools pipeline for the model's tool calls. It is
+// built per send (profileTools -> ensureRunner), so the read-only snapshot
+// below matches the profile the system prompt was built for; switching the
+// agent mid-turn changes the next send, not the running one.
 func (h *Host) PipelineFor() *tools.Pipeline {
+	readOnly := h.readOnly()
 	p := &tools.Pipeline{
 		Store:       h.Perm,
 		Pre:         h.toolPreHook(),
@@ -1783,11 +2007,16 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Changes:     h.bashChanges,
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
-		Plan:        func() bool { return h.permModeDef().Base == "plan" },
+		Plan:        func() bool { return readOnly },
 		Sandbox: func() *sandbox.Policy {
-			// yolo allows everything anyway, so confining it only breaks commands
+			// read-only is absolute: a planner must not touch the project even
+			// under yolo. Otherwise yolo allows everything and runs unconfined.
+			if readOnly {
+				p := h.sandboxPolicy(true)
+				return &p
+			}
 			if def := h.permModeDef(); h.sandboxLive() && def.Base != "yolo" {
-				p := h.sandboxPolicy(def.Base == "plan")
+				p := h.sandboxPolicy(false)
 				return &p
 			}
 			return nil
@@ -1826,9 +2055,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion
 		p.ApprovePlan = h.approvePlan
-		p.Edit = func(ctx context.Context, path string, line int, title string) error {
-			return ui.EditFile(ctx, EditRequest{Path: path, Line: line, Title: title})
-		}
 	}
 	if h.DB != nil {
 		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }
@@ -1838,7 +2064,11 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 				return errors.New("no active session")
 			}
 			defer h.todosStale.Store(true)
-			return h.DB.SetTodos(sid, todos)
+			if err := h.DB.SetTodos(sid, todos); err != nil {
+				return err
+			}
+			h.resetTodoNag(todos)
+			return nil
 		}
 	}
 	return p

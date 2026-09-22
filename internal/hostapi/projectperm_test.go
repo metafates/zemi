@@ -1,0 +1,145 @@
+package hostapi
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
+)
+
+func writePermissions(t *testing.T, h *Host, content string) {
+	t.Helper()
+	dir := filepath.Join(h.Dirs.ProjectDir, ".zemi")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "permissions"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProjectPermissions(t *testing.T) {
+	h, _ := newTestHost(t)
+	writePermissions(t, h, `
+git push
+make all
+
+# a wrapper program is refused: no rule from a command the user did not see
+python x.py
+`)
+	h.SetProjectTrusted(true)
+	if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	want := []struct {
+		cmd   string
+		allow bool
+	}{
+		{"git push origin main", true},
+		{"make all -j4", true},
+		{"git status", false},
+		{"python x.py", false},
+	}
+	for _, c := range want {
+		if got := h.Perm.CheckCommand(c.cmd, "").Decision == perm.Allow; got != c.allow {
+			t.Errorf("CheckCommand(%q) allow=%v, want %v", c.cmd, got, c.allow)
+		}
+	}
+	ignore, err := os.ReadFile(filepath.Join(filepath.Dir(h.Dirs.WorktreesDir()), ".gitignore"))
+	if err != nil {
+		t.Fatalf("reading .zemi/.gitignore: %v", err)
+	}
+	if !strings.Contains(string(ignore), "permissions") {
+		t.Errorf(".zemi/.gitignore missing permissions entry:\n%s", ignore)
+	}
+}
+
+func TestProjectPermissionsUntrusted(t *testing.T) {
+	h, _ := newTestHost(t)
+	writePermissions(t, h, "git push\n")
+	if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if h.Perm.CheckCommand("git push", "").Decision == perm.Allow {
+		t.Error("untrusted project must not load .zemi/permissions")
+	}
+}
+
+// TestProjectAskPersists: the ask's "for this project" answer writes the
+// command to .zemi/permissions and registers principal-less rules now, so it
+// holds for this session and is read again on the next boot. A destructive
+// command is used because auto settles a safe one in a trusted project, so a
+// destructive command is the real case that still reaches the ask. No
+// writePermissions call: a fresh trusted project has no .zemi yet, so this
+// also proves projectAllow creates the dir instead of silently dropping it.
+func TestProjectAskPersists(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+
+	pipe := h.PipelineFor()
+	ui := &fakeUI{askAllowed: true, askBy: "user:project"}
+	h.SetUIHooks(ui)
+	cmd := "rm -rf /tmp/scratch"
+	v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: cmd})
+	if v.Decision != perm.Allow || v.DecidedBy != "user:project" {
+		t.Fatalf("project bash: %v by %q", v.Decision, v.DecidedBy)
+	}
+	if len(ui.asked) != 1 || ui.asked[0].Project != "allow this exact command" {
+		t.Fatalf("asked: %+v", ui.asked)
+	}
+
+	b, err := os.ReadFile(filepath.Join(h.Dirs.ProjectDir, ".zemi", "permissions"))
+	if err != nil {
+		t.Fatalf("reading .zemi/permissions: %v", err)
+	}
+	if !strings.Contains(string(b), cmd) {
+		t.Fatalf("permissions file missing command:\n%s", b)
+	}
+
+	// the exact rule answers the same command again without asking
+	ui.asked = nil
+	if got := pipe.Check(tools.Request{Subject: "tool.bash", Arg: cmd}); got.Decision != perm.Allow {
+		t.Fatalf("ruled re-check: %v by %q", got.Decision, got.DecidedBy)
+	}
+	if len(ui.asked) != 0 {
+		t.Fatalf("ruled re-check must not ask: %+v", ui.asked)
+	}
+}
+
+// TestProjectChoice: only a trusted project's safe single-line bash command
+// offers the project choice; anything else (untrusted, non-bash, unsafe or
+// multi-line) offers none.
+func TestProjectChoice(t *testing.T) {
+	h, _ := newTestHost(t)
+	always := func(req tools.Request) (string, []perm.Rule) { return h.alwaysChoice(req) }
+	choice := func(req tools.Request) string {
+		label, rules := always(req)
+		plabel, _ := h.projectChoice(req, label, rules)
+		return plabel
+	}
+	if plabel := choice(tools.Request{Subject: "tool.bash", Arg: "git push origin main"}); plabel != "" {
+		t.Fatalf("untrusted project must not offer project choice: %q", plabel)
+	}
+	h.SetProjectTrusted(true)
+	for _, c := range []struct {
+		name string
+		req  tools.Request
+		want string
+	}{
+		{"safe bash", tools.Request{Subject: "tool.bash", Arg: "git push origin main"}, "allow `git push`"},
+		{"wrapper", tools.Request{Subject: "tool.bash", Arg: "sh -c 'x'"}, ""},
+		{"file write", tools.Request{Subject: "fs.write", Arg: "/x"}, ""},
+		{"destructive", tools.Request{Subject: "tool.bash", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
+		// a line continuation would load as two wider commands next boot
+		{"multi-line", tools.Request{Subject: "tool.bash", Arg: "git \\\npush"}, ""},
+	} {
+		if got := choice(c.req); got != c.want {
+			t.Errorf("%s: projectChoice = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

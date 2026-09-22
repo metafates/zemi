@@ -74,6 +74,9 @@ make golden             # regenerate internal/ui/testdata/*.golden, then read th
 make fmt                # gofmt -w over the tracked Go files
 ```
 
+git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside the
+sandbox, so a confined `git commit` fails on `index.lock`.
+
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
 `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go); most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted
@@ -132,7 +135,7 @@ one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 trust step must not leave the old decision in force). `Host.ProjectTrusted()` gates project
 `.zemi` (init.lua, agents, commands, workflows), instruction files and profile `context.files`,
 project skills, every language server, the Lua tool's ask, the read jail reaching past the
-launch dir to `Dirs.RepoRoot()`, and what auto and plan mode settle. `Host.git` shells out to
+launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` shells out to
 the `git` binary (no git library in go.mod) with `GIT_CONFIG_NOSYSTEM=1`, and switches off
 fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a sandboxed
 command can plant a nested repo whose config zemi would run.
@@ -180,7 +183,7 @@ Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lu
 rewritten input **re-enters at the permission gate** (per-run pipeline copy with
 `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); an ask with no
 overlay available fails closed; a denied result says who decided and why; errors become
-tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `window`, `Lua`,
+tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `Lua`,
 MCP and Lua tools) call the gate themselves and run the events through `preCheck` (which
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
@@ -228,10 +231,11 @@ is no fail-open path. New host-API side effects need the same `lua.` subject.
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
 allows. `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
-(`unsettled`), input to a window that already runs sandboxed, and MCP tools a server annotates
+(`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git`, `.zemi` or zemi's own dirs are `protectedWrite`, checkouts in `.zemi/worktrees` aside).
-`plan` denies writes and runs commands like auto, sandboxed with the project unwritable.
+A read-only agent (`Profile.ReadOnly`, see below) denies writes and forces asks on changing
+commands, with the project unwritable in the sandbox, whatever the mode.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
@@ -248,7 +252,7 @@ without a path; no builds, no git) and auto settles no writes.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
-`h.sandboxPolicy(plan)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
+`h.sandboxPolicy(readOnly)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
 `Jobs.Start`/`Adopt` and `win.Spec.Wrap` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
 `zemi.job`, MCP servers and `Host.git` stay unconfined; language servers run under
@@ -263,11 +267,12 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 `.zemi` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
 `.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
-its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten), with
+its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten; the
+project `permissions` file is listed the same way), with
 each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
-`/trust`. Bash, `job_start` and `window` take two escapes no mode settles and each of which
+`/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the writable
 dirs and offers `network: true` first.
@@ -284,10 +289,15 @@ in it. Nothing may point into `.git`, since `.git/config` may hold tokens.
 
 Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot,
 and an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git
-commits (`scope = "permanent"` raises and points at init.lua). Only `user` origin may add allow
-rules (project may tighten only) or switch the mode (`zemi.permission.mode.set`, which the
-shipped ctrl+y yolo toggle uses); the gate lives at the namespace closure, same
-off-interpreter-`OriginHost` reasoning as skills.
+commits (`scope = "permanent"` raises and points at init.lua). Untouched by that "no rule
+file": a trusted project's gitignored `.zemi/permissions` (`ProjectPermissionsStep`,
+internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
+the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
+it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
+permission overlay's `for this project` answer appends the command to it. Only `user`
+origin may add allow rules (project may tighten only) or switch the mode
+(`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); the gate lives at the
+namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, as
 prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's two-word
@@ -324,7 +334,7 @@ origin it is last-writer-wins. Project origin additionally cannot register provi
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
 events. A keymap that is a prefix or an extension of a more trusted key is refused,
 `zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that
-origin), windows and overlays can be closed only by user, builtin or the origin that opened
+origin), overlays can be closed only by user, builtin or the origin that opened
 them, and `app.quit` denials from project or learned handlers are ignored. When adding a
 registry, follow `internal/hostapi/registry.go`.
 
@@ -343,8 +353,8 @@ lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, 
 `skillIndex` discovers the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment prompt's `Recipes:` line says how); the dir is a
-`protectedWrite`: no rule and neither auto nor plan settles a write (yolo still allows), and the
-ask says when `sessionLocalOnly` fails.
+`protectedWrite`: no rule and neither auto mode nor a read-only agent settles a write (yolo still
+allows), and the ask says when `sessionLocalOnly` fails.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
 rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
@@ -391,9 +401,8 @@ lua-language-server is installed.
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send. `defaultui/init.lua` ships one, `lean`: a `-name` denylist of the heavy,
-  rarely called schemas, so a new tool is in it by default and user config redefines it by
-  name.
+  fails the send. A profile is defined with `zemi.agent.profile`: a `-name` denylist or an
+  allowlist of tools, so a new tool is in the default set until a profile drops it.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
@@ -441,52 +450,6 @@ lua-language-server is installed.
 - **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
   `resolveJailed` and `@file` attachments all rely on it.
 
-### Windows (internal/win, internal/hostapi/win.go, internal/ui/win.go)
-
-A window is a program on a pseudo-terminal (creack/pty, no cgo) feeding a pure Go emulator
-(charmbracelet/x/vt), or text (`Manager.OpenText`): no pty, no emulator, the UI renders and
-wraps the body itself, so a text window never exits and refuses program input (focused, q and
-esc close it). A Lua window's `name` is one window per origin: opening it again replaces it.
-`win.Manager` on the host owns windows; they outlive turns and reloads (only Lua `on_exit`
-callbacks are generation-tagged). Each carries a `Layout` the UI reads per frame: splits and vsplits go where
-the layout tree has a `windows` slot of their kind, floats over everything in list order
-(`Manager.Raise` puts a focused or clicked one on top), and overlays, popups and prompts draw
-above every window. Hidden windows get a label on the dock row (`dockRow`) that shows them
-again.
-
-`Screen()` turns cells into `sgr:` segments so colors reach the renderer untouched. Keys go the
-xterm way, and as CSI u while the program keeps kitty keyboard flag 1 on for the screen it is
-on (a bool per screen like zellij, no flag stack), so nvim tells esc, ctrl+i and shift+enter
-apart. OSC 52 writes reach the host clipboard only from a window whose `Spec.Clipboard` is set:
-the editor and `zemi.win.open` from user or builtin code outside the Lua tool, never a window
-the model drives, which could plant a command the user pastes. Input queues and a `writeLoop`
-goroutine feeds the pty, because the emulator writes under the screen lock and a program that
-does not read stdin must not wedge it. A window's env drops the host terminal's identity, or
-image tools emit protocols x/vt drops. Images (kitty.go) are kitty Unicode placeholders, on
-ghostty and kitty only: the APC handler takes direct base64 transmissions and never `t=f/t/s`,
-which the unconfined host would read from disk; the cells are plain text, so clipping and
-scrolling need nothing image-specific and every text reader sees blanks, while
-`sanitize.String` blanks them everywhere else, so model text cannot draw an image in chrome.
-
-A focused window takes every key, ctrl+c included, until `ui.window.unfocus`. A press on a
-title, separator or float border starts a `winDrag`; a release without motion focuses,
-minimizes to the dock, or closes on ×. A left drag over an **unfocused** window's cells is
-zemi's own selection instead, so the user can copy what a window printed; the press reaches the
-program only when the release comes without a drag. `UIHooks.Screenshot` hands back the last
-composed frame stripped of styling, so `zemi.ui.screenshot()` works from the interpreter
-goroutine without either side waiting; it is how the agent debugs its own widgets and layout.
-Editor windows come out blank.
-
-The model's `window` tool gates `open` as `tool.bash` (same rules and modes, and a mode-settled
-open runs sandboxed through `win.Spec.Wrap`) and `keys`/`mouse`/`send` as `tool.window`,
-`Unsandboxed` (so no mode settles them) unless the window runs sandboxed. `focus` asks always
-unsandboxed and only for a shown window: it hands the user's own keyboard over.
-`text`/`set_text` ask `tool.window.text` with the body as preview, which every mode settles: a
-text window runs nothing and reads nothing. Subagents' asks carry the agent name and their
-windows open hidden; the tool sees only windows it may act on (`windowTool.mine`), never the
-user's, Lua's, or the editor windows `App.EditFile` (ui/editor.go) opens for the user's own
-editor with `os.Environ()`.
-
 ### Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
@@ -515,8 +478,8 @@ editor with `os.Environ()`.
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
   `attachMarker`, which the live transcript and resume cut off.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
-  removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass plan mode; a
-  program may read it, never run from it.
+  removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
+  agent; a program may read it, never run from it.
 - **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
   function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardModelLua`),
@@ -524,7 +487,7 @@ editor with `os.Environ()`.
   approved run. `luaUnlisted` tokenizes the script first: any zemi path off the list, a
   non-read handle method call, or dynamic access (`_G`, `load`, `require`, ...) asks `tool.lua`
   once, as `Request.Unsandboxed` so no mode settles it, and the approved run evaluates as chunk
-  `lua-tool#<n>`. In an untrusted project or plan mode every script asks. A new API member is
+  `lua-tool#<n>`. In an untrusted project or a read-only agent's run every script asks. A new API member is
   guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. Runs on the interpreter (10s ceiling), main
   agent only.
@@ -566,8 +529,8 @@ may replace it, lower origins are refused. A reload keeps the old layout drawn (
 plain data, safe across generations); `ForceReload` drops one the replay did not set again and
 `DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
 cells, percent, content and weighted fill, takes cells back from fill first when they do not
-fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays, toasts and
-centered window floats go. A content-sized node's height is the most rows it could get, never
+fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and toasts
+go. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
 layout does not draw. A `composer` node with `frame` draws the square frame around the composer
@@ -577,28 +540,36 @@ and puts the first line of the widgets in its `top`, `left` and `right` regions 
 shipped layout keeps the mascot and the statusline: agent state changes what a rule says, never
 how many rows the frame takes, so nothing above it reflows.
 
-### Rewind, plan mode, prompts, composer bridge
+### Rewind, read-only agents, prompts, composer bridge
 
 - **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a file's
   pre-turn content (keyed by the turn's user message, first write wins) before a write tool
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
   restore leaves the conversation intact. Bash changes are not tracked.
-- **Plan mode** is enforced in `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even
-  under allow rules, `mcp.*` allows and bash allows other than `ReadCommand` flip to ask.
+- **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
+  `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
+  allows and bash allows other than `ReadCommand` flip to ask; the sandbox keeps the project
+  unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
+  turn ends (the read-only pipeline cannot implement) and the ended turn's `planFollowup`
+  starts a fresh send as the restored agent to implement, using the plan already in history.
+  A read-only turn that ends in plain text instead of the `plan` tool has that text presented
+  for approval the same way (`planFollowup` -> `presentPlan`), so a forgotten `plan` call
+  cannot end the chat silently.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
   (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
-  then `zemiPrompt`, plan mode, the per-session pinned `environmentPrompt`, instruction files
+  then `zemiPrompt`, the read-only agent's plan section, the per-session pinned
+  `environmentPrompt`, instruction files
   under `# Project instructions` (the repository's files share a 32 KB budget spent deepest
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
   `<config>/AGENTS.md` gets its own budget), Lua sections (`agent.assemble`, then the `prompt`
   of each Lua tool in the tool set), skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
-  or `todos` drops its "Using tools" line, and plan mode without the `plan` tool (headless, a
-  profile) ends in `planHeadless`. No kept tool's description names a tool the shipped
-  `lean` profile drops (`TestPromptFollowsToolSet`). Anything that varies per turn must be
+  or `todos` drops its "Using tools" line, and a read-only agent without the `plan` tool
+  (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
+  (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at
   first token.
@@ -700,7 +671,7 @@ how many rows the frame takes, so nothing above it reflows.
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
   cannot render at 30 fps is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets OSC 9 (notify when unfocused) and OSC 9;4 (`ui.progress`: a running turn as taskbar
-  progress), both written only when the state changed and cleared on quit.
+  progress, resent every few seconds so terminals do not hide it, cleared on quit).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
   attachment tokens. Files from outside the project are copied to `<data>/drops` and referenced
   as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a

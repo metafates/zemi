@@ -110,6 +110,7 @@ func run(args []string) int {
 		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
 		lua.RequireStep("zemi.defaultui"),
 		soft(trust.step()),
+		soft(host.ProjectPermissionsStep()),
 		soft(host.PluginsStep()),
 		soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 		soft(host.SkillsAuthoredHooksStep()),

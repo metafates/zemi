@@ -24,7 +24,6 @@ import (
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/win"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -59,6 +58,9 @@ type UIHooks interface {
 	// first one; safe from any goroutine.
 	Screenshot() string
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
+	// AskPlan shows a plan for approval (restore is the agent to return to on
+	// approval, "" when none); ok is false when the user dismisses it.
+	AskPlan(plan, restore string) (tools.PlanVerdict, bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
 	// "history_next", "paste" or "edit".
@@ -66,8 +68,6 @@ type UIHooks interface {
 	// EditFile opens a file in the user's editor and blocks until it exits.
 	// Never call it on the UI goroutine.
 	EditFile(ctx context.Context, req EditRequest) error
-	// FocusWindow gives the user's keys to a window (0 = back to zemi).
-	FocusWindow(id int)
 	// Copy puts text on the clipboard and says so.
 	Copy(text string)
 }
@@ -271,7 +271,6 @@ type Host struct {
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
 	lsp   *lspReg  // language servers
-	Wins  *win.Manager
 
 	todoMu     sync.Mutex
 	todoSID    string
@@ -293,10 +292,11 @@ type Host struct {
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
 	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
 
-	// luaRules are the rules zemi.permission.rule added: a reload replays
-	// the config that adds them. PurgeGeneration moves them to staleRules,
-	// which stay in Perm until the replay is done so no call runs without
-	// them; ForceReload then drops those the replay did not add again.
+	// luaRules are the rules zemi.permission.rule.add and the project
+	// permissions file registered: a reload replays the config that adds them.
+	// PurgeGeneration moves them to staleRules, which stay in Perm until the
+	// replay is done so no call runs without them; ForceReload then drops those
+	// the replay did not add again.
 	luaRulesMu sync.Mutex
 	luaRules   []perm.Rule
 	staleRules []perm.Rule
@@ -312,7 +312,7 @@ type Host struct {
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
 	// config, instructions and language servers load only when it is set,
-	// and auto and plan mode settle less without it.
+	// and auto mode settles less without it.
 	projectTrusted atomic.Bool
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store, the scratchpad and
@@ -331,10 +331,6 @@ type Host struct {
 	// were missing when it started (guardSandbox)
 	guardMu sync.Mutex
 	guards  map[*sandboxGuard]bool
-	// winGuards maps a sandboxed window's id to its guardSandbox check
-	winGuards sync.Map
-	// closeArm is the running editor window a close was last refused for
-	closeArm atomic.Pointer[winArm]
 	// trustHeld keeps the project untrusted until /trust, after a sandboxed
 	// command created a protected path
 	trustHeld atomic.Bool
@@ -422,11 +418,9 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		mcp:       newMCPReg(),
 		tasks:     newTaskReg(),
 		lsp:       newLSPReg(),
-		Wins:      &win.Manager{},
 	}
 	h.Perm.Default = h.fsDefault
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
-	h.Wins.OnExit = h.windowExited
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
 	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
@@ -457,6 +451,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
+		"zemi.agent.profile.cycle":   func(h *Host, _ string) error { return h.cycleProfile(1) },
+		"zemi.agent.profile.prev":    func(h *Host, _ string) error { return h.cycleProfile(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
 	h.refreshPending()
@@ -1167,6 +1163,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
+	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort()))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
@@ -1488,7 +1485,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.fs", h.fsNamespace(L), nil},
 		{"zemi.http", h.httpNamespace(L), nil},
 		{"zemi.job", h.jobNamespace(L), nil},
-		{"zemi.win", h.winNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
 		{"zemi.permission", h.permissionNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
@@ -1513,7 +1509,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.60.0"))
+	api.RawSetString("version", glua.LString("0.62.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1586,6 +1582,18 @@ func (h *Host) claimStale(r perm.Rule) bool {
 		h.staleRules = slices.Delete(h.staleRules, i, i+1)
 	}
 	return i >= 0
+}
+
+// addPermissionRule registers a config rule (from zemi.permission.rule.add or
+// the project permissions file) and keeps an equal "always" answer alive: a
+// reload replays the config that adds these, PurgeGeneration moves them to
+// staleRules, and claimStale drops each one the replay adds again.
+func (h *Host) addPermissionRule(r perm.Rule) {
+	if h.Perm.Add(r) || h.claimStale(r) {
+		h.luaRulesMu.Lock()
+		h.luaRules = append(h.luaRules, r)
+		h.luaRulesMu.Unlock()
+	}
 }
 
 // awaitReload waits out running reloads and returns how many have started.

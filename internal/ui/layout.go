@@ -1,14 +1,12 @@
 package ui
 
 import (
-	"math"
 	"slices"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // spanKid is one child of a box as the solver sees it.
@@ -102,18 +100,13 @@ func weight(k spanKid) int { return max(k.size.N, 1) }
 // laid is a layout node solved into its cells for one frame.
 type laid struct {
 	node *hostapi.LayoutNode
-	wn   *win.Window // the window a slot expanded into
 	rect uv.Rectangle
 	// rows is the height its widgets render at: the rect's, or for a
 	// content node the most it could get, since a height taken from its
 	// own last draw could never shrink.
 	rows int
 	sep  bool // a separator column left of it
-	// sepAfter: a separator column right of it, which a window without
-	// one on its left drags
-	sepAfter bool
-	axis     int // a window: the cells its box shares out, what its frac is of
-	kids     []laid
+	kids []laid
 }
 
 // screenLayout is the layout solved for one frame.
@@ -125,7 +118,6 @@ type screenLayout struct {
 	// scroll is the scrolled region actions without an id move: the first
 	// inside the stage, else the first in the tree
 	scroll string
-	slots  map[string]bool // window kinds the tree has a slot for
 	bar    bool
 	floats []placedFloat
 	// focusable is the focusable node and float ids in focus order; a float
@@ -145,14 +137,11 @@ type placedFloat struct {
 func (a *App) layout(w, h int) screenLayout {
 	spec := a.host.Layout()
 	screen := uv.Rect(0, 0, w, h)
-	s := screenLayout{root: a.solve(spec.Root, screen), stage: screen, rects: map[string]uv.Rectangle{"screen": screen}, slots: map[string]bool{}}
+	s := screenLayout{root: a.solve(spec.Root, screen), stage: screen, rects: map[string]uv.Rectangle{"screen": screen}}
 	staged := false // the scroll node chosen is inside the stage
 	var walk func(l laid, inStage bool)
 	walk = func(l laid, inStage bool) {
 		n := l.node
-		if l.wn != nil {
-			return
-		}
 		if n.Stage {
 			s.stage, inStage = l.rect, true
 		}
@@ -178,19 +167,6 @@ func (a *App) layout(w, h int) screenLayout {
 		}
 	}
 	walk(s.root, false)
-	// the solved tree has no node for a slot without a shown window
-	var slots func(n *hostapi.LayoutNode)
-	slots = func(n *hostapi.LayoutNode) {
-		if n.Kind == "windows" && !n.Hidden {
-			s.slots[n.Slot] = true
-		}
-		for _, c := range n.Children {
-			if !c.Hidden {
-				slots(c)
-			}
-		}
-	}
-	slots(spec.Root)
 	s.rects["stage"] = s.stage
 	for _, f := range spec.Floats {
 		rel, ok := s.rects[f.Relative]
@@ -221,9 +197,7 @@ func floatAxis(sz hostapi.Size, rel int) int {
 	return rel
 }
 
-// solve places n's children inside r. A windows slot becomes one child per
-// shown window of its kind: its frac of the box's cells, else a fill share
-// weighing the same as its fill siblings. While the children's mins do not
+// solve places n's children inside r. While the children's mins do not
 // fit, the last collapsing child is hidden for the frame.
 func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	l := laid{node: n, rect: r, rows: r.Dy()}
@@ -235,20 +209,10 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	if row {
 		length, cross = cross, length
 	}
-	type item struct {
-		node *hostapi.LayoutNode
-		wn   *win.Window
-	}
-	var items []item
+	var items []*hostapi.LayoutNode
 	for _, c := range n.Children {
-		switch {
-		case c.Hidden:
-		case c.Kind != "windows":
-			items = append(items, item{node: c})
-		default:
-			for _, wn := range a.shownWins(c.Slot) {
-				items = append(items, item{node: c, wn: wn})
-			}
+		if !c.Hidden {
+			items = append(items, c)
 		}
 	}
 	var sizes []int
@@ -261,31 +225,16 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 		}
 		avail = max(avail, 0)
 		kids = make([]spanKid, len(items))
-		for i, it := range items {
-			c := it.node
-			if it.wn == nil {
-				kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
-				if c.Size.Kind == hostapi.SizeContent && !row {
-					kids[i].want = a.measure(c, cross)
-				}
-				continue
-			}
-			kids[i] = spanKid{size: hostapi.Size{Kind: hostapi.SizeFill}, min: map[string]int{win.KindSplit: minSplitH, win.KindVSplit: minVsplitW}[c.Slot]}
-			switch f := it.wn.Layout().Frac; {
-			case f > 0:
-				kids[i].size = hostapi.Size{Kind: hostapi.SizeCells, N: int(math.Round(f * float64(avail)))}
-			case it.wn.IsText():
-				// a panel nobody sized takes what its text needs, at most half
-				// the box: a five-line result is not half the screen
-				kids[i].size = hostapi.Size{Kind: hostapi.SizeContent}
-				kids[i].want = a.textSpan(it.wn, row, cross, avail)
-				kids[i].max = max(avail/2, kids[i].min)
+		for i, c := range items {
+			kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
+			if c.Size.Kind == hostapi.SizeContent && !row {
+				kids[i].want = a.measure(c, cross)
 			}
 		}
 		mins, gone := 0, -1
-		for i, it := range items {
+		for i, c := range items {
 			mins += kids[i].min
-			if it.wn == nil && it.node.Collapse {
+			if c.Collapse {
 				gone = i
 			}
 		}
@@ -307,13 +256,11 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 		if row {
 			kr = uv.Rect(pos, r.Min.Y, size, cross)
 		}
-		k := a.solve(items[i].node, kr)
-		if c := items[i].node; c.Size.Kind == hostapi.SizeContent && !row {
+		k := a.solve(items[i], kr)
+		if c := items[i]; c.Size.Kind == hostapi.SizeContent && !row {
 			k.rows = kids[i].clamp(avail)
 		}
-		k.wn, k.axis = items[i].wn, avail
 		k.sep = row && n.Sep && i > 0
-		k.sepAfter = row && n.Sep && i < len(sizes)-1
 		l.kids = append(l.kids, k)
 		pos += size
 	}
@@ -388,8 +335,6 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	n, w, h := l.node, l.rect.Dx(), l.rect.Dy()
 	var rows [][]hostapi.Segment
 	switch {
-	case l.wn != nil:
-		rows = a.paintWindow(l)
 	case n.Kind == "box" && n.Dir == "row":
 		rows = make([][]hostapi.Segment, h)
 		x := 0
@@ -580,25 +525,6 @@ func (a *App) scrollOf(n *hostapi.LayoutNode) *scrollState {
 	return st
 }
 
-// paintWindow draws a window a slot expanded into: its title row, then its
-// cells, recorded for the mouse.
-func (a *App) paintWindow(l laid) [][]hostapi.Segment {
-	r := l.rect
-	if r.Dx() < 1 || r.Dy() < 2 {
-		return nil
-	}
-	sepX := -1
-	switch {
-	case l.sep:
-		sepX = r.Min.X - 1
-	case l.sepAfter:
-		sepX = r.Max.X
-	}
-	l.wn.Resize(r.Dx(), r.Dy()-1)
-	a.winRects = append(a.winRects, winRect{id: l.wn.ID, x: r.Min.X, y: r.Min.Y + 1, w: r.Dx(), h: r.Dy() - 1, titleY: r.Min.Y, sepX: sepX, axis: l.axis})
-	return a.windowRows(l.wn, r.Dx(), r.Dy()-1)
-}
-
 // paintFloats draws the Lua floats over rows in list order, each opaque at
 // its content's size or the size it asked for, and records the ones with
 // an id. The composer and the statusline's alarm pills stay on top: they
@@ -667,4 +593,21 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 	for _, k := range keep {
 		placeBox(rows, [][]hostapi.Segment{k.segs}, k.x, k.y, w)
 	}
+}
+
+// placeBox writes box at x0, y0 over rows, clipped to the frame.
+func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment {
+	for i, line := range box {
+		y := y0 + i
+		if y < 0 || y >= len(rows) {
+			continue
+		}
+		bw := segsWidth(line)
+		under := rows[y]
+		row := padSegs(truncateSegs(under, x0), x0)
+		row = append(row, line...)
+		row = append(row, dropCells(under, x0+bw)...)
+		rows[y] = padSegs(truncateSegs(row, w), w)
+	}
+	return rows
 }

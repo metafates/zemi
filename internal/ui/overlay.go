@@ -323,9 +323,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		text = "" // space toggles rows in a toggle list
 	}
 	// a body scrolls by page, and by line when there is no list to move in
-	d := map[string]int{"pgup": -10, "pgdown": 10}[key]
-	if len(o.Items) == 0 {
-		d += listMove(key)
+	d := scrollDelta(key)
+	if len(o.Items) > 0 {
+		d -= listMove(key) // the list keys select; only the page keys scroll the body
 	}
 	if o.Body != "" && d != 0 {
 		st.scroll = max(0, st.scroll+d)

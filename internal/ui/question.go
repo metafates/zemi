@@ -54,11 +54,14 @@ func (a *App) AskQuestion(qs []tools.Question) ([]string, bool) {
 	clean := make([]tools.Question, len(qs))
 	states := make([]qState, len(qs))
 	for i, q := range qs {
-		clean[i] = tools.Question{Question: sanitize.String(q.Question), Header: sanitize.String(q.Header), Multi: q.Multi, Other: sanitize.String(q.Other)}
+		clean[i] = tools.Question{Type: q.Type, Question: sanitize.String(q.Question), Description: sanitize.String(q.Description), Header: sanitize.String(q.Header)}
 		for _, o := range q.Options {
 			clean[i].Options = append(clean[i].Options, tools.QuestionOption{Label: sanitize.String(o.Label), Description: sanitize.String(o.Description)})
 		}
-		states[i] = qState{picked: map[int]bool{}, typing: len(q.Options) == 0}
+		if clean[i].Type == tools.TypeYesNo && len(clean[i].Options) == 0 {
+			clean[i].Options = []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}
+		}
+		states[i] = qState{picked: map[int]bool{}, typing: q.Type == tools.TypeFreeText || len(clean[i].Options) == 0}
 	}
 	ch := make(chan qAnswer, 1)
 	a.await(func() tea.Cmd {
@@ -93,7 +96,7 @@ func (qp *questionPrompt) sel() (*int, int) {
 	if qp.reviewing() {
 		return &qp.reviewSel, len(qp.qs) + 1
 	}
-	return &qp.states[qp.at].sel, len(qp.qs[qp.at].Options) + 1
+	return &qp.states[qp.at].sel, qp.qs[qp.at].ListRows()
 }
 
 // switchTab moves between the questions and, in a batch, the review tab.
@@ -146,7 +149,16 @@ func (a *App) questionKey(key, text string) {
 		}
 		return
 	}
-	if moveSel(&st.sel, len(q.Options)+1, key) {
+	hasTail := q.Type == tools.TypeSingle || q.Type == tools.TypeMulti
+	if moveSel(&st.sel, q.ListRows(), key) {
+		return
+	}
+	// a digit picks the option directly; yes_no and single answer at once
+	if n := optionDigit(text); n >= 0 && n < len(q.Options) {
+		st.sel = n
+		if !q.Multi() {
+			a.answerQuestion(q.Options[n].Label)
+		}
 		return
 	}
 	switch {
@@ -156,20 +168,31 @@ func (a *App) questionKey(key, text string) {
 		qp.switchTab(-1)
 	case key == "right":
 		qp.switchTab(1)
-	case st.sel == len(q.Options) && key == "enter":
+	case hasTail && st.sel == len(q.Options) && key == "enter":
 		st.typing = true
-	case st.sel == len(q.Options) && text != "" && key != "space":
+	case hasTail && st.sel == len(q.Options) && text != "" && key != "space":
 		st.typing = true
 		st.input.insert(text)
-	case q.Multi && key == "space":
+	case q.Multi() && key == "space":
 		// the marks are the answer, so leaving the tab with tab keeps them
 		st.picked[st.sel] = !st.picked[st.sel]
 		st.answered = st.marked(q)
-	case q.Multi && key == "enter":
+	case q.Multi() && key == "enter":
 		a.answerQuestion(cmp.Or(st.marked(q), q.Options[st.sel].Label))
 	case key == "enter":
 		a.answerQuestion(q.Options[st.sel].Label)
 	}
+}
+
+// optionDigit maps a "1".."9" key to its zero-based option index, or -1.
+func optionDigit(text string) int {
+	if len(text) != 1 {
+		return -1
+	}
+	if text[0] >= '1' && text[0] <= '9' {
+		return int(text[0] - '1')
+	}
+	return -1
 }
 
 func (st *qState) marked(q tools.Question) string {
@@ -240,7 +263,7 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 	return row
 }
 
-func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
+func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	blank := []hostapi.Segment{{Text: ""}}
 	var body [][]hostapi.Segment
 	title := "Question"
@@ -279,24 +302,33 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	items := make([]listItem, 0, len(q.Options)+1)
-	for i, opt := range q.Options {
-		it := listItem{label: opt.Label, desc: opt.Description}
-		// the model marks its pick in the label; the tool strips it from the answer
-		if l, ok := strings.CutSuffix(it.label, " (Recommended)"); ok {
-			it.label, it.desc = l, strings.TrimSuffix("recommended · "+it.desc, " · ")
+	var items []listItem
+	if q.Type != tools.TypeFreeText {
+		items = make([]listItem, 0, len(q.Options)+1)
+		for i, opt := range q.Options {
+			it := listItem{label: opt.Label, desc: opt.Description}
+			// the model marks its pick in the label; the tool strips it from the answer
+			if l, ok := strings.CutSuffix(it.label, " (Recommended)"); ok {
+				it.label, it.desc = l, strings.TrimSuffix("recommended · "+it.desc, " · ")
+			}
+			if q.Multi() {
+				it.label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + it.label
+			}
+			items = append(items, it)
 		}
-		if q.Multi {
-			it.label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + it.label
+		if q.Type != tools.TypeYesNo {
+			items = append(items, listItem{label: "Type your own answer"})
 		}
-		items = append(items, it)
 	}
-	items = append(items, listItem{label: cmp.Or(q.Other, "Type your own answer")})
 	// wrapped: an ellipsis would hide what is asked, unless the question
 	// would push the first options and the hint off screen
 	var ask [][]hostapi.Segment
 	for l := range strings.SplitSeq(q.Question, "\n") {
 		ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
+	}
+	if q.Description != "" {
+		ask = append(ask, []hostapi.Segment{{Text: "", HL: "Host:Hint"}})
+		ask = append(ask, a.host.Markdown(q.Description, boxInner(w))...)
 	}
 	// what is left after the two borders, the blank row under the question,
 	// the blank row and hint below the options, and the options themselves
@@ -318,19 +350,23 @@ func questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
 	if st.typing {
 		limit--
 	}
-	if len(items) > limit {
-		limit = max(limit-1, 3) // the i/n counter row
+	if len(items) > 0 {
+		if len(items) > limit {
+			limit = max(limit-1, 3) // the i/n counter row
+		}
+		body = append(body, listRows(items, st.sel, &st.top, limit)...)
 	}
-	body = append(body, listRows(items, st.sel, &st.top, limit)...)
 	var hints []string
 	switch {
 	case st.typing:
 		body = append(body, st.input.inputRow(boxInner(w)))
 		hints = []string{"enter", "answer", "esc", "back"}
-	case q.Multi:
+	case q.Multi():
 		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, []string{"esc", "cancel"})
+	case q.Type == tools.TypeYesNo:
+		hints = slices.Concat([]string{"1-2", "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
 	default:
-		hints = slices.Concat([]string{"enter", "answer"}, tabs, []string{"esc", "cancel"})
+		hints = slices.Concat([]string{"1-9", "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
 	}
 	return box(hints...)
 }

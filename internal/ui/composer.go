@@ -375,7 +375,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	start := max(0, cursorRow-composerMaxRows+1)
 	// The prompt takes the permission mode's color; a shell draft (!) says so
 	// with its own glyph, since it never reaches the model.
-	prefix, promptHL := "> ", map[string]string{"plan": "PromptPlan", "auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
+	prefix, promptHL := "> ", map[string]string{"auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
 	if promptHL == "" {
 		promptHL = "Comment"
 	}
@@ -549,12 +549,6 @@ type editorMsg struct {
 // openEditor edits the draft in the user's editor (ctrl+g) through
 // EditFile, off the UI goroutine; the saved text comes back as editorMsg.
 func (a *App) openEditor() tea.Cmd {
-	for _, wn := range a.host.Wins.List() {
-		if wn.Owner == "editor" && wn.Title() == "Edit the draft" && !wn.Exited() {
-			a.setFocusWin(wn.ID) // a second editor on the draft would lose one of the two
-			return nil
-		}
-	}
 	dir, err := a.host.TempDir()
 	if err != nil {
 		a.pushToast("error", "Editor failed", err.Error())

@@ -106,7 +106,7 @@ func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]
 // mode settled writes the project and its own temp dir but nothing outside
 // them, the system temp dir included (xcrun_db there picks what /usr/bin/make
 // runs), gets the hint when denied, and sandbox: false goes to the user
-// instead. Plan mode keeps the project read-only.
+// instead.
 func TestSandboxedBash(t *testing.T) {
 	h, r, ui, run := sandboxedBash(t)
 	outside := t.TempDir()
@@ -114,8 +114,7 @@ func TestSandboxedBash(t *testing.T) {
 	shared := filepath.Join(os.TempDir(), fmt.Sprintf("zemi-sandbox-probe-%d", os.Getpid()))
 	t.Cleanup(func() { os.Remove(shared) })
 	runUser(t, r, `
-		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })
-		zemi.permission.mode.add("sbxplan", { base = "plan", rules = { { "tool.bash", "touch *", "allow" } } })`)
+		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })`)
 	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
 	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
 	os.MkdirAll(venv, 0o755)
@@ -136,7 +135,6 @@ func TestSandboxedBash(t *testing.T) {
 		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, false, "run outside the sandbox"},
 		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, false, "needs the network, staying sandboxed"},
 		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, true, "needs the network, staying sandboxed"},
-		{"plan project write", "sbxplan", filepath.Join(h.Dirs.ProjectDir, "plan.txt"), false, false, false, false, true, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := h.SetPermMode(c.mode); err != nil {

@@ -1,12 +1,13 @@
-// editor.go hands a file to the user's editor (DESIGN §8): it runs in a
-// focused float over zemi, so the TUI keeps drawing and keeps the terminal.
+// editor.go hands a file to the user's editor (DESIGN §8): bubbletea's
+// tea.ExecProcess releases the terminal and runs the editor fullscreen over
+// zemi, then restores the TUI when it exits.
 package ui
 
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // editorScript is the sh -c text that runs editor on "$1", so an editor with
@@ -32,44 +32,29 @@ func editorScript(editor string, line int) string {
 	return strings.Join(append(args, `"$1"`), " ")
 }
 
+// editorDoneMsg is delivered when the editor's process exits; errc unblocks
+// the waiting EditFile caller.
+type editorDoneMsg struct {
+	errc chan<- error
+	err  error
+}
+
 // EditFile implements hostapi.UIHooks: opens path in the user's editor
-// (editor.command, $VISUAL, $EDITOR, vi) and blocks until it exits. A
-// cancelled ctx returns and leaves the editor running, so unsaved work stays
-// the user's. Never call it on the UI goroutine.
+// (editor.command, $VISUAL, $EDITOR, vi) fullscreen and blocks until it
+// exits. A cancelled ctx returns and leaves the editor running, so unsaved
+// work stays the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
-	w, err := a.host.OpenWindow(win.Spec{
-		Cmd: editorScript(editor, req.Line), Args: []string{req.Path}, Kind: win.KindFloat,
-		Title: "Edit " + req.Title, Owner: "editor", Clipboard: true,
-		// the user's own editor gets the user's env: plugins read API keys, and the model cannot read the window
-		Env: os.Environ(),
-	})
-	if err != nil {
-		return err
-	}
-	// NOTE: floatBox caps the size to the frame every frame, so an oversized
-	// layout keeps the editor as large as the frame through resizes
-	_ = w.SetLayout(func(l *win.Layout) { l.Cols, l.Rows = 1<<14, 1<<14 })
-	prev := 0 // read and written on the UI goroutine only
+	c := exec.Command("sh", "-c", editorScript(editor, req.Line), "sh", req.Path)
+	errc := make(chan error, 1)
 	a.await(func() tea.Cmd {
-		prev, a.editing = a.focusWin, sanitize.String(req.Title)
-		a.setFocusWin(w.ID)
-		return nil
+		a.editing = sanitize.String(req.Title)
+		return tea.ExecProcess(c, func(err error) tea.Msg { return editorDoneMsg{errc: errc, err: err} })
 	})
-	closeWin := func() {
-		if a.focusWin == w.ID {
-			a.setFocusWin(prev)
-		}
-		a.host.CloseWindow(w.ID)
-	}
-	if err := w.Wait(ctx); err != nil {
-		a.await(func() tea.Cmd { a.editing = ""; return nil })
-		go func() { <-w.Done(); a.do(closeWin) }()
+	select {
+	case err := <-errc:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	a.await(func() tea.Cmd { a.editing = ""; closeWin(); return nil })
-	if code := w.ExitCode(); code != 0 {
-		return fmt.Errorf("the editor exited with code %d", code)
-	}
-	return nil
 }

@@ -10,24 +10,18 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
-// the chrome drawn on top (topChrome), a focused window, a focused layout
-// node's keymaps, then keymaps and the composer.
+// the chrome drawn on top (topChrome), a focused layout node's keymaps,
+// then keymaps and the composer.
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
 	top := a.topChrome()
-
-	// A focused window takes every key, ctrl+c included: the program in it
-	// decides what they mean.
-	if top == "" && a.windowKey(key, uv.KeyPressEvent(msg)) {
-		return nil
-	}
 
 	// A focused node takes every key but ctrl+c: its own keymaps, then the
 	// global ones. Unbound keys do nothing, and an unbound esc gives the
@@ -59,6 +53,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPerm(false, "user")
 		case top == "memReview":
 			a.answerMemReview()
+		case top == "plan":
+			a.finishPlan(tools.PlanVerdict{}, false)
 		case top == "question":
 			a.finishQuestion(false)
 		case top == "trust":
@@ -107,24 +103,26 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if moveSel(&pa.sel, len(choices), key) {
 			return nil
 		}
-		switch key {
-		case "enter":
+		// any single-letter choice key answers directly (y, a, r, t; "o" is
+		// "y"), so a new one-letter choice needs no new case here
+		switch {
+		case key == "enter":
 			a.choosePerm(choices[pa.sel])
-		case "y", "o", "a", "t":
+		case len(key) == 1 && key != "n":
 			for _, c := range choices {
 				if c.key == key || key == "o" && c.key == "y" {
 					a.choosePerm(c)
 				}
 			}
-		case "n", "esc":
+		case key == "n" || key == "esc":
 			a.answerPerm(false, "user")
-		case "shift+down":
+		case key == "shift+down":
 			pa.scroll++
-		case "shift+up":
+		case key == "shift+up":
 			pa.scroll = max(0, pa.scroll-1)
-		case "pgdown":
+		case key == "pgdown":
 			pa.scroll += 10
-		case "pgup":
+		case key == "pgup":
 			pa.scroll = max(0, pa.scroll-10)
 		}
 	case "memReview":
@@ -145,6 +143,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc", "q":
 			a.answerMemReview()
 		}
+	case "plan":
+		a.planKey(key, keyText(msg))
 	case "question":
 		a.questionKey(key, keyText(msg))
 	case "overlay":
@@ -225,16 +225,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if c.empty() && a.restoreQueue() {
 			return nil
 		}
-		if strings.Contains(c.text, "\n") {
-			c.up()
-		} else {
+		if !c.up() {
 			a.seedHistory()
 			c.histPrev()
 		}
 	case "down":
-		if strings.Contains(c.text, "\n") {
-			c.down()
-		} else {
+		if !c.down() {
 			c.histNext()
 		}
 	case "ctrl+p":
@@ -346,6 +342,19 @@ func listMove(key string) int {
 	return 0
 }
 
+// scrollDelta is how many rows a scroll key moves a text viewport: the page
+// keys move a page, the list keys (j/k, arrows) a line. A viewport that also
+// lists rows uses only the page keys, since the list keys select (overlay.go).
+func scrollDelta(key string) int {
+	switch key {
+	case "pgup":
+		return -10
+	case "pgdown":
+		return 10
+	}
+	return listMove(key)
+}
+
 // runRHS executes a keymap right-hand side on the ui class under the
 // binding's registration origin (DESIGN §9 attribution), on the background
 // worker.
@@ -453,6 +462,8 @@ func (a *App) topChrome() string {
 		return "perm"
 	case a.memReview != nil:
 		return "memReview"
+	case a.planAsk != nil:
+		return "plan"
 	case a.question != nil:
 		return "question"
 	case a.trust != nil:
@@ -470,6 +481,10 @@ func (a *App) wheelChrome(step int) bool {
 	switch a.topChrome() {
 	case "perm":
 		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
+	case "plan":
+		if !a.planAsk.typing { // the wheel scrolls the plan, not a text field
+			a.planAsk.scroll = max(0, a.planAsk.scroll+step)
+		}
 	case "trust":
 	case "memReview":
 		move(&a.memReview.sel, len(a.memReview.items))
@@ -509,6 +524,12 @@ func (a *App) pasteChrome(text string) bool {
 			st.typing = true
 			st.input.insert(line)
 		}
+	case "plan":
+		p := a.planAsk
+		if !p.typing {
+			p.typing, p.input = true, composerState{}
+		}
+		p.input.insert(line)
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {

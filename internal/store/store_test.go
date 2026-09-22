@@ -229,6 +229,37 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	}
 }
 
+// TestUserMessagesTopLevel: composer recall draws only the user's own rows,
+// so a subagent session's user rows (agent-written prompts) stay out.
+func TestUserMessagesTopLevel(t *testing.T) {
+	db := openTest(t)
+	if err := db.CreateSession("top", "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession("child", "top", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	top := &Message{SessionID: "top", Role: "user", PartsJSON: `{"text":"mine"}`}
+	child := &Message{SessionID: "child", Role: "user", PartsJSON: `{"text":"prompt"}`}
+	if err := db.AddMessage(top); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AddMessage(child); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.UserMessages(10)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("UserMessages = %+v, %v; want only the top-level row", got, err)
+	}
+	if got[0].ID != top.ID || got[0].SessionID != "top" {
+		t.Fatalf("recall picked the child row: %+v", got)
+	}
+	all, err := db.ListSessions(10)
+	if err != nil || len(all) != 1 || all[0].ID != "top" {
+		t.Fatalf("list must hold only the top-level session: %+v %v", all, err)
+	}
+}
+
 // TestAddCompaction: summary and tail copies land together, and a write that fails leaves none of them behind.
 func TestAddCompaction(t *testing.T) {
 	db := openTest(t)
@@ -380,6 +411,29 @@ func TestKVRoundtrip(t *testing.T) {
 	v, err := db.GetKV("k")
 	if err != nil || v != `{"v":2}` {
 		t.Fatalf("kv: %q %v", v, err)
+	}
+}
+
+func TestKVOnceClaim(t *testing.T) {
+	db := openTest(t)
+	// only the first of two claims on the same key wins (a cross-process
+	// reflection claim relies on this being atomic)
+	if ok, err := db.SetKVOnce("claim:x", "1"); err != nil || !ok {
+		t.Fatalf("first claim: ok=%v err=%v", ok, err)
+	}
+	if ok, err := db.SetKVOnce("claim:x", "2"); err != nil || ok {
+		t.Fatalf("second claim must not win: ok=%v err=%v", ok, err)
+	}
+	// a claim its owner crashed leaving is reclaimable once stale, not while fresh
+	nowMs := time.Now().UnixMilli()
+	if _, err := db.db.Exec(`UPDATE kv SET updated_at = ? WHERE key = 'claim:x'`, nowMs-60000); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := db.ReclaimKVIfStale("claim:x", "3", nowMs-30000); !ok {
+		t.Fatal("a stale claim must be reclaimed")
+	}
+	if ok, _ := db.ReclaimKVIfStale("claim:x", "4", time.Now().UnixMilli()); ok {
+		t.Fatal("a fresh claim must not be reclaimed")
 	}
 }
 

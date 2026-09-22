@@ -61,12 +61,10 @@ func (s *Store) defineDefaults() {
 		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
-		{Path: "editor.command", Kind: "string", Default: "", Desc: "editor for open_in_editor, zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
-		{Path: "ui.window.unfocus", Kind: "string", Default: "ctrl+\\", Desc: "the key that takes typing back from a focused window to zemi"},
+		{Path: "editor.command", Kind: "string", Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
-		{Path: "ui.window_shadow", Kind: "bool", Default: true, Desc: "shade the cells right of and under a floating window so it stands off what it covers"},
 		{Path: "ui.progress", Kind: "bool", Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
 		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
 		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
@@ -74,7 +72,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
 		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses models.main)"},
 		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses the small tier)"},
-		{Path: "memory.autonomy", Kind: "string", Default: "ask", Desc: "ask: memories the model or the reflector propose wait for /memory review; auto: policy-clean ones are stored at once, except in an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
+		{Path: "memory.autonomy", Kind: "string", Default: "auto", Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once (see DESIGN 10.4), ask waits for /memory review; both skip an untrusted project or a session that used fetch, web_search, the Lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 		{Path: "memory.digest_lines", Kind: "int", Default: 12, Desc: "memory digest lines in the system prompt (0 leaves it out)"},
 	}
 	for _, def := range defaults {

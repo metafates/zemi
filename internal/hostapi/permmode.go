@@ -21,13 +21,13 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// PermModeDef is one permission mode. Base picks the behavior: plan (file
-// changes refused, risky commands ask), auto (deterministic local checks
-// answer routine asks) or yolo (every
-// ask allowed). Every mode only answers asks: deny rules and the
-// tool.pre/permission.request vetoes still run first. Rules answer asks
-// before the base does, and Prompt joins the system prompt while the mode
-// is on.
+// PermModeDef is one permission mode. Base picks the behavior: auto
+// (deterministic local checks answer routine asks) or yolo (every ask
+// allowed). A profile's against it; read-only agents deny writes and force
+// asks on their own (see Profile.ReadOnly). Every mode only answers asks:
+// deny rules and the tool.pre/permission.request vetoes still run first.
+// Rules answer asks before the base does, and Prompt joins the system
+// prompt while the mode is on.
 type PermModeDef struct {
 	Name, Base, Description, Prompt string
 	Rules                           *perm.Store
@@ -39,7 +39,6 @@ type PermModeDef struct {
 }
 
 var builtinModes = []PermModeDef{
-	{Name: "plan", Base: "plan", Description: "read and plan only: no edits, risky commands ask"},
 	{Name: "auto", Base: "auto", Description: "safe actions run on their own, risky ones ask"},
 	{Name: "yolo", Base: "yolo", Description: "everything runs without asking"},
 }
@@ -47,9 +46,10 @@ var builtinModes = []PermModeDef{
 // modeReg is the mode list in tab order: the builtins until user config
 // changes it, reset on reload so init.lua replays onto a clean list.
 type modeReg struct {
-	mu      sync.Mutex
-	list    []PermModeDef // nil = builtinModes
-	prePlan string        // the mode active before the last switch into plan mode
+	mu             sync.Mutex
+	list           []PermModeDef // nil = builtinModes
+	prePlanMode    string        // the mode active before a read-only agent was picked
+	prePlanProfile string        // the agent active before a read-only agent was picked
 }
 
 func (h *Host) PermModeList() []PermModeDef {
@@ -79,24 +79,6 @@ func (h *Host) setModes(fn func([]PermModeDef) ([]PermModeDef, error)) error {
 func modeIndex(list []PermModeDef, name string) int {
 	return slices.IndexFunc(list, func(d PermModeDef) bool { return d.Name == name })
 }
-
-// planPrompt joins the system prompt while plan mode is on; the pipeline
-// enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
-const planPrompt = `
-
-# Plan mode
-The user switched on plan mode: plan the work with them and do not do it until they approve a plan. File writes are refused and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
-1. Read the code the task touches first. Never ask what reading it would tell you.`
-
-// planAsking is the rest of plan mode for a run with the plan tool; a
-// headless run and a profile that drops it have none.
-const planAsking = `
-2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
-3. When nothing is left to decide, call the plan tool with the plan.
-End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan takes zemi out of plan mode: then implement it.`
-
-const planHeadless = `
-2. Write the plan as your reply and stop there: nothing in this run can approve it.`
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {
@@ -217,24 +199,28 @@ func (h *Host) SetPermMode(mode string) error {
 		}
 		return fmt.Errorf("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
-	prev := h.permModeDef()
 	if err := h.Settings.SetHost("permissions.mode", mode); err != nil {
 		return err
-	}
-	if list[i].Base == "plan" && prev.Base != "plan" {
-		h.modes.mu.Lock()
-		h.modes.prePlan = prev.Name
-		h.modes.mu.Unlock()
 	}
 	h.refresh()
 	return nil
 }
 
-// approvePlan is the plan tool's hook: the plan joins the transcript and is
-// saved, then the user approves it or types what to change. In plan mode
-// each approval names the mode to implement in, the one active before plan
-// mode first; yolo modes are left out so an approval never allows everything.
+// approvePlan is the plan tool's hook. presentPlan is its body, shared with
+// the turn-end path (planFollowup) that catches a read-only agent which ended
+// in plain text instead of calling the plan tool.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
+	return h.presentPlan(plan)
+}
+
+// presentPlan shows a plan in the approval popup. The plan joins the transcript
+// and is saved, then the user approves it, types what to change, or dismisses
+// it. A read-only agent (planner) remembers what ran before it (prePlan), so
+// approving a plan returns to that agent and mode instead of asking; an
+// approval records an implementation handoff (planApproved) that the ended
+// turn passes on to planFollowup. yolo modes are never chosen, so an approval
+// never allows everything.
+func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 	ui := h.hooks()
 	if ui == nil {
 		return tools.PlanVerdict{}, false
@@ -247,44 +233,36 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
-	q := tools.Question{Question: "Implement this plan?", Other: "No, change it: type what to change"}
-	var modes []string
-	if h.permModeDef().Base == "plan" {
+	restore := ""
+	if h.readOnly() {
 		h.modes.mu.Lock()
-		prev := h.modes.prePlan
+		restore, v.Profile = h.modes.prePlanProfile, h.modes.prePlanProfile
+		v.Mode = h.modes.prePlanMode
 		h.modes.mu.Unlock()
-		for _, d := range h.PermModeList() {
-			if d.Base == "plan" || d.Base == "yolo" {
-				continue
-			}
-			opt := tools.QuestionOption{Label: "Yes, in " + d.Name + " mode", Description: d.Description}
-			if d.Name == prev {
-				modes, q.Options = append([]string{d.Name}, modes...), append([]tools.QuestionOption{opt}, q.Options...)
-			} else {
-				modes, q.Options = append(modes, d.Name), append(q.Options, opt)
-			}
+		if restore == "" { // a read-only agent picked from config: fall back to default
+			restore, v.Profile, v.Mode = "default", "default", "auto"
 		}
-	} else {
-		q.Options = []tools.QuestionOption{{Label: "Yes, implement it"}}
 	}
-	answers, ok := ui.AskQuestion([]tools.Question{q})
-	if !ok || len(answers) == 0 {
+	verdict, ok := ui.AskPlan(sanitize.String(plan), restore)
+	if !ok {
 		return v, false
 	}
-	for i, o := range q.Options {
-		if answers[0] != o.Label {
-			continue
-		}
-		if i < len(modes) {
-			if err := h.SetPermMode(modes[i]); err != nil {
+	if verdict.Approved {
+		if restore != "" {
+			if err := h.SetProfile(restore); err != nil {
 				return v, false
 			}
-			v.Mode = modes[i]
+			if err := h.SetPermMode(v.Mode); err != nil {
+				return v, false
+			}
+			// the read-only turn cannot implement the plan itself; the turn-end
+			// hook runs it as the restored agent
+			h.setPlanApproved(implementNow)
 		}
 		v.Approved = true
 		return v, true
 	}
-	v.Feedback = answers[0]
+	v.Feedback = verdict.Feedback
 	return v, true
 }
 
@@ -316,7 +294,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
 		}
 		if modeIndex(builtinModes, def.Base) < 0 {
-			L.RaiseError("zemi.permission.mode.add: base must be plan, auto or yolo")
+			L.RaiseError("zemi.permission.mode.add: base must be auto or yolo")
 		}
 		if rules, ok := spec.RawGetString("rules").(*glua.LTable); ok {
 			def.Rules = perm.NewStore()
@@ -423,10 +401,6 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.unsettled(req.Arg) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
-	case "tool.window":
-		// input to a window running unconfined is Unsandboxed and never
-		// reaches here, so this drives a program the sandbox already holds
-		return true
 	}
 	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {
 		return h.mcpReadOnly(server, req.Arg)
@@ -444,7 +418,7 @@ func (h *Host) protectedWrite(p string) bool {
 		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
-// unsettled says why auto and plan mode leave a bash command to the user,
+// unsettled says why auto mode and a read-only agent leave a bash command to the user,
 // or "" when they run it. In a trusted project with a sandbox every command
 // runs, confined (Pipeline.SandboxFor), but the few that delete in bulk.
 // Anywhere else it would run unconfined, so only readers settle.
@@ -509,7 +483,7 @@ func inDirNamed(p string, names ...string) bool {
 // from the project root, it stays in the project and is not secret-shaped.
 // Plain reads may also use the scratchpad and zemi's config, which the read
 // tool reads without asking either; code may not run from there: the model
-// writes the pad without asking, even in plan mode.
+// writes the pad without asking, even for a read-only agent.
 func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	if strings.HasPrefix(arg, "~") {
 		return false

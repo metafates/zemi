@@ -39,12 +39,14 @@ const (
 const reflectorSystem = `You are zemi's reflector. You read a finished coding session and propose durable improvements for future sessions.
 
 Rules:
-- Propose only durable, generalizable knowledge: facts, gotchas, preferences, conventions, decisions. Never propose transient details (file contents, session chatter, this conversation).
+- Propose only knowledge that will change what a future session does and that it could not just re-derive: durable facts, gotchas, preferences, conventions and decisions about the project or the user. Reject a record of this session - what was done, which files changed, what got built or migrated or fixed. That value ends when the session does.
+- A memory earns a proposal only when it is reusable: skipping it would cost a future session redoing work or making a mistake, and neither the code, the transcript nor the user could recover it in seconds. When in doubt, propose nothing.
 - Scope every memory by where it holds. "project" is for this repository only (its layout, commands, conventions, decisions) and is shown in no other project. "user" is for what holds in every project: the user's own preferences and habits, their machine, tools and accounts, and models or providers. A fact about a repository is never "user" scope; a fact about the user or their setup is never "project" scope.
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - When the session shows an indexed memory is no longer true and nothing replaces it, retire it with an entry whose "supersedes" is its id and whose "text" is empty. The user reviews every retirement.
 - Each memory is one self-contained single line, at most 500 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
+- A "decision" or "preference" only when the user actually stated one this session. A discussion, an audit the user asked for (like "how would you improve X?"), or your own suggestion is not a decision; record what the user said or did, never what you inferred or advised.
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not. A procedure specific to this repository is a recipe the live agent writes: do not draft a skill for it.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything the instruction files below or tool descriptions already say.
 - Propose nothing rather than something weak.
@@ -69,14 +71,25 @@ type reflectProposal struct {
 	} `json:"skills"`
 }
 
-const reflectTimeout = 2 * time.Minute
+const (
+	reflectTimeout = 2 * time.Minute
+	// reflectLease is how long a reflection claim may stand without its
+	// owner: a process that took the claim and then crashed leaves one,
+	// and after this long another run may reclaim it.
+	// NOTE: the claim is not refreshed while a run is live, so a process
+	// paused past the lease (a long laptop sleep, SIGSTOP) mid-run could be
+	// reclaimed and both runs would apply their proposals. Proposals are
+	// deduped by text, so the cost is a duplicate, not corruption.
+	reflectLease = 30 * time.Minute
+)
 
 // reflectOnClose is the session-close trigger (/new, /resume, startup):
 // the closed session is reflected when it has messages the reflector has
-// not seen.
+// not seen. The cross-process claim makes two windows on the same
+// repository reflect those messages once between them, not once each.
 func (h *Host) reflectOnClose(prevID string) {
-	if h.reflectDue(prevID) {
-		h.runReflectDetached(prevID)
+	if claim := h.claimReflect(prevID); claim != "" {
+		h.runReflectDetached(prevID, claim)
 	}
 }
 
@@ -106,15 +119,49 @@ func (h *Host) reflectDue(sid string) bool {
 	return seen != strconv.Itoa(len(msgs))
 }
 
+// claimReflect atomically claims the right to reflect the unseen messages
+// of sid and returns the claim key when this process won it ("" to skip).
+// The claim is an INSERT OR IGNORE keyed by the message count in the
+// shared kv, so two processes that both see the session as unreflected can
+// still not reflect it twice: only one inserts. A claim its owner crashes
+// leaving is reclaimed after reflectLease, so a failed run can be retried.
+func (h *Host) claimReflect(sid string) string {
+	if h.reflectDue(sid) == false {
+		return ""
+	}
+	msgs, _ := h.DB.Messages(sid)
+	n := len(msgs)
+	key := reflectClaimKey(sid, n)
+	if claimed, _ := h.DB.SetKVOnce(key, "1"); claimed {
+		return key
+	}
+	// a claim for this count stands: another window is on it, or its owner
+	// crashed long ago and the lease lets us take over
+	if ok, _ := h.DB.ReclaimKVIfStale(key, "1", time.Now().Add(-reflectLease).UnixMilli()); ok {
+		return key
+	}
+	return ""
+}
+
 func reflectSeenKey(sid string) string { return "reflector.seen." + sid }
+func reflectClaimKey(sid string, n int) string {
+	return "reflector.claim." + sid + ":" + strconv.Itoa(n)
+}
 
 // runReflectDetached starts one reflect run on its own goroutine and
 // reports whether it started; a second concurrent run is skipped (one
 // reflector at a time). Progress reaches Lua as ctx.reflecting plus the
 // reflector.start / reflector.done events (done carries error on failure).
-func (h *Host) runReflectDetached(sid string) bool {
+// claim is the claim key this run will release when it ends, or "" when
+// there is none to release.
+func (h *Host) runReflectDetached(sid, claim string) bool {
 	if !h.reflectMu.TryLock() {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
+		// this run never starts, so a just-won claim must not be left to
+		// the lease: release it so a later close can reflect again
+		if claim != "" {
+			h.DB.DelKV(claim)
+		}
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
@@ -126,6 +173,11 @@ func (h *Host) runReflectDetached(sid string) bool {
 		defer cancel()
 		defer h.refresh()
 		defer h.reflecting.Store(false)
+		if claim != "" {
+			// released on success (the seen marker keeps the result) and on
+			// failure (so a later run can retry); a crash leaves it to the lease
+			defer h.DB.DelKV(claim)
+		}
 		err := h.reflectSession(ctx, sid)
 		h.agents.mu.Lock()
 		h.agents.reflectErr = errString(err)
@@ -427,7 +479,7 @@ func (h *Host) reflectCommand() error {
 	if sid == "" {
 		return errors.New("no session to reflect on")
 	}
-	if !h.runReflectDetached(sid) {
+	if !h.runReflectDetached(sid, "") {
 		return errors.New("a reflect run is already active")
 	}
 	return nil

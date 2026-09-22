@@ -207,7 +207,10 @@ func FoldCase(p string) string {
 // canonical decomposition, so U+017F (long s) matches s and U+00E9 matches e+U+0301.
 func fold(s string) string {
 	if strings.ContainsFunc(s, func(r rune) bool { return r >= utf8.RuneSelf }) {
-		return norm.NFC.String(cases.Fold().String(norm.NFD.String(s)))
+		// lowercase last: Apache/Cherokee case pairs fold to each other
+		// (U+AB83 <-> U+13B3), so folding alone would oscillate and leave no
+		// stable canonical; ToLower lands both spellings on one representative
+		return strings.ToLower(norm.NFC.String(cases.Fold().String(norm.NFD.String(s))))
 	}
 	return strings.ToLower(s)
 }

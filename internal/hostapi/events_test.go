@@ -13,7 +13,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // TestToolDeniedEvent: a call the gate refuses reaches tool.denied
@@ -75,11 +74,6 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
 	h.Commands.Add(&Command{Name: "gocmd", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
 	t.Setenv("ZEMI_TEST_API_KEY", "k")
-	w, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer h.Wins.Close(w.ID)
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
 		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
@@ -87,14 +81,13 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add({ kind = "fact", text = "x" })`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
-		`zemi.win.close(1)`, `zemi.win.focus(1)`, `zemi.win.get(1):set({ hidden = true })`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
 		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("auto")`,
-		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `assert(zemi.command.run("gocmd"))`,
+		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.cycle")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
 		for _, o := range []lua.Origin{lua.OriginProject, lua.OriginLearned} {
@@ -104,20 +97,13 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		}
 	}
 	runUser(t, r, `
-		zemi.config.set("permissions.mode", "plan")
-		zemi.permission.mode.add("x", { base = "plan", rules = { { "tool.bash", "ls *", "allow" } } })
+		zemi.config.set("permissions.mode", "yolo")
+		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.bash", "ls *", "allow" } } })
 		zemi.permission.mode.del("x")
 		zemi.lsp.disable("gopls")
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")
 		assert(zemi.command.run("gocmd"))
 		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
-	own, err := h.openWindow(win.Spec{Cmd: "sleep 5", Owner: "lua", Origin: string(lua.OriginProject)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := r.ExecuteChunk(context.Background(), fmt.Sprintf(`assert(zemi.win.close(%d))`, own.ID), "p.lua", lua.OriginProject); err != nil {
-		t.Errorf("project closing its own window: %v", err)
-	}
 	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatal(err)
 	}

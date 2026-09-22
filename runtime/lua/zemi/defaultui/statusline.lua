@@ -20,7 +20,7 @@ zemi.ui.widget.add({
   render = function(ctx)
     local mode = ctx.permission_mode or "auto"
     local base = ctx.permission_mode_base or mode
-    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
+    local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
     return { { { text = mode, hl = hl, click = "mode" } } }
   end,
 })
@@ -176,14 +176,20 @@ end)
 ---@type { [1]: string, [2]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
 local right = {
   { "profile", function(ctx)
-    if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
+    if ctx.profile_read_only then
+      return ctx.profile .. " ⌖", "ModePlan", "profile"
+    end
+    if ctx.profile ~= "default" then
+      return ctx.profile, "Comment", "profile"
+    end
+    return "general", "Dim", "profile"
   end },
   { "model", function(ctx)
     if (ctx.model or "") == "" then return end
     return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
   end },
-  -- how much of the window is in use, not a running token total: the
-  -- total says nothing about how much room is left
+  -- how much of the window is in use, not the running session total: the
+  -- total says nothing about how much room is left.
   { "context", function(ctx)
     local cx = ctx.context or {}
     local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)

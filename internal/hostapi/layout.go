@@ -32,7 +32,7 @@ type Size struct {
 // lays its children out along Dir, a leaf names what fills its cells.
 type LayoutNode struct {
 	ID       string
-	Kind     string // box, region, composer, bar, windows or spacer
+	Kind     string // box, region, composer, bar or spacer
 	Dir      string // box: row or col
 	Sep      bool   // box: a one-cell separator between children
 	Children []*LayoutNode
@@ -41,7 +41,6 @@ type LayoutNode struct {
 	Scroll      string // region: "top" or "bottom" (follows the tail) makes it scrollable
 	Focusable   bool   // region: can take keys (zemi.ui.focus), by its id
 	Left, Right string // bar, framed composer: the regions of its left and right clusters
-	Slot        string // windows: the kind of window spliced in here, split or vsplit
 
 	Frame bool   // composer: a square frame around it, two rows taller
 	Top   string // framed composer: the region drawn in its top rule
@@ -120,21 +119,18 @@ type Rect struct{ X, Y, Width, Height int }
 
 // DefaultLayout is what zemi draws when no config set a layout (before the
 // shipped UI loads, or after a reload that set none). It matches the
-// shipped defaultui/layout.lua: the main column beside the vsplit windows;
-// in it the header, the stage (the chat over the split windows), a blank
-// row and the framed composer, whose rules carry the mascot and the
-// statusline.
+// shipped defaultui/layout.lua: the main column; in it the header, the
+// stage (the chat), a blank row and the framed composer, whose rules carry
+// the mascot and the statusline.
 var DefaultLayout = &Layout{Root: &LayoutNode{Kind: "box", Dir: "row", Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 	{Kind: "box", Dir: "col", Size: Size{Kind: SizeFill}, Min: 30, Children: []*LayoutNode{
 		{Kind: "region", Region: "header"},
 		{Kind: "box", Dir: "col", Stage: true, Size: Size{Kind: SizeFill}, Min: 1, Children: []*LayoutNode{
 			{ID: "chat", Kind: "region", Region: "chat", Scroll: "bottom", Size: Size{Kind: SizeFill}, Min: 3},
-			{Kind: "windows", Slot: "split", Size: Size{Kind: SizeFill}},
 		}},
 		{Kind: "spacer", Size: Size{Kind: SizeCells, N: 1}},
 		{Kind: "composer", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
 	}},
-	{Kind: "windows", Slot: "vsplit", Size: Size{Kind: SizeFill}},
 }}}
 
 const (
@@ -234,15 +230,12 @@ func (h *Host) SetFocus(id string) {
 }
 
 // focusNode moves the focus to a focusable node of the layout in force, or
-// to the composer with "". A focused window lets go of the keys.
+// to the composer with "".
 func (h *Host) focusNode(id string) error {
 	if id != "" && !slices.Contains(h.Layout().Focusables(), id) {
 		return fmt.Errorf("the layout has no focusable node %q", id)
 	}
 	h.SetFocus(id)
-	if ui := h.hooks(); id != "" && ui != nil {
-		ui.FocusWindow(0)
-	}
 	return nil
 }
 
@@ -310,7 +303,6 @@ type layoutParser struct {
 	nodes     int
 	ids       map[string]bool
 	regions   map[string]bool
-	slots     map[string]bool
 	composers int
 	stages    int
 }
@@ -325,7 +317,7 @@ func ParseLayout(v any) (*Layout, error) {
 	if err := onlyKeys(m, "layout", "root", "floats"); err != nil {
 		return nil, err
 	}
-	p := &layoutParser{ids: map[string]bool{}, regions: map[string]bool{}, slots: map[string]bool{}}
+	p := &layoutParser{ids: map[string]bool{}, regions: map[string]bool{}}
 	root, err := p.node(m["root"], "root", 1, "col", false)
 	if err != nil {
 		return nil, err
@@ -469,21 +461,10 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 				err = region(key)
 			}
 		}
-	case "windows":
-		err = onlyKeys(m, at, append(common, "slot")...)
-		n.Slot = str("slot")
-		switch {
-		case err != nil:
-		case n.Slot != "split" && n.Slot != "vsplit":
-			err = fmt.Errorf("%s: slot must be \"split\" or \"vsplit\"", at)
-		case p.slots[n.Slot]:
-			err = fmt.Errorf("%s: a second %s slot", at, n.Slot)
-		}
-		p.slots[n.Slot] = true
 	case "spacer":
 		err = onlyKeys(m, at, common...)
 	default:
-		err = fmt.Errorf("%s: unknown kind %q (box, region, bar, composer, windows or spacer)", at, n.Kind)
+		err = fmt.Errorf("%s: unknown kind %q (box, region, bar, composer or spacer)", at, n.Kind)
 	}
 	if err != nil {
 		return nil, err
@@ -491,7 +472,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 	switch {
 	case n.Kind == "spacer":
 		n.Size = Size{Kind: SizeCells, N: 1}
-	case dir == "row" || n.Kind == "box" || n.Kind == "windows":
+	case dir == "row" || n.Kind == "box":
 		n.Size = Size{Kind: SizeFill} // content is measured down a column only
 	default:
 		n.Size = Size{Kind: SizeContent}
@@ -500,7 +481,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		if n.Size, err = parseSize(sv, at); err != nil {
 			return nil, err
 		}
-		if n.Size.Kind == SizeContent && (dir == "row" || n.Kind == "box" || n.Kind == "windows" || n.Kind == "spacer") {
+		if n.Size.Kind == SizeContent && (dir == "row" || n.Kind == "box" || n.Kind == "spacer") {
 			return nil, fmt.Errorf("%s: size \"content\" works only for a region, bar or composer in a col", at)
 		}
 	}

@@ -79,8 +79,11 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 func TestMemoryAddAutonomyGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
+	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+		t.Fatal(err)
+	}
 
-	// Default ask: every proposal queues, nothing is stored.
+	// ask: every proposal queues, nothing is stored.
 	runUser(t, r, `
 		local out = zemi.memory.add({ kind = "gotcha", text = "the fts join needs m-qualified columns" })
 		assert(out.queued == true, "ask mode must queue")
@@ -102,6 +105,9 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	// User config before the first send is its own provenance, and what it
 	// writes is the user's memory, not zemi's.
 	h2, r2 := newTestHostDB(t)
+	if err := h2.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+		t.Fatal(err)
+	}
 	runUser(t, r2, `
 		local out = zemi.memory.add({ kind = "fact", text = "x" })
 		assert(out.queued == true, "add before a session must queue")

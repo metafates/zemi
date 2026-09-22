@@ -151,7 +151,7 @@ func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, why, want string }{
 		{"user", "run outside the sandbox", "denied by the user (it asked because run outside the sandbox)"},
 		{"default", "not settled: this project is not trusted (/trust)", "nobody could answer the ask: not settled: this project is not trusted (/trust)"},
-		{"mode:plan", "", "denied by permission mode plan"},
+		{"mode:auto", "", "denied by permission mode auto"},
 	} {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }

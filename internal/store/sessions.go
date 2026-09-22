@@ -266,12 +266,15 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	})
 }
 
-// UserMessages returns the project's newest user messages, newest first,
-// for the composer history: what the user typed survives the session it
-// was typed in.
+// UserMessages returns the newest top-level session user messages, newest
+// first, for the composer history: what the user typed survives the session
+// it was typed in. Subagent (child) sessions are excluded, since their user
+// rows are prompts the agent wrote, not the user.
 func (s *DB) UserMessages(limit int) ([]*Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
-		FROM messages WHERE role = 'user' ORDER BY rowid DESC LIMIT ?`, limit)
+		FROM messages WHERE role = 'user'
+		AND session_id IN (SELECT id FROM sessions WHERE COALESCE(parent_id, '') = '')
+		ORDER BY rowid DESC LIMIT ?`, limit)
 	return collect(rows, err, func(r scanner) (*Message, error) {
 		var m Message
 		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
@@ -419,6 +422,33 @@ func (s *DB) SetKV(key, valueJSON string) error {
 		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
 		key, valueJSON, now())
 	return err
+}
+
+// SetKVOnce inserts a json value by key only when absent, reporting
+// whether this call inserted it. One INSERT OR IGNORE is atomic across
+// processes (SQLite serializes writers), so it is the primitive a
+// cross-process claim uses: two processes claiming the same key, one wins.
+func (s *DB) SetKVOnce(key, valueJSON string) (bool, error) {
+	res, err := s.db.Exec(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO NOTHING`, key, valueJSON, now())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ReclaimKVIfStale overwrites key when its updated_at is older than
+// olderThan, in one statement; it reports whether it did. The lease an
+// owner that crashed leaves behind is reclaimed this way.
+func (s *DB) ReclaimKVIfStale(key, valueJSON string, olderThan int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ? AND updated_at < ?`,
+		valueJSON, now(), key, olderThan)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // DelKV drops a key, reporting whether there was one.

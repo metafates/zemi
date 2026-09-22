@@ -8,12 +8,16 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// TestProgressReport: OSC 9;4 goes out once when a turn starts and once
-// when it ends, and not at all with the setting off.
+// TestProgressReport: OSC 9;4 goes out when a turn starts, is resent to keep
+// terminals from hiding it, once when it ends, and not at all with the setting off.
 func TestProgressReport(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 10)
 	if app.progressCmd(true) == nil || app.progressCmd(true) != nil {
-		t.Fatal("a running turn should report once")
+		t.Fatal("a running turn should report, and not again before the interval")
+	}
+	app.now = func() time.Time { return time.Now().Add(progressInterval + time.Second) }
+	if app.progressCmd(true) == nil {
+		t.Fatal("a running turn should report again after the refresh interval")
 	}
 	if app.progressCmd(false) == nil {
 		t.Fatal("the end of a turn should clear the report")

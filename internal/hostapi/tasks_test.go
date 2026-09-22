@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -181,5 +182,52 @@ func TestQueueDroppedOnFailure(t *testing.T) {
 				t.Fatalf("next %q, dropped %d", next, run.droppedCount())
 			}
 		})
+	}
+}
+
+// TestAgentQueuesWhileBackground: a message sent while a background agent runs
+// is queued and starts no turn; once the run finishes the send that follows
+// (the report) starts a turn and the queued text reaches the model.
+func TestAgentQueuesWhileBackground(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "d", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.tasks.running(); n != 1 {
+		t.Fatalf("background agents running = %d, want 1", n)
+	}
+	var sent []string
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			sent = append(sent, last)
+			return textParts("ok")
+		}}, nil
+	}
+	if err := h.AgentSend("user msg"); err != nil {
+		t.Fatal(err)
+	}
+	if h.AgentActive() {
+		t.Fatal("queued message must not start a turn")
+	}
+	if got := append([]string(nil), h.agents.steering...); len(got) != 1 || got[0] != "user msg" {
+		t.Fatalf("message not queued: %q", got)
+	}
+	run.finish(nil) // the background agent is done: running() falls to 0
+	if err := h.AgentSend("Background agent finished: report"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	var texts []string
+	for _, m := range h.Session().Transcript {
+		texts = append(texts, m.Text)
+	}
+	all := strings.Join(texts, "\n")
+	if got := strings.Join(sent, "\n"); !strings.Contains(got, "user msg") {
+		t.Fatalf("queued text never reached the model: %q", got)
+	}
+	if !strings.Contains(all, "user msg") || !strings.Contains(all, "Background agent finished: report") {
+		t.Fatalf("transcript missing the queued msg or the report: %q", all)
 	}
 }

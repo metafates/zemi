@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -17,7 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/win"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
@@ -158,24 +158,6 @@ func TestChatExpandSettledRow(t *testing.T) {
 	}
 	if open := rows(); open != closed+2 {
 		t.Fatalf("%d rows closed, %d open, want the two output lines more", closed, open)
-	}
-}
-
-// BenchmarkWindowFrame is an idle frame with a long transcript and three
-// text panels: their bodies must come from the wrap cache, not be re-wrapped
-// once per measure and once per draw.
-func BenchmarkWindowFrame(b *testing.B) {
-	app, host := bootAgentApp(b, 120, 40)
-	defer host.Wins.CloseAll()
-	seedLongChat(host, 100)
-	for _, kind := range []string{win.KindSplit, win.KindVSplit, win.KindFloat} {
-		if _, err := host.Wins.OpenText(win.Spec{Kind: kind, Text: strings.Repeat("a line of panel output that wraps\n", 200)}); err != nil {
-			b.Fatal(err)
-		}
-	}
-	app.renderSync(b)
-	for b.Loop() {
-		_ = app.Frame()
 	}
 }
 
@@ -340,6 +322,8 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"EOT ", "enter confirm · esc deny"}},
 		{"always label wraps", 70, 30, hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/"},
 			[]string{"session", "esc deny"}},
+		{"runs outside sandbox", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "git push origin main", Outside: true, Reason: "run outside the sandbox"},
+			[]string{"Runs outside the sandbox", "Run this command outside the sandbox?"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -695,14 +679,45 @@ func TestReasoningExpanded(t *testing.T) {
 	}
 }
 
-// TestReasoningLiveTail: while the model thinks, only its last lines show.
+// TestReasoningLiveTail: while the model thinks, only its last lines show, and
+// the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\n"})
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "✻ Thinking") || strings.Contains(frame, "│ one") || !strings.Contains(frame, "│ four") {
+	render := func(ms int64) string {
+		app.now = func() time.Time { return time.UnixMilli(ms) }
+		app.renderSync(t)
+		return ansi.Strip(app.Frame())
+	}
+	// the default now is 500ms -> frame 10 -> braille index 1
+	frame := render(500)
+	if strings.Contains(frame, "✻ ") || !strings.Contains(frame, "Thinking") {
+		t.Fatalf("live mark is not the braille spinner:\n%s", frame)
+	}
+	if strings.Contains(frame, "│ one") || !strings.Contains(frame, "│ four") {
 		t.Fatalf("live thinking tail:\n%s", frame)
+	}
+	// the spinner cycles a frameMS apart while the header and tail stay put
+	a, b := render(500), render(750)
+	headOf := func(s string) string {
+		for _, l := range strings.Split(s, "\n") {
+			if strings.Contains(l, "Thinking") {
+				return l
+			}
+		}
+		return ""
+	}
+	headA, headB := headOf(a), headOf(b)
+	_, restA := utf8.DecodeRuneInString(headA)
+	_, restB := utf8.DecodeRuneInString(headB)
+	if headA == headB {
+		t.Fatalf("live mark does not animate:\n%s", a)
+	}
+	if restA != restB {
+		t.Fatalf("header moved while animating:\n%s\n%s", a, b)
+	}
+	if strings.Replace(a, headA, "", 1) != strings.Replace(b, headB, "", 1) {
+		t.Fatalf("tail moved while animating:\n%s\n%s", a, b)
 	}
 }
 
@@ -729,7 +744,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
-	for _, r := range "@·.◐◓◑◒¬-─^><?" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·.─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -749,16 +764,16 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(7000); a != want || b != want {
 		t.Fatalf("idle rule moved: %q then %q", a, b)
 	}
-	// working swaps the eyes in place
+	// working drifts the two eye dots in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(150); !strings.HasPrefix(a, "@◐◐─") || !strings.HasPrefix(b, "@◓◓─") {
-		t.Fatalf("the working eyes do not spin: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
 	}
-	// a command running for a while is waited on, with a blink every 3s
+	// a long command keeps the working drift, there is no waiting state
 	long := []hostapi.StreamTool{{Name: "bash", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(2900); !strings.HasPrefix(a, "@¬¬─") || !strings.HasPrefix(b, "@--─") {
-		t.Fatalf("the snail does not wait out a long command: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
@@ -874,6 +889,44 @@ func TestPermissionChoices(t *testing.T) {
 	}
 }
 
+// TestPermissionProjectKey: the "for this project" choice ("p") answers
+// directly into user:project.
+func TestPermissionProjectKey(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	done := make(chan struct{})
+	var ok bool
+	var by string
+	go func() {
+		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "git push", Project: "allow `git push`"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	<-done
+	if !ok || by != "user:project" {
+		t.Fatalf("ok=%v by=%q, want user:project", ok, by)
+	}
+}
+
+// TestPermissionWidthKey: the repo-wide read choice ("r") answers directly,
+// like the other one-letter choice keys.
+func TestPermissionWidthKey(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	done := make(chan struct{})
+	var ok bool
+	var by string
+	go func() {
+		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/", Wider: "allow reads anywhere in /repo/"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	<-done
+	if !ok || by != "user:wider" {
+		t.Fatalf("r: ok=%v by=%q", ok, by)
+	}
+}
+
 func TestDiffRows(t *testing.T) {
 	d := "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n"
 	var got []string
@@ -915,11 +968,11 @@ func TestFileRowClickIDs(t *testing.T) {
 		}
 	}
 	for text, want := range map[string]string{
-		"● Edit /w/a.go": "file:0:/w/a.go",
-		"7 - old":        "file:7:/w/a.go",
-		"7 + new":        "file:7:/w/a.go",
-		"8 keep":         "file:8:/w/a.go",
-		"● Run go test":  "",
+		"✓ Edit /w/a.go":  "tool:-1",
+		"7 - old":         "tool:-1",
+		"7 + new":         "tool:-1",
+		"8 keep":          "tool:-1",
+		"✓ Ran 1 command": "tool:-2",
 	} {
 		if click[text] != want {
 			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
@@ -943,7 +996,7 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "● Edit a.go", "7 - old", "7 + new", "● Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Edit a.go", "7 - old", "7 + new", "× Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
@@ -954,7 +1007,7 @@ func TestToolRows(t *testing.T) {
 	host.ToggleReasoning()
 	app.renderSync(t)
 	frame = ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "● Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
+	if !strings.Contains(frame, "✓ Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
 	// an expanded long input wraps instead of ending in an ellipsis
@@ -1053,10 +1106,8 @@ func TestPermTitle(t *testing.T) {
 	}{
 		{hostapi.PermRequest{Subject: "tool.bash", Arg: "make", Description: "Build"}, "Run this command?", ""},
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "a.go"},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
-		{hostapi.PermRequest{Tool: "Lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
-		{hostapi.PermRequest{Subject: "tool.window.text", Arg: "Results"}, "Show this panel?", "Results"},
-		{hostapi.PermRequest{Subject: "tool.window", Arg: "hello<cr>"}, "Control this window?", "hello<cr>"},
+		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
+		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "x.lua"},
 		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "x"},
 	} {
 		if verb, target := permTitle(c.req, "/p"); verb != c.verb || target != c.target {

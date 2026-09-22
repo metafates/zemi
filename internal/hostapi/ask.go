@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
@@ -82,30 +83,15 @@ func (h *Host) askHook() tools.Asker {
 		switch {
 		case base == "yolo":
 			return resolved(true, "mode:"+def.Name)
-		case req.Subject == "tool.window.text":
-			// a text window runs nothing and reads nothing: it draws on the
-			// screen, sanitized, so every mode settles it
-			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
 			// gives its own reason
-			switch req.Subject {
-			case "tool.bash":
+			if req.Subject == "tool.bash" {
 				req.Reason = "run outside the sandbox"
-			case "tool.window":
-				req.Reason += " (not sandboxed)"
 			}
 		case req.Network:
 			// the host is the model's, like a fetch URL, so no mode settles it
 			req.Reason = "needs the network, staying sandboxed"
-		case base == "plan":
-			if req.Subject == "tool.bash" {
-				why := h.unsettled(req.Arg)
-				if why == "" {
-					return resolved(true, "mode:"+def.Name)
-				}
-				req.Reason = strings.TrimPrefix(req.Reason+"; not settled: "+why, "; ")
-			}
 		case base == "auto":
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
@@ -138,7 +124,7 @@ func (h *Host) askHook() tools.Asker {
 			// only a command's sandbox escape is a sandbox matter; a Lua
 			// script or a memory edit is Unsandboxed for another reason and
 			// must not be reported as one
-			if req.Unsandboxed && (req.Subject == "tool.bash" || req.Subject == "tool.window") {
+			if req.Unsandboxed && req.Subject == "tool.bash" {
 				return resolved(false, "unsandboxed")
 			}
 			if req.Network {
@@ -148,7 +134,8 @@ func (h *Host) askHook() tools.Asker {
 		}
 		label, rules := h.alwaysChoice(req)
 		wider, wideRules := h.repoChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description})
+		project, projectRules := h.projectChoice(req, label, rules)
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == "tool.bash"})
 		if by == "user:wider" {
 			rules = wideRules
 		}
@@ -156,6 +143,9 @@ func (h *Host) askHook() tools.Asker {
 			for _, r := range rules {
 				h.Perm.Add(r)
 			}
+		}
+		if allowed && by == "user:project" {
+			h.projectAllow(req.Arg, projectRules)
 		}
 		return resolved(allowed, by)
 	}
@@ -175,10 +165,12 @@ func (h *Host) shownArg(req tools.Request) string {
 
 // alwaysChoice is the "for this session" option for a request: what it
 // allows, as the prompt shows it ("allow `go test`"), and the session rules
-// (model principal) accepting it adds. Subcommand programs allow their two-word prefix ("go test"), file access its
-// directory, fetches their host; the rest the exact request. Gate-forced
-// asks (environment assignments, heredocs) and text with a glob wildcard,
-// which the rule would widen, offer no choice.
+// (model principal) accepting it adds. A command is allowed as a whole (its
+// program, plus the subcommand when it has one) whatever the arguments,
+// since arguments differ every run; file access its directory, fetches
+// their host; the rest the exact request. Deleting programs and text with a
+// glob wildcard stay exact or offer no choice, so the rule never widens to
+// a command the user did not see.
 func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	rule := func(subject, pattern string) perm.Rule {
 		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: "model"}
@@ -194,21 +186,27 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var names []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
-		unnamed := 0 // segments allowed exactly as written, with no prefix to name
-		for i, seg := range n.Segments {
-			if wrapperProgram(n.Args[i][0]) {
+		unnamed := 0 // segments allowed exactly as written, named only by count
+		for _, seg := range n.Segments {
+			// a segment this manager already lets through, by a session rule or
+			// a user rule, is not new: add neither a name nor a rule for it
+			if h.Perm.CheckCommandFor("tool.bash", seg, "model").Decision == perm.Allow {
+				continue
+			}
+			patterns, ok := bashAlwaysPatterns(seg)
+			if !ok {
 				return "", nil
 			}
-			p := commandPrefix(seg)
-			if p == "" {
-				if strings.ContainsAny(seg, globMeta) {
-					return "", nil
-				}
-				rules = append(rules, rule("tool.bash", seg))
+			for _, p := range patterns {
+				rules = append(rules, rule("tool.bash", p))
+			}
+			// one pattern is the exact form of a deleting command, named only
+			// by count; two (p, "p *") is a command allowed as a whole
+			if len(patterns) == 1 {
 				unnamed++
 				continue
 			}
-			rules = append(rules, rule("tool.bash", p), rule("tool.bash", p+" *"))
+			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
 				names = append(names, "`"+truncRunes(p, 24)+"`")
@@ -277,6 +275,56 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
 }
 
+// bashAlwaysPatterns turns one command segment into the allow-lookup patterns
+// the "always" answer (and a project permissions file) uses: it allows the
+// command as a whole, its program plus the subcommand when it has one,
+// whatever the arguments, since arguments differ every run. A deleting program
+// stays exact, and a wrapper program (sh -c, node -e) or a glob offers
+// nothing: a rule from those would widen to a command the user did not see.
+// ok is false when there is no safe rule.
+func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
+	if strings.ContainsAny(seg, globMeta) {
+		return nil, false
+	}
+	f := strings.Fields(seg)
+	if len(f) == 0 {
+		return nil, false
+	}
+	if wrapperProgram(filepath.Base(f[0])) {
+		return nil, false
+	}
+	p := commandPrefix(seg)
+	if p == "" {
+		// a program that can delete or overwrite must not broaden to
+		// arbitrary later targets: the rule runs unconfined, and such a
+		// command has no write path to re-ask on
+		if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
+			return []string{seg}, true
+		}
+		p = f[0]
+	}
+	return []string{p, p + " *"}, true
+}
+
+// projectChoice is the ask's "for this project" answer: the session always
+// label kept, its rules allowed un-scoped (like the project permissions file)
+// instead of for the model, and the command persisted to the file so it
+// applies again on every boot. Empty when the project is untrusted (the file
+// is only read then), for a non-bash request, when the command has no safe
+// rule (alwaysLabel is ""), or for a multi-line command: each file line loads
+// as its own command, so a line continuation there would widen what the user
+// approved.
+func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
+	if req.Subject != "tool.bash" || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
+		return "", nil
+	}
+	rules := slices.Clone(alwaysRules)
+	for i := range rules {
+		rules[i].Principal = ""
+	}
+	return alwaysLabel, rules
+}
+
 // repoChoice is the wider "always" answer for a file read: its whole
 // repository instead of the directory it sits in, which in a deep tree
 // (internal/app/api/launchapi/) is the same ask again one package over.
@@ -334,6 +382,20 @@ var wrapperPrograms = map[string]bool{
 
 func wrapperProgram(prog string) bool {
 	return wrapperPrograms[strings.ToLower(filepath.Base(prog))]
+}
+
+// destructivePrograms are programs that, with one more argument, can delete
+// or overwrite without a write path the pipeline would re-ask on (rm and
+// friends delete by syscall, find -exec and rsync run real deleters). An
+// always-allow keeps a command by one of them exact.
+var destructivePrograms = map[string]bool{
+	"rm": true, "rmdir": true, "unlink": true, "mv": true, "cp": true, "install": true,
+	"find": true, "tar": true, "rsync": true, "shred": true, "truncate": true, "dd": true,
+	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true,
+}
+
+func destructiveProgram(prog string) bool {
+	return destructivePrograms[prog]
 }
 
 // commandPrefix is the two-word prefix the always answer allows for a

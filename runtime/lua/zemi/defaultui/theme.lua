@@ -10,13 +10,15 @@
 ---@return table
 local function theme(palette)
   local hl = {
-    Normal = { fg = "fg" },
+    -- Normal carries the app background: the resolver fills groups that
+    -- have no bg of their own with it, so zemi paints its own canvas and
+    -- the terminal's background never shows through.
+    Normal = { fg = "fg", bg = "bg" },
     Accent = { fg = "accent" },
     Dim = { fg = "dim" },
     Rule = { fg = "rule" },
     -- the composer frame while the draft goes to the shell, not the model
     RuleShell = { fg = "yellow" },
-    WinShadow = { fg = "rule", bg = "shadow" },
     RuleCommand = { fg = "accent" },
     Title = { fg = "accent", bold = true },
     Selected = { fg = "accent", bold = true },

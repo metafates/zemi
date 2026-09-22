@@ -294,7 +294,6 @@ func TestToolRegisterValidation(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`{ name = "x" }`, "execute callback is required"},
 		{`{ name = "bash", execute = function() end }`, "builtin tool name"},
-		{`{ name = "window", execute = function() end }`, "builtin tool name"},
 		{`{ name = "my tool", execute = function() end }`, "identifier"},
 		{`{ name = "x", execute = function() end }`, "description is required"},
 		{`{ name = "x", description = "d", execute = function() end,
@@ -568,6 +567,8 @@ type fakeUI struct {
 	qAsked       []tools.Question
 	qAnswer      string
 	qOK          bool
+	planVerdict  tools.PlanVerdict
+	planOK       bool
 	opened       []Overlay
 	closed       []string
 	closedLua    int
@@ -600,7 +601,6 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	}
 	return nil
 }
-func (f *fakeUI) FocusWindow(int)  {}
 func (f *fakeUI) Copy(text string) { f.copied = text }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
@@ -622,6 +622,10 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
 		answers[i] = f.qAnswer
 	}
 	return answers, f.qOK
+}
+
+func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
+	return f.planVerdict, f.planOK
 }
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
@@ -661,6 +665,9 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 func TestMemoryToolsThroughPipeline(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
+	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+		t.Fatal(err)
+	}
 	run := func(name, input string) fantasy.ToolResponse {
 		t.Helper()
 		for _, ag := range tools.All(h.PipelineFor()) {
@@ -706,7 +713,7 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 		}
 		var err error
 		resp, err = ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: "question",
-			Input: `{"questions":[{"question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
+			Input: `{"questions":[{"type":"single_choice","question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
@@ -743,6 +750,78 @@ func TestPipelineTodos(t *testing.T) {
 	if err != nil || len(persisted) != 1 || persisted[0].Content != "first" {
 		t.Fatalf("todos must persist for the session: %v %+v", err, persisted)
 	}
+}
+
+// TestTodoNag: a stale in_progress todo earns a model-only remind after
+// todoNagAfter tool calls, once per engagement; any todos write re-arms it.
+func TestTodoNag(t *testing.T) {
+	both := []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "in_progress"}}
+	set := func(h *Host, todos []store.Todo) {
+		if err := h.PipelineFor().TodosWrite(todos); err != nil {
+			t.Fatalf("TodosWrite: %v", err)
+		}
+	}
+	engage := func(h *Host, n int) {
+		h.agents.mu.Lock()
+		h.agents.active = true // maybeNagTodos only queues while live
+		h.agents.mu.Unlock()
+		for i := 0; i < n; i++ {
+			h.maybeNagTodos()
+		}
+	}
+	steering := func(h *Host) []string {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		return append([]string(nil), h.agents.steering...)
+	}
+
+	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter-1)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("pre-threshold steering = %q", got)
+		}
+		engage(h, 1)
+		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], "in_progress") {
+			t.Fatalf("post-threshold steering = %q", got)
+		}
+		engage(h, 5)
+		if got := steering(h); len(got) != 1 {
+			t.Fatalf("nag must not repeat without an update: %q", got)
+		}
+	})
+
+	t.Run("a todos write re-arms the tracker", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter)
+		if len(steering(h)) != 1 {
+			t.Fatal("expected one nag before re-arm")
+		}
+		set(h, both) // any update re-arms
+		engage(h, todoNagAfter)
+		if got := steering(h); len(got) != 2 {
+			t.Fatalf("after re-arm expect a second nag, got %d: %q", len(got), got)
+		}
+	})
+
+	t.Run("a single in_progress item or none never nags", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
+		engage(h, todoNagAfter+2)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("single item must not nag: %q", got)
+		}
+		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
+		engage(h, todoNagAfter+2)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("all done must not nag: %q", got)
+		}
+	})
 }
 
 // TestTurnDoneRecordsStats covers the turn stat plumbing: the assistant
@@ -797,9 +876,15 @@ func TestAlwaysChoice(t *testing.T) {
 		patterns []string
 	}{
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow `go test` and `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow this exact command", []string{"ls -la"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow this exact command", []string{"cat notes"}},
-		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls"}},
+		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow `ls`", []string{"ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow `cat`", []string{"cat", "cat *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "make *", "ls", "ls *"}},
+		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
+		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
+		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
+		{tools.Request{Subject: "tool.bash", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
+		{tools.Request{Subject: "tool.bash", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
+		{tools.Request{Subject: "tool.bash", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run
@@ -824,7 +909,6 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && ls ?"}, "", nil},
-		{tools.Request{Subject: "tool.window", Arg: "*"}, "", nil},
 		{tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "*", "notes.md")}, "", nil},
 		{tools.Request{Subject: "net.*", Arg: "https://*/"}, "", nil},
 	} {
@@ -836,6 +920,24 @@ func TestAlwaysChoice(t *testing.T) {
 		if label != c.label || strings.Join(pats, "|") != strings.Join(c.patterns, "|") {
 			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
 		}
+	}
+	// a whole-command rule lets the next run differ in its arguments
+	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "ls -la"})
+	s := perm.NewStore()
+	for _, r := range rules {
+		s.Add(r)
+	}
+	if o := s.CheckCommand("ls -R src", "model"); o.Decision != perm.Allow {
+		t.Errorf("ls -R src after allow `ls` = %v, want allow", o)
+	}
+	// a deleter's exact rule does not cover another target
+	_, del := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"})
+	s2 := perm.NewStore()
+	for _, r := range del {
+		s2.Add(r)
+	}
+	if o := s2.CheckCommand("rm src.orig", "model"); o.Decision == perm.Allow {
+		t.Errorf("rm src.orig after allow `rm build.tmp` must ask, got %v", o)
 	}
 	// a read deep in a tree also offers the whole repository
 	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
@@ -870,6 +972,24 @@ func TestAlwaysChoice(t *testing.T) {
 				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, o.Decision, want)
 			}
 		}
+	}
+	// a segment this manager already allows for the session is not listed or
+	// re-ruled: only the still-new programs get a name and a rule
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
+	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x && go vet"})
+	if label != "allow `go vet`" {
+		t.Errorf("already-allowed segment must not be listed: %q", label)
+	}
+	var pats []string
+	for _, r := range rules {
+		pats = append(pats, r.Pattern)
+	}
+	if strings.Join(pats, "|") != "go vet|go vet *" {
+		t.Errorf("already-allowed segment must not get a rule: %q", pats)
+	}
+	// when everything is already allowed, no rule is offered
+	if _, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); len(rules) != 0 {
+		t.Errorf("all-allowed command must offer no rules: %+v", rules)
 	}
 }
 
@@ -985,7 +1105,7 @@ func TestProfileSwitch(t *testing.T) {
 		do      func() error
 		wantErr string
 	}{
-		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, cheap"},
+		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
 		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
@@ -999,8 +1119,8 @@ func TestProfileSwitch(t *testing.T) {
 		}
 	}
 	for p, want := range map[*Profile]string{
-		{}:                                   "every tool",
-		{Tools: []string{"-window", "-Lua"}}: "every tool but window, Lua",
+		{}:                        "every tool",
+		{Tools: []string{"-lua"}}: "every tool but lua",
 		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m - only bash, read",
 	} {
 		if got := profileDesc(p); got != want {

@@ -579,7 +579,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		}
 	}
 	return fantasy.ToolInfo{
-		Name:        "workflow",
+		Name:        tools.ToolWorkflow,
 		Description: desc.String(),
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},

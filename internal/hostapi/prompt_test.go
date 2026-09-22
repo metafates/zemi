@@ -32,7 +32,7 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the system's default rules", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
@@ -62,10 +62,8 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
 		t.Fatal(err)
 	}
+	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
 	h.SetUIHooks(&fakeUI{})
-	if err := h.SetPermMode("plan"); err != nil {
-		t.Fatal(err)
-	}
 	lean, err := h.resolveProfile("lean")
 	if err != nil {
 		t.Fatal(err)
@@ -76,10 +74,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		keep []string
 		gone []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", "plan tool", `"job_start"`, `"window"`}, nil},
-		{"lean", lean, []string{"offset and limit", "plan tool", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{`"window"`, "workflow", "Lua tool", "job_start", "open_in_editor", `"lsp"`}},
-		{"no plan", &Profile{Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", `"job_start"`}, nil},
+		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
+			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}},
+		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil},
+		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
 		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}},
 	} {
 		toolset := h.profileTools(c.p)

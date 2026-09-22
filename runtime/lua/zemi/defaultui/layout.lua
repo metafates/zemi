@@ -16,7 +16,6 @@ local layout = {
             kind = "box", dir = "col", stage = true, min = 1,
             children = {
               { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill", min = 3 },
-              { kind = "windows", slot = "split" },
             },
           },
           { kind = "spacer" },
@@ -31,7 +30,6 @@ local layout = {
           },
         },
       },
-      { kind = "windows", slot = "vsplit" },
     },
   },
 }

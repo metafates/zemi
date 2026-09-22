@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -609,10 +610,43 @@ func TestReflectSerializesRuns(t *testing.T) {
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, `{"memories":[]}`)
 	h.reflectMu.Lock()
-	if h.runReflectDetached(sid) || m.calls.Load() != 0 {
+	if h.runReflectDetached(sid, "") || m.calls.Load() != 0 {
 		t.Fatal("second run was not skipped")
 	}
 	h.reflectMu.Unlock()
+}
+
+// TestReflectClaimsOnce pins the cross-process guard: two claims on the
+// same unseen session, the way two windows starting at once would take
+// them, hand the run to only one; a finished run's seen marker stops any
+// further claim; a new message starts a fresh claimable count.
+func TestReflectClaimsOnce(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	seedTranscript(t, h, sid)
+	c1, c2 := h.claimReflect(sid), h.claimReflect(sid)
+	if c1 == "" || c2 != "" {
+		t.Fatalf("claims = %q %q, want only the first to win", c1, c2)
+	}
+	if !strings.HasPrefix(c1, "reflector.claim."+sid+":") {
+		t.Fatalf("claim key %q must carry the session and count", c1)
+	}
+	// a run that finished wrote the seen marker: nothing more is claimable
+	msgs, _ := h.DB.Messages(sid)
+	if err := h.DB.SetKV("reflector.seen."+sid, strconv.Itoa(len(msgs))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.DelKV(c1); err != nil {
+		t.Fatal(err)
+	}
+	if c := h.claimReflect(sid); c != "" {
+		t.Fatalf("claimed an already-seen session: %q", c)
+	}
+	// a new message makes the session claimable again under a fresh count
+	addText(t, h, sid, "user", "one more")
+	if c := h.claimReflect(sid); c == "" || c == c1 {
+		t.Fatalf("a new message must be claimable under a fresh count, got %q", c)
+	}
 }
 
 // TestReflectCommand covers :reflect: no session errors, live session

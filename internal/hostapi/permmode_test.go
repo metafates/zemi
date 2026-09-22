@@ -78,8 +78,8 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 
 // TestUntrustedModes: in an untrusted project, for a command with no
 // sandbox to run in, or for a write outside the project, auto mode sends
-// what it cannot settle to the user, and plan mode runs only commands that
-// just read; the Lua tool asks there and in plan mode.
+// what it cannot settle to the user; the Lua tool asks there and for a
+// read-only agent.
 func TestUntrustedModes(t *testing.T) {
 	h, _ := newTestHost(t)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
@@ -98,9 +98,6 @@ func TestUntrustedModes(t *testing.T) {
 		{"auto", true, true, "tool.bash", "make out", true},
 		{"auto", true, false, "tool.bash", "make out", false},
 		{"auto", true, true, "fs.write", filepath.Join(os.Getenv("HOME"), ".gitconfig"), false},
-		{"plan", true, true, "tool.bash", "go vet ./...", true},
-		{"plan", false, true, "tool.bash", "go vet ./...", false},
-		{"plan", false, true, "tool.bash", "wc -l main.go", true},
 	} {
 		if err := h.SetPermMode(c.mode); err != nil {
 			t.Fatal(err)
@@ -118,19 +115,25 @@ func TestUntrustedModes(t *testing.T) {
 	fakeSandbox(h, true)
 	lua := h.luaEvalTool()
 	for _, c := range []struct {
-		mode    string
-		trusted bool
-		ran     bool
+		mode     string
+		trusted  bool
+		readOnly bool
+		ran      bool
 	}{
-		{"auto", true, true},
-		{"auto", false, false},
-		{"plan", true, false},
+		{"auto", true, false, true},
+		{"auto", false, false, false},
+		{"auto", true, true, false},
 	} {
 		h.SetPermMode(c.mode)
+		if c.readOnly {
+			h.SetProfile("planner")
+		} else {
+			h.SetProfile("default")
+		}
 		h.SetProjectTrusted(c.trusted)
-		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "Lua", Input: `{"description":"x","script":"return 1"}`})
+		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"description":"x","script":"return 1"}`})
 		if err != nil || strings.Contains(resp.Content, "return: 1") != c.ran {
-			t.Errorf("Lua in %s trusted=%v: %q %v", c.mode, c.trusted, resp.Content, err)
+			t.Errorf("Lua %s trusted=%v readOnly=%v: %q %v", c.mode, c.trusted, c.readOnly, resp.Content, err)
 		}
 	}
 }

@@ -13,8 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"os"
+	"image/color"
 	"slices"
 	"strings"
 	"sync"
@@ -30,16 +29,18 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/win"
 )
 
 const (
 	frameInterval = time.Second / 30
-	frameMS       = 50              // one animation tick: the mascot's frames are multiples of it
-	doneLinger    = 3 * time.Second // how long the mascot bows after a turn
-	toastTTL      = 4 * time.Second
-	hookQueueSize = 64
-	chatWheelStep = 3
+	// Terminals hide the OSC 9;4 spinner after a few seconds unless the
+	// program keeps sending it, so it is resent on this interval while running.
+	progressInterval = 2 * time.Second
+	frameMS          = 50              // one animation tick: the mascot's frames are multiples of it
+	doneLinger       = 3 * time.Second // how long the mascot bows after a turn
+	toastTTL         = 4 * time.Second
+	hookQueueSize    = 64
+	chatWheelStep    = 1
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
@@ -47,6 +48,11 @@ type App struct {
 	host *hostapi.Host
 	log  *logging.Logger
 	thm  themeResolver
+
+	// termBG is the terminal's own background color as it answered an OSC
+	// 11 query; nil means the terminal does not answer, so zemi leaves its
+	// background alone. paintedTermBG is the last color zemi set it to.
+	termBG, paintedTermBG color.Color
 
 	width, height int
 
@@ -76,6 +82,7 @@ type App struct {
 	permQueue []*permAskPrompt
 	memReview *memReviewPrompt
 	memEdited string // the row the next memory screen opens on
+	planAsk   *planAskPrompt
 
 	mouse          mouseSel
 	press          mousePress
@@ -93,14 +100,7 @@ type App struct {
 	work     chan func()
 	workOnce sync.Once
 	question *questionPrompt
-	editing  string            // the editor handoff in progress, shown in the working row
-	focusWin int               // window taking keys, 0 = none
-	winRects []winRect         // where windows were drawn on the last frame
-	wrapText map[int][]wrapped // a text window's last wrapped bodies, by window id
-	// cursor is the host cursor: the focused window's, nil hides it. windowRows
-	// sets it in window cells and compose places it on the frame.
-	cursor  *tea.Cursor
-	winDrag *winDrag // a drag on window chrome in progress
+	editing  string // the editor handoff in progress, shown in the working row
 
 	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
 	caches     map[string]*widgetCache
@@ -114,11 +114,11 @@ type App struct {
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	progress   bool             // the terminal was told a turn is running (OSC 9;4)
+	progressAt time.Time        // when the running sequence was last sent (progressInterval)
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
 	quitArmed  time.Time // a second idle ctrl+c before this quits
-	kittyTerm  bool      // the terminal named itself one that draws kitty placeholders
 	colors     colorprofile.Profile
 
 	bootErr        error
@@ -130,7 +130,6 @@ type App struct {
 	// without waiting on the Update goroutine.
 	frameMu   sync.Mutex
 	lastFrame string
-	private   []winRect // editor windows' cells, blank in the screenshot
 	rects     map[string]hostapi.Rect
 
 	program   *tea.Program
@@ -219,17 +218,19 @@ func (a *App) Quit() {
 	quit()
 }
 
-// leave deletes the windows' images while the host is still on the
-// alternate screen, where ghostty keeps them past the exit, then quits. It
-// runs on a goroutine.
+// leave clears the running-turn progress report while the host is still on
+// the alternate screen, then quits. It runs on a goroutine.
 func (a *App) leave() {
 	if a.program == nil {
 		return
 	}
-	a.host.Wins.CloseAll()
-	// the progress report is cleared whether or not one is running: reading
-	// the flag from this goroutine would race with the frame loop
-	a.program.Send(tea.RawMsg{Msg: a.host.Wins.TakeGraphics() + "\x1b]9;4;0\x07"})
+	// restore the terminal's own background before leaving the alternate
+	// screen; then clear the progress report
+	var out string
+	if a.termBG != nil && a.paintedTermBG != nil {
+		out += termBytes(a.termBG)
+	}
+	a.program.Send(tea.RawMsg{Msg: out + "\x1b]9;4;0\x07"})
 	// NOTE: raw output is written on the next frame and quitting leaves the
 	// alternate screen first, so wait out a frame
 	time.Sleep(50 * time.Millisecond)
@@ -274,14 +275,8 @@ type hookMsg struct{ inner tea.Msg }
 // tea.Model
 
 func (a *App) Init() tea.Cmd {
-	// windows answer color queries with the host's colors, so an editor picks a matching theme
-	cmds := []tea.Cmd{a.frameTickCmd(), a.drainHooksCmd(), tea.RequestForegroundColor, tea.RequestBackgroundColor, tea.RequestCursorColor}
-	// the terminal's name says whether windows get kitty images; Terminal.app
-	// prints the query instead of answering it
-	if os.Getenv("TERM_PROGRAM") != "Apple_Terminal" {
-		cmds = append(cmds, tea.RequestTerminalVersion)
-	}
-	return tea.Batch(cmds...)
+	// the background query also picks the theme's light variant
+	return tea.Batch(a.frameTickCmd(), a.drainHooksCmd(), tea.RequestBackgroundColor)
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -309,30 +304,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
-	case tea.TerminalVersionMsg:
-		// NOTE: an allowlist of terminals known to draw kitty placeholders;
-		// windows opened before the reply get symbols
-		name := strings.ToLower(msg.Name)
-		a.kittyTerm = strings.HasPrefix(name, "ghostty") || strings.HasPrefix(name, "kitty")
-		a.host.Wins.SetKitty(a.kittyTerm && a.colors >= colorprofile.ANSI256)
-	case tea.ColorProfileMsg:
-		// a placeholder names its image by color, which NO_COLOR drops
-		a.colors = msg.Profile
-		a.host.Wins.SetKitty(a.kittyTerm && a.colors >= colorprofile.ANSI256)
-	case tea.ForegroundColorMsg:
-		a.host.Wins.SetHostColor(10, msg.Color)
 	case tea.BackgroundColorMsg:
-		a.host.Wins.SetHostColor(11, msg.Color)
-		// the light variant of the chrome and of a theme that ships one
+		// The answer picks the light variant and means the terminal replies
+		// to OSC 11, so its own background can be repainted to match the theme.
+		a.termBG = msg.Color
 		a.thm.light = msg.Color != nil && luma(msg.Color) > 1<<15
-	case tea.CursorColorMsg:
-		a.host.Wins.SetHostColor(12, msg.Color)
 	case tea.FocusMsg, tea.BlurMsg:
 		_, a.focused = msg.(tea.FocusMsg)
-		// the focused window's program hears it, so nvim reloads files changed meanwhile
-		if wn := a.focusedWin(); wn != nil {
-			wn.Focus(a.focused)
-		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
@@ -345,25 +323,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
-		if a.topChrome() != "" {
-			a.winDrag = nil // chrome takes the release, so a drag left open would follow the pointer
-		} else if a.windowMouse(msg) {
-			if _, motion := msg.(tea.MouseMotionMsg); motion && a.winDrag == nil {
-				return a, a.setPointer("") // over a window's cells
-			}
-			return a, nil
-		}
 		return a, a.handleMouse(msg)
 	case tea.MouseWheelMsg:
-		if a.topChrome() == "" && a.windowMouse(msg) {
-			return a, nil
-		}
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
 		if step != 0 && !a.wheelChrome(step) {
 			a.scrollRows(a.scrollAt(msg.X, msg.Y), step*chatWheelStep)
 		}
+		return a, nil
+	case editorDoneMsg:
+		a.editing = ""
+		msg.errc <- msg.err
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {
@@ -389,14 +360,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.publishComposer()
 		return a, nil
 	case tea.PasteMsg:
-		// terminals paste line breaks as CR; escapes in a clipboard would reach
-		// the terminal on every frame, so only a window's program gets them raw
 		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
 		if a.pasteChrome(s) {
-			return a, nil
-		}
-		if wn := a.focusedWin(); wn != nil {
-			wn.Paste(msg.Content)
 			return a, nil
 		}
 		// a dropped file arrives as a paste of its path
@@ -431,22 +396,30 @@ func (a *App) View() tea.View {
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
 	v.WindowTitle = a.host.TerminalTitle()
-	v.Cursor = a.cursor
 	return v
 }
 
 // progressCmd tells the terminal a turn is running with OSC 9;4, which
-// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar; it
-// writes only when the state changed, and clears on quit.
+// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar. It sends
+// the running sequence when the turn starts and then every progressInterval,
+// since those terminals hide the indicator once it stops being sent, and sends
+// the clear once when the turn stops.
 func (a *App) progressCmd(running bool) tea.Cmd {
 	if running && !a.host.Settings.Bool("ui.progress") {
 		running = false
 	}
-	if running == a.progress {
+	if !running {
+		if !a.progress {
+			return nil
+		}
+		a.progress = false
+		return tea.Raw("\x1b]9;4;0\x07")
+	}
+	if a.progress && a.now().Sub(a.progressAt) < progressInterval {
 		return nil
 	}
-	a.progress = running
-	return tea.Raw("\x1b]9;4;" + map[bool]string{true: "3", false: "0"}[running] + "\x07")
+	a.progress, a.progressAt = true, a.now()
+	return tea.Raw("\x1b]9;4;3\x07")
 }
 
 // notifyIfAway alerts through the terminal when zemi needs attention while
@@ -508,16 +481,38 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	if a.termBG != nil { // the terminal answers OSC 11: keep its bg the theme's own
+		if bg := a.syncedTermBG(); !sameColor(bg, a.paintedTermBG) {
+			a.paintedTermBG = bg
+			cmds = append(cmds, setTermBG(bg))
+		}
+	}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
-	if g := a.host.Wins.TakeGraphics(); g != "" {
-		cmds = append(cmds, tea.Raw(g))
-	}
-	if c := a.host.Wins.TakeClipboard(); c != "" {
-		cmds = append(cmds, copyCmd(c))
-	}
 	return tea.Batch(cmds...)
+}
+
+// syncedTermBG is the theme's canvas color when it has one; a theme with no
+// bg (the terminal shows its own) keeps the terminal's color, not ours.
+func (a *App) syncedTermBG() color.Color {
+	if theme := a.thm.active(); theme != nil {
+		if spec, ok := a.host.Themes.Group(theme, "Normal"); ok && spec.Bg != "" {
+			return appBG(a.thm, theme)
+		}
+	}
+	return a.termBG
+}
+
+// setTermBG paints the terminal's own background (OSC 11) so everything
+// outside the painted cells - margins, scrollback - matches the theme too.
+func setTermBG(c color.Color) tea.Cmd {
+	return tea.Raw(termBytes(c))
+}
+
+func termBytes(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("\x1b]11;#%02x%02x%02x\x07", r>>8, g>>8, b>>8)
 }
 
 func (a *App) uiState() hostapi.UIState {
@@ -532,6 +527,8 @@ func (a *App) uiState() hostapi.UIState {
 	switch {
 	case a.permAsk != nil:
 		st.Waiting = "approval"
+	case a.planAsk != nil:
+		st.Waiting = "plan"
 	case a.question != nil:
 		st.Waiting = "answer"
 	}
@@ -720,48 +717,16 @@ func (a *App) compose(w, h int) string {
 
 	lay := a.layout(w, h)
 	stage := lay.stage
-	a.winRects, a.cursor, a.scrollIDs, a.scrollDef = a.winRects[:0], nil, a.scrollIDs[:0], lay.scroll
-	maps.DeleteFunc(a.wrapText, func(id int, _ []wrapped) bool { _, ok := a.host.Wins.Get(id); return !ok })
+	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
 	rows := a.paint(lay.root)
 	a.paintFloats(rows, &lay, w, h)
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
-	// the popup draws over the windows and takes the mouse on the cells it
-	// covers, so its rect is known before they are placed
 	var pop uv.Rectangle
 	var popup [][]hostapi.Segment
 	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
 		popup, popX, pop = a.floatPopup(append(a.completionRows(), a.paletteRows()...), lay, len(rows), w)
-	}
-	for i := range a.winRects {
-		r := &a.winRects[i]
-		if pop.Empty() || r.x >= pop.Max.X || r.x+r.w <= pop.Min.X {
-			continue
-		}
-		if r.y < pop.Min.Y {
-			r.h = max(0, min(r.h, pop.Min.Y-r.y))
-		} else if r.y < pop.Max.Y {
-			r.h = 0
-		}
-		if r.titleY >= pop.Min.Y && r.titleY < pop.Max.Y {
-			r.titleY = -1
-		}
-	}
-	for _, wn := range a.host.Wins.List() {
-		// a split or vsplit the layout has no slot for floats
-		if l := wn.Layout(); l.Hidden || l.Kind != win.KindFloat && lay.slots[l.Kind] {
-			continue
-		}
-		box, x0, y0, r := a.floatBox(wn, stage)
-		a.winRects = append(a.winRects, r)
-		rows = placeBox(rows, box, x0, y0, w)
-		if len(box) > 0 && a.host.Settings.Bool("ui.window_shadow") {
-			shadow(rows, x0, y0, segsWidth(box[0]), len(box), w)
-		}
-	}
-	if dock := a.dockRow(stage.Dx()); dock != nil {
-		rows = placeBox(rows, [][]hostapi.Segment{dock}, stage.Min.X, stage.Max.Y-1, w)
 	}
 	for i, line := range popup {
 		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
@@ -771,10 +736,10 @@ func (a *App) compose(w, h int) string {
 		rows = placeBox(rows, [][]hostapi.Segment{pills}, 0, h-1, w)
 	}
 
-	// Modal chrome goes over everything, windows included: Lua overlays,
-	// then the Go-owned prompts, bottom to top (topChrome must match this
-	// order so input reaches the box drawn on top). What lies under the top
-	// box is dimmed, so no text beside it can pass for its chrome (DESIGN §8).
+	// Modal chrome goes over everything: Lua overlays, then the Go-owned
+	// prompts, bottom to top (topChrome must match this order so input
+	// reaches the box drawn on top). What lies under the top box is dimmed,
+	// so no text beside it can pass for its chrome (DESIGN §8).
 	// It centers over the stage, or the screen when the stage is too small
 	// for a prompt.
 	area := stage
@@ -800,8 +765,11 @@ func (a *App) compose(w, h int) string {
 	if a.trust != nil {
 		splice(trustBox(a.trust, area.Dx(), area.Dy()))
 	}
+	if a.planAsk != nil {
+		splice(a.planBox(a.planAsk, area.Dx(), area.Dy()))
+	}
 	if a.question != nil {
-		splice(questionBox(a.question, area.Dx(), area.Dy()))
+		splice(a.questionBox(a.question, area.Dx(), area.Dy()))
 	}
 	if a.memReview != nil {
 		splice(a.memReviewBox(area.Dx(), area.Dy()))
@@ -837,7 +805,6 @@ func (a *App) compose(w, h int) string {
 	if len(modals) == 0 {
 		toasts()
 	}
-	a.cursor = a.placeCursor(a.cursor, len(modals) > 0)
 
 	a.lastRows, a.stage, a.popRect = rows, stage, pop
 	a.highlightSelection(rows, w)
@@ -851,12 +818,6 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	out := b.String()
-	var private []winRect
-	for _, r := range a.winRects {
-		if wn, ok := a.host.Wins.Get(r.id); ok && wn.Owner == "editor" {
-			private = append(private, r)
-		}
-	}
 	rects := make(map[string]hostapi.Rect, len(lay.rects))
 	for id, r := range lay.rects {
 		if id != "screen" {
@@ -864,7 +825,7 @@ func (a *App) compose(w, h int) string {
 		}
 	}
 	a.frameMu.Lock()
-	a.lastFrame, a.private, a.rects = out, private, rects
+	a.lastFrame, a.rects = out, rects
 	a.frameMu.Unlock()
 	return out
 }
@@ -879,12 +840,10 @@ func (a *App) LayoutRects() map[string]hostapi.Rect {
 // Screenshot implements hostapi.UIHooks: the screen as plain text, one
 // line per row with the styling and trailing padding dropped. It reads the
 // frame compose published, so the interpreter can ask what zemi looks like
-// without the UI goroutine waiting on it or the other way round. An editor
-// window holds what the user types, which the Lua tool must not read.
-// NOTE: a float or modal drawn over an editor is blanked where it overlaps.
+// without the UI goroutine waiting on it or the other way round.
 func (a *App) Screenshot() string {
 	a.frameMu.Lock()
-	frame, private := a.lastFrame, a.private
+	frame := a.lastFrame
 	a.frameMu.Unlock()
 	if frame == "" {
 		return ""
@@ -894,42 +853,10 @@ func (a *App) Screenshot() string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		line := win.StripPlaceholders(ansi.Strip(row))
-		for _, r := range private {
-			if i >= r.titleY && i < r.y+r.h { // the title names the file too
-				left := ansi.Truncate(line, r.x, "")
-				line = left + strings.Repeat(" ", r.x-ansi.StringWidth(left)+r.w) + ansi.TruncateLeft(line, r.x+r.w, "")
-			}
-		}
+		line := ansi.Strip(row)
 		b.WriteString(strings.TrimRight(line, " "))
 	}
 	return b.String()
-}
-
-// shadow shades what shows right of and under a box, two cells and one row
-// (a cell is about twice as tall as wide), so a float stands off the text
-// it covers. The text stays; only its style goes.
-func shadow(rows [][]hostapi.Segment, x0, y0, bw, bh, w int) {
-	shade := func(y, x, n int) {
-		if y < 0 || y >= len(rows) || x >= w {
-			return
-		}
-		n = min(n, w-x)
-		row := padSegs(rows[y], w)
-		cut := [][]hostapi.Segment{truncateSegs(dropCells(row, x), n)}
-		dimRows(cut) // drops the click targets with the style
-		mid := cut[0]
-		for i := range mid {
-			if mid[i].HL == "Host:Dim" { // an image placeholder keeps its color
-				mid[i].HL = "WinShadow"
-			}
-		}
-		rows[y] = append(append(truncateSegs(row, x), mid...), dropCells(row, x+n)...)
-	}
-	for y := y0 + 1; y < y0+bh; y++ {
-		shade(y, x0+bw, 2)
-	}
-	shade(y0+bh, x0+2, bw)
 }
 
 // dimRows repaints rows in one fixed color. It copies each row: rows share
@@ -1118,14 +1045,10 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 	return lines
 }
 
-// pills are the Go-drawn statusline notes: the focused window, then what
-// reports a broken Lua layer (DESIGN §8), as plain text after a dot like the
-// rest of the rule.
+// pills are the Go-drawn statusline notes: what reports a broken Lua layer
+// (DESIGN §8), as plain text after a dot like the rest of the rule.
 func (a *App) pills() []hostapi.Segment {
 	var out []hostapi.Segment
-	if wn := a.focusedWin(); wn != nil {
-		out = append(out, hostapi.Segment{Text: fmt.Sprintf(" window %d · %s to leave ", wn.ID, a.unfocusKey()), HL: "Host:BtnSel"})
-	}
 	pill := func(text, click string) {
 		out = append(out, hostapi.Segment{Text: " · ", HL: "Comment"}, hostapi.Segment{Text: text, HL: "Danger", Click: click})
 	}
@@ -1333,7 +1256,9 @@ func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	if pad <= 0 {
 		return segs
 	}
-	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad)})
+	// Normal carries the app background (theme.lua), so a fill cell paints
+	// the canvas instead of leaving the terminal's background showing.
+	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal"})
 }
 
 // the same measurement the markdown renderer uses

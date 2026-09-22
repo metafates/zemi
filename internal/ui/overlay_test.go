@@ -15,7 +15,6 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/win"
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
@@ -238,22 +237,6 @@ func TestModalDimsBackground(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	if got := hl("hello"); got == "Host:Dim" {
 		t.Fatal("the palette dimmed the transcript")
-	}
-}
-
-// TestPermissionOverFloat: a float window never covers the permission
-// prompt.
-func TestPermissionOverFloat(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	defer host.Wins.CloseAll()
-	if _, err := host.Wins.Open(win.Spec{Cmd: "sleep 5", Kind: win.KindFloat}); err != nil {
-		t.Fatal(err)
-	}
-	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
-	findCell(t, app, "make deploy")
-	x, y := findCell(t, app, "No ")
-	if _, _, ok := app.target(x, y); !ok {
-		t.Fatal("the No choice under a float is not a target")
 	}
 }
 

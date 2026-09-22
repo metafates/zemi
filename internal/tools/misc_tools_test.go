@@ -7,13 +7,13 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -84,8 +84,8 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 // that ends the turn, and guidance instead of an error when nobody can
 // answer.
 func TestQuestionAndPlanTools(t *testing.T) {
-	const two = `{"questions":[{"question":"Which path?","options":[{"label":"A (Recommended)","description":"first"},{"label":"B"}]},
-		{"question":"Checks?","multi_select":true,"options":[{"label":"tests"},{"label":"vet"}]}]}`
+	const two = `{"questions":[{"type":"single_choice","question":"Which path?","options":[{"label":"A (Recommended)","description":"first"},{"label":"B"}]},
+		{"type":"multi_choice","question":"Checks?","options":[{"label":"tests"},{"label":"vet"}]}]}`
 	var asked []Question
 	answer := func(ans []string, ok bool) func([]Question) ([]string, bool) {
 		return func(qs []Question) ([]string, bool) { asked = qs; return ans, ok }
@@ -104,10 +104,11 @@ func TestQuestionAndPlanTools(t *testing.T) {
 			"The user answered:\n- \"Which path?\": A\n- \"Checks?\": tests, vet", false, false},
 		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
-		{"too many questions", "question", `{"questions":[{"question":"1"},{"question":"2"},{"question":"3"},{"question":"4"},{"question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
-		{"option without label", "question", `{"questions":[{"question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
-		{"approved in plan mode", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Mode: "auto", Path: "/p.md"}, true),
-			"plan mode is off; the permission mode is now auto. Implement it now", false, false},
+		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
+		{"option without label", "question", `{"questions":[{"type":"single_choice","question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
+		{"missing type", "question", `{"questions":[{"question":"x"}]}`, answer(nil, true), nil, "missing required field", true, false},
+		{"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Mode: "auto", Path: "/p.md"}, true),
+			"you are back as the default agent. Implementation runs in the next turn", false, true},
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
 		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},
 		{"plan with no user", "plan", `{"plan":"1. do it"}`, nil, nil, "Put the plan in your reply", false, false},
@@ -121,8 +122,37 @@ func TestQuestionAndPlanTools(t *testing.T) {
 			}
 		})
 	}
-	if len(asked) != 2 || !asked[1].Multi || asked[0].Options[0].Description != "first" {
+	if len(asked) != 2 || asked[1].Type != TypeMulti || asked[0].Options[0].Description != "first" {
 		t.Fatalf("question plumbing: %+v", asked)
+	}
+}
+
+// TestYesNoOptions: explicit options are kept as given (not doubled by the
+// Yes/No default), and omitted options fall back to Yes/No.
+func TestYesNoOptions(t *testing.T) {
+	p, _ := testPipeline(t, false)
+	var asked []Question
+	p.Question = func(qs []Question) ([]string, bool) { asked = qs; return []string{"yes"}, true }
+	tool := toolNamed(t, "question", p)
+	for _, c := range []struct {
+		name, input string
+		want        []string
+	}{
+		{"explicit options kept", `{"questions":[{"type":"yes_no","question":"x","options":[{"label":"Yes"},{"label":"No"}]}]}`, []string{"Yes", "No"}},
+		{"defaults when omitted", `{"questions":[{"type":"yes_no","question":"x"}]}`, []string{"Yes", "No"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if resp := call(t, tool, c.input); resp.IsError {
+				t.Fatalf("error: %+v", resp)
+			}
+			labels := make([]string, len(asked[0].Options))
+			for i, o := range asked[0].Options {
+				labels[i] = o.Label
+			}
+			if !slices.Equal(labels, c.want) {
+				t.Fatalf("options: %v, want %v", labels, c.want)
+			}
+		})
 	}
 }
 
@@ -422,49 +452,5 @@ func TestSearchParsers(t *testing.T) {
 	}
 	if got := formatHits(nil, 10); got != "(no results)" {
 		t.Fatalf("empty: %q", got)
-	}
-}
-
-func TestOpenInEditor(t *testing.T) {
-	p, _ := testPipeline(t, true)
-	p.Seen = &sync.Map{}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "note.txt")
-	write := func(s string) func(context.Context, string, int, string) error {
-		return func(_ context.Context, got string, line int, title string) error {
-			if got != path || line != 2 || title != "fix it" {
-				t.Fatalf("hook got %q line %d title %q", got, line, title)
-			}
-			return os.WriteFile(path, []byte(s), 0o644)
-		}
-	}
-	in := func() string { return fmt.Sprintf(`{"path":%q,"line":2,"reason":"fix it"}`, path) }
-
-	resp := call(t, toolNamed(t, "open_in_editor", p), in())
-	if !strings.Contains(resp.Content, "No editor is available") {
-		t.Fatalf("headless: %+v", resp)
-	}
-
-	p.Edit = write("")
-	resp = call(t, toolNamed(t, "open_in_editor", p), in())
-	if _, err := os.Stat(path); !os.IsNotExist(err) || !strings.Contains(resp.Content, "not kept") {
-		t.Fatalf("empty new file must be removed: %+v %v", resp, err)
-	}
-
-	if err := os.WriteFile(path, []byte("a\nb\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	p.Edit = write("a\nc\n")
-	resp = call(t, toolNamed(t, "open_in_editor", p), in())
-	if !strings.Contains(resp.Content, "-b") || !strings.Contains(resp.Content, "+c") {
-		t.Fatalf("diff: %+v", resp)
-	}
-	if fi, _ := os.Stat(path); p.stale(path, fi) != "" {
-		t.Fatal("the edited file must count as read")
-	}
-
-	p.Edit = func(context.Context, string, int, string) error { return errors.New("the editor exited with code 1") }
-	if resp = call(t, toolNamed(t, "open_in_editor", p), in()); !resp.StopTurn || !strings.Contains(resp.Content, "the editor exited with code 1") {
-		t.Fatalf("editor failure must stop the turn: %+v", resp)
 	}
 }

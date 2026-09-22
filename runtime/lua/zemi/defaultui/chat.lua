@@ -1,6 +1,10 @@
 -- The chat widget: the transcript, the live turn and the todo list.
 local fmt = require("zemi.defaultui.text")
 
+-- A running tool's mark: a smooth braille spinner, stepped by ctx.frame
+-- (50 ms a step), so a row that only shows in the live turn animates cleanly.
+local BRAILLE = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
 -- A tool row: a settled transcript row or a call of the live turn.
 ---@alias zemi.defaultui.Tool zemi.TranscriptRow|zemi.ToolCall
 
@@ -34,8 +38,7 @@ local live_tools = 0
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
 -- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
 -- reasoning line toggles it; one on an agent's row shows that run; one on a
--- file tool's row opens the file in the user's editor; one on any other
--- tool row expands that row.
+-- tool row expands it (a file tool's diff is always shown regardless).
 zemi.ui.widget.add({
   id = "chat",
   region = "chat",
@@ -44,18 +47,8 @@ zemi.ui.widget.add({
   ---@param ev zemi.WidgetClick
   on_click = function(ev)
     local run = ev.id:match("^agent:(.+)")
-    local line, path = ev.id:match("^file:(%d+):(.+)$")
     if run then
       assert(zemi.command.run("agents", "view " .. run))
-    elseif path then
-      line = tonumber(line)
-      -- a diff row takes a double click: a single one may start a selection
-      if line > 0 and (ev.clicks or 1) < 2 then return end
-      local function failed(err) zemi.notify.error(tostring(err), "Could not open " .. path) end
-      local ok, err = pcall(zemi.ui.edit, path, { line = line }, function(e)
-        if e then failed(e) end
-      end)
-      if not ok then failed(err) end
     elseif ev.id == "reasoning" then
       zemi.ui.reasoning.toggle()
     else
@@ -86,22 +79,11 @@ zemi.ui.widget.add({
       if prev then blank() end
       prev = block
     end
-    ---@param segs zemi.Line
-    ---@return boolean
-    local function has_text(segs)
-      for _, sg in ipairs(segs) do
-        if (sg.text or ""):match("%S") then return true end
-      end
-      return false
-    end
-    -- A reply: its first line carries the bullet, the rest indent under it.
+    -- A reply is indented, not bulleted: its lines share the user's left edge.
     ---@param text string
-    ---@param mark boolean Put the bullet on the first line with text.
-    local function add_markdown(text, mark)
+    local function add_markdown(text)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
-        local lead = "  "
-        if mark and has_text(segs) then lead, mark = "● ", false end
-        local row = { { text = lead, hl = "Normal", copy = false } }
+        local row = { { text = "  ", hl = "Normal", copy = false } }
         for _, sg in ipairs(segs) do row[#row + 1] = sg end
         lines[#lines + 1] = row
       end
@@ -138,8 +120,10 @@ zemi.ui.widget.add({
     ---@param hint string? The expand hint after the label.
     ---@param text string
     ---@param tail integer? Show only the last this many lines while collapsed.
-    local function add_reasoning(label, hint, text, tail)
-      local head = { { text = "✻ ", hl = "ThinkingMark", click = "reasoning", copy = false, hover = false }, { text = label, hl = "AgentReason", click = "reasoning", hover = false } }
+    ---@param spin boolean? Animate the mark with the braille spinner (live only).
+    local function add_reasoning(label, hint, text, tail, spin)
+      local mark = spin and (BRAILLE[ctx.frame % #BRAILLE + 1] .. " ") or "✻ "
+      local head = { { text = mark, hl = "ThinkingMark", click = "reasoning", copy = false, hover = false }, { text = label, hl = "AgentReason", click = "reasoning", hover = false } }
       if hint then head[#head + 1] = { text = "  " .. hint, hl = "Comment", click = "reasoning", hover = false } end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
@@ -176,6 +160,17 @@ zemi.ui.widget.add({
     ---@param t zemi.defaultui.Tool
     ---@return string
     local function tool_name(t) return t.tool or t.name or "?" end
+    -- title-case a tool name for the chat: underscores split into words
+    -- ("web_search" -> "Web Search", "mcp_foo_bar" -> "Mcp Foo Bar").
+    ---@param name string
+    ---@return string
+    local function title(name)
+      local out = {}
+      for w in name:gmatch("[^_]+") do
+        out[#out + 1] = w:sub(1, 1):upper() .. w:sub(2)
+      end
+      return table.concat(out, " ")
+    end
     ---@param t zemi.defaultui.Tool
     ---@return boolean
     local function collapsible(t)
@@ -212,22 +207,19 @@ zemi.ui.widget.add({
       end
       local summary = table.concat(parts, ", ")
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
-      lines[#lines + 1] = { { text = "● ", hl = "AgentToolOk", copy = false, click = click },
+      lines[#lines + 1] = { { text = "✓ ", hl = "AgentToolOk", copy = false, click = click },
         { text = fmt.clip(summary, width - 4), hl = "Normal", click = click } }
     end
-    -- tools whose input is a file path: their rows open that file
-    ---@type table<string, boolean>
-    local FILE_TOOL = { read = true, write = true, edit = true, multiedit = true }
     ---@param t zemi.defaultui.Tool
     ---@param idx integer Transcript index, negative for a live-turn call.
     local function add_tool(t, idx)
       local name = tool_name(t)
       local open = ctx.show_reasoning or expanded[idx] or false
-      local mark, hl = ctx.frame % 20 >= 10 and "◦ " or "● ", "AgentToolRun"
+      local mark, hl = BRAILLE[ctx.frame % #BRAILLE + 1] .. " ", "AgentToolRun"
       if t.status == "ok" then
-        mark, hl = "● ", "AgentToolOk"
+        mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
-        mark, hl = "● ", "AgentToolErr"
+        mark, hl = "× ", "AgentToolErr"
       end
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""
@@ -240,21 +232,16 @@ zemi.ui.widget.add({
       if label ~= "" then
         head[#head + 1] = { text = fit(label, width - 12), hl = "Normal" }
       else
-        local verb = VERB[name] or name
+        local verb = VERB[name] or title(name)
         head[#head + 1] = { text = verb, hl = "AgentToolName" }
         if input ~= "" then head[#head + 1] = { text = " " .. fit(input, width - fmt.cells(verb) - 12), hl = "Comment" } end
       end
       if t.status == "run" and (t.elapsed or 0) >= 1 then
-        head[#head + 1] = { text = string.format(" · %ds", math.floor(t.elapsed)), hl = "Comment" }
+        head[#head + 1] = { text = " · " .. fmt.elapsed(t.elapsed), hl = "Comment" }
       end
-      -- The file a file tool touched, for the click ids below: line 0 is the
-      -- head row, a diff row carries its own line.
-      local file = FILE_TOOL[name] and ((t.text or t.input or ""):match("^%s*(.-)%s*$")) or ""
-      ---@param n integer
-      ---@return string?
-      local function file_click(n) return file ~= "" and ("file:" .. n .. ":" .. file) or nil end
-      -- an agent's rows open its transcript (ids must differ between adjacent rows)
-      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or file_click(0) or ("tool:" .. idx)
+      -- an agent's rows open its transcript (ids must differ between adjacent rows),
+      -- every other row (file tools included) expands the call
+      local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
       -- under the row: the command a description stands for, then progress
@@ -293,13 +280,12 @@ zemi.ui.widget.add({
             local blank_lead = string.rep(" ", fmt.cells(lead))
             -- the number and +/- are decoration: a copy gives the code
             local parts = fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)
-            local dclick = hunks > 0 and file_click(num) or nil
             for j, part in ipairs(parts) do
-              -- a diff line is body: the pointer alone says the click opens it
+              -- a diff line is body: no hover, but the click expands like the head
               lines[#lines + 1] = {
-                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = dclick, hover = false },
-                { text = part, hl = style, soft_wrap = j < #parts, click = dclick, hover = false },
-                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = dclick, hover = false },
+                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = click, hover = false },
+                { text = part, hl = style, soft_wrap = j < #parts, click = click, hover = false },
+                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = click, hover = false },
               }
             end
           else
@@ -309,11 +295,11 @@ zemi.ui.widget.add({
           end
         end
       end
-      -- the result's last lines: always for a failure and for what the user
-      -- answered, for commands with ctrl+o
+      -- the result's last lines: always for a failure, for what the user
+      -- answered (question, plan), for commands with ctrl+o
       local output = t.output or ""
       if name == "question" then output = output:gsub("^The user answered:\n", "") end
-      if output ~= "" and (t.status == "err" or name == "question" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
+      if output ~= "" and (t.status == "err" or name == "question" or name == "plan" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
         for ol in (output .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "    ", copy = false }, { text = ol, hl = ohl } }
@@ -420,7 +406,7 @@ zemi.ui.widget.add({
         end
       else
         gap("text")
-        add_markdown(m.text, true)
+        add_markdown(m.text)
         ---@type string[]
         local parts = {}
         local telapsed, tout = fmt.secs(m.elapsed), fmt.tokens(m.out)
@@ -497,20 +483,27 @@ zemi.ui.widget.add({
       -- the tail only while the model is thinking, not while a tool runs
       if (ag.reasoning or "") ~= "" and text == "" and not waiting then
         gap("activity")
-        add_reasoning("Thinking", nil, ag.reasoning, 3)
+        add_reasoning("Thinking", nil, ag.reasoning, 3, true)
       end
       if text ~= "" then
         gap("text")
-        add_markdown(text, true)
+        add_markdown(text)
       end
       -- queued messages are the user's own words waiting their turn, so they
-      -- get a row of their own rather than a mark glued to the tool above
+      -- carry the user row's accent bar, marked queued, apart from the
+      -- agent's rows above
       for _, q in ipairs(queued) do
         gap("queued")
-        lines[#lines + 1] = {
-          { text = " queued ", hl = "Queued", copy = false },
-          { text = " " .. (q:gsub("%s+", " ")), hl = "Comment" },
-        }
+        local first = true
+        for _, segs in ipairs(zemi.ui.markdown(q, width - 2)) do
+          local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
+          if first then
+            row[#row + 1] = { text = " queued ", hl = "Queued", copy = false }
+            first = false
+          end
+          for _, sg in ipairs(segs) do row[#row + 1] = sg end
+          lines[#lines + 1] = row
+        end
       end
     end
     -- The todo list stays under the conversation until every item is done.
