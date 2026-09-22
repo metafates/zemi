@@ -124,6 +124,12 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
 	note := finish()
+	// the shell exited 0; a child it left behind held the pipe until
+	// WaitDelay, and proc.Wait killed it
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+		note = "\na background process it started was stopped when the command returned; a server or watcher belongs in job_start" + note
+	}
 	if err != nil {
 		if b.Len() > 0 {
 			b.WriteString("\n")

@@ -119,6 +119,16 @@ func TestBashTimeoutBecomesJob(t *testing.T) {
 	}
 }
 
+// TestBashOrphanIsNotAnError: a command that leaves a child holding the
+// pipe exited 0; the child is stopped and named, not reported as a failure.
+func TestBashOrphanIsNotAnError(t *testing.T) {
+	t.Parallel()
+	res, _ := runBash(context.Background(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
+	if res.IsError || !strings.HasPrefix(res.Content, "started\na background process it started was stopped") {
+		t.Fatalf("orphan: %+v", res)
+	}
+}
+
 // TestJobStreamsOutput: job_read shows a long-running process's output
 // while it runs, and a shell line works without args.
 func TestJobStreamsOutput(t *testing.T) {
