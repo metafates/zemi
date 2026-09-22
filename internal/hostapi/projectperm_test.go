@@ -36,7 +36,7 @@ python x.py
 		t.Fatalf("step: %v", err)
 	}
 	want := []struct {
-		cmd  string
+		cmd   string
 		allow bool
 	}{
 		{"git push origin main", true},
