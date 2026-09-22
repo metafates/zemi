@@ -49,8 +49,8 @@ type markdownCache struct {
 	renderers map[string]*glamour.TermRenderer
 	lines     map[string][][]Segment
 	prev      map[string][][]Segment
-	bytes     int // roughly what lines holds: a window panel keyed by its
-	// whole body would otherwise retain every version of it
+	bytes     int // roughly what lines holds: a streaming reply keyed by its
+	// whole text would otherwise retain every version of it
 }
 
 func (c *markdownCache) put(k string, v [][]Segment) {

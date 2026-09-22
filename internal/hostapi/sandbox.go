@@ -1,6 +1,6 @@
 // sandbox.go confines the commands a permission mode settles (DESIGN §9):
-// the backend is probed once in NewHost, and bash, job_start and window
-// runs a mode allowed start under sandboxPolicy.
+// the backend is probed once in NewHost, and bash and job_start runs a
+// mode allowed start under sandboxPolicy.
 package hostapi
 
 import (

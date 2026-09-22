@@ -1056,8 +1056,8 @@ func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment
 }
 
 // statusClusters are the statusline's two sides fitted into w cells: the
-// focused window and the left region's widgets followed by the pills that
-// report a broken Lua layer, then the right region's widgets.
+// left region's widgets followed by the pills that report a broken Lua
+// layer, then the right region's widgets.
 func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
 	left, right = a.statuslineSegments(leftRegion), a.statuslineSegments(rightRegion)
 	pills := a.pills()

@@ -420,7 +420,6 @@ func landlock(p Policy) error {
 	// other terminals and input devices: reading one reads what the user
 	// types there. /dev/tty and a pty fd the command inherits still work,
 	// since Landlock checks at open.
-	// NOTE: so /dev/stdin in a window, which reopens its pty, fails too
 	devices := []string{"/dev/pts", "/dev/console", "/dev/input"}
 	for _, g := range []string{"/dev/tty?*", "/dev/vcs*", "/dev/hidraw*"} {
 		m, _ := filepath.Glob(g)
