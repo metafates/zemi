@@ -131,6 +131,10 @@ func run(args []string) int {
 		if err := rt.Boot(ctx, steps); err != nil {
 			return fail(err)
 		}
+		// the flags first, so the rows say what a run with them would use
+		if err := applyOptions(host, opts); err != nil {
+			return fail(err)
+		}
 		return printHealth(host, os.Stdout)
 	}
 
