@@ -678,6 +678,12 @@ func (a *App) pushToast(level, title, body string) {
 		a.host.RecordError(title, body)
 		t.recorded = true
 	}
+	// the same failure again (a second send with no model) restarts the
+	// toast instead of stacking a twin under it
+	if n := len(a.toasts); n > 0 && a.toasts[n-1].level == level && a.toasts[n-1].title == title && a.toasts[n-1].body == t.body {
+		a.toasts[n-1] = t
+		return
+	}
 	a.toasts = append(a.toasts, t)
 	if len(a.toasts) > 3 {
 		a.toasts = a.toasts[len(a.toasts)-3:]

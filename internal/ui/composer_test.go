@@ -435,7 +435,8 @@ func TestPaletteComplete(t *testing.T) {
 
 // TestPasteToken: a large paste stands in the composer as one token that
 // backspace removes whole and submit expands; small pastes stay inline.
-// TestSubmitFailed: the test app has no model, so every send fails.
+// TestSubmitFailed: the test app has no model, so every send fails, and
+// the same failure twice is one toast.
 func TestSubmitFailed(t *testing.T) {
 	for _, text := range []string{"send with no model keeps the text", "an empty popup still sends @nope.txt"} {
 		app := newTestApp(t, t.TempDir())
@@ -444,9 +445,13 @@ func TestSubmitFailed(t *testing.T) {
 			app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
 		}
 		app.composerKey("enter", tea.KeyPressMsg{})
+		app.composerKey("enter", tea.KeyPressMsg{})
 		c := app.composer
 		if c.text != text || c.cursor != len(c.runes()) || len(c.history) != 1 || app.completion.open {
 			t.Errorf("%s: text %q cursor %d history %v popup %v", text, c.text, c.cursor, c.history, app.completion.open)
+		}
+		if len(app.toasts) != 1 || !strings.HasPrefix(app.toasts[0].body, "no model yet") {
+			t.Errorf("%s: toasts %+v", text, app.toasts)
 		}
 	}
 }
