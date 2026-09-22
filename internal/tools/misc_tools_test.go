@@ -367,11 +367,24 @@ func TestFetchGates(t *testing.T) {
 	srv := httptest.NewServer(nil)
 	defer srv.Close()
 	res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
-	if !res.IsError || !strings.Contains(res.Content, "refused") {
+	if !res.IsError || !strings.Contains(res.Content, "refused: 127.0.0.1 is a private address; only an allow rule for net.127.0.0.1") {
 		t.Fatalf("loopback target must be refused at dial time: %+v", res)
 	}
 	if len(*asked) != 1 {
 		t.Fatalf("one fetch must ask once: %+v", *asked)
+	}
+	// the §9 opt-in: a rule from the user's config allows the private
+	// address, a session "always" answer (principal model) does not
+	for _, c := range []struct {
+		principal string
+		wantErr   bool
+	}{{"", false}, {"model", true}} {
+		local, _ := testPipeline(t, false, perm.Rule{Subject: "net.127.0.0.1", Pattern: "*", Decision: perm.Allow, Principal: c.principal})
+		local.Principal = "model"
+		res := call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
+		if res.IsError != c.wantErr {
+			t.Fatalf("principal %q: %+v", c.principal, res)
+		}
 	}
 
 	// the rules an "always" answer writes also cover a redirect hop

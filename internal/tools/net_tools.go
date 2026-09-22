@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -83,7 +84,7 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 			return fmt.Errorf("non-IP dial address %q", host)
 		}
 		if !allowPrivate && ipDenied(ip) {
-			return fmt.Errorf("address %s is refused", ip)
+			return &privateAddrError{ip}
 		}
 		return nil
 	}
@@ -106,6 +107,12 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 		},
 	}
 }
+
+// privateAddrError is a dial the §9 set refused; fetch names the rule that
+// would permit it.
+type privateAddrError struct{ ip net.IP }
+
+func (e *privateAddrError) Error() string { return "address " + e.ip.String() + " is private" }
 
 // ParseNetURL validates scheme and userinfo for every fetch hop.
 func ParseNetURL(raw string) (*url.URL, error) {
@@ -140,9 +147,13 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// the tool gate already checked this URL; a second check here would ask
 	// the user again
 	raw := str(input["url"])
-	if _, err := ParseNetURL(raw); err != nil {
+	u, err := ParseNetURL(raw)
+	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	// §9 localhost development opt-in: a rule the user wrote in config for
+	// this host, never a session "always" answer (principal model)
+	allowPrivate := p.verdict.Rule != nil && p.verdict.Rule.Principal == ""
 	client := SafeClient(func(hop *url.URL) error {
 		if hop.Scheme != "http" && hop.Scheme != "https" {
 			return fmt.Errorf("redirect to non-http scheme refused")
@@ -151,13 +162,17 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			return fmt.Errorf("redirect with userinfo refused")
 		}
 		return netGate(p, hop, "fetch redirect")
-	}, false)
+	}, allowPrivate)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	req.Header.Set("User-Agent", "zemi/0.1")
 	resp, err := client.Do(req)
+	var private *privateAddrError
+	if errors.As(err, &private) {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("refused: %s is a private address; only an allow rule for net.%s in the user's init.lua permits it", private.ip, u.Hostname())), nil
+	}
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

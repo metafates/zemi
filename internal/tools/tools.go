@@ -80,7 +80,8 @@ type Request struct {
 type Verdict struct {
 	Decision  perm.Decision
 	Reason    string
-	DecidedBy string // rule, hook, user, overlay, default
+	DecidedBy string     // rule, hook, user, overlay, default
+	Rule      *perm.Rule // the rule behind a "rule" verdict, nil otherwise
 }
 
 // DeniedText is the tool error a refused gate returns: who decided, what
@@ -216,6 +217,9 @@ type Pipeline struct {
 
 	// changed is what a bash run found changed, kept on its per-run copy for post
 	changed []string
+	// verdict is the gate's answer to the run's last request, kept on the
+	// per-run copy: fetch reads which rule allowed the URL
+	verdict Verdict
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -246,7 +250,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
-		return Verdict{perm.Deny, "the agent is read-only: no file changes (pick another agent)", "profile:readonly"}
+		return Verdict{Decision: perm.Deny, Reason: "the agent is read-only: no file changes (pick another agent)", DecidedBy: "profile:readonly"}
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
@@ -275,9 +279,9 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	switch o.Decision {
 	case perm.Allow:
-		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o)}, o.Rule)
+		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o), o.Rule}, o.Rule)
 	case perm.Deny:
-		return Verdict{perm.Deny, o.Reason, decidedBy(o)}
+		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
 	}
 	return p.resolveAsk(req, o.Reason)
 }
@@ -393,11 +397,11 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		if req.Reason != "" {
 			reason += " (asked because " + req.Reason + ")"
 		}
-		return Verdict{perm.Ask, reason + "; no overlay available, failing closed", "default"}
+		return Verdict{Decision: perm.Ask, Reason: reason + "; no overlay available, failing closed", DecidedBy: "default"}
 	}
 	allowed, by, why := p.Ask(req)
 	if allowed {
-		return Verdict{perm.Allow, "", by}
+		return Verdict{Decision: perm.Allow, DecidedBy: by}
 	}
 	// who said no and why it asked; the rule text ("no rule matched") says neither
 	who := "denied (" + by + ")"
@@ -406,9 +410,9 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		// they saw the request and refused it: the ask's reason says why it
 		// asked, which after a no is not why the call was denied
 		if why != "" {
-			return Verdict{perm.Deny, "denied by the user (it asked because " + why + ")", by}
+			return Verdict{Decision: perm.Deny, Reason: "denied by the user (it asked because " + why + ")", DecidedBy: by}
 		}
-		return Verdict{perm.Deny, "denied by the user", by}
+		return Verdict{Decision: perm.Deny, Reason: "denied by the user", DecidedBy: by}
 	case by == "default" || by == "unsandboxed":
 		who = "nobody could answer the ask"
 		// nobody saw the ask, so the reason it asked is all the caller gets
@@ -423,7 +427,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	if why != "" {
 		who += ": " + why
 	}
-	return Verdict{perm.Deny, who, by}
+	return Verdict{Decision: perm.Deny, Reason: who, DecidedBy: by}
 }
 
 // tool implements fantasy.AgentTool over a plain run function.
@@ -495,9 +499,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			}
 		}
 	}
+	run := *pipe
 	for _, req := range t.subjects(input) {
 		req.Tool = t.info.Name
 		v := pipe.CheckDenied(req)
+		run.verdict = v
 		if v.Decision == perm.Deny {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+req.Arg))), nil
 		}
@@ -505,12 +511,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
 		}
 		if pol := pipe.SandboxFor(req, v); pol != nil {
-			rp := *pipe
-			rp.Sandboxed = pol
-			pipe = &rp
+			run.Sandboxed = pol
 		}
 	}
-	run := *pipe
 	res, err := t.run(ctx, &run, input)
 	return t.post(&run, input, res), err
 }
@@ -816,7 +819,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runGrep),
 
-		mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused.",
+		mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused unless the user's config allows the host.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
