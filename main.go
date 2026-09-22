@@ -185,8 +185,8 @@ func run(args []string) int {
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, opts); err != nil {
+			host.RecordError("flag", err.Error())
 			app.Notify("error", "A flag did not apply", err.Error())
-			return
 		}
 		if opts.prompt != "" {
 			if err := sendPrompt(host, opts.prompt); err != nil {
