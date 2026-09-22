@@ -1148,6 +1148,9 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 // chrome (DESIGN §8): they resolve to fixed styles and never consult the theme.
 func (a *App) hlStyle(hl string) uv.Style {
 	if st, ok := fixedStyle(hl, a.thm.light); ok {
+		if st.Bg == nil { // chrome sits on the theme's canvas like any group
+			st.Bg = appBG(a.thm, a.thm.active())
+		}
 		return st
 	}
 	return a.thm.style(hl)

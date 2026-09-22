@@ -31,14 +31,13 @@ func rgb(v uint32) ansi.RGBColor {
 
 // chrome is the host chrome's palette: greys and the one accent
 // (periwinkle), plus the faintest tint a diff row may take. Red, green and
-// yellow stay the terminal's own, so the user's palette decides them. bg
-// is the chrome's own canvas: host-drawn text and dims paint it, so the
-// terminal's background never shows through even under a modal.
-type chrome struct{ fg, dim, rule, accent, panel, add, del, bg color.Color }
+// yellow stay the terminal's own, so the user's palette decides them. The
+// canvas is the theme's (hlStyle fills it), so chrome and widgets share one.
+type chrome struct{ fg, dim, rule, accent, panel, add, del color.Color }
 
 var (
-	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x1b2417), rgb(0x2a1a1a), rgb(0x141414)}
-	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7), rgb(0xfafafa)}
+	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x1b2417), rgb(0x2a1a1a)}
+	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7)}
 	// keyed by "the terminal is light"
 	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
 )
@@ -47,16 +46,16 @@ var (
 // chrome: no theme can restyle them, so nothing can dress up a prompt.
 func chromeStyles(c chrome) map[string]uv.Style {
 	return map[string]uv.Style{
-		"Host:Bold":        {Fg: c.fg, Bg: c.bg, Attrs: uv.AttrBold},
-		"Host:Title":       {Fg: c.accent, Bg: c.bg, Attrs: uv.AttrBold},
-		"Host:Rule":        {Fg: c.rule, Bg: c.bg},
+		"Host:Bold":        {Fg: c.fg, Attrs: uv.AttrBold},
+		"Host:Title":       {Fg: c.accent, Attrs: uv.AttrBold},
+		"Host:Rule":        {Fg: c.rule},
 		"Host:Cursor":      {Attrs: uv.AttrReverse},
-		"Host:Value":       {Fg: c.fg, Bg: c.bg},
-		"Host:Hint":        {Fg: c.dim, Bg: c.bg},
-		"Host:HintKey":     {Fg: c.accent, Bg: c.bg},
-		"Host:Warn":        {Fg: ansi.Yellow, Bg: c.bg},
-		"Host:Ok":          {Fg: ansi.Green, Bg: c.bg},
-		"Host:Danger":      {Fg: ansi.Red, Bg: c.bg},
+		"Host:Value":       {Fg: c.fg},
+		"Host:Hint":        {Fg: c.dim},
+		"Host:HintKey":     {Fg: c.accent},
+		"Host:Warn":        {Fg: ansi.Yellow},
+		"Host:Ok":          {Fg: ansi.Green},
+		"Host:Danger":      {Fg: ansi.Red},
 		"Host:DangerPanel": {Fg: ansi.Red, Bg: c.panel, Attrs: uv.AttrBold},
 		"Host:Panel":       {Fg: c.fg, Bg: c.panel},
 		"Host:PanelTitle":  {Fg: c.accent, Bg: c.panel, Attrs: uv.AttrBold},
@@ -67,7 +66,7 @@ func chromeStyles(c chrome) map[string]uv.Style {
 		"Host:BtnSel":      {Attrs: uv.AttrReverse | uv.AttrBold},
 		"Host:Selection":   {Attrs: uv.AttrReverse},
 		"Host:Hover":       {Underline: uv.UnderlineSingle},
-		"Host:Dim":         {Fg: c.rule, Bg: c.bg},
+		"Host:Dim":         {Fg: c.rule},
 	}
 }
 
