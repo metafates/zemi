@@ -543,7 +543,12 @@ how many rows the frame takes, so nothing above it reflows.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
   allows and bash allows other than `ReadCommand` flip to ask; the sandbox keeps the project
-  unwritable. Approving the plan returns to the agent and mode that ran before.
+  unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
+  turn ends (the read-only pipeline cannot implement) and the ended turn's `planFollowup`
+  starts a fresh send as the restored agent to implement, using the plan already in history.
+  A read-only turn that ends in plain text instead of the `plan` tool has that text presented
+  for approval the same way (`planFollowup` -> `presentPlan`), so a forgotten `plan` call
+  cannot end the chat silently.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
   (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.

@@ -785,7 +785,10 @@ page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
 answer), `plan` (shows the plan in its own scrollable popup for approval; for a
 read-only agent the agent and mode active before it are remembered at its start,
-and approval returns to them), `open_in_editor` (the user
+and approval returns to them - the turn ends there because the read-only
+pipeline cannot implement, and the ended turn starts a fresh send as the
+restored agent, so a read-only run that ends in plain text instead of the
+`plan` tool presents that text for approval the same way), `open_in_editor` (the user
 edits a file in their own editor; the result is the diff),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,

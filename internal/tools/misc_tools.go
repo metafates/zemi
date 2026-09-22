@@ -108,7 +108,9 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Profile != "":
-		return fantasy.NewTextResponse("The user approved the plan; you are back as the " + v.Profile + " agent in " + v.Mode + " mode." + implement), nil
+		// the read-only turn that proposed this ends here; the run's planFollowup
+		// starts implementation as the restored agent, so do not keep going
+		return stopTurn("The user approved the plan; you are back as the " + v.Profile + " agent. Implementation runs in the next turn."), nil
 	case v.Approved && v.Mode != "":
 		return fantasy.NewTextResponse("The user approved the plan; the permission mode is now " + v.Mode + "." + implement), nil
 	case v.Approved:

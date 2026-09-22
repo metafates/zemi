@@ -344,6 +344,19 @@ func listMove(key string) int {
 	return 0
 }
 
+// scrollDelta is how many rows a scroll key moves a text viewport: the page
+// keys move a page, the list keys (j/k, arrows) a line. A viewport that also
+// lists rows uses only the page keys, since the list keys select (overlay.go).
+func scrollDelta(key string) int {
+	switch key {
+	case "pgup":
+		return -10
+	case "pgdown":
+		return 10
+	}
+	return listMove(key)
+}
+
 // runRHS executes a keymap right-hand side on the ui class under the
 // binding's registration origin (DESIGN §9 attribution), on the background
 // worker.
@@ -471,7 +484,9 @@ func (a *App) wheelChrome(step int) bool {
 	case "perm":
 		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
 	case "plan":
-		a.planAsk.scroll = max(0, a.planAsk.scroll+step)
+		if !a.planAsk.typing { // the wheel scrolls the plan, not a text field
+			a.planAsk.scroll = max(0, a.planAsk.scroll+step)
+		}
 	case "trust":
 	case "memReview":
 		move(&a.memReview.sel, len(a.memReview.items))

@@ -8,6 +8,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -39,6 +40,78 @@ func TestPlanMode(t *testing.T) {
 	p, _ := h.resolveProfile("planner")
 	if !strings.Contains(h.buildSystem(p), "Plan mode") {
 		t.Fatal("system prompt misses the plan mode section")
+	}
+}
+
+// TestPlanApprovalSwitchesBack: approving a read-only agent's plan returns to
+// the agent and mode it replaced, is no longer read-only, and records the
+// implementation handoff planFollowup sends.
+func TestPlanApprovalSwitchesBack(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
+	h.SetUIHooks(ui)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.readOnly() {
+		t.Fatal("planner must be read-only")
+	}
+	v, ok := h.approvePlan("# The plan")
+	if !ok || !v.Approved || v.Profile != "default" {
+		t.Fatalf("approve: %+v ok=%v", v, ok)
+	}
+	if got := h.Settings.Str("agent.profile"); got != "default" {
+		t.Fatalf("profile not restored to default, got %q", got)
+	}
+	if h.readOnly() {
+		t.Fatal("still read-only after approval")
+	}
+	if got := h.takePlanApproved(); got != implementNow {
+		t.Fatalf("planApproved handoff = %q", got)
+	}
+}
+
+// TestPlanFeedbackKeepsPlanner: a read-only plan the user asks to change does
+// not switch the agent, so the planner revises and presents again.
+func TestPlanFeedbackKeepsPlanner(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Feedback: "use sqlite"}}
+	h.SetUIHooks(ui)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	v, ok := h.approvePlan("# The plan")
+	if !ok || v.Approved {
+		t.Fatalf("feedback must not approve: %+v ok=%v", v, ok)
+	}
+	if h.Settings.Str("agent.profile") != "planner" {
+		t.Fatalf("feedback must keep the planner, got %q", h.Settings.Str("agent.profile"))
+	}
+	if h.takePlanApproved() != "" {
+		t.Fatal("feedback must not set the implementation handoff")
+	}
+}
+
+// TestPlainTextEnd reports whether an idle run ended in a plain-text assistant
+// reply (the planner forgetting the plan tool) rather than a tool call.
+func TestPlainTextEnd(t *testing.T) {
+	plain := &agent.Runner{History: []fantasy.Message{
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "# plan\nsteps"}}},
+	}}
+	if got := plainTextEnd(plain); got != "# plan\nsteps" {
+		t.Fatalf("plain-text end = %q", got)
+	}
+	toolCall := &agent.Runner{History: []fantasy.Message{
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{}}},
+	}}
+	if got := plainTextEnd(toolCall); got != "" {
+		t.Fatalf("tool-call end = %q", got)
+	}
+	toolResult := &agent.Runner{History: []fantasy.Message{
+		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{}},
+	}}
+	if got := plainTextEnd(toolResult); got != "" {
+		t.Fatalf("tool-result end = %q", got)
 	}
 }
 

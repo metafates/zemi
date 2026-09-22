@@ -206,13 +206,21 @@ func (h *Host) SetPermMode(mode string) error {
 	return nil
 }
 
-// approvePlan is the plan tool's hook: the plan joins the transcript and is
-// saved, then the user sees it in the Plan popup and approves it, types what
-// to change, or dismisses it. A read-only agent (planner) remembers what ran
-// before it (prePlan), so approving a plan just returns to that agent and
-// mode instead of asking; yolo modes are never chosen, so an approval never
-// allows everything.
+// approvePlan is the plan tool's hook. presentPlan is its body, shared with
+// the turn-end path (planFollowup) that catches a read-only agent which ended
+// in plain text instead of calling the plan tool.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
+	return h.presentPlan(plan)
+}
+
+// presentPlan shows a plan in the approval popup. The plan joins the transcript
+// and is saved, then the user approves it, types what to change, or dismisses
+// it. A read-only agent (planner) remembers what ran before it (prePlan), so
+// approving a plan returns to that agent and mode instead of asking; an
+// approval records an implementation handoff (planApproved) that the ended
+// turn passes on to planFollowup. yolo modes are never chosen, so an approval
+// never allows everything.
+func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 	ui := h.hooks()
 	if ui == nil {
 		return tools.PlanVerdict{}, false
@@ -247,6 +255,9 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 			if err := h.SetPermMode(v.Mode); err != nil {
 				return v, false
 			}
+			// the read-only turn cannot implement the plan itself; the turn-end
+			// hook runs it as the restored agent
+			h.setPlanApproved(implementNow)
 		}
 		v.Approved = true
 		return v, true

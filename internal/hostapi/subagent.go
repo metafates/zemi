@@ -497,6 +497,9 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, delay.Round(time.Second)))
 }
 
+// StepDone is unused: a subagent's whole run bills once at TurnDone.
+func (s *subagentHooks) StepDone(usage fantasy.Usage) {}
+
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	h.bill(s.run.parent, s.modelID, usage)

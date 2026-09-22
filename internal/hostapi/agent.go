@@ -170,6 +170,11 @@ type agentHost struct {
 	todoCalls      int
 	todoPending    bool
 
+	// planApproved is set when a read-only agent's plan is approved; the ended
+	// turn's planFollowup starts implementation as the restored agent. Cleared
+	// by takePlanApproved.
+	planApproved string
+
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
 	titled    bool
@@ -428,7 +433,10 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	h.GoSafe("agent turn", func() { h.runTurns(runner, scope, text) })
+	h.GoSafe("agent turn", func() {
+		h.runTurns(runner, scope, text)
+		h.planFollowup(runner)
+	})
 	return nil
 }
 
@@ -769,6 +777,20 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
 }
 
+// StepDone bills a completed step's usage to the live session tally, so the
+// token count moves during the turn instead of only at TurnDone.
+func (s *streamAdapter) StepDone(usage fantasy.Usage) {
+	h := s.h
+	ag := h.agents
+	ag.mu.Lock()
+	sid, model := ag.sessionID, ag.turnModel
+	ag.mu.Unlock()
+	if model == "" {
+		model = h.currentModelID(nil) // a turn the host did not start (tests)
+	}
+	h.bill(sid, model, usage)
+}
+
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
@@ -801,7 +823,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Unlock()
 
 	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
-	h.bill(sid, model, usage)
 	if hold {
 		return
 	}
@@ -1141,12 +1162,14 @@ type StreamSnapshot struct {
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
-	// the percent readout.
+	// the percent readout. Pending is the in-flight step's streamed output
+	// (reasoning + reply) at ~4 bytes a token, so the count ticks as it streams.
 	SessionIn   int64
 	SessionOut  int64
 	LastIn      int64
 	CtxWindow   int64
 	SessionCost float64
+	Pending     int64
 	// prompt cache tokens read, over the input billed alongside them. Both
 	// count this process only (a resumed session's earlier turns are not in
 	// the store), so the share stays honest.
@@ -1173,6 +1196,9 @@ func (h *Host) AgentStream() StreamSnapshot {
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
 		CtxWindow: ag.ctxWin,
+	}
+	if ag.active && (len(ag.reasonBuf)+len(ag.textBuf)) > 0 {
+		out.Pending = int64(len(ag.reasonBuf)+len(ag.textBuf)) / 4
 	}
 	out.Model = ag.modelSeed
 	if out.Model == "" {
@@ -1503,6 +1529,97 @@ func (h *Host) cycleProfile(step int) error {
 		i = 0
 	}
 	return h.SetProfile(names[((i+step)%n+n)%n])
+}
+
+// implementNow is the message a fresh send carries to the restored agent after
+// its plan is approved; the plan itself stays in history.
+const implementNow = "The user approved the plan above. Implement it: track its steps with todos, carry them through, verify, and report."
+
+func (h *Host) setPlanApproved(msg string) {
+	h.agents.mu.Lock()
+	h.agents.planApproved = msg
+	h.agents.mu.Unlock()
+}
+
+func (h *Host) takePlanApproved() string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	msg := ag.planApproved
+	ag.planApproved = ""
+	return msg
+}
+
+// planFollowup runs after a turn goroutine ends. An approved plan (presentPlan
+// set planApproved) is sent to the restored agent to implement; otherwise a
+// read-only agent that ended in plain text instead of the plan tool has the
+// text presented for approval. Runs on the turn goroutine, never the UI one.
+func (h *Host) planFollowup(runner *agent.Runner) {
+	if msg := h.takePlanApproved(); msg != "" {
+		h.startImplementation(msg)
+		return
+	}
+	if !h.readOnly() {
+		return
+	}
+	text := plainTextEnd(runner)
+	if text == "" {
+		return
+	}
+	// the popup blocks this goroutine, so claim the agent while it is up; a
+	// submit then queues instead of starting a second send under the popup.
+	// Released on every path, including a panic mid-popup.
+	scope := h.beginScope()
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.mu.Unlock()
+	ended := false
+	defer func() { // released on every path, including a panic mid-popup
+		if !ended {
+			h.endScope(scope)
+		}
+	}()
+	v, ok := h.presentPlan(text)
+	h.endScope(scope)
+	ended = true
+	if !ok { // dismissed, or the switch failed: the planner stays
+		return
+	}
+	if v.Approved {
+		h.startImplementation(h.takePlanApproved())
+	} else if v.Feedback != "" {
+		// the user asked for changes: hand them back to the still-read-only planner
+		if err := h.AgentSend("The user did not approve the plan and asked for changes: " + v.Feedback + "\nRevise it and present the plan again."); err != nil {
+			h.Log.Error("agent", "plan-feedback send failed", map[string]any{"error": err.Error()})
+		}
+	}
+}
+
+// startImplementation sends the approved-plan handoff to the restored agent.
+func (h *Host) startImplementation(msg string) {
+	if err := h.AgentSend(msg); err != nil {
+		h.Log.Error("agent", "implementation send failed", map[string]any{"error": err.Error()})
+	}
+}
+
+// plainTextEnd returns the final plain-text reply of an idle run, or "" when
+// it ended in a tool call (an approved or dismissed plan). A read-only agent
+// is told to end every turn with the plan tool; one that ended in text forgot.
+func plainTextEnd(runner *agent.Runner) string {
+	h := runner.History
+	if len(h) == 0 || h[len(h)-1].Role != fantasy.MessageRoleAssistant {
+		return ""
+	}
+	var text strings.Builder
+	for _, p := range h[len(h)-1].Content {
+		if _, ok := p.(fantasy.ToolCallPart); ok {
+			return ""
+		}
+		if tp, ok := p.(fantasy.TextPart); ok {
+			text.WriteString(tp.Text)
+		}
+	}
+	return strings.TrimSpace(text.String())
 }
 
 // OpenProfilePicker lists the profiles with what each changes; enter switches.

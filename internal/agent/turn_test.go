@@ -81,6 +81,7 @@ type recHooks struct {
 	mu       sync.Mutex
 	text     strings.Builder
 	tools    []string
+	steps    int
 	doneErr  error
 	usage    fantasy.Usage
 	doneWait chan struct{}
@@ -119,6 +120,15 @@ func (h *recHooks) ToolCallStart(id, name, input string) {
 func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "end:"+name)
+	h.mu.Unlock()
+}
+
+func (h *recHooks) StepDone(usage fantasy.Usage) {
+	h.mu.Lock()
+	h.steps++
+	h.usage.InputTokens += usage.InputTokens
+	h.usage.OutputTokens += usage.OutputTokens
+	h.usage.TotalTokens += usage.TotalTokens
 	h.mu.Unlock()
 }
 
