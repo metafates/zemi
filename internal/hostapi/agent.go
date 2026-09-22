@@ -2035,11 +2035,16 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Sandbox: func() *sandbox.Policy {
 			// read-only is absolute: a planner must not touch the project even
 			// under yolo. Otherwise yolo allows everything and runs unconfined.
+			// A policy with no backend fails every wrap, so without one the
+			// planner keeps only Check's denies and asks.
+			if !h.sandboxLive() {
+				return nil
+			}
 			if readOnly {
 				p := h.sandboxPolicy(true)
 				return &p
 			}
-			if def := h.permModeDef(); h.sandboxLive() && def.Base != "yolo" {
+			if def := h.permModeDef(); def.Base != "yolo" {
 				p := h.sandboxPolicy(false)
 				return &p
 			}

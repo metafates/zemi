@@ -45,6 +45,26 @@ func TestPlanMode(t *testing.T) {
 	}
 }
 
+// TestPlanSandbox: a read-only agent's commands run confined under every
+// mode, but only with a backend; a policy with none fails every command.
+func TestPlanSandbox(t *testing.T) {
+	h, _ := newTestHost(t)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		live bool
+		mode string
+		want bool
+	}{{false, "auto", false}, {false, "yolo", false}, {true, "auto", true}, {true, "yolo", true}} {
+		fakeSandbox(h, c.live)
+		h.Settings.SetHost("permissions.mode", c.mode)
+		if got := h.PipelineFor().Sandbox() != nil; got != c.want {
+			t.Fatalf("live=%v mode=%s: policy=%v, want %v", c.live, c.mode, got, c.want)
+		}
+	}
+}
+
 // TestPlanApprovalSwitchesBack: approving a read-only agent's plan returns to
 // the agent and mode it replaced, is no longer read-only, and records the
 // implementation handoff planFollowup sends.
