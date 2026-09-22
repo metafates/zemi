@@ -200,9 +200,12 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	var names []string
 	for _, s := range h.Providers.List() {
-		if s.Builtin {
+		switch {
+		case !h.Providers.HasKey(s.ID): // a spec without one: openai_compat runs, the rest fail their first turn
+			names = append(names, s.ID+" (no key)")
+		case s.Builtin:
 			names = append(names, s.ID+" (builtin)")
-		} else {
+		default:
 			names = append(names, s.ID)
 		}
 	}

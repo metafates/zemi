@@ -177,6 +177,7 @@ func TestHealthProvidersRow(t *testing.T) {
 		{"key missing", ``, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: export X_API_KEY, or add a provider in "},
 		{"deleted", `zemi.provider.del("x")`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: add a provider in "},
 		{"registered", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "ok", "a; 1 builtin without a key exported"},
+		{"keyless", `zemi.provider.add({ id = "d", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, nil, "ok", "d (no key)"},
 	} {
 		h, r := newTestHostDB(t)
 		h.Providers.Reset(agent.Catalog{Missing: c.missing})
