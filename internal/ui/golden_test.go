@@ -15,11 +15,28 @@ import (
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
+// tempConfig is a config dir under a fresh, resolved $HOME, so the splash
+// names ~/.config/zemi/init.lua on every machine. Setenv rules out
+// t.Parallel in the tests that boot an app.
+func tempConfig(t testing.TB) string {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	cfg := filepath.Join(home, ".config", "zemi")
+	if err := os.MkdirAll(cfg, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
 // The M0 exit test (DESIGN §13): user init.lua rebinds a default key and
 // adds a statusline segment; the composed frame is pinned as a golden.
 func TestGoldenM0Frame(t *testing.T) {
 	ctx := context.Background()
-	cfg, data, state, project := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	cfg, data, state, project := tempConfig(t), t.TempDir(), t.TempDir(), t.TempDir()
 	// Classify on EvalSymlinks-resolved prefixes (DESIGN §5): on macOS
 	// t.TempDir() hands out /var/... while resolved paths are /private/var/...
 	resolve := func(p string) string {

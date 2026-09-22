@@ -42,9 +42,8 @@ function M.render(ctx)
     row({ tag })
   end
   row({ { text = "" } })
-  local init = (zemi.env.get("ZEMI_CONFIG_HOME") or "~/.config/zemi") .. "/init.lua"
   ---@type zemi.Segment
-  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: uncomment a provider in " .. init), hl = "Normal" }
+  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: uncomment a provider in " .. ctx.init_path), hl = "Normal" }
   if ctx.init_error ~= "" then
     model = { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" }
   end

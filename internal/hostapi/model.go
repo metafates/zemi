@@ -23,9 +23,6 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 		return h.modelFn()
 	}
 	id := h.currentModelID(p)
-	if id == "" {
-		return nil, fmt.Errorf("%w: uncomment a provider and models.main in %s", ErrNoModel, h.initPath())
-	}
 	if err := h.modelErr(id, p); err != nil {
 		return nil, err
 	}
@@ -46,6 +43,9 @@ var keyEnv = map[string]string{agent.KindAnthropic: "ANTHROPIC_API_KEY", agent.K
 // and a failed send share it. p is the profile that named the model, nil
 // for the conversation's tier.
 func (h *Host) modelErr(id string, p *Profile) error {
+	if id == "" {
+		return fmt.Errorf("%w: uncomment a provider and models.main in %s", ErrNoModel, h.initPath())
+	}
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {

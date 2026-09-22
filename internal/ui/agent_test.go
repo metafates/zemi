@@ -26,7 +26,7 @@ import (
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
 	ctx := context.Background()
-	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
+	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
 	resolve := func(p string) string {
 		r, err := filepath.EvalSymlinks(p)
 		if err != nil {

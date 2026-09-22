@@ -202,11 +202,10 @@ func (h *Host) goHealthRows() []healthCheck {
 	id := h.liveModelID()
 	profile := h.agents.profiles[h.Settings.Str("agent.profile")]
 	h.agents.mu.Unlock()
-	switch _, known := h.modelSpec(id); {
-	case id == "":
-		add("error", "model", fmt.Sprintf("%v: uncomment a provider and models.main in %s", ErrNoModel, h.initPath()))
-	case h.modelErr(id, profile) != nil:
-		add("error", "model", h.modelErr(id, profile).Error())
+	_, known := h.modelSpec(id)
+	switch err := h.modelErr(id, profile); {
+	case err != nil:
+		add("error", "model", err.Error())
 	case !known:
 		add("warn", "model", id+": not in the provider's models list; the provider decides whether it exists")
 	default:
@@ -254,8 +253,10 @@ func (h *Host) goHealthRows() []healthCheck {
 	reflectErr := h.agents.reflectErr
 	h.agents.mu.Unlock()
 	switch {
-	case reflectErr != "":
-		add("error", "reflector", "last run failed: "+reflectErr)
+	case errors.Is(reflectErr, errNoProposal):
+		add("warn", "reflector", "last run "+reflectErr.Error())
+	case reflectErr != nil:
+		add("error", "reflector", "last run failed: "+reflectErr.Error())
 	default:
 		add("ok", "reflector", "runs when a session closes")
 	}

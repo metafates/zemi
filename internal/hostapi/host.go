@@ -1163,6 +1163,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("project", glua.LString(h.project()))
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
+	tb.RawSetString("init_path", glua.LString(h.initPath()))
 	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
@@ -1511,7 +1512,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.63.0"))
+	api.RawSetString("version", glua.LString("0.64.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

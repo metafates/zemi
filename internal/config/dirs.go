@@ -109,7 +109,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 --   models = { { id = "qwen3", context_window = 32000 } },
 -- })
 -- Model tiers: main runs everything, small the short jobs (session titles,
--- compaction summaries, the web subagent), smart the main conversation.
+-- compaction summaries, the reflector, the web subagent), smart the main conversation.
 -- A tier you leave unset falls back to main.
 -- zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
 -- zemi.config.set("models.small", "anthropic/claude-haiku-4-5")

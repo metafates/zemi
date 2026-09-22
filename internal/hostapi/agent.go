@@ -161,7 +161,7 @@ type agentHost struct {
 	// session cap (memory proposals persist in the store).
 	digest     string
 	memAuto    int
-	reflectErr string // last reflector run's error, "" after a success (/health)
+	reflectErr error // last reflector run's error, nil after a success (/health)
 
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).

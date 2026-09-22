@@ -89,8 +89,8 @@ guessing. Common keys:
 
 - Model tiers, each a `provider/model`; a tier nothing sets falls back to `models.main`:
   - `models.main`: the model everything runs on unless a tier or a definition names another.
-  - `models.small`: the short jobs (session titles, compaction summaries, the builtin `web`
-    agent), e.g.
+  - `models.small`: the short jobs (session titles, compaction summaries, the reflector, the
+    builtin `web` agent), e.g.
     `zemi.config.set("models.small", "anthropic/claude-haiku-4-5")`.
   - `models.smart`: the main conversation, which orchestrates and delegates; subagents stay
     on `models.main`.

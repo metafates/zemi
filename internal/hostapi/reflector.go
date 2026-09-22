@@ -196,7 +196,7 @@ func (h *Host) runReflectDetached(sid, claim string) bool {
 		}
 		err := h.reflectSession(ctx, sid)
 		h.agents.mu.Lock()
-		h.agents.reflectErr = errString(err)
+		h.agents.reflectErr = err
 		h.agents.mu.Unlock()
 		if err != nil {
 			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
@@ -386,7 +386,7 @@ func truncRunes(s string, n int) string {
 // (prose and fences tolerated) and schema-decodes it.
 // errNoProposal is a reflector reply that is not the JSON document asked
 // for.
-var errNoProposal = errors.New("reflector: the model returned no proposal")
+var errNoProposal = errors.New("returned no proposal")
 
 func parseReflectProposal(out string) (*reflectProposal, error) {
 	start := strings.Index(out, "{")

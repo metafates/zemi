@@ -255,7 +255,6 @@ func TestHoverTargets(t *testing.T) {
 		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 24)
 			c.open(app)
 			app.renderSync(t)

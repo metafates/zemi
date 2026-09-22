@@ -584,8 +584,8 @@ func TestReflectBadOutput(t *testing.T) {
 		}
 		return nil
 	})
-	if h.errs.entries != nil || h.agents.reflectErr == "" {
-		t.Fatalf("errors = %+v, reflectErr = %q", h.errs.entries, h.agents.reflectErr)
+	if h.errs.entries != nil || h.agents.reflectErr == nil {
+		t.Fatalf("errors = %+v, reflectErr = %v", h.errs.entries, h.agents.reflectErr)
 	}
 
 	reflectStub(t, h, `{"memories":[]}`)

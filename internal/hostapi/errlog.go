@@ -131,7 +131,7 @@ func (h *Host) OpenErrors(args string) error {
 		sel = len(entries) - 1 - i
 	}
 	items := make([]any, 0, len(entries))
-	_, noModel := h.resolveModel(nil)
+	noModel := h.modelErr(h.currentModelID(nil), nil)
 	for i, e := range slices.Backward(entries) {
 		at := e.at.Format("15:04:05")
 		var actions []any
