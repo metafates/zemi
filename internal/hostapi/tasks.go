@@ -297,10 +297,10 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		return "", err
 	}
 	h.GoSafe("background agent", func() {
-		text, err := h.runAgent(ctx, run, def, prompt, nil)
 		// whatever queued behind this run starts once nothing else holds it,
 		// report or not (a cancelled run has none, a finished one's joins the turn)
 		defer h.drainQueue()
+		text, err := h.runAgent(ctx, run, def, prompt, nil)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
