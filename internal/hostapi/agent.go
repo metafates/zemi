@@ -522,8 +522,9 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 func (h *Host) startTurn(text string) {
 	// what follows attachMarker is for the model (background reports), the
 	// same cut resumed transcripts make
-	shown, _, _ := strings.Cut(text, attachMarker)
-	h.AppendMessage("user", shown)
+	if shown, _, _ := strings.Cut(text, attachMarker); shown != "" {
+		h.AppendMessage("user", shown)
+	}
 	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
 }
@@ -1090,9 +1091,9 @@ func (h *Host) maybeNagTodos() {
 	}
 	ag.todoPending = true
 	if ag.active {
-		ag.steering = append(ag.steering, attachMarker+"\n"+fmt.Sprintf(
+		ag.steering = append(ag.steering, modelNote(fmt.Sprintf(
 			"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
-			ag.todoInProgress, ag.todoCalls)+"\n</attached-files>")
+			ag.todoInProgress, ag.todoCalls)))
 	}
 }
 
@@ -1544,7 +1545,7 @@ func (h *Host) cycleProfile(step int) error {
 
 // implementNow is the message a fresh send carries to the restored agent after
 // its plan is approved; the plan itself stays in history.
-const implementNow = "The user approved the plan above. Implement it: track its steps with todos, carry them through, verify, and report."
+var implementNow = modelNote("The user approved the plan above. Implement it: track its steps with todos, carry them through, verify, and report.")
 
 func (h *Host) setPlanApproved(msg string) {
 	h.agents.mu.Lock()
@@ -1600,7 +1601,7 @@ func (h *Host) planFollowup(runner *agent.Runner) {
 		h.startImplementation(h.takePlanApproved())
 	} else if v.Feedback != "" {
 		// the user asked for changes: hand them back to the still-read-only planner
-		if err := h.AgentSend("The user did not approve the plan and asked for changes: " + v.Feedback + "\nRevise it and present the plan again."); err != nil {
+		if err := h.AgentSend(modelNote("The user did not approve the plan and asked for changes: " + v.Feedback + "\nRevise it and present the plan again.")); err != nil {
 			h.Log.Error("agent", "plan-feedback send failed", map[string]any{"error": err.Error()})
 		}
 	}

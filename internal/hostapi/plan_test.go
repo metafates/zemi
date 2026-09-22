@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -66,8 +68,20 @@ func TestPlanApprovalSwitchesBack(t *testing.T) {
 	if h.readOnly() {
 		t.Fatal("still read-only after approval")
 	}
-	if got := h.takePlanApproved(); got != implementNow {
+	got := h.takePlanApproved()
+	if got != implementNow {
 		t.Fatalf("planApproved handoff = %q", got)
+	}
+	// the handoff is zemi's, not the user's: no transcript row, nothing to recall
+	h.startTurn(got)
+	for _, m := range h.Session().Transcript {
+		if m.Role == "user" {
+			t.Fatalf("handoff shown as the user's message: %q", m.Text)
+		}
+	}
+	parts, _ := json.Marshal(fantasy.NewUserMessage(got))
+	if _, ok := userText(&store.Message{Role: "user", PartsJSON: string(parts)}); ok {
+		t.Fatal("handoff would be recalled from the store as typed input")
 	}
 }
 

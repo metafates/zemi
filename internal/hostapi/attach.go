@@ -29,6 +29,12 @@ const (
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 )
 
+// modelNote wraps text zemi itself sends the model (a nag, a plan handoff)
+// so nothing shows it, stores it or recalls it as the user's own words.
+func modelNote(text string) string {
+	return attachMarker + "\n" + text + "\n</attached-files>"
+}
+
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
 // composeUserMessage is the runner's Compose hook: the typed text with its
