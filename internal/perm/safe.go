@@ -567,6 +567,18 @@ func hasFlag(args []string, flags ...string) bool {
 // one past them.
 var runners = []string{"xargs", "find", "fd", "parallel", "env", "sudo", "nohup", "time", "timeout", "nice", "command", "exec"}
 
+// reserved are the shell words a segment may start with before its program:
+// Normalize keeps "then rm -rf ." as one segment.
+var reserved = map[string]bool{"if": true, "then": true, "else": true, "elif": true, "while": true, "until": true, "do": true, "{": true, "!": true}
+
+// program is f without its leading reserved words.
+func program(f []string) []string {
+	for len(f) > 0 && reserved[f[0]] {
+		f = f[1:]
+	}
+	return f
+}
+
 // Destructive says why a command still goes to the user when a sandbox
 // confines it to the project: it may delete or empty many files at once.
 // Empty when it may run. Normalize already made sh -c bodies and
@@ -577,6 +589,7 @@ func Destructive(cmd string) string {
 		return n.Fail
 	}
 	for _, f := range n.Args {
+		f = program(f)
 		for i, w := range f {
 			if i > 0 && !slices.Contains(runners, filepath.Base(f[0])) {
 				break
