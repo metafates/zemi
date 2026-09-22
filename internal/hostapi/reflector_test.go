@@ -212,9 +212,9 @@ func TestReflectApply(t *testing.T) {
 		{name: "a user preference with the user's words stores", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"Short replies please"}]}`, stored: 1},
 		{name: "a user preference without a quote queues", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, queued: 1},
 		{name: "a quote the user never wrote drops the memory", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"long replies please"}]}`},
-		{name: "replaces supersedes the old memory",
+		{name: "replaces by the index's id prefix supersedes the old memory, near-duplicate or not",
 			seed: func(t *testing.T, h *Host, sid string) string {
-				return learnedMemory(t, h, "project", "deploy manually every time", "")
+				return learnedMemory(t, h, "project", "the deploy script requires the labels sequence bumped", "")[:8]
 			},
 			doc: `{"memories":[{"scope":"project","text":"` + fact + `","replaces":"OLD"}]}`, stored: 1,
 			check: func(t *testing.T, h *Host, sid string) {
@@ -279,7 +279,7 @@ func TestReflectApply(t *testing.T) {
 			if err := h.reflectSession(t.Context(), sid); err != nil {
 				t.Fatalf("reflectSession: %v", err)
 			}
-			if msgs, seen, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
+			if msgs, seen, _, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
 				t.Fatalf("seen=%d of %d: a message the run never read was marked seen", seen, len(msgs))
 			}
 			stored := 0

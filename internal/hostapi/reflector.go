@@ -122,24 +122,26 @@ func (h *Host) reflectSweep(idle time.Time) {
 	}
 }
 
-// reflectDelta returns a session's messages and how many of them the
-// reflector has seen (kv, so a restart does not re-reflect). A seen count
+// reflectDelta returns a session's messages, how many of them the
+// reflector has seen (kv, so a restart does not re-reflect) and the id of
+// the last seen one, which the tool-call queries start after. A seen count
 // past the end (a rewind in another process) reads as none, since the
 // alternative is to never reflect the session again.
-func (h *Host) reflectDelta(sid string) ([]*store.Message, int, error) {
+func (h *Host) reflectDelta(sid string) (msgs []*store.Message, seen int, after string, err error) {
 	if h.DB == nil {
-		return nil, 0, errors.New("reflector: session store unavailable")
+		return nil, 0, "", errors.New("reflector: session store unavailable")
 	}
-	msgs, err := h.DB.Messages(sid)
-	if err != nil {
-		return nil, 0, err
+	if msgs, err = h.DB.Messages(sid); err != nil {
+		return nil, 0, "", err
 	}
-	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
-	n, _ := strconv.Atoi(seen)
-	if n < 0 || n > len(msgs) {
-		n = 0
+	v, _ := h.DB.GetKV(reflectSeenKey(sid))
+	if seen, _ = strconv.Atoi(v); seen < 0 || seen > len(msgs) {
+		seen = 0
 	}
-	return msgs, n, nil
+	if seen > 0 {
+		after = msgs[seen-1].ID
+	}
+	return msgs, seen, after, nil
 }
 
 // reflectDue returns a session's message count when what came after the
@@ -156,14 +158,11 @@ func (h *Host) reflectDue(sid string) int {
 	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); err != nil || seen == strconv.Itoa(count) {
 		return 0
 	}
-	msgs, seen, err := h.reflectDelta(sid)
+	msgs, seen, after, err := h.reflectDelta(sid)
 	if err != nil || seen == len(msgs) {
 		return 0
 	}
-	users, after := 0, ""
-	if seen > 0 {
-		after = msgs[seen-1].ID
-	}
+	users := 0
 	for _, m := range msgs[seen:] {
 		if _, ok := userText(m); ok {
 			users++
@@ -308,14 +307,11 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 // count and returns how many of its stored messages that covers. Every
 // transcript line is scrubbed before it leaves the machine.
 func (h *Host) reflectPrompt(sid string) (string, int, error) {
-	all, seen, err := h.reflectDelta(sid)
+	all, seen, after, err := h.reflectDelta(sid)
 	if err != nil {
 		return "", 0, err
 	}
-	msgs, after := all[seen:], ""
-	if seen > 0 {
-		after = all[seen-1].ID
-	}
+	msgs := all[seen:]
 	var lines []string
 	for _, m := range msgs {
 		if line := reflectLine(m); line != "" {
@@ -505,7 +501,16 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
 			continue
 		}
-		res.Supersedes = pm.Replaces
+		// the index shows the 8-character prefix; the gate compares full ids
+		if pm.Replaces != "" {
+			_, old, err := h.locateMemory(pm.Replaces)
+			if err != nil {
+				skipped++
+				h.Log.Debug("reflector", "memory skipped: replaces unknown", map[string]any{"id": pm.Replaces})
+				continue
+			}
+			res.Supersedes = old.ID
+		}
 		if stored >= memoryAutoApplyCap {
 			// the run carries its own budget: it stores for a closed session
 			if h.queueProposal(res) {
@@ -523,7 +528,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			queued++
 		default:
 			stored++
-			if _, old, err := h.locateMemory(pm.Replaces); pm.Replaces != "" && err == nil && old.SupersededBy == res.Memory.ID {
+			if res.Supersedes != "" {
 				superseded++
 			}
 		}
@@ -561,7 +566,7 @@ func (h *Host) reflectCommand() error {
 	if sid == "" {
 		return errors.New("no session to reflect on")
 	}
-	msgs, seen, err := h.reflectDelta(sid)
+	msgs, seen, _, err := h.reflectDelta(sid)
 	if err != nil {
 		return err
 	}
