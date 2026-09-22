@@ -11,42 +11,58 @@ import (
 	"syscall"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
-// friendlyError turns a turn failure into a headline a person can act on
-// (what happened, what to do). The raw error still goes to the log and
-// /errors.
-func friendlyError(err error) string {
+// explain turns a turn failure into what happened and what to do about it;
+// advice is "" when the raw error is all there is. The raw error still
+// goes to the log and /errors.
+func explain(err error) (cause, advice string) {
 	var pe *fantasy.ProviderError
 	var dns *net.DNSError
 	var ne net.Error
+	key := "check api_key in init.lua"
+	if me, ok := errors.AsType[agent.ModelError](err); ok {
+		key = "check api_key for " + me.Provider + " in init.lua"
+	}
 	switch {
 	case err == nil:
-		return ""
+		return "", ""
 	case errors.Is(err, context.Canceled):
-		return "interrupted"
+		return "interrupted", ""
 	case errors.As(err, &pe) && pe.IsContextTooLarge():
-		return "the conversation no longer fits the model's context: /compact or /new"
+		return "the conversation no longer fits the model's context", "/compact or /new"
 	case pe != nil && (pe.AuthError || pe.StatusCode == 401 || pe.StatusCode == 403):
-		return "the provider rejected the API key: check it with /health"
+		return "the provider rejected the API key", key
 	case pe != nil && pe.StatusCode == 429:
-		return "rate limited by the provider: wait a bit and send again"
+		return "rate limited by the provider", "wait a bit and send again"
 	case pe != nil && pe.StatusCode == 404:
-		return "the provider does not know this model: pick another with /model"
+		return "the provider does not know this model", "pick another with /model"
 	case pe != nil && (pe.StatusCode >= 500 || pe.StatusCode == 408):
-		return fmt.Sprintf("the provider is having trouble (%d): try again shortly", pe.StatusCode)
+		return fmt.Sprintf("the provider is having trouble (%d)", pe.StatusCode), "try again shortly"
 	case pe != nil && pe.StatusCode >= 400:
-		return fmt.Sprintf("the provider refused the request (%d): %s", pe.StatusCode, pe.Message)
+		return fmt.Sprintf("the provider refused the request (%d): %s", pe.StatusCode, pe.Message), ""
 	case errors.As(err, &dns):
-		return "network: cannot resolve " + dns.Name + ": check your connection or VPN"
+		return "network: cannot resolve " + dns.Name, "check your connection or VPN"
 	case errors.Is(err, syscall.ECONNREFUSED):
-		return "network: connection refused" + hostOf(err) + ": is the endpoint up?"
+		return "network: connection refused" + hostOf(err), "is the endpoint up?"
 	case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET):
-		return "network: the connection dropped mid-reply: send again"
+		return "network: the connection dropped mid-reply", "send again"
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
-		return "network: the provider timed out: check your connection and send again"
+		return "network: the provider timed out", "check your connection and send again"
 	}
-	return err.Error()
+	return err.Error(), ""
+}
+
+// friendlyError is the headline a person can act on: the cause, then the
+// advice.
+func friendlyError(err error) string {
+	cause, advice := explain(err)
+	if advice == "" {
+		return cause
+	}
+	return cause + ": " + advice
 }
 
 // hostOf names the host of a failed request, when the error carries one.

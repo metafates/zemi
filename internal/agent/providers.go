@@ -8,10 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -262,7 +264,30 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	if err != nil {
 		return nil, err
 	}
-	return idleModel{LanguageModel: m, idle: modelIdleTimeout}, nil
+	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID}, nil
+}
+
+// ModelError tags a model failure with its provider, so the advice can
+// name the key to check, and keeps fantasy from retrying a connection
+// refused or a DNS failure: it retries every net.Error, and a server that
+// is not there does not come up in five seconds.
+type ModelError struct {
+	Provider string
+	Err      error
+}
+
+func (e ModelError) Error() string        { return e.Err.Error() }
+func (e ModelError) Is(target error) bool { return errors.Is(e.Err, target) }
+func (e ModelError) As(target any) bool {
+	if _, ok := target.(*net.Error); ok && final(e.Err) {
+		return false
+	}
+	return errors.As(e.Err, target)
+}
+
+func final(err error) bool {
+	var dns *net.DNSError
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.As(err, &dns)
 }
 
 // modelIdleTimeout is how long a model call may make no progress. The
@@ -280,13 +305,22 @@ var errModelIdle = fmt.Errorf("the model sent nothing for %s", modelIdleTimeout)
 // calls, so this never covers a build or a test run.
 type idleModel struct {
 	fantasy.LanguageModel
-	idle time.Duration
+	idle     time.Duration
+	provider string
+}
+
+func (m idleModel) wrap(err error) error {
+	if err == nil {
+		return nil
+	}
+	return ModelError{m.provider, err}
 }
 
 func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
 	defer cancel()
-	return m.LanguageModel.Generate(ctx, call)
+	res, err := m.LanguageModel.Generate(ctx, call)
+	return res, m.wrap(err)
 }
 
 func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
@@ -296,7 +330,7 @@ func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 	if err != nil {
 		timer.Stop()
 		cancel(nil)
-		return nil, err
+		return nil, m.wrap(err)
 	}
 	return func(yield func(fantasy.StreamPart) bool) {
 		defer timer.Stop()
@@ -308,6 +342,9 @@ func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 			// really happened instead of "context canceled"
 			if part.Type == fantasy.StreamPartTypeError && timedOut() {
 				part.Error = errModelIdle
+			}
+			if part.Type == fantasy.StreamPartTypeError {
+				part.Error = m.wrap(part.Error)
 			}
 			sawErr = sawErr || part.Type == fantasy.StreamPartTypeError
 			if !yield(part) {

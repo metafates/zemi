@@ -715,14 +715,13 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
-	// fantasy passes no error when a network failure (DNS, refused, reset)
-	// caused the retry.
-	ag.retryWhy = "network problem"
-	if err != nil {
-		ag.retryWhy = friendlyError(err)
-	}
+	ag.retryWhy, _ = explain(err) // the advice is to wait, which the countdown says
+	why := ag.retryWhy
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
+	if s.h.hooks() == nil { // print mode: the countdown is on no screen
+		fmt.Fprintf(os.Stderr, "zemi: retrying in %s: %s\n", delay.Round(time.Second), why)
+	}
 	s.h.agentStream()
 }
 

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 func TestFriendlyError(t *testing.T) {
@@ -21,7 +23,8 @@ func TestFriendlyError(t *testing.T) {
 	}{
 		{"cancel", context.Canceled, "interrupted"},
 		{"rate limit through retry", retry(&fantasy.ProviderError{StatusCode: 429, Message: "slow down"}), "rate limited"},
-		{"auth", &fantasy.ProviderError{StatusCode: 401}, "API key"},
+		{"auth", &fantasy.ProviderError{StatusCode: 401}, "the provider rejected the API key: check api_key in init.lua"},
+		{"auth from a provider", agent.ModelError{Provider: "fake", Err: &fantasy.ProviderError{StatusCode: 401}}, "check api_key for fake in init.lua"},
 		{"context", &fantasy.ProviderError{StatusCode: 400, ContextTooLargeErr: true}, "/compact"},
 		{"overload", &fantasy.ProviderError{StatusCode: 529}, "having trouble (529)"},
 		{"bad request", &fantasy.ProviderError{StatusCode: 400, Message: "bad tool schema"}, "bad tool schema"},

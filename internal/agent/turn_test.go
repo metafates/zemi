@@ -432,18 +432,6 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	}
 }
 
-// TestRetryErrNilProviderError is the regression for the first-message
-// crash: a network retry hands OnRetry a nil *ProviderError, which must
-// become a nil error, not an error whose Error() dereferences nil.
-func TestRetryErrNilProviderError(t *testing.T) {
-	if err := retryErr(nil); err != nil {
-		t.Fatalf("nil provider error became %#v", err)
-	}
-	if err := retryErr(&fantasy.ProviderError{Message: "overloaded"}); err == nil || err.Error() != "overloaded" {
-		t.Fatalf("provider error lost: %v", err)
-	}
-}
-
 func TestSecondSendWhileActive(t *testing.T) {
 	block := make(chan struct{})
 	m := &mockModel{

@@ -48,6 +48,7 @@ type PersistFunc func(role string, msg fantasy.Message) error
 type Runner struct {
 	mu          sync.Mutex
 	agent       fantasy.Agent
+	last        *lastErr
 	History     []fantasy.Message
 	Hooks       StreamHooks
 	Persist     PersistFunc
@@ -104,7 +105,33 @@ func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system st
 	if len(tools) > 0 {
 		opts = append(opts, fantasy.WithTools(tools...))
 	}
-	return &Runner{agent: fantasy.NewAgent(model, opts...)}
+	rec := &lastErr{LanguageModel: model}
+	return &Runner{agent: fantasy.NewAgent(rec, opts...), last: rec}
+}
+
+// lastErr remembers a model call's failure: fantasy's retry callback gets
+// only a *ProviderError, nil when a network failure caused the retry.
+type lastErr struct {
+	fantasy.LanguageModel
+	err error
+}
+
+func (m *lastErr) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	seq, err := m.LanguageModel.Stream(ctx, call)
+	m.err = err
+	if err != nil {
+		return nil, err
+	}
+	return func(yield func(fantasy.StreamPart) bool) {
+		for p := range seq {
+			if p.Type == fantasy.StreamPartTypeError {
+				m.err = p.Error
+			}
+			if !yield(p) {
+				return
+			}
+		}
+	}, nil
 }
 
 // Cancel aborts the active turn, if any.
@@ -215,7 +242,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},
-		OnRetry:         func(err *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(retryErr(err), delay) },
+		OnRetry:         func(_ *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(r.last.err, delay) },
 		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
 	}
@@ -378,16 +405,6 @@ func repeatsCycle(sigs []string, period int) bool {
 // reads and writes apart from input, and the reply joins the next prompt.
 func ContextUsed(u fantasy.Usage) int64 {
 	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens + u.OutputTokens
-}
-
-// retryErr converts fantasy's retry cause to an error. fantasy passes a nil
-// *ProviderError for retryable errors of other types (network failures);
-// wrapped as-is it would be a non-nil error whose Error() panics.
-func retryErr(err *fantasy.ProviderError) error {
-	if err == nil {
-		return nil
-	}
-	return err
 }
 
 // cacheControl marks an Anthropic prompt cache breakpoint; other providers
