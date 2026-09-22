@@ -338,7 +338,7 @@ func (h *Host) projectOnly(recipes []skills.Skill) []skills.Skill {
 }
 
 // skillsIndexPrompt renders the §10.7 skills index section: one line per
-// enabled skill, description capped — the prompt carries the index only,
+// enabled skill, description capped: the prompt carries the index only,
 // bodies load on demand through the skill tool.
 func (h *Host) skillsIndexPrompt() string {
 	enabled := h.enabledSkills()
@@ -391,7 +391,7 @@ func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error 
 // enableHook runs a learned skill's enable hook. L non-nil means we are
 // on the interpreter goroutine (zemi.skills.enable) and the hook runs
 // inline; L nil means a Go-side caller (/skills enable) and the hook must
-// be enqueued through Do — the single-writer invariant forbids touching
+// be enqueued through Do: the single-writer invariant forbids touching
 // the LState from here.
 func (h *Host) enableHook(L *glua.LState, s skills.Skill) error {
 	var err error

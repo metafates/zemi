@@ -1079,7 +1079,7 @@ kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
-DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db` — the same
+DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, the same
 repository identity trust uses, so a subdirectory or a linked worktree opens
 the same sessions and project memory rather than a blank store. The
 global DB holds user-scope memory, skills and kv; a project DB
