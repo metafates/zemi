@@ -152,6 +152,16 @@ func luma(c color.Color) float64 {
 	return 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
 }
 
+// sameColor reports whether two colors are the same, or both nil.
+func sameColor(a, b color.Color) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ar, ag, ab, _ := a.RGBA()
+	br, bg, bb, _ := b.RGBA()
+	return ar == br && ag == bg && ab == bb
+}
+
 // brighten mixes c by k toward white, or toward black when k is negative.
 func brighten(c color.Color, k float64) color.Color {
 	r, g, b, _ := c.RGBA()

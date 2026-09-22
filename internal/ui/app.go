@@ -12,6 +12,8 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 	"sync"
@@ -46,6 +48,11 @@ type App struct {
 	host *hostapi.Host
 	log  *logging.Logger
 	thm  themeResolver
+
+	// termBG is the terminal's own background color as it answered an OSC
+	// 11 query; nil means the terminal does not answer, so zemi leaves its
+	// background alone. paintedTermBG is the last color zemi set it to.
+	termBG, paintedTermBG color.Color
 
 	width, height int
 
@@ -216,9 +223,13 @@ func (a *App) leave() {
 	if a.program == nil {
 		return
 	}
-	// the progress report is cleared whether or not one is running: reading
-	// the flag from this goroutine would race with the frame loop
-	a.program.Send(tea.RawMsg{Msg: "\x1b]9;4;0\x07"})
+	// restore the terminal's own background before leaving the alternate
+	// screen; then clear the progress report
+	var out string
+	if a.termBG != nil && a.paintedTermBG != nil {
+		out += termBytes(a.termBG)
+	}
+	a.program.Send(tea.RawMsg{Msg: out + "\x1b]9;4;0\x07"})
 	// NOTE: raw output is written on the next frame and quitting leaves the
 	// alternate screen first, so wait out a frame
 	time.Sleep(50 * time.Millisecond)
@@ -293,7 +304,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
 	case tea.BackgroundColorMsg:
-		// the light variant of the chrome and of a theme that ships one
+		// The answer picks the light variant and means the terminal replies
+		// to OSC 11, so its own background can be repainted to match the theme.
+		a.termBG = msg.Color
 		a.thm.light = msg.Color != nil && luma(msg.Color) > 1<<15
 	case tea.FocusMsg, tea.BlurMsg:
 		_, a.focused = msg.(tea.FocusMsg)
@@ -467,10 +480,38 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	cmds := []tea.Cmd{a.frameTickCmd(), a.renderStaleWidgetsCmd()}
+	if a.termBG != nil { // the terminal answers OSC 11: keep its bg the theme's own
+		if bg := a.syncedTermBG(); !sameColor(bg, a.paintedTermBG) {
+			a.paintedTermBG = bg
+			cmds = append(cmds, setTermBG(bg))
+		}
+	}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
 	return tea.Batch(cmds...)
+}
+
+// syncedTermBG is the theme's canvas color when it has one; a theme with no
+// bg (the terminal shows its own) keeps the terminal's color, not ours.
+func (a *App) syncedTermBG() color.Color {
+	if theme := a.thm.active(); theme != nil {
+		if spec, ok := a.host.Themes.Group(theme, "Normal"); ok && spec.Bg != "" {
+			return appBG(a.thm, theme)
+		}
+	}
+	return a.termBG
+}
+
+// setTermBG paints the terminal's own background (OSC 11) so everything
+// outside the painted cells - margins, scrollback - matches the theme too.
+func setTermBG(c color.Color) tea.Cmd {
+	return tea.Raw(termBytes(c))
+}
+
+func termBytes(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("\x1b]11;#%02x%02x%02x\x07", r>>8, g>>8, b>>8)
 }
 
 func (a *App) uiState() hostapi.UIState {

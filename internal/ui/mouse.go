@@ -453,13 +453,10 @@ func (a *App) painted(s hostapi.Segment) bool {
 	if bg == nil {
 		return false
 	}
-	canvas := appBG(a.thm, a.thm.active())
-	if canvas == nil {
-		return true
+	if canvas := appBG(a.thm, a.thm.active()); canvas != nil {
+		return !sameColor(bg, canvas)
 	}
-	br, bg_, bb, _ := bg.RGBA()
-	cr, cgg, cb, _ := canvas.RGBA()
-	return br != cr || bg_ != cgg || bb != cb
+	return true
 }
 
 func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
