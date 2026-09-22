@@ -254,6 +254,14 @@ func TestOverlayNavigation(t *testing.T) {
 		{"enter on an inert row keeps the box open",
 			hostapi.Overlay{Items: []any{"a", "b"}}, []string{"enter"},
 			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
+		{"enter on a copy row toasts and keeps the list open",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "deepseek", "copy": "export X"}}}, []string{"enter"},
+			func(a *App) string {
+				if len(a.overlays) != 1 || len(a.toasts) != 1 || a.toasts[0].title != "Copied" {
+					return fmt.Sprintf("overlays=%d toasts=%+v", len(a.overlays), a.toasts)
+				}
+				return ""
+			}},
 		{"an empty overlay shows its empty line and enter does nothing",
 			hostapi.Overlay{Empty: "Nothing to see."}, []string{"enter"},
 			func(a *App) string {
@@ -400,6 +408,8 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 30), Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
+		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · esc close"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {

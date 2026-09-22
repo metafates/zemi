@@ -1172,6 +1172,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row outside a filter,
+  an item's `copy` makes enter copy that text and keep the list open,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open); Go still draws the box, the origin badge, the

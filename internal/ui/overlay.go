@@ -205,6 +205,8 @@ func (st *overlayState) enterVerb(idx int) string {
 		return "open"
 	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
 		return cmp.Or(st.o.Verb, "select")
+	case has("copy"):
+		return "copy"
 	case st.back:
 		return "back"
 	}
@@ -363,6 +365,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case key == "space" && o.Reload == nil:
 		case key == "enter" && verb == "open":
 			a.openDetail(st, idx)
+		case verb == "copy":
+			m, _ := o.Items[idx].(map[string]any)
+			text, _ := m["copy"].(string)
+			return a.copied(text)
 		case st.back:
 			a.detailAction(idx)
 		case o.Reload != nil:
@@ -575,7 +581,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		} else {
 			st.scroll = 0
 		}
-		hints = append(hints, "y", "copy")
+		if !st.active { // y types into an open filter
+			hints = append(hints, "y", "copy")
+		}
 		body[0] = padSegs(body[0], padW)
 		if len(list) > 0 {
 			body = append(body, nil)

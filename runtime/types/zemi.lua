@@ -763,6 +763,7 @@ function zemi.event.stats() end
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
+---@field copy? string enter copies this to the clipboard and the list stays open (ignored while the overlay has an on_select)
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
