@@ -143,4 +143,14 @@ func TestProjectChoice(t *testing.T) {
 			t.Errorf("%s: projectChoice = %q, want %q", c.name, got, c.want)
 		}
 	}
+	// the file loads every segment of the line next boot, so a line with a
+	// segment the session answer skipped (a model rule allows it already)
+	// would persist a command the label never named
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Allow, Principal: "model"})
+	if label, _ := always(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow `go vet`" {
+		t.Fatalf("session label = %q", label)
+	}
+	if got := choice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); got != "" {
+		t.Errorf("skipped segment must offer no project choice: %q", got)
+	}
 }

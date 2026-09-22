@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
@@ -212,6 +211,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				names = append(names, "`"+truncRunes(p, 24)+"`")
 			}
 		}
+		if len(rules) == 0 {
+			return "", nil // every segment is allowed already
+		}
 		// long lists name two programs and count the rest, so the label
 		// still says how much it covers
 		if len(names) == 0 {
@@ -307,20 +309,28 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 }
 
 // projectChoice is the ask's "for this project" answer: the session always
-// label kept, its rules allowed un-scoped (like the project permissions file)
-// instead of for the model, and the command persisted to the file so it
-// applies again on every boot. Empty when the project is untrusted (the file
-// is only read then), for a non-bash request, when the command has no safe
-// rule (alwaysLabel is ""), or for a multi-line command: each file line loads
-// as its own command, so a line continuation there would widen what the user
-// approved.
+// label kept, the rules the permissions file loads from the command allowed
+// un-scoped now, and the command persisted to the file so it applies again
+// on every boot. Empty when the project is untrusted (the file is only read
+// then), for a non-bash request, when the command has no safe rule
+// (alwaysLabel is ""), for a multi-line command (each file line loads as its
+// own command, so a line continuation there would widen what the user
+// approved), and when the file would load more than the label names: the
+// session answer skips a segment a model rule already allows, but the file
+// outlives that rule.
 func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
 	if req.Subject != "tool.bash" || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
-	rules := slices.Clone(alwaysRules)
-	for i := range rules {
-		rules[i].Principal = ""
+	patterns, ok := bashRulePatterns(perm.Normalize(req.Arg))
+	var rules []perm.Rule
+	for _, ps := range patterns {
+		for _, p := range ps {
+			rules = append(rules, perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow})
+		}
+	}
+	if !ok || len(rules) != len(alwaysRules) {
+		return "", nil
 	}
 	return alwaysLabel, rules
 }

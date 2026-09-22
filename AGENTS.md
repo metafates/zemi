@@ -294,7 +294,8 @@ file": a trusted project's gitignored `.zemi/permissions` (`ProjectPermissionsSt
 internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
 the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
-permission overlay's `for this project` answer appends the command to it. Only `user`
+permission overlay's `for this project` answer appends the command to it, offered only when
+the file would load exactly the rules the label names (`projectChoice`). Only `user`
 origin may add allow rules (project may tighten only) or switch the mode
 (`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); the gate lives at the
 namespace closure, same off-interpreter-`OriginHost` reasoning as skills.

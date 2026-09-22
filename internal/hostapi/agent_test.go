@@ -989,9 +989,10 @@ func TestAlwaysChoice(t *testing.T) {
 	if strings.Join(pats, "|") != "go vet|go vet *" {
 		t.Errorf("already-allowed segment must not get a rule: %q", pats)
 	}
-	// when everything is already allowed, no rule is offered
-	if _, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); len(rules) != 0 {
-		t.Errorf("all-allowed command must offer no rules: %+v", rules)
+	// when everything is already allowed there is nothing to offer: a label
+	// with no rules would still let the project answer persist the line
+	if label, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); label != "" || len(rules) != 0 {
+		t.Errorf("all-allowed command must offer nothing: %q %+v", label, rules)
 	}
 }
 
