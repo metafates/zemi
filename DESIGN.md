@@ -868,7 +868,7 @@ zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
 callbacks; the watchdog cancels handles a tool left running. Blocking
-waits (`h:wait()`, `zemi.job.wait`, `win:wait_text`) are not refused
+waits (`h:wait()`, `zemi.job.wait`) are not refused
 anywhere, but they hold the interpreter until they return, so they end
 with the request that started them (its ceiling, or an interrupt):
 otherwise a blocked Go call, which no opcode cancellation can preempt,
