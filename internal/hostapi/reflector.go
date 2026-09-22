@@ -182,21 +182,22 @@ func (h *Host) reflectDue(sid string) int {
 // claimReflect atomically claims the right to reflect sid up to its n-th
 // message and returns n with the claim key when this process won it ("" to
 // skip; n of 0 never claims). The claim is an INSERT OR IGNORE keyed by the
-// message count in the shared kv, so two processes that both see the
-// session as unreflected can still not reflect it twice: only one inserts.
-// A claim its owner crashes leaving is reclaimed after reflectLease, so a
+// session in the shared kv, so two processes that both see it as
+// unreflected cannot run at once, whatever count each saw: only one
+// inserts, and the other's delta waits for the next close or sweep. A
+// claim its owner crashes leaving is reclaimed after reflectLease, so a
 // failed run can be retried.
 func (h *Host) claimReflect(sid string, n int) (int, string) {
 	if n == 0 {
 		return 0, ""
 	}
-	key := reflectClaimKey(sid, n)
-	if claimed, _ := h.DB.SetKVOnce(key, "1"); claimed {
+	key, v := reflectClaimKey(sid), strconv.Itoa(n)
+	if claimed, _ := h.DB.SetKVOnce(key, v); claimed {
 		return n, key
 	}
-	// a claim for this count stands: another window is on it, or its owner
-	// crashed long ago and the lease lets us take over
-	if ok, _ := h.DB.ReclaimKVIfStale(key, "1", time.Now().Add(-reflectLease).UnixMilli()); ok {
+	// a claim stands: another window is on it, or its owner crashed long
+	// ago and the lease lets us take over
+	if ok, _ := h.DB.ReclaimKVIfStale(key, v, time.Now().Add(-reflectLease).UnixMilli()); ok {
 		return n, key
 	}
 	return 0, ""
@@ -204,9 +205,7 @@ func (h *Host) claimReflect(sid string, n int) (int, string) {
 
 func reflectSeenKey(sid string) string  { return "reflector.seen." + sid }
 func reflectTriesKey(sid string) string { return "reflector.tries." + sid }
-func reflectClaimKey(sid string, n int) string {
-	return "reflector.claim." + sid + ":" + strconv.Itoa(n)
-}
+func reflectClaimKey(sid string) string { return "reflector.claim." + sid }
 
 // reflectSeen marks sid reflected up to n messages and forgets its failed
 // tries, so the next delta gets its own.

@@ -446,9 +446,9 @@ lua-language-server is installed.
   `reflector.seen.<sid>` (`RewindTo` clamps it) and is due only when the delta has two user
   messages that are not compaction summaries and a tool call, or one failed tool call: one
   exchange that went fine would cost a model call at every launch; `/reflect` skips the floor.
-  `claimReflect` takes an atomic kv claim per message count, so two windows reflect a delta
-  once between them, and `reflectClaimed` runs it (one at a time; a skipped run releases its
-  claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
+  `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so
+  two windows never reflect it at once, and `reflectClaimed` runs it (one at a time; a
+  skipped run releases its claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
   document asked for marks the delta seen and is the `/health` reflector row's news, never an
   `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its
   prompt carries the scrubbed delta (`reflectLine`), the newest failed tool results

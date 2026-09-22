@@ -1700,8 +1700,9 @@ still read; `/reflect` runs it by hand. It reads the delta since the seen
 count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it), and
 only when that delta holds two user messages (compaction summaries do not
 count) and a tool call, or one failed tool call; `/reflect` skips that
-floor. One run per delta across windows: an atomic kv claim keyed by the
-message count, leased for the run's timeout plus a minute. A reply that is
+floor. One run per session across windows: an atomic kv claim keyed by the
+session, leased for the run's timeout plus a minute, so a second window's
+delta waits for its next close or sweep instead of a run over the same rows. A reply that is
 not the JSON asked for marks the delta seen, as does a second failed try
 (kv `reflector.tries.<sid>`), so a delta a provider refuses does not cost a
 call at every close; `/health` shows the last outcome.

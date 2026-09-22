@@ -643,7 +643,7 @@ func TestReflectTrigger(t *testing.T) {
 			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "already active") {
 				t.Fatalf("err = %v", err)
 			}
-			if v, _ := h.DB.GetKV(reflectClaimKey(sid, h.reflectDue(sid))); v != "" {
+			if v, _ := h.DB.GetKV(reflectClaimKey(sid)); v != "" {
 				t.Fatal("a refused /reflect left a claim")
 			}
 		}, due: true},
@@ -664,8 +664,8 @@ func TestReflectTrigger(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 		}},
-		{name: "another window's claim at the same count is skipped", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
-			if _, err := h.DB.SetKVOnce(reflectClaimKey(sid, h.reflectDue(sid)), "1"); err != nil {
+		{name: "another window's claim, at any count, is skipped", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			if _, err := h.DB.SetKVOnce(reflectClaimKey(sid), "1"); err != nil {
 				t.Fatal(err)
 			}
 			if reflectNow(h, sid) {
