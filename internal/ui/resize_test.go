@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -223,13 +224,14 @@ func TestProfileSegment(t *testing.T) {
 // sends the reader to /errors, where the whole text was recorded.
 func TestToastCap(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	body := "@user:/home/me/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
+	home, _ := os.UserHomeDir()
+	body := "@user:" + home + "/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
 	app.pushToast("error", "Keymap ctrl+t failed", body)
 	var rows []string
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ ... full error in /errors") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ ... full error in /errors") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	if !host.HasUnseenErrors() {

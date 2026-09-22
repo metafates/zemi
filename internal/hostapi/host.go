@@ -226,6 +226,7 @@ type Host struct {
 	// modelFn stubs the agent and reflector model in tests.
 	reflectMu  sync.Mutex
 	reflecting atomic.Bool
+	initFail   atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
 	modelFn    func() (fantasy.LanguageModel, error)
 
 	md markdownCache
@@ -1161,6 +1162,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("cwd", glua.LString(TildePath(sess.CWD)))
 	tb.RawSetString("project", glua.LString(h.project()))
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
+	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
@@ -1509,7 +1511,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.62.0"))
+	api.RawSetString("version", glua.LString("0.63.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

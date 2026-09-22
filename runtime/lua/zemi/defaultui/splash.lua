@@ -42,7 +42,13 @@ function M.render(ctx)
     row({ tag })
   end
   row({ { text = "" } })
-  row({ { text = "model    ", hl = "Comment" }, { text = (ctx.model ~= "" and ctx.model) or "none yet: add a provider in init.lua", hl = "Normal" } })
+  local init = (zemi.env.get("ZEMI_CONFIG_HOME") or "~/.config/zemi") .. "/init.lua"
+  ---@type zemi.Segment
+  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: uncomment a provider in " .. init), hl = "Normal" }
+  if ctx.init_error ~= "" then
+    model = { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" }
+  end
+  row({ { text = "model    ", hl = "Comment" }, model })
   local cwd, room = ctx.cwd or "", maxw - 10
   if fmt.cells(cwd) > room and room > 1 then
     -- keep the tail: the project name is at the end

@@ -339,8 +339,7 @@ func (h *Host) goHealthRows() []healthCheck {
 		if boot {
 			level = "error"
 		}
-		first, _, _ := strings.Cut(ShortChunk(shown.msg), "\n")
-		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, first))
+		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)))
 		out[len(out)-1].run = "errors"
 	} else {
 		add("ok", "errors", "none since start")

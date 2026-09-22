@@ -271,6 +271,9 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 	start := len(h.Session().Transcript)
 	began, before := time.Now(), h.AgentStream()
 	if err := sendPrompt(h, prompt); err != nil {
+		if !jsonOut && errors.Is(err, hostapi.ErrNoModel) && h.InitError() != "" {
+			return 1 // the init failure on stderr is the cause
+		}
 		return failPrint(err, jsonOut, stdout, stderr)
 	}
 	interrupted := false

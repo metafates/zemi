@@ -131,15 +131,19 @@ func (h *Host) OpenErrors(args string) error {
 		sel = len(entries) - 1 - i
 	}
 	items := make([]any, 0, len(entries))
+	_, noModel := h.resolveModel(nil)
 	for i, e := range slices.Backward(entries) {
 		at := e.at.Format("15:04:05")
-		actions := []any{map[string]any{"text": "Ask zemi to fix it", "run": fmt.Sprintf("errors ask %d", i)}}
+		var actions []any
+		if noModel == nil {
+			actions = append(actions, map[string]any{"text": "Ask zemi to fix it", "run": fmt.Sprintf("errors ask %d", i)})
+		}
 		if kind, name, ok := strings.Cut(e.source, " "); ok && (kind == "mcp" || kind == "lsp") {
 			actions = append(actions, map[string]any{"text": "Restart " + name, "run": kind + " restart " + name})
 		}
 		items = append(items, map[string]any{
 			"text":    e.source,
-			"desc":    at + " · " + ShortChunk(e.msg),
+			"desc":    at + " · " + Headline(e.msg),
 			"detail":  at + "\n" + e.msg,
 			"actions": actions,
 		})
@@ -148,9 +152,31 @@ func (h *Host) OpenErrors(args string) error {
 	return nil
 }
 
-// chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:").
-var chunkPath = regexp.MustCompile(`@\w+:/\S*/([^/:\s]+):`)
+// chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:"),
+// tagged with its origin or not.
+var chunkPath = regexp.MustCompile(`(?:@\w+:)?(/\S*/[^/:\s]+):`)
 
-// ShortChunk collapses chunk names to the file name, so a one-line error
-// says what went wrong instead of where the file lives.
-func ShortChunk(s string) string { return chunkPath.ReplaceAllString(s, "$1:") }
+// ShortChunk makes chunk names readable: the origin tag dropped and home
+// shortened to ~.
+func ShortChunk(s string) string {
+	return chunkPath.ReplaceAllStringFunc(s, func(m string) string { return TildePath(m[strings.Index(m, "/"):]) })
+}
+
+// Headline is an error's first line, chunk names shortened: what stderr,
+// a toast and the /errors row show; the rest is /errors detail.
+func Headline(msg string) string {
+	first, _, _ := strings.Cut(msg, "\n")
+	return ShortChunk(first)
+}
+
+// SetInitError records how the user init.lua step ended: "" when it ran
+// clean. The splash and a headless send read it, so a config that failed
+// to load is not reported as a missing model.
+func (h *Host) SetInitError(msg string) { h.initFail.Store(&msg) }
+
+func (h *Host) InitError() string {
+	if p := h.initFail.Load(); p != nil {
+		return *p
+	}
+	return ""
+}

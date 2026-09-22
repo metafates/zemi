@@ -404,11 +404,18 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 	run := s.Run
 	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-		if err := run(ctx, r, g); err != nil {
+		err := run(ctx, r, g)
+		if s.Name == "init" {
+			h.SetInitError("")
+		}
+		if err != nil {
+			if s.Name == "init" {
+				h.SetInitError(hostapi.Headline(err.Error()))
+			}
 			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
 			h.RecordError("boot "+s.Name, err.Error())
 			if headless { // no /errors pill to notice, and -p is the scriptable path
-				fmt.Fprintln(os.Stderr, "zemi: "+s.Name+": "+err.Error())
+				fmt.Fprintln(os.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
 			}
 		}
 		return nil
