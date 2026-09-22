@@ -250,7 +250,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
-		return Verdict{Decision: perm.Deny, Reason: "the agent is read-only: no file changes (pick another agent)", DecidedBy: "profile:readonly"}
+		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: "profile:readonly"}
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {

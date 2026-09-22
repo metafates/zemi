@@ -33,8 +33,9 @@ func TestPlanMode(t *testing.T) {
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
-	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" {
-		t.Fatalf("read-only write = %v by %s", v.Decision, v.DecidedBy)
+	// the reason says what the planner can do; it cannot pick another agent
+	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" || !strings.HasPrefix(v.Reason, "the user is planning: describe") {
+		t.Fatalf("read-only write = %v by %s: %s", v.Decision, v.DecidedBy, v.Reason)
 	}
 	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
 		t.Fatalf("read-only bash = %v", v.Decision)
