@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
@@ -109,8 +107,19 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 	}
 }
 
-func (h *Host) jobsRunning() bool {
-	return h.jobs != nil && slices.ContainsFunc(h.jobs.List(), (*tools.Job).Running)
+func (h *Host) jobsRunning() bool { return h.jobsRunningCount() > 0 }
+
+func (h *Host) jobsRunningCount() int {
+	if h.jobs == nil {
+		return 0
+	}
+	n := 0
+	for _, j := range h.jobs.List() {
+		if j.Running() {
+			n++
+		}
+	}
+	return n
 }
 
 // noteWrite records a file tool's write while a bash call is open: its row

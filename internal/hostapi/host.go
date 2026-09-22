@@ -1182,6 +1182,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("agents_running", glua.LNumber(h.tasks.runningFor(h.AgentSessionID())))
+	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
 	// Showing an agent run, the chat renders its transcript alone: the
 	// session's live turn and todos stay out of it.
 	run := h.viewedRun()

@@ -244,7 +244,7 @@ root, `~`-shortened), `trusted`, `model`, `profile`,
 (`attempt`, `why`, `next_in`, only while a retry waits)), `todos` (`content`, `status`, `active_form`), `view` (the agent run
 shown instead of the session: `id`, `agent`, `description`, `status`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `frame` (the 50ms animation tick, 0 with animations off), `done` (a turn ended a moment ago),
-`reflecting`, `pending_memory`, `agents_running` (this session's background agents; their reports arrive as messages), `quit_armed`, `key_seq` (a pending key
+`reflecting`, `pending_memory`, `agents_running` (this session's background agents; their reports arrive as messages), `jobs_running` (background jobs), `quit_armed`, `key_seq` (a pending key
 sequence, "" when none), `rows_below` (transcript rows under a scrolled-up chat),
 `cancelling`, `editing` (the file open in the editor, else ""), `waiting` ("approval" or
 "answer" while a prompt holds the turn, else ""), `transcript_epoch`

@@ -105,9 +105,13 @@ zemi.ui.widget.add({
   ---@param ctx zemi.WidgetCtx
   ---@return zemi.Line[]
   render = function(ctx)
-    local n = ctx.agents_running or 0
-    if n == 0 then return {} end
-    return { { { text = "⧗ " .. n .. (n == 1 and " agent" or " agents"), hl = "Title", click = "agents" }, { text = " /agents", hl = "Comment", click = "agents" } } }
+    local agents, jobs = ctx.agents_running or 0, ctx.jobs_running or 0
+    if agents == 0 and jobs == 0 then return {} end
+    ---@type string[]
+    local parts = {}
+    if agents > 0 then parts[#parts + 1] = agents .. (agents == 1 and " agent" or " agents") end
+    if jobs > 0 then parts[#parts + 1] = jobs .. (jobs == 1 and " job" or " jobs") end
+    return { { { text = "⧗ " .. table.concat(parts, ", "), hl = "Title", click = "agents" }, { text = " /agents", hl = "Comment", click = "agents" } } }
   end,
 })
 
