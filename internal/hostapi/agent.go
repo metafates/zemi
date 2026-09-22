@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1459,8 +1460,8 @@ func (h *Host) OpenModelPicker() error {
 		for _, m := range s.Models {
 			id := s.ID + "/" + m.ID
 			item := map[string]any{"text": id, "run": "model " + id}
-			if m.Display != id {
-				item["desc"] = m.Display
+			if d := modelDesc(id, m); d != "" {
+				item["desc"] = d
 			}
 			switch {
 			case id == cur:
@@ -1471,8 +1472,27 @@ func (h *Host) OpenModelPicker() error {
 			items = append(items, item)
 		}
 	}
-	ui.OpenOverlay(Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet. Add a provider in init.lua."})
+	ui.OpenOverlay(Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet: " + h.noModelHint()})
 	return nil
+}
+
+// modelDesc is the picker's second column: display name, context window
+// and USD per million tokens in/out, each left out when unknown.
+func modelDesc(id string, m agent.Model) string {
+	var parts []string
+	if m.Display != "" && m.Display != id {
+		parts = append(parts, m.Display)
+	}
+	switch w := m.ContextWindow; {
+	case w >= 1_000_000:
+		parts = append(parts, strconv.FormatFloat(float64(w)/1e6, 'g', 3, 64)+"M")
+	case w > 0:
+		parts = append(parts, strconv.FormatInt(w/1000, 10)+"k")
+	}
+	if m.CostPer1MIn > 0 || m.CostPer1MOut > 0 {
+		parts = append(parts, "$"+strconv.FormatFloat(m.CostPer1MIn, 'g', 3, 64)+"/$"+strconv.FormatFloat(m.CostPer1MOut, 'g', 3, 64))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // ConversationKey is the tier /model and -m write: the smart one when

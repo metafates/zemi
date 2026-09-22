@@ -53,6 +53,7 @@ Environment:
   ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
   ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
   ZEMI_CACHE_HOME     cache dir: language server builds (default ~/.cache/zemi)
+  ANTHROPIC_API_KEY, OPENAI_API_KEY, ...   a builtin provider is on when its key is exported (/health lists them)
 
 Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 `

@@ -198,6 +198,22 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "store", "sessions and memory on disk")
 	}
 
+	var names []string
+	for _, s := range h.Providers.List() {
+		if s.Builtin {
+			names = append(names, s.ID+" (builtin)")
+		} else {
+			names = append(names, s.ID)
+		}
+	}
+	if len(names) == 0 {
+		add("warn", "providers", "none usable: "+h.noModelHint())
+	} else if n := len(h.Builtin.Missing); n > 0 && h.Settings.Bool("providers.builtin") {
+		add("ok", "providers", fmt.Sprintf("%s; %d builtin without a key exported", strings.Join(names, ", "), n))
+	} else {
+		add("ok", "providers", strings.Join(names, ", "))
+	}
+
 	h.agents.mu.Lock()
 	id := h.liveModelID()
 	profile := h.agents.profiles[h.Settings.Str("agent.profile")]

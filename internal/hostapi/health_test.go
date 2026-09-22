@@ -164,6 +164,34 @@ func TestPluginsStepContinues(t *testing.T) {
 	}
 }
 
+// TestHealthProvidersRow: the row lists what is registered, tags catalog
+// specs, counts the builtin ones waiting for a key, and with nothing
+// registered says what to export.
+func TestHealthProvidersRow(t *testing.T) {
+	for _, c := range []struct {
+		name, lua     string
+		missing       []agent.MissingKey
+		level, detail string
+	}{
+		{"nothing", ``, nil, "warn", "none usable: add a provider in "},
+		{"key missing", ``, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: export X_API_KEY, or add a provider in "},
+		{"registered", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "ok", "a; 1 builtin without a key exported"},
+	} {
+		h, r := newTestHostDB(t)
+		h.Builtin.Missing = c.missing
+		runUser(t, r, c.lua)
+		row := healthCheck{}
+		for _, x := range h.healthChecks() {
+			if x.name == "providers" {
+				row = x
+			}
+		}
+		if row.level != c.level || !strings.HasPrefix(row.detail, c.detail) {
+			t.Errorf("%s: providers row = %+v", c.name, row)
+		}
+	}
+}
+
 // TestHealthModelRow: the model row and a send name the same cause in the
 // same words, before any provider SDK gets to complain in its own.
 func TestHealthModelRow(t *testing.T) {

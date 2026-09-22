@@ -88,7 +88,7 @@ that hits the cap ends the turn with an error row.
 
 Only `init.lua` may register providers, and only user config may read secret-looking
 variables with `zemi.env.get`. MCP `headers` and `env` values are plain strings: build them
-in Lua (`Authorization = "Bearer " .. zemi.env.get("GITHUB_TOKEN")`). `/model` opens a picker;
+in Lua (`Authorization = "Bearer " .. zemi.env.get("GITHUB_TOKEN")`). `/model` opens a picker (context window and USD per million tokens next to each model);
 `/model provider/model` switches directly.
 
 ## Settings
