@@ -569,6 +569,7 @@ type fakeUI struct {
 	qOK          bool
 	planVerdict  tools.PlanVerdict
 	planOK       bool
+	planAsked    int
 	opened       []Overlay
 	closed       []string
 	closedLua    int
@@ -625,6 +626,7 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
 }
 
 func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
+	f.planAsked++
 	return f.planVerdict, f.planOK
 }
 

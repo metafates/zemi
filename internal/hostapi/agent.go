@@ -1598,11 +1598,16 @@ func (h *Host) planFollowup(runner *agent.Runner) {
 	}
 	// the popup blocks this goroutine, so claim the agent while it is up; a
 	// submit then queues instead of starting a second send under the popup.
-	// Released on every path, including a panic mid-popup.
+	// One that claimed it first supersedes the plan: its turn keeps the scope.
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.active {
+		ag.mu.Unlock()
+		return
+	}
+	ag.active = true
 	scope := h.beginScope()
-	h.agents.mu.Lock()
-	h.agents.active = true
-	h.agents.mu.Unlock()
+	ag.mu.Unlock()
 	ended := false
 	defer func() { // released on every path, including a panic mid-popup
 		if !ended {

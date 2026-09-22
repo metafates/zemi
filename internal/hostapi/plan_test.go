@@ -106,6 +106,43 @@ func TestPlanFeedbackKeepsPlanner(t *testing.T) {
 	}
 }
 
+// TestPlanFollowupClaims: a planner reply in plain text is presented under a
+// claim of its own, released after; a submit that claimed the agent first
+// keeps its turn and scope, and no popup opens over it.
+func TestPlanFollowupClaims(t *testing.T) {
+	runner := &agent.Runner{History: []fantasy.Message{
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "# plan"}}},
+	}}
+	for _, c := range []struct {
+		name      string
+		claimed   bool
+		wantAsked int
+	}{
+		{"idle agent: presented and released", false, 1},
+		{"claimed by a submit: left alone", true, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHost(t)
+			ui := &fakeUI{planOK: true}
+			h.SetUIHooks(ui)
+			if err := h.SetProfile("planner"); err != nil {
+				t.Fatal(err)
+			}
+			var scope *turnScope
+			if c.claimed {
+				h.agents.mu.Lock()
+				h.agents.active = true
+				scope = h.beginScope()
+				h.agents.mu.Unlock()
+			}
+			h.planFollowup(runner)
+			if ui.planAsked != c.wantAsked || h.AgentActive() != c.claimed || h.turn.Load() != scope {
+				t.Fatalf("asked %d, active %v, scope kept %v", ui.planAsked, h.AgentActive(), h.turn.Load() == scope)
+			}
+		})
+	}
+}
+
 // TestPlainTextEnd reports whether an idle run ended in a plain-text assistant
 // reply (the planner forgetting the plan tool) rather than a tool call.
 func TestPlainTextEnd(t *testing.T) {
