@@ -1,6 +1,10 @@
 -- The chat widget: the transcript, the live turn and the todo list.
 local fmt = require("zemi.defaultui.text")
 
+-- A running tool's mark: a smooth braille spinner, stepped by ctx.frame
+-- (50 ms a step), so a row that only shows in the live turn animates cleanly.
+local BRAILLE = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
 -- A tool row: a settled transcript row or a call of the live turn.
 ---@alias zemi.defaultui.Tool zemi.TranscriptRow|zemi.ToolCall
 
@@ -209,7 +213,7 @@ zemi.ui.widget.add({
     local function add_tool(t, idx)
       local name = tool_name(t)
       local open = ctx.show_reasoning or expanded[idx] or false
-      local mark, hl = "● ", "AgentToolRun"
+      local mark, hl = BRAILLE[ctx.frame % #BRAILLE + 1] .. " ", "AgentToolRun"
       if t.status == "ok" then
         mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
