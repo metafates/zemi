@@ -156,6 +156,11 @@ func run(args []string) int {
 		}
 		app.SignalBoot(nil)
 		app.Notify("info", "Config reloaded", "")
+		// a models.main the provider does not list would otherwise run
+		// silently until the provider refuses it
+		if w := host.ModelWarning(); w != "" {
+			app.Notify("warn", "Model", w)
+		}
 		host.EmitAsync("config.reloaded", nil)
 	}
 	app.SetReload(reload)

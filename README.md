@@ -12,7 +12,7 @@ zemi
 ```
 
 Needs Go 1.27. Export a key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
-`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, ...; `/health` lists them) and run `zemi`. A local
+`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, ...; `/model` lists them) and run `zemi`. A local
 server, or a gateway in front of a known provider, goes in `~/.config/zemi/init.lua`:
 
 ```lua

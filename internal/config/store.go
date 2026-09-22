@@ -50,7 +50,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.main", Kind: "string", Default: "", Desc: "the model everything runs on unless a tier or a definition names another (provider/model)"},
 		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for small jobs: session titles, compaction summaries and the builtin web subagent (provider/model; empty uses models.main)"},
 		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses models.main)"},
-		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/health lists them); false leaves only what init.lua adds"},
+		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: "string", Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), plan (no edits), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
 		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "active theme name"},

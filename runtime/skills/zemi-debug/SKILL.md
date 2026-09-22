@@ -78,7 +78,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model yet" | no key exported and no provider in init.lua; `/health` names the variables, zemi-config has `zemi.provider.add` |
+| "no model yet" | no key exported and no provider in init.lua; `/model` lists the builtin providers with their variables, zemi-config has `zemi.provider.add` |
 | 401 / unauthorized | the provider's key is empty or wrong: the exported builtin key, or the variable read with `zemi.env.get`, is not right in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |

@@ -87,7 +87,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- add/del/list, what holds a value takes set/get.
 
 -- Models: zemi knows the usual providers (anthropic, openai, gemini,
--- deepseek, openrouter, ... /health lists them). Export a key and that
+-- deepseek, openrouter, ... /model lists them). Export a key and that
 -- provider is on: export ANTHROPIC_API_KEY=... in your shell, then /model.
 -- One you add here comes first; among builtin ones the catalog order does.
 

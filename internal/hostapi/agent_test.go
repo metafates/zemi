@@ -1114,6 +1114,37 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
+// TestModelPickerOdd: with nothing usable the picker lists the builtin
+// providers by env var, and a configured id the provider does not list is
+// the selected row, which the reload toast also names.
+func TestModelPickerOdd(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}})
+	if h.ModelWarning() == "" || h.OpenModelPicker() != nil {
+		t.Fatal("no model: no warning or the picker did not open")
+	}
+	o := ui.opened[0]
+	if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["desc"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
+		t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
+	}
+	runUser(t, r, `
+		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
+		zemi.config.set("models.main", "a/typo")`)
+	if h.OpenModelPicker() != nil {
+		t.Fatal("picker did not open")
+	}
+	o = ui.opened[1]
+	row := o.Items[0].(map[string]any)
+	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["key"] != "current, not in the list" {
+		t.Fatalf("unlisted id: %+v", o.Items)
+	}
+	if w := h.ModelWarning(); !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
+		t.Fatalf("warning %q", w)
+	}
+}
+
 // TestProfileSwitch: /profile refuses a name nobody defined, /model and
 // zemi.model.set refuse under a profile that sets its own model, and both
 // pickers mark what the next send runs on.
