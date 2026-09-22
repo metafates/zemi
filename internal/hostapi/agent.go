@@ -49,7 +49,10 @@ type PermRequest struct {
 	Always string // what the session-long choice allows ("allow `go test`"), "" when none is offered
 	// Wider is a second session-long choice covering more than Always (a
 	// read's whole repository), "" when there is none
-	Wider   string
+	Wider string
+	// Project is a persistent choice covering Always's scope but written to
+	// the project's permissions file (a trusted bash command), "" when none
+	Project string
 	Subject string
 	Arg     string
 	Reason  string

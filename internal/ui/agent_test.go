@@ -889,6 +889,25 @@ func TestPermissionChoices(t *testing.T) {
 	}
 }
 
+// TestPermissionProjectKey: the "for this project" choice ("p") answers
+// directly into user:project.
+func TestPermissionProjectKey(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	done := make(chan struct{})
+	var ok bool
+	var by string
+	go func() {
+		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "git push", Project: "allow `git push`"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	<-done
+	if !ok || by != "user:project" {
+		t.Fatalf("ok=%v by=%q, want user:project", ok, by)
+	}
+}
+
 // TestPermissionWidthKey: the repo-wide read choice ("r") answers directly,
 // like the other one-letter choice keys.
 func TestPermissionWidthKey(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
@@ -133,7 +134,8 @@ func (h *Host) askHook() tools.Asker {
 		}
 		label, rules := h.alwaysChoice(req)
 		wider, wideRules := h.repoChoice(req)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == "tool.bash"})
+		project, projectRules := h.projectChoice(req, label, rules)
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == "tool.bash"})
 		if by == "user:wider" {
 			rules = wideRules
 		}
@@ -141,6 +143,9 @@ func (h *Host) askHook() tools.Asker {
 			for _, r := range rules {
 				h.Perm.Add(r)
 			}
+		}
+		if allowed && by == "user:project" {
+			h.projectAllow(req.Arg, projectRules)
 		}
 		return resolved(allowed, by)
 	}
@@ -299,6 +304,25 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		p = f[0]
 	}
 	return []string{p, p + " *"}, true
+}
+
+// projectChoice is the ask's "for this project" answer: the session always
+// label kept, its rules allowed un-scoped (like the project permissions file)
+// instead of for the model, and the command persisted to the file so it
+// applies again on every boot. Empty when the project is untrusted (the file
+// is only read then), for a non-bash request, when the command has no safe
+// rule (alwaysLabel is ""), or for a multi-line command: each file line loads
+// as its own command, so a line continuation there would widen what the user
+// approved.
+func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
+	if req.Subject != "tool.bash" || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
+		return "", nil
+	}
+	rules := slices.Clone(alwaysRules)
+	for i := range rules {
+		rules[i].Principal = ""
+	}
+	return alwaysLabel, rules
 }
 
 // repoChoice is the wider "always" answer for a file read: its whole

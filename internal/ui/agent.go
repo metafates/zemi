@@ -53,6 +53,9 @@ func (pa *permAskPrompt) choices() []permChoice {
 	if pa.req.Wider != "" {
 		out = append(out, permChoice{"Yes, and " + pa.req.Wider + " for this session", "r", "user:wider", true, false})
 	}
+	if pa.req.Project != "" {
+		out = append(out, permChoice{"Yes, and " + pa.req.Project + " for this project", "p", "user:project", true, false})
+	}
 	return append(out, permChoice{"No", "n", "user", false, false}, permChoice{"No, and tell zemi what to do instead", "t", "user", false, true})
 }
 
@@ -94,7 +97,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	req.Description, req.Always = sanitize.String(req.Description), sanitize.String(req.Always)
-	req.Wider = sanitize.String(req.Wider)
+	req.Wider, req.Project = sanitize.String(req.Wider), sanitize.String(req.Project)
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}

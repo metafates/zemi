@@ -24,9 +24,10 @@ server caches, `~/.cache/zemi`) override the four roots.
 Rules when editing:
 
 - Add lasting rules with `zemi.permission.rule.add` in init.lua, which adds them again on every
-  start; `a` in a permission prompt allows until zemi exits. A leftover `permissions.lua`
+  start; `a` in a permission prompt allows until zemi exits (a prompt's `p` choice allows a command
+  permanently in one trusted project). A leftover `permissions.lua`
   is not read. For one trusted project, a gitignored `.zemi/permissions` file (one bash
-  command per line) allows them without a prompt in that project.
+  command per line, written there by a prompt's `p` answer or by hand) allows them without a prompt in that project.
 - File writes ask first and show the diff, and write, edit and multiedit
   refuse a file the model has not read or that changed since it read it, and a symbolic
   link (edit its target). A bash row shows a diff of the files the command changed. zemi reloads when

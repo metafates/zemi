@@ -36,8 +36,7 @@ func (h *Host) ProjectPermissionsStep() lua.BootStep {
 // a wrapper or a glob makes unsafe: no rule from a command the user did not
 // see.
 func (h *Host) projectPermissions() {
-	path := filepath.Join(h.Dirs.ProjectConfigDir(), "permissions")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(h.projectPermissionsPath())
 	if err != nil {
 		return // no file is the common case
 	}
@@ -54,16 +53,7 @@ func (h *Host) projectPermissions() {
 			h.permissionSkipped(line)
 			continue
 		}
-		var patterns [][]string
-		ok := true
-		for _, seg := range n.Segments {
-			ps, good := bashAlwaysPatterns(seg)
-			if !good {
-				ok = false
-				break
-			}
-			patterns = append(patterns, ps)
-		}
+		patterns, ok := bashRulePatterns(n)
 		if !ok {
 			h.permissionSkipped(line)
 			continue
@@ -76,6 +66,54 @@ func (h *Host) projectPermissions() {
 	}
 }
 
+// bashRulePatterns turns one normalized command into the allow-rule patterns
+// for each of its segments: shared by the project permissions file loader and
+// the "for this project" ask answer. ok is false when any segment has no safe
+// rule (a wrapper, glob or deleting program).
+func bashRulePatterns(n perm.Normalized) (patterns [][]string, ok bool) {
+	for _, seg := range n.Segments {
+		ps, good := bashAlwaysPatterns(seg)
+		if !good {
+			return nil, false
+		}
+		patterns = append(patterns, ps)
+	}
+	return patterns, true
+}
+
 func (h *Host) permissionSkipped(line string) {
 	h.Log.Warn("permissions", "skipping unsafe command", map[string]any{"command": line})
+}
+
+// projectPermissionsPath is the project's always-allow file.
+func (h *Host) projectPermissionsPath() string {
+	return filepath.Join(h.Dirs.ProjectConfigDir(), "permissions")
+}
+
+// projectAllow answers the ask's "for this project" choice: append cmd to the
+// project permissions file so it allows on every later boot, and register its
+// rules now so it holds for this session too. A failed write still applies
+// in-memory (the choice degrades to a session allow) but is logged.
+func (h *Host) projectAllow(cmd string, rules []perm.Rule) {
+	path := h.projectPermissionsPath()
+	// a fresh trusted project has no .zemi yet; without the dir the append
+	// and the gitignore entry below would both silently no-op
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		h.Log.Warn("permissions", "create dir failed", map[string]any{"error": err.Error()})
+	}
+	if err := h.Dirs.IgnoreLocal("permissions"); err != nil {
+		h.Log.Warn("permissions", "gitignore append", map[string]any{"error": err.Error()})
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		h.Log.Warn("permissions", "append failed", map[string]any{"error": err.Error()})
+	} else {
+		if _, werr := f.WriteString(strings.TrimSpace(cmd) + "\n"); werr != nil {
+			h.Log.Warn("permissions", "append failed", map[string]any{"error": werr.Error()})
+		}
+		f.Close()
+	}
+	for _, r := range rules {
+		h.addPermissionRule(r)
+	}
 }

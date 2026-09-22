@@ -1282,16 +1282,20 @@ configured provider later (`zemi.memory.search` signature does not change).
   command?"), and the model's description sits quoted on its own line,
   never in the title. The choices are a vertical list with their keys:
   `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
-  when the request has an always choice, plus a wider one for a file
-  read), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
+  when the request has an always choice, plus a wider read choice `r` and,
+  for a trusted project's safe bash command, a `for this project` choice
+  `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
   (permission, trust, question) draws through one renderer, which puts
-  each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The overlay writes session rules only: `always`
-  adds allow rules to the rule store (§6.1), scoped to the
-  `model` principal, with the prefix-glob patterns §6.2 lists. Lasting
-  rules never come from the overlay; they are `zemi.permission.rule.add`
-  lines in the user's own config. The overlay
+  each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
+  answers write allow rules to the rule store (§6.1),
+  scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
+  until zemi exits. Lasting rules normally come only from `zemi.permission.rule.add`
+  lines in the user's own config. The one exception is the `for this project`
+  answer: it appends the command to the project's gitignored `.zemi/permissions` file
+  (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
+  boot. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
   may restyle the frame via theme groups only. The security-relevant
   chrome (answer keys, subject, badge) renders in fixed host colors no
