@@ -64,9 +64,6 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	}
 	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
 	h.SetUIHooks(&fakeUI{})
-	if err := h.SetPermMode("plan"); err != nil {
-		t.Fatal(err)
-	}
 	lean, err := h.resolveProfile("lean")
 	if err != nil {
 		t.Fatal(err)
@@ -77,10 +74,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		keep []string
 		gone []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", "plan tool", `"job_start"`}, nil},
-		{"lean", lean, []string{"offset and limit", "plan tool", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", `"job_start"`}, nil},
+		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
 			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}},
-		{"no plan", &Profile{Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
+		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil},
+		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
 		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}},
 	} {
 		toolset := h.profileTools(c.p)

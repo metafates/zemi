@@ -84,7 +84,8 @@ func TodoList(rows []store.Todo) string {
 // PlanVerdict is the user's answer to a presented plan.
 type PlanVerdict struct {
 	Approved bool
-	Mode     string // permission mode chosen on approval, "" when unchanged
+	Mode     string // permission mode restored on approval, "" when unchanged
+	Profile  string // agent restored on approval, "" when unchanged
 	Feedback string // what to change, when not approved
 	Path     string // where the plan was saved, "" when not saved
 }
@@ -106,8 +107,10 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	switch {
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
+	case v.Approved && v.Profile != "":
+		return fantasy.NewTextResponse("The user approved the plan; you are back as the " + v.Profile + " agent in " + v.Mode + " mode." + implement), nil
 	case v.Approved && v.Mode != "":
-		return fantasy.NewTextResponse("The user approved the plan and plan mode is off; the permission mode is now " + v.Mode + "." + implement), nil
+		return fantasy.NewTextResponse("The user approved the plan; the permission mode is now " + v.Mode + "." + implement), nil
 	case v.Approved:
 		return fantasy.NewTextResponse("The user approved the plan." + implement), nil
 	}

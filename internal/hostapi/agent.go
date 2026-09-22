@@ -31,12 +31,15 @@ import (
 )
 
 // Profile is one named agent shape: model, system prompt, tools.
+// ReadOnly makes it a planning agent: the project is read-only to it and
+// the pipeline denies file changes and forces asks (see h.readOnly).
 type Profile struct {
 	Name         string   `json:"name"`
 	Model        string   `json:"model"`
 	System       string   `json:"system"`
 	Tools        []string `json:"tools"`
 	ContextFiles []string `json:"context_files"`
+	ReadOnly     bool     `json:"read_only"`
 	Temperature  *float64 `json:"temperature,omitempty"`
 }
 
@@ -185,13 +188,17 @@ func newAgentHost() *agentHost {
 func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
 
 // resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key; nil is the implicit shipped profile.
+// agent.profile key. default is the implicit shipped shape (nil); planner
+// is the shipped read-only agent. Any other name must be defined.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
+	}
+	if name == "planner" {
+		return &Profile{Name: "planner", ReadOnly: true}, nil
 	}
 	if p, ok := ag.profiles[name]; ok {
 		return p, nil
@@ -200,6 +207,13 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
 	}
 	return nil, nil
+}
+
+// readOnly reports whether the active agent is read-only: the project is
+// read-only to it and file changes are denied regardless of the mode.
+func (h *Host) readOnly() bool {
+	p, _ := h.resolveProfile("")
+	return p != nil && p.ReadOnly
 }
 
 // currentModelID picks the model the main conversation runs on: a profile
@@ -1454,19 +1468,41 @@ func (h *Host) setWatched(path, val string) error {
 	return nil
 }
 
-// ProfileNames lists default and the defined profiles.
+// ProfileNames lists default, the shipped planner, and the defined profiles.
 func (h *Host) ProfileNames() []string {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	return append([]string{"default"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
+	return append([]string{"default", "planner"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
 }
 
 // SetProfile switches the profile the next send runs as (/profile <name>).
+// Picking a read-only agent remembers the one it replaced, so approving a
+// plan can return to it (approvePlan).
 func (h *Host) SetProfile(name string) error {
 	if _, err := h.resolveProfile(name); err != nil {
 		return fmt.Errorf("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
+	next, _ := h.resolveProfile(name)
+	if next != nil && next.ReadOnly && !h.readOnly() {
+		h.modes.mu.Lock()
+		h.modes.prePlanProfile = h.Settings.Str("agent.profile")
+		h.modes.prePlanMode = h.Settings.Str("permissions.mode")
+		h.modes.mu.Unlock()
+	}
 	return h.setWatched("agent.profile", name)
+}
+
+// cycleProfile steps through the agents (a key binding, like cyclePermMode):
+// default, planner, then profiles in definition order, and back.
+func (h *Host) cycleProfile(step int) error {
+	names := h.ProfileNames()
+	n := len(names)
+	cur := h.Settings.Str("agent.profile")
+	i := slices.Index(names, cur)
+	if i < 0 {
+		i = 0
+	}
+	return h.SetProfile(names[((i+step)%n+n)%n])
 }
 
 // OpenProfilePicker lists the profiles with what each changes; enter switches.
@@ -1479,7 +1515,9 @@ func (h *Host) OpenProfilePicker() error {
 	var items []any
 	for i, name := range h.ProfileNames() {
 		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
-		if p, _ := h.resolveProfile(name); p != nil {
+		if name == "planner" {
+			item["desc"] = "read-only: plan and present for approval"
+		} else if p, _ := h.resolveProfile(name); p != nil {
 			item["desc"] = profileDesc(p)
 		}
 		if name == cur {
@@ -1517,7 +1555,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.refuseBelowUser(L, "agent.profile")
-		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system")}
+		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system"), ReadOnly: rawBool(spec, "read_only")}
 		if temp, ok := spec.RawGetString("temperature").(glua.LNumber); ok {
 			t := float64(temp)
 			p.Temperature = &t
@@ -1832,8 +1870,12 @@ func (h *Host) afterWrite(path string) string {
 	return note + h.lspAfterWrite(path)
 }
 
-// PipelineFor builds the tools pipeline for the model's tool calls.
+// PipelineFor builds the tools pipeline for the model's tool calls. It is
+// built per send (profileTools -> ensureRunner), so the read-only snapshot
+// below matches the profile the system prompt was built for; switching the
+// agent mid-turn changes the next send, not the running one.
 func (h *Host) PipelineFor() *tools.Pipeline {
+	readOnly := h.readOnly()
 	p := &tools.Pipeline{
 		Store:       h.Perm,
 		Pre:         h.toolPreHook(),
@@ -1843,11 +1885,16 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Changes:     h.bashChanges,
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
-		Plan:        func() bool { return h.permModeDef().Base == "plan" },
+		Plan:        func() bool { return readOnly },
 		Sandbox: func() *sandbox.Policy {
-			// yolo allows everything anyway, so confining it only breaks commands
+			// read-only is absolute: a planner must not touch the project even
+			// under yolo. Otherwise yolo allows everything and runs unconfined.
+			if readOnly {
+				p := h.sandboxPolicy(true)
+				return &p
+			}
 			if def := h.permModeDef(); h.sandboxLive() && def.Base != "yolo" {
-				p := h.sandboxPolicy(def.Base == "plan")
+				p := h.sandboxPolicy(false)
 				return &p
 			}
 			return nil

@@ -54,7 +54,7 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 // later unconfined build. Other tools' caches stay read-only. The system
 // temp dir is not writable for the same reason: macOS keeps xcrun_db there,
 // which picks the binary /usr/bin/make or git runs.
-func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
+func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
 	p := sandbox.Policy{Loopback: true}
@@ -98,7 +98,7 @@ func (h *Host) sandboxPolicy(plan bool) sandbox.Policy {
 	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
 		// Landlock rules only add access: a write root opens every hidden path inside it
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
-	writable := h.ProjectTrusted() && !plan && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
+	writable := h.ProjectTrusted() && !readOnly && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
 	if writable && backend.Name != "seatbelt" {
 		// seatbelt protects every .git and .zemi by name, the namespace
 		// variant only the paths it binds

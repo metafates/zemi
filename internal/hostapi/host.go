@@ -58,9 +58,9 @@ type UIHooks interface {
 	// first one; safe from any goroutine.
 	Screenshot() string
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
-	// AskPlan shows a plan for approval (implementMode is the mode to
-	// implement in, "" when none); ok is false when the user dismisses it.
-	AskPlan(plan, implementMode string) (tools.PlanVerdict, bool)
+	// AskPlan shows a plan for approval (restore is the agent to return to on
+	// approval, "" when none); ok is false when the user dismisses it.
+	AskPlan(plan, restore string) (tools.PlanVerdict, bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
 	// "history_next", "paste" or "edit".
@@ -311,7 +311,7 @@ type Host struct {
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
 	// config, instructions and language servers load only when it is set,
-	// and auto and plan mode settle less without it.
+	// and auto mode settles less without it.
 	projectTrusted atomic.Bool
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store, the scratchpad and
@@ -450,6 +450,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
 		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
+		"zemi.agent.profile.cycle":   func(h *Host, _ string) error { return h.cycleProfile(1) },
+		"zemi.agent.profile.prev":    func(h *Host, _ string) error { return h.cycleProfile(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
 	h.refreshPending()
@@ -1160,6 +1162,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
+	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort()))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
@@ -1505,7 +1508,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.61.0"))
+	api.RawSetString("version", glua.LString("0.62.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

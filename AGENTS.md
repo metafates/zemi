@@ -135,7 +135,7 @@ one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 trust step must not leave the old decision in force). `Host.ProjectTrusted()` gates project
 `.zemi` (init.lua, agents, commands, workflows), instruction files and profile `context.files`,
 project skills, every language server, the Lua tool's ask, the read jail reaching past the
-launch dir to `Dirs.RepoRoot()`, and what auto and plan mode settle. `Host.git` shells out to
+launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` shells out to
 the `git` binary (no git library in go.mod) with `GIT_CONFIG_NOSYSTEM=1`, and switches off
 fsmonitor, hooks and repo-local filter drivers in every repository, trusted or not: a sandboxed
 command can plant a nested repo whose config zemi would run.
@@ -234,7 +234,8 @@ not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bas
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git`, `.zemi` or zemi's own dirs are `protectedWrite`, checkouts in `.zemi/worktrees` aside).
-`plan` denies writes and runs commands like auto, sandboxed with the project unwritable.
+A read-only agent (`Profile.ReadOnly`, see below) denies writes and forces asks on changing
+commands, with the project unwritable in the sandbox, whatever the mode.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
@@ -251,7 +252,7 @@ without a path; no builds, no git) and auto settles no writes.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
-`h.sandboxPolicy(plan)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
+`h.sandboxPolicy(readOnly)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
 `Jobs.Start`/`Adopt` and `win.Spec.Wrap` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
 `zemi.job`, MCP servers and `Host.git` stay unconfined; language servers run under
@@ -346,8 +347,8 @@ lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, 
 `skillIndex` discovers the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment prompt's `Recipes:` line says how); the dir is a
-`protectedWrite`: no rule and neither auto nor plan settles a write (yolo still allows), and the
-ask says when `sessionLocalOnly` fails.
+`protectedWrite`: no rule and neither auto mode nor a read-only agent settles a write (yolo still
+allows), and the ask says when `sessionLocalOnly` fails.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
 rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
@@ -471,8 +472,8 @@ lua-language-server is installed.
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
   `attachMarker`, which the live transcript and resume cut off.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
-  removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass plan mode; a
-  program may read it, never run from it.
+  removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
+  agent; a program may read it, never run from it.
 - **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
   function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardModelLua`),
@@ -480,7 +481,7 @@ lua-language-server is installed.
   approved run. `luaUnlisted` tokenizes the script first: any zemi path off the list, a
   non-read handle method call, or dynamic access (`_G`, `load`, `require`, ...) asks `tool.lua`
   once, as `Request.Unsandboxed` so no mode settles it, and the approved run evaluates as chunk
-  `lua-tool#<n>`. In an untrusted project or plan mode every script asks. A new API member is
+  `lua-tool#<n>`. In an untrusted project or a read-only agent's run every script asks. A new API member is
   guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. Runs on the interpreter (10s ceiling), main
   agent only.
@@ -533,27 +534,30 @@ and puts the first line of the widgets in its `top`, `left` and `right` regions 
 shipped layout keeps the mascot and the statusline: agent state changes what a rule says, never
 how many rows the frame takes, so nothing above it reflows.
 
-### Rewind, plan mode, prompts, composer bridge
+### Rewind, read-only agents, prompts, composer bridge
 
 - **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a file's
   pre-turn content (keyed by the turn's user message, first write wins) before a write tool
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
   restore leaves the conversation intact. Bash changes are not tracked.
-- **Plan mode** is enforced in `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even
-  under allow rules, `mcp.*` allows and bash allows other than `ReadCommand` flip to ask.
+- **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
+  `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
+  allows and bash allows other than `ReadCommand` flip to ask; the sandbox keeps the project
+  unwritable. Approving the plan returns to the agent and mode that ran before.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
   (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
-  then `zemiPrompt`, plan mode, the per-session pinned `environmentPrompt`, instruction files
+  then `zemiPrompt`, the read-only agent's plan section, the per-session pinned
+  `environmentPrompt`, instruction files
   under `# Project instructions` (the repository's files share a 32 KB budget spent deepest
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
   `<config>/AGENTS.md` gets its own budget), Lua sections (`agent.assemble`, then the `prompt`
   of each Lua tool in the tool set), skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
-  or `todos` drops its "Using tools" line, and plan mode without the `plan` tool (headless, a
-  profile) ends in `planHeadless`. No kept tool's description names a dropped tool
+  or `todos` drops its "Using tools" line, and a read-only agent without the `plan` tool
+  (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at

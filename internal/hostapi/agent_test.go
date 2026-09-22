@@ -1087,7 +1087,7 @@ func TestProfileSwitch(t *testing.T) {
 		do      func() error
 		wantErr string
 	}{
-		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, cheap"},
+		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
 		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},

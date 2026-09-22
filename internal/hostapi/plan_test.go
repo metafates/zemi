@@ -12,9 +12,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestPlanMode: plan mode refuses file changes even under an allow rule
-// and turns allowed commands that change things into asks, and the prompt
-// says so.
+// TestPlanMode: a read-only agent (the planner profile) refuses file changes
+// even under an allow rule and turns allowed commands that change things into
+// asks, and the prompt says so; it works whatever the permission mode.
 func TestPlanMode(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
@@ -27,16 +27,17 @@ func TestPlanMode(t *testing.T) {
 	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Allow {
 		t.Fatalf("allowed write = %v", v.Decision)
 	}
-	if err := h.SetPermMode("plan"); err != nil {
+	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
-	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "mode:plan" {
-		t.Fatalf("plan write = %v by %s", v.Decision, v.DecidedBy)
+	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" {
+		t.Fatalf("read-only write = %v by %s", v.Decision, v.DecidedBy)
 	}
 	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
-		t.Fatalf("plan bash = %v", v.Decision)
+		t.Fatalf("read-only bash = %v", v.Decision)
 	}
-	if !strings.Contains(h.buildSystem(nil), "plan mode") {
+	p, _ := h.resolveProfile("planner")
+	if !strings.Contains(h.buildSystem(p), "Plan mode") {
 		t.Fatal("system prompt misses the plan mode section")
 	}
 }

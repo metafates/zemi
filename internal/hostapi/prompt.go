@@ -155,19 +155,36 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 		files = p.ContextFiles
 	}
 	sys += h.zemiPrompt(toolset)
-	def := h.permModeDef()
-	if def.Base == "plan" {
+	if p != nil && p.ReadOnly {
 		rest := planAsking
 		if !hasTool(toolset, tools.ToolPlan) {
 			rest = planHeadless
 		}
 		sys += planPrompt + rest
 	}
-	if def.Prompt != "" {
+	if def := h.permModeDef(); def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
 	return h.systemFor(sys, files, toolset)
 }
+
+// planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
+// the pipeline enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
+const planPrompt = `
+
+# Plan mode
+You are planning: plan the work with them and do not do it until the user approves a plan. The project is read-only and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
+1. Read the code the task touches first. Never ask what reading it would tell you. For anything more than a focused fix, delegate the reading and plan drafting to the plan subagent (agent, name "plan"): it is a read-only architect who reports a concrete plan with a Critical Files section. Use its report as the plan.`
+
+// planAsking is the rest of plan mode for a run with the plan tool; a
+// headless run and a profile that drops it have none.
+const planAsking = `
+2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
+3. When nothing is left to decide, call the plan tool with the plan. Structure the plan as short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and a Critical Files section naming the 3-5 files that matter most.
+End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan switches you back to the agent you replaced: then implement it.`
+
+const planHeadless = `
+2. Write the plan as your reply and stop there: nothing in this run can approve it.`
 
 // systemWith appends instruction files, the skills index and the session
 // digest to a base prompt. files names explicit project files (a profile's

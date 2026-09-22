@@ -294,6 +294,8 @@ function zemi.config.reload() end
 ---| "zemi.composer.edit"
 ---| "zemi.permission.mode.cycle"
 ---| "zemi.permission.mode.prev"
+---| "zemi.agent.profile.cycle"
+---| "zemi.agent.profile.prev"
 
 ---@class zemi.keymap
 zemi.keymap = {}
@@ -669,6 +671,7 @@ function zemi.event.stats() end
 ---@field trusted boolean Whether the user trusts this project (/trust).
 ---@field model string
 ---@field profile string
+---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
 ---@field effort string
 ---@field permission_mode string
 ---@field permission_mode_base string
@@ -1213,6 +1216,7 @@ function zemi.model.pick() end
 ---@field temperature? number
 ---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest.
 ---@field context? { files: string[] } Files pinned into the prompt.
+---@field read_only? boolean A read-only (planning) agent: the project is read-only to it and it presents plans for approval.
 
 ---@class zemi.AgentCurrent
 ---@field id string Session id.

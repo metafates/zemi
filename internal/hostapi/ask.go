@@ -91,14 +91,6 @@ func (h *Host) askHook() tools.Asker {
 		case req.Network:
 			// the host is the model's, like a fetch URL, so no mode settles it
 			req.Reason = "needs the network, staying sandboxed"
-		case base == "plan":
-			if req.Subject == "tool.bash" {
-				why := h.unsettled(req.Arg)
-				if why == "" {
-					return resolved(true, "mode:"+def.Name)
-				}
-				req.Reason = strings.TrimPrefix(req.Reason+"; not settled: "+why, "; ")
-			}
 		case base == "auto":
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)

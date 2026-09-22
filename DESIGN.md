@@ -272,7 +272,7 @@ Directories (XDG):
   skills/<name>/SKILL.md  learned skills (start disabled)
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)
-  plans/<session id>.md   plans approved in plan mode
+  plans/<session id>.md   plans approved from a read-only agent
 ~/.local/state/zemi/      state
   zemi.db                 global store (user memory, skills, kv, revisions)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
@@ -316,9 +316,9 @@ origin is denylisted anyway (below).
 
 Trusted, zemi loads the project's `.zemi` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
-user-added; sandboxed when a backend is live, §9), auto and plan mode settle builds and tests in the sandbox, and
+user-added; sandboxed when a backend is live, §9), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no language server starts, `.zemi` edits trigger no reload, and auto and plan mode
+is an instruction file, no language server starts, `.zemi` edits trigger no reload, and auto mode and read-only agents
 settle only reads and `perm.ReadCommand` commands. Either way zemi's own
 git calls switch off `core.fsmonitor`, hooks and repository filter
 drivers: a sandboxed command can plant a nested repository whose config
@@ -505,9 +505,9 @@ only, and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
 so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
-by an unrelated config edit; replaying `permissions.mode` over a plan-mode
-pick would loosen permissions silently. A key whose `set` line was deleted
-returns to its default on that reload, unless a runtime pick moved it since.
+by an unrelated config edit; replaying `agent.profile` over a read-only agent
+pick would loosen its read-only plan silently, so a pick is settled to its last value too.
+A key whose `set` line was deleted returns to its default on that reload, unless a runtime pick moved it since.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project, plugin and learned code may not, and the
 model's `Lua` tool asks before any such call. Persistent config changes are edits to
@@ -675,6 +675,9 @@ zemi.agent.profile("coder", {
   context = { files = { "ZEMI.md", "AGENTS.md" } },
   temperature = 0.2,
 })
+-- read_only makes a profile a planning agent: the project is read-only to it
+-- and the pipeline denies writes and forces asks; "planner" ships that way.
+zemi.agent.profile("planner", { read_only = true })
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
                                            -- and what deleting this line returns to
@@ -780,9 +783,9 @@ nearest instruction file not already in the prompt, once per session),
 walker fallback, §2), `fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
-answer), `plan` (shows the plan in its own scrollable popup for approval;
-in plan mode the mode to implement in is the one active before it, remembered
-at plan start), `open_in_editor` (the user
+answer), `plan` (shows the plan in its own scrollable popup for approval; for a
+read-only agent the agent and mode active before it are remembered at its start,
+and approval returns to them), `open_in_editor` (the user
 edits a file in their own editor; the result is the diff),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,
@@ -793,7 +796,7 @@ references, rename, file symbols and project-wide symbol search by name), `skill
 four the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), and `Lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
-in an untrusted project or plan mode, and before a call that widens what
+in an untrusted project or read-only agent, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan`,
 `open_in_editor` or `Lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
@@ -1227,7 +1230,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
-  `/profile [name]` (the agent profile the next send runs as; a picker without a name),
+  `/profile [name]` (the agent profile the next send runs as; a picker without a name;
+  `ctrl+t`/`ctrl+shift+t` cycle the agent, `tab`/`shift+tab` cycle the permission mode),
   `/permissions` (the mode and the rules in force; a session rule an "always"
   answer wrote can be removed there),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
@@ -1249,7 +1253,8 @@ configured provider later (`zemi.memory.search` signature does not change).
   item index; widget segments carry their `click` id (§6.6) and are
   targets only while their widget has `on_click` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `defaultui/statusline.lua`: the mode opens the mode picker, the model the model
+  `defaultui/statusline.lua`: the mode and the always-visible agent pill open their
+  pickers, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a reasoning line
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
@@ -1430,10 +1435,11 @@ configured provider later (`zemi.memory.search` signature does not change).
   fail-open path.
 - Permission modes answer what is left: a mode sees only the asks that
   survive the rules above and the `permission.request` veto (§6.2), and
-  it can never overrule a `deny`. Three ship: `plan` (`fs.write` is denied even under an allow rule, bash
-  and `mcp.*` allows flip to `ask` unless the bash command is a
-  `perm.ReadCommand`, and commands settle as in `auto` but run sandboxed with
-  the project unwritable, which is what keeps plan mode read-only), `auto`, and `yolo` (every surviving ask allows). `auto` settles
+  it can never overrule a `deny`. Two ship: `auto` and `yolo` (every surviving ask allows). A read-only agent
+  (the shipped `planner` profile, `Profile.ReadOnly`) is the old `plan` in the agent axis:
+  `fs.write` is denied even under an allow rule, bash and `mcp.*` allows flip to `ask` unless
+  the bash command is a `perm.ReadCommand`, and commands run sandboxed with the project
+  unwritable, which is what keeps a planning session read-only. `auto` settles
   locally first, without a model: reads and writes inside the jail that
   are not secret-shaped (writes under any `.git` or `.zemi`, the git dir
   a project `.git` file names, or zemi's own config, data and state dirs
@@ -1473,7 +1479,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   runs on the interpreter with a 60s ceiling, long enough for a model call
   of its own, and may not allow an unsandboxed or network request.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
-  project and in plan mode. Everywhere else it is default-deny: without
+  project and a read-only agent. Everywhere else it is default-deny: without
   the user's approval a run may call only the read-only members in
   `luaReadOnly` (hostapi `luatool.go`). Every Go function a namespace
   exposes, and every handle method (`lua.GuardFuncs`), runs the sandbox
@@ -1530,7 +1536,7 @@ configured provider later (`zemi.memory.search` signature does not change).
   (`<state>/sandbox-cache/<hash of the trust root>/go-build`, set as
   `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and Go
   trusts its cache entries, so the user's own cache written from here could
-  poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not in plan mode, not `$HOME`
+  poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not read-only, not `$HOME`
   or above it, neither holds nor sits in one of zemi's config, data and
   state dirs, holds no hidden path unless the backend is seatbelt (a
   Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.zemi` (the backend protects the

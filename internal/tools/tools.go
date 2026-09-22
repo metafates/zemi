@@ -151,7 +151,7 @@ type Pipeline struct {
 	EditMemory func(id, text string) (string, error)
 
 	// Scratch reports a path inside the session scratchpad: writes there
-	// pass plan mode. nil = no scratchpad.
+	// pass a read-only agent. nil = no scratchpad.
 	Scratch func(path string) bool
 	// SearchURL returns the user's SearXNG endpoint for web_search; nil or
 	// "" = DuckDuckGo Lite.
@@ -186,7 +186,7 @@ type Pipeline struct {
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
 
-	// Plan reports plan mode: file writes are denied and allowed commands
+	// Plan reports a read-only agent: file writes are denied and allowed commands
 	// ask instead unless they only read; nil = never.
 	Plan func() bool
 
@@ -255,7 +255,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
-		return Verdict{perm.Deny, "plan mode is on: no file changes (tab switches mode)", "mode:plan"}
+		return Verdict{perm.Deny, "the agent is read-only: no file changes (pick another agent)", "profile:readonly"}
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
@@ -272,7 +272,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// rule-allowed commands run unconfined, so only readers skip the ask
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
-			return p.resolveAsk(req, "plan mode: commands that change things ask")
+			return p.resolveAsk(req, "read-only agent: commands that change things ask")
 		}
 		return v
 	}
@@ -367,9 +367,9 @@ func sandboxLimits() string {
 	s := "no network, writes only in the scratchpad and a private $TMPDIR, the project read-only"
 	switch {
 	case b.EnforcesProtect && runtime.GOOS == "linux":
-		s = "no network at all, not even to servers running on this machine; writes only in the project (not in plan mode), the scratchpad and a private $TMPDIR; .git and .zemi read-only"
+		s = "no network at all, not even to servers running on this machine; writes only in the project (except for a read-only agent), the scratchpad and a private $TMPDIR; .git and .zemi read-only"
 	case b.EnforcesProtect:
-		s = "no network beyond localhost, writes only in the project (not in plan mode), the scratchpad and a private $TMPDIR, .git and .zemi read-only"
+		s = "no network beyond localhost, writes only in the project (except for a read-only agent), the scratchpad and a private $TMPDIR, .git and .zemi read-only"
 	}
 	if b.HidesSecretFiles {
 		return s + ", secret files unreadable"
@@ -885,9 +885,9 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. In plan mode, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. As a read-only agent, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
 
-The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. The user approves it (implement it, and plan mode ends), asks for changes (revise and call again), or dismisses it (stop and wait).`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. The user approves it (implement it, and you return to the agent that ran before), asks for changes (revise and call again), or dismisses it (stop and wait).`,
 			false,
 			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
 			[]string{"plan"},

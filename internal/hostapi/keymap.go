@@ -165,9 +165,10 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			// line reaches slash commands and !shell, nor move the focus,
 			// which routes every later key to the node it picked.
 			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode" ||
+				strings.HasPrefix(rhs.API, "zemi.agent.profile.cycle") || strings.HasPrefix(rhs.API, "zemi.agent.profile.prev") ||
 				strings.HasPrefix(rhs.API, "zemi.composer.") || strings.HasPrefix(rhs.API, "zemi.ui.focus.")) &&
 				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
-				L.RaiseError("zemi.keymap.set: only user config may bind permission mode, composer or focus actions")
+				L.RaiseError("zemi.keymap.set: only user config may bind permission mode, agent, composer or focus actions")
 			}
 			b.RHS = rhs
 		default:

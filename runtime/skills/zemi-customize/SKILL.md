@@ -119,8 +119,7 @@ the file is saved (zemi reloads config on change).
 
 ## Permission modes (`init.lua`, user config only)
 
-`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (plan, auto,
-yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
+`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (auto, yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
 that the rules left open. `decide` runs off the UI with a 60s ceiling, so it may ask a model
 of its own; it holds the interpreter while it runs, so the rest of zemi waits on it.
 

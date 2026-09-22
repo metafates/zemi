@@ -1,7 +1,8 @@
 // plan.go is the Go-owned plan approval overlay (DESIGN §6.4, §8): the plan
 // tool shows its plan as a scrollable markdown "Plan" popup the user approves
-// (enter), asks to change (type), or dismisses (esc). The mode to implement
-// in is decided when plan mode starts, so approval never asks which mode.
+// (enter), asks to change (type), or dismisses (esc). The agent to return to
+// on approval is remembered when the read-only agent started, so approval
+// never asks which agent or mode.
 package ui
 
 import (
@@ -126,7 +127,7 @@ func (a *App) planBox(p *planAskPrompt, w, chatH int) [][]hostapi.Segment {
 	}
 	badge := ""
 	if p.mode != "" {
-		badge = "in " + p.mode + " mode"
+		badge = "back to " + p.mode + " on approve"
 	}
 	return promptBox(" Plan ", badge, append(append(plan, input...), nil), hintLine(boxInner(w), hints...), w, 100)
 }

@@ -20,7 +20,7 @@ zemi.ui.widget.add({
   render = function(ctx)
     local mode = ctx.permission_mode or "auto"
     local base = ctx.permission_mode_base or mode
-    local hl = ({ plan = "ModePlan", auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
+    local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[base] or "ModeAuto"
     return { { { text = mode, hl = hl, click = "mode" } } }
   end,
 })
@@ -176,7 +176,13 @@ end)
 ---@type { [1]: string, [2]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
 local right = {
   { "profile", function(ctx)
-    if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
+    if ctx.profile_read_only then
+      return ctx.profile .. " ⌖", "ModePlan", "profile"
+    end
+    if ctx.profile ~= "default" then
+      return ctx.profile, "Comment", "profile"
+    end
+    return "general", "Dim", "profile"
   end },
   { "model", function(ctx)
     if (ctx.model or "") == "" then return end

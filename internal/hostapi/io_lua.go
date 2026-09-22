@@ -989,7 +989,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		// a program that was not found is proc.Start's returned error, not a
 		// sandbox failure
 		if rawBool(spec, "sandbox") && cmd.Err == nil {
-			pol := h.sandboxPolicy(h.permModeDef().Base == "plan")
+			pol := h.sandboxPolicy(h.readOnly())
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {
 				L.RaiseError("zemi.job.start: sandbox: %v", err)

@@ -4,7 +4,7 @@
 // through the API every Lua caller uses. Without the user's approval a run
 // may only call read-only members (luaReadOnly, enforced by guardModelLua);
 // a script that names anything else asks once up front, and so does every
-// run in an untrusted project or plan mode. The tool.pre events always run
+// run in an untrusted project or by a read-only agent. The tool.pre events always run
 // so user hooks can deny or halt a script.
 package hostapi
 
@@ -197,7 +197,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	// before any call that is not a read: no mode may settle that, since
 	// what it changes or starts runs unconfined
 	unlisted := luaUnlisted(src)
-	if len(unlisted) > 0 || !h.ProjectTrusted() || h.permModeDef().Base == "plan" {
+	if len(unlisted) > 0 || !h.ProjectTrusted() || h.readOnly() {
 		arg := "script"
 		if in.Path != "" {
 			arg = in.Path

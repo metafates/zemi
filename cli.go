@@ -35,7 +35,7 @@ Flags:
   -c, --continue      continue the most recent session
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
-      --mode mode     permission mode: plan, auto or yolo
+      --mode mode     permission mode: auto or yolo
       --profile name  agent profile: one init.lua defines
       --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)

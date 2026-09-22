@@ -76,7 +76,7 @@ var builtinAgents = []AgentDef{
 		Source:      "builtin",
 	},
 	{
-		// the planner the main model delegates to in plan mode (DESIGN §6): a
+		// the planner a read-only agent delegates to in a planning session (§6): a
 		// read-only architect persona whose report is a concrete plan the
 		// sending agent turns into a plan tool call.
 		Name:        "plan",

@@ -178,7 +178,7 @@ guessing. Common keys:
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
   `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`,
   `zemi.permission.mode.set(name)` switches the active one, and
-  `zemi.permission.mode.add(name, { base = "plan"|"auto"|"yolo", description, prompt, rules, decide })`
+  `zemi.permission.mode.add(name, { base = "auto"|"yolo", description, prompt, rules, decide })`
   adds one (or replaces one with that name) after the others. It behaves like its base; its
   `rules` (`{ "tool.bash", "go test*", "allow" }`, `{ "tool.bash", "git push*", "deny" }`) answer
   what would otherwise ask, `decide(req)` answers one ask the rules left open with "allow" or
@@ -196,7 +196,7 @@ guessing. Common keys:
 
 `zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
 prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
-`--mode plan|auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
+`--mode auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
 `--health` prints the checks `/health` shows and exits 1 when any of them errors.
 A prompt starting with a registered command runs it instead of reaching the model, so
 `zemi -p "/review HEAD~1"` or a `commands/*.md` name works from a script or a git hook.
@@ -217,8 +217,8 @@ local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
 -- zemi.ui.focus.set [id], zemi.ui.focus.next, zemi.ui.focus.prev, zemi.model.pick,
 -- zemi.composer.submit, zemi.composer.insert <text>, zemi.composer.history_prev,
 -- zemi.composer.history_next, zemi.composer.paste, zemi.composer.edit,
--- zemi.permission.mode.cycle, zemi.permission.mode.prev
--- (focus, composer and mode actions: user config only; zemi.HostAction in the type
+-- zemi.permission.mode.cycle, zemi.permission.mode.prev, zemi.agent.profile.cycle, zemi.agent.profile.prev
+-- (focus, composer, permission-mode and agent actions: user config only; zemi.HostAction in the type
 -- annotations is the whole list)
 
 zemi.command.add("standup", function(args)
