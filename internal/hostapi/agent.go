@@ -160,6 +160,13 @@ type agentHost struct {
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
+	// todoNag nudges a stale in_progress todo: the item it was set for,
+	// how many tool calls have run since, and whether a remind is already
+	// queued. Any todos write resets it, so an update (or a tick) stops it.
+	todoInProgress string
+	todoCalls      int
+	todoPending    bool
+
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
 	titled    bool
@@ -536,6 +543,9 @@ func (h *Host) deliverSteering() []string {
 	}
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
 	for _, s := range shown {
+		if s == "" {
+			continue // a model-only message (attachMarker, no shown part)
+		}
 		h.AppendMessage("user", s)
 	}
 	return msgs // Runner.Compose expands them
@@ -1001,6 +1011,56 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
+	}
+	if name != tools.ToolTodos {
+		h.maybeNagTodos()
+	}
+}
+
+// todoNagAfter is how many tool calls an in_progress todo may stay static
+// before zemi nudges the model to tick it (a "force live todos" remind).
+// NOTE: a fixed knob, not config; every todos write resets the count.
+const todoNagAfter = 3
+
+// maybeNagTodos nudges a stale in_progress todo. It is the only "real-time"
+// guarantee the todos list has: the model is free to forget, and this keeps
+// reminding until it engages. The remind rides the model-only steering
+// channel (attachMarker), so it never reads as the user's own message.
+func (h *Host) maybeNagTodos() {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if ag.todoInProgress == "" || ag.todoPending {
+		return
+	}
+	ag.todoCalls++
+	if ag.todoCalls < todoNagAfter {
+		return
+	}
+	ag.todoPending = true
+	if ag.active {
+		ag.steering = append(ag.steering, attachMarker+"\n"+fmt.Sprintf(
+			"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+			ag.todoInProgress, ag.todoCalls)+"\n</attached-files>")
+	}
+}
+
+// resetTodoNag re-arms the staleness tracker from a fresh todo write. A
+// next turn's first todos write is what started counting, so this also stops
+// the nag whenever the model engages at all.
+func (h *Host) resetTodoNag(todos []store.Todo) {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.todoInProgress, ag.todoCalls, ag.todoPending = "", 0, false
+	if len(todos) < 2 {
+		return
+	}
+	for _, td := range todos {
+		if td.Status == "in_progress" {
+			ag.todoInProgress = td.Content
+			return
+		}
 	}
 }
 
@@ -1835,7 +1895,11 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 				return errors.New("no active session")
 			}
 			defer h.todosStale.Store(true)
-			return h.DB.SetTodos(sid, todos)
+			if err := h.DB.SetTodos(sid, todos); err != nil {
+				return err
+			}
+			h.resetTodoNag(todos)
+			return nil
 		}
 	}
 	return p

@@ -752,6 +752,78 @@ func TestPipelineTodos(t *testing.T) {
 	}
 }
 
+// TestTodoNag: a stale in_progress todo earns a model-only remind after
+// todoNagAfter tool calls, once per engagement; any todos write re-arms it.
+func TestTodoNag(t *testing.T) {
+	both := []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "in_progress"}}
+	set := func(h *Host, todos []store.Todo) {
+		if err := h.PipelineFor().TodosWrite(todos); err != nil {
+			t.Fatalf("TodosWrite: %v", err)
+		}
+	}
+	engage := func(h *Host, n int) {
+		h.agents.mu.Lock()
+		h.agents.active = true // maybeNagTodos only queues while live
+		h.agents.mu.Unlock()
+		for i := 0; i < n; i++ {
+			h.maybeNagTodos()
+		}
+	}
+	steering := func(h *Host) []string {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		return append([]string(nil), h.agents.steering...)
+	}
+
+	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter-1)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("pre-threshold steering = %q", got)
+		}
+		engage(h, 1)
+		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], "in_progress") {
+			t.Fatalf("post-threshold steering = %q", got)
+		}
+		engage(h, 5)
+		if got := steering(h); len(got) != 1 {
+			t.Fatalf("nag must not repeat without an update: %q", got)
+		}
+	})
+
+	t.Run("a todos write re-arms the tracker", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter)
+		if len(steering(h)) != 1 {
+			t.Fatal("expected one nag before re-arm")
+		}
+		set(h, both) // any update re-arms
+		engage(h, todoNagAfter)
+		if got := steering(h); len(got) != 2 {
+			t.Fatalf("after re-arm expect a second nag, got %d: %q", len(got), got)
+		}
+	})
+
+	t.Run("a single in_progress item or none never nags", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
+		engage(h, todoNagAfter+2)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("single item must not nag: %q", got)
+		}
+		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
+		engage(h, todoNagAfter+2)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("all done must not nag: %q", got)
+		}
+	})
+}
+
 // TestTurnDoneRecordsStats covers the turn stat plumbing: the assistant
 // transcript entry carries tokens, thought time and elapsed time; plain
 // appended messages carry none.
