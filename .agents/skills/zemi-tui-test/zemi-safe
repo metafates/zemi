@@ -1,0 +1,8 @@
+#!/bin/sh
+# usage: zemi-safe <tree-dir> [zemi args...]
+# Runs $ZEMI_BIN (default bin/zemi) with all four ZEMI_*_HOME dirs under <tree-dir>,
+# so nothing can reach the real ~/.config/zemi. Works from any shell, inside tmux too.
+[ -n "$1" ] || { echo "usage: zemi-safe <tree-dir> [args]" >&2; exit 2; }
+T=$1; shift; mkdir -p "$T/config" "$T/data" "$T/state" "$T/cache"
+export ZEMI_CONFIG_HOME="$T/config" ZEMI_DATA_HOME="$T/data" ZEMI_STATE_HOME="$T/state" ZEMI_CACHE_HOME="$T/cache"
+exec "${ZEMI_BIN:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/bin/zemi}" "$@"

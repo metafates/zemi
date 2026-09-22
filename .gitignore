@@ -1,3 +1,4 @@
 /bin/
-.claude/
+.claude/*
+!.claude/skills
 *.test
