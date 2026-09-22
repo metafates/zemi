@@ -1122,3 +1122,17 @@ func TestPermBoxFitsShortScreen(t *testing.T) {
 		t.Fatalf("the prompt is cut:\n%s", frame)
 	}
 }
+
+func TestPermNote(t *testing.T) {
+	for _, c := range []struct{ reason, want string }{
+		{"", ""},
+		{"not settled: rm -rf build may delete many files", "not settled: rm -rf build may delete many files"},
+		{"agent general; not settled: rm -rf build may delete many files", "asked by the general agent: not settled: rm -rf build may delete many files"},
+		{"agent general: read diagnostics; not settled: this project is not trusted", "asked by the general agent: read diagnostics; not settled: this project is not trusted"},
+		{"agent web", "asked by the web agent"},
+	} {
+		if got, _ := permNote(c.reason); got != c.want {
+			t.Errorf("permNote(%q) = %q, want %q", c.reason, got, c.want)
+		}
+	}
+}

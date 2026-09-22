@@ -632,11 +632,15 @@ func permNote(reason string) (string, string) {
 	switch {
 	case reason == "":
 		return "", ""
-	case strings.HasPrefix(reason, "auto mode"):
-		return reason, "Host:Warn"
 	case strings.HasPrefix(reason, "agent "):
-		who, _, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), ":")
-		return "asked by the " + who + " agent", "Host:Hint"
+		// "agent <name>: <its reason>; not settled: <why it asked>"
+		head, why, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), "; ")
+		who, own, _ := strings.Cut(head, ": ")
+		note := "asked by the " + who + " agent"
+		if rest := strings.Trim(strings.Join([]string{own, why}, "; "), "; "); rest != "" {
+			note += ": " + rest
+		}
+		return note, "Host:Hint"
 	}
 	return reason, "Host:Hint"
 }
