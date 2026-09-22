@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -1020,8 +1021,8 @@ func TestAlwaysChoice(t *testing.T) {
 // fails before it creates a session row.
 func TestSendWithoutModelLeavesNoSession(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	if err := h.AgentSend("hi"); err == nil || !strings.Contains(err.Error(), "no model configured") {
-		t.Fatalf("AgentSend = %v, want no model configured", err)
+	if err := h.AgentSend("hi"); !errors.Is(err, ErrNoModel) {
+		t.Fatalf("AgentSend = %v, want ErrNoModel", err)
 	}
 	if list, err := h.DB.ListSessions(10); err != nil || len(list) != 0 {
 		t.Fatalf("sessions = %v, %v; want none", list, err)

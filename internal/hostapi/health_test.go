@@ -102,10 +102,10 @@ func TestHealthChecksProfileModel(t *testing.T) {
 	for _, c := range h.healthChecks() {
 		got[c.name] = c
 	}
-	if c := got["model"]; c.level != "error" || c.detail != "b/m: api key not set" {
-		t.Errorf("model = %+v, want b/m without a key", c)
+	if c := got["model"]; c.level != "ok" || c.detail != "b/m" {
+		t.Errorf("model = %+v, want b/m", c)
 	}
-	if c := got["context window"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m, a/m:") {
+	if c := got["context"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m, a/m:") {
 		t.Errorf("context window = %+v, want a warning naming both models", c)
 	}
 }
@@ -159,5 +159,34 @@ func TestPluginsStepContinues(t *testing.T) {
 	})
 	if i < 0 {
 		t.Errorf("no plugins warn row in %+v", h.goHealthRows())
+	}
+}
+
+// TestHealthModelRow: the model row and a send name the same cause in the
+// same words, before any provider SDK gets to complain in its own.
+func TestHealthModelRow(t *testing.T) {
+	for _, c := range []struct{ name, lua, level, detail string }{
+		{"none", ``, "error", "no model yet: uncomment a provider and models.main in "},
+		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `models.main names provider "nobody", which init.lua does not add`},
+		{"empty key", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty: set ANTHROPIC_API_KEY or put the key in "},
+		{"unlisted model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
+			zemi.config.set("models.main", "a/other")`, "warn", "a/other: not in the provider's models list"},
+	} {
+		h, r := newTestHostDB(t)
+		runUser(t, r, c.lua)
+		row := healthCheck{}
+		for _, x := range h.healthChecks() {
+			if x.name == "model" {
+				row = x
+			}
+		}
+		if row.level != c.level || !strings.HasPrefix(row.detail, c.detail) {
+			t.Errorf("%s: model row = %+v", c.name, row)
+		}
+		if c.level == "error" {
+			if _, err := h.resolveModel(nil); err == nil || !strings.HasPrefix(err.Error(), c.detail) {
+				t.Errorf("%s: resolveModel = %v", c.name, err)
+			}
+		}
 	}
 }

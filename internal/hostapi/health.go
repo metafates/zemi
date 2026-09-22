@@ -200,12 +200,15 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	h.agents.mu.Lock()
 	id := h.liveModelID()
+	profile := h.agents.profiles[h.Settings.Str("agent.profile")]
 	h.agents.mu.Unlock()
-	switch {
+	switch _, known := h.modelSpec(id); {
 	case id == "":
-		add("error", "model", "no provider registered; call zemi.provider.add in init.lua")
-	case !h.Providers.HasKey(strings.SplitN(id, "/", 2)[0]):
-		add("error", "model", id+": api key not set")
+		add("error", "model", fmt.Sprintf("%v: uncomment a provider and models.main in %s", ErrNoModel, h.initPath()))
+	case h.modelErr(id, profile) != nil:
+		add("error", "model", h.modelErr(id, profile).Error())
+	case !known:
+		add("warn", "model", id+": not in the provider's models list; the provider decides whether it exists")
 	default:
 		add("ok", "model", id)
 	}
@@ -220,9 +223,9 @@ func (h *Host) goHealthRows() []healthCheck {
 		}
 	}
 	if len(unknown) > 0 {
-		add("warn", "context window", "unknown for "+strings.Join(unknown, ", ")+": no context percent, no auto compaction; set context_window on the model entry, or agent.context_window")
+		add("warn", "context", "unknown for "+strings.Join(unknown, ", ")+": no context percent, no auto compaction; set context_window on the model entry, or agent.context_window")
 	} else if id != "" {
-		add("ok", "context window", "known, auto compaction on")
+		add("ok", "context", "window known, auto compaction on")
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {

@@ -78,7 +78,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model configured" | no provider or `models.main`: see zemi-config (`zemi.provider.add`) |
+| "no model yet" | no provider or `models.main`: see zemi-config (`zemi.provider.add`) |
 | 401 / unauthorized | the provider's `api_key` is empty or wrong: the variable read with `zemi.env.get` is not exported in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |
@@ -86,7 +86,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
-| context percent missing, no auto compaction | the model has no `context_window` (`/health` context window row); add it to the model entry or set `agent.context_window` |
+| context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry or set `agent.context_window` |
 | project `.zemi/` config, AGENTS.md or language servers ignored; auto mode asks for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` asks again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
 | auto mode asks for every command that is not a plain read in a trusted project ("not settled: no sandbox") | no sandbox backend (`/health` sandbox row: `sandbox-exec` missing, zemi itself already inside a sandbox, or no Landlock); without one only reading commands settle |
 | "operation not permitted" or "could not resolve host" from a command auto mode ran | the sandbox blocked it (writes outside the project, scratchpad and temp dirs, `.git`, network, reads of zemi's own dirs; on Linux with `landlock + seccomp` any project write and localhost too); the agent retries with `network: true` (sandbox kept, sockets added) or, as a last resort, `sandbox: false`; both ask |

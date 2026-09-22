@@ -24,9 +24,41 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	}
 	id := h.currentModelID(p)
 	if id == "" {
-		return nil, fmt.Errorf("no model configured in %s: uncomment a provider and models.main", filepath.Join(h.Dirs.ConfigHome, "init.lua"))
+		return nil, fmt.Errorf("%w: uncomment a provider and models.main in %s", ErrNoModel, h.initPath())
+	}
+	if err := h.modelErr(id, p); err != nil {
+		return nil, err
 	}
 	return h.Providers.Resolve(id)
+}
+
+// ErrNoModel is the send failure when config registered no model.
+var ErrNoModel = errors.New("no model yet")
+
+func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
+
+// keyEnv names the variable the starter init.lua reads for each kind that
+// cannot run without a key; openai_compat may point at a local server.
+var keyEnv = map[string]string{agent.KindAnthropic: "ANTHROPIC_API_KEY", agent.KindOpenAI: "OPENAI_API_KEY", agent.KindGoogle: "GEMINI_API_KEY"}
+
+// modelErr says why id cannot run, before a provider is built: an SDK
+// would otherwise fail with its own words ("run ant auth login"). /health
+// and a failed send share it. p is the profile that named the model, nil
+// for the conversation's tier.
+func (h *Host) modelErr(id string, p *Profile) error {
+	prov, _, _ := strings.Cut(id, "/")
+	spec, ok := h.Providers.Lookup(prov)
+	if !ok {
+		source := h.ConversationKey()
+		if p != nil && p.Model != "" {
+			source = "profile " + p.Name
+		}
+		return fmt.Errorf("%s names provider %q, which init.lua does not add", source, prov)
+	}
+	if env := keyEnv[spec.Kind]; env != "" && !h.Providers.HasKey(prov) {
+		return fmt.Errorf("%s: api_key is empty: set %s or put the key in %s", prov, env, h.initPath())
+	}
+	return nil
 }
 
 // modelFor resolves the model the first set key names, the session's model

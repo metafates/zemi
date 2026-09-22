@@ -1254,7 +1254,7 @@ function zemi.agent.profile(name, spec) end
 function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
---- the error is what can be known before it starts (no model configured).
+--- the error is what can be known before it starts (no model yet).
 --- User or builtin origin only.
 ---@param text string
 ---@return true?, string?
