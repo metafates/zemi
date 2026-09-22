@@ -242,7 +242,8 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 }
 
 // configFingerprint summarizes config trees by path, size and modification
-// time, skipping git data.
+// time. Git data, dot-directories and node_modules are not config, and a
+// plugin's dependency tree would make every walk cost milliseconds.
 func configFingerprint(roots ...string) string {
 	sum := sha256.New()
 	for _, root := range roots {
@@ -253,7 +254,7 @@ func configFingerprint(roots ...string) string {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && (d.Name() == ".git" || p == filepath.Join(root, "worktrees")):
+			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees")):
 				return filepath.SkipDir // checkouts in .zemi/worktrees are not config
 			case d.IsDir():
 				return nil
