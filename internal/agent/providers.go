@@ -281,6 +281,7 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if !replaced {
 		r.specs = append(r.specs, spec)
 	}
+	r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == spec.ID })
 	if apiKey != "" {
 		r.keys[spec.ID] = apiKey
 	} else {

@@ -1125,9 +1125,15 @@ func TestModelPickerOdd(t *testing.T) {
 	if h.ModelWarning() == "" || h.OpenModelPicker() != nil {
 		t.Fatal("no model: no warning or the picker did not open")
 	}
-	o := ui.opened[0]
-	if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["desc"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
-		t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
+	// an id naming the keyless builtin gets the same listing, not a "current" row
+	runUser(t, r, `zemi.config.set("models.main", "deepseek/x")`)
+	if h.OpenModelPicker() != nil {
+		t.Fatal("picker did not open")
+	}
+	for _, o := range ui.opened {
+		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["desc"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
+			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
+		}
 	}
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
@@ -1135,7 +1141,7 @@ func TestModelPickerOdd(t *testing.T) {
 	if h.OpenModelPicker() != nil {
 		t.Fatal("picker did not open")
 	}
-	o = ui.opened[1]
+	o := ui.opened[2]
 	row := o.Items[0].(map[string]any)
 	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)

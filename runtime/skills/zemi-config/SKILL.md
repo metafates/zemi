@@ -36,7 +36,7 @@ Rules when editing:
 
 ## Providers and models
 
-zemi knows the usual providers (anthropic, openai, gemini, deepseek, openrouter, ...; `/health`
+zemi knows the usual providers (anthropic, openai, gemini, deepseek, openrouter, ...; `/model`
 lists them): export the key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, ...) in
 the shell that starts zemi and that provider is on, with its models in `/model`. A provider
 zemi does not know, a local server, or a gateway in front of a known one (reuse its id: yours

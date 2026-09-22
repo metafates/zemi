@@ -122,7 +122,7 @@ func TestBuiltin(t *testing.T) {
 
 // TestRegistryBuiltin: Default prefers a user spec over the catalog and
 // the tier's default model, Register clears Builtin so DropBuiltin keeps
-// the override, Delete drops one.
+// the override, Delete and Register drop an id from Missing.
 func TestRegistryBuiltin(t *testing.T) {
 	r := NewRegistry()
 	r.Reset(Catalog{Specs: []Spec{
@@ -157,12 +157,18 @@ func TestRegistryBuiltin(t *testing.T) {
 	if r.Default(false) != "o/g" || r.HasKey("o") {
 		t.Fatalf("override: %s", r.Default(false))
 	}
+	if err := r.Register(Spec{ID: "y", Kind: KindAnthropic}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Missing()) != 0 {
+		t.Fatalf("user add under a missing builtin still waits for its key: %v", r.Missing())
+	}
 	r.DropBuiltin()
 	ids := []string{}
 	for _, s := range r.List() {
 		ids = append(ids, s.ID)
 	}
-	if !slices.Equal(ids, []string{"o", "local"}) || r.Default(true) != "o/g" || len(r.Missing()) != 0 {
+	if !slices.Equal(ids, []string{"o", "local", "y"}) || r.Default(true) != "o/g" || len(r.Missing()) != 0 {
 		t.Fatalf("after drop: %v %v", ids, r.Missing())
 	}
 	r.Reset(Catalog{})

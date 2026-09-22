@@ -34,6 +34,8 @@ var ErrNoModel = errors.New("no model yet")
 
 func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
 
+func (h *Host) addProvider() string { return "add a provider in " + h.initPath() }
+
 // noModelHint says how to get a model: the keys to export when builtin
 // providers wait for one (the first three in catalog order, anthropic and
 // openai first), else init.lua. The short form fits the splash's model row
@@ -41,7 +43,7 @@ func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigH
 func (h *Host) noModelHint(short bool) string {
 	missing := h.Providers.Missing()
 	if len(missing) == 0 {
-		return "add a provider in " + h.initPath()
+		return h.addProvider()
 	}
 	if short {
 		return "export " + missing[0].Env + " or init.lua, more in /model"
@@ -54,7 +56,7 @@ func (h *Host) noModelHint(short bool) string {
 	if len(missing) > len(names) {
 		hint += fmt.Sprintf(" (or another of the %d builtin providers' keys, /model lists them)", len(missing))
 	}
-	return hint + ", or add a provider in " + h.initPath()
+	return hint + ", or " + h.addProvider()
 }
 
 // modelErr says why id cannot run, before a provider is built: an SDK

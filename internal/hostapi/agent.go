@@ -1473,7 +1473,9 @@ func (h *Host) OpenModelPicker() error {
 		}
 	}
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet: " + h.noModelHint(false)}
-	if _, known := h.modelSpec(cur); cur != "" && !known {
+	prov, _, _ := strings.Cut(cur, "/")
+	_, registered := h.Providers.Lookup(prov)
+	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view, not run
 		o.Items = append([]any{map[string]any{"text": cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, items...)
 	} else if len(items) == 0 {
@@ -1483,7 +1485,7 @@ func (h *Host) OpenModelPicker() error {
 			o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env})
 		}
 		if len(o.Items) > 0 {
-			o.Body = "No model yet: export one of these keys, or add a provider in " + h.initPath()
+			o.Body = "No model yet: export one of these keys, or " + h.addProvider()
 		}
 	}
 	ui.OpenOverlay(o)
