@@ -23,6 +23,8 @@ zemi.ui.widget.add({
     if not ctx.agent_active then
       if ctx.reflecting then
         label, state = "Reflecting", "reading"
+      elseif ctx.agents_running > 0 then
+        label, state = "Waiting for sub-agents", "working"
       elseif ctx.done then
         state = "done"
       end

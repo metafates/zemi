@@ -391,6 +391,16 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
+	// background sub-agents still running: note the message and act once they finish
+	// (finish() runs before the last report, so its AgentSend lands with running()==0
+	// and starts the turn that drains the queue). NOTE: tasks.running() is global, so
+	// a background agent from another session also holds the queue.
+	if h.tasks.running() > 0 {
+		ag.steering = append(ag.steering, text)
+		ag.mu.Unlock()
+		h.refresh()
+		return nil
+	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
 	ag.active = true
