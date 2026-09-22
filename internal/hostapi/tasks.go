@@ -266,7 +266,7 @@ func (h *Host) MessageAgent(id, text string) error {
 	return nil
 }
 
-func (run *agentRun) finish(err error) {
+func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	run.flush()
@@ -282,7 +282,7 @@ func (run *agentRun) finish(err error) {
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Status: "cancelled", Text: "stopped"})
 	case err != nil:
 		run.status = "failed"
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(friendlyError(err)), 400)})
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(h.friendlyError(err)), 400)})
 	default:
 		run.status = "done"
 	}
@@ -306,7 +306,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		}
 		report := text
 		if err != nil {
-			report = strings.TrimSpace("the agent failed: " + friendlyError(err) + "\n\n" + text)
+			report = strings.TrimSpace("the agent failed: " + h.friendlyError(err) + "\n\n" + text)
 		}
 		head := fmt.Sprintf("Background agent %s (%s) %s.", run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil])
 		if h.AgentSessionID() != run.parent {

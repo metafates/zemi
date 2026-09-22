@@ -18,13 +18,16 @@ import (
 // explain turns a turn failure into what happened and what to do about it;
 // advice is "" when the raw error is all there is. The raw error still
 // goes to the log and /errors.
-func explain(err error) (cause, advice string) {
+func (h *Host) explain(err error) (cause, advice string) {
 	var pe *fantasy.ProviderError
 	var dns *net.DNSError
 	var ne net.Error
 	key := "check api_key in init.lua"
 	if me, ok := errors.AsType[agent.ModelError](err); ok {
 		key = "check api_key for " + me.Provider + " in init.lua"
+		if spec, ok := h.Providers.Lookup(me.Provider); ok && spec.KeyEnv != "" {
+			key = "check " + spec.KeyEnv
+		}
 	}
 	switch {
 	case err == nil:
@@ -57,8 +60,8 @@ func explain(err error) (cause, advice string) {
 
 // friendlyError is the headline a person can act on: the cause, then the
 // advice.
-func friendlyError(err error) string {
-	cause, advice := explain(err)
+func (h *Host) friendlyError(err error) string {
+	cause, advice := h.explain(err)
 	if advice == "" {
 		return cause
 	}
@@ -77,8 +80,8 @@ func hostOf(err error) string {
 
 // errorRowText is the transcript error row: the headline, then the raw
 // error on a second line when it adds detail.
-func errorRowText(err error) string {
-	head, raw := friendlyError(err), err.Error()
+func (h *Host) errorRowText(err error) string {
+	head, raw := h.friendlyError(err), err.Error()
 	if head == raw || strings.Contains(head, raw) || errors.Is(err, context.Canceled) {
 		return head
 	}

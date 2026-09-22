@@ -215,7 +215,7 @@ func TestAgentQueuesWhileBackground(t *testing.T) {
 	if got := append([]string(nil), h.agents.steering...); len(got) != 1 || got[0] != "user msg" {
 		t.Fatalf("message not queued: %q", got)
 	}
-	run.finish(nil) // the background agent is done: running() falls to 0
+	run.finish(h, nil) // the background agent is done: running() falls to 0
 	if err := h.AgentSend("Background agent finished: report"); err != nil {
 		t.Fatal(err)
 	}

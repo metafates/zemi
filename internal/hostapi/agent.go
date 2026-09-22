@@ -708,7 +708,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
-	ag.retryWhy, _ = explain(err) // the advice is to wait, which the countdown says
+	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
 	why := ag.retryWhy
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
@@ -870,7 +870,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
 		// that ended silently looks like zemi ignored the message.
-		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(errorRowText(err)), 400)}
+		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = "cancelled"
 		}

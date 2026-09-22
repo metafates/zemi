@@ -269,7 +269,7 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 // session that started it.
 func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt string, progress func(string)) (text string, err error) {
 	defer func() {
-		run.finish(err)
+		run.finish(h, err)
 		run.cancel()
 		h.refresh()
 	}()
@@ -730,7 +730,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	}
 	t.h.setToolDetail(call.ID, summary+" · "+fmtDuration(time.Since(start)))
 	if err != nil {
-		msg := "agent failed: " + friendlyError(err)
+		msg := "agent failed: " + t.h.friendlyError(err)
 		if errors.Is(err, context.Canceled) {
 			msg = "agent cancelled"
 		}
@@ -879,7 +879,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			switch {
 			case onDone == nil:
 			case err != nil:
-				h.callLuaAsync(at, onDone, nil, friendlyError(err))
+				h.callLuaAsync(at, onDone, nil, h.friendlyError(err))
 			default:
 				h.callLuaAsync(at, onDone, text, nil)
 			}

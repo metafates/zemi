@@ -238,7 +238,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			run.finished++
 			run.dispatch()
 			if d.err != nil {
-				run.resume(d.task, glua.LNil, glua.LString(friendlyError(d.err)))
+				run.resume(d.task, glua.LNil, glua.LString(h.friendlyError(d.err)))
 			} else {
 				run.resume(d.task, glua.LString(d.text))
 			}

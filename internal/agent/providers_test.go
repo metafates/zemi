@@ -107,7 +107,7 @@ func TestBuiltin(t *testing.T) {
 			t.Errorf("%s: present %v, %+v", tc.id, ok, s)
 		}
 	}
-	if c.Keys["anthropic"] != "sk-a" || !slices.Contains(c.Missing, MissingKey{"deepseek", "DEEPSEEK_API_KEY"}) || slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "azure" || m.ID == "bedrock" }) {
+	if byID["anthropic"].KeyEnv != "ANTHROPIC_API_KEY" || c.Keys["anthropic"] != "sk-a" || !slices.Contains(c.Missing, MissingKey{"deepseek", "DEEPSEEK_API_KEY"}) || slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "azure" || m.ID == "bedrock" }) {
 		t.Errorf("keys %d, missing %v", len(c.Keys), c.Missing)
 	}
 	if c.Specs[0].ID != "anthropic" || c.Specs[1].ID != "openai" {

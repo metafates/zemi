@@ -71,6 +71,7 @@ type Spec struct {
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
 	Builtin      bool   `json:"builtin,omitempty"`
+	KeyEnv       string `json:"-"`                       // the env var a builtin's key came from, so a rejected key names it
 	DefaultLarge string `json:"default_large,omitempty"` // the model Default picks for the main tier
 	DefaultSmall string `json:"default_small,omitempty"` // and for the small tier
 }
@@ -138,7 +139,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		if kind == KindOpenAICompat && base == "" {
 			continue
 		}
-		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true,
+		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
 			DefaultLarge: p.DefaultLargeModelID, DefaultSmall: p.DefaultSmallModelID}
 		for _, m := range p.Models {
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
