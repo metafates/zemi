@@ -107,7 +107,9 @@ func (h *Host) ReflectLastSession() {
 
 // reflectDue returns a session's message count when the reflector has not
 // seen it at that count, 0 otherwise; the seen count lives in kv, so a
-// restart does not re-reflect.
+// restart does not re-reflect. One exchange that went fine teaches nothing
+// and would cost a model call at every launch, so it waits for a second
+// user message or a tool failure.
 func (h *Host) reflectDue(sid string) int {
 	if h.DB == nil {
 		return 0
@@ -118,6 +120,18 @@ func (h *Host) reflectDue(sid string) int {
 	}
 	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); seen == strconv.Itoa(len(msgs)) {
 		return 0
+	}
+	users := 0
+	for _, m := range msgs {
+		if m.Role == "user" {
+			users++
+		}
+	}
+	if users < 2 {
+		stats, _ := h.DB.ToolCallStats(sid)
+		if !slices.ContainsFunc(stats, func(s store.ToolStat) bool { return s.Failed > 0 }) {
+			return 0
+		}
 	}
 	return len(msgs)
 }
@@ -186,7 +200,11 @@ func (h *Host) runReflectDetached(sid, claim string) bool {
 		h.agents.mu.Unlock()
 		if err != nil {
 			h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
-			h.RecordError("reflector", err.Error())
+			// a model that answered in prose is the /health row's news,
+			// not a zemi error the badge asks the agent to fix
+			if !errors.Is(err, errNoProposal) {
+				h.RecordError("reflector", err.Error())
+			}
 			h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
 		}
 	})
@@ -200,7 +218,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	res, err := h.generate(ctx, sid, reflectorSystem, prompt, nil, "reflector.model")
+	res, err := h.generate(ctx, sid, reflectorSystem, prompt, nil, "reflector.model", "models.small")
 	if err != nil {
 		return err
 	}
@@ -366,15 +384,19 @@ func truncRunes(s string, n int) string {
 
 // parseReflectProposal extracts the JSON object from the model output
 // (prose and fences tolerated) and schema-decodes it.
+// errNoProposal is a reflector reply that is not the JSON document asked
+// for.
+var errNoProposal = errors.New("reflector: the model returned no proposal")
+
 func parseReflectProposal(out string) (*reflectProposal, error) {
 	start := strings.Index(out, "{")
 	end := strings.LastIndex(out, "}")
 	if start < 0 || end <= start {
-		return nil, errors.New("reflector: no JSON object in output")
+		return nil, fmt.Errorf("%w: no JSON object in the output", errNoProposal)
 	}
 	var p reflectProposal
 	if err := json.Unmarshal([]byte(out[start:end+1]), &p); err != nil {
-		return nil, fmt.Errorf("reflector: bad proposal: %w", err)
+		return nil, fmt.Errorf("%w: %v", errNoProposal, err)
 	}
 	return &p, nil
 }

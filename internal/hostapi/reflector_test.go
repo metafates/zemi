@@ -572,9 +572,20 @@ func TestReflectBadOutput(t *testing.T) {
 
 	for _, out := range []string{"no json here at all", `{"memories": [`} {
 		reflectStub(t, h, out)
-		if err := h.reflectSession(context.Background(), sid); err == nil {
-			t.Fatalf("expected error for %q", out)
+		if err := h.reflectSession(context.Background(), sid); !errors.Is(err, errNoProposal) {
+			t.Fatalf("%q: %v, want errNoProposal", out, err)
 		}
+	}
+	// prose from the model is the /health row's news, not a zemi error
+	h.runReflectDetached(sid, "")
+	waitFor(t, func() error {
+		if h.reflecting.Load() {
+			return errors.New("still reflecting")
+		}
+		return nil
+	})
+	if h.errs.entries != nil || h.agents.reflectErr == "" {
+		t.Fatalf("errors = %+v, reflectErr = %q", h.errs.entries, h.agents.reflectErr)
 	}
 
 	reflectStub(t, h, `{"memories":[]}`)
@@ -670,4 +681,32 @@ func TestReflectCommand(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// TestReflectDueFloor: one exchange that went fine is not reflected; a
+// second user message or a failed tool call makes it due.
+func TestReflectDueFloor(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		seed func(t *testing.T, h *Host, sid string)
+		due  bool
+	}{
+		{"one exchange", func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", "hi")
+			addText(t, h, sid, "assistant", "hello")
+		}, false},
+		{"two user messages", func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", "hi")
+			addText(t, h, sid, "assistant", "hello")
+			addText(t, h, sid, "user", "and this")
+		}, true},
+		{"one exchange with a failed tool", seedTranscript, true},
+	} {
+		h, _ := newTestHostDB(t)
+		sid := seedSession(t, h)
+		c.seed(t, h, sid)
+		if (h.reflectDue(sid) != 0) != c.due {
+			t.Errorf("%s: due = %v, want %v", c.name, !c.due, c.due)
+		}
+	}
 }
