@@ -25,14 +25,16 @@ const lspToolDesc = `Ask the file's language server about code by symbol name in
 - references: every use across the project, grouped by file.
 - workspace_symbols: find a declaration by name when you do not know its file.
 - rename: a true semantic rename everywhere, imports and other files included.
-- symbols: the file's outline, cheaper than reading a large file for its shape.`
+- symbols: the file's outline, cheaper than reading a large file for its shape.
+- call_hierarchy: the call graph for a symbol: who calls it (incoming) and what it calls (outgoing).`
 
 var lspToolProps = map[string]any{
-	"action":   map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols"}},
-	"path":     map[string]any{"type": "string", "description": "file the symbol is in, or to outline; for workspace_symbols any file of the language"},
-	"symbol":   map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
-	"line":     map[string]any{"type": "number", "description": "1-based line, when the name appears more than once"},
-	"new_name": map[string]any{"type": "string", "description": "rename only"},
+	"action":    map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}},
+	"path":      map[string]any{"type": "string", "description": "file the symbol is in, or to outline; for workspace_symbols any file of the language"},
+	"symbol":    map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
+	"line":      map[string]any{"type": "number", "description": "1-based line, when the name appears more than once"},
+	"new_name":  map[string]any{"type": "string", "description": "rename only"},
+	"direction": map[string]any{"type": "string", "enum": []string{"incoming", "outgoing"}, "description": "call_hierarchy only; who calls the symbol or what it calls, omitted = both"},
 }
 
 func lspRequests(in map[string]any) []Request {
@@ -130,6 +132,66 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			return fantasy.NewTextResponse("no references to " + symbol + note), nil
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("%d references\n%s%s", len(locs), formatLocations(locs, 100), note)), nil
+	case "call_hierarchy":
+		// the server re-resolves incoming/outgoing from the prepared item
+		// (its data field is opaque), so round-trip it unchanged
+		var b strings.Builder
+		var prepared []callHierarchyItem
+		if err := c.Call(ctx, "textDocument/prepareCallHierarchy", params, &prepared); err != nil {
+			return fail(err)
+		}
+		if len(prepared) == 0 {
+			return fantasy.NewTextResponse("no call hierarchy for " + symbol + note), nil
+		}
+		arg := map[string]any{"item": prepared[0]}
+		calls := func(method, side string) (lines []string, err error) {
+			var res []struct {
+				From callHierarchyItem `json:"from"`
+				To   callHierarchyItem `json:"to"`
+			}
+			if err = c.Call(ctx, method, arg, &res); err != nil {
+				return nil, err
+			}
+			for _, r := range res {
+				it := r.To
+				if side == "from" {
+					it = r.From
+				}
+				lines = append(lines, fmt.Sprintf("  %s:%d: %s", workRel(lsp.Location{URI: it.URI}.Path()), it.Range.Start.Line+1, it.Name))
+			}
+			return lines, nil
+		}
+		write := func(title, method, side string) error {
+			fmt.Fprintf(&b, "%s of %s:\n", title, symbol)
+			lines, err := calls(method, side)
+			if err != nil {
+				return err
+			}
+			if len(lines) == 0 {
+				b.WriteString("  none\n")
+			} else {
+				b.WriteString(strings.Join(lines, "\n") + "\n")
+			}
+			return nil
+		}
+		switch str(input["direction"]) {
+		case "incoming":
+			if err := write("callers", "callHierarchy/incomingCalls", "from"); err != nil {
+				return fail(err)
+			}
+		case "outgoing":
+			if err := write("callees", "callHierarchy/outgoingCalls", "to"); err != nil {
+				return fail(err)
+			}
+		default:
+			if err := write("callers", "callHierarchy/incomingCalls", "from"); err != nil {
+				return fail(err)
+			}
+			if err := write("callees", "callHierarchy/outgoingCalls", "to"); err != nil {
+				return fail(err)
+			}
+		}
+		return fantasy.NewTextResponse(strings.TrimSuffix(b.String(), "\n") + note), nil
 	case "rename":
 		newName := str(input["new_name"])
 		if newName == "" {
@@ -299,6 +361,16 @@ func formatLocations(locs []lsp.Location, limit int) string {
 		fmt.Fprintf(&b, "%s:%d:%d: %s\n", workRel(path), l.Range.Start.Line+1, l.Range.Start.Character+1, src)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// callHierarchyItem is the LSP CallHierarchyItem; Data is opaque and
+// round-tripped so the server can correlate incoming/outgoing calls.
+type callHierarchyItem struct {
+	Name  string          `json:"name"`
+	Kind  int             `json:"kind"`
+	URI   string          `json:"uri"`
+	Range lsp.Range       `json:"range"`
+	Data  json.RawMessage `json:"data,omitempty"`
 }
 
 // symbolKinds names the LSP SymbolKind values.
