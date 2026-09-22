@@ -152,8 +152,46 @@ func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
 		return walkFrom(0, ArgWalk), false
 	case name == "cd":
 		return func(int) ArgUse { return ArgRun }, false
+	case name == "sed", name == "awk":
+		return scriptOperands(name, rest), false
 	}
 	return walkFrom(-1, ArgRead), false
+}
+
+// scriptOperands marks a sed or awk program text among the operands as
+// safeArgs counts them (a flag's separate value is an operand to it): the
+// sed -e values, else the first operand, which "/re/p" makes look like an
+// absolute path. awk -F and -v values, and a sed -e value, take a position.
+func scriptOperands(name string, rest []string) func(pos int) ArgUse {
+	text, pos, named, first := map[int]bool{}, 0, false, -1
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			if first < 0 {
+				first = pos
+			}
+			pos++
+			continue
+		}
+		if a == "--" {
+			break
+		}
+		// -e, -ne and --expression name a script; awk's -F and -v take a word
+		script := name == "sed" && (a == "--expression" || !strings.HasPrefix(a, "--") && strings.HasSuffix(a, "e"))
+		if (script || name == "awk" && (a == "-F" || a == "-v")) && i+1 < len(rest) {
+			text[pos], named = script, named || script
+			pos, i = pos+1, i+1
+		}
+	}
+	if !named && first >= 0 {
+		text[first] = true
+	}
+	return func(pos int) ArgUse {
+		if text[pos] {
+			return ArgText
+		}
+		return ArgRead
+	}
 }
 
 // walkFrom gives the operands from position first on walk; flag values

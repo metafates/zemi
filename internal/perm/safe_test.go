@@ -21,6 +21,13 @@ func TestReadCommand(t *testing.T) {
 
 		{"sed -n 1,50p internal/web/main.go", true},
 		{"awk '$3 < 100 {print $1}' data.txt", true},
+		{"sed -n '/re/p' main.go", true},
+		{"sed -e '/x/p' -e '/y/p' main.go", true},
+		{"awk '/re/' main.go", true},
+		{"awk -F : '/x/ {print $1}' main.go", true},
+		{"sed -n p /etc/passwd", false},
+		{"sed -e p /etc/passwd", false},
+		{"awk '{print}' /etc/passwd", false},
 
 		{`awk 'BEGIN{getline l < "/etc/passwd"; print l}' f`, false},
 		{"sed -n 'w/tmp/out' main.go", false},
