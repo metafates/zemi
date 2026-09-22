@@ -707,7 +707,7 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 		}
 		var err error
 		resp, err = ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: "question",
-			Input: `{"questions":[{"question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
+			Input: `{"questions":[{"type":"single_choice","question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}

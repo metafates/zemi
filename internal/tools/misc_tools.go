@@ -128,16 +128,42 @@ type QuestionOption struct {
 	Description string
 }
 
+// QuestionType is how a question is asked; runQuestion maps it onto the
+// overlay's list model.
+type QuestionType string
+
+const (
+	TypeYesNo    QuestionType = "yes_no"
+	TypeSingle   QuestionType = "single_choice"
+	TypeMulti    QuestionType = "multi_choice"
+	TypeFreeText QuestionType = "free_text"
+)
+
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
-// The user picks options (several when Multi) or types an answer on a
-// last row named Other ("" = the default name); no options means an open
-// question.
+// Type must be one of the four: yes_no and single_choice ask one option,
+// multi_choice marks several, free_text answers on a typed row. Options may
+// carry a short Description shown under their label.
 type Question struct {
-	Question string
-	Header   string // the tab label in a batch
-	Options  []QuestionOption
-	Multi    bool
-	Other    string
+	Type        QuestionType
+	Question    string
+	Description string // markdown, shown under the question
+	Header      string // the tab label in a batch
+	Options     []QuestionOption
+}
+
+func (q Question) Multi() bool { return q.Type == TypeMulti }
+
+// ListRows is how many rows the selection list shows: the options plus a
+// "type your own" tail row for the choice types; yes_no and free_text have
+// no tail (yes_no is its two options, free_text only the typed row).
+func (q Question) ListRows() int {
+	if q.Type == TypeYesNo {
+		return len(q.Options)
+	}
+	if q.Type == TypeFreeText {
+		return 0
+	}
+	return len(q.Options) + 1
 }
 
 const maxQuestions = 4
@@ -153,7 +179,21 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		if str(m["question"]) == "" {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: the question text is required", i+1)), nil
 		}
-		q := Question{Question: str(m["question"]), Header: str(m["header"]), Multi: m["multi_select"] == true}
+		q := Question{
+			Type:        QuestionType(str(m["type"])),
+			Question:    str(m["question"]),
+			Description: str(m["description"]),
+			Header:      str(m["header"]),
+		}
+		switch q.Type {
+		case TypeYesNo, TypeSingle, TypeMulti, TypeFreeText:
+		default:
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be yes_no, single_choice, multi_choice or free_text", i+1)), nil
+		}
+		if q.Type == TypeFreeText {
+			qs = append(qs, q)
+			continue
+		}
 		opts, _ := m["options"].([]any)
 		for j, o := range opts {
 			om, _ := o.(map[string]any)
@@ -161,6 +201,9 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d, option %d: label is required", i+1, j+1)), nil
 			}
 			q.Options = append(q.Options, QuestionOption{Label: str(om["label"]), Description: str(om["description"])})
+		}
+		if q.Type == TypeYesNo && len(q.Options) == 0 {
+			q.Options = []QuestionOption{{Label: "Yes"}, {Label: "No"}}
 		}
 		qs = append(qs, q)
 	}

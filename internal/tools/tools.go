@@ -859,15 +859,17 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Give 2-4 mutually exclusive options with 1-5 word labels, the one you recommend first and its label ending in "(Recommended)"; omit options for an open question. The user can always type their own answer, so never add an "Other".`,
+		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Every question needs a type (see the schema): yes_no for a yes/no, single_choice and multi_choice for selectable options (2-4, 1-5 word labels, the one you recommend first ending in "(Recommended)"; multi_choice lets the user mark several), free_text for an open answer. Add a short markdown description when a question needs context the options cannot carry. Never add an "Other": the user can always type their own answer.`,
 			false,
 			map[string]any{
 				"questions": map[string]any{"type": "array", "description": "1 to 4, shown as tabs the user moves between before submitting", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"question": map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
-						"header":   map[string]any{"type": "string", "description": "a 1-3 word tab label, e.g. Auth method"},
-						"options": map[string]any{"type": "array", "items": map[string]any{
+						"type":        map[string]any{"type": "string", "enum": []string{"yes_no", "single_choice", "multi_choice", "free_text"}, "description": "how the question is asked"},
+						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
+						"description": map[string]any{"type": "string", "description": "optional markdown shown under the question"},
+						"header":      map[string]any{"type": "string", "description": "a 1-3 word tab label, e.g. Auth method"},
+						"options": map[string]any{"type": "array", "description": "required for yes_no, single_choice and multi_choice", "items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
 								"label":       map[string]any{"type": "string"},
@@ -875,9 +877,8 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 							},
 							"required": []string{"label"},
 						}},
-						"multi_select": map[string]any{"type": "boolean"},
 					},
-					"required": []string{"question"},
+					"required": []string{"type", "question"},
 				}},
 			},
 			[]string{"questions"},
@@ -886,7 +887,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 
 		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. In plan mode, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
 
-The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. The user approves it (implement it, and plan mode ends), asks for changes (revise and call again), or dismisses it (stop and wait).`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. The user approves it (implement it, and plan mode ends), asks for changes (revise and call again), or dismisses it (stop and wait).`,
 			false,
 			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
 			[]string{"plan"},

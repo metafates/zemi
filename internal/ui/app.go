@@ -763,7 +763,7 @@ func (a *App) compose(w, h int) string {
 		splice(trustBox(a.trust, area.Dx(), area.Dy()))
 	}
 	if a.question != nil {
-		splice(questionBox(a.question, area.Dx(), area.Dy()))
+		splice(a.questionBox(a.question, area.Dx(), area.Dy()))
 	}
 	if a.memReview != nil {
 		splice(a.memReviewBox(area.Dx(), area.Dy()))

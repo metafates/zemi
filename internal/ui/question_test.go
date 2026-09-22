@@ -70,11 +70,11 @@ func pressKeys(app *App, keys ...string) {
 func TestGoldenQuestionOverlay(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := askAsync(t, app,
-		tools.Question{Question: "Apply the mined rules to this project?", Header: "Rules", Options: []tools.QuestionOption{
+		tools.Question{Type: tools.TypeSingle, Question: "Apply the mined rules to this project?", Header: "Rules", Options: []tools.QuestionOption{
 			{Label: "apply (Recommended)", Description: "store both as project memories"},
 			{Label: "skip", Description: "leave the proposals unapplied"},
 		}},
-		tools.Question{Question: "Which checks run before commit?", Header: "Checks", Multi: true, Options: []tools.QuestionOption{
+		tools.Question{Type: tools.TypeMulti, Question: "Which checks run before commit?", Header: "Checks", Options: []tools.QuestionOption{
 			{Label: "tests"}, {Label: "vet"}, {Label: "lint"},
 		}},
 	)
@@ -93,7 +93,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 }
 
 func TestQuestionAnswers(t *testing.T) {
-	yes := tools.Question{Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}}}
+	yes := tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}}}
 	for _, c := range []struct {
 		name string
 		q    tools.Question
@@ -102,7 +102,9 @@ func TestQuestionAnswers(t *testing.T) {
 	}{
 		{"typed answer on the last row", yes, []string{"j", "enter", "use a flag", "enter"}, questionResult{[]string{"use a flag"}, true}},
 		{"typing on the last row starts the answer", yes, []string{"j", "no", "enter"}, questionResult{[]string{"no"}, true}},
-		{"open question types at once", tools.Question{Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]string{"zemi"}, true}},
+		{"open question types at once", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]string{"zemi"}, true}},
+		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?"}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
+		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
 	} {
@@ -119,14 +121,14 @@ func TestQuestionAnswers(t *testing.T) {
 
 func TestQuestionBatch(t *testing.T) {
 	pick := func(labels ...string) tools.Question {
-		q := tools.Question{Question: labels[0] + "?"}
+		q := tools.Question{Type: tools.TypeSingle, Question: labels[0] + "?"}
 		for _, l := range labels {
 			q.Options = append(q.Options, tools.QuestionOption{Label: l})
 		}
 		return q
 	}
 	qs := []tools.Question{pick("a", "a2"), pick("b", "b2")}
-	qs[1].Multi = true
+	qs[1].Type = tools.TypeMulti
 	tab, back := tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab, Mod: uv.ModShift}
 	for _, c := range []struct {
 		name string
@@ -162,7 +164,7 @@ func TestQuestionBatch(t *testing.T) {
 // and a question wider than the box wraps instead of losing its end.
 func TestQuestionBoxShowsTyping(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	askAsync(t, app, tools.Question{Question: "What should the command be called, now that it replaces both sync and fetch?"})
+	askAsync(t, app, tools.Question{Type: tools.TypeFreeText, Question: "What should the command be called, now that it replaces both sync and fetch?"})
 	pressKeys(app, "zem")
 	app.Update(tea.PasteMsg{Content: "i ai"})
 	app.renderSync(t)
@@ -187,7 +189,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	for i := range 20 {
 		opts = append(opts, tools.QuestionOption{Label: fmt.Sprintf("option %d", i)})
 	}
-	askAsync(t, app, tools.Question{Question: strings.Repeat("which one? ", 300), Options: opts})
+	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: strings.Repeat("which one? ", 300), Options: opts})
 	for range 20 {
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}

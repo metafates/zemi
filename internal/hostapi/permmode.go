@@ -86,13 +86,13 @@ const planPrompt = `
 
 # Plan mode
 The user switched on plan mode: plan the work with them and do not do it until they approve a plan. File writes are refused and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
-1. Read the code the task touches first. Never ask what reading it would tell you.`
+1. Read the code the task touches first. Never ask what reading it would tell you. For anything more than a focused fix, delegate the reading and plan drafting to the plan subagent (agent, name "plan"): it is a read-only architect who reports a concrete plan with a Critical Files section. Use its report as the plan.`
 
 // planAsking is the rest of plan mode for a run with the plan tool; a
 // headless run and a profile that drops it have none.
 const planAsking = `
 2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
-3. When nothing is left to decide, call the plan tool with the plan.
+3. When nothing is left to decide, call the plan tool with the plan. Structure the plan as short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and a Critical Files section naming the 3-5 files that matter most.
 End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan takes zemi out of plan mode: then implement it.`
 
 const planHeadless = `
@@ -247,7 +247,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
-	q := tools.Question{Question: "Implement this plan?", Other: "No, change it: type what to change"}
+	q := tools.Question{Type: tools.TypeSingle, Question: "Implement this plan?", Description: sanitize.String(plan)}
 	var modes []string
 	if h.permModeDef().Base == "plan" {
 		h.modes.mu.Lock()

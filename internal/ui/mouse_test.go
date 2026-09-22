@@ -417,7 +417,7 @@ func TestMouseQuestion(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
 	done := make(chan []string, 1)
 	go func() {
-		ans, _ := app.AskQuestion([]tools.Question{{Question: "apply the proposals?", Options: []tools.QuestionOption{{Label: "apply"}, {Label: "skip"}}}})
+		ans, _ := app.AskQuestion([]tools.Question{{Type: tools.TypeSingle, Question: "apply the proposals?", Options: []tools.QuestionOption{{Label: "apply"}, {Label: "skip"}}}})
 		done <- ans
 	}()
 	waitPrompt(t, app, func() bool { return app.question != nil })
