@@ -111,7 +111,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
 		{"option without label", "question", `{"questions":[{"type":"single_choice","question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
 		{"missing type", "question", `{"questions":[{"question":"x"}]}`, answer(nil, true), nil, "missing required field", true, false},
-		{"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Mode: "auto", Path: "/p.md"}, true),
+		{"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Path: "/p.md"}, true),
 			"you are back as the default agent. Implementation runs in the next turn", false, true},
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
 		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},

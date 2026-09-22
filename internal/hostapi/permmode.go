@@ -233,15 +233,15 @@ func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
-	restore := ""
+	restore, mode := "", ""
 	if h.readOnly() {
 		h.modes.mu.Lock()
-		restore, v.Profile = h.modes.prePlanProfile, h.modes.prePlanProfile
-		v.Mode = h.modes.prePlanMode
+		restore, mode = h.modes.prePlanProfile, h.modes.prePlanMode
 		h.modes.mu.Unlock()
 		if restore == "" { // a read-only agent picked from config: fall back to default
-			restore, v.Profile, v.Mode = "default", "default", "auto"
+			restore, mode = "default", "auto"
 		}
+		v.Profile = restore
 	}
 	verdict, ok := ui.AskPlan(sanitize.String(plan), restore)
 	if !ok {
@@ -252,7 +252,7 @@ func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 			if err := h.SetProfile(restore); err != nil {
 				return v, false
 			}
-			if err := h.SetPermMode(v.Mode); err != nil {
+			if err := h.SetPermMode(mode); err != nil {
 				return v, false
 			}
 			// the read-only turn cannot implement the plan itself; the turn-end
