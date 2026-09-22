@@ -198,8 +198,8 @@ func TestHealthProvidersRow(t *testing.T) {
 func TestHealthModelRow(t *testing.T) {
 	for _, c := range []struct{ name, lua, level, detail string }{
 		{"none", ``, "error", "no model yet: export OPENAI_API_KEY or init.lua, more in /model"},
-		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `models.main names provider "nobody", which init.lua does not add`},
-		{"builtin without key", `zemi.config.set("models.main", "openai/gpt-5")`, "error", `models.main names builtin provider "openai": export OPENAI_API_KEY`},
+		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider in `},
+		{"builtin without key", `zemi.config.set("models.main", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY`},
 		{"empty key", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
 		{"unlisted model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
 			zemi.config.set("models.main", "a/other")`, "warn", "a/other: not in the provider's models list"},

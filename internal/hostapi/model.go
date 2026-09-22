@@ -70,15 +70,12 @@ func (h *Host) modelErr(id string, p *Profile) error {
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
-		source := h.ConversationKey()
-		if p != nil && p.Model != "" {
-			source = "profile " + p.Name
-		}
+		// the id may come from a tier, -m or a profile, so none is named
 		missing := h.Providers.Missing()
 		if i := slices.IndexFunc(missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
-			return fmt.Errorf("%s names builtin provider %q: export %s", source, prov, missing[i].Env)
+			return fmt.Errorf("builtin provider %q needs its key: export %s", prov, missing[i].Env)
 		}
-		return fmt.Errorf("%s names provider %q, which init.lua does not add", source, prov)
+		return fmt.Errorf("provider %q is not registered: %s", prov, h.addProvider())
 	}
 	// openai_compat may point at a local server that needs none
 	if spec.Kind != agent.KindOpenAICompat && !h.Providers.HasKey(prov) {
