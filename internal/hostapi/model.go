@@ -36,12 +36,15 @@ func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigH
 
 // noModelHint says how to get a model: the keys to export when builtin
 // providers wait for one (the first three in catalog order, anthropic and
-// openai first), else init.lua.
-func (h *Host) noModelHint() string {
-	add := "add a provider in " + h.initPath()
-	missing := h.Builtin.Missing
-	if len(missing) == 0 || !h.Settings.Bool("providers.builtin") {
-		return add
+// openai first), else init.lua. The short form fits the splash's model row
+// (52 cells) and a toast: the first key and where the rest are.
+func (h *Host) noModelHint(short bool) string {
+	missing := h.Providers.Missing()
+	if len(missing) == 0 {
+		return "add a provider in " + h.initPath()
+	}
+	if short {
+		return "export " + missing[0].Env + " or init.lua, more in /model"
 	}
 	var names []string
 	for _, m := range missing[:min(3, len(missing))] {
@@ -49,9 +52,9 @@ func (h *Host) noModelHint() string {
 	}
 	hint := "export " + strings.Join(names, ", ")
 	if len(missing) > len(names) {
-		hint += fmt.Sprintf(" (or another of the %d builtin providers' keys)", len(missing))
+		hint += fmt.Sprintf(" (or another of the %d builtin providers' keys, /model lists them)", len(missing))
 	}
-	return hint + ", or " + add
+	return hint + ", or add a provider in " + h.initPath()
 }
 
 // modelErr says why id cannot run, before a provider is built: an SDK
@@ -60,7 +63,7 @@ func (h *Host) noModelHint() string {
 // for the conversation's tier.
 func (h *Host) modelErr(id string, p *Profile) error {
 	if id == "" {
-		return fmt.Errorf("%w: %s", ErrNoModel, h.noModelHint())
+		return fmt.Errorf("%w: %s", ErrNoModel, h.noModelHint(true))
 	}
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
@@ -69,10 +72,9 @@ func (h *Host) modelErr(id string, p *Profile) error {
 		if p != nil && p.Model != "" {
 			source = "profile " + p.Name
 		}
-		if h.Settings.Bool("providers.builtin") {
-			if i := slices.IndexFunc(h.Builtin.Missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
-				return fmt.Errorf("%s names builtin provider %q: export %s", source, prov, h.Builtin.Missing[i].Env)
-			}
+		missing := h.Providers.Missing()
+		if i := slices.IndexFunc(missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
+			return fmt.Errorf("%s names builtin provider %q: export %s", source, prov, missing[i].Env)
 		}
 		return fmt.Errorf("%s names provider %q, which init.lua does not add", source, prov)
 	}

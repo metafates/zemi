@@ -175,10 +175,11 @@ func TestHealthProvidersRow(t *testing.T) {
 	}{
 		{"nothing", ``, nil, "warn", "none usable: add a provider in "},
 		{"key missing", ``, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: export X_API_KEY, or add a provider in "},
+		{"deleted", `zemi.provider.del("x")`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: add a provider in "},
 		{"registered", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "ok", "a; 1 builtin without a key exported"},
 	} {
 		h, r := newTestHostDB(t)
-		h.Builtin.Missing = c.missing
+		h.Providers.Reset(agent.Catalog{Missing: c.missing})
 		runUser(t, r, c.lua)
 		row := healthCheck{}
 		for _, x := range h.healthChecks() {
@@ -196,7 +197,7 @@ func TestHealthProvidersRow(t *testing.T) {
 // same words, before any provider SDK gets to complain in its own.
 func TestHealthModelRow(t *testing.T) {
 	for _, c := range []struct{ name, lua, level, detail string }{
-		{"none", ``, "error", "no model yet: export OPENAI_API_KEY, or add a provider in "},
+		{"none", ``, "error", "no model yet: export OPENAI_API_KEY or init.lua, more in /model"},
 		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `models.main names provider "nobody", which init.lua does not add`},
 		{"builtin without key", `zemi.config.set("models.main", "openai/gpt-5")`, "error", `models.main names builtin provider "openai": export OPENAI_API_KEY`},
 		{"empty key", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
@@ -204,7 +205,7 @@ func TestHealthModelRow(t *testing.T) {
 			zemi.config.set("models.main", "a/other")`, "warn", "a/other: not in the provider's models list"},
 	} {
 		h, r := newTestHostDB(t)
-		h.Builtin.Missing = []agent.MissingKey{{ID: "openai", Env: "OPENAI_API_KEY"}}
+		h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "openai", Env: "OPENAI_API_KEY"}}})
 		runUser(t, r, c.lua)
 		row := healthCheck{}
 		for _, x := range h.healthChecks() {

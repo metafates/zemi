@@ -671,7 +671,7 @@ function zemi.event.stats() end
 ---@field trusted boolean Whether the user trusts this project (/trust).
 ---@field init_error string First line of the failure the user init.lua raised this boot, "" when it loaded.
 ---@field init_path string The user init.lua, ~-shortened.
----@field model_hint string How to get a model when `model` is "": the keys to export, or init.lua.
+---@field model_hint string How to get a model when `model` is "", short enough for one row: the first key to export, or init.lua.
 ---@field model string
 ---@field profile string
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).

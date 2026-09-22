@@ -156,12 +156,15 @@ var KindsWithBody = []string{KindAnthropic, KindOpenAICompat}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
+// It also keeps the catalog's Missing list, minus what config deleted, so
+// a hint never names a provider init.lua turned off.
 type Registry struct {
-	// mu guards both: user config registers on the interpreter goroutine
-	// while turns, subagents and the UI read.
-	mu    sync.RWMutex
-	specs []Spec
-	keys  map[string]string
+	// mu guards all three: user config registers on the interpreter
+	// goroutine while turns, subagents and the UI read.
+	mu      sync.RWMutex
+	specs   []Spec
+	keys    map[string]string
+	missing []MissingKey
 }
 
 // NewRegistry returns an empty registry; Reset seeds it and user config
@@ -181,6 +184,15 @@ func (r *Registry) Reset(c Catalog) {
 	defer r.mu.Unlock()
 	r.specs = slices.Clone(c.Specs)
 	r.keys = maps.Collect(maps.All(c.Keys))
+	r.missing = slices.Clone(c.Missing)
+}
+
+// Missing lists the builtin providers waiting for a key that config did
+// not delete or drop.
+func (r *Registry) Missing() []MissingKey {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return slices.Clone(r.missing)
 }
 
 // Delete removes a provider and its key; an absent id is a no-op, since
@@ -189,13 +201,16 @@ func (r *Registry) Delete(providerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool { return s.ID == providerID })
+	r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == providerID })
 	delete(r.keys, providerID)
 }
 
-// DropBuiltin removes every catalog spec user config did not replace.
+// DropBuiltin removes every catalog spec user config did not replace, and
+// the Missing list with them.
 func (r *Registry) DropBuiltin() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.missing = nil
 	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool {
 		if s.Builtin {
 			delete(r.keys, s.ID)

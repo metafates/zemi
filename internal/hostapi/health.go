@@ -207,26 +207,15 @@ func (h *Host) goHealthRows() []healthCheck {
 		}
 	}
 	if len(names) == 0 {
-		add("warn", "providers", "none usable: "+h.noModelHint())
-	} else if n := len(h.Builtin.Missing); n > 0 && h.Settings.Bool("providers.builtin") {
+		add("warn", "providers", "none usable: "+h.noModelHint(false))
+	} else if n := len(h.Providers.Missing()); n > 0 {
 		add("ok", "providers", fmt.Sprintf("%s; %d builtin without a key exported", strings.Join(names, ", "), n))
 	} else {
 		add("ok", "providers", strings.Join(names, ", "))
 	}
 
-	h.agents.mu.Lock()
-	id := h.liveModelID()
-	profile := h.agents.profiles[h.Settings.Str("agent.profile")]
-	h.agents.mu.Unlock()
-	_, known := h.modelSpec(id)
-	switch err := h.modelErr(id, profile); {
-	case err != nil:
-		add("error", "model", err.Error())
-	case !known:
-		add("warn", "model", id+": not in the provider's models list; the provider decides whether it exists")
-	default:
-		add("ok", "model", id)
-	}
+	id := h.sessionModelID()
+	out = append(out, h.modelRow())
 
 	// compactDue never fires on an unknown window, so the turn runs until
 	// the provider refuses it
@@ -402,6 +391,32 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
 	}
 	return out
+}
+
+// modelRow is the model check: what a send would fail with, or an id the
+// provider's list does not carry (a typo runs until the provider refuses
+// it). A reload toasts it, so a models.main nobody can run is not silent.
+func (h *Host) modelRow() healthCheck {
+	h.agents.mu.Lock()
+	id := h.liveModelID()
+	profile := h.agents.profiles[h.Settings.Str("agent.profile")]
+	h.agents.mu.Unlock()
+	_, known := h.modelSpec(id)
+	switch err := h.modelErr(id, profile); {
+	case err != nil:
+		return healthCheck{level: "error", name: "model", detail: err.Error()}
+	case !known:
+		return healthCheck{level: "warn", name: "model", detail: id + ": not in the provider's models list; the provider decides whether it exists"}
+	}
+	return healthCheck{level: "ok", name: "model", detail: id}
+}
+
+// ModelWarning is the model row's detail when it is not ok, "" when it is.
+func (h *Host) ModelWarning() string {
+	if row := h.modelRow(); row.level != "ok" {
+		return row.detail
+	}
+	return ""
 }
 
 func (h *Host) healthChecks() []healthCheck {

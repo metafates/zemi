@@ -128,14 +128,15 @@ func TestRegistryBuiltin(t *testing.T) {
 	r.Reset(Catalog{Specs: []Spec{
 		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultLarge: "big", DefaultSmall: "tiny", Models: []Model{{ID: "big"}}},
 		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},
-	}, Keys: map[string]string{"a": "ka", "o": "ko"}})
+	}, Keys: map[string]string{"a": "ka", "o": "ko"}, Missing: []MissingKey{{"x", "X_KEY"}, {"y", "Y_KEY"}}})
 	if r.Default(false) != "a/big" || r.Default(true) != "a/tiny" || !r.HasKey("o") {
 		t.Fatalf("seed: %s %s", r.Default(false), r.Default(true))
 	}
 	r.Delete("a")
 	r.Delete("nope")
-	if r.Default(false) != "o/first" || r.HasKey("a") {
-		t.Fatalf("after delete: %s", r.Default(false))
+	r.Delete("x")
+	if r.Default(false) != "o/first" || r.HasKey("a") || !slices.Equal(r.Missing(), []MissingKey{{"y", "Y_KEY"}}) {
+		t.Fatalf("after delete: %s %v", r.Default(false), r.Missing())
 	}
 	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, ""); err != nil {
 		t.Fatal(err)
@@ -161,8 +162,8 @@ func TestRegistryBuiltin(t *testing.T) {
 	for _, s := range r.List() {
 		ids = append(ids, s.ID)
 	}
-	if !slices.Equal(ids, []string{"o", "local"}) || r.Default(true) != "o/g" {
-		t.Fatalf("after drop: %v", ids)
+	if !slices.Equal(ids, []string{"o", "local"}) || r.Default(true) != "o/g" || len(r.Missing()) != 0 {
+		t.Fatalf("after drop: %v %v", ids, r.Missing())
 	}
 	r.Reset(Catalog{})
 	if r.Default(false) != "" || len(r.List()) != 0 {

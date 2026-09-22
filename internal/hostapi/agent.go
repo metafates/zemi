@@ -1472,7 +1472,7 @@ func (h *Host) OpenModelPicker() error {
 			items = append(items, item)
 		}
 	}
-	ui.OpenOverlay(Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet: " + h.noModelHint()})
+	ui.OpenOverlay(Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet: " + h.noModelHint(false)})
 	return nil
 }
 
