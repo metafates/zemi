@@ -20,13 +20,52 @@ type themeResolver struct {
 
 func (t themeResolver) style(hl string) uv.Style {
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
-		return t.sgrStyle(params)
+		st := t.sgrStyle(params)
+		if st.Bg == nil {
+			st.Bg = appBG(t, t.active()) // a raw span without a fill sits on the canvas
+		}
+		return st
 	}
 	spec, theme, ok := t.group(hl)
 	if !ok {
-		return uv.Style{}
+		// an unstyled span (a draft's typed text) still sits on the canvas
+		// with the terminal's own foreground
+		return uv.Style{Bg: appBG(t, t.active())}
 	}
-	return drawOver(uv.Style{}, spec, theme)
+	st := drawOver(uv.Style{}, spec, theme)
+	if st.Bg == nil {
+		st.Bg = appBG(t, theme)
+	}
+	return st
+}
+
+// appBG is the active theme's background, the "bg" of its Normal group.
+// Every group without a fill of its own sits on it, so the app paints one
+// canvas and the terminal's background never shows through a gap.
+func appBG(t themeResolver, theme *hostapi.Theme) color.Color {
+	if theme == nil {
+		return nil
+	}
+	spec, ok := t.host.Themes.Group(theme, "Normal")
+	if !ok || spec.Bg == "" {
+		return nil
+	}
+	return colorValue(spec.Bg, theme)
+}
+
+// active resolves the theme in force, the "-light" variant on a light
+// terminal; nil when no theme is set.
+func (t themeResolver) active() *hostapi.Theme {
+	if t.host == nil {
+		return nil
+	}
+	theme := t.host.Themes.Get(t.host.ActiveThemeName())
+	if t.light {
+		if light := t.host.Themes.Get(t.host.ActiveThemeName() + "-light"); light != nil {
+			theme = light
+		}
+	}
+	return theme
 }
 
 // group is the active theme's spec for a group. On a light terminal a
@@ -35,13 +74,7 @@ func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
 	if hl == "" || t.host == nil {
 		return hostapi.HLSpec{}, nil, false
 	}
-	name := t.host.ActiveThemeName()
-	theme := t.host.Themes.Get(name)
-	if t.light {
-		if light := t.host.Themes.Get(name + "-light"); light != nil {
-			theme = light
-		}
-	}
+	theme := t.active()
 	if theme == nil {
 		return hostapi.HLSpec{}, nil, false
 	}

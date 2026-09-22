@@ -445,6 +445,23 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 // NOTE: only the top chrome box takes input, so contiguity scopes an item;
 // two boxes stacked edge to edge with the same ids would merge (bound by the
 // box's columns if that ever happens).
+// painted is true of a segment filled with something other than the app's
+// own canvas: its cells are content, not backdrop, so a list's label/key
+// spacers (which ride the item's id) never widen the target.
+func (a *App) painted(s hostapi.Segment) bool {
+	bg := a.hlStyle(s.HL).Bg
+	if bg == nil {
+		return false
+	}
+	canvas := appBG(a.thm, a.thm.active())
+	if canvas == nil {
+		return true
+	}
+	br, bg_, bb, _ := bg.RGBA()
+	cr, cgg, cb, _ := canvas.RGBA()
+	return br != cr || bg_ != cgg || bb != cb
+}
+
 func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	carries := func(y int) bool {
 		return y >= 0 && y < len(a.lastRows) && slices.ContainsFunc(a.lastRows[y], same)
@@ -459,7 +476,7 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 			w := ansi.StringWidth(s.Text)
 			if same(s) {
 				from, to := col, col+w
-				if a.hlStyle(s.HL).Bg == nil {
+				if !a.painted(s) {
 					from += w - ansi.StringWidth(strings.TrimLeft(s.Text, " "))
 					to -= w - ansi.StringWidth(strings.TrimRight(s.Text, " "))
 				}
