@@ -181,6 +181,9 @@ type agentHost struct {
 	// turn's planFollowup starts implementation as the restored agent. Cleared
 	// by takePlanApproved.
 	planApproved string
+	// planNudged: the planner was told once this user message that it ended
+	// in plain text; it is not told again until the user speaks
+	planNudged bool
 
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
@@ -528,6 +531,9 @@ func (h *Host) startTurn(text string) {
 	// same cut resumed transcripts make
 	if shown, _, _ := strings.Cut(text, attachMarker); shown != "" {
 		h.AppendMessage("user", shown)
+		h.agents.mu.Lock()
+		h.agents.planNudged = false
+		h.agents.mu.Unlock()
 	}
 	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
@@ -536,29 +542,45 @@ func (h *Host) startTurn(text string) {
 // nextTurn runs after each turn: messages queued after the last step
 // boundary become one follow-up turn, otherwise the agent goes idle.
 // active stays held across the handoff, so a submit in between queues
-// instead of starting a turn out of order. After a cancelled turn nothing
-// starts: the queue waits for the UI to hand it back to the composer.
+// instead of starting a turn out of order. An approved plan (planApproved)
+// is a follow-up too, kept under the same claim, but sent afresh: the
+// restored profile needs its own runner, not the planner's. After a
+// cancelled turn nothing starts: the queue waits for the UI to hand it back
+// to the composer.
 func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
-	text := ""
+	text, handoff := "", false
 	if done.ctx.Err() == nil {
+		if ag.planApproved != "" {
+			ag.steering = append(ag.steering, ag.planApproved)
+			ag.planApproved, handoff = "", true
+		}
 		text = joinQueue(ag.steering)
 		ag.steering = nil
 	}
 	var next *turnScope
-	if text == "" {
+	switch {
+	case text == "":
 		ag.active = false
 		h.turn.Store(nil)
-	} else {
+	case handoff:
+		next = h.beginScope() // sendClaimed begins the turn
+	default:
 		ag.beginTurn()
 		next = h.beginScope()
 	}
 	ag.mu.Unlock()
 	done.cancel()
-	if text == "" {
+	switch {
+	case text == "":
 		h.refresh()
-	} else {
+	case handoff:
+		if err := h.sendClaimed(next, text); err != nil {
+			h.Notify("error", "Could not start the implementation", err.Error())
+		}
+		return nil, ""
+	default:
 		h.startTurn(text)
 	}
 	return next, text
@@ -1641,53 +1663,37 @@ func (h *Host) takePlanApproved() string {
 	return msg
 }
 
-// planFollowup runs after a turn goroutine ends. An approved plan (presentPlan
-// set planApproved) is sent to the restored agent to implement; otherwise a
-// read-only agent that ended in plain text instead of the plan tool has the
-// text presented for approval. Runs on the turn goroutine, never the UI one.
+// planNudge is what a read-only agent hears once when it ends in plain text
+// instead of the question or plan tool: the text is not a plan to approve
+// (a question, a report or a refusal would get an approve key), and only
+// the tools give the user something to answer in place.
+var planNudge = modelNote("Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool.")
+
+// planFollowup runs after a turn goroutine ends. An approved plan left for
+// a cancelled turn (nextTurn hands off an ended one) is sent to the restored
+// agent to implement; otherwise a read-only agent that ended in plain text is
+// nudged once per user message. Runs on the turn goroutine, never the UI one.
 func (h *Host) planFollowup(runner *agent.Runner) {
 	if msg := h.takePlanApproved(); msg != "" {
 		h.startImplementation(msg)
 		return
 	}
-	if !h.readOnly() {
+	if !h.readOnly() || plainTextEnd(runner) == "" {
 		return
 	}
-	text := plainTextEnd(runner)
-	if text == "" {
-		return
-	}
-	// the popup blocks this goroutine, so claim the agent while it is up; a
-	// submit then queues instead of starting a second send under the popup.
-	// One that claimed it first supersedes the plan: its turn keeps the scope.
+	// a submit that claimed the agent first moves the conversation on
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.active {
-		ag.mu.Unlock()
-		return
+	skip := ag.active || ag.planNudged
+	if !skip {
+		ag.planNudged = true
 	}
-	ag.active = true
-	scope := h.beginScope()
 	ag.mu.Unlock()
-	ended := false
-	defer func() { // released on every path, including a panic mid-popup
-		if !ended {
-			h.endScope(scope)
-		}
-	}()
-	v, ok := h.presentPlan(text)
-	h.endScope(scope)
-	ended = true
-	if !ok { // dismissed, or the switch failed: the planner stays
+	if skip {
 		return
 	}
-	if v.Approved {
-		h.startImplementation(h.takePlanApproved())
-	} else if v.Feedback != "" {
-		// the user asked for changes: hand them back to the still-read-only planner
-		if err := h.AgentSend(modelNote("The user did not approve the plan and asked for changes: " + v.Feedback + "\nRevise it and present the plan again.")); err != nil {
-			h.Log.Error("agent", "plan-feedback send failed", map[string]any{"error": err.Error()})
-		}
+	if err := h.AgentSend(planNudge); err != nil {
+		h.Log.Error("agent", "plan nudge send failed", map[string]any{"error": err.Error()})
 	}
 }
 

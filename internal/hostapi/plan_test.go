@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -41,8 +42,8 @@ func TestPlanMode(t *testing.T) {
 		t.Fatalf("read-only bash = %v", v.Decision)
 	}
 	p, _ := h.resolveProfile("planner")
-	if !strings.Contains(h.buildSystem(p), "Plan mode") {
-		t.Fatal("system prompt misses the plan mode section")
+	if !strings.Contains(h.buildSystem(p), "# Planning") {
+		t.Fatal("system prompt misses the planning section")
 	}
 }
 
@@ -130,37 +131,103 @@ func TestPlanFeedbackKeepsPlanner(t *testing.T) {
 // TestPlanFollowupClaims: a planner reply in plain text is presented under a
 // claim of its own, released after; a submit that claimed the agent first
 // keeps its turn and scope, and no popup opens over it.
-func TestPlanFollowupClaims(t *testing.T) {
+func TestPlanFollowupNudgesOnce(t *testing.T) {
 	runner := &agent.Runner{History: []fantasy.Message{
-		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "# plan"}}},
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "which file did you mean?"}}},
 	}}
-	for _, c := range []struct {
-		name      string
-		claimed   bool
-		wantAsked int
-	}{
-		{"idle agent: presented and released", false, 1},
-		{"claimed by a submit: left alone", true, 0},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			h, _ := newTestHost(t)
-			ui := &fakeUI{planOK: true}
-			h.SetUIHooks(ui)
-			if err := h.SetProfile("planner"); err != nil {
-				t.Fatal(err)
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{planOK: true}
+	h.SetUIHooks(ui)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var sent []string
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			mu.Lock()
+			sent = append(sent, last)
+			mu.Unlock()
+			return textParts("still text") // every reply forgets the tools
+		}}, nil
+	}
+	nudges := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		n := 0
+		for _, s := range sent {
+			if strings.Contains(s, "ended in plain text") {
+				n++
 			}
-			var scope *turnScope
-			if c.claimed {
-				h.agents.mu.Lock()
-				h.agents.active = true
-				scope = h.beginScope()
-				h.agents.mu.Unlock()
-			}
-			h.planFollowup(runner)
-			if ui.planAsked != c.wantAsked || h.AgentActive() != c.claimed || h.turn.Load() != scope {
-				t.Fatalf("asked %d, active %v, scope kept %v", ui.planAsked, h.AgentActive(), h.turn.Load() == scope)
-			}
-		})
+		}
+		return n
+	}
+	// a text ending is not a plan to approve: the planner is told once
+	h.planFollowup(runner)
+	waitFor(t, func() error {
+		if n := nudges(); n != 1 {
+			return fmt.Errorf("nudges = %d", n)
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	if ui.planAsked != 0 || nudges() != 1 {
+		t.Fatalf("asked %d, nudges %d after the nudged reply ended in text again", ui.planAsked, nudges())
+	}
+	// a submit that claimed the agent first is left alone
+	h.agents.mu.Lock()
+	h.agents.active = true
+	scope := h.beginScope()
+	h.agents.mu.Unlock()
+	h.planFollowup(runner)
+	h.endScope(scope)
+	if nudges() != 1 {
+		t.Fatal("nudged under another claim")
+	}
+	// the user's next message re-arms the nudge
+	if err := h.AgentSend("go on"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if n := nudges(); n != 2 {
+			return fmt.Errorf("nudges after the user spoke = %d", n)
+		}
+		return nil
+	})
+	waitIdle(t, h)
+}
+
+// TestNextTurnHandsOffApprovedPlan: an approved plan is sent to the restored
+// agent under the claim the planner's turn held, so nothing runs in between.
+func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	var mu sync.Mutex
+	var sent []string
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			mu.Lock()
+			sent = append(sent, last)
+			mu.Unlock()
+			return textParts("done")
+		}}, nil
+	}
+	h.agents.mu.Lock()
+	h.agents.active = true
+	scope := h.beginScope()
+	h.agents.mu.Unlock()
+	h.setPlanApproved(implementNow)
+	if next, text := h.nextTurn(scope); next != nil || text != "" {
+		t.Fatalf("the handoff must not run on the ended runner: %v %q", next, text)
+	}
+	if h.takePlanApproved() != "" {
+		t.Fatal("handoff left behind")
+	}
+	waitIdle(t, h)
+	mu.Lock()
+	defer mu.Unlock()
+	if got := strings.Join(sent, "\n"); !strings.Contains(got, "approved the plan") {
+		t.Fatalf("implementation never reached the model: %q", got)
 	}
 }
 

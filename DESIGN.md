@@ -807,9 +807,10 @@ page, converted to markdown),
 answer), `plan` (shows the plan in its own scrollable popup for approval; for a
 read-only agent the agent and mode active before it are remembered at its start,
 and approval returns to them - the turn ends there because the read-only
-pipeline cannot implement, and the ended turn starts a fresh send as the
-restored agent, so a read-only run that ends in plain text instead of the
-`plan` tool presents that text for approval the same way),
+pipeline cannot implement, and its follow-up is a fresh send as the
+restored agent under the same claim; a read-only run that ends in plain
+text instead of the `question` or `plan` tool is told so once, since a
+question or a report is no plan to approve),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, `replaces` rewrites or drops one, §10.4),
