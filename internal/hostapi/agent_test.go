@@ -904,6 +904,12 @@ func TestAlwaysChoice(t *testing.T) {
 		// a destructive subcommand too: `git clean` as a whole covers -fdx
 		{tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
+		// a leading option keeps the subcommand pair, never the bare program
+		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow `git --no-pager log`", []string{"git --no-pager log", "git --no-pager log *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
+		{tools.Request{Subject: "tool.bash", Arg: "npx prettier --check ."}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run
 		{tools.Request{Subject: "tool.bash", Arg: "bash -c 'go test ./...'"}, "", nil},

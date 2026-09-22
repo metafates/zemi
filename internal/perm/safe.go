@@ -579,6 +579,23 @@ func program(f []string) []string {
 	return f
 }
 
+// Subcommand is the index in f of a program's subcommand word, past its
+// leading options (git -C dir status, git -c k=v diff, cargo +nightly
+// build, npm --prefix web run); -1 when there is none. -C, -c and --prefix
+// take the next word.
+func Subcommand(f []string) int {
+	for i := 1; i < len(f); i++ {
+		switch a := f[i]; {
+		case a == "-C" || a == "-c" || a == "--prefix":
+			i++
+		case strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+"):
+		default:
+			return i
+		}
+	}
+	return -1
+}
+
 // Destructive says why a command still goes to the user when a sandbox
 // confines it to the project: it may delete or empty many files at once.
 // Empty when it may run. Normalize already made sh -c bodies and

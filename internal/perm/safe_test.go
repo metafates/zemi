@@ -1,6 +1,9 @@
 package perm
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestReadCommand(t *testing.T) {
 	for _, c := range []struct {
@@ -231,6 +234,31 @@ func TestDestructive(t *testing.T) {
 	} {
 		if got := Destructive(c.cmd) != ""; got != c.asks {
 			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
+		}
+	}
+}
+
+func TestSubcommand(t *testing.T) {
+	for _, c := range []struct {
+		cmd  string
+		want string
+	}{
+		{"git --no-pager log -5", "log"},
+		{"git -C d status", "status"},
+		{"git -c k=v diff", "diff"},
+		{"cargo +nightly build", "build"},
+		{"npm --prefix web run build", "run"},
+		{"go test ./...", "test"},
+		{"git --version", ""},
+		{"git", ""},
+	} {
+		f := strings.Fields(c.cmd)
+		got := ""
+		if i := Subcommand(f); i >= 0 {
+			got = f[i]
+		}
+		if got != c.want {
+			t.Errorf("Subcommand(%q) = %q, want %q", c.cmd, got, c.want)
 		}
 	}
 }

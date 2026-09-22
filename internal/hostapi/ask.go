@@ -302,7 +302,12 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
-	if p == "" {
+	switch {
+	case p != "":
+	case subcommandPrograms[f[0]] && len(f) > 1:
+		// git --version has no subcommand; a bare `git *` would allow every one
+		return []string{seg}, true
+	default:
 		p = f[0]
 	}
 	return []string{p, p + " *"}, true
@@ -388,6 +393,7 @@ var wrapperPrograms = map[string]bool{
 	"env": true, "sudo": true, "doas": true, "su": true, "xargs": true, "eval": true, "exec": true, "source": true, ".": true,
 	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
 	"nice": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
+	"npx": true, "pnpx": true, "bunx": true, "uvx": true, "pipx": true,
 }
 
 func wrapperProgram(prog string) bool {
@@ -408,12 +414,14 @@ func destructiveProgram(prog string) bool {
 	return destructivePrograms[prog]
 }
 
-// commandPrefix is the two-word prefix the always answer allows for a
-// command segment ("go test ./..." is "go test"), or "" when there is none.
+// commandPrefix is the prefix through the subcommand the always answer
+// allows for a command segment ("go test ./..." is "go test", "git -C d
+// status" keeps its options), or "" when there is none.
 func commandPrefix(seg string) string {
 	f := strings.Fields(seg)
-	if len(f) < 2 || !subcommandPrograms[f[0]] || !subcommandWord.MatchString(f[1]) {
+	i := perm.Subcommand(f)
+	if !subcommandPrograms[f[0]] || i < 0 || !subcommandWord.MatchString(f[i]) {
 		return ""
 	}
-	return f[0] + " " + f[1]
+	return strings.Join(f[:i+1], " ")
 }

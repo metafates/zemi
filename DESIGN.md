@@ -654,8 +654,8 @@ otherwise return a decision table:
   stores session-scope allow rules scoped to the `model` principal, and
   they are prefix globs, not exact values: for `tool.bash` one rule per
   normalized segment, each the segment's program (its program and
-  subcommand for `git`, `go`, `cargo` and the like) plus that prefix with
-  ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
+  subcommand for `git`, `go`, `cargo` and the like, with the options
+  before the subcommand kept) plus that prefix with ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
   segment §9 calls destructive stores its exact normalized string, since
   the rule runs unconfined; for `fs.read` and `fs.write` the file's directory
   with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;

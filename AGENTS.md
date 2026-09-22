@@ -309,8 +309,9 @@ namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, as
 prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
-program and subcommand for `git`, `go`, `cargo` and the other `subcommandPrograms`; a file's
-directory; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
+program and subcommand for `git`, `go`, `cargo` and the other `subcommandPrograms`, leading
+options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
+no subcommand (`git --version`); a file's directory; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
 `perm.Destructive` names stays exact, since its rule would run unconfined. A file read is also
 offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),
 because in a deep tree the directory rule is the same ask again one package over. No always
