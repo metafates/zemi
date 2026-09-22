@@ -356,11 +356,13 @@ func chunkErr(rel, src string, err error) error {
 }
 
 // usefulTrace reports a traceback with a Lua frame other than the main
-// chunk: the message already names the main chunk's line.
+// chunk: the message already names the main chunk's line. gopher-lua prints
+// the chunk itself as "in function <name:0>" and labels only the Go PCall
+// boundary "in main chunk".
 func usefulTrace(trace string) bool {
 	for _, line := range strings.Split(trace, "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "stack traceback") && !strings.HasSuffix(line, "in main chunk") {
+		if line != "" && !strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "stack traceback") && !strings.HasSuffix(line, ":0>") {
 			return true
 		}
 	}
@@ -410,7 +412,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		L.Push(fn)
 		if err := L.PCall(0, glua.MultRet, nil); err != nil {
 			L.SetTop(base)
-			return nil, err
+			return nil, chunkErr(rel, src, err)
 		}
 		var vals []any
 		for i := base + 1; i <= L.GetTop(); i++ {

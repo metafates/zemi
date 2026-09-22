@@ -470,6 +470,17 @@ func TestEval(t *testing.T) {
 	if vals, err := r.Eval(context.Background(), cyclic, "lua-tool", OriginProject, time.Second, discard); err != nil || len(vals) != 1 {
 		t.Fatalf("unmarshalable result with a raising __tostring: %v (%v)", err, vals)
 	}
+	// a one-chunk error is its message; a nested call keeps the frame that
+	// names the function
+	for _, c := range []struct{ src, want, not string }{
+		{"error('boom')", "lua-tool:1: boom", "traceback"},
+		{"local function f() error('boom') end\nf()", "in function 'f'", ""},
+	} {
+		_, err := r.Eval(context.Background(), c.src, "lua-tool", OriginUser, time.Second, discard)
+		if err == nil || !strings.Contains(err.Error(), c.want) || c.not != "" && strings.Contains(err.Error(), c.not) {
+			t.Errorf("%q: %v", c.src, err)
+		}
+	}
 }
 
 // TestRaiseEscapingRequestUnwinds: a Lua error that escapes a request
