@@ -16,13 +16,11 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aymanbagabas/go-udiff"
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -33,29 +31,26 @@ import (
 // by name (the registry here, and the host's gate, prompt and history logic)
 // uses these, so renaming a tool is one line, not a recount of literals.
 const (
-	ToolBash         = "bash"
-	ToolRead         = "read"
-	ToolWrite        = "write"
-	ToolEdit         = "edit"
-	ToolMultiedit    = "multiedit"
-	ToolGlob         = "glob"
-	ToolGrep         = "grep"
-	ToolFetch        = "fetch"
-	ToolWebSearch    = "web_search"
-	ToolTodos        = "todos"
-	ToolQuestion     = "question"
-	ToolPlan         = "plan"
-	ToolSkill        = "skill"
-	ToolJobStart     = "job_start"
-	ToolJobRead      = "job_read"
-	ToolJobList      = "job_list"
-	ToolJobKill      = "job_kill"
-	ToolMemoryAdd    = "memory_add"
-	ToolMemorySearch = "memory_search"
-	ToolMemoryUpdate = "memory_update"
-	ToolMemoryForget = "memory_forget"
-	ToolDiagnostics  = "diagnostics"
-	ToolLSP          = "lsp"
+	ToolBash        = "bash"
+	ToolRead        = "read"
+	ToolWrite       = "write"
+	ToolEdit        = "edit"
+	ToolMultiedit   = "multiedit"
+	ToolGlob        = "glob"
+	ToolGrep        = "grep"
+	ToolFetch       = "fetch"
+	ToolWebSearch   = "web_search"
+	ToolTodos       = "todos"
+	ToolQuestion    = "question"
+	ToolPlan        = "plan"
+	ToolSkill       = "skill"
+	ToolJobStart    = "job_start"
+	ToolJobRead     = "job_read"
+	ToolJobList     = "job_list"
+	ToolJobKill     = "job_kill"
+	ToolMemory      = "memory"
+	ToolDiagnostics = "diagnostics"
+	ToolLSP         = "lsp"
 	// Host tools built by the host, not here, but named by the same rule.
 	ToolAgent    = "agent"
 	ToolWorkflow = "workflow"
@@ -141,14 +136,10 @@ type Pipeline struct {
 	// request that ends the turn.
 	Images func() bool
 
-	// Remember proposes a memory through the host's intake and autonomy
-	// gate (stored reports auto-apply vs queued for review); Recall
-	// searches memories. nil = memory tools error.
-	Remember func(scope, kind, text string, tags []string) (stored bool, err error)
-	Recall   func(query string, limit int) ([]*store.Memory, error)
-	// EditMemory rewrites a memory by id, or deletes it when text is "",
-	// and returns what happened. nil = memory tools error.
-	EditMemory func(id, text string) (string, error)
+	// Remember runs the memory tool through the host's intake and autonomy
+	// gate and returns the answer: what became of the memory and what to do
+	// next. nil = memory tool error.
+	Remember func(scope, text, quote, replaces string) (string, error)
 
 	// Scratch reports a path inside the session scratchpad: writes there
 	// pass a read-only agent. nil = no scratchpad.
@@ -950,51 +941,17 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk(ToolMemoryAdd, "Save a durable lesson for future sessions: something the user taught you or you verified, never what you inferred or suggested. Record what the user said or did; 'decision' and 'preference' only when the user actually stated one - a discussion, an audit or your own recommendation is not one. One short, specific sentence written as a fact ('the user prefers X', not 'always do X'); never secrets. A multi-step procedure goes in a recipe instead, when the environment names Recipes. It may be queued for the user's review.",
+		mk(ToolMemory, "Keep one durable fact for future sessions, in one sentence of at most 300 characters written as it holds now (\"the user wants X\", \"make golden regenerates the goldens\"), never as an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. Anything about the user needs quote: their exact words from this session. A repository procedure is a recipe, not a memory. Never secrets: name the env var. replaces=<id> rewrites a line under # Memory; empty text with replaces drops it. A memory shows from the next session on; it may be queued for the user's review.",
 			false,
 			map[string]any{
-				"kind":  map[string]any{"type": "string", "enum": []string{"fact", "gotcha", "preference", "convention", "decision"}},
-				"text":  map[string]any{"type": "string"},
-				"scope": map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: every project"},
-				"tags":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"text":     map[string]any{"type": "string"},
+				"scope":    map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: holds in every project"},
+				"quote":    map[string]any{"type": "string", "description": "the user's exact words this memory rests on"},
+				"replaces": map[string]any{"type": "string", "description": "id of the memory this one rewrites or, with empty text, drops (8+ characters of it)"},
 			},
-			[]string{"kind", "text"},
+			[]string{"text"},
 			func(in map[string]any) []Request { return nil },
-			runMemoryAdd),
-
-		mk(ToolMemorySearch, "Search memories saved in earlier sessions.",
-			true,
-			map[string]any{
-				"query": map[string]any{"type": "string"},
-				"limit": map[string]any{"type": "number"},
-			},
-			[]string{"query"},
-			func(in map[string]any) []Request { return nil },
-			runMemorySearch),
-
-		mk(ToolMemoryUpdate, "Rewrite a saved memory that is outdated or incomplete, by its id. Keep it one specific fact.",
-			false,
-			map[string]any{
-				"id":   map[string]any{"type": "string"},
-				"text": map[string]any{"type": "string", "description": "the whole new text"},
-			},
-			[]string{"id", "text"},
-			func(in map[string]any) []Request { return nil },
-			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
-				if str(in["text"]) == "" {
-					return fantasy.NewTextErrorResponse("text is empty; use memory_forget to delete a memory"), nil
-				}
-				return runMemoryEdit(p, str(in["id"]), str(in["text"]))
-			}),
-
-		mk(ToolMemoryForget, "Delete a saved memory that is wrong or no longer true, by its id.",
-			false,
-			map[string]any{"id": map[string]any{"type": "string"}},
-			[]string{"id"},
-			func(in map[string]any) []Request { return nil },
-			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
-				return runMemoryEdit(p, str(in["id"]), "")
-			}),
+			runMemory),
 
 		mk(ToolDiagnostics, "Report a file's compiler and linter diagnostics from its language server. write, edit and multiedit already append errors for the file they change, so use this for a file you did not change.",
 			true,
@@ -1029,7 +986,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 	}
 }
 
-func runMemoryAdd(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
 	if p.Remember == nil {
 		return fantasy.NewTextErrorResponse("memory unavailable"), nil
 	}
@@ -1037,45 +994,7 @@ func runMemoryAdd(_ context.Context, p *Pipeline, in map[string]any) (fantasy.To
 	if scope == "" {
 		scope = "project"
 	}
-	// intake drops the empty tag a non-string becomes
-	stored, err := p.Remember(scope, str(in["kind"]), str(in["text"]), strList(in["tags"]))
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	if stored {
-		return fantasy.NewTextResponse("memory saved"), nil
-	}
-	return fantasy.NewTextResponse("memory queued for the user's review"), nil
-}
-
-func runMemorySearch(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
-	if p.Recall == nil {
-		return fantasy.NewTextErrorResponse("memory unavailable"), nil
-	}
-	limit := 10
-	if n, ok := in["limit"].(float64); ok && n > 0 {
-		limit = int(n)
-	}
-	rows, err := p.Recall(str(in["query"]), limit)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	if len(rows) == 0 {
-		return fantasy.NewTextResponse("no matching memories"), nil
-	}
-	var b strings.Builder
-	now := time.Now()
-	for _, m := range rows {
-		fmt.Fprintf(&b, "[%s · %s · %s · %s%s] %s\n", m.ID[:min(8, len(m.ID))], m.Kind, m.Origin, m.Scope, learn.Age(m.UpdatedAt, now), m.Text)
-	}
-	return fantasy.NewTextResponse(b.String()), nil
-}
-
-func runMemoryEdit(p *Pipeline, id, text string) (fantasy.ToolResponse, error) {
-	if p.EditMemory == nil {
-		return fantasy.NewTextErrorResponse("memory unavailable"), nil
-	}
-	msg, err := p.EditMemory(id, text)
+	msg, err := p.Remember(scope, str(in["text"]), str(in["quote"]), str(in["replaces"]))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

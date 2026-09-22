@@ -142,7 +142,7 @@ zemi.ui.widget.add({
     local VERB = {
       read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
       fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
-      job_list = "List jobs", job_kill = "Stop job", memory_add = "Remember", memory_search = "Recall",
+      job_list = "List jobs", job_kill = "Stop job", memory = "Remember",
       diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",
       agent = "Agent", workflow = "Workflow",
     }
@@ -152,8 +152,8 @@ zemi.ui.widget.add({
       read = { "read", "file", "files" }, glob = { "searched for", "pattern", "patterns" },
       grep = { "searched for", "pattern", "patterns" }, web_search = { "searched the web for", "query", "queries" },
       bash = { "ran", "command", "commands" }, fetch = { "fetched", "page", "pages" },
-      skill = { "loaded", "skill", "skills" }, memory_add = { "saved", "memory", "memories" },
-      memory_search = { "searched memory" }, diagnostics = { "checked", "file", "files" },
+      skill = { "loaded", "skill", "skills" }, memory = { "saved", "memory", "memories" },
+      diagnostics = { "checked", "file", "files" },
       job_start = { "started", "job", "jobs" }, job_read = { "checked", "job", "jobs" },
       job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
     }

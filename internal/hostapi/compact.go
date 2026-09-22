@@ -326,10 +326,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 // compaction.
 func (h *Host) compactDone(used int64, manual bool) {
 	ag := h.agents
-	ag.mu.Lock()
-	first := ag.firstUser
-	ag.mu.Unlock()
-	digest := h.digestFor(first)
+	digest := h.digestFor()
 	h.forgetInstructions()
 	ag.mu.Lock()
 	// the prompt cache is gone anyway, so the environment and the recipes

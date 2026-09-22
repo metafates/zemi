@@ -206,11 +206,11 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 	h, r := newTestHostSkills(t)
 	seedSession(t, h)
 
-	runUser(t, r, `zemi.memory.add({ kind = "fact", text = "deploy script lives in bin/deploy" })`)
+	runUser(t, r, `zemi.memory.add("deploy script lives in bin/deploy")`)
 	runUser(t, r, `
 		local p = zemi.learn.proposals()
 		assert(#p == 1, "proposals=" .. #p)
-		assert(p[1].kind == "fact", "kind=" .. tostring(p[1].kind))
+		assert(p[1].quote == "", "quote=" .. tostring(p[1].quote))
 		assert(p[1].id ~= nil and p[1].id ~= "", "id missing")
 	`)
 	runUser(t, r, `zemi.learn.decide(zemi.learn.proposals()[1].id, "reject")`)
@@ -221,7 +221,7 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 		t.Fatalf("rejected proposal stored %d memories", len(rows))
 	}
 
-	runUser(t, r, `zemi.memory.add({ kind = "gotcha", text = "the fts join needs m-qualified columns" })`)
+	runUser(t, r, `zemi.memory.add("the fts join needs m-qualified columns")`)
 	runUser(t, r, `zemi.learn.decide(zemi.learn.proposals()[1].id, "accept")`)
 	if rows := projectMemories(t, h); len(rows) != 1 {
 		t.Fatalf("accepted proposal stored %d memories", len(rows))

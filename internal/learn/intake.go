@@ -1,22 +1,16 @@
 // intake.go applies the §10.4 memory intake policy host-side, whatever the
-// autonomy mode: sanitize and cap the text, scrub secrets, scrub tags,
-// require kind/provenance/origin, and flag instruction-shaped text for the
+// autonomy mode: sanitize and cap the text and the quote, scrub secrets,
+// require provenance and origin, and flag instruction-shaped text for the
 // review queue.
 package learn
 
 import (
 	"fmt"
-	"slices"
+	"regexp"
 	"strings"
 
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
-)
-
-// MaxTags caps the tag list; MaxTagLen caps one tag.
-const (
-	MaxTags   = 8
-	MaxTagLen = 32
 )
 
 // Result is a policy-clean memory ready to store, plus the flags the
@@ -29,12 +23,9 @@ type Result struct {
 }
 
 // Intake validates and cleans one memory (DESIGN §10.4). Errors are
-// ErrRefused (one-blob secrets), ErrBadKind, ErrBadOrigin or
+// ErrRefused (empty text, one-blob secrets), ErrBadOrigin or
 // ErrNoProvenance; everything else is cleaned into the result.
-func Intake(scope, origin, kind, text string, tags []string, provenance string) (*Result, error) {
-	if !slices.Contains(Kinds, kind) {
-		return nil, ErrBadKind
-	}
+func Intake(scope, origin, text, quote, provenance string) (*Result, error) {
 	if origin != OriginUser && origin != OriginLearned {
 		return nil, ErrBadOrigin
 	}
@@ -49,38 +40,19 @@ func Intake(scope, origin, kind, text string, tags []string, provenance string) 
 	if IsOneBlob(clean) {
 		return nil, fmt.Errorf("%w: text is one secret blob", ErrRefused)
 	}
+	q, qs := scrubCapped(quote, MaxQuoteLen)
 
 	return &Result{
 		Memory: store.Memory{
 			Scope:               scope,
-			Kind:                kind,
 			Text:                clean,
-			Tags:                cleanTags(tags),
+			Quote:               q,
 			ProvenanceSessionID: provenance,
 			Origin:              origin,
 		},
-		Scrubbed:          scrubbed,
+		Scrubbed:          scrubbed || qs,
 		InstructionShaped: InstructionShaped(clean),
 	}, nil
-}
-
-// cleanTags sanitizes, dedupes and caps tags; scrubbed like text (§10.4).
-func cleanTags(tags []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, t := range tags {
-		t, scrubbed := scrubCapped(t, MaxTagLen)
-		// a tag that held a secret is junk as a tag; text keeps its markers
-		if t == "" || seen[t] || scrubbed {
-			continue
-		}
-		seen[t] = true
-		out = append(out, t)
-		if len(out) == MaxTags {
-			break
-		}
-	}
-	return out
 }
 
 // scrubCapped sanitizes s to one line, scrubs it and cuts it to n runes.
@@ -98,4 +70,35 @@ func Truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+var contentToken = regexp.MustCompile(`[a-z0-9]{4,}`)
+
+// Similar reports whether two memory texts say the same thing: the same
+// text but for case, or 60% of their content tokens (lowercase words of
+// four or more characters) in common. Empty token sets never match.
+// NOTE: token overlap only; the reflector's full index is the semantic check.
+func Similar(a, b string) bool {
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	ta, tb := tokens(a), tokens(b)
+	if len(ta) == 0 || len(tb) == 0 {
+		return false
+	}
+	both := 0
+	for t := range ta {
+		if tb[t] {
+			both++
+		}
+	}
+	return 10*both >= 6*(len(ta)+len(tb)-both)
+}
+
+func tokens(s string) map[string]bool {
+	out := map[string]bool{}
+	for _, t := range contentToken.FindAllString(strings.ToLower(s), -1) {
+		out[t] = true
+	}
+	return out
 }

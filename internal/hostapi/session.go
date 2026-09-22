@@ -67,7 +67,7 @@ func (h *Host) ResumeSession(id string) error {
 			break
 		}
 	}
-	digest := h.digestFor(first)
+	digest := h.digestFor()
 	ag := h.agents
 	err = h.closeSession(func() {
 		ag.sessionID, ag.titled, ag.firstUser = id, true, first
@@ -217,6 +217,7 @@ func (h *Host) closeSession(open func()) error {
 		open()
 	}
 	ag.mu.Unlock()
+	h.refreshPending()
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})
 		h.reflectOnClose(prev)

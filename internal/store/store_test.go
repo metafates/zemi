@@ -52,15 +52,14 @@ func TestMigrateOldDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range []string{
+	for _, stmt := range append(oldMemoryShape,
 		`ALTER TABLE tool_calls ADD COLUMN input_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE tool_calls ADD COLUMN error_kind TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tool_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tool_calls ADD COLUMN denied INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tool_calls ADD COLUMN decided_by TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN summary_message_id TEXT`,
-		`PRAGMA user_version = 0`,
-	} {
+		`PRAGMA user_version = 0`) {
 		if _, err := db.db.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}

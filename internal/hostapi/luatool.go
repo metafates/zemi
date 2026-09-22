@@ -48,7 +48,7 @@ var luaReadOnly = map[string]bool{
 	"json.decode": true, "json.encode": true,
 	"keymap.get": true, "keymap.list": true, "learn.proposals": true,
 	"log": true, "log.list": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
-	"lsp.list": true, "mcp.list": true, "memory.list": true, "memory.search": true,
+	"lsp.list": true, "mcp.list": true, "memory.list": true,
 	"model.list": true, "notify.list": true,
 	"permission.mode.list": true, "permission.rule.list": true, "project.root": true, "project.trusted": true, "provider.list": true,
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,

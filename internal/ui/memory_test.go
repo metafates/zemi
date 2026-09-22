@@ -45,13 +45,13 @@ func openReview(t *testing.T, app *App, rows []hostapi.MemoryRow) chan []hostapi
 // §10.4): a keeps the suggestion, d forgets the stored memory, u undoes,
 // and closing hands the decisions back by row id.
 func TestGoldenMemoryReviewOverlay(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
+	app, _ := bootAgentApp(t, 70, 18)
 
 	items := []hostapi.MemoryRow{
-		{ID: "m1", Scope: "project", Kind: "gotcha", Origin: "learned",
-			Text: "the fts join needs m-qualified columns", Queued: true},
-		{ID: "m2", Scope: "user", Kind: "preference", Origin: "user",
-			Text: "the user prefers short replies", Tags: []string{"style"},
+		{ID: "m1", Scope: "project", Origin: "learned",
+			Text: "the fts join needs m-qualified columns", Quote: "qualify the fts columns with m", Queued: true},
+		{ID: "m2", Scope: "user", Origin: "user",
+			Text:    "the user prefers short replies",
 			Updated: app.now().Add(-12 * 24 * time.Hour).UnixMilli()},
 	}
 	done := openReview(t, app, items)
@@ -89,9 +89,9 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 func TestMemoryReviewEdit(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	rows := []hostapi.MemoryRow{
-		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
-		{ID: "m2", Scope: "project", Kind: "fact", Origin: "user", Text: "other"},
+		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "m1", Scope: "project", Origin: "user", Text: "note"},
+		{ID: "m2", Scope: "project", Origin: "user", Text: "other"},
 	}
 	done := openReview(t, app, rows)
 	app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -116,7 +116,7 @@ func TestMemoryReviewEdit(t *testing.T) {
 // that does not exist.
 func TestMemoryReviewDropAccepted(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "learned", Text: "note", Queued: true}})
+	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "learned", Text: "note", Queued: true}})
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -131,9 +131,9 @@ func TestMemoryReviewDropAccepted(t *testing.T) {
 func TestMemoryReviewForgetAndWrap(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	done := openReview(t, app, []hostapi.MemoryRow{
-		{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
-		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+		{ID: "s1", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
+		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "m1", Scope: "project", Origin: "user", Text: "note"},
 	})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.renderSync(t)
@@ -157,12 +157,12 @@ func TestMemoryReviewForgetAndWrap(t *testing.T) {
 func TestMemoryReviewScopeToggle(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
 	done := openReview(t, app, []hostapi.MemoryRow{
-		{ID: "m2", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
-		{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"},
+		{ID: "m2", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
+		{ID: "m1", Scope: "project", Origin: "user", Text: "note"},
 	})
 	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // m2, the suggestion, goes everywhere
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "fact · everywhere · learned") || !strings.Contains(frame, "s only this project") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "everywhere · learned") || !strings.Contains(frame, "s only this project") {
 		t.Fatalf("toggled scope not shown:\n%s", frame)
 	}
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -186,8 +186,8 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 func TestMemoryReviewScopeFixed(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	done := openReview(t, app, []hostapi.MemoryRow{
-		{ID: "f1", Scope: "project", Kind: "fact", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-		{ID: "s1", Scope: "project", Kind: "fact", Origin: "learned", Text: "idea", Queued: true},
+		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "s1", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
 	})
 	for range 2 {
 		app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
@@ -206,7 +206,7 @@ func TestMemoryReviewScopeFixed(t *testing.T) {
 // TestMemoryReviewUndoAll: undoing every action closes with no decisions.
 func TestMemoryReviewUndoAll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
-	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Kind: "fact", Origin: "user", Text: "note"}})
+	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "user", Text: "note"}})
 	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -234,10 +234,10 @@ func TestMemoryReviewLongList(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 24)
 	var items []hostapi.MemoryRow
 	for i := range 12 {
-		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Kind: "fact", Origin: "user", Text: "short note"})
+		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Origin: "user", Text: "short note"})
 	}
-	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Kind: "gotcha", Origin: "learned",
-		Text: "run **go test** <!-- hidden --> before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker", Tags: []string{"db"}})
+	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Origin: "learned",
+		Text: "run **go test** <!-- hidden --> before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker"})
 	done := openReview(t, app, items)
 
 	app.renderSync(t)
@@ -248,7 +248,7 @@ func TestMemoryReviewLongList(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"tail-marker", "run **go test** <!-- hidden --> before", "`make golden`", "gotcha · this project · learned · #db", "13/13"} {
+	for _, want := range []string{"tail-marker", "run **go test** <!-- hidden --> before", "`make golden`", "this project · learned", "13/13"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("frame lacks %q:\n%s", want, frame)
 		}

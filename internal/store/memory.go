@@ -1,72 +1,53 @@
-// memory.go is the memory store (DESIGN §7): user-scope memory
-// lives in the global DB, project-scope in the project DB. Search is FTS5
-// over memory.text (external-content table kept in sync by triggers);
-// superseded memories never rank.
+// memory.go is the memory store (DESIGN §7): user-scope memory lives in
+// the global DB, project-scope in the project DB. Every live row reaches
+// the prompt, so there is no search; superseded rows stay for the trail.
 package store
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // Memory is one remembered fact.
 type Memory struct {
 	ID                  string
-	Scope               string   // "user" or "project"
-	Kind                string   // fact | gotcha | preference | convention | decision
-	Text                string   // capped and scrubbed at intake (learn.MaxTextLen)
-	Tags                []string // comma-joined in the DB
+	Scope               string // "user" or "project"
+	Text                string // capped and scrubbed at intake (learn.MaxTextLen)
+	Quote               string // the user's own words behind a memory about them (learn.MaxQuoteLen)
 	ProvenanceSessionID string
-	HitCount            int64
 	CreatedAt           int64
 	UpdatedAt           int64
-	LastHitAt           int64
 	SupersededBy        string
 	Origin              string // "user" | "learned"
-	// Score is the FTS5 match score (higher is better); 0 for
-	// non-search listings.
-	Score float64
 }
 
-const memoryCols = `id, scope, kind, text, tags, provenance_session_id,
-	hit_count, created_at, updated_at, last_hit_at, superseded_by, origin`
-
-// qualified with the memory alias for joins against memory_fts (both have
-// a text column).
-const memoryColsQualified = `m.id, m.scope, m.kind, m.text, m.tags,
-	m.provenance_session_id, m.hit_count, m.created_at, m.updated_at,
-	m.last_hit_at, m.superseded_by, m.origin`
+const memoryCols = `id, scope, text, quote, provenance_session_id,
+	created_at, updated_at, superseded_by, origin`
 
 func scanMemory(row scanner) (*Memory, error) {
 	var (
 		m         Memory
 		prov      any
 		supersede any
-		tags      string
 	)
-	if err := row.Scan(&m.ID, &m.Scope, &m.Kind, &m.Text, &tags, &prov,
-		&m.HitCount, &m.CreatedAt, &m.UpdatedAt, &m.LastHitAt,
-		&supersede, &m.Origin, &m.Score); err != nil {
+	if err := row.Scan(&m.ID, &m.Scope, &m.Text, &m.Quote, &prov,
+		&m.CreatedAt, &m.UpdatedAt, &supersede, &m.Origin); err != nil {
 		return nil, err
 	}
 	m.ProvenanceSessionID = asString(prov)
 	m.SupersededBy = asString(supersede)
-	if tags != "" {
-		m.Tags = strings.Split(tags, ",")
-	}
 	return &m, nil
 }
 
 // AddMemory inserts one memory row; empty id and timestamps are filled, and
-// a row copied from another scope keeps its age and hits.
+// a row copied from another scope keeps its age.
 func (s *DB) AddMemory(m *Memory) error {
 	if m.ID == "" {
 		m.ID = NewID()
 	}
-	if m.Scope == "" || m.Kind == "" || m.Text == "" || m.Origin == "" {
-		return errors.New("store: memory needs scope, kind, text and origin")
+	if m.Scope == "" || m.Text == "" || m.Origin == "" {
+		return errors.New("store: memory needs scope, text and origin")
 	}
 	t := now()
 	if m.CreatedAt == 0 {
@@ -76,11 +57,9 @@ func (s *DB) AddMemory(m *Memory) error {
 		m.UpdatedAt = t
 	}
 	_, err := s.db.Exec(`INSERT INTO memory
-		(id, scope, kind, text, tags, provenance_session_id,
-		 hit_count, created_at, updated_at, last_hit_at, superseded_by, origin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-		m.ID, m.Scope, m.Kind, m.Text, strings.Join(m.Tags, ","),
-		nullString(m.ProvenanceSessionID), m.HitCount, m.CreatedAt, m.UpdatedAt, m.LastHitAt, m.Origin)
+		(id, scope, text, quote, provenance_session_id, created_at, updated_at, superseded_by, origin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		m.ID, m.Scope, m.Text, m.Quote, nullString(m.ProvenanceSessionID), m.CreatedAt, m.UpdatedAt, m.Origin)
 	if err != nil {
 		return fmt.Errorf("store: add memory: %w", err)
 	}
@@ -89,7 +68,7 @@ func (s *DB) AddMemory(m *Memory) error {
 
 // GetMemory loads one memory by id, superseded or not.
 func (s *DB) GetMemory(id string) (*Memory, error) {
-	row := s.db.QueryRow(`SELECT `+memoryCols+`, 0 AS score FROM memory WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT `+memoryCols+` FROM memory WHERE id = ?`, id)
 	m, err := scanMemory(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -97,68 +76,10 @@ func (s *DB) GetMemory(id string) (*Memory, error) {
 	return m, err
 }
 
-// SearchMemory full-text searches one scope's live memories and returns
-// them best-first (score = -bm25 rank). An empty query falls back to
-// recency order with score 0, which is what digest assembly wants when
-// the user prompt carries no keywords. With bump=true every hit has its
-// hit_count incremented and last_hit_at stamped (DESIGN §7).
-func (s *DB) SearchMemory(scope, query string, limit int, bump bool) ([]*Memory, error) {
-	if strings.TrimSpace(query) == "" {
-		rows, err := s.db.Query(`SELECT `+memoryCols+`, 0 AS score
-			FROM memory WHERE scope = ? AND superseded_by IS NULL
-			ORDER BY updated_at DESC LIMIT ?`, scope, limit)
-		return collect(rows, err, scanMemory)
-	}
-
-	rows, err := s.db.Query(`SELECT `+memoryColsQualified+`, -f.rank AS score
-		FROM memory_fts f JOIN memory m ON m.rowid = f.rowid
-		WHERE memory_fts MATCH ? AND m.scope = ? AND m.superseded_by IS NULL
-		ORDER BY f.rank LIMIT ?`, ftsQuery(query), scope, limit)
-	out, err := collect(rows, err, scanMemory)
-	if err != nil || len(out) == 0 || !bump {
-		return out, err
-	}
-	args := []any{now()}
-	for _, m := range out {
-		args = append(args, m.ID)
-	}
-	if _, err := s.db.Exec(`UPDATE memory SET hit_count = hit_count + 1,
-		last_hit_at = ? WHERE id IN (`+placeholders(len(out))+`)`, args...); err != nil {
-		return out, fmt.Errorf("store: memory hit bump: %w", err)
-	}
-	return out, nil
-}
-
-// ftsQueryTerms caps the terms of a search: FTS5 slows down faster than the
-// term count grows, and a pasted log as the first message must not stall it.
-const ftsQueryTerms = 64
-
-// ftsQuery turns free text into an OR of its first distinct quoted FTS5
-// tokens, so arbitrary user input never becomes fts5 syntax.
-func ftsQuery(query string) string {
-	var terms []string
-	seen := map[string]bool{}
-	for _, tok := range strings.FieldsFunc(query, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r > 0x7f)
-	}) {
-		if len(terms) == ftsQueryTerms {
-			break
-		}
-		if tok = strings.ToLower(tok); !seen[tok] {
-			seen[tok] = true
-			terms = append(terms, `"`+strings.ReplaceAll(tok, `"`, `""`)+`"`)
-		}
-	}
-	if len(terms) == 0 {
-		return `""`
-	}
-	return strings.Join(terms, " OR ")
-}
-
 // ListMemory returns a scope's memories, newest first; superseded rows are
 // included only when asked.
 func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error) {
-	q := `SELECT ` + memoryCols + `, 0 AS score FROM memory WHERE scope = ?`
+	q := `SELECT ` + memoryCols + ` FROM memory WHERE scope = ?`
 	if !includeSuperseded {
 		q += ` AND superseded_by IS NULL`
 	}
@@ -167,8 +88,8 @@ func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error)
 	return collect(rows, err, scanMemory)
 }
 
-// UpdateMemoryText rewrites a memory's text and origin; the update trigger
-// re-syncs the FTS index. Unknown ids are ErrNotFound.
+// UpdateMemoryText rewrites a memory's text and origin. Unknown ids are
+// ErrNotFound.
 func (s *DB) UpdateMemoryText(id, text, origin string) error {
 	return s.execOne("update memory text", `UPDATE memory SET text = ?, origin = ?, updated_at = ?
 		WHERE id = ?`, text, origin, now(), id)
@@ -181,8 +102,7 @@ func (s *DB) SupersedeMemory(id, byID string) error {
 		WHERE id = ?`, nullString(byID), now(), id)
 }
 
-// DeleteMemory removes a memory row; the FTS trigger keeps the index in
-// sync. Unknown ids are ErrNotFound.
+// DeleteMemory removes a memory row. Unknown ids are ErrNotFound.
 func (s *DB) DeleteMemory(id string) error {
 	return s.execOne("delete memory", `DELETE FROM memory WHERE id = ?`, id)
 }

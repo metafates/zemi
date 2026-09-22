@@ -44,21 +44,22 @@ func TestAgentSelfAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.SetProjectTrusted(true)
-	stored, id, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, "project", "fact", "the build uses make", nil)
-	if err != nil || !stored {
-		t.Fatalf("propose: %v %v", stored, err)
+	res, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, "project", "the build uses make", "", "")
+	if err != nil || res.ID == "" {
+		t.Fatalf("propose: %+v %v", res, err)
 	}
-	if msg, err := h.modelEditMemory(h.AgentSessionID(), id[:8], "the build uses go build"); err != nil || !strings.HasSuffix(msg, "updated") {
-		t.Fatalf("update: %q %v", msg, err)
+	if msg, err := h.memoryTool(h.AgentSessionID(), "project", "the build uses go build", "", res.ID[:8]); err != nil || !strings.HasPrefix(msg, "saved as ") {
+		t.Fatalf("replace: %q %v", msg, err)
 	}
-	if _, m, _ := h.locateMemory(id); m.Text != "the build uses go build" || m.Origin != learn.OriginLearned {
-		t.Fatalf("text = %q origin = %q", m.Text, m.Origin)
+	_, m, _ := h.locateMemory(res.ID)
+	if m.SupersededBy == "" {
+		t.Fatalf("replaced memory still live: %+v", m)
 	}
 	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.modelEditMemory(h.AgentSessionID(), id, ""); err == nil || !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("forget without auto autonomy must ask (and fail closed headless): %v", err)
+	if msg, err := h.memoryTool(h.AgentSessionID(), "project", "", "", m.SupersededBy[:8]); err != nil || !strings.Contains(msg, "queued") {
+		t.Fatalf("forget without auto autonomy must wait for review: %q %v", msg, err)
 	}
 }
 

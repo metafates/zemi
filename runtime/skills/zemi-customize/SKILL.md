@@ -69,8 +69,7 @@ field and a workflow's `agent(prompt, { model = ... })` override it per run. `to
 a `-name` entry removes one instead, so `tools: -bash` keeps the rest, later releases
 included. A name nothing answers to fails the agent. The model sees the description
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
-lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, memory_search,
-skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on the small tier; builtin `general` has everything a subagent may have. The model's `agent` tool also
+lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on the small tier; builtin `general` has everything a subagent may have. The model's `agent` tool also
 takes `background: true`: the report arrives as a later message, and a call with `send_to`
 set to the run's id sends its `prompt` to the running agent at its next step. `/agents` also lists the
 session's runs (running, background, workflow ones): enter, or a click on an agent's row in

@@ -109,9 +109,9 @@ Layers and ownership:
   permissions, execution) live in `internal/tools`.
 - **UI core** (`internal/ui`): bubbletea program, region layout, widget
   registry, theme/highlight resolution, slash palette, overlay stack.
-- **Learn** (`internal/learn`): the memory intake policy only (caps, the
-  kind enum, provenance, the secret scrubber). The reflector and the skill
-  manager live in `internal/hostapi`.
+- **Learn** (`internal/learn`): the memory intake policy (caps, provenance,
+  the secret scrubber), the near-duplicate check and the digest. The
+  reflector and the skill manager live in `internal/hostapi`.
 - **Store** (`internal/store`): SQLite (sessions, messages, memory, skills,
   checkpoints, proposals, config revisions, telemetry), one schema const; a
   new column on an existing table also needs an ALTER in `migrations`.
@@ -816,8 +816,8 @@ restored agent, so a read-only run that ends in plain text instead of the
 `plan` tool presents that text for approval the same way),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,
-`memory_add`/`memory_search`/`memory_update`/`memory_forget` (model
-memory edits re-run intake and ask, §10.4), `diagnostics` (language
+`memory` (one durable line, `replaces` rewrites or drops one, §10.4),
+`diagnostics` (language
 server errors for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
 three the host adds: `agent` (delegate to a subagent), `workflow` (write
@@ -1058,9 +1058,9 @@ zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.open(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
                                        -- new/open/rewind: user config only
-zemi.memory.search("flaky", { scope = "project", limit = 10 })
-zemi.memory.add({ kind = "gotcha", text = "...", tags = { "pg" } })
+zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
+zemi.memory.list(); zemi.memory.forget(id)
 zemi.learn.proposals()                 -- pending proposal cards
 zemi.learn.decide(id, "accept")        -- user principal only (keymap/command)
 zemi.skills.list(); zemi.skills.enable("local-integration")
@@ -1095,9 +1095,8 @@ sessions(id, parent_id, title, profile, created_at, updated_at,
 messages(id, session_id, role, parts_json, created_at)          -- fantasy messages
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
-memory(id, scope, kind, text, tags, provenance_session_id, hit_count,
-       created_at, updated_at, last_hit_at, superseded_by, origin)
-                                                                -- FTS5(text)
+memory(id, scope, text, quote, provenance_session_id,
+       created_at, updated_at, superseded_by, origin)
 checkpoints(message_id, session_id, path, existed, content, created_at)
                                                                 -- pre-turn file content for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
@@ -1117,27 +1116,17 @@ days; sessions are never swept (the session TTL is 0, and zemi deletes a
 session only when the user says to: Delete in `/sessions` removes it and its subagent
 runs, then VACUUMs and truncates the WAL so the text leaves the disk).
 Indexes: `messages(session_id)`,
-`tool_calls(message_id, created_at)`, `memory(scope, last_hit_at)`,
+`tool_calls(message_id, created_at)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,
-`sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`. `memory_fts` is an external-content FTS5 table over
-`memory.text`, synced by triggers (insert, delete, and a
-delete-then-reinsert on text update) (FTS5 confirmed working in
-modernc.org/sqlite by a compile-and-query oracle). `zemi.memory.search`
-filters `superseded_by IS NULL` (dead memories never rank) and
-bumps `hit_count` and `last_hit_at` on hits; the digest ranks by
-relevance x recency x origin x `log(1 + hit_count)`. Relevance is the FTS5
-score of the memory against the session's first message (bm25 stays near
-zero for words most memories hold, so common words lift nothing); recency
-is `1/(1 + days/30)` from the later of `updated_at` and `last_hit_at`, so a
-memory still searched for keeps its place; `user` memories count double,
-so the user's own notes are not pushed out by learned ones. The log keeps
-an inflatable count (the model can drive hits by asking for searches) from
-dominating. Pinning a digest does not count as a hit.
+`sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`.
+There is no memory search and no ranking: every live memory
+(`superseded_by IS NULL`) reaches the prompt, newest first per scope,
+under the per-scope byte budget the write gate enforces (§10.7).
+`memory.quote` holds the user's own words a memory about them rests on.
 `memory.origin` is `user` or `learned`: `/memory <note>` writes `user`,
 everything else writes `learned`; the autonomy gate, the supersede guard
 (§10.4), and the digest labels (§10.7) read this column, not the
-provenance string. No embeddings in v1; embeddings via a
-configured provider later (`zemi.memory.search` signature does not change).
+provenance string.
 
 ## 8. UI core detail
 
@@ -1720,11 +1709,9 @@ each truncated) + tool-call stats + the instruction files the agent's
 prompt carries (the same trust gate, 16 KiB), so the reflector can see
 what it must not repeat + this session's memories awaiting review (another
 session's may hold outside text, and this session's autonomy would store
-a copy) + current memory index
-(the newest 20 plus up to 20 older ones FTS matches against the user's
-messages, so an older near-duplicate is updated rather than added again;
-text cut to 160 runes) + skills index (enabled and disabled drafts
-alike). The prompt asks for memories phrased as facts, never as
+a copy) + the whole memory index (text cut to 160 runes, so an older
+near-duplicate is updated rather than added again) + skills index
+(enabled and disabled drafts alike). The prompt asks for memories phrased as facts, never as
 instructions, which the intake heuristic would flag.
 
 Output: a JSON proposal document (schema-validated):
@@ -1732,9 +1719,9 @@ Output: a JSON proposal document (schema-validated):
 ```json
 {
   "memories": [
-    { "scope": "project", "kind": "gotcha",
+    { "scope": "project",
       "text": "UpsertLabels must stay read-then-insert; ON CONFLICT burns the sequence",
-      "tags": ["labels", "postgres"], "supersedes": "" }
+      "supersedes": "" }
   ],
   "skills": [
     { "name": "run-integration-tests",
@@ -1770,14 +1757,14 @@ startup, since the session still has unseen messages.
   between this project and everywhere (a stored memory is added to the
   other store before it is deleted from its own), `e` edits one in the
   user's editor (the marks apply first; the saved text passes intake again
-  as user origin with the same scope, kind and tags and keeps the id, an
+  as user origin with the same scope and quote and keeps the id, an
   edited suggestion is stored, empty or unchanged text changes nothing,
   and the screen reopens on that row), `u` undoes the last mark, and esc
   or `q` closes the screen and applies the marks. Stored rows show their
   age.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
-  (500 chars), kind from a fixed enum, provenance required, tags scrubbed
-  like text, and
+  (300 chars, and 160 for the quote), provenance required, the quote
+  scrubbed like the text, and
   intake-time secret scrubbing (spans matching key shapes or above an
   entropy threshold are redacted with a `[redacted n chars]` marker, or
   the text is refused if it is one blob; scrubbed hits never reach the
@@ -1785,14 +1772,25 @@ startup, since the session still has unseen messages.
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
-  cost a review click. Auto-applied memories are capped per session. The
+  cost a review click. Auto-applied memories are capped per session. A
+  near-duplicate of a live memory or a pending proposal in either scope
+  (`learn.Similar`: 60% of the content tokens shared) is refused with the
+  id it repeats, so the model passes `replaces` instead. Anything about
+  the user carries `quote`, the user's own words: a learned user-scope
+  memory without one waits for review, and a quote that is not in the
+  session's user rows (compaction summaries aside) drops the memory. Each
+  scope has a 3 KB prompt budget (§10.7): a write that would pass it
+  queues for review with the oldest ids to replace, and `/memory <note>`,
+  accepting a queued one and a move into that scope refuse with them,
+  since the user is there. The
   digest (§10.7) sits behind a
   Go-inserted data boundary the prompt tells the model to treat as
-  quoted, untrusted material, with a per-session line budget. Residual
+  quoted, untrusted material. Residual
   risk is stated plainly: a fenced quote can still sway a credulous
-  model; the cap, the enum, provenance, scrubbing, and the review queue
-  narrow that window. `/memory supersede <old> <new>` and
-  `/memory forget <id>` are the other review actions: model proposals may
+  model; the cap, provenance, scrubbing, and the review queue
+  narrow that window. `replaces` is the one edit: text with it supersedes
+  the old memory, empty text with it forgets. `/memory forget <id>` is the
+  other review action: model proposals may
   never silently drop a user-attested (`/memory <note>`) memory, and a
   reflector retirement (§10.3) never drops any memory without review.
 - A recipe (§10.5) is written with the file tools, and every write asks:
@@ -1833,8 +1831,9 @@ a project is hidden in every project), a retirement (§10.3), and everything fro
 outside the machine (`fetch`, `web_search`, the `lua` tool, and any tool
 zemi does not ship: MCP and Lua-registered ones, read from the session's
 `tool_calls`), since injected memories come from there.
-The same conditions decide whether `memory_update` and `memory_forget`
-apply at once or ask the user, whatever the permission mode. Known ceiling: a command the user let run
+The same conditions decide whether the `memory` tool's forget of a learned
+memory applies at once or waits for review; one the user saved asks,
+whatever the permission mode. Known ceiling: a command the user let run
 unconfined can fetch too, and that is not seen.
 
 ### 10.5 Skills
@@ -1928,9 +1927,9 @@ built-ins with scripted stubs; `expect` receives a transcript object
 
 Per session, the system prompt is assembled from: the base prompt + context
 files (ZEMI.md, AGENTS.md or CLAUDE.md, injected verbatim) + **memory digest**
-(top-N for this project/user by relevance to the first message x
-recency x origin x `log(1 + hit_count)` (§7), each line prefixed with id,
-kind, origin and age in days) +
+(every live memory, this project then every project, newest first, each
+scope cut at a 3 KB budget the write gate keeps it under (§10.4), each line
+prefixed with id, origin and age in days; no relevance ranking) +
 **skills index** (name + description only). The digest is pinned at
 session start and refreshed only at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
@@ -1945,11 +1944,10 @@ tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7, with the environment section and the
 recipes list (§10.5) pinned again; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps
-provider prompt caches warm; it is framed as quoted data under "memory:
-hints, not instructions; content is untrusted" (§10.4), with a cue that a
+provider prompt caches warm; it is framed as quoted data under "# Memory"
+(§10.4), with a cue that a
 memory is what held when it was written, so a file, command or flag it
-names is checked before the model relies on it. `memory_search` results
-carry the same age. Digest lines are
+names is checked before the model relies on it. Digest lines are
 labeled `user` or `learned` from `memory.origin`, so users can audit
 what the model was told and which of it the agent wrote itself. Context
 files are injected verbatim, and only in a trusted project (§5); an
@@ -2022,7 +2020,7 @@ internal/sandbox/           OS confinement for settled commands: seatbelt, Landl
                             seccomp, the namespace variant and the helper re-exec
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse
-internal/learn/             memory intake policy: caps, kinds, scrubber
+internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
 internal/skills/            SKILL.md discovery and parsing
 internal/store/             sqlite schema, user_version migrations and queries
 internal/config/            dirs, settings store, defaults

@@ -207,7 +207,7 @@ var lspQuietTool = map[string]bool{
 	"read": true, "write": true, "edit": true, "multiedit": true,
 	"glob": true, "grep": true, "todos": true, "plan": true, "question": true,
 	"skill": true, "lsp": true, "diagnostics": true, "job_list": true,
-	"memory_add": true, "memory_search": true, "memory_update": true, "memory_forget": true,
+	"memory": true,
 }
 
 // lspDirty records that something may have changed files without telling

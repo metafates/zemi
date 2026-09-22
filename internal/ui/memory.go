@@ -140,13 +140,24 @@ func (a *App) undoMemory() {
 }
 
 // memReviewBox shows every memory whole, as plain text since markdown could
-// hide part of what gets stored, with its kind, scope, origin and tags under it.
+// hide part of what gets stored, with the quote it rests on and its scope,
+// origin and age under it; the Remembered title says how much of each
+// scope's prompt budget the stored rows take.
 func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	mr := a.memReview
 	n := rememberedAt(mr.items)
+	used := map[string]int{}
+	for _, it := range mr.items[n:] {
+		if !it.Queued {
+			used[it.Scope] += learn.LineSize(it.Text)
+		}
+	}
+	kb := func(scope string) string {
+		return fmt.Sprintf("%.1f/%d KB", float64(used[scope])/1024, learn.ScopeBudget/1024)
+	}
 	sections := map[bool]string{
 		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
-		false: fmt.Sprintf("Remembered (%d)", len(mr.items)-n),
+		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb("project"), kb("user")),
 	}
 	items := make([]listItem, 0, len(mr.items))
 	for _, it := range mr.items {
@@ -154,18 +165,16 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		if it.Action == "accept" {
 			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 		}
-		info := []string{it.Kind, memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+		info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
 		if it.Updated != 0 {
-			info = append(info, strings.TrimPrefix(learn.Age(it.Updated, a.now()), " · "))
-		}
-		for _, t := range it.Tags {
-			info = append(info, "#"+t)
+			info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 		}
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
-		items = append(items, listItem{
-			section: sections[suggested(it)],
-			more:    append(hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2), meta),
-		})
+		more := hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2)
+		if it.Quote != "" {
+			more = append(more, hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}}, boxInner(w)-2)...)
+		}
+		items = append(items, listItem{section: sections[suggested(it)], more: append(more, meta)})
 	}
 	// borders, the blank row, the hint and the counter take five rows
 	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))

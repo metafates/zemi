@@ -483,7 +483,6 @@ function zemi.command.list() end
 ---@class zemi.ev.MemoryWritten: zemi.Event
 ---@field id string
 ---@field scope zemi.Scope
----@field kind zemi.MemoryKind
 ---@field origin "user"|"learned"
 ---@field text string
 
@@ -1821,62 +1820,47 @@ function zemi.json.decode(s) end
 -- ---------------------------------------------------------------------------
 -- zemi.memory, zemi.learn, zemi.skills
 
----@alias zemi.MemoryKind "fact"|"gotcha"|"preference"|"convention"|"decision"
-
 ---@class zemi.Memory
 ---@field id string
 ---@field scope zemi.Scope
----@field kind zemi.MemoryKind
 ---@field origin "user"|"learned"
 ---@field text string
----@field score number
----@field tags string[]
+---@field quote string The user's own words a memory about them rests on; "" otherwise.
 
----@class zemi.MemorySpec
----@field text string At most 500 characters.
----@field kind zemi.MemoryKind
----@field scope? zemi.Scope "project" by default.
----@field tags? string[]
+---@class zemi.MemoryOpts
+---@field scope? zemi.Scope "project" by default; "user" holds in every project.
+---@field quote? string The user's exact words from this session, at most 160 characters.
+---@field replaces? string Id (8+ characters of it) of the memory this one rewrites.
 
 ---@class zemi.MemoryAddResult
 ---@field stored? boolean Written straight away under auto autonomy.
----@field queued? boolean Waiting for review in /memory.
 ---@field id? string
+---@field queued? boolean Waiting for review in /memory.
+---@field reason? string Why it waits, "" when the autonomy setting alone holds it.
+---@field duplicate? string Id of the live or pending memory it repeats; nothing was written.
+---@field dropped? boolean The quote is not in the session's messages; nothing was written.
 
 ---@class zemi.memory
 zemi.memory = {}
 
---- Best-first search. Every hit bumps the memory's hit count.
----@param query string
----@param opts? { scope: "all"|zemi.Scope, limit: integer }
----@return zemi.Memory[]|nil memories
----@return string|nil err
-function zemi.memory.search(query, opts) end
-
---- Propose a memory. It goes through intake and the autonomy gate, so it
---- is stored or queued for review, never written blindly. User config
---- writes its own memory (origin user) and works before the first
---- message; the model's Lua tool writes a learned one. Raises for
---- project and learned code.
----@param spec zemi.MemorySpec
+--- Propose a memory of at most 300 characters. It goes through intake and
+--- the autonomy gate, so it is stored or queued for review, never written
+--- blindly. User config writes its own memory (origin user) and works
+--- before the first message; the model's Lua tool writes a learned one.
+--- Raises for project and learned code.
+---@param text string
+---@param opts? zemi.MemoryOpts
 ---@return zemi.MemoryAddResult|nil res
 ---@return string|nil err
-function zemi.memory.add(spec) end
+function zemi.memory.add(text, opts) end
 
 ---@param include_superseded? boolean
 ---@return zemi.Memory[]|nil memories
 ---@return string|nil err
 function zemi.memory.list(include_superseded) end
 
---- Mark `old` as replaced by `by`. Both ids may be 8-character prefixes.
---- User or builtin origin only.
----@param old string
----@param by string
----@return true|nil ok
----@return string|nil err
-function zemi.memory.supersede(old, by) end
-
---- User or builtin origin only.
+--- Delete a memory by id (an 8-character prefix works). User or builtin
+--- origin only.
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
@@ -1884,11 +1868,10 @@ function zemi.memory.forget(id) end
 
 ---@class zemi.Proposal
 ---@field id string
----@field kind zemi.MemoryKind
 ---@field scope zemi.Scope
 ---@field origin string
 ---@field text string
----@field tags string[]
+---@field quote string
 ---@field forget? true Accepting deletes the stored memory this text is a copy of.
 
 ---@class zemi.learn

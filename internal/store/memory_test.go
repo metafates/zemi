@@ -2,113 +2,52 @@ package store
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func addMem(t *testing.T, db *DB, scope, kind, text string, tags []string) *Memory {
+func addMem(t *testing.T, db *DB, scope, text string) *Memory {
 	t.Helper()
-	m := &Memory{Scope: scope, Kind: kind, Text: text, Tags: tags, Origin: "user", ProvenanceSessionID: "s9"}
+	m := &Memory{Scope: scope, Text: text, Quote: "q", Origin: "user", ProvenanceSessionID: "s9"}
 	if err := db.AddMemory(m); err != nil {
 		t.Fatal(err)
 	}
 	return m
 }
 
-func TestMemoryCRUDAndFTS(t *testing.T) {
+func TestMemoryCRUD(t *testing.T) {
 	db := openTest(t)
-	clicks := addMem(t, db, "project", "fact", "the deploy gate lives in ci/pipeline", []string{"ci", "deploy"})
-	rust := addMem(t, db, "user", "preference", "prefers rust over go for tools", nil)
-	addMem(t, db, "project", "gotcha", "unrelated note about teas", nil)
-
-	hits, err := db.SearchMemory("project", "deploy gate", 10, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(hits) != 1 || hits[0].ID != clicks.ID || hits[0].Score == 0 {
-		t.Fatalf("hits = %+v", hits)
-	}
-	if hits[0].ProvenanceSessionID != "s9" {
-		t.Fatalf("provenance lost: %+v", hits[0])
-	}
-
-	// Other-scope matches stay out even when the words match.
-	hits, err = db.SearchMemory("user", "deploy gate", 10, true)
-	if err != nil || len(hits) != 0 {
-		t.Fatalf("scope leak: %+v err=%v", hits, err)
-	}
+	gate := addMem(t, db, "project", "the deploy gate lives in ci/pipeline")
+	rust := addMem(t, db, "user", "prefers rust over go for tools")
 
 	m, err := db.GetMemory(rust.ID)
-	if err != nil || m.Text != rust.Text {
+	if err != nil || m.Text != rust.Text || m.Quote != "q" || m.ProvenanceSessionID != "s9" {
 		t.Fatalf("get: %+v err=%v", m, err)
 	}
-
-	// bump=true stamps the hit accounting.
-	before, _ := db.GetMemory(clicks.ID)
-	if _, err := db.SearchMemory("project", "deploy", 10, true); err != nil {
+	if list, _ := db.ListMemory("project", false); len(list) != 1 || list[0].ID != gate.ID {
+		t.Fatalf("scope leak: %+v", list)
+	}
+	if err := db.UpdateMemoryText(gate.ID, "moved", "learned"); err != nil {
 		t.Fatal(err)
 	}
-	after, _ := db.GetMemory(clicks.ID)
-	if after.HitCount != before.HitCount+1 || after.LastHitAt == 0 {
-		t.Fatalf("bump missing: before=%+v after=%+v", before, after)
-	}
-	hits, _ = db.SearchMemory("project", "deploy", 10, false)
-	if len(hits) == 0 {
-		t.Fatal("match vanished")
-	}
-
-	// Empty query: recency order, score 0, no bump.
-	hits, err = db.SearchMemory("project", "  ", 10, true)
-	if err != nil || len(hits) != 2 {
-		t.Fatalf("empty query: %+v err=%v", hits, err)
-	}
-	if hits[0].Score != 0 {
-		t.Fatalf("empty query score = %v", hits[0].Score)
-	}
-}
-
-func TestMemorySearchFtsSyntaxIsNeutralized(t *testing.T) {
-	db := openTest(t)
-	addMem(t, db, "project", "fact", "not_neo expression", nil)
-	for _, q := range []string{`not "quoted"`, `NEAR(a b)`, `col:val`, `"unclosed`, `*` + "\x00"} {
-		if _, err := db.SearchMemory("project", q, 10, false); err != nil {
-			t.Fatalf("query %q errored: %v", q, err)
-		}
-	}
-}
-
-func TestFtsQueryCapsTerms(t *testing.T) {
-	long := strings.Repeat("The the THE ", 5000)
-	for i := range 100 {
-		long += fmt.Sprintf(" w%d", i)
-	}
-	if got := strings.Count(ftsQuery(long), " OR ") + 1; got != ftsQueryTerms {
-		t.Fatalf("terms = %d", got)
-	}
-	if got := ftsQuery("Deploy deploy"); got != `"deploy"` {
-		t.Fatalf("dedupe: %s", got)
+	if m, _ := db.GetMemory(gate.ID); m.Text != "moved" || m.Origin != "learned" {
+		t.Fatalf("update: %+v", m)
 	}
 }
 
 func TestMemorySupersedeAndDelete(t *testing.T) {
 	db := openTest(t)
-	old := addMem(t, db, "project", "fact", "gate is at ci/old", nil)
-	new := addMem(t, db, "project", "fact", "gate is at ci/new", nil)
+	old := addMem(t, db, "project", "gate is at ci/old")
+	new := addMem(t, db, "project", "gate is at ci/new")
 
 	if err := db.SupersedeMemory(old.ID, new.ID); err != nil {
 		t.Fatal(err)
-	}
-	live, _ := db.SearchMemory("project", "gate", 10, false)
-	if len(live) != 1 || live[0].ID != new.ID {
-		t.Fatalf("superseded still ranks: %+v", live)
 	}
 	if m, _ := db.GetMemory(old.ID); m.SupersededBy != new.ID {
 		t.Fatalf("superseded_by = %q", m.SupersededBy)
 	}
 	list, _ := db.ListMemory("project", false)
-	if len(list) != 1 {
+	if len(list) != 1 || list[0].ID != new.ID {
 		t.Fatalf("live list = %+v", list)
 	}
 	list, _ = db.ListMemory("project", true)
@@ -127,48 +66,32 @@ func TestMemorySupersedeAndDelete(t *testing.T) {
 	}
 }
 
-func TestMemoryTriggersKeepFTSInSync(t *testing.T) {
-	db := openTest(t)
-	m := addMem(t, db, "project", "fact", "brew is the package manager", nil)
-
-	// Update text: old words must vanish, new ones must match.
-	m.Text = "mise is the package manager"
-	if err := db.UpdateMemoryText(m.ID, m.Text, m.Origin); err != nil {
-		t.Fatal(err)
-	}
-	hits, _ := db.SearchMemory("project", "brew", 10, false)
-	if len(hits) != 0 {
-		t.Fatalf("stale fts row after update: %+v", hits)
-	}
-	hits, _ = db.SearchMemory("project", "mise", 10, false)
-	if len(hits) != 1 {
-		t.Fatalf("fts missed updated text: %+v", hits)
-	}
-
-	// Delete: the word must vanish from the index.
-	if err := db.DeleteMemory(m.ID); err != nil {
-		t.Fatal(err)
-	}
-	hits, _ = db.SearchMemory("project", "mise", 10, false)
-	if len(hits) != 0 {
-		t.Fatalf("stale fts row after delete: %+v", hits)
-	}
+// oldMemoryShape turns a fresh memory table into the one before schema
+// version 2: kind, tags, hit counts and an FTS index.
+var oldMemoryShape = []string{
+	`ALTER TABLE memory DROP COLUMN quote`,
+	`ALTER TABLE memory ADD COLUMN kind TEXT NOT NULL DEFAULT 'fact'`,
+	`ALTER TABLE memory ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE memory ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE memory ADD COLUMN last_hit_at INTEGER NOT NULL DEFAULT 0`,
+	`CREATE VIRTUAL TABLE memory_fts USING fts5(text, content='memory', content_rowid='rowid')`,
+	`CREATE TRIGGER memory_ai AFTER INSERT ON memory BEGIN INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text); END`,
 }
 
-// TestMemoryFTSRebuiltWhenOutOfSync: an index that lost its rows is rebuilt
-// at open, so search does not miss memories the listing still shows.
-func TestMemoryFTSRebuiltWhenOutOfSync(t *testing.T) {
+// TestMigrateMemoryColumns: a store with the old memory shape opens, keeps
+// its text and gains quote.
+func TestMigrateMemoryColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	addMem(t, db, "project", "fact", "the deploy gate lives in ci/pipeline", nil)
-	if _, err := db.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('delete-all')`); err != nil {
-		t.Fatal(err)
-	}
-	if hits, _ := db.SearchMemory("project", "deploy", 10, false); len(hits) != 0 {
-		t.Fatalf("index was not emptied: %+v", hits)
+	for _, stmt := range append(oldMemoryShape,
+		`INSERT INTO memory (id, scope, kind, text, tags, created_at, updated_at, origin) VALUES ('m1', 'project', 'gotcha', 'old text', 'a,b', 1, 1, 'user')`,
+		`PRAGMA user_version = 1`) {
+		if _, err := db.db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
 	}
 	db.Close()
 
@@ -177,19 +100,23 @@ func TestMemoryFTSRebuiltWhenOutOfSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	hits, err := db.SearchMemory("project", "deploy", 10, false)
-	if err != nil || len(hits) != 1 {
-		t.Fatalf("open did not rebuild the index: %+v %v", hits, err)
+	m, err := db.GetMemory("m1")
+	if err != nil || m.Text != "old text" || m.Quote != "" {
+		t.Fatalf("migrated row: %+v, %v", m, err)
 	}
+	var cols int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('memory')`).Scan(&cols); err != nil || cols != 9 {
+		t.Fatalf("memory columns = %d, %v; want 9", cols, err)
+	}
+	addMem(t, db, "project", "new text") // no trigger left to write the dropped index
 }
 
 func TestMemoryValidation(t *testing.T) {
 	db := openTest(t)
 	for _, m := range []*Memory{
-		{Kind: "fact", Text: "t", Origin: "user"},
-		{Scope: "user", Text: "t", Origin: "user"},
-		{Scope: "user", Kind: "fact", Origin: "user"},
-		{Scope: "user", Kind: "fact", Text: "t"},
+		{Text: "t", Origin: "user"},
+		{Scope: "user", Origin: "user"},
+		{Scope: "user", Text: "t"},
 	} {
 		if err := db.AddMemory(m); err == nil {
 			t.Fatalf("want error for %+v", m)

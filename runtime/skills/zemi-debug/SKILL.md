@@ -110,7 +110,7 @@ SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
   project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
   `/rewind` restores).
 
-Useful tables: `memory` (text, kind, origin, superseded_by), `proposals` (pending review,
+Useful tables: `memory` (text, quote, origin, superseded_by), `proposals` (pending review,
 JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost),
 `messages` (role `tail` rows are copies of messages a compaction kept; resume starts at the
 last summary row).

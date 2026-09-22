@@ -39,10 +39,6 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
-	if err := s.resyncFTS(); err != nil {
-		d.Close()
-		return nil, err
-	}
 	// best effort: a failed sweep must never keep zemi from starting
 	_ = s.sweep()
 	return s, nil
@@ -131,33 +127,16 @@ CREATE TABLE IF NOT EXISTS proposals (
 CREATE TABLE IF NOT EXISTS memory (
 	id TEXT PRIMARY KEY,
 	scope TEXT NOT NULL,
-	kind TEXT NOT NULL,
 	text TEXT NOT NULL,
-	tags TEXT NOT NULL DEFAULT '',
+	quote TEXT NOT NULL DEFAULT '',
 	provenance_session_id TEXT,
-	hit_count INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
-	last_hit_at INTEGER NOT NULL DEFAULT 0,
 	superseded_by TEXT,
 	origin TEXT NOT NULL
 );
--- listings and keywordless digest assembly order by recency within a scope
+-- listings and the digest order by recency within a scope
 CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
-
--- External-content FTS5 over memory.text; triggers keep it in sync
--- (DESIGN §7). The TEXT primary key leaves the implicit rowid intact.
-CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(text, content='memory', content_rowid='rowid');
-CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN
-	INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text);
-END;
-CREATE TRIGGER IF NOT EXISTS memory_ad AFTER DELETE ON memory BEGIN
-	INSERT INTO memory_fts(memory_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
-END;
-CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE OF text ON memory BEGIN
-	INSERT INTO memory_fts(memory_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
-	INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text);
-END;
 `
 
 // migrations[i] upgrades a database at user_version i to i+1. The schema
@@ -172,6 +151,15 @@ var migrations = [][]string{
 		`ALTER TABLE tool_calls DROP COLUMN denied`,
 		`ALTER TABLE tool_calls DROP COLUMN decided_by`,
 		`ALTER TABLE sessions DROP COLUMN summary_message_id`},
+	{`DROP TRIGGER IF EXISTS memory_ai`,
+		`DROP TRIGGER IF EXISTS memory_ad`,
+		`DROP TRIGGER IF EXISTS memory_au`,
+		`DROP TABLE IF EXISTS memory_fts`,
+		`ALTER TABLE memory DROP COLUMN kind`,
+		`ALTER TABLE memory DROP COLUMN tags`,
+		`ALTER TABLE memory DROP COLUMN hit_count`,
+		`ALTER TABLE memory DROP COLUMN last_hit_at`,
+		`ALTER TABLE memory ADD COLUMN quote TEXT NOT NULL DEFAULT ''`},
 }
 
 func (s *DB) migrate() error {
@@ -217,25 +205,6 @@ func (s *DB) migrate() error {
 		return fmt.Errorf("store: set user_version: %w", err)
 	}
 	return tx.Commit()
-}
-
-// resyncFTS rebuilds memory_fts when it indexes fewer rows than memory
-// holds. An index created after its rows (or one the triggers missed) stays
-// empty and search silently misses every memory the empty-query listing
-// still shows. memory_fts itself reads through to the content table, so the
-// count has to come from the fts5 docsize shadow table.
-func (s *DB) resyncFTS() error {
-	var rows, indexed int
-	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM memory), (SELECT COUNT(*) FROM memory_fts_docsize)`).Scan(&rows, &indexed); err != nil {
-		return fmt.Errorf("store: count memory index: %w", err)
-	}
-	if rows == indexed {
-		return nil
-	}
-	if _, err := s.db.Exec(`INSERT INTO memory_fts(memory_fts) VALUES('rebuild')`); err != nil {
-		return fmt.Errorf("store: rebuild memory index: %w", err)
-	}
-	return nil
 }
 
 // Retention windows (DESIGN §7 keeps no archive): checkpoints hold a whole

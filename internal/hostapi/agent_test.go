@@ -663,10 +663,10 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	}
 }
 
-// TestMemoryToolsThroughPipeline drives memory_add and memory_search as the
-// model sees them: under ask autonomy the add queues for review, search
-// finds stored memories.
-func TestMemoryToolsThroughPipeline(t *testing.T) {
+// TestMemoryToolThroughPipeline drives the memory tool as the model sees
+// it: under ask autonomy the memory queues for review, and the answer says
+// so.
+func TestMemoryToolThroughPipeline(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
@@ -686,17 +686,11 @@ func TestMemoryToolsThroughPipeline(t *testing.T) {
 		t.Fatalf("no tool %s", name)
 		return fantasy.ToolResponse{}
 	}
-	if resp := run("memory_add", `{"kind":"gotcha","text":"bump the labels sequence before deploying"}`); resp.IsError || !strings.Contains(resp.Content, "queued") {
-		t.Fatalf("memory_add: %+v", resp)
+	if resp := run("memory", `{"text":"bump the labels sequence before deploying"}`); resp.IsError || resp.Content != "queued for the user's review" {
+		t.Fatalf("memory: %+v", resp)
 	}
 	if n := len(h.memoryProposals()); n != 1 {
 		t.Fatalf("proposals=%d", n)
-	}
-	if err := h.Remember("deploys run from bin/deploy"); err != nil {
-		t.Fatal(err)
-	}
-	if resp := run("memory_search", `{"query":"deploy"}`); resp.IsError || !strings.Contains(resp.Content, "bin/deploy") {
-		t.Fatalf("memory_search: %+v", resp)
 	}
 }
 

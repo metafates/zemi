@@ -443,7 +443,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 				return textParts("done")
 			}
 			seedSession(t, h) // the user ran /new and sent a message
-			return toolCallParts("c1", "memory_add", `{"scope":"project","kind":"fact","text":"the build uses make"}`)
+			return toolCallParts("c1", "memory", `{"scope":"project","text":"the build uses make"}`)
 		}}, nil
 	}
 	def, err := h.agentDef("general")

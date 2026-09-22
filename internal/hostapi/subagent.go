@@ -24,7 +24,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
@@ -53,7 +52,7 @@ var builtinAgents = []AgentDef{
 	{
 		Name:        "explore",
 		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
-		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "web_search", "memory_search", "skill"},
+		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "web_search", "skill"},
 		ReadOnly:    true,
 		System:      "You are a read-only search agent. Search broadly, read what matters, never guess. Your report goes to another agent, not the user: lead with the answer, cite paths relative to the project root with line numbers, and quote code only when the exact text matters. If you did not find it, say so and say where you looked.",
 		Source:      "builtin",
@@ -81,7 +80,7 @@ var builtinAgents = []AgentDef{
 		// sending agent turns into a plan tool call.
 		Name:        "plan",
 		Description: "Plans before any change: explores the code, then drafts a concrete implementation plan with a Critical Files section. Read-only.",
-		Tools:       []string{"read", "glob", "grep", "lsp", "memory_search", "skill", "fetch", "web_search"},
+		Tools:       []string{"read", "glob", "grep", "lsp", "skill", "fetch", "web_search"},
 		ReadOnly:    true,
 		System:      "You are an expert architect planning a change for another agent. Explore enough to know the shape of the task - read the code it touches, reuse existing patterns, never guess what a read would settle. Then draft a concrete implementation plan someone could execute without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section listing the 3-5 files that matter most to the plan. Do not ask the user anything; report the plan back to the agent that sent you.",
 		Source:      "builtin",
@@ -299,11 +298,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	parent := cmp.Or(run.parent, "lua")
 	// memories name the session this run belongs to, not whichever is live
 	// when a background run gets to them
-	pipe.Remember = func(scope, kind, text string, tags []string) (bool, error) {
-		stored, _, err := h.proposeMemory(parent, learn.OriginLearned, scope, kind, text, tags)
-		return stored, err
+	pipe.Remember = func(scope, text, quote, replaces string) (string, error) {
+		return h.memoryTool(parent, scope, text, quote, replaces)
 	}
-	pipe.EditMemory = func(id, text string) (string, error) { return h.modelEditMemory(parent, id, text) }
 	if ask := pipe.Ask; ask != nil {
 		pipe.Ask = func(req tools.Request) (bool, string, string) {
 			req.Reason = strings.TrimSuffix("agent "+def.Name+": "+req.Reason, ": ")

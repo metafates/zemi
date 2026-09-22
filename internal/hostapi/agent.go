@@ -1154,10 +1154,11 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.sessionID = sid
 	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
-	ag.digest = h.digestFor(firstText)
+	ag.digest = h.digestFor()
 	ag.env = ""
 	ag.memAuto = 0
 	ag.mu.Unlock()
+	h.refreshPending()
 	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
 	return nil
 }
@@ -2127,14 +2128,9 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.agents.mu.Unlock()
 			return h.takesImages(id)
 		},
-		Remember: func(scope, kind, text string, tags []string) (bool, error) {
-			stored, _, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, scope, kind, text, tags)
-			return stored, err
+		Remember: func(scope, text, quote, replaces string) (string, error) {
+			return h.memoryTool(h.AgentSessionID(), scope, text, quote, replaces)
 		},
-		Recall: func(query string, limit int) ([]*store.Memory, error) {
-			return h.memorySearch("all", query, limit, true)
-		},
-		EditMemory:   func(id, text string) (string, error) { return h.modelEditMemory(h.AgentSessionID(), id, text) },
 		Scratch:      h.inScratch,
 		Protected:    func(p string) bool { return !h.inScratch(p) && h.protectedWrite(p) },
 		Secret:       h.secretPath,

@@ -145,9 +145,8 @@ func reflectStub(t *testing.T, h *Host, resp string) *reflectStubModel {
 	return m
 }
 
-const proposalDoc = `{"memories":[{"scope":"project","kind":"gotcha",
-	"text":"UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence",
-	"tags":["labels","postgres"],"supersedes":""}]}`
+const proposalDoc = `{"memories":[{"scope":"project","text":"UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence",
+	"supersedes":""}]}`
 
 // TestReflectQueuesUnderAsk covers the ask-autonomy path: the proposal is
 // schema-parsed, scrubbed by intake and parked in the review queue with
@@ -187,8 +186,8 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 }
 
 // TestReflectAppliesUnderAuto covers the auto-autonomy path: proposal
-// stored, supersede linked in the same run, and a second proposal with a
-// bad kind skipped without failing the run.
+// stored, supersede linked in the same run, and a proposal with a bad
+// scope skipped without failing the run.
 func TestReflectAppliesUnderAuto(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Settings.SetHost("memory.autonomy", "auto")
@@ -199,17 +198,16 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 
 	oldID := store.NewID()
 	if err := h.DB.AddMemory(&store.Memory{
-		ID: oldID, Scope: "project", Kind: "gotcha", Text: "deploy manually every time",
+		ID: oldID, Scope: "project", Text: "deploy manually every time",
 		ProvenanceSessionID: "seed", Origin: learn.OriginLearned,
 	}); err != nil {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
 	doc := `{"memories":[
-		{"scope":"project","kind":"decision","text":"deploy script requires the labels sequence bumped first","tags":["deploy"],"supersedes":"` + oldID + `"},
-		{"scope":"galaxy","kind":"fact","text":"wrong scope is skipped"},
-		{"scope":"project","kind":"nonsense","text":"bad kind is skipped"},
-		{"scope":"project","kind":"fact","text":"deploy runs from bin/deploy"}]}`
+		{"scope":"project","text":"deploy script requires the labels sequence bumped first","supersedes":"` + oldID + `"},
+		{"scope":"galaxy","text":"wrong scope is skipped"},
+		{"scope":"project","text":"deploy runs from bin/deploy"}]}`
 	reflectStub(t, h, doc)
 
 	if err := h.reflectSession(context.Background(), sid); err != nil {
@@ -232,7 +230,7 @@ func TestReflectAppliesUnderAuto(t *testing.T) {
 			fresh = r
 		}
 	}
-	if fresh == nil || fresh.Origin != learn.OriginLearned || fresh.Kind != "decision" {
+	if fresh == nil || fresh.Origin != learn.OriginLearned {
 		t.Fatalf("replacing memory: %+v", fresh)
 	}
 	if fresh.ProvenanceSessionID != sid {
@@ -292,8 +290,8 @@ func TestReflectPromptPending(t *testing.T) {
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	for _, m := range []store.Memory{
-		{Scope: "project", Kind: "fact", Text: "ours to review", ProvenanceSessionID: sid},
-		{Scope: "user", Kind: "fact", Text: "fetched elsewhere", ProvenanceSessionID: "other"},
+		{Scope: "project", Text: "ours to review", ProvenanceSessionID: sid},
+		{Scope: "user", Text: "fetched elsewhere", ProvenanceSessionID: "other"},
 	} {
 		if err := h.addProposal(memoryProposal{Memory: m}); err != nil {
 			t.Fatal(err)
@@ -303,7 +301,7 @@ func TestReflectPromptPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "[project/fact] ours to review") || strings.Contains(prompt, "fetched elsewhere") {
+	if !strings.Contains(prompt, "[project] ours to review") || strings.Contains(prompt, "fetched elsewhere") {
 		t.Fatalf("pending block not limited to this session:\n%s", prompt)
 	}
 }
@@ -333,39 +331,30 @@ func TestReflectPromptSkills(t *testing.T) {
 	}
 }
 
-// TestReflectPromptMemoryIndex: the index holds the newest memories plus
-// older ones matching what the user said, with short ids, and says how many
-// exist.
+// TestReflectPromptMemoryIndex: the index lists every live memory of both
+// scopes with short ids.
 func TestReflectPromptMemoryIndex(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
-	// a long first message must not crowd out what the user said later
-	var long strings.Builder
-	for i := range 100 {
-		fmt.Fprintf(&long, "w%d ", i)
-	}
-	addText(t, h, sid, "user", long.String())
-	seedTranscript(t, h, sid) // the user says "the deploy script keeps failing"
+	seedTranscript(t, h, sid)
 	var ids []string
-	for i, text := range append([]string{"deploy needs the labels sequence bumped"}, make([]string, reflectIndexMax+1)...) {
-		if text == "" {
-			text = fmt.Sprintf("fact number %d.", i)
-		}
-		m := &store.Memory{Scope: "project", Kind: "fact", Text: text, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
-		if err := h.DB.AddMemory(m); err != nil {
+	for _, m := range []*store.Memory{
+		{Scope: "project", Text: "deploy needs the labels sequence bumped"},
+		{Scope: "user", Text: "the user prefers short replies"},
+	} {
+		m.ProvenanceSessionID, m.Origin = "seed", learn.OriginLearned
+		if err := h.memoryDB(m.Scope).AddMemory(m); err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, m.ID)
-		time.Sleep(2 * time.Millisecond) // the first one is the oldest
 	}
 	prompt, _, err := h.reflectPrompt(sid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, fmt.Sprintf("(%d of %d: the newest", reflectIndexMax+1, reflectIndexMax+2)) ||
-		strings.Count(prompt, "[project/fact] fact number") != reflectIndexMax ||
-		!strings.Contains(prompt, ids[0][:8]+" [project/fact] deploy needs the labels sequence bumped") {
-		t.Fatalf("index not the newest plus related:\n%s", prompt)
+	if !strings.Contains(prompt, ids[0][:8]+" [project] deploy needs the labels sequence bumped") ||
+		!strings.Contains(prompt, ids[1][:8]+" [user] the user prefers short replies") {
+		t.Fatalf("index:\n%s", prompt)
 	}
 	for _, id := range ids {
 		if strings.Contains(prompt, id) {
@@ -412,10 +401,10 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 			sid := seedSession(t, h)
 			seedTranscript(t, h, sid)
 			oldID := store.NewID()
-			if err := h.DB.AddMemory(&store.Memory{ID: oldID, Scope: "project", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: tc.oldOrigin}); err != nil {
+			if err := h.DB.AddMemory(&store.Memory{ID: oldID, Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: tc.oldOrigin}); err != nil {
 				t.Fatal(err)
 			}
-			reflectStub(t, h, `{"memories":[{"scope":"`+tc.scope+`","kind":"fact","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
+			reflectStub(t, h, `{"memories":[{"scope":"`+tc.scope+`","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
 			if err := h.reflectSession(context.Background(), sid); err != nil {
 				t.Fatal(err)
 			}
@@ -426,7 +415,7 @@ func TestReflectSupersedeThroughReview(t *testing.T) {
 			if tc.scope == "user" && !strings.HasSuffix(h.memoryRows()[0].Text, "(replaces project memory "+oldID[:8]+")") {
 				t.Fatalf("review row: %q", h.memoryRows()[0].Text)
 			}
-			again, _ := parseReflectProposal(`{"memories":[{"scope":"` + tc.scope + `","kind":"fact","text":"deploy runs from bin/deploy"}]}`)
+			again, _ := parseReflectProposal(`{"memories":[{"scope":"` + tc.scope + `","text":"deploy runs from bin/deploy"}]}`)
 			if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
 				t.Fatalf("a duplicate counted as queued: %d", queued)
 			}
@@ -452,7 +441,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
 		seedTranscript(t, h, sid)
-		old := &store.Memory{Scope: "project", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginUser}
+		old := &store.Memory{Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginUser}
 		if err := h.DB.AddMemory(old); err != nil {
 			t.Fatal(err)
 		}
@@ -491,7 +480,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			}
 		case "moved":
 			// a pending suggestion with the same text is no stored copy to merge into
-			if err := h.addProposal(memoryProposal{Scope: "user", Kind: "fact", Text: "deploy by hand"}); err != nil {
+			if err := h.addProposal(memoryProposal{Scope: "user", Text: "deploy by hand"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
@@ -505,7 +494,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal(err)
 			}
 		case "merged":
-			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Kind: "fact", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}); err != nil {
+			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
@@ -541,8 +530,8 @@ func TestReflectScrubAndInstructionShape(t *testing.T) {
 	seedTranscript(t, h, sid)
 
 	doc := `{"memories":[
-		{"scope":"project","kind":"fact","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"},
-		{"scope":"project","kind":"preference","text":"always run the deploy before reviews"}]}`
+		{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"},
+		{"scope":"project","text":"always run the deploy before reviews"}]}`
 	reflectStub(t, h, doc)
 
 	if err := h.reflectSession(context.Background(), sid); err != nil {

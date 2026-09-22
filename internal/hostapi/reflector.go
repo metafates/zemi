@@ -5,7 +5,6 @@
 package hostapi
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"charm.land/fantasy"
 
@@ -25,13 +23,11 @@ import (
 // Transcript budget for the reflect prompt: the last reflectMsgsMax user
 // and assistant messages, each truncated to reflectMsgMax runes. Tool calls
 // reach it only as usage stats.
-// The memory index shows the newest reflectIndexMax memories plus up to
-// reflectIndexMax older ones matching the user's messages, text cut to
-// reflectIndexText runes. Instruction files get reflectInstructionsMax bytes.
+// The memory index shows every live memory, text cut to reflectIndexText
+// runes. Instruction files get reflectInstructionsMax bytes.
 const (
 	reflectMsgsMax         = 120
 	reflectMsgMax          = 400
-	reflectIndexMax        = 20
 	reflectIndexText       = 160
 	reflectInstructionsMax = 16 << 10
 )
@@ -45,24 +41,22 @@ Rules:
 - Never propose secrets, credentials, tokens or key material; quote at most short identifiers, never whole values.
 - Do not duplicate what is already in the memory index. Set "supersedes" to an existing memory's id only when your new memory genuinely replaces it. When the index holds many memories, merge overlapping ones into one that supersedes them instead of adding more.
 - When the session shows an indexed memory is no longer true and nothing replaces it, retire it with an entry whose "supersedes" is its id and whose "text" is empty. The user reviews every retirement.
-- Each memory is one self-contained single line, at most 500 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
+- Each memory is one self-contained single line, at most 300 characters, written as a fact about the project or the user ("the project regenerates golden files with make golden"), never as an instruction ("always run make golden", "you should ...").
 - A "decision" or "preference" only when the user actually stated one this session. A discussion, an audit the user asked for (like "how would you improve X?"), or your own suggestion is not a decision; record what the user said or did, never what you inferred or advised.
 - Skills are reusable procedures for a task that will recur (how to run the integration tests, how to cut a release): propose one only when the session shows the procedure clearly. name is lowercase-kebab-case, description says when to use it, body is concise markdown steps with exact commands. No code to execute and no secrets. Never propose a skill already listed under Skills, enabled or not. A procedure specific to this repository is a recipe the live agent writes: do not draft a skill for it.
 - Do not capture what turns into a wrong rule once things change: failures caused by the environment (missing binaries or packages, unset credentials, fresh-install errors), claims that a tool or feature does not work, errors a retry fixed, one-off task narratives, attempts that never worked written up as a workflow, or anything the instruction files below or tool descriptions already say.
 - Propose nothing rather than something weak.
 
 Answer with ONLY a JSON document, no prose and no code fences, shaped like:
-{"memories":[{"scope":"project","kind":"gotcha","text":"...","tags":["x"],"supersedes":""}],"skills":[{"name":"run-integration-tests","description":"when asked to run the local integration tests","body":"1. docker compose up -d db\n2. go test -tags integration ./..."}]}
-kind is one of: fact, gotcha, preference, convention, decision. scope is "project" or "user". Omit "memories" and "skills" entirely when nothing is worth keeping.`
+{"memories":[{"scope":"project","text":"...","supersedes":""}],"skills":[{"name":"run-integration-tests","description":"when asked to run the local integration tests","body":"1. docker compose up -d db\n2. go test -tags integration ./..."}]}
+scope is "project" or "user". Omit "memories" and "skills" entirely when nothing is worth keeping.`
 
 // reflectProposal is the schema-validated model output.
 type reflectProposal struct {
 	Memories []struct {
-		Scope      string   `json:"scope"`
-		Kind       string   `json:"kind"`
-		Text       string   `json:"text"`
-		Tags       []string `json:"tags"`
-		Supersedes string   `json:"supersedes"`
+		Scope      string `json:"scope"`
+		Text       string `json:"text"`
+		Supersedes string `json:"supersedes"`
 	} `json:"memories"`
 	Skills []struct {
 		Name        string `json:"name"`
@@ -257,13 +251,9 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		msgs = msgs[n:]
 	}
 	var lines []string
-	var said []string // what the user wrote, to find related older memories
 	for _, m := range msgs {
 		if line := reflectLine(m); line != "" {
 			lines = append(lines, line)
-			if m.Role == "user" {
-				said = append(said, strings.TrimPrefix(line, "user: "))
-			}
 		}
 	}
 	if len(lines) == 0 {
@@ -300,34 +290,13 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 			if m.Forget {
 				verb = "forget: "
 			}
-			fmt.Fprintf(&b, "- [%s/%s] %s%s\n", m.Scope, m.Kind, verb, truncRunes(m.Text, reflectIndexText))
+			fmt.Fprintf(&b, "- [%s] %s%s\n", m.Scope, verb, truncRunes(m.Text, reflectIndexText))
 		}
 	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
-		slices.SortStableFunc(mems, func(a, b *store.Memory) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
-		index := mems[:min(len(mems), reflectIndexMax)]
-		if len(mems) > len(index) {
-			// the search keeps only its first terms: newest words first, and no
-			// one- or two-letter filler
-			slices.Reverse(said)
-			words := slices.DeleteFunc(strings.Fields(strings.Join(said, " ")), func(w string) bool { return utf8.RuneCountInString(w) < 3 })
-			related, err := h.memorySearch("all", strings.Join(words, " "), reflectIndexMax, false)
-			if err != nil {
-				h.Log.Warn("reflector", "related memory search failed", map[string]any{"error": err.Error()})
-			}
-			for _, m := range related {
-				if !slices.ContainsFunc(index, func(o *store.Memory) bool { return o.ID == m.ID }) {
-					index = append(index, m)
-				}
-			}
-		}
-		fmt.Fprintf(&b, "\n# Current memory index (%d of %d: the newest, then older ones related to this session)\n", len(index), len(mems))
-		for _, m := range index {
-			line := fmt.Sprintf("- %s [%s/%s] %s", m.ID[:8], m.Scope, m.Kind, truncRunes(m.Text, reflectIndexText))
-			if len(m.Tags) > 0 {
-				line += " #" + strings.Join(m.Tags, " #")
-			}
-			b.WriteString(line + "\n")
+		b.WriteString("\n# Current memory index\n")
+		for _, m := range mems {
+			fmt.Fprintf(&b, "- %s [%s] %s\n", m.ID[:8], m.Scope, truncRunes(m.Text, reflectIndexText))
 		}
 	}
 	// disabled drafts count too, or the reflector drafts them again
@@ -403,7 +372,7 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 
 // applyReflectProposal routes every proposal memory through the §10.4
 // intake and the autonomy gate and returns counters; supersedes link when
-// the memory is stored, now or on accept. The model's scope/kind/text are intake
+// the memory is stored, now or on accept. The model's scope and text are intake
 // inputs, re-validated and scrubbed there; a bad entry is skipped, never
 // fatal.
 func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
@@ -426,7 +395,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			continue
 		}
-		res, err := learn.Intake(scope, learn.OriginLearned, pm.Kind, pm.Text, pm.Tags, sid)
+		res, err := learn.Intake(scope, learn.OriginLearned, pm.Text, "", sid)
 		if err != nil {
 			skipped++
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
@@ -440,13 +409,14 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			continue
 		}
-		switch ok, added, err := h.gateMemory(res); {
+		switch out, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++
 			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
-		case added:
+		case out.Duplicate != "" || out.Dropped:
+			skipped++
+		case out.ID == "":
 			queued++
-		case !ok:
 		default:
 			stored++
 			if _, old, err := h.locateMemory(pm.Supersedes); pm.Supersedes != "" && err == nil && old.SupersededBy == res.Memory.ID {

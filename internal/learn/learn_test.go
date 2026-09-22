@@ -11,18 +11,15 @@ import (
 )
 
 func TestIntakeCleansAndFlags(t *testing.T) {
-	res, err := Intake("project", OriginLearned, "gotcha", "the\tdploy gate\n  lives in ci/pipeline \x1b[31mred", []string{" CI ", "ci", "xobs=sk-abcdefghijklmnopqrs0123456789"}, "sess1234")
+	res, err := Intake("project", OriginLearned, "the\tdploy gate\n  lives in ci/pipeline \x1b[31mred", " I said so\n", "sess1234")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Memory.Text != "the dploy gate lives in ci/pipeline red" {
-		t.Fatalf("text = %q", res.Memory.Text)
+	if res.Memory.Text != "the dploy gate lives in ci/pipeline red" || res.Memory.Quote != "I said so" {
+		t.Fatalf("memory = %+v", res.Memory)
 	}
-	if res.Memory.Kind != "gotcha" || res.Memory.Origin != "learned" {
+	if res.Memory.Origin != "learned" {
 		t.Fatalf("meta = %+v", res.Memory)
-	}
-	if len(res.Memory.Tags) != 2 || res.Memory.Tags[0] != "CI" {
-		t.Fatalf("tags = %v", res.Memory.Tags)
 	}
 	if res.InstructionShaped {
 		t.Fatal("fact flagged as instruction")
@@ -30,7 +27,7 @@ func TestIntakeCleansAndFlags(t *testing.T) {
 }
 
 func TestIntakeScrubsSecrets(t *testing.T) {
-	res, err := Intake("project", OriginUser, "fact", "deploy token is ghp_0123456789abcdefghijklmnopqrstuv ok", nil, "s1")
+	res, err := Intake("project", OriginUser, "deploy token is ghp_0123456789abcdefghijklmnopqrstuv ok", "", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +42,7 @@ func TestIntakeScrubsSecrets(t *testing.T) {
 	}
 
 	// key=value assignment
-	res, err = Intake("project", OriginUser, "fact", "api_key = supersecretvalue123 is set in CI", nil, "s1")
+	res, err = Intake("project", OriginUser, "api_key = supersecretvalue123 is set in CI", "", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,17 +51,23 @@ func TestIntakeScrubsSecrets(t *testing.T) {
 	}
 
 	// a token cut by the length cap is still recognized whole
-	res, err = Intake("project", OriginUser, "fact", strings.Repeat("a ", MaxTextLen/2-6)+"ghp_0123456789abcdefghijklmnopqrstuv", nil, "s1")
+	res, err = Intake("project", OriginUser, strings.Repeat("a ", MaxTextLen/2-6)+"ghp_0123456789abcdefghijklmnopqrstuv", "", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(res.Memory.Text, "ghp_") {
 		t.Fatalf("cut token survived: %q", res.Memory.Text)
 	}
+
+	// the quote is scrubbed like the text
+	res, err = Intake("user", OriginLearned, "the user keeps the token in CI", "use ghp_0123456789abcdefghijklmnopqrstuv", "s1")
+	if err != nil || !res.Scrubbed || strings.Contains(res.Memory.Quote, "ghp_") {
+		t.Fatalf("quote: %+v %v", res, err)
+	}
 }
 
 func TestIntakeRefusesOneBlob(t *testing.T) {
-	_, err := Intake("project", OriginUser, "fact", "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", nil, "s1")
+	_, err := Intake("project", OriginUser, "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", "", "s1")
 	if !errors.Is(err, ErrRefused) {
 		t.Fatalf("want ErrRefused, got %v", err)
 	}
@@ -72,31 +75,48 @@ func TestIntakeRefusesOneBlob(t *testing.T) {
 
 func TestIntakeValidation(t *testing.T) {
 	for _, tc := range []struct {
-		scope, origin, kind, text, prov string
-		want                            error
+		scope, origin, text, prov string
+		want                      error
 	}{
-		{"project", "user", "nope", "t", "s", ErrBadKind},
-		{"project", "robot", "fact", "t", "s", ErrBadOrigin},
-		{"project", "user", "fact", "t", "  ", ErrNoProvenance},
-		{"project", "user", "fact", "   ", "s", ErrRefused},
+		{"project", "robot", "t", "s", ErrBadOrigin},
+		{"project", "user", "t", "  ", ErrNoProvenance},
+		{"project", "user", "   ", "s", ErrRefused},
 	} {
-		if _, err := Intake(tc.scope, tc.origin, tc.kind, tc.text, nil, tc.prov); !errors.Is(err, tc.want) {
-			t.Fatalf("Intake(%q,%q,%q,%q,%q) = %v, want %v", tc.scope, tc.origin, tc.kind, tc.text, tc.prov, err, tc.want)
+		if _, err := Intake(tc.scope, tc.origin, tc.text, "", tc.prov); !errors.Is(err, tc.want) {
+			t.Fatalf("Intake(%q,%q,%q,%q) = %v, want %v", tc.scope, tc.origin, tc.text, tc.prov, err, tc.want)
 		}
 	}
 }
 
-func TestIntakeCapsTextAndTags(t *testing.T) {
-	long := strings.Repeat("words ", MaxTextLen) // the cut lands mid-word, so no space is trimmed
-	res, err := Intake("project", OriginUser, "fact", long, []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}, "s1")
+func TestIntakeCapsTextAndQuote(t *testing.T) {
+	long := strings.Repeat("wordsx ", MaxTextLen) // both cuts land mid-word, so no space is trimmed
+	res, err := Intake("project", OriginUser, long, long, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n := utf8.RuneCountInString(res.Memory.Text); n != MaxTextLen {
 		t.Fatalf("text len = %d", n)
 	}
-	if len(res.Memory.Tags) != MaxTags {
-		t.Fatalf("tags = %d", len(res.Memory.Tags))
+	if n := utf8.RuneCountInString(res.Memory.Quote); n != MaxQuoteLen {
+		t.Fatalf("quote len = %d", n)
+	}
+}
+
+func TestSimilar(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"make golden regenerates the UI golden files", "Make golden regenerates the UI golden files.", true},
+		{"make golden regenerates the UI golden files", "the ui golden files are regenerated by make golden", true},
+		{"make golden regenerates the UI golden files", "make check runs vet, tests and gofmt", false},
+		{"the user wants short replies", "the user wants commits without being asked", false},
+		{"a b c", "A b c", true},
+		{"a b c", "a b d", false}, // no content tokens
+	} {
+		if got := Similar(tc.a, tc.b); got != tc.want {
+			t.Errorf("Similar(%q, %q) = %v", tc.a, tc.b, got)
+		}
 	}
 }
 
@@ -197,80 +217,34 @@ func TestInstructionShaped(t *testing.T) {
 	}
 }
 
-func TestDigestRanksAndFrames(t *testing.T) {
+// TestDigestBudget: the section lists every scope newest first as given,
+// stops a scope at its budget, skips redacted rows, and renders nothing
+// for an empty store.
+func TestDigestBudget(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
-	old := &store.Memory{Kind: "fact", Text: "old fact", Origin: "learned", ProvenanceSessionID: "aaaabbbbcccc", UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), Score: 3}
-	fresh := &store.Memory{ID: "dddd0000ffffffff", Kind: "gotcha", Text: "fresh gotcha", Origin: "user", ProvenanceSessionID: "dddd00001111", Tags: []string{"ci"}, UpdatedAt: at.UnixMilli(), Score: 3}
-	hits := &store.Memory{Kind: "fact", Text: "popular fact", Origin: "user", ProvenanceSessionID: "eeee00002222", UpdatedAt: at.Add(-72 * time.Hour).UnixMilli(), Score: 3, HitCount: 5}
-	scrubbed := &store.Memory{Kind: "fact", Text: "token [redacted 24 chars] stored", Origin: "user", ProvenanceSessionID: "ffff00003333", UpdatedAt: at.UnixMilli(), Score: 100}
+	mem := func(scope, id, text string, origin string, age time.Duration) *store.Memory {
+		return &store.Memory{ID: id, Scope: scope, Text: text, Origin: origin, UpdatedAt: at.Add(-age).UnixMilli()}
+	}
+	rows := []*store.Memory{
+		mem("project", "aaaa0000ffffffff", "newest project fact", OriginLearned, 0),
+		mem("project", "bbbb0000ffffffff", "token [redacted 24 chars] stored", OriginUser, 0),
+		mem("project", "cccc0000ffffffff", "older project fact", OriginUser, 72*time.Hour),
+		mem("project", "dddd0000ffffffff", "oldest project fact, past the budget", OriginUser, 96*time.Hour),
+		mem("user", "eeee0000ffffffff", "the user prefers short replies", OriginUser, 0),
+	}
+	budget := LineSize("newest project fact") + LineSize("older project fact")
+	want := digestHeader + `
 
-	out := Digest([]*store.Memory{old, scrubbed, fresh, hits}, at, 10)
-	if out == "" {
-		t.Fatal("empty digest")
-	}
-	if !strings.HasPrefix(out, digestHeader) {
-		t.Fatalf("missing framing header: %q", out)
-	}
-	if strings.Contains(out, "[redacted") {
-		t.Fatal("scrubbed memory reached the digest")
-	}
-	lines := strings.Split(out, "\n")
-	if len(lines) != 4 { // header + 3 candidates
-		t.Fatalf("lines = %d: %q", len(lines), out)
-	}
-	for i, want := range []string{
-		"[ · fact · user · 3d] popular fact",           // user x2, 1+log 6 for hits
-		"[dddd0000 · gotcha · user] fresh gotcha (ci)", // user x2, no age under 2 days
-		"[ · fact · learned · 3d] old fact",
-	} {
-		if lines[i+1] != want {
-			t.Fatalf("line %d = %q, want %q", i+1, lines[i+1], want)
-		}
-	}
-}
+## this project
+- [aaaa0000 learned] newest project fact
+- [cccc0000 user 3d] older project fact
 
-func TestDigestLineBudget(t *testing.T) {
-	at := time.UnixMilli(1700000000000)
-	var cands []*store.Memory
-	for i := range 12 {
-		cands = append(cands, &store.Memory{Kind: "fact", Text: "fact " + string(rune('a'+i)), Origin: "user", ProvenanceSessionID: "p", UpdatedAt: at.UnixMilli(), Score: float64(12 - i)})
+## every project
+- [eeee0000 user] the user prefers short replies`
+	if got := Digest(rows, at, budget); got != want {
+		t.Fatalf("digest:\n%s\nwant:\n%s", got, want)
 	}
-	out := Digest(cands, at, 3)
-	if n := strings.Count(out, "\n"); n != 3 {
-		t.Fatalf("lines = %d, want 3", n)
-	}
-	if !strings.Contains(out, "fact a") || strings.Contains(out, "fact d") {
-		t.Fatalf("wrong lines kept: %q", out)
-	}
-}
-
-func TestDigestEmpty(t *testing.T) {
-	if got := Digest(nil, time.Now(), 5); got != "" {
+	if got := Digest(nil, at, budget); got != "" {
 		t.Fatalf("want empty, got %q", got)
-	}
-}
-
-func TestDigestScoreFormula(t *testing.T) {
-	at := time.UnixMilli(1700000000000)
-	day := 24 * time.Hour
-	ago := func(d time.Duration) int64 { return at.Add(-d).UnixMilli() }
-	score := func(m store.Memory) float64 { return DigestScore(&m, at) }
-	for _, tc := range []struct {
-		name          string
-		better, worse store.Memory
-	}{
-		{"never-hit fresh beats hit-free month-old", store.Memory{UpdatedAt: ago(0)}, store.Memory{UpdatedAt: ago(30 * day)}},
-		{"hits lift an older memory", store.Memory{UpdatedAt: ago(3 * day), HitCount: 5}, store.Memory{UpdatedAt: ago(0)}},
-		{"a user note beats a newer learned one", store.Memory{UpdatedAt: ago(20 * day), Origin: OriginUser}, store.Memory{UpdatedAt: ago(0), Origin: OriginLearned}},
-		{"a recent hit revives an old memory", store.Memory{UpdatedAt: ago(200 * day), LastHitAt: ago(0), HitCount: 1}, store.Memory{UpdatedAt: ago(10 * day)}},
-		{"relevance beats recency", store.Memory{UpdatedAt: ago(60 * day), Score: 5}, store.Memory{UpdatedAt: ago(0)}},
-	} {
-		if b, w := score(tc.better), score(tc.worse); b <= w {
-			t.Errorf("%s: %v <= %v", tc.name, b, w)
-		}
-	}
-	// a month halves recency
-	if got := score(store.Memory{UpdatedAt: ago(30 * day)}); got != 0.5 {
-		t.Fatalf("30 days = %v, want 0.5", got)
 	}
 }

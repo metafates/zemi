@@ -79,7 +79,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
 		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
 		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
-		`zemi.memory.add({ kind = "fact", text = "x" })`,
+		`zemi.memory.add("x")`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,

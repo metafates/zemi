@@ -8,23 +8,26 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
 ## The loop
 
 1. **Capture.** `/memory <note>` stores a project fact immediately (`s` in `/memory` makes it apply everywhere). You (the agent)
-   can call `memory_add` with a kind (`fact`, `gotcha`, `preference`, `convention`,
-   `decision`) and one specific fact (up to 500 characters); under the default autonomy it
-   stores at once when policy-clean. `memory_search` finds earlier memories. `memory_update`
-   rewrites one and `memory_forget` deletes one, by the 8-character id the digest and search
-   show; the change asks the user unless autonomy is `auto` (and would store at once, see
-   below) and the memory is `learned`.
+   call `memory` with one specific fact (up to 300 characters) and, for anything about the
+   user, `quote`: their exact words from this session (a quote that is not in the session
+   drops the memory; a user-scope memory without one waits for review). Under the default
+   autonomy it stores at once when policy-clean; the answer names the id, or the id of a
+   near-duplicate to pass as `replaces` instead. `replaces=<id>` (the 8-character id the
+   `# Memory` section shows) rewrites that memory; empty text with `replaces` drops it: at
+   once for a `learned` memory under `auto`, proposed for review otherwise, and one the user
+   saved asks. Each scope holds 3 KB of lines; a write past that queues for review and
+   names the oldest ids to replace, and the review refuses to accept into a full scope.
 2. **Reflect.** When a session closes (`/new`, `/resume`, or the next start) the
    reflector reads it and proposes memories and skill drafts, and retirements of memories
    the session showed are no longer true (they wait for review as `forget:` rows).
    `/reflect` runs it on demand.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
-   - `/memory`: every memory whole, as plain text, with its kind, scope, origin, age and
-     tags under it; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
+   - `/memory`: every memory whole, as plain text, with its quote, scope, origin and age
+     under it and each scope's budget use in the Remembered title; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
      forgets a stored memory, `s` moves it between this project and everywhere, `e` opens
      it in the user's editor (the saved text becomes the user's own memory, an edited
      suggestion is stored, and the screen comes back on that row), `u` undoes
-     the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`, `/memory supersede <old> <new>`.
+     the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`.
    - `/skills`: drafted skills start disabled; space toggles, enter shows one with its full
      body and its actions (Enable or Disable, Use now, Open in the editor),
      or `/skills enable|disable|open <name>`.
@@ -36,19 +39,19 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      replacements of the user's own memories, and anything from an untrusted project or a
      session that used `fetch`, `web_search`, the `lua` tool or a tool zemi does not ship,
      MCP and `zemi.tool` ones included (itself or through a subagent).
-4. **Use.** Accepted memories reach the model as a digest in the system prompt, pinned at
-   session start (new memories apply from the next session or compaction). The digest
-   (`memory.digest_lines`, 12 by default, 0 off) favors memories about the session's first
-   message, the user's own notes, and memories written or searched for recently; each line
-   shows its age in days from two days on, and so does `memory_search`. Enabled skills
-   appear as a name + description index; the full body loads with the `skill` tool.
+4. **Use.** Accepted memories reach the model as the `# Memory` section of the system
+   prompt, pinned at session start (new memories apply from the next session or
+   compaction): every live memory, this project then every project, newest first, each
+   scope cut at its 3 KB budget; each line shows its id, origin and age in days from two
+   days on. Enabled skills appear as a name + description index; the full body loads with
+   the `skill` tool.
 
 Everything learned is scrubbed for secrets and labeled `user` or `learned`.
 
 ## Answering "what do you remember?"
 
-Use `memory_search` with a few keywords, or ask the user to open `/memory` to see and
-curate everything. Do not invent memories that are not in the digest or search results.
+Read the `# Memory` section of your prompt, or ask the user to open `/memory` to see and
+curate everything. Do not invent memories that are not there.
 
 ## Writing a skill
 
@@ -96,11 +99,10 @@ not for the repository. A fact is a memory; a procedure for every project is a u
 ## From Lua
 
 ```lua
-zemi.memory.search("deploy", { scope = "all", limit = 5 })  -- scope: all, user, project
-zemi.memory.add({ kind = "gotcha", text = "...", scope = "project" })  -- queued under ask,
-                                                                      -- origin user from config
+zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
+                                         -- queued under ask, origin user from config
 zemi.memory.list(true)                   -- true includes superseded memories
-zemi.memory.supersede(old_id, new_id); zemi.memory.forget(id)  -- user config only
+zemi.memory.forget(id)                   -- user config only
 for _, p in ipairs(zemi.learn.proposals()) do print(p.id, p.forget, p.text) end
 zemi.learn.decide(id, "accept")          -- or "reject"; user config only
 zemi.skills.list(); zemi.skills.enable("name"); zemi.skills.disable("name")
@@ -108,7 +110,7 @@ zemi.event.on("memory.written", function(ev) zemi.log.info(ev.text) end)
 ```
 
 These return `nil, err` when the call fails at runtime (no such memory, proposal or skill;
-a store error) and raise only on misuse (a bad argument, a kind or scope outside the enum,
-an origin that may not make the call).
+a store error) and raise only on misuse (a bad argument, a scope outside the enum, an
+origin that may not make the call).
 
 Events: `memory.written`, `skill.learned`, `reflector.start`, `reflector.done`.

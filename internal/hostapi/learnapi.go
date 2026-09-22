@@ -17,18 +17,13 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		for _, m := range h.memoryProposals() {
 			row := L.NewTable()
 			row.RawSetString("id", glua.LString(m.ID))
-			row.RawSetString("kind", glua.LString(m.Kind))
 			row.RawSetString("scope", glua.LString(m.Scope))
 			row.RawSetString("origin", glua.LString(m.Origin))
 			row.RawSetString("text", glua.LString(m.Text))
+			row.RawSetString("quote", glua.LString(m.Quote))
 			if m.Forget {
 				row.RawSetString("forget", glua.LTrue)
 			}
-			tags := L.NewTable()
-			for _, t := range m.Tags {
-				tags.Append(glua.LString(t))
-			}
-			row.RawSetString("tags", tags)
 			out.Append(row)
 		}
 		L.Push(out)

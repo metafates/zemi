@@ -144,7 +144,6 @@ guessing. Common keys:
 - `ui.progress` (true): OSC 9;4 while a turn runs, which taskbars and tab bars draw
 - `ui.chat.reasoning` (false): finished reasoning blocks start expanded; ctrl+o toggles
 - `ui.completion.files`, `ui.completion.max_items`
-- `memory.digest_lines` (12): lines of the memory digest; 0 leaves it out of the prompt
 - `memory.autonomy` (`auto`): memories the model or the reflector propose
   store at once unless policy flags them (instruction-shaped text, retirements,
   replacements of the user's, an untrusted project, or a session that used `fetch`,
@@ -312,7 +311,7 @@ as itself, not as a placeholder.
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
 `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
-`memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
+`memory`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `lua` (runs Lua inside zemi as user origin; read-only calls run at
 once, a script that calls anything else asks the user once, and plan mode or an untrusted
 project asks for every script), plus

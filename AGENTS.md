@@ -458,8 +458,8 @@ lua-language-server is installed.
   a model proposal (stored at once under `memory.autonomy = "auto"` when policy-clean, queued
   for `/memory` otherwise, DESIGN §10.4). There is no config-patch pipeline and no `/config`
   command, the agent edits config files directly.
-  `digestFor(query)` ranks by the FTS score against the session's first message (bm25 stays
-  near zero for common words, so they lift nothing), user origin x2 and recency over 30 days.
+  `digestFor()` renders every live memory, newest first per scope, under `learn.ScopeBudget`
+  (3 KB per scope); no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
@@ -507,11 +507,17 @@ lua-language-server is installed.
   guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. Runs on the interpreter (10s ceiling), main
   agent only.
-- **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`, which
-  re-runs intake and asks the user (`memory.write` as `Unsandboxed`, so no mode settles it)
-  unless `memoryAuto` holds: autonomy auto, a trusted project, the memory learned, the text not
-  instruction-shaped, and no `fetch`, `web_search`, `lua` or non-builtin tool call in the
-  session or its subagents' (`subagentHooks` records those, `ForkSession` copies them).
+- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`:
+  a near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused
+  with the id to pass as `replaces`; a learned user-scope memory needs a `quote`, checked
+  against the typed part of the session's user rows (`quoteInSession`, cut at `attachMarker`),
+  and a quote not found drops it; a scope over `learn.ScopeBudget` queues with the oldest ids
+  to replace, and `acceptProposal` and `moveMemory` refuse with them. Text with `replaces`
+  supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
+  (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
+  `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
+  non-builtin tool call in the session or its subagents'; `subagentHooks` records those,
+  `ForkSession` copies them) and is proposed for review otherwise.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
@@ -626,9 +632,9 @@ how many rows the frame takes, so nothing above it reflows.
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
   reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
   the memory/store boundary - don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 500, fixed kind enum, provenance
-  required, `origin` (`user` or `learned`) gates autonomy, supersede and digest labeling.
-  `memory.autonomy` is user config only.
+- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance
+  required, `learn.Similar` refuses a near-duplicate, `origin` (`user` or `learned`) gates
+  autonomy and the replacement guard, no kind. `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
   user config sets them. Providers ship none; user config registers them, keys included
   (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for user and
