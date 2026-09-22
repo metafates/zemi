@@ -671,6 +671,7 @@ function zemi.event.stats() end
 ---@field trusted boolean Whether the user trusts this project (/trust).
 ---@field init_error string First line of the failure the user init.lua raised this boot, "" when it loaded.
 ---@field init_path string The user init.lua, ~-shortened.
+---@field model_hint string How to get a model when `model` is "": the keys to export, or init.lua.
 ---@field model string
 ---@field profile string
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
@@ -1155,7 +1156,7 @@ function zemi.log.list() end
 ---@field cost_per_1m_out? number
 ---@field cost_per_1m_in_cached? number
 ---@field cost_per_1m_out_cached? number
----@field max_output_tokens? integer
+---@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
 ---@field images? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
 
 ---@class zemi.ProviderSpec
@@ -1177,6 +1178,7 @@ function zemi.log.list() end
 ---@field id string
 ---@field kind string
 ---@field base_url string
+---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
@@ -1187,9 +1189,17 @@ function zemi.log.list() end
 ---@field kind zemi.ProviderKind
 zemi.provider = {}
 
---- Register a provider and its models. User config only; zemi ships none.
+--- Register a provider and its models. User config only. An id a builtin
+--- provider has replaces it whole (a gateway in front of it keeps its
+--- base_url); the builtin ones are on while their key is exported.
 ---@param spec zemi.ProviderSpec
 function zemi.provider.add(spec) end
+
+--- Remove a provider, builtin or added; an id nothing registered is a
+--- no-op, so init.lua works on a machine where that key is not exported.
+--- User config only. `providers.builtin = false` drops every builtin one.
+---@param id string
+function zemi.provider.del(id) end
 
 ---@return zemi.ProviderInfo[]
 function zemi.provider.list() end

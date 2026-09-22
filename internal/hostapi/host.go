@@ -177,9 +177,13 @@ type Host struct {
 	// the state-dir store; Perm holds config + session rules with the §9
 	// built-in defaults.
 	Providers *agent.Registry
-	Perm      *perm.Store
-	DB        *store.DB
-	GlobalDB  *store.DB
+	// Builtin seeds Providers on every generation: the catalog with the
+	// env keys resolved once per process, since the environment cannot
+	// change under a running zemi.
+	Builtin  agent.Catalog
+	Perm     *perm.Store
+	DB       *store.DB
+	GlobalDB *store.DB
 
 	Keymaps  *KeymapRegistry
 	Commands *CommandRegistry
@@ -1164,6 +1168,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
+	tb.RawSetString("model_hint", glua.LString(h.noModelHint()))
 	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
@@ -1459,6 +1464,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	}
 	L := g.L
 	h.gen.Store(g.ID)
+	h.Providers.Reset(h.Builtin)
 	h.syncSkills()
 	h.syncTypes()
 	h.GoSafe("git status", func() { h.gitStatus() })
@@ -1512,7 +1518,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.64.0"))
+	api.RawSetString("version", glua.LString("0.65.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

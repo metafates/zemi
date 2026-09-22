@@ -228,20 +228,12 @@ func (h *Host) readOnly() bool {
 }
 
 // currentModelID picks the model the main conversation runs on: a profile
-// override, the smart tier, the main tier, else the first catalog entry.
+// override, else the smart tier.
 func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
 		return h.modelRef(p.Model)
 	}
-	if s := h.tierModel("smart"); s != "" {
-		return s
-	}
-	for _, spec := range h.Providers.List() {
-		for _, m := range spec.Models {
-			return spec.ID + "/" + m.ID
-		}
-	}
-	return ""
+	return h.tierModel("smart")
 }
 
 // liveModelID is the model turns run on: the running turn's, else the
@@ -1318,6 +1310,14 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		}
 		return 0
 	}))
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
+			L.RaiseError("zemi.provider.del: only user config may remove providers")
+			return 0
+		}
+		h.Providers.Delete(L.CheckString(1))
+		return 0
+	}))
 	kinds := L.NewTable()
 	kinds.RawSetString("ANTHROPIC", glua.LString(agent.KindAnthropic))
 	kinds.RawSetString("OPENAI", glua.LString(agent.KindOpenAI))
@@ -1331,6 +1331,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 			row.RawSetString("id", glua.LString(s.ID))
 			row.RawSetString("kind", glua.LString(s.Kind))
 			row.RawSetString("base_url", glua.LString(s.BaseURL))
+			row.RawSetString("builtin", glua.LBool(s.Builtin))
 			out.Append(row)
 		}
 		L.Push(out)

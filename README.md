@@ -11,21 +11,21 @@ go install github.com/metafates/zemi@latest
 zemi
 ```
 
-Needs Go 1.27. Add an AI provider in `~/.config/zemi/init.lua` (zemi ships none):
+Needs Go 1.27. Export a key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, ...; `/health` lists them) and run `zemi`. A local
+server, or a gateway in front of a known provider, goes in `~/.config/zemi/init.lua`:
 
 ```lua
 zemi.provider.add({
-  id = "anthropic",
-  kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, GOOGLE, OPENAI_COMPAT
-  api_key = zemi.env.get("ANTHROPIC_API_KEY"),
-  models = { { id = "claude-sonnet-4-5", context_window = 200000 } },
+  id = "local",
+  kind = zemi.provider.kind.OPENAI_COMPAT,   -- or ANTHROPIC, OPENAI, GOOGLE
+  base_url = "http://localhost:11434/v1",
+  models = { { id = "qwen3", context_window = 32000 } },
 })
-zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
 ```
 
-A local server or a gateway that speaks the OpenAI API is `kind = zemi.provider.kind.OPENAI_COMPAT`
-with `base_url` set; the starter `init.lua` has the block. `/health` checks your setup. `/help`
-lists every key and command.
+The starter `init.lua` has the block. `/health` checks your setup. `/help` lists every key and
+command.
 
 ## The basics
 

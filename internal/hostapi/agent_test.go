@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -1361,5 +1362,65 @@ func TestProfileToolsRecordUnknown(t *testing.T) {
 	}
 	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "no tool is named Read, Grep") {
 		t.Errorf("errors = %+v", h.errs.entries)
+	}
+}
+
+// TestBuiltinProvidersSeed: the catalog seeds every generation, a user
+// add under a builtin id replaces it and survives providers.builtin =
+// false, del drops one, and the tiers fall back to the first usable
+// provider's defaults, a user one first.
+func TestBuiltinProvidersSeed(t *testing.T) {
+	dir, log := t.TempDir(), logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	h.Builtin = agent.Catalog{Specs: []agent.Spec{
+		{ID: "a", Kind: agent.KindAnthropic, Builtin: true, DefaultLarge: "big", DefaultSmall: "tiny", Models: []agent.Model{{ID: "big"}, {ID: "tiny"}}},
+		{ID: "o", Kind: agent.KindOpenAI, Builtin: true, DefaultLarge: "g", Models: []agent.Model{{ID: "g"}}},
+	}, Keys: map[string]string{"a": "ka", "o": "ko"}}
+	initLua := filepath.Join(dir, "init.lua")
+	reload := func(init string) {
+		t.Helper()
+		if err := os.WriteFile(initLua, []byte(init), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+			t.Fatal(err)
+		}
+		if !h.Settings.Bool("providers.builtin") { // readyStep's line
+			h.Providers.DropBuiltin()
+		}
+	}
+	reload(``)
+	runUser(t, r, `
+		local ps = zemi.provider.list()
+		assert(#ps == 2 and ps[1].id == "a" and ps[1].builtin == true and ps[2].builtin == true, "seed")
+	`)
+	if h.currentModelID(nil) != "a/big" || h.tierModel("small") != "a/tiny" || !h.Providers.HasKey("a") {
+		t.Fatalf("catalog defaults: %s %s", h.currentModelID(nil), h.tierModel("small"))
+	}
+	reload(`
+		zemi.provider.add({ id = "a", kind = "anthropic", base_url = "http://gw", api_key = "mine", models = { { id = "m" } } })
+		zemi.provider.del("o")
+		zemi.provider.del("nope")
+	`)
+	runUser(t, r, `
+		local ps = zemi.provider.list()
+		assert(#ps == 1 and ps[1].id == "a" and ps[1].builtin == false and ps[1].base_url == "http://gw", "override: " .. #ps)
+	`)
+	if h.currentModelID(nil) != "a/m" || h.tierModel("small") != "a/m" {
+		t.Fatalf("user defaults: %s %s", h.currentModelID(nil), h.tierModel("small"))
+	}
+	reload(`
+		zemi.provider.add({ id = "local", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "q" } } })
+		zemi.config.set("providers.builtin", false)
+	`)
+	runUser(t, r, `
+		local ps = zemi.provider.list()
+		assert(#ps == 1 and ps[1].id == "local", "builtin off: " .. #ps)
+	`)
+	reload(``)
+	runUser(t, r, `assert(#zemi.provider.list() == 2, "reseeded")`)
+	if err := r.ExecuteChunk(t.Context(), `zemi.provider.del("a")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
+		t.Fatalf("del below user origin: %v", err)
 	}
 }

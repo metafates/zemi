@@ -43,7 +43,7 @@ function M.render(ctx)
   end
   row({ { text = "" } })
   ---@type zemi.Segment
-  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: uncomment a provider in " .. ctx.init_path), hl = "Normal" }
+  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: " .. ctx.model_hint), hl = "Normal" }
   if ctx.init_error ~= "" then
     model = { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" }
   end

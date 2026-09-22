@@ -104,8 +104,15 @@ reports on stderr how many tool calls the gate denied - nobody can answer an ask
 outlive the run), and the prompt lines naming them. A headless run with no saved trust decision
 runs untrusted and says so.
 
-A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`) because zemi
-ships no providers and an empty config cannot answer a prompt. Config reload is not fsnotify:
+A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`). Builtin
+providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
+with the key env vars resolved in Go, never stored in config): each is on only while its key is
+exported, a missing one is `Catalog.Missing` so `/health` can name the variable, `Registry.Reset`
+seeds every generation before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
+whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
+all of them. A tier config leaves unset runs `Registry.Default`: the first user-added provider's
+default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
+Config reload is not fsnotify:
 `watchConfig` walks the config trees once a second (past dot-directories and `node_modules`)
 and reloads when a fingerprint moved and no turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer

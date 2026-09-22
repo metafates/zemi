@@ -59,11 +59,12 @@ for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
 (sandbox tests), and
 `go-readability` with `html-to-markdown` (the `fetch` tool: the article
 out of a page, as markdown the model can read). Tool input validation is a small hand-written
-schema check, not a JSON Schema library. Not taken:
-`charm.land/bubbles` (the composer is zemi's own editor, §6.6),
-`charm.land/catwalk` (there is no model catalog; models come only from
-`zemi.provider.add` in user config, §6.3), and `fsnotify` (config
-reload is a one-second fingerprint walk of the config trees). Ripgrep is
+schema check, not a JSON Schema library. `charm.land/catwalk` is taken
+for its embedded provider catalog only (§6.3): no network at boot, no
+update, the user's own `zemi.provider.add` on top. Not taken:
+`charm.land/bubbles` (the composer is zemi's own editor, §6.6) and
+`fsnotify` (config reload is a one-second fingerprint walk of the config
+trees). Ripgrep is
 not a dependency either: `glob` and `grep` exec whatever
 `rg` `exec.LookPath` found at init, passing the pattern as `--regexp`
 and globs as `--glob` so neither can be read as a flag, and fall back to
@@ -740,10 +741,22 @@ when its last step already began, and is stored in its child session. A
 run that fails or is cancelled cannot read what is still queued, so its
 report says how many messages it never read.
 
-`zemi.provider.add` requires a user-owned registration origin: Lua
-from a plugin, a project, or a learned source cannot call it (the
+Builtin providers come from catwalk's embedded catalog: every generation
+seeds the registry with the providers whose key env var is exported
+(resolved once per process in Go, the one place that reads them; a
+provider without its key is absent, and `/health` names the variable to
+export), then user config runs. `zemi.provider.add` under a builtin id
+replaces it whole, so a gateway `base_url` keeps working;
+`zemi.provider.del` drops one, `providers.builtin = false` all of them.
+A tier config leaves unset runs the catalog's default model for it, from
+the first provider the user added, else the first usable builtin in
+catalog order (anthropic, openai, gemini, ...): a user typed theirs,
+while a builtin's key may be exported for other tools.
+
+`zemi.provider.add` and `zemi.provider.del` require a user-owned registration origin: Lua
+from a plugin, a project, or a learned source cannot call them (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
-gate; the key comes from user config (`zemi.env.get` reads secret-shaped
+gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
 variables for user and builtin origin only) and is never exposed back to Lua.
 
 Session/message persistence and cost/token accounting mirror crush's model

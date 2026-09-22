@@ -57,8 +57,8 @@ func projectRoot() string {
 }
 
 // Ensure creates the directories zemi writes into, and the starter
-// init.lua when there is none: zemi ships no providers, so an empty
-// config cannot answer a single prompt.
+// init.lua when there is none, so the first thing a user edits shows
+// what there is to set.
 func (d Dirs) Ensure() error {
 	for _, dir := range []string{
 		d.ConfigHome,
@@ -80,40 +80,37 @@ func (d Dirs) Ensure() error {
 }
 
 // StarterInit is the file a first run leaves behind: everything is
-// commented, so zemi registers nothing the user did not ask for, and the
-// provider block only needs uncommenting.
+// commented, so zemi registers nothing the user did not ask for, and a
+// block only needs uncommenting.
 const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- Nothing here is on: uncomment what you want. What you register takes
 -- add/del/list, what holds a value takes set/get.
 
--- A provider and a model: zemi ships none, so uncomment this and zemi
--- works. The key is read from your environment; paste it here instead if
--- you keep it elsewhere.
--- zemi.provider.add({
---   id = "anthropic",
---   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, GOOGLE, OPENAI_COMPAT
---   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
---   models = {
---     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
---       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional; images = false for a text-only model
---   },
--- })
--- A local server or a gateway that speaks the OpenAI API:
+-- Models: zemi knows the usual providers (anthropic, openai, gemini,
+-- deepseek, openrouter, ... /health lists them). Export a key and that
+-- provider is on: export ANTHROPIC_API_KEY=... in your shell, then /model.
+-- One you add here comes first; among builtin ones the catalog order does.
+
+-- A provider zemi does not know, a local server, or a gateway in front of
+-- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({
 --   id = "local",
---   kind = zemi.provider.kind.OPENAI_COMPAT,
+--   kind = zemi.provider.kind.OPENAI_COMPAT,   -- or ANTHROPIC, OPENAI, GOOGLE
 --   base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, an endpoint override for the rest
 --   api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
---   headers = { ["HTTP-Referer"] = "zemi" },   -- extra headers a gateway needs; as secret as the key
+--   headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
 --   body = { service_tier = "flex" },   -- extra request-body fields; ANTHROPIC and OPENAI_COMPAT only
---   models = { { id = "qwen3", context_window = 32000 } },
+--   models = { { id = "qwen3", context_window = 32000 } },   -- cost_per_1m_in/out optional; images = false for a text-only model
 -- })
+-- zemi.provider.del("openai")   -- drop one builtin provider
+-- zemi.config.set("providers.builtin", false)   -- or all of them
+
 -- Model tiers: main runs everything, small the short jobs (session titles,
--- compaction summaries, the reflector, the web subagent), smart the main conversation.
--- A tier you leave unset falls back to main.
--- zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
--- zemi.config.set("models.small", "anthropic/claude-haiku-4-5")
--- zemi.config.set("models.smart", "anthropic/claude-opus-4-1")
+-- compaction summaries, the reflector, the web subagent), smart the main
+-- conversation. Unset, main and small are the first usable provider's
+-- defaults and smart is main.
+-- zemi.config.set("models.main", "anthropic/claude-sonnet-4-6")
+-- zemi.config.set("models.small", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.
 -- zemi.config.set("ui.theme", "default")

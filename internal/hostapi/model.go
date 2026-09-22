@@ -34,9 +34,25 @@ var ErrNoModel = errors.New("no model yet")
 
 func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
 
-// keyEnv names the variable the starter init.lua reads for each kind that
-// cannot run without a key; openai_compat may point at a local server.
-var keyEnv = map[string]string{agent.KindAnthropic: "ANTHROPIC_API_KEY", agent.KindOpenAI: "OPENAI_API_KEY", agent.KindGoogle: "GEMINI_API_KEY"}
+// noModelHint says how to get a model: the keys to export when builtin
+// providers wait for one (the first three in catalog order, anthropic and
+// openai first), else init.lua.
+func (h *Host) noModelHint() string {
+	add := "add a provider in " + h.initPath()
+	missing := h.Builtin.Missing
+	if len(missing) == 0 || !h.Settings.Bool("providers.builtin") {
+		return add
+	}
+	var names []string
+	for _, m := range missing[:min(3, len(missing))] {
+		names = append(names, m.Env)
+	}
+	hint := "export " + strings.Join(names, ", ")
+	if len(missing) > len(names) {
+		hint += fmt.Sprintf(" (or another of the %d builtin providers' keys)", len(missing))
+	}
+	return hint + ", or " + add
+}
 
 // modelErr says why id cannot run, before a provider is built: an SDK
 // would otherwise fail with its own words ("run ant auth login"). /health
@@ -44,7 +60,7 @@ var keyEnv = map[string]string{agent.KindAnthropic: "ANTHROPIC_API_KEY", agent.K
 // for the conversation's tier.
 func (h *Host) modelErr(id string, p *Profile) error {
 	if id == "" {
-		return fmt.Errorf("%w: uncomment a provider and models.main in %s", ErrNoModel, h.initPath())
+		return fmt.Errorf("%w: %s", ErrNoModel, h.noModelHint())
 	}
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
@@ -53,10 +69,16 @@ func (h *Host) modelErr(id string, p *Profile) error {
 		if p != nil && p.Model != "" {
 			source = "profile " + p.Name
 		}
+		if h.Settings.Bool("providers.builtin") {
+			if i := slices.IndexFunc(h.Builtin.Missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
+				return fmt.Errorf("%s names builtin provider %q: export %s", source, prov, h.Builtin.Missing[i].Env)
+			}
+		}
 		return fmt.Errorf("%s names provider %q, which init.lua does not add", source, prov)
 	}
-	if env := keyEnv[spec.Kind]; env != "" && !h.Providers.HasKey(prov) {
-		return fmt.Errorf("%s: api_key is empty: set %s or put the key in %s", prov, env, h.initPath())
+	// openai_compat may point at a local server that needs none
+	if spec.Kind != agent.KindOpenAICompat && !h.Providers.HasKey(prov) {
+		return fmt.Errorf("%s: api_key is empty in %s", prov, h.initPath())
 	}
 	return nil
 }
@@ -123,13 +145,15 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 var Tiers = []string{"small", "main", "smart"}
 
 // tierModel resolves a tier name to the model id config gave it, falling
-// back to main. It returns "" for a name that is not a tier, so callers can
-// take a model reference that is either a tier or a provider/model id.
+// back to main, then to the first usable provider's default for the tier
+// (Registry.Default; nothing is written to config, so a reload cannot fight
+// the fallback). It returns "" for a name that is not a tier, so callers
+// can take a model reference that is either a tier or a provider/model id.
 func (h *Host) tierModel(tier string) string {
 	if !slices.Contains(Tiers, tier) {
 		return ""
 	}
-	return cmp.Or(h.Settings.Str("models."+tier), h.Settings.Str("models.main"))
+	return cmp.Or(h.Settings.Str("models."+tier), h.Settings.Str("models.main"), h.Providers.Default(tier == "small"))
 }
 
 // modelRef resolves a model reference: a tier name, a provider/model id, or

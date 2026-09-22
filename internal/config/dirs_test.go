@@ -19,7 +19,7 @@ func TestEnsureStarterInit(t *testing.T) {
 	}
 	path := filepath.Join(d.ConfigHome, "init.lua")
 	body, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(body), `zemi.env.get("ANTHROPIC_API_KEY")`) {
+	if err != nil || !strings.Contains(string(body), `zemi.provider.del("openai")`) {
 		t.Fatalf("starter init.lua = %q, %v", body, err)
 	}
 	if err := os.WriteFile(path, []byte("-- mine"), 0o600); err != nil {

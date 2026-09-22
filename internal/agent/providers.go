@@ -174,7 +174,8 @@ func NewRegistry() *Registry {
 // Reset replaces every spec and key with the catalog, so a provider config
 // stopped adding disappears on reload like any other registration. NOTE: a
 // turn running through a reload sees an empty registry until init.lua
-// replays, so one step may bill at 0 and read no context window.
+// replays, so one step may bill at 0 and read no context window, and a
+// failed replay leaves only the builtins until init.lua is fixed.
 func (r *Registry) Reset(c Catalog) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -36,21 +36,33 @@ Rules when editing:
 
 ## Providers and models
 
+zemi knows the usual providers (anthropic, openai, gemini, deepseek, openrouter, ...; `/health`
+lists them): export the key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, ...) in
+the shell that starts zemi and that provider is on, with its models in `/model`. A provider
+zemi does not know, a local server, or a gateway in front of a known one (reuse its id: yours
+replaces it whole, key included):
+
 ```lua
 zemi.provider.add({
   id = "anthropic",
   kind = zemi.provider.kind.ANTHROPIC,        -- or OPENAI, OPENAI_COMPAT, GOOGLE
-  api_key = zemi.env.get("ANTHROPIC_API_KEY"),  -- the key from the environment
-  -- base_url = "https://llm.internal/v1",   -- required for openai_compat
+  base_url = "https://llm.internal/v1",       -- required for openai_compat, an override for the rest
+  api_key = zemi.env.get("GATEWAY_KEY"),      -- the key from the environment
   -- headers = { ["X-Team"] = "core" },     -- sent with every request; as secret as the key
   -- body = { service_tier = "flex" },      -- extra request-body fields; anthropic and openai_compat only
   models = {
-    { id = "claude-sonnet-4-5", display = "Sonnet 4.5",
+    { id = "claude-sonnet-4-6", display = "Sonnet 4.6",
       context_window = 200000, cost_per_1m_in = 3, cost_per_1m_out = 15 },
   },
 })
-zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
+zemi.provider.del("openai")                   -- drop one builtin provider
+zemi.config.set("providers.builtin", false)   -- or all of them
+zemi.config.set("models.main", "anthropic/claude-sonnet-4-6")
 ```
+
+A tier left unset (`models.main`, `models.small`) runs the default model of the first provider
+you added, else of the first usable builtin one in catalog order (anthropic, openai, gemini,
+...); `models.smart` falls back to main.
 
 `images = false` marks a model that refuses image input: `read` on an image then returns a
 text error and `@image` attachments are omitted with a note. Without it zemi learns the same

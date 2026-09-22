@@ -22,6 +22,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
@@ -83,6 +84,7 @@ func run(args []string) int {
 		RuntimeFS: zemiRuntime.FS,
 	})
 	host := hostapi.NewHost(rt, log, settings, dirs)
+	host.Builtin = agent.Builtin(os.Getenv)
 	rt.SetPrintHook(func(origin, line string) {
 		log.Info(origin, "print: "+line, nil)
 		host.RecordMessage(origin, line)
@@ -557,8 +559,10 @@ func writeTrust(path string, m map[string]string) error {
 	return os.Rename(tmp, path)
 }
 
-// readyStep emits app.ready. Only the TUI reflects at startup: -p and
-// --health exit before it could finish.
+// readyStep drops the builtin providers when init.lua turned them off
+// (config has run by now, and a replay re-seeds them first) and emits
+// app.ready. Only the TUI reflects at startup: -p and --health exit before
+// it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step, and the newest session
 	// is then the open one
@@ -566,6 +570,9 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	return lua.BootStep{
 		Name: "app.ready",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+			if !h.Settings.Bool("providers.builtin") {
+				h.Providers.DropBuiltin()
+			}
 			h.EmitOnState(g.L, "app.ready", nil)
 			// The last session is reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3).
