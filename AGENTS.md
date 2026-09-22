@@ -180,7 +180,7 @@ command can plant a nested repo whose config zemi would run.
    `MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under
    `<state>/projects/<hash of Dirs.TrustRoot()>/`, so a subdirectory and a worktree share the
    repository's sessions and memories. Schema is one `schema` const of `CREATE TABLE IF NOT
-   EXISTS` + FTS5 triggers run on open - add tables there; a new column on an existing table
+   EXISTS` run on open - add tables there; a new column on an existing table
    also needs an ALTER in `migrations`, since `IF NOT EXISTS` skips it on old databases.
 
 ### Tool pipeline (internal/tools/tools.go)

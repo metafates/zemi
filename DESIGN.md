@@ -2097,8 +2097,6 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
 - Two projects side by side in one zemi: per-project Lua states?
   Defer, but keep session/store APIs project-scoped from day one.
-- Whether FTS5 ranking (bm25 weights, recency/hit blends) needs
-  user-tunable knobs or stays internal.
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.
