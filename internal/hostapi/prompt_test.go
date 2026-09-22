@@ -32,7 +32,7 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the system's default rules", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
