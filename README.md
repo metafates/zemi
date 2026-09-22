@@ -16,14 +16,16 @@ Needs Go 1.27. Add an AI provider in `~/.config/zemi/init.lua` (zemi ships none)
 ```lua
 zemi.provider.add({
   id = "anthropic",
-  kind = zemi.provider.kind.ANTHROPIC,            -- or OPENAI, OPENAI_COMPAT
+  kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, GOOGLE, OPENAI_COMPAT
   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
   models = { { id = "claude-sonnet-4-5", context_window = 200000 } },
 })
 zemi.config.set("models.main", "anthropic/claude-sonnet-4-5")
 ```
 
-`/health` checks your setup. `/help` lists every key and command.
+A local server or a gateway that speaks the OpenAI API is `kind = zemi.provider.kind.OPENAI_COMPAT`
+with `base_url` set; the starter `init.lua` has the block. `/health` checks your setup. `/help`
+lists every key and command.
 
 ## The basics
 

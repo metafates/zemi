@@ -28,3 +28,29 @@ func TestStarterInitNamesLiveAPI(t *testing.T) {
 	}
 	runUser(t, r, src.String())
 }
+
+// TestStarterInitProviderBlock: the first provider block uncommented as
+// the comment says works as written: nothing in it points the Anthropic
+// kind at another endpoint.
+func TestStarterInitProviderBlock(t *testing.T) {
+	h, r := newTestHost(t)
+	lines := strings.Split(config.StarterInit, "\n")
+	start := slices.Index(lines, "-- zemi.provider.add({")
+	end := start + slices.Index(lines[start:], "-- })")
+	main := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, `-- zemi.config.set("models.main"`) })
+	if start < 0 || end < start || main < 0 {
+		t.Fatalf("starter provider block not found: %d %d %d", start, end, main)
+	}
+	var src strings.Builder
+	for _, l := range append(lines[start:end+1], lines[main]) {
+		src.WriteString(strings.TrimPrefix(l, "-- ") + "\n")
+	}
+	runUser(t, r, src.String())
+	spec, ok := h.Providers.Lookup("anthropic")
+	if !ok || spec.BaseURL != "" || len(spec.Models) != 1 {
+		t.Fatalf("provider = %+v, %v", spec, ok)
+	}
+	if id := h.Settings.Str("models.main"); id != "anthropic/"+spec.Models[0].ID {
+		t.Fatalf("models.main = %q", id)
+	}
+}

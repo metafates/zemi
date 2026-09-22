@@ -91,15 +91,22 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- you keep it elsewhere.
 -- zemi.provider.add({
 --   id = "anthropic",
---   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, OPENAI_COMPAT
+--   kind = zemi.provider.kind.ANTHROPIC,   -- or OPENAI, GOOGLE, OPENAI_COMPAT
 --   api_key = zemi.env.get("ANTHROPIC_API_KEY"),
---   base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, an endpoint override for the rest
---   headers = { ["HTTP-Referer"] = "zemi" },   -- extra headers a gateway needs; as secret as the key
---   body = { service_tier = "flex" },   -- extra request-body fields; ANTHROPIC and OPENAI_COMPAT only
 --   models = {
 --     { id = "claude-sonnet-4-5", display = "Sonnet 4.5", context_window = 200000,
 --       cost_per_1m_in = 3, cost_per_1m_out = 15 },   -- cost is optional; images = false for a text-only model
 --   },
+-- })
+-- A local server or a gateway that speaks the OpenAI API:
+-- zemi.provider.add({
+--   id = "local",
+--   kind = zemi.provider.kind.OPENAI_COMPAT,
+--   base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, an endpoint override for the rest
+--   api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
+--   headers = { ["HTTP-Referer"] = "zemi" },   -- extra headers a gateway needs; as secret as the key
+--   body = { service_tier = "flex" },   -- extra request-body fields; ANTHROPIC and OPENAI_COMPAT only
+--   models = { { id = "qwen3", context_window = 32000 } },
 -- })
 -- Model tiers: main runs everything, small the short jobs (session titles,
 -- compaction summaries, the web subagent), smart the main conversation.
