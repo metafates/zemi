@@ -37,6 +37,15 @@ func TestEvaluateDecisions(t *testing.T) {
 	if o := s.Evaluate("fs.write", "/tmp/a\n/etc/passwd", ""); o.Decision != Ask {
 		t.Fatalf("an allow glob must not span a newline, got %v", o.Decision)
 	}
+	// a command segment is already split at unquoted newlines, so a quoted
+	// one is one argument the approved pattern covers
+	s.Add(Rule{Subject: "tool.bash", Pattern: "git commit *", Decision: Allow})
+	if o := s.CheckCommand("git commit -m 'title\n\nbody'", ""); o.Decision != Allow {
+		t.Fatalf("a quoted newline under an allowed prefix, got %v (%s)", o.Decision, o.Reason)
+	}
+	if o := s.CheckCommand("git commit -m x\nrm -rf /", ""); o.Decision != Ask {
+		t.Fatalf("an unquoted newline is a second segment, got %v", o.Decision)
+	}
 	if o := s.Evaluate("fs.write", "/tmp/../etc/passwd", ""); o.Decision != Ask {
 		t.Fatalf(".. must resolve before matching, got %v", o.Decision)
 	}

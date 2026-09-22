@@ -24,13 +24,14 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 	if n.ForceAsk != "" {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}
 	}
+	eval := s.evaluator(subject, principal, true)
 	for i, seg := range n.Segments {
-		o := s.Evaluate(subject, seg, principal)
+		o := eval(seg)
 		// judged as written and with climbing words cleaned, the stricter
 		// verdict holds: docs/* must not allow docs/../x, and a deny on the
 		// cleaned path must still fire
 		if c := cleanDotDot(n.Args[i]); c != seg {
-			if oc := s.Evaluate(subject, c, principal); oc.Decision == Deny || o.Decision == Allow {
+			if oc := eval(c); oc.Decision == Deny || o.Decision == Allow {
 				o = oc
 			}
 		}

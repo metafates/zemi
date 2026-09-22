@@ -248,6 +248,13 @@ func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
 // Evaluator is Evaluate for many arguments: the rules are read and their
 // patterns canonicalized once, which resolves symlinks, instead of per call.
 func (s *Store) Evaluator(subject, principal string) func(arg string) Outcome {
+	return s.evaluator(subject, principal, false)
+}
+
+// evaluator is Evaluator; segment says arg is one command segment, which
+// Normalize already split at every unquoted newline (a quoted one is one
+// argument, and the pattern the user approved covers it).
+func (s *Store) evaluator(subject, principal string, segment bool) func(arg string) Outcome {
 	type prepared struct {
 		Rule
 		pattern, notMatch string
@@ -293,7 +300,7 @@ func (s *Store) Evaluator(subject, principal string) func(arg string) Outcome {
 			}
 			// globs span newlines so deny and ask rules hold, but an allow for
 			// one line must not cover a second line the user never saw
-			if r.Decision == Allow && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
+			if r.Decision == Allow && !segment && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
 				continue
 			}
 			if r.NotMatch != "" && globMatch(pr.notMatch, match) {
