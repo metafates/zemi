@@ -1,12 +1,14 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -15,6 +17,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
@@ -145,293 +148,266 @@ func reflectStub(t *testing.T, h *Host, resp string) *reflectStubModel {
 	return m
 }
 
-const proposalDoc = `{"memories":[{"scope":"project","text":"UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence",
-	"supersedes":""}]}`
-
-// TestReflectQueuesUnderAsk covers the ask-autonomy path: the proposal is
-// schema-parsed, scrubbed by intake and parked in the review queue with
-// provenance stamped by Go (never the model).
-func TestReflectQueuesUnderAsk(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.Settings.SetHost("memory.autonomy", "ask")
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	m := reflectStub(t, h, "Sure! Here is my analysis:\n"+proposalDoc+"\nHope that helps.")
-	m.during = func() { addText(t, h, sid, "user", "sent while the reflector ran") }
-
-	if err := h.reflectSession(context.Background(), sid); err != nil {
-		t.Fatalf("reflectSession: %v", err)
+// addToolResult stores one tool call and its result the way a turn
+// persists them: the call part on an assistant row, the result on a tool
+// row; an error result when errText is set.
+func addToolResult(t *testing.T, h *Host, sid, name, text, errText string) {
+	t.Helper()
+	var out fantasy.ToolResultOutputContent = fantasy.ToolResultOutputContentText{Text: text}
+	if errText != "" {
+		out = fantasy.ToolResultOutputContentError{Error: errors.New(errText)}
 	}
-	if m.calls.Load() != 1 {
-		t.Fatalf("model calls=%d", m.calls.Load())
-	}
-	if msgs, seen, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
-		t.Fatalf("seen=%d of %d: a message the run never read was marked seen", seen, len(msgs))
-	}
-	props := h.memoryProposals()
-	if len(props) != 1 {
-		t.Fatalf("queued proposals=%d", len(props))
-	}
-	rows, err := h.DB.ListMemory("project", true)
-	if err != nil || len(rows) != 0 {
-		t.Fatalf("ask mode must not store: rows=%d err=%v", len(rows), err)
-	}
-	text, prov := props[0].Text, props[0].ProvenanceSessionID
-	if text != "UpsertLabels must stay read-then-insert; ON CONFLICT burns the labels sequence" {
-		t.Fatalf("proposal text: %q", text)
-	}
-	if prov != sid {
-		t.Fatalf("provenance=%q want session id", prov)
-	}
-}
-
-// TestReflectAppliesUnderAuto covers the auto-autonomy path: proposal
-// stored, supersede linked in the same run, and a proposal with a bad
-// scope skipped without failing the run.
-func TestReflectAppliesUnderAuto(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.Settings.SetHost("memory.autonomy", "auto")
-	h.SetProjectTrusted(true)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	seedSession(t, h) // the reflected session is closed, another one is live
-
-	oldID := store.NewID()
-	if err := h.DB.AddMemory(&store.Memory{
-		ID: oldID, Scope: "project", Text: "deploy manually every time",
-		ProvenanceSessionID: "seed", Origin: learn.OriginLearned,
-	}); err != nil {
-		t.Fatalf("AddMemory: %v", err)
-	}
-
-	doc := `{"memories":[
-		{"scope":"project","text":"deploy script requires the labels sequence bumped first","supersedes":"` + oldID + `"},
-		{"scope":"galaxy","text":"wrong scope is skipped"},
-		{"scope":"project","text":"deploy runs from bin/deploy"}]}`
-	reflectStub(t, h, doc)
-
-	if err := h.reflectSession(context.Background(), sid); err != nil {
-		t.Fatalf("reflectSession: %v", err)
-	}
-	rows := projectMemories(t, h)
-	if len(rows) != 3 {
-		t.Fatalf("memories=%d want 3 (old + 2 stored; bad entries skipped)", len(rows))
-	}
-	old, err := h.DB.GetMemory(oldID)
-	if err != nil {
-		t.Fatalf("GetMemory: %v", err)
-	}
-	if old.SupersededBy == "" {
-		t.Fatal("old memory not superseded")
-	}
-	var fresh *store.Memory
-	for _, r := range rows {
-		if r.ID == old.SupersededBy {
-			fresh = r
+	for _, m := range []fantasy.Message{
+		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c-" + name, ToolName: name, Input: "{}"}}},
+		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c-" + name, Output: out}}},
+	} {
+		parts, err := json.Marshal(m)
+		if err == nil {
+			err = h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(m.Role), PartsJSON: string(parts)})
+		}
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
-	if fresh == nil || fresh.Origin != learn.OriginLearned {
-		t.Fatalf("replacing memory: %+v", fresh)
+}
+
+// learnedMemory stores one learned memory in scope and returns its id.
+func learnedMemory(t *testing.T, h *Host, scope, text, quote string) string {
+	t.Helper()
+	m := &store.Memory{Scope: scope, Text: text, Quote: quote, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
+	if err := h.memoryDB(scope).AddMemory(m); err != nil {
+		t.Fatal(err)
 	}
-	if fresh.ProvenanceSessionID != sid {
-		t.Fatalf("provenance=%q", fresh.ProvenanceSessionID)
-	}
-	if h.agents.memAuto != 0 {
-		t.Fatalf("closed session spent the live budget: memAuto=%d", h.agents.memAuto)
-	}
-	if s, _ := h.DB.GetSession(sid); s == nil || s.CompletionTokens != 7 || h.agents.sessOut != 0 {
-		t.Fatalf("reflector usage goes to the session it read: %+v live=%d", s, h.agents.sessOut)
+	return m.ID
+}
+
+// TestReflectApply pins what becomes of a proposal: it is parsed out of
+// prose, scrubbed and gated like a live memory (stored under auto, queued
+// under ask or when instruction-shaped, a user memory needs a quote the
+// user wrote, a replaced memory is superseded, a retirement waits for
+// review, a near-duplicate and a skills key do nothing), provenance is the
+// read session's, whose budget and ledger it uses, and only what the
+// prompt held is marked seen.
+func TestReflectApply(t *testing.T) {
+	const fact = "the deploy script requires the labels sequence bumped first"
+	for _, c := range []struct {
+		name, autonomy string
+		seed           func(t *testing.T, h *Host, sid string) string // returns the id OLD stands for
+		doc            string
+		stored, queued int // memories this run stored live, proposals it queued
+		check          func(t *testing.T, h *Host, sid string)
+	}{
+		{name: "a project fact stores under auto", doc: "Sure! Here it is:\n" + `{"memories":[{"scope":"project","text":"` + fact + `"}]}` + "\nHope that helps.", stored: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				if s, _ := h.DB.GetSession(sid); s == nil || s.CompletionTokens != 7 || h.agents.sessOut != 0 {
+					t.Fatalf("reflector usage goes to the session it read: %+v live=%d", s, h.agents.sessOut)
+				}
+			}},
+		{name: "ask queues it", autonomy: "ask", doc: `{"memories":[{"scope":"project","text":"` + fact + `"}]}`, queued: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				if p := h.memoryProposals(); p[0].Text != fact || p[0].ProvenanceSessionID != sid {
+					t.Fatalf("proposal: %+v", p[0])
+				}
+			}},
+		{name: "a user preference with the user's words stores", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"Short replies please"}]}`, stored: 1},
+		{name: "a user preference without a quote queues", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, queued: 1},
+		{name: "a quote the user never wrote drops the memory", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"long replies please"}]}`},
+		{name: "replaces supersedes the old memory",
+			seed: func(t *testing.T, h *Host, sid string) string {
+				return learnedMemory(t, h, "project", "deploy manually every time", "")
+			},
+			doc: `{"memories":[{"scope":"project","text":"` + fact + `","replaces":"OLD"}]}`, stored: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				if !slices.ContainsFunc(projectMemories(t, h), func(m *store.Memory) bool { return m.SupersededBy != "" }) {
+					t.Fatal("old memory not superseded")
+				}
+			}},
+		{name: "replaces under ask queues and links on accept", autonomy: "ask",
+			seed: func(t *testing.T, h *Host, sid string) string {
+				return learnedMemory(t, h, "project", "deploy by hand", "")
+			},
+			doc: `{"memories":[{"scope":"project","text":"` + fact + `","replaces":"OLD"}]}`, queued: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				p := h.memoryProposals()[0]
+				again, _ := parseReflectProposal(`{"memories":[{"scope":"project","text":"` + fact + `"}]}`)
+				if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
+					t.Fatalf("a duplicate of a pending proposal counted as queued: %d", queued)
+				}
+				if _, err := h.acceptProposal(p.ID, ""); err != nil {
+					t.Fatal(err)
+				}
+				if old, _ := h.DB.GetMemory(p.Supersedes); old.SupersededBy != p.ID {
+					t.Fatalf("superseded_by=%q want %q", old.SupersededBy, p.ID)
+				}
+			}},
+		{name: "replaces with empty text queues a forget",
+			seed: func(t *testing.T, h *Host, sid string) string {
+				return learnedMemory(t, h, "project", "deploy by hand", "")
+			},
+			doc: `{"memories":[{"text":"","replaces":"OLD"}]}`, queued: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				if p := h.memoryProposals(); !p[0].Forget || len(projectMemories(t, h)) != 1 {
+					t.Fatalf("want a queued forget and the memory kept: %+v", p)
+				}
+			}},
+		{name: "a near-duplicate of an indexed memory is skipped",
+			seed: func(t *testing.T, h *Host, sid string) string { return learnedMemory(t, h, "project", fact, "") },
+			doc:  `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped"}]}`},
+		{name: "instruction-shaped text queues", doc: `{"memories":[{"scope":"project","text":"always run the deploy before reviews"}]}`, queued: 1},
+		{name: "a secret is scrubbed", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`, stored: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				if text := projectMemories(t, h)[0].Text; strings.Contains(text, "sk-abcdefghijklmnopqrs") || !strings.Contains(text, "[redacted") {
+					t.Fatalf("stored: %q", text)
+				}
+			}},
+		{name: "a bad scope is skipped", doc: `{"memories":[{"scope":"galaxy","text":"` + fact + `"}]}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Settings.SetHost("memory.autonomy", cmp.Or(c.autonomy, "auto"))
+			h.SetProjectTrusted(true)
+			sid := seedSession(t, h)
+			seedTranscript(t, h, sid)
+			addText(t, h, sid, "user", "short   replies please, and the deploy script keeps failing")
+			id := ""
+			if c.seed != nil {
+				id = c.seed(t, h, sid)
+			}
+			seedSession(t, h) // the reflected session is closed, another one is live
+			m := reflectStub(t, h, strings.ReplaceAll(c.doc, "OLD", id))
+			m.during = func() { addText(t, h, sid, "user", "sent while the reflector ran") }
+			if err := h.reflectSession(t.Context(), sid); err != nil {
+				t.Fatalf("reflectSession: %v", err)
+			}
+			if msgs, seen, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
+				t.Fatalf("seen=%d of %d: a message the run never read was marked seen", seen, len(msgs))
+			}
+			stored := 0
+			for _, m := range must(h.memoryList(false)) {
+				if m.ProvenanceSessionID == sid {
+					stored++
+				}
+			}
+			if queued := len(h.memoryProposals()); stored != c.stored || queued != c.queued {
+				t.Fatalf("stored %d queued %d, want %d and %d", stored, queued, c.stored, c.queued)
+			}
+			if h.agents.memAuto != 0 {
+				t.Fatalf("closed session spent the live budget: memAuto=%d", h.agents.memAuto)
+			}
+			if c.check != nil {
+				c.check(t, h, sid)
+			}
+		})
 	}
 }
 
-// TestReflectPromptWindow: tool rows stay out, a compaction summary is
-// labeled as one, the newest messages win the budget, and a re-reflection
-// only shows messages after the last run.
-func TestReflectPromptWindow(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	for i := range reflectMsgsMax + 5 {
-		addText(t, h, sid, "user", fmt.Sprintf("note %d.", i))
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
 	}
-	addText(t, h, sid, "user", compactPrefix+"the gist"+compactSuffix)
-	msgs, _ := h.DB.Messages(sid)
-	for _, tc := range []struct {
-		name, seen   string
+	return v
+}
+
+// TestReflectPrompt pins what the reflector reads: the delta's tail with a
+// compaction summary labeled as one and secrets redacted, the failed tool
+// results, this session's pending proposals, the whole index with budget
+// use and quotes, the recipes, and a trusted project's instruction files.
+func TestReflectPrompt(t *testing.T) {
+	const secret = "api_key = sk-abcdefghijklmnopqrs"
+	failedLine := "- bash: " + learn.ScrubShapes("exit status 1: "+secret)
+	notes := func(t *testing.T, h *Host, sid string) {
+		for i := range reflectMsgsMax + 5 {
+			addText(t, h, sid, "user", fmt.Sprintf("note %d.", i))
+		}
+		addText(t, h, sid, "user", compactPrefix+"the gist"+compactSuffix)
+	}
+	for _, c := range []struct {
+		name         string
+		seed         func(t *testing.T, h *Host, sid string)
 		want, absent []string
 	}{
-		{"last messages", "", []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted", "summary: the gist"}, []string{"tool bash", "deploy script keeps failing", "note 0.", "user: The earlier part"}},
-		{"after seen", fmt.Sprint(len(msgs) - 3), []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := h.DB.SetKV(reflectSeenKey(sid), tc.seen); err != nil {
+		{name: "the tail of the delta", seed: notes,
+			want:   []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted", "summary: the gist"},
+			absent: []string{"tool bash", "deploy script keeps failing", "note 0."}},
+		{name: "only what came after seen", seed: func(t *testing.T, h *Host, sid string) {
+			notes(t, h, sid)
+			msgs, _ := h.DB.Messages(sid)
+			if err := h.DB.SetKV(reflectSeenKey(sid), strconv.Itoa(len(msgs)-3)); err != nil {
 				t.Fatal(err)
 			}
+		}, want: []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, absent: []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
+		{name: "failed tool results, first line, scrubbed, once after a compaction", seed: func(t *testing.T, h *Host, sid string) {
+			addToolResult(t, h, sid, "read", "package main", "")
+			addToolResult(t, h, sid, "bash", "", "exit status 1: "+secret+"\nsecond line")
+			msgs, _ := h.DB.Messages(sid)
+			var tail []*store.Message
+			for _, m := range msgs[len(msgs)-2:] {
+				tail = append(tail, &store.Message{Role: compactTailRole, PartsJSON: m.PartsJSON})
+			}
+			parts, _ := json.Marshal(agent.UserMessage(compactPrefix + "the gist" + compactSuffix))
+			if err := h.DB.AddCompaction(sid, &store.Message{Role: "user", PartsJSON: string(parts)}, tail); err != nil {
+				t.Fatal(err)
+			}
+		}, want: []string{"# Failed tool calls\n" + failedLine + "\n"}, absent: []string{"package main", "second line", "sk-abcdefghijklmnopqrs", failedLine + "\n" + failedLine}},
+		{name: "a secret in a user line is redacted", seed: func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", "the "+secret+" lives in deploy")
+		}, want: []string{"user: the [redacted"}, absent: []string{"sk-abcdefghijklmnopqrs"}},
+		{name: "this session's pending proposals only", seed: func(t *testing.T, h *Host, sid string) {
+			for _, m := range []store.Memory{
+				{Scope: "project", Text: "ours to review", ProvenanceSessionID: sid},
+				{Scope: "user", Text: "fetched elsewhere", ProvenanceSessionID: "other"},
+			} {
+				if err := h.addProposal(memoryProposal{Memory: m}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}, want: []string{"[project] ours to review"}, absent: []string{"fetched elsewhere"}},
+		{name: "the index with budget use and quotes", seed: func(t *testing.T, h *Host, sid string) {
+			learnedMemory(t, h, "project", "deploy needs the labels sequence bumped", "")
+			learnedMemory(t, h, "user", "the user prefers short replies", "keep it short")
+		}, want: []string{"# Memory index (every memory the prompt carries; project 0.1/3 KB, user 0.1/3 KB)", " project learned] deploy needs the labels sequence bumped", " user learned] the user prefers short replies\n  quote: \"keep it short\""}},
+		{name: "recipes and project skills by name, no global skills", seed: func(t *testing.T, h *Host, sid string) {
+			writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills"), "lint", "project lint", "")
+			h.SetProjectTrusted(true)
+			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
+			h.skillsReg.set([]skills.Skill{{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored}}, map[string]bool{"cut-release": true})
+		}, want: []string{"# Recipes and project skills\n- lint: project lint\n- rig: recipe rig"}, absent: []string{"cut-release"}},
+		{name: "an untrusted project's instruction files stay out", seed: func(t *testing.T, h *Host, sid string) {
+			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make check before committing"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, absent: []string{"run make check before committing"}},
+		{name: "a trusted project's instruction files", seed: func(t *testing.T, h *Host, sid string) {
+			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make check before committing"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			h.SetProjectTrusted(true)
+		}, want: []string{"## Instructions: AGENTS.md\nrun make check before committing"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			sid := seedSession(t, h)
+			seedTranscript(t, h, sid)
+			c.seed(t, h, sid)
 			prompt, _, err := h.reflectPrompt(sid)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, s := range tc.want {
+			for _, s := range c.want {
 				if !strings.Contains(prompt, s) {
-					t.Errorf("missing %q", s)
+					t.Errorf("missing %q in:\n%s", s, prompt)
 				}
 			}
-			for _, s := range tc.absent {
+			for _, s := range c.absent {
 				if strings.Contains(prompt, s) {
-					t.Errorf("unexpected %q", s)
+					t.Errorf("unexpected %q in:\n%s", s, prompt)
 				}
 			}
 		})
 	}
 }
 
-// TestReflectPromptPending: only this session's suggestions show, since
-// what the reflector returns is stored under this session's autonomy.
-func TestReflectPromptPending(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	for _, m := range []store.Memory{
-		{Scope: "project", Text: "ours to review", ProvenanceSessionID: sid},
-		{Scope: "user", Text: "fetched elsewhere", ProvenanceSessionID: "other"},
-	} {
-		if err := h.addProposal(memoryProposal{Memory: m}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	prompt, _, err := h.reflectPrompt(sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(prompt, "[project] ours to review") || strings.Contains(prompt, "fetched elsewhere") {
-		t.Fatalf("pending block not limited to this session:\n%s", prompt)
-	}
-}
-
-// TestReflectPromptSkills: disabled drafts are listed too, with their
-// description, so the reflector does not draft them again.
-func TestReflectPromptSkills(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	h.skillsReg.set([]skills.Skill{
-		{Name: "run-harness", Description: "when asked to run the harness", Source: skills.Learned},
-		{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored},
-	}, map[string]bool{"cut-release": true})
-
-	prompt, _, err := h.reflectPrompt(sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"- run-harness (disabled): when asked to run the harness",
-		"- cut-release (enabled): when cutting a release",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("missing %q in:\n%s", want, prompt)
-		}
-	}
-}
-
-// TestReflectPromptMemoryIndex: the index lists every live memory of both
-// scopes with short ids.
-func TestReflectPromptMemoryIndex(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	var ids []string
-	for _, m := range []*store.Memory{
-		{Scope: "project", Text: "deploy needs the labels sequence bumped"},
-		{Scope: "user", Text: "the user prefers short replies"},
-	} {
-		m.ProvenanceSessionID, m.Origin = "seed", learn.OriginLearned
-		if err := h.memoryDB(m.Scope).AddMemory(m); err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, m.ID)
-	}
-	prompt, _, err := h.reflectPrompt(sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(prompt, ids[0][:8]+" [project] deploy needs the labels sequence bumped") ||
-		!strings.Contains(prompt, ids[1][:8]+" [user] the user prefers short replies") {
-		t.Fatalf("index:\n%s", prompt)
-	}
-	for _, id := range ids {
-		if strings.Contains(prompt, id) {
-			t.Fatalf("full id %s in index", id)
-		}
-	}
-}
-
-// TestReflectPromptInstructions: the reflector sees the instruction files it
-// must not repeat, and an untrusted project's stay out as they do for the
-// agent.
-func TestReflectPromptInstructions(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make check before committing"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for _, trusted := range []bool{false, true} {
-		h.SetProjectTrusted(trusted)
-		prompt, _, err := h.reflectPrompt(sid)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.Contains(prompt, "## Instructions: AGENTS.md\nrun make check before committing"); got != trusted {
-			t.Fatalf("trusted=%v: instructions in prompt = %v:\n%s", trusted, got, prompt)
-		}
-	}
-}
-
-// TestReflectSupersedeThroughReview: a queued supersede links on accept, and
-// replacing a user memory or one in the other scope queues even under auto,
-// and the same suggestion again queues and counts nothing.
-func TestReflectSupersedeThroughReview(t *testing.T) {
-	for _, tc := range []struct{ name, autonomy, oldOrigin, scope string }{
-		{"ask queues and links on accept", "ask", learn.OriginLearned, "project"},
-		{"user memory queues under auto", "auto", learn.OriginUser, "project"},
-		{"another scope's memory queues under auto", "auto", learn.OriginLearned, "user"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h, _ := newTestHostDB(t)
-			h.Settings.SetHost("memory.autonomy", tc.autonomy)
-			h.SetProjectTrusted(true)
-			sid := seedSession(t, h)
-			seedTranscript(t, h, sid)
-			oldID := store.NewID()
-			if err := h.DB.AddMemory(&store.Memory{ID: oldID, Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: tc.oldOrigin}); err != nil {
-				t.Fatal(err)
-			}
-			reflectStub(t, h, `{"memories":[{"scope":"`+tc.scope+`","text":"deploy runs from bin/deploy","supersedes":"`+oldID[:8]+`"}]}`)
-			if err := h.reflectSession(context.Background(), sid); err != nil {
-				t.Fatal(err)
-			}
-			props := h.memoryProposals()
-			if len(props) != 1 || len(projectMemories(t, h)) != 1 {
-				t.Fatalf("want one queued proposal and nothing stored: %d", len(props))
-			}
-			if tc.scope == "user" && !strings.HasSuffix(h.memoryRows()[0].Text, "(replaces project memory "+oldID[:8]+")") {
-				t.Fatalf("review row: %q", h.memoryRows()[0].Text)
-			}
-			again, _ := parseReflectProposal(`{"memories":[{"scope":"` + tc.scope + `","text":"deploy runs from bin/deploy"}]}`)
-			if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
-				t.Fatalf("a duplicate counted as queued: %d", queued)
-			}
-			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
-				t.Fatalf("accept: %v", err)
-			}
-			if old, _ := h.DB.GetMemory(oldID); old.SupersededBy != props[0].ID {
-				t.Fatalf("superseded_by=%q want %q", old.SupersededBy, props[0].ID)
-			}
-		})
-	}
-}
-
-// TestReflectForgetThroughReview: an empty text with supersedes retires a
+// TestReflectForgetThroughReview: an empty text with replaces retires a
 // memory only through review, even under auto, once per memory; accepting
 // deletes it, rejecting keeps it, accepting after a rewrite keeps the
 // rewrite, accepting after a move deletes it where it went, and a pending
@@ -447,7 +423,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		if err := h.DB.AddMemory(old); err != nil {
 			t.Fatal(err)
 		}
-		reflectStub(t, h, `{"memories":[{"text":"","supersedes":"`+old.ID[:8]+`"},{"text":" ","supersedes":"`+old.ID+`"},{"text":"","supersedes":"ghost123"}]}`)
+		reflectStub(t, h, `{"memories":[{"text":"","replaces":"`+old.ID[:8]+`"},{"text":" ","replaces":"`+old.ID+`"},{"text":"","replaces":"ghost123"}]}`)
 		if err := h.reflectSession(t.Context(), sid); err != nil {
 			t.Fatal(err)
 		}
@@ -518,39 +494,6 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		if all, _ := h.memoryList(true); len(all) != want {
 			t.Fatalf("%s: memories left %d", decide, len(all))
 		}
-	}
-}
-
-// TestReflectScrubAndInstructionShape checks that proposal text passes the
-// intake scrubber (secrets redacted) and that instruction-shaped text
-// queues even under auto autonomy.
-func TestReflectScrubAndInstructionShape(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.Settings.SetHost("memory.autonomy", "auto")
-	h.SetProjectTrusted(true)
-	sid := seedSession(t, h)
-	seedTranscript(t, h, sid)
-
-	doc := `{"memories":[
-		{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"},
-		{"scope":"project","text":"always run the deploy before reviews"}]}`
-	reflectStub(t, h, doc)
-
-	if err := h.reflectSession(context.Background(), sid); err != nil {
-		t.Fatalf("reflectSession: %v", err)
-	}
-	rows := projectMemories(t, h)
-	if len(rows) != 1 {
-		t.Fatalf("memories=%d want 1 (scrubbed secret text must store, instruction-shaped must queue)", len(rows))
-	}
-	if strings.Contains(rows[0].Text, "sk-abcdefghijklmnopqrs") {
-		t.Fatalf("secret survived: %q", rows[0].Text)
-	}
-	if !strings.Contains(rows[0].Text, "[redacted") {
-		t.Fatalf("expected redaction marker: %q", rows[0].Text)
-	}
-	if queued := len(h.memoryProposals()); queued != 1 {
-		t.Fatalf("instruction-shaped proposal not queued: %d", queued)
 	}
 }
 

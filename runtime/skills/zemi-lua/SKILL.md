@@ -271,7 +271,7 @@ reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `to
 `changed`: the absolute paths a file tool or a bash command changed), `permission.request`,
 `permission.resolved`,
 `composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
-`memory.written`, `skill.learned`, `config.reloaded` (after /reload or a config file
+`memory.written`, `config.reloaded` (after /reload or a config file
 change), `reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
 `diagnostics` after a write or `tool`), and your own `user.*` names. A vetoable handler vetoes
 by returning `{ decision = "deny", reason = "..." }` (`tool.pre` also takes `"halt"`, and

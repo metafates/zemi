@@ -457,9 +457,4 @@ func TestRecipes(t *testing.T) {
 			t.Errorf("after the deletes: stat %s: %v", d, err)
 		}
 	}
-	seedTranscript(t, h, sid)
-	// or the reflector drafts a global skill for what the project already has
-	if p, _, err := h.reflectPrompt(sid); err != nil || !strings.Contains(p, "- rig (enabled)") || !strings.Contains(p, "- lint (enabled)") {
-		t.Errorf("reflector prompt: %v\n%s", err, p)
-	}
 }

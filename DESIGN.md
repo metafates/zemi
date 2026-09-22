@@ -613,7 +613,7 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
   `composer.change`, `composer.submit` (vetoable)
-- learn: `memory.written`, `skill.learned`, `reflector.start`,
+- learn: `memory.written`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `lsp.request`
 
@@ -1713,15 +1713,22 @@ not the JSON asked for marks the delta seen, as does a second failed try
 (kv `reflector.tries.<sid>`), so a delta a provider refuses does not cost a
 call at every close; `/health` shows the last outcome.
 
-Input: the tail of the delta since the seen count (its last 120 user and
-assistant messages, each truncated) + tool-call stats + the instruction files the agent's
-prompt carries (the same trust gate, 16 KiB), so the reflector can see
-what it must not repeat + this session's memories awaiting review (another
-session's may hold outside text, and this session's autonomy would store
-a copy) + the whole memory index (text cut to 160 runes, so an older
-near-duplicate is updated rather than added again) + skills index
-(enabled and disabled drafts alike). The prompt asks for memories phrased as facts, never as
-instructions, which the intake heuristic would flag.
+Input, in this order: the delta since the seen count (its last 120 user
+and assistant messages, each truncated to 400 runes, a compaction summary
+labeled `summary:`, every line through the shape scrubber before it leaves
+the machine) + the newest ten failed tool results, first line each, read
+from the history rows since the telemetry rows keep no text + tool-call
+stats + the instruction files the agent's prompt carries (the same trust
+gate, 16 KiB), so the reflector can see what it must not repeat + this
+session's memories awaiting review (another session's may hold outside
+text, and this session's autonomy would store a copy) + the whole memory
+index with each scope's budget use and the quote under a memory that has
+one, so an older near-duplicate is replaced rather than added again + the
+project's skills and recipes by name and description, so a repository's
+own procedure is left to the live agent's recipe. The prompt asks for
+memories phrased as facts, never as instructions, which the intake
+heuristic would flag, and for the user's own words under anything about
+the user.
 
 Output: a JSON proposal document (schema-validated):
 
@@ -1730,32 +1737,31 @@ Output: a JSON proposal document (schema-validated):
   "memories": [
     { "scope": "project",
       "text": "UpsertLabels must stay read-then-insert; ON CONFLICT burns the sequence",
-      "supersedes": "" }
-  ],
-  "skills": [
-    { "name": "run-integration-tests",
-      "description": "when asked to run the local integration tests",
-      "body": "1. docker compose up -d db\n2. go test -tags integration ./..." }
+      "quote": "",
+      "replaces": "" }
   ]
 }
 ```
 
-A memory entry with `supersedes` set and an empty `text` retires that
-memory: the reflector read in the session that it stopped being true.
-Retirements always queue as forget proposals (a copy of the memory,
-shown as `forget: <text>` in `/memory` and with `forget = true` in
-`zemi.learn.proposals()`), whatever the autonomy, since deleting loses
-data; accepting one deletes the memory, rejecting keeps it.
+Each entry goes through the §10.4 intake and gate like one the live
+agent's `memory` tool writes: `quote` is checked against the session's
+user rows and a miss drops the entry, a user-scope entry without one
+queues, a near-duplicate of a live or pending memory is skipped, and
+`replaces` supersedes the memory it names once the new one is stored. An
+entry with `replaces` set and an empty `text` retires that memory: the
+reflector read in the session that it stopped being true. Retirements
+always queue as forget proposals (a copy of the memory, shown as `forget:
+<text>` in `/memory` and with `forget = true` in `zemi.learn.proposals()`),
+whatever the autonomy, since deleting loses data; accepting one deletes the
+memory, rejecting keeps it.
 
 The reflector is constrained by prompt and by pipeline: it can only emit
 proposals; application is a separate, reviewed step. Memories go through
 the intake policy (§10.4) into the store; there is no reflector scratch
-directory and no path into the config dir. Skill drafts are body only,
-never Lua: Go sanitizes and scrubs the description and body with the
-memory scrubber, writes them under the data dir's `skills/`, and they stay
-disabled until the user enables them in `/skills`. The reflector runs
-detached with a timeout; a run cut off by exit is retried by the next
-startup sweep, since the session still has unseen messages.
+directory and no path into the config dir, and it drafts no skills: a
+procedure is a recipe the live agent writes under the user's eyes. The
+reflector runs detached with a timeout; a run cut off by exit is retried
+by the next startup sweep, since the session still has unseen messages.
 
 ### 10.4 Proposal, review, apply
 
@@ -1816,9 +1822,9 @@ startup sweep, since the session still has unseen messages.
   frontmatter name that is not the directory's, a taken name, a body
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
-- Skill drafts always wait for review (§10.3, §10.5). A learned skill's
-  `zemi-skill.lua` runs as `learned` origin under the §5 denylist, so it
-  may not register tools or `tool.pre` rewrite handlers.
+- A learned skill's `zemi-skill.lua` runs as `learned` origin under the
+  §5 denylist, so it may not register tools or `tool.pre` rewrite
+  handlers.
 
 Autonomy is one knob that only user config sets:
 
@@ -1862,8 +1868,8 @@ under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync, enabled by default) over learned (data dir). The model sees name +
 description in context and the full body on demand through the `skill`
 tool; there is no `/skill` command, only `/skills` to browse, toggle and
-use them (a row's detail carries the whole body, since enabling a drafted
-skill is the review it gets, and opens it in the editor). Learned skills are quarantined
+use them (a row's detail carries the whole body and opens it in the
+editor). Learned skills are quarantined
 mechanically: discovery lists only `enabled` skills to the model, enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin),
 and a learned skill's `zemi-skill.lua` runs as `learned` origin, limited
@@ -1894,8 +1900,8 @@ written mid-session loads at once and never moves the prompt. Loading a
 skill counts as reading its file, so a correction is one `edit`. Only a
 recipe has a Delete action in `/skills` (`/skills delete <name>`), which
 lists the recipes again: the index moves once, by the user's own act. The
-reflector's skills index carries the project's skills and recipes, and its
-prompt leaves a repository's own procedure to the live agent's recipe.
+reflector's prompt lists the project's skills and recipes by name and
+leaves a repository's own procedure to the live agent's recipe.
 
 ### 10.6 Evals
 
@@ -2046,7 +2052,7 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 ## 13. Milestones
 
 Status: M0-M3 shipped, and M3's config revision pipeline was later dropped
-(the reflector proposes memories and skills only). M4 was never built: no eval harness, no mock
+(the reflector proposes memories only). M4 was never built: no eval harness, no mock
 provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
 `permissions.lua` dump and the config git repo were dropped too (§6.1). M5 shipped in part: subagents, workflows, the MCP client
 and the LSP client are in; the plugin manager and embeddings-backed

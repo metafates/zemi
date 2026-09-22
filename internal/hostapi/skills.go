@@ -19,8 +19,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/goccy/go-yaml"
-
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -116,49 +114,6 @@ func (h *Host) syncSkills() {
 		enabled[r.Name] = r.Enabled
 	}
 	h.skillsReg.set(found, enabled)
-}
-
-// draftLearnedSkill writes one reflector-proposed skill under the data
-// dir's skills/ (DESIGN §10.5): body only, never a Lua hook, text through
-// the memory scrubber, and disabled like every learned skill until the
-// user enables it in /skills.
-func (h *Host) draftLearnedSkill(sid, name, desc, body string) error {
-	dir := h.learnedSkillsDir()
-	switch {
-	case dir == "":
-		return errors.New("no data dir for learned skills")
-	case !skills.ValidName(name):
-		return fmt.Errorf("invalid skill name %q", name)
-	case strings.TrimSpace(desc) == "" || strings.TrimSpace(body) == "":
-		return errors.New("description and body are required")
-	case len([]rune(desc)) > skillIndexDescMax:
-		return fmt.Errorf("description over %d characters", skillIndexDescMax)
-	}
-	path := filepath.Join(dir, name)
-	if _, taken := h.skillsReg.get(name); taken {
-		return fmt.Errorf("skill %q already exists", name)
-	}
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("skill %q already exists", name)
-	}
-	desc, _ = learn.ScrubSecrets(sanitize.Line(desc))
-	body, scrubbed := learn.ScrubSecrets(sanitize.String(body))
-	if scrubbed && learn.IsOneBlob(body) {
-		return errors.New("draft is mostly secret material")
-	}
-	fm, err := yaml.Marshal(map[string]string{"name": name, "description": desc})
-	if err != nil {
-		return err
-	}
-	doc := "---\n" + string(fm) + "---\n\n" + strings.TrimSpace(body) +
-		"\n\n<!-- drafted by the reflector from session " + sid + "; review before enabling -->\n"
-	if len(doc) > skills.MaxFileBytes {
-		return errors.New("draft too large")
-	}
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(path, "SKILL.md"), []byte(doc), 0o644)
 }
 
 // joinIf joins elem under dir, or is "" when dir is unset.
@@ -353,8 +308,8 @@ func (h *Host) skillsIndexPrompt() string {
 	return b.String()
 }
 
-// skillIndexDescMax bounds a learned draft's description like discovery
-// bounds an authored one, so the index never clips.
+// skillIndexDescMax is what discovery lets a description reach, so the
+// index never clips.
 const skillIndexDescMax = skills.MaxDescriptionRunes
 
 // setSkillEnabled flips the stored enabled state and runs the enable
@@ -599,7 +554,7 @@ func (h *Host) skillItems() []any {
 			item["key"], item["run"] = "off", toggle
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
-		// enabling a drafted skill is the only review it gets (DESIGN §10.4),
+		// enabling a learned skill is the only review it gets (DESIGN §10.5),
 		// so its instructions are one key away, not just a path
 		body, err := skills.Body(s.Dir)
 		if err != nil {

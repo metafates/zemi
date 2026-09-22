@@ -353,8 +353,8 @@ registry, follow `internal/hostapi/registry.go`.
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: authored under
 `<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
-rewritten to `<data>/builtin-skills/` on every sync, enabled by default), learned (reflector
-drafts, body only, no Lua hook, scrubbed, start disabled) under `<data>/skills/`. A trusted
+rewritten to `<data>/builtin-skills/` on every sync, enabled by default), learned (body only,
+no Lua hook, start disabled; nothing writes them any more) under `<data>/skills/`. A trusted
 project adds its own (`.zemi/skills`, `.agents/skills`, `.claude/skills`): body only, enabled,
 never in the table or `skillsReg`, scanned by `SetProjectTrusted`, so a skill a command writes
 mid-session waits for the next boot or `/trust`. Recipes (`skills.Recipe`) are the project's
@@ -454,13 +454,16 @@ lua-language-server is installed.
   once between them, and `reflectClaimed` runs it (one at a time; a skipped run releases its
   claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
   document asked for marks the delta seen and is the `/health` reflector row's news, never an
-  `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the instruction files (`instructionSections`, shared with
-  `systemWith`), a memory index and a skills index that includes the project's skills and
-  recipes, so it drafts no global skill for a procedure the repository has; an entry with
-  empty text and `supersedes` queues a forget proposal, never auto-applied. It proposes
-  memories and skills only: a skill always waits for review, a memory passes `gateMemory` like
-  a model proposal (stored at once under `memory.autonomy = "auto"` when policy-clean, queued
-  for `/memory` otherwise, DESIGN §10.4). There is no config-patch pipeline and no `/config`
+  `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its
+  prompt carries the scrubbed delta (`reflectLine`), the newest failed tool results
+  (`failedCalls`, read from the history rows: the telemetry rows keep no text), the
+  instruction files (`instructionSections`, shared with `systemWith`), the whole memory index
+  with budget use and quotes, and the project's skills and recipes by name, so it leaves a
+  repository's procedure to a recipe. It proposes memories only, no skills: each entry passes
+  `learn.Intake` with its `quote` and `gateMemory` like the `memory` tool's (stored at once
+  under `memory.autonomy = "auto"` when policy-clean, queued for `/memory` otherwise, a quote
+  not in the session dropped, DESIGN §10.4); an entry with empty text and `replaces` queues a
+  forget proposal, never auto-applied. There is no config-patch pipeline and no `/config`
   command, the agent edits config files directly.
   `digestFor()` renders every live memory, newest first per scope, under `learn.ScopeBudget`
   (3 KB per scope); no search, no ranking.

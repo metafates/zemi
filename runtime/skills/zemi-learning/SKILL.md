@@ -1,6 +1,6 @@
 ---
 name: zemi-learning
-description: How zemi learns - memories, reflector, skill drafts. Load when asked what zemi remembers, to remember or forget, or to write a skill.
+description: How zemi learns - memories, the reflector, skills and recipes. Load when asked what zemi remembers, to remember or forget, or to write a skill.
 ---
 
 # How zemi learns
@@ -19,9 +19,12 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
    names the oldest ids to replace, and the review refuses to accept into a full scope.
 2. **Reflect.** When a session closes (`/new`, `/resume`), and at startup for sessions
    idle ten minutes, the reflector reads what was added since it last read the session,
-   once it holds two user messages and a tool call or one failed tool call, and proposes
-   memories and skill drafts, and retirements of memories the session showed are no longer
-   true (they wait for review as `forget:` rows). `/reflect` runs it on demand, floor or not.
+   once it holds two user messages and a tool call or one failed tool call. It sees the
+   failed tool calls, the instruction files, every memory with its budget use and the
+   recipes, and proposes memories only, under the same rules as the `memory` tool (a memory
+   about the user carries the user's words; a quote not in the session drops it), plus
+   retirements of memories the session showed are no longer true (they wait for review as
+   `forget:` rows). It drafts no skills. `/reflect` runs it on demand, floor or not.
 3. **Review.** Proposals persist until decided; the statusline shows how many wait.
    - `/memory`: every memory whole, as plain text, with its quote, scope, origin and age
      under it and each scope's budget use in the Remembered title; `›` marks the selected one (j/k, the wheel or a click). `a` (or `y`) accepts a proposal, `d` (or `x`, backspace) rejects it or
@@ -29,12 +32,12 @@ description: How zemi learns - memories, reflector, skill drafts. Load when aske
      it in the user's editor (the saved text becomes the user's own memory, an edited
      suggestion is stored, and the screen comes back on that row), `u` undoes
      the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`.
-   - `/skills`: drafted skills start disabled; space toggles, enter shows one with its full
+   - `/skills`: space toggles a skill, enter shows one with its full
      body and its actions (Enable or Disable, Use now, Open in the editor),
      or `/skills enable|disable|open <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own; a disabled skill works too (keep a rarely used one off the
-     index and name it on the day it applies), except an unreviewed learned draft.
+     index and name it on the day it applies), except a disabled learned skill.
    - Autonomy (the default `memory.autonomy = "auto"`, or set `ask` to review every one)
      stores proposed memories without review, except instruction-shaped text, retirements,
      replacements of the user's own memories, and anything from an untrusted project or a
@@ -74,7 +77,6 @@ description: when asked to run the local integration tests
 - `description` says when to use it, in at most 512 characters; every prompt carries it
   whole, so keep it short.
 - An optional `zemi-skill.lua` next to it runs when the skill is enabled.
-- Skills zemi drafts itself live in `~/.local/share/zemi/skills/` and start disabled.
 - A project the user trusts adds the skills in `.zemi/skills/`, `.agents/skills/` and
   `.claude/skills/` at the repository root: always on, no Lua hook, and a user skill of the
   same name wins. zemi reads them at startup, on a reload and on `/trust`.
@@ -114,4 +116,4 @@ These return `nil, err` when the call fails at runtime (no such memory, proposal
 a store error) and raise only on misuse (a bad argument, a scope outside the enum, an
 origin that may not make the call).
 
-Events: `memory.written`, `skill.learned`, `reflector.start`, `reflector.done`.
+Events: `memory.written`, `reflector.start`, `reflector.done`.

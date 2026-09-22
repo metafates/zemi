@@ -162,7 +162,6 @@ zemi.event.on("reflector.done", function(ev)
   add(ev.stored, "memory stored", "memories stored")
   add(ev.queued, "memory to review in /memory", "memories to review in /memory")
   add(ev.superseded, "memory superseded", "memories superseded")
-  add(ev.skills_drafted, "skill drafted, enable it in /skills", "skills drafted, enable them in /skills")
   -- a session with nothing worth keeping ends quietly
   if #parts == 0 then return end
   zemi.notify({ title = "Learned from the last session", body = table.concat(parts, ", ") })

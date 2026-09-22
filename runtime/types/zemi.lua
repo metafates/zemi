@@ -401,7 +401,7 @@ function zemi.command.list() end
 ---| "permission.request" | "permission.resolved"
 ---| "ui.resize" | "ui.theme" | "overlay.open" | "overlay.close"
 ---| "composer.change" | "composer.submit"
----| "memory.written" | "skill.learned" | "reflector.start" | "reflector.done"
+---| "memory.written" | "reflector.start" | "reflector.done"
 ---| "job.exit" | "lsp.request"
 
 --- The payload every handler receives, plus the event's own fields.
@@ -486,10 +486,6 @@ function zemi.command.list() end
 ---@field origin "user"|"learned"
 ---@field text string
 
----@class zemi.ev.SkillLearned: zemi.Event
----@field name string
----@field session string
-
 ---@class zemi.ev.ReflectorStart: zemi.Event
 ---@field session string
 
@@ -500,7 +496,6 @@ function zemi.command.list() end
 ---@field queued? integer Proposals waiting in /memory.
 ---@field superseded? integer
 ---@field skipped? integer
----@field skills_drafted? integer
 
 ---@class zemi.ev.JobExit: zemi.Event
 ---@field id integer
@@ -552,7 +547,6 @@ zemi.event = {}
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
----@overload fun(name: "skill.learned", fn: (fun(ev: zemi.ev.SkillLearned): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "job.exit", fn: (fun(ev: zemi.ev.JobExit): any), opts?: zemi.EventOpts): string
