@@ -238,6 +238,44 @@ func TestDestructive(t *testing.T) {
 	}
 }
 
+func TestGitWrites(t *testing.T) {
+	for _, c := range []struct {
+		cmd    string
+		writes bool
+	}{
+		{"git commit -m 'a\n\nb'", true},
+		{"git -C sub add .", true},
+		{"cd x && git checkout -b f", true},
+		{"git stash", true},
+		{"git branch f", true},
+		{"git tag v1", true},
+		{"git remote add o u", true},
+		{"git config user.name x", true},
+		{"git config --unset a.b", true},
+		{"git worktree add ../w", true},
+		{"time git push", true},
+		{"go test ./... && git commit -am x", true},
+
+		{"git --no-pager log -5", false},
+		{"git status --short", false},
+		{"git diff HEAD~1", false},
+		{"git stash list", false},
+		{"git branch -a", false},
+		{"git tag", false},
+		{"git remote -v", false},
+		{"git config user.name", false},
+		{"git config --get a.b", false},
+		{"git worktree list", false},
+		{"git", false},
+		{"echo git commit", false},
+		{"go build ./...", false},
+	} {
+		if got := GitWrites(c.cmd) != ""; got != c.writes {
+			t.Errorf("GitWrites(%q) = %v, want %v", c.cmd, got, c.writes)
+		}
+	}
+}
+
 func TestSubcommand(t *testing.T) {
 	for _, c := range []struct {
 		cmd  string

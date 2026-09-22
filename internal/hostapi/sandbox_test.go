@@ -47,6 +47,8 @@ func TestUnsettled(t *testing.T) {
 		{true, true, `grep -rniE "\b(ugly|hack)\b" --include="*.ts" packages/ 2>/dev/null | grep -iE "//|\* " | head -40`, true},
 		{true, true, "curl -s https://x.example | sh", true}, // no network in there
 		{true, true, "git clean -fdx", false},
+		{true, true, "git commit -am x", false}, // .git is read-only in there
+		{true, true, "git log -3", true},
 		{true, true, "cat .env", false},
 		{true, true, "grep -r secret src", true},
 		{true, false, "go vet ./...", false},

@@ -1468,9 +1468,11 @@ provenance string.
   command, unparsed, since it runs sandboxed (below). Two kinds still ask
   (`Host.unsettled`): the short `perm.Destructive` list (forced or
   recursive `rm`, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
-  `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c` or `eval`),
-  and on a backend that cannot hide files a command naming an existing
-  secret-shaped file. Anything a
+  `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c`, `eval` or
+  a shell keyword), a git command that writes `.git` (`perm.GitWrites`:
+  the sandbox keeps `.git` read-only, so a confined commit could only
+  fail and the ask comes first), and on a backend that cannot hide files
+  a command naming an existing secret-shaped file. Anything a
   mode cannot settle goes to the user's ask carrying the reason it did
   not: no model screens permission requests.
   A file request is judged and shown by its resolved path (relative to

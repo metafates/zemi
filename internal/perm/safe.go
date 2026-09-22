@@ -596,6 +596,64 @@ func Subcommand(f []string) int {
 	return -1
 }
 
+// gitWriters are the git subcommands that write .git, which the sandbox
+// keeps read-only, so a confined run can only fail on it.
+var gitWriters = map[string]bool{
+	"add": true, "am": true, "apply": true, "bisect": true, "checkout": true, "cherry-pick": true, "clone": true,
+	"commit": true, "fetch": true, "filter-branch": true, "gc": true, "init": true, "merge": true, "mergetool": true,
+	"mv": true, "pack-refs": true, "prune": true, "pull": true, "push": true, "rebase": true, "repack": true,
+	"reset": true, "restore": true, "revert": true, "rm": true, "switch": true, "update-ref": true,
+}
+
+// GitWrites says why a git command cannot run with .git read-only: its
+// subcommand writes the repository. Empty when it only reads, or is no git.
+func GitWrites(cmd string) string {
+	n := Normalize(cmd)
+	if n.Fail != "" {
+		return ""
+	}
+	for _, f := range n.Args {
+		f = program(f)
+		for len(f) > 1 && slices.Contains(runners, filepath.Base(f[0])) && filepath.Base(f[0]) != "xargs" && filepath.Base(f[0]) != "find" && filepath.Base(f[0]) != "fd" {
+			f = f[1:]
+		}
+		i := Subcommand(f)
+		if len(f) == 0 || filepath.Base(f[0]) != "git" || i < 0 {
+			continue
+		}
+		sub, rest := f[i], f[i+1:]
+		var words []string
+		for _, a := range rest {
+			if !strings.HasPrefix(a, "-") {
+				words = append(words, a)
+			}
+		}
+		first := ""
+		if len(words) > 0 {
+			first = words[0]
+		}
+		writes := gitWriters[sub]
+		switch sub {
+		case "branch", "tag":
+			writes = len(words) > 0 || hasFlag(rest, "-d", "-D", "-m", "-M", "-c", "-C", "-u", "--delete", "--move", "--copy", "--set-upstream-to", "--unset-upstream", "--edit-description", "-f")
+		case "stash":
+			writes = first != "list" && first != "show"
+		case "remote":
+			writes = len(words) > 0 && first != "show" && first != "get-url"
+		case "worktree", "submodule", "notes":
+			writes = first != "list" && first != "status" && first != "summary" && first != "show"
+		case "config":
+			writes = len(words) > 1 || hasFlag(rest, "--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e", "--remove-section", "--rename-section")
+		case "reflog":
+			writes = first == "expire" || first == "delete"
+		}
+		if writes {
+			return "git " + sub + " writes to .git, which the sandbox keeps read-only"
+		}
+	}
+	return ""
+}
+
 // Destructive says why a command still goes to the user when a sandbox
 // confines it to the project: it may delete or empty many files at once.
 // Empty when it may run. Normalize already made sh -c bodies and

@@ -438,6 +438,11 @@ func (h *Host) unsettled(cmd string) string {
 	if why := perm.Destructive(cmd); why != "" {
 		return why
 	}
+	// a confined git write can only fail; asking first saves the failed run
+	// and the sandbox: false retry
+	if why := perm.GitWrites(cmd); why != "" {
+		return why
+	}
 	if h.sandbox.Load().backend.HidesSecretFiles {
 		return ""
 	}

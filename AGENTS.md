@@ -250,8 +250,10 @@ with a 60s ceiling, long enough for a model call of its own, and cannot allow an
 or `Network` request. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Destructive` list (forced or recursive
 `rm`, `git clean`, `find -delete`, `shred`, `truncate`, `dd`, `rsync --delete`, also behind
-`xargs`, `find -exec`, `sh -c`, `eval`) and, on a backend that cannot hide files, one naming an
-existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
+`xargs`, `find -exec`, `sh -c`, `eval` or a shell keyword), a git command that writes `.git`
+(`perm.GitWrites`: commit, checkout, stash and the like, which the sandbox's read-only `.git`
+could only fail, so the ask comes before a wasted run) and, on a backend that cannot hide
+files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
 not hide, outside the project too. In an untrusted project, and in a trusted one with no
 sandbox backend, both modes settle only `ReadCommand` commands (every program only reads, named
