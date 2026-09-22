@@ -802,6 +802,9 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	ag.mu.Unlock()
 	s.h.agentStream()
 	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
+	if name != tools.ToolTodos {
+		s.h.maybeNagTodos()
+	}
 }
 
 // StepDone bills a completed step's usage to the live session tally, so the
@@ -1079,25 +1082,24 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
 	}
-	if name != tools.ToolTodos {
-		h.maybeNagTodos()
-	}
 }
 
-// todoNagAfter is how many tool calls an in_progress todo may stay static
-// before zemi nudges the model to tick it (a "force live todos" remind).
+// todoNagAfter is how many of the main agent's tool calls an in_progress
+// todo may stay static before zemi nudges the model to tick it (a "force
+// live todos" remind): a step is several reads and an edit, not three calls.
 // NOTE: a fixed knob, not config; every todos write resets the count.
-const todoNagAfter = 3
+const todoNagAfter = 8
 
 // maybeNagTodos nudges a stale in_progress todo, once per todos write: the
 // model is free to forget, and the next write re-arms the remind. It rides
 // the model-only steering channel (attachMarker), so it never reads as the
-// user's own message.
+// user's own message. Only the main agent's calls during its turn count:
+// a subagent's would arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ag.todoInProgress == "" || ag.todoPending {
+	if !ag.active || ag.todoInProgress == "" || ag.todoPending {
 		return
 	}
 	ag.todoCalls++
@@ -1105,11 +1107,9 @@ func (h *Host) maybeNagTodos() {
 		return
 	}
 	ag.todoPending = true
-	if ag.active {
-		ag.steering = append(ag.steering, modelNote(fmt.Sprintf(
-			"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
-			ag.todoInProgress, ag.todoCalls)))
-	}
+	ag.steering = append(ag.steering, modelNote(fmt.Sprintf(
+		"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+		ag.todoInProgress, ag.todoCalls)))
 }
 
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A

@@ -806,6 +806,19 @@ func TestTodoNag(t *testing.T) {
 		}
 	})
 
+	t.Run("a call while idle leaves the nag armed", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		for i := 0; i < todoNagAfter; i++ {
+			h.maybeNagTodos() // a background agent's calls, the main agent idle
+		}
+		engage(h, todoNagAfter)
+		if got := steering(h); len(got) != 1 {
+			t.Fatalf("idle calls must not count or arm: %q", got)
+		}
+	})
+
 	t.Run("a closed session takes its tracker with it", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
