@@ -690,7 +690,7 @@ function zemi.event.stats() end
 ---@field done boolean A turn ended a moment ago, so the mascot can show its done frame while the working row is otherwise gone.
 ---@field reflecting boolean
 ---@field pending_memory integer
----@field agents_running integer
+---@field agents_running integer Background agents of this session still running; a message sent now waits for them.
 ---@field quit_armed boolean A second ctrl+c quits.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.
 ---@field rows_below integer Rows under the stage's scrolled region (the chat by default) while it is scrolled up; 0 when it follows the tail.

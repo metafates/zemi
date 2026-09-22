@@ -225,7 +225,7 @@ func (h *Host) ForkSession() (string, error) {
 	if h.AgentActive() {
 		return "", errors.New("a turn is running; esc interrupts it")
 	}
-	if n := h.tasks.running(); n > 0 {
+	if n := h.tasks.runningFor(sid); n > 0 {
 		return "", fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
 	}
 	sess, err := h.DB.GetSession(sid)

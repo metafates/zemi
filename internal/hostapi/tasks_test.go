@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -229,5 +230,72 @@ func TestAgentQueuesWhileBackground(t *testing.T) {
 	}
 	if !strings.Contains(all, "user msg") || !strings.Contains(all, "Background agent finished: report") {
 		t.Fatalf("transcript missing the queued msg or the report: %q", all)
+	}
+}
+
+// TestQueueDrainsWhenBackgroundEnds: a message queued behind a background
+// agent starts once the run ends without a report (cancelled), and only this
+// session's runs hold the queue: after /new the first message runs at once.
+func TestQueueDrainsWhenBackgroundEnds(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		then func(t *testing.T, h *Host, run *agentRun)
+	}{
+		{"a cancelled run", func(t *testing.T, h *Host, run *agentRun) {
+			if h.AgentActive() {
+				t.Fatal("queued message must not start a turn")
+			}
+			run.cancel()
+		}},
+		{"another session's run", func(t *testing.T, h *Host, run *agentRun) {
+			if err := h.closeSession(nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.AgentSend("user msg"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{})
+			seedSession(t, h)
+			var mu sync.Mutex
+			var sent []string
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+					if strings.Contains(system, "a subagent of zemi") {
+						return nil // runs until cancelled
+					}
+					mu.Lock()
+					sent = append(sent, last)
+					mu.Unlock()
+					return textParts("ok")
+				}}, nil
+			}
+			def, err := h.agentDef("explore")
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, err := h.startBackgroundAgent(def, "d", "look")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := h.AgentSend("user msg"); err != nil {
+				t.Fatal(err)
+			}
+			run := h.tasks.find(id)
+			t.Cleanup(run.cancel)
+			c.then(t, h, run)
+			waitFor(t, func() error {
+				mu.Lock()
+				defer mu.Unlock()
+				if !strings.Contains(strings.Join(sent, "\n"), "user msg") {
+					return fmt.Errorf("queued message never reached the model: %q", sent)
+				}
+				return nil
+			})
+			waitIdle(t, h)
+		})
 	}
 }

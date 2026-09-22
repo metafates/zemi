@@ -31,7 +31,7 @@ func (m *scriptModel) Generate(context.Context, fantasy.Call) (*fantasy.Response
 	return nil, errors.New("not implemented")
 }
 
-func (m *scriptModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m *scriptModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	var system, last string
 	toolResult := false
 	for _, msg := range call.Prompt {
@@ -52,6 +52,10 @@ func (m *scriptModel) Stream(_ context.Context, call fantasy.Call) (fantasy.Stre
 		}
 	}
 	parts := m.script(system, last, toolResult)
+	if parts == nil { // a provider that never answers: the call ends with its cancel
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	return func(yield func(fantasy.StreamPart) bool) {
 		for _, p := range parts {
 			if !yield(p) {

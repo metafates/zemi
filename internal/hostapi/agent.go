@@ -394,11 +394,9 @@ func (h *Host) AgentSend(text string) error {
 		h.refresh()
 		return nil
 	}
-	// background sub-agents still running: note the message and act once they finish
-	// (finish() runs before the last report, so its AgentSend lands with running()==0
-	// and starts the turn that drains the queue). NOTE: tasks.running() is global, so
-	// a background agent from another session also holds the queue.
-	if h.tasks.running() > 0 {
+	// this session's background agents still running: the message waits for
+	// them (drainQueue, when the last one ends)
+	if h.tasks.runningFor(ag.sessionID) > 0 {
 		ag.steering = append(ag.steering, text)
 		ag.mu.Unlock()
 		h.refresh()
@@ -410,6 +408,26 @@ func (h *Host) AgentSend(text string) error {
 	scope := h.beginScope()
 	ag.mu.Unlock()
 	return h.sendClaimed(scope, text)
+}
+
+// drainQueue starts a turn for what queued behind the session's background
+// agents once none is left and no turn holds the agent. Runs on the run's
+// goroutine: the send waits on the interpreter.
+func (h *Host) drainQueue() {
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.active || len(ag.steering) == 0 || h.tasks.runningFor(ag.sessionID) > 0 {
+		ag.mu.Unlock()
+		return
+	}
+	text := joinQueue(ag.steering)
+	ag.steering = nil
+	ag.active = true
+	scope := h.beginScope()
+	ag.mu.Unlock()
+	if err := h.sendClaimed(scope, text); err != nil {
+		h.Notify("error", "Could not send", err.Error())
+	}
 }
 
 // sendClaimed starts a turn for text on an agent already claimed with scope.

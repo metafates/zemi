@@ -101,12 +101,21 @@ func (r *taskReg) list(parent string) []*agentRun {
 	return out
 }
 
+// running counts every live run; runningFor only those parent started.
 func (r *taskReg) running() int {
+	return r.count(func(*agentRun) bool { return true })
+}
+
+func (r *taskReg) runningFor(parent string) int {
+	return r.count(func(x *agentRun) bool { return x.parent == parent })
+}
+
+func (r *taskReg) count(keep func(*agentRun) bool) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	n := 0
 	for _, x := range r.runs {
-		if x.isRunning() {
+		if keep(x) && x.isRunning() {
 			n++
 		}
 	}
@@ -289,6 +298,9 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 	}
 	h.GoSafe("background agent", func() {
 		text, err := h.runAgent(ctx, run, def, prompt, nil)
+		// whatever queued behind this run starts once nothing else holds it,
+		// report or not (a cancelled run has none, a finished one's joins the turn)
+		defer h.drainQueue()
 		if errors.Is(err, context.Canceled) {
 			return
 		}
