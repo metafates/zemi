@@ -105,18 +105,21 @@ func (h *Host) ReflectLastSession() {
 	}
 }
 
-// reflectDue reports whether a session has messages the reflector has not
-// seen; the seen count lives in kv, so a restart does not re-reflect.
-func (h *Host) reflectDue(sid string) bool {
+// reflectDue returns a session's message count when the reflector has not
+// seen it at that count, 0 otherwise; the seen count lives in kv, so a
+// restart does not re-reflect.
+func (h *Host) reflectDue(sid string) int {
 	if h.DB == nil {
-		return false
+		return 0
 	}
 	msgs, err := h.DB.Messages(sid)
 	if err != nil || len(msgs) == 0 {
-		return false
+		return 0
 	}
-	seen, _ := h.DB.GetKV(reflectSeenKey(sid))
-	return seen != strconv.Itoa(len(msgs))
+	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); seen == strconv.Itoa(len(msgs)) {
+		return 0
+	}
+	return len(msgs)
 }
 
 // claimReflect atomically claims the right to reflect the unseen messages
@@ -126,11 +129,10 @@ func (h *Host) reflectDue(sid string) bool {
 // still not reflect it twice: only one inserts. A claim its owner crashes
 // leaving is reclaimed after reflectLease, so a failed run can be retried.
 func (h *Host) claimReflect(sid string) string {
-	if h.reflectDue(sid) == false {
+	n := h.reflectDue(sid)
+	if n == 0 {
 		return ""
 	}
-	msgs, _ := h.DB.Messages(sid)
-	n := len(msgs)
 	key := reflectClaimKey(sid, n)
 	if claimed, _ := h.DB.SetKVOnce(key, "1"); claimed {
 		return key

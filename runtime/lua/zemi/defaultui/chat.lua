@@ -219,7 +219,7 @@ zemi.ui.widget.add({
       if t.status == "ok" then
         mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
-        mark, hl = "× ", "AgentToolErr"
+        mark, hl = "✗ ", "AgentToolErr"
       end
       local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
       local label = t.label or ""

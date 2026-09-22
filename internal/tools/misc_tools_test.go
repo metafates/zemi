@@ -383,7 +383,7 @@ func TestFetchGates(t *testing.T) {
 }
 
 // TestHTMLToText: readability picks the article out of a page, and what it
-// keeps reads as markdown — heading, a parameter table as rows (it used to
+// keeps reads as markdown: heading, a parameter table as rows (it used to
 // flatten to "sizeint"), a code fence, bullets and absolute links.
 func TestHTMLToText(t *testing.T) {
 	in := `<html><head><title>hidden</title></head><body>

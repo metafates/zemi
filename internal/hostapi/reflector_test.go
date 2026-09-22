@@ -164,7 +164,7 @@ func TestReflectQueuesUnderAsk(t *testing.T) {
 	if m.calls.Load() != 1 {
 		t.Fatalf("model calls=%d", m.calls.Load())
 	}
-	if !h.reflectDue(sid) {
+	if h.reflectDue(sid) == 0 {
 		t.Fatal("a message the run never read was marked seen")
 	}
 	props := h.memoryProposals()
