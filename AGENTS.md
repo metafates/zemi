@@ -304,17 +304,17 @@ The overlay's "always" answer writes session allow rules scoped to the `model` p
 prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
 program and subcommand for `git`, `go`, `cargo` and the other `subcommandPrograms`; a file's
 directory; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
-`perm.Destructive` names stays exact, since its rule would run unconfined. A file read is also offered the wider `repoChoice`
-("allow reads anywhere in <repo>", answered as `user:wider`), because in a deep tree the
-directory rule is the same ask again one package over. No always option is offered at all for a
-gate-forced ask (heredoc, env assignment), a pattern holding a glob wildcard, an opaque segment
-(an inner `sh -c`, a stripped assignment) or a wrapper program that runs what it is handed
-(`wrapperPrograms`: shells, interpreters, `sudo`, `xargs`, ...) - no rule written from such a
-segment says what the next call would run - nor for a `protectedWrite`, which `Pipeline.Check`
-asks about whatever rule allows it. A directory glob cannot exclude the secret shapes
-either, so `Pipeline.Check`'s loosen sends a file request a `model` rule allowed back to the
-ask when `Secret` matches; a user-config rule has no principal, stays authoritative, and shows
-read-only in `/permissions`, while a `model` rule gets a Remove action.
+`perm.Destructive` names stays exact, since its rule would run unconfined. A file read is also
+offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),
+because in a deep tree the directory rule is the same ask again one package over. No always
+option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a
+glob wildcard, an opaque segment (an inner `sh -c`, a stripped assignment) or a wrapper program
+that runs what it is handed (`wrapperPrograms`: shells, interpreters, `sudo`, `xargs`, ...) - no
+rule written from such a segment says what the next call would run - nor for a `protectedWrite`,
+which `Pipeline.Check` asks about whatever rule allows it. A directory glob cannot exclude the
+secret shapes either, so `Pipeline.Check`'s loosen sends a file request a `model` rule allowed
+back to the ask when `Secret` matches; a user-config rule has no principal, stays authoritative,
+and shows read-only in `/permissions`, while a `model` rule gets a Remove action.
 
 ### require and the origin model (internal/lua/runtime.go, origin.go, registries)
 
