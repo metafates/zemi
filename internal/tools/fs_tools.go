@@ -193,18 +193,19 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case fi != nil && fi.IsDir():
 		return listDir(p, path), nil
 	case err != nil:
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	defer f.Close()
+	rel := workRel(path)
 	br := bufio.NewReaderSize(f, 64<<10)
 	head, _ := br.Peek(8000)
 	switch mt := http.DetectContentType(head); {
 	case mt == "image/png" || mt == "image/jpeg" || mt == "image/gif" || mt == "image/webp":
 		if fi.Size() > readMaxImage {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", path, fi.Size(), readMaxImage)), nil
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", rel, fi.Size(), readMaxImage)), nil
 		}
 		if p.Images != nil && !p.Images() {
-			return fantasy.NewTextErrorResponse(path + " is an image and the current model does not take images; go on without it, or ask the user to describe it or switch model"), nil
+			return fantasy.NewTextErrorResponse(rel + " is an image and the current model does not take images; go on without it, or ask the user to describe it or switch model"), nil
 		}
 		data, err := io.ReadAll(br)
 		if err != nil {
@@ -212,7 +213,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		return fantasy.NewImageResponse(data, mt), nil
 	case bytes.IndexByte(head, 0) >= 0:
-		return fantasy.NewTextErrorResponse(path + " is a binary file"), nil
+		return fantasy.NewTextErrorResponse(rel + " is a binary file"), nil
 	}
 	// a page of a file still counts as seen: the edit guard is about what
 	// changed under the model, and an exact old_string is its own proof
@@ -245,7 +246,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	if kept == 0 {
 		if start > 0 {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("offset %d is past the end of %s (%d lines)", start+1, path, n)), nil
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("offset %d is past the end of %s (%d lines)", start+1, rel, n)), nil
 		}
 		return fantasy.NewTextResponse("(empty file)"), nil
 	}
@@ -286,12 +287,12 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	f, err := openGated(path, os.O_RDONLY, 0)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error())
+		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	defer f.Close()
 	entries, err := f.ReadDir(-1)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error())
+		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	ruledOut, shown := p.ruledOut(), []string{}
@@ -340,7 +341,7 @@ func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	}
 	defer f.Close()
 	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, too large to edit; narrow the change or split the file", path, fi.Size())
+		return nil, fi, fmt.Errorf("%s is %d bytes, too large to edit; narrow the change or split the file", workRel(path), fi.Size())
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
@@ -368,15 +369,21 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // since (the user's editor, a formatter, another agent): writing over it
 // would silently drop those changes. "" when the view is current.
 func (p *Pipeline) stale(path string, fi os.FileInfo) string {
+	rel := workRel(path)
+	// before the read log: a directory listing never marks it seen, so the
+	// "read it first" advice would loop
+	if fi.IsDir() {
+		return rel + " is a directory"
+	}
 	if p == nil || p.Seen == nil {
 		return ""
 	}
 	t, ok := p.Seen.Load(absPath(path))
 	switch {
 	case !ok:
-		return "read " + path + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
+		return "read " + rel + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
 	case !t.(time.Time).Equal(fi.ModTime()):
-		return path + " changed since you read it (the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
+		return rel + " changed since you read it (the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
 	return ""
 }
@@ -409,9 +416,9 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	}
 	p.checkpoint(path)
 	if err := writeGated(path, []byte(content), 0o644); err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
-	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", path, len(content)) + p.wrote(path)), nil
+	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", workRel(path), len(content)) + p.wrote(path)), nil
 }
 
 func (p *Pipeline) afterWrite(path string) string {
@@ -454,16 +461,17 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	if msg := p.stale(path, fi); msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	data, _, err := readGated(path)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
-	out, n, tolerant, msg := applyEdits(lf(string(data)), edits, path)
+	rel := workRel(path)
+	out, n, tolerant, msg := applyEdits(lf(string(data)), edits, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
@@ -474,34 +482,65 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	}
 	p.checkpoint(path)
 	if err := writeGated(path, []byte(out), fi.Mode().Perm()); err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
-	res := fmt.Sprintf("%s %s (%d replacement%s)", verb, path, n, plural(n))
-	if tolerant {
-		res += "; matched ignoring whitespace, so check the indentation"
+	res := fmt.Sprintf("%s %s (%d replacement%s)", verb, rel, n, plural(n))
+	if tolerant.count > 0 {
+		// the model never re-reads after a success, so what its text became
+		// under the file's indentation has to be in the result
+		res += "; matched ignoring whitespace and moved new_string to the file's indentation. Written as:" + numbered(strings.Split(out, "\n"), tolerant.at, tolerant.count)
 	}
 	return fantasy.NewTextResponse(res + p.wrote(path)), nil
 }
 
+// numbered renders lines[at:at+n] as read does, at most 30 of them.
+func numbered(lines []string, at, n int) string {
+	var b strings.Builder
+	for j := at; j < min(at+n, at+30, len(lines)); j++ {
+		fmt.Fprintf(&b, "\n%6d\t%s", j+1, lines[j])
+	}
+	return b.String()
+}
+
+// relErr shortens the path in an os error the way the results do.
+func relErr(err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		pe.Path = workRel(pe.Path)
+	}
+	return err
+}
+
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
+
+// region is where a whitespace-tolerant edit put its new lines: the last
+// such edit's, in the text as it is once every edit applied.
+// NOTE: an exact edit above it in a later multiedit step shifts the lines.
+type region struct{ at, count int }
 
 // applyEdits applies edits in order to LF text. msg explains the first edit
 // that does not apply, and then nothing changes.
-func applyEdits(src string, edits []any, where string) (out string, n int, tolerant bool, msg string) {
+func applyEdits(src string, edits []any, where string) (out string, n int, tolerant region, msg string) {
 	for i, e := range edits {
 		em, _ := e.(map[string]any)
 		old, new := lf(str(em["old_string"])), lf(str(em["new_string"]))
 		all, _ := em["replace_all"].(bool)
 		res, c := applyEdit(src, old, new, all)
 		if c == 0 && old != "" {
-			res, c = applyTolerant(src, old, new, all)
-			tolerant = tolerant || c > 0
+			var at int
+			if res, c, at = applyTolerant(src, old, new, all); c > 0 {
+				tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
+			}
 		}
-		if m := editError(src, old, c, all, where); m != "" {
+		m := editError(src, old, c, all, where)
+		if old != "" && old == new {
+			m = "old_string and new_string are the same; nothing to change"
+		}
+		if m != "" {
 			if len(edits) > 1 {
 				m = fmt.Sprintf("edit %d (nothing was written): %s", i+1, m)
 			}
-			return src, 0, false, m
+			return src, 0, region{}, m
 		}
 		src, n = res, n+c
 	}
@@ -561,8 +600,9 @@ func editError(src, old string, n int, all bool, where string) string {
 
 // applyTolerant matches whole lines ignoring whitespace runs, and moves
 // new_string to the file's indentation: the indent old_string used on each
-// matched line maps to the indent the file has there.
-func applyTolerant(src, old, new string, all bool) (string, int) {
+// matched line maps to the indent the file has there. first is the line
+// the first match's new text starts on.
+func applyTolerant(src, old, new string, all bool) (out string, count, first int) {
 	simp := func(s string) string { return strings.Join(strings.Fields(s), " ") }
 	lead := func(s string) string { return s[:len(s)-len(strings.TrimLeft(s, " \t"))] }
 	srcLines := strings.Split(src, "\n")
@@ -573,7 +613,7 @@ func applyTolerant(src, old, new string, all bool) (string, int) {
 	}
 	m := len(oldLines)
 	var b []string
-	at, count := 0, 0
+	at := 0
 	for i := 0; i+m <= len(srcLines); i++ {
 		if !slices.EqualFunc(srcLines[i:i+m], oldLines, func(s, o string) bool { return simp(s) == simp(o) }) {
 			continue
@@ -583,6 +623,9 @@ func applyTolerant(src, old, new string, all bool) (string, int) {
 			if strings.TrimSpace(o) != "" {
 				indent[lead(o)] = lead(srcLines[i+j])
 			}
+		}
+		if count == 0 {
+			first = i
 		}
 		b = append(b, srcLines[at:i]...)
 		for _, l := range newLines {
@@ -603,9 +646,9 @@ func applyTolerant(src, old, new string, all bool) (string, int) {
 		i += m - 1
 	}
 	if count == 0 || (count > 1 && !all) {
-		return src, count
+		return src, count, 0
 	}
-	return strings.Join(append(b, srcLines[at:]...), "\n"), count
+	return strings.Join(append(b, srcLines[at:]...), "\n"), count, first
 }
 
 func plural(n int) string {

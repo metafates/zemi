@@ -1024,7 +1024,7 @@ func ChangeDiff(tool string, in map[string]any) string {
 			edits, _ = in["edits"].([]any)
 		}
 		var msg string
-		if updated, _, _, msg = applyEdits(old, edits, path); msg != "" {
+		if updated, _, _, msg = applyEdits(old, edits, workRel(path)); msg != "" {
 			return ChangePreview(in)
 		}
 	default:

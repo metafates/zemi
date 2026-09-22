@@ -234,8 +234,10 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	file := filepath.Join(dir, "a.txt")
 
 	write, read, edit := all[2], all[1], all[3]
-	resp := call(t, write, `{"path":"`+file+`","content":"one\ntwo\nthree\n"}`)
-	if resp.IsError {
+	// results name the path relative to the (symlinked, on macOS) cwd
+	t.Chdir(dir)
+	resp := call(t, write, `{"path":"a.txt","content":"one\ntwo\nthree\n"}`)
+	if resp.IsError || resp.Content != "wrote a.txt (14 bytes)" {
 		t.Fatalf("write: %+v", resp)
 	}
 	resp = call(t, read, `{"path":"`+file+`"}`)
@@ -361,7 +363,8 @@ func TestEditSafety(t *testing.T) {
 		{"mostly lf", "one\ntwo\nthree\r\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\ntwo\nthree\n"},
 		{"reindent", "\tif x {\n\t\treturn\n\t}\n", false,
 			map[string]any{"old_string": "if x {\n    return\n}", "new_string": "if x {\n    return 1\n}"},
-			"check the indentation", "\tif x {\n\t\treturn 1\n\t}\n"},
+			"Written as:\n     1\t\tif x {\n     2\t\t\treturn 1\n     3\t\t}", "\tif x {\n\t\treturn 1\n\t}\n"},
+		{"same text", "a\n", false, map[string]any{"old_string": "a", "new_string": "a"}, "are the same; nothing to change", "a\n"},
 		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
 		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches line 1, so a later line differs: read", "}\na\n}\nb\n"},
 		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
@@ -383,6 +386,26 @@ func TestEditSafety(t *testing.T) {
 		resp := call(t, tl, js(c.input))
 		if got, _ := os.ReadFile(path); !strings.Contains(resp.Content, c.want) || string(got) != c.result {
 			t.Errorf("%s: want %q, got %q, file %q", c.name, c.want, resp.Content, got)
+		}
+	}
+
+	// a directory is named as one: read lists it without marking it seen, so
+	// "read it first" would loop
+	sub := filepath.Join(dir, "sub")
+	os.Mkdir(sub, 0o755)
+	for _, in := range []map[string]any{
+		{"path": sub, "content": "x"},
+		{"path": sub, "old_string": "a", "new_string": "b"},
+		{"path": sub, "edits": []any{map[string]any{"old_string": "a", "new_string": "b"}}},
+	} {
+		tl := all[2]
+		if in["old_string"] != nil {
+			tl = edit
+		} else if in["edits"] != nil {
+			tl = multiedit
+		}
+		if resp := call(t, tl, js(in)); !resp.IsError || !strings.HasSuffix(resp.Content, "sub is a directory") {
+			t.Errorf("%s on a directory: %q", tl.Info().Name, resp.Content)
 		}
 	}
 
