@@ -183,7 +183,7 @@ Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lu
 rewritten input **re-enters at the permission gate** (per-run pipeline copy with
 `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); an ask with no
 overlay available fails closed; a denied result says who decided and why; errors become
-tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `Lua`,
+tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `lua`,
 MCP and Lua tools) call the gate themselves and run the events through `preCheck` (which
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
@@ -253,7 +253,7 @@ without a path; no builds, no git) and auto settles no writes.
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
 `h.sandboxPolicy(readOnly)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
-`Jobs.Start`/`Adopt` and `win.Spec.Wrap` call `sandbox.Wrap` before starting. A wrap error is a
+`Jobs.Start`/`Adopt` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
 `zemi.job`, MCP servers and `Host.git` stay unconfined; language servers run under
 `serverPolicy`. `NewHost` probes the backend synchronously, so `--health` and the first turn's
@@ -301,8 +301,10 @@ origin may add allow rules (project may tighten only) or switch the mode
 namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal, as
-prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's two-word
-prefix, a file's directory, a URL's host). A file read is also offered the wider `repoChoice`
+prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
+program and subcommand for `git`, `go`, `cargo` and the other `subcommandPrograms`; a file's
+directory; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
+`perm.Destructive` names stays exact, since its rule would run unconfined. A file read is also offered the wider `repoChoice`
 ("allow reads anywhere in <repo>", answered as `user:wider`), because in a deep tree the
 directory rule is the same ask again one package over. No always option is offered at all for a
 gate-forced ask (heredoc, env assignment), a pattern holding a glob wildcard, an opaque segment
@@ -441,8 +443,10 @@ lua-language-server is installed.
   `systemWith`), a memory index and a skills index that includes the project's skills and
   recipes, so it drafts no global skill for a procedure the repository has; an entry with
   empty text and `supersedes` queues a forget proposal, never auto-applied. It proposes
-  memories and skills only, always for review (DESIGN §10.4): there is no config-patch
-  pipeline and no `/config` command, the agent edits config files directly.
+  memories and skills only: a skill always waits for review, a memory passes `gateMemory` like
+  a model proposal (stored at once under `memory.autonomy = "auto"` when policy-clean, queued
+  for `/memory` otherwise, DESIGN §10.4). There is no config-patch pipeline and no `/config`
+  command, the agent edits config files directly.
   `digestFor(query)` ranks by the FTS score against the session's first message (bm25 stays
   near zero for common words, so they lift nothing), user origin x2 and recency over 30 days.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
@@ -457,7 +461,7 @@ lua-language-server is installed.
   gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web` (on the
   small tier) and `general`, plus `agents/*.md` (user over builtin over a trusted repo's
   `.zemi`, `.agents`, `.claude`). They never get `agent`, `workflow`, `todos`, `question`,
-  `plan`, `open_in_editor` or `Lua` (nesting depth 1). A run is a child session (`parent_id`);
+  `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
@@ -481,7 +485,7 @@ lua-language-server is installed.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
   removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
   agent; a program may read it, never run from it.
-- **Lua tool** (luatool.go, tool name `Lua`): model Lua runs through `Runtime.Eval` as `user`
+- **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
   function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardModelLua`),
   which raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an
@@ -495,7 +499,7 @@ lua-language-server is installed.
 - **Model memory edits**: `memory_update`/`memory_forget` go through `modelEditMemory`, which
   re-runs intake and asks the user (`memory.write` as `Unsandboxed`, so no mode settles it)
   unless `memoryAuto` holds: autonomy auto, a trusted project, the memory learned, the text not
-  instruction-shaped, and no `fetch`, `web_search`, `Lua` or non-builtin tool call in the
+  instruction-shaped, and no `fetch`, `web_search`, `lua` or non-builtin tool call in the
   session or its subagents' (`subagentHooks` records those, `ForkSession` copies them).
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
@@ -600,8 +604,8 @@ how many rows the frame takes, so nothing above it reflows.
 ## Gotchas and non-obvious conventions
 
 - **Not built**, whatever DESIGN §13 implies: M4 evals (no `zemi.eval`), the plugin manager,
-  embeddings. Everything else it names ships, plus windows, permission modes, rewind,
-  scratchpads, the `Lua` tool and print mode.
+  embeddings. Everything else it names ships, plus permission modes, rewind, scratchpads,
+  the `lua` tool and print mode.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs
@@ -653,7 +657,9 @@ how many rows the frame takes, so nothing above it reflows.
   MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which
   cancel, timeout, `proc.Wait` and `proc.KillAll` on exit kill whole. A plain `exec.Command`
-  here is a bug: a cancelled `sh -c` pipeline once hung the turn forever.
+  here is a bug (a cancelled `sh -c` pipeline once hung the turn forever), with two exceptions:
+  the user's editor (ui/editor.go, which needs the controlling terminal `Setsid` drops) and
+  the sandbox backend probes.
 - **The key loop never waits on Lua.** Keymap right-hand sides, Lua commands, completion
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
@@ -683,7 +689,7 @@ how many rows the frame takes, so nothing above it reflows.
   forged reference cannot attach other files.
 - **gopher-lua multiple assignment**: `a[#a + 1], b = b, x` stores `x` in `a`. Split any
   assignment whose right side names a left-side target (this once garbled wrapped text).
-- **Handles vs snapshots**: host resources (job, http, timer, session, window) are handle
+- **Handles vs snapshots**: host resources (job, http, timer, session) are handle
   tables with colon methods, everything else a snapshot copy; marshaling caps string size and
   depth and refuses cycles.
 - No vendoring, no generated code.

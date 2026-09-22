@@ -65,7 +65,7 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 `-`); `model:` takes a tier name (`small`, `main`, `smart`) or a configured `provider/model`;
 `model: inherit` or no model uses the main tier. The `agent` tool's `model`
 field and a workflow's `agent(prompt, { model = ... })` override it per run. `tools` limits what it may use
-(omit for everything but agent, workflow, todos, question, plan, open_in_editor and Lua);
+(omit for everything but agent, workflow, todos, question, plan and lua);
 a `-name` entry removes one instead, so `tools: -bash` keeps the rest, later releases
 included. A name nothing answers to fails the agent. The model sees the description
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
@@ -88,7 +88,7 @@ zemi.agent.profile("lean", { tools = { "-workflow", "-lua", "-job_start", "-lsp"
 -- or an allowlist, strong models only: tools = { "bash", "skill" }
 ```
 
-The default set minus `workflow`, `Lua`, `job_start` and `lsp` is about 40% of the builtin
+The default set minus `workflow`, `lua`, `job_start` and `lsp` is about 40% of the builtin
 schema text (1.8k tokens a request). It gives up workflow scripts, reading or changing
 zemi's live state, starting a server or watcher in the background (bash still hands a
 command past its timeout to `job_read` and `job_kill`), and language server queries;
@@ -317,9 +317,8 @@ uses are the `hl` table in `defaultui/theme.lua`. To make a segment clickable gi
 the shipped statusline widgets run `zemi.command.run(ev.id)`, so a replacement statusline
 keeps its clicks by doing the same. A replacement chat widget keeps its clicks by calling
 `zemi.ui.reasoning.toggle()` for a reasoning line, `zemi.command.run("agents", "view " .. t.run)`
-for a tool row with a `run` id and `zemi.ui.edit(path, { line = n }, cb)` for a read, write,
-edit or multiedit row (the shipped one opens the file on a click on the head row and at the
-diff row's line on a double click).
+for a tool row with a `run` id, and by expanding or folding the output of any other tool
+row (the shipped one keeps an `expanded` table keyed by the row's `tool:<idx>` click id).
 Full API: the zemi-lua skill.
 
 ## After writing

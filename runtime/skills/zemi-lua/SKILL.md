@@ -67,7 +67,7 @@ loads fresh.
 
 ## Running Lua from the agent
 
-The `Lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
+The `lua` tool runs a chunk in the live runtime as `user` origin: the agent can read and
 change zemi's state through the same API, including toggling skills, widening permissions,
 adding MCP servers and reading secret-shaped environment names. `print` output and return
 values (as JSON) come back. A script that only reads (`zemi.config.get`, `zemi.session.messages`,

@@ -728,7 +728,7 @@ function zemi.event.stats() end
 ---@alias zemi.Underline "none"|"single"|"double"|"curl"|"dotted"|"dashed"
 
 --- A highlight group. The hover groups `Hover` (clickable widget segments,
---- statusline pills, window close marks) and `HoverItem` (list rows) draw
+--- statusline pills) and `HoverItem` (list rows) draw
 --- over the text's own style: keys left out keep it, false and "NONE" clear it.
 ---@class zemi.HLSpec
 ---@field link? string Draw as this group instead; the other fields are then ignored. Chains longer than 8 or cycles draw unstyled.
@@ -1013,7 +1013,7 @@ function zemi.ui.input(opts, on_confirm) end
 
 --- Open a file in the project dir, anywhere in a trusted repository (`zemi.project.root()`), or under
 --- `zemi.fs.datadir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
---- in a focused float over zemi, and call on_done when it exits: on_done(),
+--- fullscreen over zemi, and call on_done when it exits: on_done(),
 --- or on_done(err) when it failed or exited non-zero.
 --- Never blocks the interpreter. Raises for a path outside those.
 ---@param path string

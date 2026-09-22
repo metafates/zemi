@@ -6,7 +6,7 @@ description: Drive the real zemi binary in tmux against a fake model server, in 
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
-pickers, windows) or crosses the model loop (tools, permission asks, compaction, resume).
+pickers) or crosses the model loop (tools, permission asks, compaction, resume).
 Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
 
 ## 1. A throwaway tree, always

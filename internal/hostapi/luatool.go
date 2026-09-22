@@ -36,7 +36,7 @@ const luaToolChunk = "lua-tool"
 
 // luaReadOnly is what the model's Lua tool may call without the user's
 // approval: members that only read zemi's state, and pure helpers. Every
-// other Go function exposed to Lua, handle methods included ("win:send"),
+// other Go function exposed to Lua, handle methods included ("job:kill"),
 // raises in an unapproved run, so a new member asks until it is added here.
 var luaReadOnly = map[string]bool{
 	"agent.current": true, "agent.list": true, "agent.prompt": true, "agent.usage": true,

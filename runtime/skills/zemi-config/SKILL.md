@@ -105,7 +105,7 @@ guessing. Common keys:
 - `agent.effort`: `low`, `medium`, `high` or empty (provider default); `/effort` sets it.
   Anthropic models get the effort parameter, OpenAI and compatible ones reasoning_effort.
 - `editor.command` (empty: `$VISUAL`, then `$EDITOR`, then vi) is the editor for
-  `open_in_editor`, `zemi.ui.edit` and the composer draft (ctrl+g). It runs fullscreen
+  `zemi.ui.edit` and the composer draft (ctrl+g). It runs fullscreen
   over zemi and the TUI resumes when it exits; ctrl+c is the editor's to use.
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `models.small`)
@@ -136,7 +136,7 @@ guessing. Common keys:
 - `memory.autonomy` (`auto`): memories the model or the reflector propose
   store at once unless policy flags them (instruction-shaped text, retirements,
   replacements of the user's, an untrusted project, or a session that used `fetch`,
-  `web_search`, the `Lua` tool or a tool zemi does not ship (MCP, `zemi.tool`));
+  `web_search`, the `lua` tool or a tool zemi does not ship (MCP, `zemi.tool`));
   set `ask` to review every one in `/memory`
 - `permissions.mode` (`auto`, which an unknown value also reads as): `auto` (reads, edits
   inside the project and commands run on their own, the commands sandboxed; bulk deletes
@@ -168,10 +168,11 @@ guessing. Common keys:
   `/mode <name>`, `tab` (next), `shift+tab` (previous) or `ctrl+y` (yolo until the next
   press); for one run: `zemi --mode auto`. `/permissions` lists the mode and every rule in
   force; an "always" answer (the only rule made at runtime) has a Remove action there,
-  config rules do not. An "always" answer covers a command's two-word prefix, a file's
-  directory or a URL's host, and a file read is also offered its whole repository; a
-  command that runs whatever it is handed (a shell, an interpreter, sudo, xargs) is
-  offered no always answer at all. Widgets read it as `ctx.permission_mode` (and its behavior as
+  config rules do not. An "always" answer covers a command's program (with its subcommand
+  for git, go, cargo and the like), a file's directory or a URL's host, and a file read is
+  also offered its whole repository; a deleting program (rm, mv, find, tar, ...) is kept
+  exact, and a command that runs whatever it is handed (a shell, an interpreter, sudo,
+  xargs) is offered no always answer at all. Widgets read it as `ctx.permission_mode` (and its behavior as
   `ctx.permission_mode_base`). Suggest yolo only when the user asks for it.
 - `permissions.env_keep` (empty): comma-separated env var names a command, job or
   language server keeps although they look secret-shaped (`*KEY*`, `*TOKEN*`, `*SECRET*`,
@@ -298,9 +299,9 @@ as itself, not as a placeholder.
 ## Tools and permission rules
 
 Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
-`web_search`, `todos`, `question`, `plan`, `open_in_editor`, `job_start`, `job_read`, `job_list`, `job_kill`,
+`web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory_add`, `memory_search`, `memory_update`, `memory_forget`, `skill`, `diagnostics`, `lsp`,
-`agent`, `workflow`, `Lua` (runs Lua inside zemi as user origin; read-only calls run at
+`agent`, `workflow`, `lua` (runs Lua inside zemi as user origin; read-only calls run at
 once, a script that calls anything else asks the user once, and plan mode or an untrusted
 project asks for every script), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter and a profile's
@@ -316,9 +317,6 @@ ones included. `plan` opens a "Plan" popup with the full plan as scrollable
 markdown: enter approves, typing asks for changes (the agent revises and presents again), and
 esc dismisses. The mode to implement in is remembered when plan mode starts (never yolo), so
 approving leaves plan mode without a per-plan mode prompt.
-`open_in_editor` opens a file in the user's editor (`editor.command`) and waits
-until they close it; the result is a diff of what they changed. It is for changes only the user
-can make, or when they ask to edit something themselves; subagents never get it.
 Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.
 Subagents cannot ask.
 
@@ -371,8 +369,7 @@ cannot register providers, MCP or LSP servers, allow rules, permission modes,
 `tool.pre` rewrites, builtin tool names or `agent.assemble` sections, cannot set settings,
 call `zemi.agent.run`, `zemi.agent.send`, `zemi.agent.profile`, `zemi.workflow.run`,
 `zemi.model.set`, `zemi.config.reload`, `zemi.memory.add` or the `zemi.session` and
-`zemi.composer` mutators, run a Go command or a more trusted origin's command, touch windows
-it did not open, deny quitting, read secret-looking env vars, or override user registrations; put personal settings in `~/.config/zemi/init.lua` instead.
+`zemi.composer` mutators, run a Go command or a more trusted origin's command, deny quitting, read secret-looking env vars, or override user registrations; put personal settings in `~/.config/zemi/init.lua` instead.
 
 ## Plugins
 
@@ -382,7 +379,7 @@ A plugin is a directory `~/.local/share/zemi/site/pack/<any>/start/<name>/`: its
 widgets, overlays, panels, health rows, tools, completions, deny and ask rules, event
 handlers and `agent.assemble` sections, and read files in the project. It cannot, today:
 
-- start a job or a window, make an HTTP request, or write a file: each raises until the
+- start a job, make an HTTP request, or write a file: each raises until the
   user's init.lua has an allow rule for it (`lua.job.start`, `lua.http.<method>`,
   `lua.fs.write`), and a plugin cannot add allow rules. Print the rule in the plugin's
   README, or return the specs from a function the user loops over. No permission mode

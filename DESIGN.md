@@ -283,6 +283,7 @@ Directories (XDG):
 <project>/
   .zemi/init.lua          project-local config, loaded after user config
   .zemi/agents|commands|workflows/  the same shapes
+  .zemi/permissions       bash commands always allowed here (§6.1), read only when trusted
   ZEMI.md, AGENTS.md, CLAUDE.md   context files
 ```
 
@@ -510,7 +511,7 @@ pick would loosen its read-only plan silently, so a pick is settled to its last 
 A key whose `set` line was deleted returns to its default on that reload, unless a runtime pick moved it since.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project, plugin and learned code may not, and the
-model's `Lua` tool asks before any such call. Persistent config changes are edits to
+model's `lua` tool asks before any such call. Persistent config changes are edits to
 files in the config dir (the user's, or the agent's through the
 permission-gated file tools); zemi makes no commits.
 
@@ -613,7 +614,7 @@ Event catalogue (v1, each emitted on the interpreter thread):
   `composer.change`, `composer.submit` (vetoable)
 - learn: `memory.written`, `skill.learned`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
-- io: `job.exit`, `win.open`, `win.exit`, `win.close`, `lsp.request`
+- io: `job.exit`, `lsp.request`
 
 A handler vetoes by returning `{ decision = "deny", reason = "..." }`; `tool.pre`
 also takes `"halt"` and `"rewrite"` with `input`. Each payload is a `zemi.ev.*`
@@ -655,9 +656,11 @@ otherwise return a decision table:
   ride a pre-existing allow glob. An `always` answer (key `a`, §8)
   stores session-scope allow rules scoped to the `model` principal, and
   they are prefix globs, not exact values: for `tool.bash` one rule per
-  normalized segment, each the segment's two-word command prefix plus
-  that prefix with ` *` (a segment with no such prefix stores its exact
-  normalized string); for `fs.read` and `fs.write` the file's directory
+  normalized segment, each the segment's program (its program and
+  subcommand for `git`, `go`, `cargo` and the like) plus that prefix with
+  ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
+  segment §9 calls destructive stores its exact normalized string, since
+  the rule runs unconfined; for `fs.read` and `fs.write` the file's directory
   with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;
   for anything else the exact argument. A file read is also offered a
   wider choice covering its whole repository, since in a deep tree the
@@ -726,7 +729,7 @@ definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
 config home, zemi's own, and a trusted repo's `.zemi`, `.agents` and `.claude`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
-`question`, `plan`, `open_in_editor` or `Lua`, so nesting stops at depth 1, and `zemi.agent.run`
+`question`, `plan` or `lua`, so nesting stops at depth 1, and `zemi.agent.run`
 is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
 A running subagent takes messages like the main agent's steering queue
@@ -796,21 +799,20 @@ read-only agent the agent and mode active before it are remembered at its start,
 and approval returns to them - the turn ends there because the read-only
 pipeline cannot implement, and the ended turn starts a fresh send as the
 restored agent, so a read-only run that ends in plain text instead of the
-`plan` tool presents that text for approval the same way), `open_in_editor` (the user
-edits a file in their own editor; the result is the diff),
+`plan` tool presents that text for approval the same way),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory_add`/`memory_search`/`memory_update`/`memory_forget` (model
 memory edits re-run intake and ask, §10.4), `diagnostics` (language
 server errors for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
-four the host adds: `agent` (delegate to a subagent), `workflow` (write
-or run a workflow script), and `Lua` (run Lua inside zemi, main agent only, as user origin:
+three the host adds: `agent` (delegate to a subagent), `workflow` (write
+or run a workflow script), and `lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or read-only agent, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9).
-Subagents never get `agent`, `workflow`, `todos`, `question`, `plan`,
-`open_in_editor` or `Lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
+Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
+`lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
 
 ```
 model call -> schema validation
@@ -826,7 +828,7 @@ gate; it never skips them. On re-entry the `tool.pre` handlers run again
 in deny-only mode (deny decisions are re-checked against the rewritten
 input; rewrite and halt do not re-fire, §6.2), so a rewrite cannot
 silence another origin's deny hook and re-entry still terminates. Tools
-the host runs itself (`agent`, `workflow`, `Lua`, MCP and Lua
+the host runs itself (`agent`, `workflow`, `lua`, MCP and Lua
 tools) refuse a rewrite with an error result instead. `zemi.tool.override(name, { pre })` wraps a
 builtin: its `pre` is a scoped handler for that tool only, running right
 after the global `tool.pre` events under the same decision contract.
@@ -973,7 +975,10 @@ UI extensibility contract:
   `zemi.ui.title(text)` from user config replaces it until `title(nil)` or a
   reload that does not set it again. Go strips escapes from it, so it cannot
   smuggle a sequence into the terminal.
-- Themes: palettes map names to colors; `hl` groups reference palette
+- Themes: palettes map names to colors; the `Normal` group's `bg` is the
+  app's canvas, which every group without a fill of its own sits on and
+  which OSC 11 gives the terminal too (reset on every exit), so the host's
+  chrome and the terminal's own background are one; `hl` groups reference palette
   names or raw hex, or `link` to another group (neovim's `link`, followed
   8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
@@ -1796,8 +1801,8 @@ startup, since the session still has unseen messages.
 Autonomy is one knob that only user config sets:
 
 ```
-memory.autonomy = "auto"      -- reflects/model-proposed memories store at
-                              -- once when policy-clean; "ask" queues them
+memory.autonomy = "auto"      -- memories the model or the reflector propose
+                              -- store at once when policy-clean; "ask" queues them
                               -- for /memory review instead
 ```
 
@@ -1810,7 +1815,7 @@ heuristic exists for), which queues anyway, a replacement of a `user`
 memory or of one in the other scope (a user-scope memory superseded from
 a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
-outside the machine (`fetch`, `web_search`, the `Lua` tool, and any tool
+outside the machine (`fetch`, `web_search`, the `lua` tool, and any tool
 zemi does not ship: MCP and Lua-registered ones, read from the session's
 `tool_calls`), since injected memories come from there.
 The same conditions decide whether `memory_update` and `memory_forget`
@@ -2025,7 +2030,7 @@ provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
 and the LSP client are in; the plugin manager and embeddings-backed
 search are not. Shipped outside every milestone: permission modes (§9),
 workflows, rewind and checkpoints, per-session scratchpads, background
-agents with the `/agents` transcript view, the `Lua` tool, markdown
+agents with the `/agents` transcript view, the `lua` tool, markdown
 commands and `agents/*.md`, headless print mode (`-p`) and `--health`,
 and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
