@@ -9,7 +9,6 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -335,11 +334,9 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 		return resp, err
 	}
 	defer h.postNotify(mcpToolName(name, t.tool.Name), call.Input, &reply)
-	var args map[string]any
-	if strings.TrimSpace(call.Input) != "" {
-		if err := json.Unmarshal([]byte(call.Input), &args); err != nil {
-			return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
-		}
+	args, err := tools.ParseInput(t.Info(), call.Input)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	req := tools.Request{Tool: mcpToolName(name, t.tool.Name), Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
 	if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {

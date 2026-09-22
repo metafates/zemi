@@ -300,6 +300,12 @@ func TestSubagentReportTruncated(t *testing.T) {
 			return textParts(strings.Repeat("x", 40_000))
 		}}, nil
 	}
+	// the schema words a wrong type as the builtin tools do
+	for in, want := range map[string]string{`{"prompt":1}`: `field "prompt" must be string`, `[1]`: "input must be a JSON object"} {
+		if resp, _ := h.agentTool().Run(context.Background(), fantasy.ToolCall{ID: "c0", Name: "agent", Input: in}); !resp.IsError || resp.Content != want {
+			t.Fatalf("%s: %+v", in, resp)
+		}
+	}
 	resp, err := h.agentTool().Run(context.Background(), fantasy.ToolCall{
 		ID: "c1", Name: "agent", Input: `{"description":"d","prompt":"look","agent":"explore"}`,
 	})

@@ -671,8 +671,8 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		Model       string `json:"model"`
 		SendTo      string `json:"send_to"`
 	}
-	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
-		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if strings.TrimSpace(in.Prompt) == "" {
 		return fantasy.NewTextErrorResponse("prompt is required"), nil
@@ -742,6 +742,15 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 // preCheck runs the tool.pre events for a host-implemented tool: deny
 // becomes an error result, halt stops the turn. A rewrite is refused: these
 // tools run and gate their own input, so running the original would ignore it.
+// decodeInput validates a host tool's input against its schema, so a wrong
+// type is worded as it is for a builtin tool, then decodes it into in.
+func decodeInput(info fantasy.ToolInfo, input string, in any) error {
+	if _, err := tools.ParseInput(info, input); err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(input), in)
+}
+
 func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)

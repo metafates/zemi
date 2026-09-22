@@ -169,8 +169,8 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		Script      string `json:"script"`
 		Path        string `json:"path"`
 	}
-	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
-		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if resp, stop, err := h.preCheck("lua", call.Input); stop {
 		return resp, err

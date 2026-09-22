@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -449,11 +450,8 @@ func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-	var input map[string]any
-	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
-		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
-	}
-	if err := Validate(t.info, input); err != nil {
+	input, err := ParseInput(t.info, call.Input)
+	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	pipe := t.pipe
@@ -530,6 +528,23 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 	}
 	p.Post(t.info.Name, input, !res.IsError, res.Content, changed)
 	return res
+}
+
+// ParseInput decodes a call's input and runs Validate on it: the one place
+// every tool, builtin or host-implemented, gets its type errors worded.
+func ParseInput(info fantasy.ToolInfo, input string) (map[string]any, error) {
+	var m map[string]any
+	if strings.TrimSpace(input) == "" {
+		input = "{}"
+	}
+	var typeErr *json.UnmarshalTypeError
+	switch err := json.Unmarshal([]byte(input), &m); {
+	case errors.As(err, &typeErr):
+		return nil, errors.New("input must be a JSON object")
+	case err != nil:
+		return nil, fmt.Errorf("invalid tool input: %w", err)
+	}
+	return m, Validate(info, m)
 }
 
 // Validate is the schema check every tool call passes before its events and gate.

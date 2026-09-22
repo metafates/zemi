@@ -492,6 +492,9 @@ func TestValidationErrors(t *testing.T) {
 	if !resp.IsError || !strings.Contains(resp.Content, "invalid tool input") {
 		t.Fatalf("bad json: %+v", resp)
 	}
+	if resp = call(t, ag, `[1]`); !resp.IsError || resp.Content != "input must be a JSON object" {
+		t.Fatalf("non-object: %+v", resp)
+	}
 }
 
 func TestPostHookRuns(t *testing.T) {

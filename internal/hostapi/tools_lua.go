@@ -285,11 +285,8 @@ func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions   { return ni
 func (a *luaToolAdapter) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	var input map[string]any
-	if err := json.Unmarshal([]byte(call.Input), &input); err != nil {
-		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
-	}
-	if err := tools.Validate(a.Info(), input); err != nil {
+	input, err := tools.ParseInput(a.Info(), call.Input)
+	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {

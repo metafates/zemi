@@ -602,8 +602,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		Name        string `json:"name"`
 		Args        any    `json:"args"`
 	}
-	if err := json.Unmarshal([]byte(call.Input), &in); err != nil {
-		return fantasy.NewTextErrorResponse("invalid tool input: " + err.Error()), nil
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if resp, stop, err := h.preCheck("workflow", call.Input); stop {
 		return resp, err

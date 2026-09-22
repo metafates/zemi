@@ -52,7 +52,7 @@ func TestHostToolEvents(t *testing.T) {
 	end)`)
 	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Deny})
 	resp, err := h.workflowTool().Run(context.Background(),
-		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return 1"}`})
+		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
 		t.Fatalf("denied workflow = %+v, %v", resp, err)
 	}

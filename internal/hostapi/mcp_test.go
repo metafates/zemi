@@ -65,7 +65,7 @@ func TestMCPBridge(t *testing.T) {
 	if h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "echo"}) {
 		t.Error("an unannotated MCP tool settled locally")
 	}
-	resp := run(1, `{}`)
+	resp := run(1, `{"text":"x"}`)
 	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {
 		t.Fatalf("screenshot = %+v", resp)
 	}
