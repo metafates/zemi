@@ -110,7 +110,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case v.Approved && v.Profile != "":
 		// the read-only turn that proposed this ends here; the run's planFollowup
 		// starts implementation as the restored agent, so do not keep going
-		return stopTurn("The user approved the plan; you are back as the " + v.Profile + " agent. Implementation runs in the next turn."), nil
+		return endTurn("The user approved the plan; you are back as the " + v.Profile + " agent. Implementation runs in the next turn."), nil
 	case v.Approved && v.Mode != "":
 		return fantasy.NewTextResponse("The user approved the plan; the permission mode is now " + v.Mode + "." + implement), nil
 	case v.Approved:
@@ -123,6 +123,14 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // stopTurn is an error result that ends the turn: the user wants to speak next.
 func stopTurn(text string) fantasy.ToolResponse {
 	resp := fantasy.NewTextErrorResponse(text)
+	resp.StopTurn = true
+	return resp
+}
+
+// endTurn ends the turn on a success note: a plain reply with no error mark
+// (an approved plan is not a failure), still stopping the loop.
+func endTurn(text string) fantasy.ToolResponse {
+	resp := fantasy.NewTextResponse(text)
 	resp.StopTurn = true
 	return resp
 }

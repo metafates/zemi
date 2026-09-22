@@ -295,11 +295,11 @@ zemi.ui.widget.add({
           end
         end
       end
-      -- the result's last lines: always for a failure and for what the user
-      -- answered, for commands with ctrl+o
+      -- the result's last lines: always for a failure, for what the user
+      -- answered (question, plan), for commands with ctrl+o
       local output = t.output or ""
       if name == "question" then output = output:gsub("^The user answered:\n", "") end
-      if output ~= "" and (t.status == "err" or name == "question" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
+      if output ~= "" and (t.status == "err" or name == "question" or name == "plan" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
         for ol in (output .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "    ", copy = false }, { text = ol, hl = ohl } }
@@ -494,16 +494,14 @@ zemi.ui.widget.add({
       -- agent's rows above
       for _, q in ipairs(queued) do
         gap("queued")
-        local body, soft = wrap_words(q:gsub("%s+", " "), math.max(width - 10, 20))
-        for n, w in ipairs(body) do
-          local row = { { text = "  ", copy = false } }
-          if n == 1 then
-            row[1] = { text = "▌ ", hl = "UserMsg", copy = false }
-            row[2] = { text = " queued ", hl = "Queued", copy = false }
-            row[3] = { text = " " .. w, hl = "Normal", soft_wrap = soft[n] or nil }
-          else
-            row[2] = { text = w, hl = "Normal", soft_wrap = soft[n] or nil }
+        local first = true
+        for _, segs in ipairs(zemi.ui.markdown(q, width - 2)) do
+          local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
+          if first then
+            row[#row + 1] = { text = " queued ", hl = "Queued", copy = false }
+            first = false
           end
+          for _, sg in ipairs(segs) do row[#row + 1] = sg end
           lines[#lines + 1] = row
         end
       end
