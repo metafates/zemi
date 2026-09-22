@@ -76,7 +76,9 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 }
 
 // generate runs one tool-less, single-step call (summaries, titles, the
-// reflector) on the model the first set key names and bills it to sid.
+// reflector) on the model the first set key names and bills it to sid. The
+// spec's body fields ride it (a gateway's routing, service_tier), the
+// reasoning effort not: a short job on a small tier need not think.
 func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, keys ...string) (*fantasy.AgentResult, error) {
 	model, id, err := h.modelFor(keys...)
 	if err != nil {
@@ -86,6 +88,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
+		ProviderOptions: h.Providers.CallOptions(id, ""),
 	})
 	if err == nil {
 		h.bill(sid, id, res.TotalUsage)

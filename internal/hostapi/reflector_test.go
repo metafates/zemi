@@ -28,6 +28,7 @@ type reflectStubModel struct {
 	block      time.Duration
 	calls      atomic.Int32
 	lastPrompt atomic.Int32
+	lastOpts   atomic.Pointer[fantasy.ProviderOptions] // the last Generate call's provider options
 	streams    atomic.Int32
 	overflow   atomic.Int32                          // Stream calls left that fail as context too large
 	noImages   atomic.Int32                          // Stream calls left that fail as a 400 over image input
@@ -37,8 +38,9 @@ type reflectStubModel struct {
 	during     func()                                // runs inside Generate, while the model "thinks"
 }
 
-func (m *reflectStubModel) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
+func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
 	m.calls.Add(1)
+	m.lastOpts.Store(&call.ProviderOptions)
 	if m.during != nil {
 		m.during()
 	}
