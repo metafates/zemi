@@ -62,7 +62,7 @@ var luaReadOnly = map[string]bool{
 var luaReadMethods = map[string]bool{
 	"byte": true, "find": true, "format": true, "gmatch": true, "gsub": true, "len": true,
 	"lower": true, "match": true, "rep": true, "reverse": true, "sub": true, "upper": true,
-	"text": true, "wait_text": true, "info": true, "wait": true,
+	"wait": true,
 }
 
 // luaBuiltinRequire reports whether the require at i names a zemi.*
