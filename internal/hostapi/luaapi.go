@@ -178,7 +178,7 @@ const (
 
 // assembleSections runs the agent.assemble handlers while a system prompt is
 // built (DESIGN §6.3). A handler returns a string, or { title = , text = },
-// to add a section; nil adds nothing. Project and learned handlers are
+// to add a section; nil adds nothing. Project handlers are
 // skipped: they must not steer the prompt. Each handler gets the veto
 // deadline, sections are capped, and each is labeled with its origin.
 //

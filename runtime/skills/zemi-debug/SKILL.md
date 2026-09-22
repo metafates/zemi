@@ -93,7 +93,6 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | "connection refused" to a local server from a command auto mode ran, on Linux | `landlock + namespaces` gives the sandbox a localhost of its own, so servers already running on the machine are unreachable; retry with `network: true`, which shares zemi's own network |
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.zemi` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
-| learned skill not used | learned skills start disabled: `/skills`, space toggles |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
 | `zemi -p "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
 | one plugin fails at boot | the others still load; `/errors` has the message and the `/health` plugins row counts the failed files |

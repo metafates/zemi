@@ -73,7 +73,6 @@ func run(args []string) int {
 		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
 		{Prefix: dirs.PluginsDir(), Origin: lua.OriginPlugin},
 		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
-		{Prefix: dirs.DataHome + string(filepath.Separator) + "skills", Origin: lua.OriginLearned},
 	}
 	for _, dir := range dirs.UserTrees() {
 		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
@@ -124,7 +123,6 @@ func run(args []string) int {
 		soft(projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
 		readyStep(host, app != nil),
-		host.SkillsLearnedHooksStep(),
 	}
 
 	if opts.health {

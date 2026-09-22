@@ -111,12 +111,11 @@ func TestToolRegCollision(t *testing.T) {
 }
 
 // TestDeferredCallbackKeepsOrigin: a callback runs later under the origin
-// that handed it over, so learned code cannot launder a refused call
+// that handed it over, so project code cannot launder a refused call
 // through one (DESIGN §9).
 func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 	cases := map[string]string{
 		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("bash", { pre = function() end }) end)`,
-		"timer register":   `zemi.timer.after(0, function() zemi.tool.add({ name = "evil", description = "evil", execute = function() end }) end)`,
 		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("bash", { pre = function() end }) end)`,
 	}
 	for name, src := range cases {
@@ -125,21 +124,21 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.ExecuteChunk(context.Background(), src, "learned-chunk", lua.OriginLearned); err != nil {
+			if err := r.ExecuteChunk(context.Background(), src, "project-chunk", lua.OriginProject); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
 				h.errs.mu.Lock()
 				defer h.errs.mu.Unlock()
 				for _, e := range h.errs.entries {
-					if strings.Contains(e.msg, "learned origin may not register") {
+					if strings.Contains(e.msg, "project origin may not register") {
 						return nil
 					}
 				}
 				return fmt.Errorf("callback was not refused: %+v", h.errs.entries)
 			})
 			if len(h.luaTools.overridesFor("bash")) != 0 || len(h.luaTools.list()) != 0 {
-				t.Fatal("learned callback registered a tool or override")
+				t.Fatal("project callback registered a tool or override")
 			}
 		})
 	}

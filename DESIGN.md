@@ -183,8 +183,8 @@ Contracts that make this safe:
   overlay leg (fail-closed, §9),
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
   must not hold the user's quit or a typed message hostage; a plugin or
-  builtin `app.quit` denial is honored every time, and project and learned
-  handlers cannot deny it at all); the other
+  builtin `app.quit` denial is honored every time, and project handlers
+  cannot deny it at all); the other
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
@@ -270,7 +270,6 @@ Directories (XDG):
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
   site/pack/*/start/*/    plugins: plugin/*.lua loaded, lua/ require()-able
-  skills/<name>/SKILL.md  learned skills (start disabled)
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)
   plans/<session id>.md   plans approved from a read-only agent
@@ -335,9 +334,8 @@ server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
 `init.lua` -> authored skills' enable hooks -> a trusted project's
 `.zemi/init.lua` -> markdown commands (user, then a trusted repo's `.zemi`,
 `.agents` and `.claude`, the dirs other agents read) ->
-`app.ready` -> learned skill hooks, last and least trusted. Boot runs on
-its own goroutine, so it may block on the trust prompt without holding
-the UI. Project agents and workflows are read when used, under the
+`app.ready`. Boot runs on its own goroutine, so it may block on the
+trust prompt without holding the UI. Project agents and workflows are read when used, under the
 current decision. Project config loads late with
 flagged reduced trust: its registrations are tagged `origin = "project"`
 (shown in the UI and logs), its permission rules may only tighten (deny or
@@ -352,8 +350,7 @@ no `zemi.command.run` of a more trusted origin's command (its body runs
 under that origin), no keymap that is a prefix or an extension of a more trusted
 binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
 (builtin ids are reserved; last-writer-wins applies only within one
-origin; cross-origin profile id collisions are refused, §11). The same
-denylist binds learned-origin code (learned skill hooks, §10.5).
+origin; cross-origin profile id collisions are refused, §11).
 `load`/`loadstring` stay available to every origin: a chunk they build
 runs as the loading origin (its chunk name is re-tagged, so a forged name
 does not stick) under the same denylist.
@@ -426,8 +423,7 @@ Sandbox (what userland gets):
   `EvalSymlinks`-resolved path (a symlink is classified by what it
   resolves to, so an alias cannot borrow another class):
   `~/.config/zemi/**` is user, `~/.local/share/zemi/site/pack/**` is
-  plugin, `<project>/.zemi/**` is project,
-  `~/.local/share/zemi/skills/**` is learned, embedded `runtime/**` is
+  plugin, `<project>/.zemi/**` is project, embedded `runtime/**` is
   builtin. A resolved path in no class is refused at load. Origin never follows the requirer: a
   module under `site/pack/...` stays plugin origin and a project module
   stays project origin even when `init.lua` requires it, so untrusted
@@ -511,7 +507,7 @@ by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its default on that reload, unless a runtime pick moved it since.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
-config may raise it, project, plugin and learned code may not, and the
+config may raise it, project and plugin code may not, and the
 model's `lua` tool asks before any such call. Persistent config changes are edits to
 files in the config dir (the user's, or the agent's through the
 permission-gated file tools); zemi makes no commits.
@@ -533,11 +529,11 @@ file: an earlier `scope = "permanent"` dumped rules to a generated
 removed a dumped rule, so an allow rule deleted from `init.lua` stayed in
 force. That scope now raises with a pointer to `init.lua`, and a leftover
 `permissions.lua` is not read. Origins: user config may add any rule;
-plugin, project, and learned origins may add only deny/ask rules. Overlay `always` answers (§8) append session rules to
+plugin and project origins may add only deny/ask rules. Overlay `always` answers (§8) append session rules to
 the same store, so rules never live in `zemi.state` or the DB, and no
 Lua can forge one. Only the user's own config and `always` answers
-write allow rules (the widening direction; plugin, project, and learned
-rules are deny/ask only, so their globs can only tighten).
+write allow rules (the widening direction; plugin and project rules are
+deny/ask only, so their globs can only tighten).
 
 A project's `.zemi/permissions` file (§5) is a list of bash commands
 zemi always allows in that project, read as a boot step only when the
@@ -755,7 +751,7 @@ catalog order (anthropic, openai, gemini, ...): a user typed theirs,
 while a builtin's key may be exported for other tools.
 
 `zemi.provider.add` and `zemi.provider.del` require a user-owned registration origin: Lua
-from a plugin, a project, or a learned source cannot call them (the
+from a plugin or a project cannot call them (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
 gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
 variables for user and builtin origin only) and is never exposed back to Lua.
@@ -831,7 +827,7 @@ Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
 ```
 model call -> schema validation
            -> tool.pre events (Lua: deny | rewrite | halt)
-           -> permission gate (config rules + learned rules; ask = overlay)
+           -> permission gate (config rules + session rules; ask = overlay)
            -> execute (Go impl or Lua callback on interpreter thread)
            -> tool.post events
            -> result -> fantasy ToolResponse
@@ -1100,7 +1096,7 @@ memory(id, scope, text, quote, provenance_session_id,
 checkpoints(message_id, session_id, path, existed, content, created_at)
                                                                 -- pre-turn file content for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
-skills(name, path, source, enabled, created_at)                 -- source: authored|builtin|learned
+skills(name, path, source, enabled, created_at)                 -- source: authored|builtin
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
@@ -1181,7 +1177,7 @@ provenance string.
   `collapse` child while the mins do not fit. The solver is integer arithmetic and never
   fails. Floats place a region like a neovim float (relative node, anchor corner,
   row/col, size) in list order. The shipped `defaultui/layout.lua` sets the default;
-  user config may replace it, plugin, project and learned code may not (a layout can
+  user config may replace it, plugin and project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
@@ -1414,7 +1410,7 @@ provenance string.
   its own rule: a segment matching the pattern but also matching the
   rule's `not_match` value does not match that rule and evaluation
   falls through; every fall-through is logged with its decision.
-  Lua-authored and learned rules must carry `match` / `not_match`
+  Lua-authored rules must carry `match` / `not_match`
   example strings, validated at load (codex execpolicy style): the
   `match` example must match the pattern without being excluded by the
   guard, and the `not_match` example must be excluded by the guard;
@@ -1426,7 +1422,7 @@ provenance string.
   values use the same whole-string glob semantics as the pattern.
 - Principals: every operation carries the principal that originated it:
   `model` (every tool call, MCP tools included) or, for Lua, the running
-  origin: `user`, `builtin`, `plugin`, `project`, `learned` (§5).
+  origin: `user`, `builtin`, `plugin`, `project` (§5).
   Attribution follows the registration origin of
   the running handler, never the trigger: an operation inside a
   plugin-registered keymap acts as `plugin`, not `user`, no matter
@@ -1449,7 +1445,7 @@ provenance string.
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
   `lua.http.<method>`) is `ask`; `zemi.agent.send` and `zemi.model.set`
   are not gated but refused below builtin origin, and `zemi.memory.add` is
-  refused for project and learned code (§5); a Lua-originated call to one of these
+  refused for project code (§5); a Lua-originated call to one of these
   APIs checks the same capability under its `lua.` subject (`lua.fs.read`
   mirrors `fs.read`, subject namespace above), so these defaults cover
   both origins without extra rules. Registration and config APIs
@@ -1643,8 +1639,7 @@ provenance string.
   resolved address at connect, per hop, so DNS rebinding cannot slip past
   a hostname rule (a public IP literal is an ordinary host). An explicit
   user-origin allow rule for a named host overrides the resolved-address
-  deny (the localhost development opt-in); project and learned rules do
-  not. Userinfo in URLs is a hard
+  deny (the localhost development opt-in); project rules do not. Userinfo in URLs is a hard
   error; host rules match the final connected host.
 - Secrets: the env denylist is a case-insensitive substring match on the
   variable's name (`TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,
@@ -1669,21 +1664,19 @@ provenance string.
 ### 10.1 Taxonomy: three kinds of improvement
 
 1. **Facts (memory)**: what the agent knows about the user, project, and its
-   own behavior. Scoped, tagged, provenance-tracked. Cheap to write, cheap
+   own behavior. Scoped, provenance-tracked. Cheap to write, cheap
    to supersede.
 2. **Procedures (skills)**: reusable recipes. A SKILL.md plus optional
    `zemi-skill.lua` that registers tools/commands when enabled. Authored
    skills live in the config dir (`~/.config/zemi/skills/`) and start
-   enabled; learned skills go to `~/.local/share/zemi/skills/` with
-   `source = learned` and start disabled, tracked by their `skills` row
-   and file.
+   enabled, tracked by their `skills` row and file; nothing model-written
+   is a skill: a repository procedure is a recipe.
 3. **Structure (config)**: profiles, prompt sections, permission rules,
    keymaps, widgets. The learning loop proposes none of it: these are
    edits to files in the config dir, made by the user or by the agent
    through the permission-gated file tools (§6.1).
 
-Skills pass **capture -> distill -> propose -> review -> enable**. Memory
-enters through the intake policy below (its review queue is the verify
+Memory enters through the intake policy below (its review queue is the verify
 leg; supersede and delete via `/memory` are its rollback).
 
 ### 10.2 Capture
@@ -1822,9 +1815,6 @@ by the next startup sweep, since the session still has unseen messages.
   frontmatter name that is not the directory's, a taken name, a body
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
-- A learned skill's `zemi-skill.lua` runs as `learned` origin under the
-  §5 denylist, so it may not register tools or `tool.pre` rewrite
-  handlers.
 
 Autonomy is one knob that only user config sets:
 
@@ -1862,26 +1852,23 @@ skills/
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
-Discovery merges three sources, the higher-trust one winning a name
+Discovery merges two sources, the higher-trust one winning a name
 clash: authored (config dir) over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
-sync, enabled by default) over learned (data dir). The model sees name +
+sync). Both start enabled. The model sees name +
 description in context and the full body on demand through the `skill`
 tool; there is no `/skill` command, only `/skills` to browse, toggle and
 use them (a row's detail carries the whole body and opens it in the
-editor). Learned skills are quarantined
-mechanically: discovery lists only `enabled` skills to the model, enable
-goes through the host API (`zemi.skills.enable`, user or builtin origin),
-and a learned skill's `zemi-skill.lua` runs as `learned` origin, limited
-to commands and widgets per §10.4 (authored skills may also register
-tools). Skills installed from
+editor). Discovery lists only `enabled` skills to the model, and enable
+goes through the host API (`zemi.skills.enable`, user or builtin origin).
+Skills installed from
 outside the user's own hands (plugin manager, M5) land disabled until
 reviewed, like plugins; authored skills written by the user in their own
 config dir start enabled.
 
 A trusted project's skills (`.zemi/skills`, `.agents/skills` and
 `.claude/skills` at the repository root, the dirs other agents read) join
-the index after all three sources and lose every name clash. They are
+the index after both sources and lose every name clash. They are
 body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
 and kept out of the `skills` table, which is keyed by name across
 projects. They are scanned when the trust decision is set (boot, reload,
@@ -1889,7 +1876,7 @@ projects. They are scanned when the trust decision is set (boot, reload,
 rescan would change the prompt mid-session. An untrusted project adds
 none, like its instruction files (§5).
 
-Recipes are the fourth source: a trusted project's private skills under
+Recipes are the third source: a trusted project's private skills under
 `<state>/projects/<hash>/skills`, for exact procedures too long for a
 memory. They never enter the repository, no sandbox policy makes the dir
 writable, and they behave like project skills (body only, no toggle, no
@@ -1986,9 +1973,8 @@ index, or the untrusted-content framing.
   from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
-the host-only proposal channel (§10.3), skills quarantine (§10.5), the user-only config.set and allow rules
-(§6.1), and the reflector's tool-less
-model call (§10.3).
+the host-only proposal channel (§10.3), the user-only config.set and allow rules
+(§6.1), and the reflector's tool-less model call (§10.3).
 
 ## 11. Error handling and observability
 
@@ -2089,7 +2075,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   `/reflect`, session summaries; remaining built-in tools (`fetch`,
   `todos`, `question`, `web_search`, `job_*`, `skill`). Namespace:
   `zemi.memory`.
-- **M3, learn to act**: skills (authored + learned, quarantined), config
+- **M3, learn to act**: skills (authored), config
   revision pipeline with diff review + git, validation (smoke-load),
   autonomy knobs, permanent-scope rules + `permissions.lua` (session
   rules ship in M1). Namespaces: `zemi.skills`, `zemi.learn`.
@@ -2110,9 +2096,6 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 
 - Two projects side by side in one zemi: per-project Lua states?
   Defer, but keep session/store APIs project-scoped from day one.
-- When, if ever, learned skills may register `tool.pre` rewrite handlers
-  (v1 answer: never, §10.4); revisit with a linter pass for common
-  foot-guns.
 - Whether FTS5 ranking (bm25 weights, recency/hit blends) needs
   user-tunable knobs or stays internal.
 - Credential storage and auth flow (keys read with `zemi.env.get` today).

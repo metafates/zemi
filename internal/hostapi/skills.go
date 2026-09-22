@@ -1,9 +1,8 @@
 // skills.go is the skills host API (DESIGN §6.7, §10.5): discovery
 // synced against the skills table, the zemi.skills namespace, the enable
-// hooks (authored skills run in the boot window after user init; learned
-// skills run post-ready, only when enabled), and the /skills command.
-// Enable/disable require a user or builtin origin: the model may propose,
-// a plugin-registered keymap cannot flip the quarantine.
+// hooks (authored skills run in the boot window after user init), and the
+// /skills command. Enable/disable require a user or builtin origin: a
+// plugin-registered keymap cannot flip a skill.
 package hostapi
 
 import (
@@ -74,9 +73,8 @@ func (r *skillReg) setEnabledFlag(name string, enabled bool) {
 }
 
 // syncSkills re-discovers skills and reconciles the global-DB table
-// (DESIGN §10.5): authored skills default enabled, learned start
-// disabled; an existing row keeps its enabled choice. Invalid skill dirs
-// are logged and skipped, never fatal.
+// (DESIGN §10.5); an existing row keeps its enabled choice. Invalid skill
+// dirs are logged and skipped, never fatal.
 func (h *Host) syncSkills() {
 	if h.GlobalDB == nil {
 		return
@@ -86,19 +84,13 @@ func (h *Host) syncSkills() {
 	}
 	found, warns := skills.Discover(
 		skills.Dir{Path: h.authoredSkillsDir(), Source: skills.Authored},
-		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin},
-		skills.Dir{Path: h.learnedSkillsDir(), Source: skills.Learned})
+		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
 	for _, w := range warns {
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
 	rows := make([]*store.Skill, 0, len(found))
 	for _, s := range found {
-		rows = append(rows, &store.Skill{
-			Name:           s.Name,
-			Path:           s.Dir,
-			Source:         string(s.Source),
-			DefaultEnabled: s.Source != skills.Learned,
-		})
+		rows = append(rows, &store.Skill{Name: s.Name, Path: s.Dir, Source: string(s.Source)})
 	}
 	if err := h.GlobalDB.SyncSkills(rows); err != nil {
 		h.Log.Error("skills", "sync failed", map[string]any{"error": err.Error()})
@@ -152,8 +144,6 @@ func (h *Host) materializeBuiltinSkills() error {
 		return os.WriteFile(out, data, 0o644)
 	})
 }
-
-func (h *Host) learnedSkillsDir() string { return joinIf(h.Dirs.DataHome, "skills") }
 
 // skillIndex resolves enabled skills for the skill tool (DESIGN §10.5:
 // discovery lists only enabled skills to the model).
@@ -270,7 +260,7 @@ func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 }
 
 // projectOnlySkills is the project's skills and recipes whose names no
-// authored, builtin or learned skill takes, enabled or not. Recipes are read
+// authored or builtin skill takes, enabled or not. Recipes are read
 // live: only the prompt needs the pin.
 func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.discoverRecipes()) }
 
@@ -312,12 +302,11 @@ func (h *Host) skillsIndexPrompt() string {
 // index never clips.
 const skillIndexDescMax = skills.MaxDescriptionRunes
 
-// setSkillEnabled flips the stored enabled state and runs the enable
-// hook of a learned skill being enabled (post-ready loading, §10.5);
-// authored hooks already ran in the boot window, so they are not re-run
-// here. The origin gate lives in the Lua namespace: Go callers run off the
-// interpreter, where the frame origin is meaningless.
-func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error {
+// setSkillEnabled flips the stored enabled state; a hook already ran in
+// the boot window, so it is not re-run here. The origin gate lives in the
+// Lua namespace: Go callers run off the interpreter, where the frame origin
+// is meaningless.
+func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	if h.GlobalDB == nil {
 		return errors.New("skills store unavailable")
 	}
@@ -335,46 +324,16 @@ func (h *Host) setSkillEnabled(L *glua.LState, name string, enabled bool) error 
 		return err
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
-	if enabled {
-		if s, ok := h.skillsReg.get(name); ok && s.Source == skills.Learned {
-			return h.enableHook(L, s)
-		}
-	}
-	return nil
-}
-
-// enableHook runs a learned skill's enable hook. L non-nil means we are
-// on the interpreter goroutine (zemi.skills.enable) and the hook runs
-// inline; L nil means a Go-side caller (/skills enable) and the hook must
-// be enqueued through Do: the single-writer invariant forbids touching
-// the LState from here.
-func (h *Host) enableHook(L *glua.LState, s skills.Skill) error {
-	var err error
-	if L != nil {
-		err = h.runSkillHook(L, s)
-	} else {
-		_, err = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			return nil, h.runSkillHook(L, s)
-		})
-	}
-	if err != nil {
-		return fmt.Errorf("enable hook failed: %w", err)
-	}
 	return nil
 }
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
-// interpreter goroutine); the origin comes from the path classification,
-// so learned hooks run under the learned denylist (no tool registration).
+// interpreter goroutine) as user origin: only authored skills carry one.
 func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 	if s.Hook == "" {
 		return nil
 	}
-	origin := lua.OriginUser
-	if s.Source == skills.Learned {
-		origin = lua.OriginLearned
-	}
-	if err := h.RT.EvalFileInline(L, s.Hook, origin); err != nil {
+	if err := h.RT.EvalFileInline(L, s.Hook, lua.OriginUser); err != nil {
 		// /errors and /health, like a dropped skill file: a dead hook is
 		// silent otherwise, and the skill looks enabled
 		h.RecordErrorOnce("skills", s.Name+": enable hook failed: "+err.Error())
@@ -385,26 +344,15 @@ func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 }
 
 // SkillsAuthoredHooksStep runs the hooks of enabled authored skills, after
-// user init.lua and before the project config (DESIGN §5 load order).
+// user init.lua and before the project config (DESIGN §5 load order); a
+// failing hook is logged, never fatal.
 func (h *Host) SkillsAuthoredHooksStep() lua.BootStep {
-	return h.skillHooksStep("authored skill hooks", skills.Authored)
-}
-
-// SkillsLearnedHooksStep runs the hooks of enabled learned skills post-ready
-// (§5).
-func (h *Host) SkillsLearnedHooksStep() lua.BootStep {
-	return h.skillHooksStep("learned skill hooks", skills.Learned)
-}
-
-// skillHooksStep runs the enable hooks of enabled skills from src; a failing
-// hook is logged, never fatal.
-func (h *Host) skillHooksStep(name string, src skills.Source) lua.BootStep {
 	return lua.BootStep{
-		Name: name,
+		Name: "authored skill hooks",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			h.syncSkills()
 			for _, s := range h.enabledSkills() {
-				if s.Source == src {
+				if s.Source == skills.Authored {
 					_ = h.runSkillHook(g.L, s)
 				}
 			}
@@ -423,13 +371,13 @@ func (h *Host) skillsCommand(args string) error {
 	case len(fields) >= 2 && fields[0] == "use":
 		return h.useSkill(fields[1], strings.Join(fields[2:], " "))
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
-		if err := h.setSkillEnabled(nil, fields[1], fields[0] == "enable"); err != nil {
+		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
 		h.Notify("info", "Skills", fields[0]+"d "+fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
-		return h.setSkillEnabled(nil, fields[1], !h.skillsReg.isEnabled(fields[1]))
+		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
 	case len(fields) == 2 && fields[0] == "open":
 		return h.openSkillFile(fields[1])
 	case len(fields) == 2 && fields[0] == "delete":
@@ -483,15 +431,11 @@ func (h *Host) openSkillFile(name string) error {
 // useSkill sends a skill's body as the next user message, the
 // deterministic path when the model did not load it on its own; request
 // is the task that follows it. A disabled skill is reachable here: naming
-// it is the request, so its description need not ride every prompt. Only
-// a learned draft keeps its quarantine (DESIGN §10.5).
+// it is the request, so its description need not ride every prompt.
 func (h *Host) useSkill(name, request string) error {
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		if s.Name != name {
 			continue
-		}
-		if s.Source == skills.Learned && !h.skillsReg.isEnabled(name) {
-			return fmt.Errorf("skill %q is an unreviewed draft: /skills open %s, then enable it", name, name)
 		}
 		msg, err := skillMessage(s, request)
 		if err != nil {
@@ -554,8 +498,6 @@ func (h *Host) skillItems() []any {
 			item["key"], item["run"] = "off", toggle
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
-		// enabling a learned skill is the only review it gets (DESIGN §10.5),
-		// so its instructions are one key away, not just a path
 		body, err := skills.Body(s.Dir)
 		if err != nil {
 			body = "could not read it: " + err.Error()
@@ -617,7 +559,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 			verb = "disable"
 		}
 		h.refuseBelowUser(L, "skills."+verb)
-		return luaResult(L, h.setSkillEnabled(L, name, on))
+		return luaResult(L, h.setSkillEnabled(name, on))
 	}
 	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int { return enable(L, true) }))
 	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int { return enable(L, false) }))

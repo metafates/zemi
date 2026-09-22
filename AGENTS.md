@@ -128,9 +128,8 @@ and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.defaultui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua` -> markdown commands
-(`commands/*.md`: user, then a trusted repo's `.zemi`, `.agents`, `.claude`) -> `app.ready` ->
-learned skill hooks (skills load last, lowest trust). Boot runs on its own goroutine and may
-block on the trust prompt.
+(`commands/*.md`: user, then a trusted repo's `.zemi`, `.agents`, `.claude`) -> `app.ready`.
+Boot runs on its own goroutine and may block on the trust prompt.
 
 **Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
 `Dirs.TrustRoot()` (the symlink-resolved repo root, searched no higher than below `$HOME` so a
@@ -328,7 +327,7 @@ and shows read-only in `/permissions`, while a `model` rule gets a Remove action
 
 Modules are cached per generation by resolved file and trust class: a requirer below the file's
 origin gets its own instance run under its own origin (builtin modules are shared instead,
-through a deep read-only view), so project, plugin or learned code cannot plant functions into
+through a deep read-only view), so project or plugin code cannot plant functions into
 a table that higher-origin callbacks call. Dotted names search `<root>/lua` over the
 runtimepath: user, each plugin (`site/pack/*/start/*`, globbed once per generation), and the
 project's `.zemi` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
@@ -339,22 +338,21 @@ so neither can be forged.
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus each
 subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a symlinked
 `skills` or `lua` still resolves inside) > `builtin` (embedded runtime/) > `plugin` (site/pack)
-> `project` (<project>/.zemi); `learned` code is denylisted from dangerous APIs. Registries
+> `project` (<project>/.zemi). Registries
 enforce: cross-origin collision is **refused** with the higher-trust origin winning; within one
 origin it is last-writer-wins. Project origin additionally cannot register providers or builtin
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
 events. A keymap that is a prefix or an extension of a more trusted key is refused,
 `zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that
 origin), overlays can be closed only by user, builtin or the origin that opened
-them, and `app.quit` denials from project or learned handlers are ignored. When adding a
+them, and `app.quit` denials from project handlers are ignored. When adding a
 registry, follow `internal/hostapi/registry.go`.
 
 ### Skills (internal/skills, internal/hostapi/skills.go)
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: authored under
 `<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
-rewritten to `<data>/builtin-skills/` on every sync, enabled by default), learned (body only,
-no Lua hook, start disabled; nothing writes them any more) under `<data>/skills/`. A trusted
+rewritten to `<data>/builtin-skills/` on every sync), both enabled by default. A trusted
 project adds its own (`.zemi/skills`, `.agents/skills`, `.claude/skills`): body only, enabled,
 never in the table or `skillsReg`, scanned by `SetProjectTrusted`, so a skill a command writes
 mid-session waits for the next boot or `/trust`. Recipes (`skills.Recipe`) are the project's
@@ -373,16 +371,14 @@ lines and tells the model what will not load. `/skills` and its commands read th
 `/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one
 and pins the list again. Invariants:
 
-- **Quarantine until enabled.** A skill is inert until `zemi.skills.enable` runs, and only user
-  or builtin origin may enable/disable (`refuseBelowUser` gate at the Lua namespace boundary -
-  NOT inside the Go helper; off-interpreter goroutines read `OriginHost`, which would defeat a
-  Go-side gate). Enabling a learned skill runs its `zemi-skill.lua`: inline when
-  `zemi.skills.enable` calls it (already on the interpreter goroutine), otherwise enqueued via
-  `h.RT.Do` - the inline-vs-Do split in `enableHook` is load-bearing.
+- **Only user or builtin origin may enable/disable** (`refuseBelowUser` gate at the Lua
+  namespace boundary - NOT inside the Go helper; off-interpreter goroutines read `OriginHost`,
+  which would defeat a Go-side gate). A disabled skill leaves the index but `/skills use` still
+  sends it.
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning); bodies load on demand via the `skill` tool, after a permission check.
-- **Hook placement**: authored hooks register after user init.lua, learned ones after
-  `app.ready` - the learned step must not re-run on replay without its `Gen` tag.
+- **Hook placement**: an authored skill's `zemi-skill.lua` runs once, in the boot step after
+  user init.lua, as user origin; enabling later does not run it.
 
 ### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 

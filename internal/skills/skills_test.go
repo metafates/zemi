@@ -111,15 +111,15 @@ func TestParseSymlinkedSkillFile(t *testing.T) {
 	}
 }
 
-func TestDiscoverMergesAuthoredOverLearned(t *testing.T) {
+func TestDiscoverMergesAuthoredOverBuiltin(t *testing.T) {
 	root := t.TempDir()
-	authored, learned := filepath.Join(root, "authored"), filepath.Join(root, "learned")
+	authored, builtin := filepath.Join(root, "authored"), filepath.Join(root, "builtin")
 	writeFile(t, filepath.Join(authored, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: authored alpha\n---\n")
 	writeFile(t, filepath.Join(authored, "broken", "SKILL.md"), "not frontmatter")
-	writeFile(t, filepath.Join(learned, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: learned alpha\n---\n")
-	writeFile(t, filepath.Join(learned, "beta", "SKILL.md"), "---\nname: beta\ndescription: learned beta\n---\n")
+	writeFile(t, filepath.Join(builtin, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: builtin alpha\n---\n")
+	writeFile(t, filepath.Join(builtin, "beta", "SKILL.md"), "---\nname: beta\ndescription: builtin beta\n---\n")
 
-	got, warns := Discover(Dir{authored, Authored}, Dir{learned, Learned})
+	got, warns := Discover(Dir{authored, Authored}, Dir{builtin, Builtin})
 	if len(warns) != 1 || !strings.Contains(warns[0], "broken") {
 		t.Fatalf("warnings=%v", warns)
 	}
@@ -133,7 +133,7 @@ func TestDiscoverMergesAuthoredOverLearned(t *testing.T) {
 	if byName["alpha"].Source != Authored || byName["alpha"].Description != "authored alpha" {
 		t.Fatalf("alpha: %+v", byName["alpha"])
 	}
-	if byName["beta"].Source != Learned {
+	if byName["beta"].Source != Builtin {
 		t.Fatalf("beta: %+v", byName["beta"])
 	}
 }

@@ -76,7 +76,7 @@ func (r *toolReg) list() []*luaTool {
 
 // toolSections renders the prompt of each Lua tool in toolset, so a profile
 // that drops the tool drops its section. Name order and fixed text keep the
-// provider's prompt cache; project and learned prompts stay out, like their
+// provider's prompt cache; project prompts stay out, like their
 // agent.assemble sections.
 func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 	var out string
@@ -139,9 +139,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.tool.add")
-		if o := h.RT.CurrentOrigin(L); o.Rank() < lua.OriginProject.Rank() {
-			L.RaiseError("zemi.tool.add: %s origin may not register tools (DESIGN §10.4, §10.5)", o)
-		}
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.add: spec must be a table")

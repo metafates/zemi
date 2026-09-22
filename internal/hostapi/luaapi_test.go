@@ -84,8 +84,8 @@ func TestAgentAssemble(t *testing.T) {
 
 // TestLuaHTTPNetworkRules pins the §9 network rules on zemi.http: scheme
 // and userinfo are refused outright, an explicit user allow rule is the
-// localhost development opt-in, and a learned-origin caller (the model's
-// lua tool) never earns that opt-in even under the same rule.
+// localhost development opt-in, and a project-origin caller never earns that
+// opt-in even under the same rule.
 func TestLuaHTTPNetworkRules(t *testing.T) {
 	_, r := newTestHostDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -102,12 +102,12 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 		assert(ok ~= nil and ok.status == 200, "a user allow rule is the localhost opt-in")
 	`, srv.URL))
 
-	// The same rule must not carry a learned-origin caller to loopback or
+	// The same rule must not carry a project-origin caller to loopback or
 	// to the cloud metadata address.
 	for _, raw := range []string{srv.URL + "/x", "http://169.254.169.254/latest/meta-data"} {
 		src := fmt.Sprintf(`assert(zemi.http.get(%q):wait() == nil, "reached %s")`, raw, raw)
-		if err := r.ExecuteChunk(context.Background(), src, "learned-chunk", lua.OriginLearned); err != nil {
-			t.Fatalf("learned origin reached %s: %v", raw, err)
+		if err := r.ExecuteChunk(context.Background(), src, "project-chunk", lua.OriginProject); err != nil {
+			t.Fatalf("project origin reached %s: %v", raw, err)
 		}
 	}
 }

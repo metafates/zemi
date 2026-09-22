@@ -67,15 +67,14 @@ func (h *Host) inJail(path string, roots ...string) bool {
 }
 
 func (h *Host) readJails() []string {
-	// Skill bodies (builtin and learned) live under the data dir; reading
-	// them must not ask.
+	// Builtin skill bodies live under the data dir; reading them must not ask.
 	// The log dir is not: MCP and LSP server stderr is logged as written and
 	// may carry tokens. The types dir holds the API annotations and the
 	// shipped Lua UI, which the agent reads before restyling or extending it.
 	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
 	// outside the config home, so it needs its own root.
 	roots := append([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.learnedSkillsDir(), h.ScratchDir(), h.TypesDir()},
+		h.builtinSkillsDir(), h.ScratchDir(), h.TypesDir()},
 		h.Dirs.UserTrees()...)
 	if h.ProjectTrusted() {
 		// the decision covers the repository, so starting in a subdirectory
@@ -187,7 +186,7 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		// user config reads its own keys (api_key = zemi.env.get(...));
-		// plugins, projects and learned code never see secret-shaped names
+		// plugins and projects never see secret-shaped names
 		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
@@ -696,8 +695,8 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	v := h.luaGate(L, subject, req.url)
 	// §9 localhost development opt-in: an explicit user allow rule for the
 	// host overrides the resolved-address deny. Allow rules are user-only
-	// (zemi.permission.rule refuses them elsewhere), and project and
-	// learned callers never get the override.
+	// (zemi.permission.rule refuses them elsewhere), and project callers
+	// never get the override.
 	allowPrivate := v.DecidedBy == "rule" && origin.Rank() > lua.OriginProject.Rank()
 	hnd := &httpHandle{done: make(chan struct{})}
 	at := h.callerOf(L)

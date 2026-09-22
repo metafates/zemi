@@ -10,16 +10,13 @@ import (
 	"fmt"
 )
 
-// Skill is one discovered skill's row. DefaultEnabled is the enabled
-// value used when the row is first inserted (authored skills start
-// enabled, learned ones start disabled); it is not stored.
+// Skill is one discovered skill's row; a new row starts enabled.
 type Skill struct {
-	Name           string
-	Path           string
-	Source         string // authored | builtin | learned
-	Enabled        bool
-	DefaultEnabled bool
-	CreatedAt      int64
+	Name      string
+	Path      string
+	Source    string // authored | builtin
+	Enabled   bool
+	CreatedAt int64
 }
 
 func scanSkill(row scanner) (*Skill, error) {
@@ -54,10 +51,9 @@ func (s *DB) SetSkillEnabled(name string, enabled bool) error {
 }
 
 // SyncSkills reconciles the skills table with filesystem discovery:
-// discovered skills are inserted (with their default enabled state) or
-// have their path/source refreshed, keeping the stored enabled choice unless
-// the source changed (a learned draft must not inherit an enabled row);
-// rows for skills no longer on disk are deleted.
+// discovered skills are inserted enabled or have their path and source
+// refreshed, keeping the stored enabled choice; rows for skills no longer
+// on disk are deleted.
 func (s *DB) SyncSkills(discovered []*Skill) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -68,10 +64,9 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 	for i, sk := range discovered {
 		names[i] = sk.Name
 		if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source,
-				enabled = CASE WHEN skills.source = excluded.source THEN skills.enabled ELSE excluded.enabled END`,
-			sk.Name, sk.Path, sk.Source, sk.DefaultEnabled, now()); err != nil {
+			VALUES (?, ?, ?, 1, ?)
+			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
+			sk.Name, sk.Path, sk.Source, now()); err != nil {
 			return fmt.Errorf("store: sync skills: %w", err)
 		}
 	}

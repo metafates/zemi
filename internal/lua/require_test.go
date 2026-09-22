@@ -190,14 +190,14 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 	if err := os.Symlink(root, filepath.Join(root, "link")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	pc := PathClasses{{Prefix: filepath.Join(root, "link", "skills"), Origin: OriginLearned}}
+	pc := PathClasses{{Prefix: filepath.Join(root, "link", "skills"), Origin: OriginProject}}
 	file := filepath.Join(root, "skills", "a.lua")
 	if got := pc.Classify(file); got != "" {
 		t.Fatalf("before mkdir: %q", got)
 	}
 	writeFile(t, file, "")
-	if got := pc.Classify(file); got != OriginLearned {
-		t.Fatalf("after mkdir: %q, want %q", got, OriginLearned)
+	if got := pc.Classify(file); got != OriginProject {
+		t.Fatalf("after mkdir: %q, want %q", got, OriginProject)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestRequireOriginFollowsFile(t *testing.T) {
 func TestRequireInstancePerOrigin(t *testing.T) {
 	dirs := map[Origin]string{}
 	var pc PathClasses
-	for _, o := range []Origin{OriginUser, OriginPlugin, OriginProject, OriginLearned} {
+	for _, o := range []Origin{OriginUser, OriginPlugin, OriginProject} {
 		d, err := filepath.EvalSymlinks(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
@@ -272,7 +272,7 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 		}
 	}
 	run(`require("myutil")`, OriginUser)
-	for _, o := range []Origin{OriginPlugin, OriginProject, OriginLearned} {
+	for _, o := range []Origin{OriginPlugin, OriginProject} {
 		run(`
 			local planted = function() print("planted") end
 			local u = require("myutil")

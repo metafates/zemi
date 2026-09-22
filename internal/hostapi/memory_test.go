@@ -391,7 +391,7 @@ func TestMemoryForgetOriginGate(t *testing.T) {
 	if err := h.DB.AddMemory(m); err != nil {
 		t.Fatal(err)
 	}
-	err := r.ExecuteChunk(context.Background(), `zemi.memory.forget("`+m.ID+`")`, "model.lua", lua.OriginLearned)
+	err := r.ExecuteChunk(context.Background(), `zemi.memory.forget("`+m.ID+`")`, "model.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("model origin allowed: %v", err)
 	}

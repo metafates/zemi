@@ -183,7 +183,6 @@ function debug.traceback(msg) end
 ---| "builtin"  # shipped with zemi
 ---| "plugin"   # site/pack
 ---| "project"  # <project>/.zemi
----| "learned"  # model-written, lowest trust
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
 ---@alias zemi.HealthLevel "ok"|"warn"|"error"
@@ -524,7 +523,7 @@ zemi.event = {}
 --- `app.quit`, `composer.submit`, `tool.pre`) give the handler 50 ms and
 --- then take their logged default; return `{ decision = "deny", reason = "..." }`
 --- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride).
---- `app.quit` vetoes from project or learned code are ignored.
+--- `app.quit` vetoes from project code are ignored.
 ---@param name zemi.EventName|string A catalogued name or `user.*`; anything else raises.
 ---@param fn fun(ev: zemi.Event): any
 ---@param opts? zemi.EventOpts
@@ -906,8 +905,8 @@ function zemi.ui.widget.list() end
 zemi.ui.layout = {}
 
 --- Replace the screen layout (DESIGN §8). The shipped UI sets the default
---- (defaultui/layout.lua) and user config may replace it; plugin, project
---- and learned code are refused. Raises on a malformed layout: an unknown
+--- (defaultui/layout.lua) and user config may replace it; plugin and
+--- project code are refused. Raises on a malformed layout: an unknown
 --- kind or field, no composer or two, a region drawn twice, a duplicate id,
 --- a bad size, min over max, more than 64 nodes or 8 levels. `/reload`
 --- keeps the old layout until the replay sets one; a replay that sets none
@@ -1520,7 +1519,7 @@ function zemi.permission.mode.list() end
 ---@field description string What the model reads to decide when to call it. Required.
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
 ---@field required? string[] Which of `input`'s parameters the model must send.
----@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project and learned code.
+---@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project code.
 ---@field execute fun(args: table, tool: { name: string, origin: zemi.Origin }): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It holds the interpreter while it runs.
 ---@field timeout_ms? integer 30000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.
@@ -1533,14 +1532,14 @@ function zemi.permission.mode.list() end
 
 --- What a `tool.pre` handler returns: "deny" refuses the call, "halt" also
 --- ends the turn, "rewrite" merges `input` into the call's input (ignored
---- for project and learned code). nil lets the call through.
+--- for project code). nil lets the call through.
 ---@class zemi.ToolVeto
 ---@field decision "deny"|"halt"|"rewrite"
 ---@field reason? string
 ---@field input? table
 
 ---@class zemi.ToolOverride
----@field pre fun(ev: zemi.ToolPreEvent): zemi.ToolVeto? Not available to project or learned code.
+---@field pre fun(ev: zemi.ToolPreEvent): zemi.ToolVeto? Not available to project code.
 
 ---@class zemi.ToolInfo
 ---@field name string
@@ -1841,7 +1840,7 @@ zemi.memory = {}
 --- the autonomy gate, so it is stored or queued for review, never written
 --- blindly. User config writes its own memory (origin user) and works
 --- before the first message; the model's Lua tool writes a learned one.
---- Raises for project and learned code.
+--- Raises for project code.
 ---@param text string
 ---@param opts? zemi.MemoryOpts
 ---@return zemi.MemoryAddResult|nil res
@@ -1885,7 +1884,7 @@ function zemi.learn.decide(id, action) end
 ---@class zemi.Skill
 ---@field name string
 ---@field description string
----@field source "authored"|"builtin"|"learned"|"project"|"recipe" A project skill or recipe is always enabled and cannot be toggled.
+---@field source "authored"|"builtin"|"project"|"recipe" A project skill or recipe is always enabled and cannot be toggled.
 ---@field enabled boolean
 ---@field path string
 

@@ -15,13 +15,12 @@ const (
 	OriginUser    Origin = "user"
 	OriginPlugin  Origin = "plugin"
 	OriginProject Origin = "project"
-	OriginLearned Origin = "learned"
 	OriginBuiltin Origin = "builtin"
 	OriginHost    Origin = "host"
 )
 
 // Rank orders origins by trust. Higher wins collisions and replaces lower
-// (DESIGN §6.2, §11): user > builtin > plugin > project > learned.
+// (DESIGN §6.2, §11): user > builtin > plugin > project.
 func (o Origin) Rank() int {
 	switch o {
 	case OriginUser:
@@ -32,8 +31,6 @@ func (o Origin) Rank() int {
 		return 20
 	case OriginProject:
 		return 10
-	case OriginLearned:
-		return 5
 	}
 	return 0
 }

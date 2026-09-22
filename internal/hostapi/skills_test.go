@@ -22,8 +22,7 @@ import (
 )
 
 // newTestHostSkills boots a host with stores plus skill directories and
-// the path classes real boot installs (authored skills are user origin,
-// learned skills learned origin).
+// the path class real boot installs (authored skills are user origin).
 func newTestHostSkills(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	h, r := newTestHostSkillsNoBoot(t)
@@ -40,11 +39,7 @@ func newTestHostSkillsNoBoot(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	log := logging.New(t.TempDir())
 	cfg, data, state, proj := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	classes := lua.PathClasses{
-		{Prefix: cfg, Origin: lua.OriginUser},
-		{Prefix: filepath.Join(data, "skills"), Origin: lua.OriginLearned},
-	}
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{
 		ConfigHome: cfg,
 		DataHome:   data,
@@ -73,14 +68,16 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 	}
 }
 
-// TestSkillsQuarantineDefaults covers §10.5: authored skills start
-// enabled, learned skills start disabled, and the skill index the model
-// sees lists enabled skills only.
-func TestSkillsQuarantineDefaults(t *testing.T) {
+// TestSkillsEnabledDefaults covers §10.5: a skill starts enabled and the
+// skill index the model sees lists enabled skills only.
+func TestSkillsEnabledDefaults(t *testing.T) {
 	h, r := newTestHostSkills(t)
 	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
-	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
+	writeSkill(t, h.authoredSkillsDir(), "rare", "used once a year", "")
 	h.syncSkills()
+	if err := h.setSkillEnabled("rare", false); err != nil {
+		t.Fatal(err)
+	}
 
 	runUser(t, r, `
 		local byName, n = {}, 0
@@ -92,55 +89,54 @@ func TestSkillsQuarantineDefaults(t *testing.T) {
 		assert(n == 2, "skills=" .. n)
 		assert(byName["local-run"].enabled == true, "authored must be enabled")
 		assert(byName["local-run"].source == "authored", "source=" .. tostring(byName["local-run"].source))
-		assert(byName["auto-learned"].enabled == false, "learned must start disabled")
-		assert(byName["auto-learned"].source == "learned", "source=" .. tostring(byName["auto-learned"].source))
+		assert(byName["rare"].enabled == false, "disable did not stick")
 	`)
 	indexed := map[string]bool{}
 	for _, s := range h.skillIndex() {
 		indexed[s.Name] = true
 	}
-	if !indexed["local-run"] || indexed["auto-learned"] {
+	if !indexed["local-run"] || indexed["rare"] {
 		t.Fatalf("skillIndex must list enabled skills only: %v", indexed)
 	}
 }
 
-// TestSkillItemsShowTheBody: enabling a learned draft is the only review
-// it gets, so /skills offers the instructions and the file itself.
+// TestSkillItemsShowTheBody: /skills offers the instructions and the file
+// itself.
 func TestSkillItemsShowTheBody(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
+	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 	for _, it := range h.skillItems() {
 		m := it.(map[string]any)
-		if m["text"] != "auto-learned" {
+		if m["text"] != "local-run" {
 			continue
 		}
 		actions := fmt.Sprint(m["actions"])
-		if !strings.Contains(actions, "Body.") || !strings.Contains(actions, "skills open auto-learned") {
+		if !strings.Contains(actions, "Body.") || !strings.Contains(actions, "skills open local-run") {
 			t.Fatalf("no read or open action: %v", m["actions"])
 		}
 		return
 	}
-	t.Fatal("the learned skill is not listed")
+	t.Fatal("the skill is not listed")
 }
 
 // TestSkillsEnableGate covers the origin gate: user origin flips the
 // state, a project-origin chunk is refused, unknown names are refused.
 func TestSkillsEnableGate(t *testing.T) {
 	h, r := newTestHostSkills(t)
-	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned", "")
+	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 
-	runUser(t, r, `zemi.skills.enable("auto-learned")`)
+	runUser(t, r, `zemi.skills.disable("local-run")`)
 	runUser(t, r, `
 		for _, s in ipairs(zemi.skills.list()) do
-			if s.name == "auto-learned" then
-				assert(s.enabled == true, "enable did not stick")
+			if s.name == "local-run" then
+				assert(s.enabled == false, "disable did not stick")
 			end
 		end
 	`)
 
-	err := r.ExecuteChunk(context.Background(), `zemi.skills.enable("auto-learned")`, "project.lua", lua.OriginProject)
+	err := r.ExecuteChunk(context.Background(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project-origin enable: %v", err)
 	}
@@ -148,36 +144,6 @@ func TestSkillsEnableGate(t *testing.T) {
 		local ok, err = zemi.skills.disable("missing-skill")
 		assert(ok == nil and err:find("no such skill"), tostring(err))
 	`)
-}
-
-// TestSkillsLearnedHookOnEnable covers the learned enable hook: it runs
-// under the learned origin on enable (commands and widgets allowed), and
-// a tool registration inside it is refused.
-func TestSkillsLearnedHookOnEnable(t *testing.T) {
-	h, r := newTestHostSkills(t)
-	writeSkill(t, h.learnedSkillsDir(), "hooked", "learned with a hook", `
-		zemi.command.add("hooked-cmd", function() end, { desc = "from skill hook" })
-		local ok = pcall(zemi.tool.add, {
-			name = "hooked-tool", description = "nope",
-			execute = function() end })
-		assert(not ok, "learned origin registered a tool")
-	`)
-	h.syncSkills()
-	runUser(t, r, `zemi.skills.enable("hooked")`)
-	if h.Commands.Lookup("hooked-cmd") == nil {
-		t.Fatal("learned skill hook did not register its command")
-	}
-
-	writeSkill(t, h.learnedSkillsDir(), "hooked2", "go-side enable", `
-		zemi.command.add("hooked2-cmd", function() end, { desc = "from skill hook" })
-	`)
-	h.syncSkills()
-	if err := h.skillsCommand("enable hooked2"); err != nil {
-		t.Fatalf(":skills enable: %v", err)
-	}
-	if h.Commands.Lookup("hooked2-cmd") == nil {
-		t.Fatal("Go-side enable hook did not run")
-	}
 }
 
 // TestSkillsAuthoredHooksStep covers the boot-window hook run: an enabled
@@ -241,11 +207,10 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 }
 
 // TestSkillsUse: /skills use sends the body without frontmatter ahead of
-// the request, for any skill but an unreviewed learned draft.
+// the request, enabled or not.
 func TestSkillsUse(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
-	writeSkill(t, h.learnedSkillsDir(), "auto-learned", "learned from sessions", "")
 	h.syncSkills()
 	s := h.skillsReg.list()[slices.IndexFunc(h.skillsReg.list(), func(s skills.Skill) bool { return s.Name == "local-run" })]
 	msg, err := skillMessage(s, "make a landing page")
@@ -260,11 +225,8 @@ func TestSkillsUse(t *testing.T) {
 	if strings.Contains(msg, "description:") {
 		t.Errorf("frontmatter leaked:\n%s", msg)
 	}
-	if err := h.skillsCommand("use auto-learned"); err == nil || !strings.Contains(err.Error(), "unreviewed draft") {
-		t.Errorf("learned draft: err = %v", err)
-	}
-	// a disabled authored skill is reviewed code: naming it is the request
-	if err := h.setSkillEnabled(nil, "local-run", false); err != nil {
+	// a disabled skill is reviewed code: naming it is the request
+	if err := h.setSkillEnabled("local-run", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.skillsCommand("use local-run"); err != nil && strings.Contains(err.Error(), "no skill") {

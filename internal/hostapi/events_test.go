@@ -66,7 +66,7 @@ func TestHostToolEvents(t *testing.T) {
 	})
 }
 
-// TestLuaAgentsNeedUserConfig: project and learned code cannot act with
+// TestLuaAgentsNeedUserConfig: project code cannot act with
 // the user's authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	h, r := newTestHostDB(t)
@@ -90,10 +90,8 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.cycle")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
-		for _, o := range []lua.Origin{lua.OriginProject, lua.OriginLearned} {
-			if err := r.ExecuteChunk(context.Background(), src, "p.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
-				t.Errorf("%s from %s: %v", src, o, err)
-			}
+		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
+			t.Errorf("%s from project: %v", src, err)
 		}
 	}
 	runUser(t, r, `
@@ -222,7 +220,6 @@ func TestToolPreRewrite(t *testing.T) {
 	}{
 		{"user rewrite applies", lua.OriginUser, rewriteRm, "rewrite", "rm -rf x"},
 		{"project rewrite ignored", lua.OriginProject, rewriteRm, "", ""},
-		{"learned rewrite ignored", lua.OriginLearned, rewriteRm, "", ""},
 		{"rewrite rechecked by an earlier deny", lua.OriginUser, denyRm + "\n" + rewriteRm, "deny", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {

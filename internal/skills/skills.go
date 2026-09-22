@@ -1,8 +1,7 @@
 // Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description), authored under the config dir's skills/, learned under the
-// data dir's skills/ and, in a trusted project, its own skills dirs. Learned skills are quarantined by the
-// enabled-state store; discovery only reports what is on disk.
+// description), authored under the config dir's skills/ and, in a trusted
+// project, its own skills dirs. Discovery only reports what is on disk.
 package skills
 
 import (
@@ -16,16 +15,14 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Source distinguishes authored skills (user's config dir, enabled by
-// default) from learned ones (data dir, start disabled, §10.5).
+// Source is where a skill was found (§10.5).
 type Source string
 
 const (
-	Authored Source = "authored"
-	Builtin  Source = "builtin" // shipped with zemi, enabled by default
-	Learned  Source = "learned"
-	Project  Source = "project" // a trusted project's, body only, never stored
-	Recipe   Source = "recipe"  // a trusted project's, kept in zemi's state dir, body only, never stored
+	Authored Source = "authored" // the user's config dir
+	Builtin  Source = "builtin"  // shipped with zemi
+	Project  Source = "project"  // a trusted project's, body only, never stored
+	Recipe   Source = "recipe"   // a trusted project's, kept in zemi's state dir, body only, never stored
 )
 
 // Stored reports a source with a row in the skills table, so an enabled flag.
@@ -149,8 +146,8 @@ func frontmatter(data []byte) (name, description string, err error) {
 }
 
 // Discover merges skill directories in the order given, higher trust
-// first: on a name clash the earlier one wins (authored over builtin over
-// learned, §10.5). Unreadable or invalid directories are skipped with a
+// first: on a name clash the earlier one wins (authored over builtin,
+// §10.5). Unreadable or invalid directories are skipped with a
 // returned warning per failure, never fatal: a broken skill must not hide
 // the others.
 func Discover(dirs ...Dir) (skills []Skill, warnings []string) {

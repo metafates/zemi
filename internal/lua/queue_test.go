@@ -459,15 +459,15 @@ func TestEval(t *testing.T) {
 		t.Fatalf("Boot: %v", err)
 	}
 	discard := func(string) {}
-	if _, err := r.Eval(context.Background(), `zemi = { ui = false }`, "lua-tool", OriginLearned, time.Second, discard); err == nil {
+	if _, err := r.Eval(context.Background(), `zemi = { ui = false }`, "lua-tool", OriginProject, time.Second, discard); err == nil {
 		t.Fatal("assignment to the protected zemi global was accepted")
 	}
-	vals, err := r.Eval(context.Background(), `x = 5 return x`, "lua-tool", OriginLearned, time.Second, discard)
+	vals, err := r.Eval(context.Background(), `x = 5 return x`, "lua-tool", OriginProject, time.Second, discard)
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("ordinary global in the wrapper env: %v (%v)", err, vals)
 	}
 	cyclic := `local t = {} t.t = t return setmetatable(t, {__tostring = function() error("boom") end})`
-	if vals, err := r.Eval(context.Background(), cyclic, "lua-tool", OriginLearned, time.Second, discard); err != nil || len(vals) != 1 {
+	if vals, err := r.Eval(context.Background(), cyclic, "lua-tool", OriginProject, time.Second, discard); err != nil || len(vals) != 1 {
 		t.Fatalf("unmarshalable result with a raising __tostring: %v (%v)", err, vals)
 	}
 }

@@ -37,7 +37,7 @@ description: How zemi learns - memories, the reflector, skills and recipes. Load
      or `/skills enable|disable|open <name>`.
      `/skills use <name> [request]` sends the skill's body with the request when the model
      did not load it on its own; a disabled skill works too (keep a rarely used one off the
-     index and name it on the day it applies), except a disabled learned skill.
+     index and name it on the day it applies).
    - Autonomy (the default `memory.autonomy = "auto"`, or set `ask` to review every one)
      stores proposed memories without review, except instruction-shaped text, retirements,
      replacements of the user's own memories, and anything from an untrusted project or a
