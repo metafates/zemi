@@ -1823,7 +1823,7 @@ function zemi.json.decode(s) end
 ---@class zemi.MemoryOpts
 ---@field scope? zemi.Scope "project" by default; "user" holds in every project.
 ---@field quote? string The user's exact words from this session, at most 160 characters.
----@field replaces? string Id (8+ characters of it) of the memory this one rewrites.
+---@field replaces? string The memory this one rewrites: its id, the first 8 characters or more.
 
 ---@class zemi.MemoryAddResult
 ---@field stored? boolean Written straight away under auto autonomy.

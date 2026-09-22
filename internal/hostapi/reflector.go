@@ -38,7 +38,7 @@ const (
 const reflectorSystem = `You are zemi's reflector. You read what one coding session added since it was last read and decide what a future session in this project, or any project for this user, must know that it could not re-derive in seconds. Most sessions teach nothing durable; answering with no memories is the normal result.
 
 What a memory is
-- One declarative sentence, at most 300 characters, about the project or the user as they are now: "the repo regenerates goldens with make golden", "the user wants commits made without being asked once checks pass". Never an instruction ("always run make golden"): an instruction is re-read as an order in a later session and overrides what the user asks then. Never a narrative of this session (what was done, changed, built, fixed, or how a bug was found) and never a description of a change ("ctrl+t, previously ctrl+shift+t"). No dates, ticket numbers or commit hashes: a memory must stand without the incident behind it.
+- One declarative sentence, at most 300 characters, about the project or the user as they are now, naming the file, command or flag it is about: "the repo regenerates goldens with make golden", "the user wants commits made without being asked once checks pass". Never an instruction ("always run make golden"): an instruction is re-read as an order in a later session and overrides what the user asks then. Never a narrative of this session (what was done, changed, built, fixed, or how a bug was found) and never a description of a change ("ctrl+t, previously ctrl+shift+t"). No dates, ticket numbers or commit hashes: a memory must stand without the incident behind it.
 - Worth keeping only if skipping it would cost a future session real work or a mistake: a gotcha the code does not say, with its mechanism in one clause; a command with a surprising flag; a convention the user enforces; a preference or decision the user stated. Not: anything the instruction files below say, anything a tool description says, anything one file read reveals, failures caused by the environment (a missing binary, an unset credential, a fresh install), claims that a tool or feature does not work, errors a retry fixed, attempts that never worked.
 - Scope "project" is this repository only: its layout, commands, conventions, decisions about it. Scope "user" holds in every project: the user's habits, machine, tools, accounts, models. A fact about a repository is never "user"; a fact about the person is never "project".
 - Anything about the user (a preference, a decision, a correction, a habit) carries "quote": the user's own words from this session, copied exactly, at most 160 characters. No quote, no memory: a discussion, an audit the user asked for, or your own advice is not a decision. A quote that is not in the transcript is discarded.
@@ -46,12 +46,12 @@ What a memory is
 - Never secrets, credentials, tokens or key material; short identifiers at most, and an env var by name.
 
 The index
-- The index below is every memory the prompt of every session carries, with each scope's budget use. Do not repeat one, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. The user reviews every retirement.
-- A scope over 80% of its budget takes no new memory unless it replaces one; merge the overlapping ones into a single sentence that replaces them, or retire the weakest.
+- The index below is every memory the prompt of every session carries, as [id scope origin age], with each scope's budget use. Do not repeat one, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id (the first field) and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. The user reviews every retirement.
+- A scope the index marks full takes no new memory unless it replaces one. To merge two lines: set replaces to one id and write the merged sentence, then retire the other with replaces and empty text.
 
 Answer with ONLY a JSON object, no prose and no code fences:
 {"memories":[{"scope":"project","text":"...","quote":"","replaces":""}]}
-Omit "memories" when there is nothing worth keeping.`
+When there is nothing worth keeping, answer {}.`
 
 // reflectProposal is the schema-validated model output.
 type reflectProposal struct {
@@ -342,7 +342,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		}
 	}
 	if s := h.instructionSections(h.instructionFiles(), reflectInstructionsMax); s != "" {
-		b.WriteString("\n# Instruction files\nEvery session's prompt carries these already." + s + "\n")
+		b.WriteString("\n# Instruction files\nEvery session's prompt carries these already; nothing they say is a memory, and you cannot read files." + s + "\n")
 	}
 	// only this session's: memoryAuto(sid) stores what comes back, and
 	// another session's suggestion may carry outside text it queued for
@@ -362,8 +362,8 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		for _, m := range mems {
 			used[m.Scope] += learn.LineSize(m.Text)
 		}
-		fmt.Fprintf(&b, "\n# Memory index (every memory the prompt carries; project %.1f/%d KB, user %.1f/%d KB)\n",
-			float64(used["project"])/1024, learn.ScopeBudget/1024, float64(used["user"])/1024, learn.ScopeBudget/1024)
+		fmt.Fprintf(&b, "\n# Memory index (every memory the prompt carries, as [id scope origin age]; project %s, user %s)\n",
+			budgetUse(used["project"]), budgetUse(used["user"]))
 		now := time.Now()
 		for _, m := range mems {
 			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID[:8], m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
@@ -380,6 +380,17 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 	}
 	b.WriteString("\nProduce the JSON now.")
 	return b.String(), len(all), nil
+}
+
+// budgetUse renders a scope's budget use, marked full past 80%: the model
+// is told which scope takes nothing new rather than left to do the
+// arithmetic.
+func budgetUse(used int) string {
+	s := fmt.Sprintf("%.1f/%d KB", float64(used)/1024, learn.ScopeBudget/1024)
+	if used > learn.ScopeBudget*4/5 {
+		s += " (full)"
+	}
+	return s
 }
 
 // failedCalls lists the failed tool results among msgs, oldest first, as

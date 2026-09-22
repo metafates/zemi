@@ -423,7 +423,7 @@ func TestDigestPinnedAtSessionStart(t *testing.T) {
 	}
 
 	sys := h.buildSystem(nil)
-	if !strings.Contains(sys, "# Memory\nLines earlier sessions kept.") {
+	if !strings.Contains(sys, "# Memory\nLines earlier sessions kept, as [id who age].") {
 		t.Fatalf("digest missing from system prompt:\n%s", sys)
 	}
 	if !strings.Contains(sys, "## this project\n- [") || !strings.Contains(sys, " user] the deploy script lives in bin/deploy") {

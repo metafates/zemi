@@ -941,13 +941,13 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk(ToolMemory, "Keep one durable fact for future sessions, in one sentence of at most 300 characters written as it holds now (\"the user wants X\", \"make golden regenerates the goldens\"), never as an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. Anything about the user needs quote: their exact words from this session. A repository procedure is a recipe, not a memory. Never secrets: name the env var. replaces=<id> rewrites a line under # Memory; empty text with replaces drops it. A memory shows from the next session on; it may be queued for the user's review.",
+		mk(ToolMemory, "Keep one durable fact for future sessions: call it when the user says to remember something, states a preference or corrects you, and when you hit a gotcha the code does not say. One sentence, at most 300 characters, as it holds now, naming the file, command or flag it is about (\"the user wants commits made without being asked once checks pass\", \"make golden regenerates the goldens\"); never an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. Anything about the user needs quote: their exact words from this session. A repository procedure is a recipe, not a memory. Never a secret: name the env var that holds it. replaces=<id> rewrites that line under # Memory; empty text with replaces drops it. A memory shows from the next session on; it may be queued for the user's review.",
 			false,
 			map[string]any{
 				"text":     map[string]any{"type": "string"},
 				"scope":    map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: holds in every project"},
 				"quote":    map[string]any{"type": "string", "description": "the user's exact words this memory rests on"},
-				"replaces": map[string]any{"type": "string", "description": "id of the memory this one rewrites or, with empty text, drops (8+ characters of it)"},
+				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory, the first 8 characters or more"},
 			},
 			[]string{"text"},
 			func(in map[string]any) []Request { return nil },

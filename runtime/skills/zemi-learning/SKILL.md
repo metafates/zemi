@@ -8,7 +8,9 @@ description: How zemi learns - memories, the reflector, skills and recipes. Load
 ## The loop
 
 1. **Capture.** `/memory <note>` stores a project fact immediately (`s` in `/memory` makes it apply everywhere). You (the agent)
-   call `memory` with one specific fact (up to 300 characters) and, for anything about the
+   call `memory` when the user says to remember something, states a preference or corrects
+   you, and when you hit a gotcha the code does not say: one specific fact (up to 300
+   characters) naming the file, command or flag it is about and, for anything about the
    user, `quote`: their exact words from this session (a quote that is not in the session
    drops the memory; a user-scope memory without one waits for review). Under the default
    autonomy it stores at once when policy-clean; the answer names the id, or the id of a
