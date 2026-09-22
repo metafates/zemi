@@ -266,12 +266,15 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	})
 }
 
-// UserMessages returns the project's newest user messages, newest first,
-// for the composer history: what the user typed survives the session it
-// was typed in.
+// UserMessages returns the newest top-level session user messages, newest
+// first, for the composer history: what the user typed survives the session
+// it was typed in. Subagent (child) sessions are excluded, since their user
+// rows are prompts the agent wrote, not the user.
 func (s *DB) UserMessages(limit int) ([]*Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
-		FROM messages WHERE role = 'user' ORDER BY rowid DESC LIMIT ?`, limit)
+		FROM messages WHERE role = 'user'
+		AND session_id IN (SELECT id FROM sessions WHERE COALESCE(parent_id, '') = '')
+		ORDER BY rowid DESC LIMIT ?`, limit)
 	return collect(rows, err, func(r scanner) (*Message, error) {
 		var m Message
 		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)

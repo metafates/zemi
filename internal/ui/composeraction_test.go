@@ -12,6 +12,29 @@ import (
 
 // TestComposerActions: the composer's history and insert run from Lua and
 // from keymap strings, and only user config may bind them.
+// TestComposerRecallPastMultiline: an up arrow recalls history even when a
+// recalled message is multiline - once the cursor reaches the top line (or
+// the text is a single line), the next up keeps iterating instead of being
+// trapped inside the recalled text.
+func TestComposerRecallPastMultiline(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.pushHistory("old", 100)
+	app.composer.pushHistory("a\nb", 100)
+	up := tea.KeyPressMsg{Code: tea.KeyUp}
+	app.composerKey("up", up) // empty composer: recall the newest
+	if app.composer.text != "a\nb" {
+		t.Fatalf("first up = %q, want the newest multiline recall", app.composer.text)
+	}
+	app.composerKey("up", up) // multiline: cursor moves to the first line
+	if app.composer.text != "a\nb" {
+		t.Fatalf("second up left the multiline recall: %q", app.composer.text)
+	}
+	app.composerKey("up", up) // at the top line: keep iterating
+	if app.composer.text != "old" {
+		t.Fatalf("third up did not iterate past the multiline recall: %q", app.composer.text)
+	}
+}
+
 func TestComposerActions(t *testing.T) {
 	app, host := bootAgentApp(t, 60, 12)
 	app.composer.pushHistory("first", 100)

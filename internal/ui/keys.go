@@ -225,16 +225,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if c.empty() && a.restoreQueue() {
 			return nil
 		}
-		if strings.Contains(c.text, "\n") {
-			c.up()
-		} else {
+		if !c.up() {
 			a.seedHistory()
 			c.histPrev()
 		}
 	case "down":
-		if strings.Contains(c.text, "\n") {
-			c.down()
-		} else {
+		if !c.down() {
 			c.histNext()
 		}
 	case "ctrl+p":
