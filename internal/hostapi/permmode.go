@@ -231,9 +231,11 @@ func (h *Host) SetPermMode(mode string) error {
 }
 
 // approvePlan is the plan tool's hook: the plan joins the transcript and is
-// saved, then the user approves it or types what to change. In plan mode
-// each approval names the mode to implement in, the one active before plan
-// mode first; yolo modes are left out so an approval never allows everything.
+// saved, then the user sees it in the Plan popup and approves it, types what
+// to change, or dismisses it. In plan mode the mode to implement in was
+// remembered when plan mode started (prePlan), so approval no longer asks
+// which mode; yolo modes are never chosen, so an approval never allows
+// everything.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	ui := h.hooks()
 	if ui == nil {
@@ -247,44 +249,35 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
-	q := tools.Question{Type: tools.TypeSingle, Question: "Implement this plan?", Description: sanitize.String(plan)}
-	var modes []string
+	implement := ""
 	if h.permModeDef().Base == "plan" {
 		h.modes.mu.Lock()
-		prev := h.modes.prePlan
+		implement = h.modes.prePlan
 		h.modes.mu.Unlock()
-		for _, d := range h.PermModeList() {
-			if d.Base == "plan" || d.Base == "yolo" {
-				continue
-			}
-			opt := tools.QuestionOption{Label: "Yes, in " + d.Name + " mode", Description: d.Description}
-			if d.Name == prev {
-				modes, q.Options = append([]string{d.Name}, modes...), append([]tools.QuestionOption{opt}, q.Options...)
-			} else {
-				modes, q.Options = append(modes, d.Name), append(q.Options, opt)
+		if implement == "" { // plan mode reached from config: fall back to auto
+			for _, d := range h.PermModeList() {
+				if d.Base == "auto" {
+					implement = d.Name
+					break
+				}
 			}
 		}
-	} else {
-		q.Options = []tools.QuestionOption{{Label: "Yes, implement it"}}
 	}
-	answers, ok := ui.AskQuestion([]tools.Question{q})
-	if !ok || len(answers) == 0 {
+	verdict, ok := ui.AskPlan(sanitize.String(plan), implement)
+	if !ok {
 		return v, false
 	}
-	for i, o := range q.Options {
-		if answers[0] != o.Label {
-			continue
-		}
-		if i < len(modes) {
-			if err := h.SetPermMode(modes[i]); err != nil {
+	if verdict.Approved {
+		if implement != "" {
+			if err := h.SetPermMode(implement); err != nil {
 				return v, false
 			}
-			v.Mode = modes[i]
+			v.Mode = implement
 		}
 		v.Approved = true
 		return v, true
 	}
-	v.Feedback = answers[0]
+	v.Feedback = verdict.Feedback
 	return v, true
 }
 

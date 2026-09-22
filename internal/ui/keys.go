@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
@@ -52,6 +53,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPerm(false, "user")
 		case top == "memReview":
 			a.answerMemReview()
+		case top == "plan":
+			a.finishPlan(tools.PlanVerdict{}, false)
 		case top == "question":
 			a.finishQuestion(false)
 		case top == "trust":
@@ -138,6 +141,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc", "q":
 			a.answerMemReview()
 		}
+	case "plan":
+		a.planKey(key, keyText(msg))
 	case "question":
 		a.questionKey(key, keyText(msg))
 	case "overlay":
@@ -446,6 +451,8 @@ func (a *App) topChrome() string {
 		return "perm"
 	case a.memReview != nil:
 		return "memReview"
+	case a.planAsk != nil:
+		return "plan"
 	case a.question != nil:
 		return "question"
 	case a.trust != nil:
@@ -463,6 +470,8 @@ func (a *App) wheelChrome(step int) bool {
 	switch a.topChrome() {
 	case "perm":
 		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
+	case "plan":
+		a.planAsk.scroll = max(0, a.planAsk.scroll+step)
 	case "trust":
 	case "memReview":
 		move(&a.memReview.sel, len(a.memReview.items))
@@ -502,6 +511,12 @@ func (a *App) pasteChrome(text string) bool {
 			st.typing = true
 			st.input.insert(line)
 		}
+	case "plan":
+		p := a.planAsk
+		if !p.typing {
+			p.typing, p.input = true, composerState{}
+		}
+		p.input.insert(line)
 	case "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {

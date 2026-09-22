@@ -58,6 +58,9 @@ type UIHooks interface {
 	// first one; safe from any goroutine.
 	Screenshot() string
 	AskQuestion(qs []tools.Question) (answers []string, ok bool)
+	// AskPlan shows a plan for approval (implementMode is the mode to
+	// implement in, "" when none); ok is false when the user dismisses it.
+	AskPlan(plan, implementMode string) (tools.PlanVerdict, bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
 	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
 	// "history_next", "paste" or "edit".

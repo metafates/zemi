@@ -780,8 +780,9 @@ nearest instruction file not already in the prompt, once per session),
 walker fallback, §2), `fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
-answer), `plan` (shows a plan and asks for approval; in plan mode the
-approval picks the mode to implement in), `open_in_editor` (the user
+answer), `plan` (shows the plan in its own scrollable popup for approval;
+in plan mode the mode to implement in is the one active before it, remembered
+at plan start), `open_in_editor` (the user
 edits a file in their own editor; the result is the diff),
 `web_search` (DuckDuckGo Lite, or the user's SearXNG at `web.search_url`),
 `job_start`/`job_read`/`job_list`/`job_kill`,

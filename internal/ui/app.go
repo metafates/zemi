@@ -82,6 +82,7 @@ type App struct {
 	permQueue []*permAskPrompt
 	memReview *memReviewPrompt
 	memEdited string // the row the next memory screen opens on
+	planAsk   *planAskPrompt
 
 	mouse          mouseSel
 	press          mousePress
@@ -526,6 +527,8 @@ func (a *App) uiState() hostapi.UIState {
 	switch {
 	case a.permAsk != nil:
 		st.Waiting = "approval"
+	case a.planAsk != nil:
+		st.Waiting = "plan"
 	case a.question != nil:
 		st.Waiting = "answer"
 	}
@@ -761,6 +764,9 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.trust != nil {
 		splice(trustBox(a.trust, area.Dx(), area.Dy()))
+	}
+	if a.planAsk != nil {
+		splice(a.planBox(a.planAsk, area.Dx(), area.Dy()))
 	}
 	if a.question != nil {
 		splice(a.questionBox(a.question, area.Dx(), area.Dy()))

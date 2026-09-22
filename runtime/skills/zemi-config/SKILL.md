@@ -310,9 +310,10 @@ Asking the user: `question` shows 1-4 questions; the user picks an option (space
 in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.
 Several questions show as tabs (tab/shift+tab, or left/right) ending in a review tab that lists
 every answer; enter on a row there reopens that question, and submit sends them all, unanswered
-ones included. `plan` puts a plan in the chat and asks "Implement this plan?": approve, or
-type what to change and the agent revises it. In plan mode each approval names the mode to
-implement in (the mode used before plan mode first, never yolo), so approving leaves plan mode.
+ones included. `plan` opens a "Plan" popup with the full plan as scrollable
+markdown: enter approves, typing asks for changes (the agent revises and presents again), and
+esc dismisses. The mode to implement in is remembered when plan mode starts (never yolo), so
+approving leaves plan mode without a per-plan mode prompt.
 `open_in_editor` opens a file in the user's editor (`editor.command`) and waits
 until they close it; the result is a diff of what they changed. It is for changes only the user
 can make, or when they ask to edit something themselves; subagents never get it.

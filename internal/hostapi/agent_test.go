@@ -567,6 +567,8 @@ type fakeUI struct {
 	qAsked       []tools.Question
 	qAnswer      string
 	qOK          bool
+	planVerdict  tools.PlanVerdict
+	planOK       bool
 	opened       []Overlay
 	closed       []string
 	closedLua    int
@@ -620,6 +622,10 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
 		answers[i] = f.qAnswer
 	}
 	return answers, f.qOK
+}
+
+func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
+	return f.planVerdict, f.planOK
 }
 
 // TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
