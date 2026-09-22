@@ -1325,22 +1325,20 @@ func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	u := L.CreateTable(0, 4)
 	u.RawSetString("in", glua.LNumber(s.SessionIn))
 	u.RawSetString("out", glua.LNumber(s.SessionOut))
-	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut+s.Pending))
+	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
 	u.RawSetString("cost", glua.LNumber(s.SessionCost))
 	return u
 }
 
 // contextTable is the current-context estimate: the last prompt size
 // against the model's context window, with the percent for the statusline.
-// Pending (the in-flight step's streamed output) rides along so the readout
-// ticks during a reply rather than jumping at each step boundary.
 func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	c := L.CreateTable(0, 3)
-	c.RawSetString("tokens", glua.LNumber(s.LastIn+s.Pending))
+	c.RawSetString("tokens", glua.LNumber(s.LastIn))
 	c.RawSetString("window", glua.LNumber(s.CtxWindow))
 	pct := 0.0
 	if s.CtxWindow > 0 {
-		pct = float64(s.LastIn+s.Pending) / float64(s.CtxWindow) * 100
+		pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
 	}
 	c.RawSetString("pct", glua.LNumber(pct))
 	return c

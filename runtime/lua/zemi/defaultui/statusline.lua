@@ -189,8 +189,7 @@ local right = {
     return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
   end },
   -- how much of the window is in use, not the running session total: the
-  -- total says nothing about how much room is left. The in-flight reply's
-  -- streamed tokens ride along (ctx.pending), so the readout ticks live.
+  -- total says nothing about how much room is left.
   { "context", function(ctx)
     local cx = ctx.context or {}
     local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)

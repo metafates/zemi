@@ -3,7 +3,6 @@ package hostapi
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"charm.land/fantasy"
@@ -99,19 +98,5 @@ func TestStepBillsLiveTally(t *testing.T) {
 	}
 	if sess, err := h.DB.GetSession(h.AgentSessionID()); err != nil || sess.PromptTokens != 13 {
 		t.Fatalf("stored input tokens = %+v, %v; want 13", sess, err)
-	}
-}
-
-// TestPendingTracksStream: Pending is the in-flight step's streamed text at
-// ~4 bytes a token, so the statusline ticks as a reply streams.
-func TestPendingTracksStream(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.SeedStream(StreamSnapshot{Active: true, Text: strings.Repeat("x", 400)})
-	if s := h.AgentStream(); s.Pending != 100 {
-		t.Fatalf("Pending = %d, want 100", s.Pending)
-	}
-	h.SeedStream(StreamSnapshot{Active: true})
-	if s := h.AgentStream(); s.Pending != 0 {
-		t.Fatalf("Pending empty = %d, want 0", s.Pending)
 	}
 }

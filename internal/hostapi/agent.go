@@ -1175,14 +1175,12 @@ type StreamSnapshot struct {
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
-	// the percent readout. Pending is the in-flight step's streamed output
-	// (reasoning + reply) at ~4 bytes a token, so the count ticks as it streams.
+	// the percent readout.
 	SessionIn   int64
 	SessionOut  int64
 	LastIn      int64
 	CtxWindow   int64
 	SessionCost float64
-	Pending     int64
 	// prompt cache tokens read, over the input billed alongside them. Both
 	// count this process only (a resumed session's earlier turns are not in
 	// the store), so the share stays honest.
@@ -1209,9 +1207,6 @@ func (h *Host) AgentStream() StreamSnapshot {
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
 		CtxWindow: ag.ctxWin,
-	}
-	if ag.active && (len(ag.reasonBuf)+len(ag.textBuf)) > 0 {
-		out.Pending = int64(len(ag.reasonBuf)+len(ag.textBuf)) / 4
 	}
 	out.Model = ag.modelSeed
 	if out.Model == "" {
