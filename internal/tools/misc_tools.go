@@ -293,13 +293,13 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			// loading is reading: a recipe can be corrected without a read
 			p.markRead(path, fi)
 			// the body is the whole procedure, loaded once: a cut leaves the
-			// model acting on half of it, so say where the rest is
-			full := "Skill directory: " + s.Path + "\n\n" + body
-			out := TruncOut(full, SkillMaxOut)
-			if out != full {
-				out += "\nRead the rest with the read tool: " + path
+			// model acting on half of it, so say where the rest is, cutting
+			// the file whole so the marker's line numbers are read offsets
+			if len(body) > SkillMaxOut {
+				raw, _ := os.ReadFile(path)
+				body = TruncOut(string(raw), SkillMaxOut) + "\nRead the cut lines with the read tool: " + path
 			}
-			return fantasy.NewTextResponse(out), nil
+			return fantasy.NewTextResponse("Skill directory: " + s.Path + "\n\n" + body), nil
 		}
 	}
 	slices.Sort(known)

@@ -218,6 +218,22 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 		t.Fatalf("unknown name must list sorted skills: %+v", resp)
 	}
 
+	// a cut names lines of SKILL.md itself, so a read at that offset resumes it
+	var big strings.Builder
+	big.WriteString("---\nname: big\ndescription: d\n---\n\n")
+	for i := range 4000 {
+		fmt.Fprintf(&big, "step %05d of the procedure\n", i)
+	}
+	bigDir := mk(data, "big", big.String())
+	p.Skills = func() []SkillInfo { return []SkillInfo{{Name: "big", Path: bigDir}, {Name: "beta", Path: beta}} }
+	resp = call(t, skill, `{"name":"big"}`)
+	var a int
+	fmt.Sscanf(resp.Content[strings.Index(resp.Content, "... (lines ")+len("... (lines "):], "%d", &a)
+	lines := strings.Split(big.String(), "\n")
+	if a < 6 || !strings.Contains(resp.Content, lines[a-2]+"\n... (lines") || strings.Contains(resp.Content, lines[a-1]+"\n") {
+		t.Fatalf("cut at line %d does not match SKILL.md:\n%s", a, resp.Content[:200])
+	}
+
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: beta + "/SKILL.md", Decision: perm.Deny})
 	resp = call(t, skill, `{"name":"beta"}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "permission denied") {
