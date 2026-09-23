@@ -236,6 +236,11 @@ func (h *Host) ForkSession() (string, error) {
 	if err := h.DB.ForkSession(sess, id, strings.TrimSuffix(sess.Title, " (fork)")+" (fork)"); err != nil {
 		return "", err
 	}
+	// the copied history is the parent's to reflect on when it closes; the
+	// fork's delta is only what it adds, so a rejected memory is not proposed twice
+	if n, err := h.DB.MessageCount(id); err == nil {
+		h.reflectSeen(id, n)
+	}
 	return id, h.ResumeSession(id)
 }
 

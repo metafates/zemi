@@ -659,6 +659,19 @@ func TestReflectTrigger(t *testing.T) {
 				return nil
 			})
 		}, calls: 1},
+		{name: "a fork reflects only what it adds", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			setSeen(t, h, sid)
+			fork, err := h.ForkSession()
+			if err != nil || h.reflectDue(fork) != 0 {
+				t.Fatalf("fork %v due %d", err, h.reflectDue(fork))
+			}
+			addText(t, h, fork, "user", "and now")
+			addText(t, h, fork, "user", "this too")
+			addTool(t, h, fork, true)
+			if h.reflectDue(fork) == 0 {
+				t.Fatal("what the fork added is not due")
+			}
+		}},
 		{name: "/reflect with nothing new says so", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			setSeen(t, h, sid)
 			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "nothing new") {

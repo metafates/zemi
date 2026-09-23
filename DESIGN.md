@@ -1736,7 +1736,7 @@ startup sweep (once per process, not on a reload) over the newest sessions
 nothing has touched for ten minutes, at most three, so quitting never waits
 on a model call and a session a quit, a crash or a `-p` run left behind is
 still read; `/reflect` runs it by hand. It reads the delta since the seen
-count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it), and
+count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it, a fork starting past its copied history), and
 only when that delta holds two user messages (compaction summaries do not
 count) and a tool call, or one failed tool call; `/reflect` skips that
 floor. One run per session across windows: an atomic kv claim keyed by the
