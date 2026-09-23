@@ -1118,7 +1118,8 @@ func TestToolRows(t *testing.T) {
 		{Name: "bash", Input: "printf a\nprintf b", Status: "err"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
 		{Name: "job_start", Input: "npm run dev", Label: "Dev server", Status: "bg", Output: "started job-2 (npm run dev)"},
-		// a collapsed failure counts every line it hides, the host's cut included
+		// a collapsed failure counts every line it hides, the host's cut
+		// included; a command's shows its end, where its error and exit status are
 		{Name: "bash", Input: "go build", Label: "Build the binary", Status: "err", Output: "e1\ne2\ne3\n… 21 more lines\nl1\nl2\nl3\nl4\nl5\nl6"},
 		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
 		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
@@ -1128,14 +1129,14 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command: vet the code", "⧗ Build it", "    running as job-1", "⧗ Start dev server", "    running as job-2", "    … 27 more lines", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
+	for _, want := range []string{"Read 2 files, ran 1 command: vet the code", "⧗ Build it", "    running as job-1", "⧗ Start dev server", "    running as job-2", "    … 27 more lines", "    l4", "    l6", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
 		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
 		"■ Write b.go", "  ⎿ denied by you", "  ⎿ dismissed by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
+	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
 		t.Fatalf("command output shows only with ctrl+o, a verdict row shows only the verdict:\n%s", frame)
 	}
 	host.ToggleReasoning()

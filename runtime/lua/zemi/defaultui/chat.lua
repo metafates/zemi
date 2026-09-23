@@ -311,19 +311,24 @@ zemi.ui.widget.add({
         ---@type string[]
         local out = {}
         for ol in (output .. "\n"):gmatch("(.-)\n") do out[#out + 1] = ol end
-        -- a failure leads with what went wrong, and a click shows the rest
-        local err = t.status == "err"
-        local shown = (err and not open) and math.min(#out, 3) or #out
-        for i = 1, shown do detail(out[i], err and i == 1 and "Danger" or "Comment") end
-        if shown < #out then
-          -- the host's own cut stands for the lines it dropped
-          local hidden = #out - shown
-          for i = shown + 1, #out do
-            local n = out[i]:match("^… (%d+) more lines$")
-            if n then hidden = hidden - 1 + tonumber(n) end
-          end
-          detail("… " .. fmt.count(hidden, "more line", "more lines"), "Comment")
+        -- a collapsed failure shows three lines where it says what went
+        -- wrong: a tool's first, a command's last (its stderr and exit
+        -- status); a click shows the rest
+        local err, tail = t.status == "err", name == "bash"
+        local first, last = 1, #out
+        if err and not open and #out > 3 then
+          if tail then first = #out - 2 else last = 3 end
         end
+        -- the host's own cut stands for the lines it dropped
+        local hidden = 0
+        for i = 1, #out do
+          local n = out[i]:match("^… (%d+) more lines$")
+          if i < first or i > last then hidden = hidden + (n and tonumber(n) or 1) end
+        end
+        local more = "… " .. fmt.count(hidden, "more line", "more lines")
+        if hidden > 0 and first > 1 then detail(more, "Comment") end
+        for i = first, last do detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment") end
+        if hidden > 0 and first == 1 then detail(more, "Comment") end
       end
     end
     -- rows from i on: a collapsed group or one call; returns the next index
