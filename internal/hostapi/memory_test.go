@@ -318,7 +318,7 @@ func TestMemoryGate(t *testing.T) {
 			}},
 		{name: "/memory over budget points at the oldest", note: true, text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string { return fill(t, h, 11) },
-			want: "project memory is full; forget one of the oldest, at the bottom of /memory, first",
+			want: "project memory is full; forget one of its oldest in /memory first",
 			check: func(t *testing.T, h *Host, ui *fakeUI, replaces string) {
 				if len(projectMemories(t, h)) != 11 {
 					t.Fatal("stored over budget")

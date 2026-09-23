@@ -927,7 +927,7 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 }
 
 func errScopeFull(scope string) error {
-	return fmt.Errorf("%s memory is full; forget one of the oldest, at the bottom of /memory, first", scope)
+	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
 }
 
 // scopeOver reports whether storing res would push its scope past
