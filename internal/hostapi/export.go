@@ -223,7 +223,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 }
 
 // ForkSession copies the live session's messages into a new session and
-// switches to it; it returns the new id.
+// switches to it, saying so; it returns the new id.
 func (h *Host) ForkSession() (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
@@ -248,7 +248,11 @@ func (h *Host) ForkSession() (string, error) {
 	if n, err := h.DB.MessageCount(id); err == nil {
 		h.reflectSeen(id, n)
 	}
-	return id, h.ResumeSession(id)
+	if err := h.ResumeSession(id); err != nil {
+		return "", err
+	}
+	h.Notify("info", "Session forked", "the original stays in /sessions")
+	return id, nil
 }
 
 // todoSnapshot is the live session's todo list for widgets, reloaded only

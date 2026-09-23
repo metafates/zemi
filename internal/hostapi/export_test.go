@@ -54,6 +54,9 @@ func TestExportAndFork(t *testing.T) {
 	if id == orig || h.AgentSessionID() != id {
 		t.Fatalf("fork %q, live %q, original %q", id, h.AgentSessionID(), orig)
 	}
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Session forked" {
+		t.Fatalf("fork said nothing: %+v", n)
+	}
 	a, _ := h.DB.Messages(orig)
 	b, _ := h.DB.Messages(id)
 	if len(a) == 0 || len(a) != len(b) || len(h.Session().Transcript) != 2 {
