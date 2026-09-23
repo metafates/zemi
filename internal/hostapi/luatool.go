@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -179,13 +180,24 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	defer h.postNotify("lua", call.Input, &reply)
 	src := in.Script
 	if in.Path != "" {
+		// the file is read like the read tool reads it: a Lua error echoes
+		// tokens of what it ran, so a secret or a file outside the jail asks
+		if filepath.Ext(in.Path) != ".lua" {
+			return fantasy.NewTextErrorResponse(in.Path + ": not a .lua file"), nil
+		}
 		path := in.Path
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(h.Dirs.ProjectDir, path)
 		}
+		path = perm.RealPath(path)
+		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: "fs.read", Arg: path}); v.Decision != perm.Allow {
+			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "fs.read "+in.Path)), nil
+		}
 		s, err := readRegularFile(path)
-		if err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
+		if pe, ok := errors.AsType[*fs.PathError](err); ok {
+			return fantasy.NewTextErrorResponse(in.Path + ": " + pe.Err.Error()), nil
+		} else if err != nil {
+			return fantasy.NewTextErrorResponse(strings.ReplaceAll(err.Error(), path, in.Path)), nil
 		}
 		src = s
 	}

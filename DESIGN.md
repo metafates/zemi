@@ -1512,6 +1512,9 @@ provenance string.
   ask from Lua ("allow", "deny", anything else leaves it to the user); it
   runs on the interpreter with a 60s ceiling, long enough for a model call
   of its own, and may not allow an unsandboxed or network request.
+  A script the model's Lua tool gets by `path` must be a `.lua` file and is
+  read through the `fs.read` gate the read tool uses, since a Lua error
+  echoes tokens of what it ran.
   The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
   project and a read-only agent. Everywhere else it is default-deny: without
   the user's approval a run may call only the read-only members in

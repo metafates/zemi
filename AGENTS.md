@@ -537,8 +537,8 @@ lua-language-server is installed.
   once, as `Request.Unsandboxed` so no mode settles it, and the approved run evaluates as chunk
   `lua-tool#<n>`. In an untrusted project or a read-only agent's run every script asks. A new API member is
   guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
-  origin: the gate is a flag on the chunk name. Runs on the interpreter (10s ceiling), main
-  agent only.
+  origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
+  the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
 - **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`:
   a near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused
   with the id to pass as `replaces`; a learned user-scope memory needs a `quote`, checked

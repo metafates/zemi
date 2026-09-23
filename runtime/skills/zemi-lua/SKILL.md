@@ -81,7 +81,7 @@ timers, event handlers) keep only the read-only calls once the run ends, so put 
 behavior in `init.lua`.
 It holds the interpreter for at most 10s. Keep reusable scripts in the session scratchpad
 (its path is in the Environment section; files there are read and written without asking)
-and pass `path`. Globals a chunk sets stay in that chunk.
+and pass `path` (a `.lua` file, read under the same rules as the read tool). Globals a chunk sets stay in that chunk.
 
 Check a widget, theme or layout change by reading the screen back with
 `zemi.ui.screenshot()` after `zemi.config.reload()` (zemi-debug has the loop).

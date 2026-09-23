@@ -200,3 +200,38 @@ func TestLuaToolCeiling(t *testing.T) {
 		}
 	}
 }
+
+// TestLuaToolPath: a script file is read the way the read tool reads it, so
+// a Lua error cannot echo a secret or a file outside the jail unasked.
+func TestLuaToolPath(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "x.lua")
+	for _, f := range []string{filepath.Join(h.Dirs.ProjectDir, "ok.lua"), filepath.Join(h.Dirs.ProjectDir, ".env.lua"), outside} {
+		if err := os.WriteFile(f, []byte("return 1"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		path, want string
+		asks       int
+	}{
+		{"ok.lua", "return: 1", 0},
+		{"nope.lua", "nope.lua: no such file or directory", 0},
+		{"notes.txt", "notes.txt: not a .lua file", 0},
+		{".env.lua", "permission denied", 1},
+		{outside, "permission denied", 1},
+	} {
+		ui := &fakeUI{askBy: "user"}
+		h.SetUIHooks(ui)
+		input, _ := json.Marshal(map[string]string{"description": "x", "path": c.path})
+		resp, _ := h.luaEvalTool().Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != c.asks {
+			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
+		}
+	}
+}
