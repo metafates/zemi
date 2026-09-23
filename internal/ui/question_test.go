@@ -81,8 +81,19 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
-	pressKeys(app, "j", "enter", "space", "j", "j", "space", "enter")
-	app.renderSync(t)
+	// every tab, typing and the review draw in the one box: its top row and height
+	box := func() string {
+		app.renderSync(t)
+		f := ansi.Strip(app.Frame())
+		top := strings.Index(f, "┌ Questions")
+		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"))
+	}
+	want := box()
+	for _, keys := range [][]string{{"j", "enter"}, {"j", "j", "j", "enter"}, {"esc", "k", "k", "k", "space", "j", "j", "space", "enter"}} {
+		if pressKeys(app, keys...); box() != want {
+			t.Fatalf("after %v the box moved from %s to %s:\n%s", keys, want, box(), ansi.Strip(app.Frame()))
+		}
+	}
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Submit answers") || !strings.Contains(frame, "tests, lint") {
 		t.Fatalf("review tab missing:\n%s", frame)
 	}
@@ -106,6 +117,7 @@ func TestQuestionAnswers(t *testing.T) {
 		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
 		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
+		{"esc dismisses an open question", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"esc"}, questionResult{nil, false}},
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

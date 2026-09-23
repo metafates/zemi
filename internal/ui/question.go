@@ -135,6 +135,9 @@ func (a *App) questionKey(key, text string) {
 				a.answerQuestion(s)
 			}
 		case "esc":
+			if len(q.Options) == 0 { // typing is all an open question does
+				a.finishQuestion(false)
+			}
 			st.typing = false
 		default:
 			if !st.input.editKey(key) && text != "" {
@@ -237,20 +240,23 @@ func (a *App) answerQuestion(answer string) {
 	qp.at, qp.reviewSel = len(qp.qs), len(qp.qs)
 }
 
-// questionTabs is the tab row of a batch: the questions, a check on the
-// answered ones, then the review tab.
+// questionTabs is the tab row of a batch: the questions, each marked
+// waiting or answered in a cell every tab keeps so a mark never shifts the
+// labels after it, then the review tab.
 func questionTabs(qp *questionPrompt) []hostapi.Segment {
 	var row []hostapi.Segment
 	for i := range len(qp.qs) + 1 {
+		if i > 0 {
+			row = append(row, hostapi.Segment{Text: "   "})
+		}
 		label := "Review"
 		if i < len(qp.qs) {
 			label = cmp.Or(qp.qs[i].Header, fmt.Sprintf("Q%d", i+1))
+			mark := hostapi.Segment{Text: "· ", HL: "Host:Hint"}
 			if qp.states[i].answered != "" {
-				label = "✓ " + label
+				mark = hostapi.Segment{Text: "✓ ", HL: "Host:Ok"}
 			}
-		}
-		if i > 0 {
-			row = append(row, hostapi.Segment{Text: "  ·  ", HL: "Host:Hint"})
+			row = append(row, mark)
 		}
 		row = append(row, hostapi.Segment{Text: label, HL: map[bool]string{true: "Host:Title", false: "Host:Hint"}[i == qp.at]})
 	}
@@ -258,7 +264,8 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 }
 
 // questionBox draws the shown tab. The box starts at the size of the
-// largest tab, so switching tabs never resizes or moves it.
+// largest question tab, typing included, so switching tabs or starting an
+// answer never resizes or moves it; the review list scrolls within it.
 func (a *App) questionBox(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	title := "Question"
 	if len(qp.qs) > 1 {
@@ -266,10 +273,21 @@ func (a *App) questionBox(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	}
 	if qp.size.h == 0 {
 		at := qp.at
-		for qp.at = range len(qp.qs) + map[bool]int{true: 1}[len(qp.qs) > 1] {
-			promptBox(title, "", a.questionRows(qp, w, h), w, h, 100, &qp.size)
+		for qp.at = range qp.qs {
+			st := &qp.states[qp.at]
+			typing := st.typing
+			for _, st.typing = range []bool{false, qp.qs[qp.at].Type != tools.TypeYesNo} {
+				promptBox(title, "", a.questionRows(qp, w, h), w, h, 100, &qp.size)
+			}
+			st.typing = typing
+		}
+		if qp.at = len(qp.qs); len(qp.qs) > 1 {
+			promptBox(title, "", a.questionRows(qp, w, min(h, qp.size.h)), w, h, 100, &qp.size)
 		}
 		qp.at = at
+	}
+	if qp.reviewing() {
+		h = min(h, qp.size.h)
 	}
 	return promptBox(title, "", a.questionRows(qp, w, h), w, h, 100, &qp.size)
 }
@@ -340,7 +358,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var hints []hintPair
 	switch {
 	case st.typing:
-		hints = []hintPair{{"enter", "answer"}, {"esc", "back"}}
+		hints = []hintPair{{"enter", "answer"}, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}}
 	case q.Multi():
 		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, {"enter", "answer"}, {"esc", "dismiss"}})
 	default:
@@ -360,7 +378,8 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		ask := st.ask.window(st.ask.wrap(askText, inner), inner)
 		var opts [][]hostapi.Segment
 		if len(items) > 0 {
-			opts = listRows(items, st.sel, &st.view, max(room-len(ask), 1), inner)
+			// a multi-select's "on" sits in the key column at the right edge
+			opts = listRowsW(items, items, st.sel, &st.view, max(room-len(ask), 1), qp.size.w, inner)
 		}
 		views := []viewport{st.ask}
 		if !st.typing { // typing, the page keys scroll only the question
