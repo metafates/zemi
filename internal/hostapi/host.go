@@ -821,9 +821,14 @@ func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context,
 	}
 }
 
+// eventTable sets name and from after the payload, so no emitter can pose
+// as another event or origin.
 func eventTable(name, from string, payload map[string]any) map[string]any {
-	ev := map[string]any{"name": name, "from": from}
-	maps.Copy(ev, payload)
+	ev := maps.Clone(payload)
+	if ev == nil {
+		ev = map[string]any{}
+	}
+	ev["name"], ev["from"] = name, from
 	return ev
 }
 
