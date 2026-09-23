@@ -222,7 +222,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
 		}
-		h.EmitAsync("overlay.open", map[string]any{"id": o.ID, "title": o.Title})
 		return 0
 	}))
 	overlay.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
@@ -230,7 +229,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(id, h.RT.CurrentOrigin(L))
 		}
-		h.EmitAsync("overlay.close", map[string]any{"id": id})
 		return 0
 	}))
 	tb.RawSetString("overlay", overlay)

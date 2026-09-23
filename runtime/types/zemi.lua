@@ -398,7 +398,7 @@ function zemi.command.list() end
 ---| "agent.text_delta" | "agent.reasoning_delta"
 ---| "tool.pre" | "tool.post" | "tool.denied"
 ---| "permission.request" | "permission.resolved"
----| "ui.resize" | "ui.theme" | "overlay.open" | "overlay.close"
+---| "ui.resize" | "ui.theme"
 ---| "composer.change" | "composer.submit"
 ---| "memory.written" | "reflector.start" | "reflector.done"
 ---| "job.exit" | "lsp.request"
@@ -467,10 +467,6 @@ function zemi.command.list() end
 
 ---@class zemi.ev.Theme: zemi.Event
 ---@field theme string
-
----@class zemi.ev.Overlay: zemi.Event
----@field id string
----@field title? string overlay.open only.
 
 ---@class zemi.ev.ComposerChange: zemi.Event
 ---@field text string
@@ -542,7 +538,6 @@ zemi.event = {}
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.theme", fn: (fun(ev: zemi.ev.Theme): any), opts?: zemi.EventOpts): string
----@overload fun(name: "overlay.open"|"overlay.close", fn: (fun(ev: zemi.ev.Overlay): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string

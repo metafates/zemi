@@ -611,8 +611,7 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - stream: `agent.text_delta`, `agent.reasoning_delta`
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
-- ui: `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
-  `composer.change`, `composer.submit` (vetoable)
+- ui: `ui.resize`, `ui.theme`, `composer.change`, `composer.submit` (vetoable)
 - learn: `memory.written`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `lsp.request`

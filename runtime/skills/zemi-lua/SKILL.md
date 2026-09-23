@@ -236,10 +236,11 @@ reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `to
 (vetoable: deny, halt, rewrite), `tool.post` (tool, input, ok, output cut to 4096 characters,
 `changed`: the absolute paths a file tool or a bash command changed), `permission.request`,
 `permission.resolved`,
-`composer.submit` (vetoable), `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
+`composer.submit` (vetoable), `ui.resize`, `ui.theme`,
 `memory.written`, `config.reloaded` (after /reload or a config file
 change), `reflector.start`, `reflector.done`, `job.exit`, `lsp.request` (server, path, kind
-`diagnostics` after a write or `tool`), and your own `user.*` names. A vetoable handler vetoes
+`diagnostics` after a write or `tool`), and your own `user.*` names. Overlays have no events:
+a plugin watches its own overlay through its `on_close` callback. A vetoable handler vetoes
 by returning `{ decision = "deny", reason = "..." }` (`tool.pre` also takes `"halt"`, and
 `"rewrite"` with `input`); any other return lets the event through. A handler has 50 ms, so
 it cannot wait for an answer. A denied `composer.submit` keeps the draft, so to confirm a
