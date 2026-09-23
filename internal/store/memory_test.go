@@ -74,6 +74,7 @@ var oldMemoryShape = []string{
 	`ALTER TABLE memory ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE memory ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE memory ADD COLUMN last_hit_at INTEGER NOT NULL DEFAULT 0`,
+	`CREATE INDEX memory_scope_hit ON memory(scope, last_hit_at)`,
 	`CREATE VIRTUAL TABLE memory_fts USING fts5(text, content='memory', content_rowid='rowid')`,
 	`CREATE TRIGGER memory_ai AFTER INSERT ON memory BEGIN INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text); END`,
 }

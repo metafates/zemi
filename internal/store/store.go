@@ -155,6 +155,7 @@ var migrations = [][]string{
 		`DROP TRIGGER IF EXISTS memory_ad`,
 		`DROP TRIGGER IF EXISTS memory_au`,
 		`DROP TABLE IF EXISTS memory_fts`,
+		`DROP INDEX IF EXISTS memory_scope_hit`,
 		`ALTER TABLE memory DROP COLUMN kind`,
 		`ALTER TABLE memory DROP COLUMN tags`,
 		`ALTER TABLE memory DROP COLUMN hit_count`,
