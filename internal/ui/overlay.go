@@ -466,7 +466,7 @@ func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
 		a.composer.moveEnd()
 	}
 	if run := rowRun(o, m); run != "" {
-		name, args := splitCommand(run)
+		name, args := SplitCommand(run)
 		a.runCommand(name, args)
 	}
 }
