@@ -225,8 +225,8 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	pressKeys(app, "esc")
 }
 
-// TestQuestionOptionsWrap: a long option wraps with its description, and a
-// short one keeps its description on its own row.
+// TestQuestionOptionsWrap: a long option wraps in its column, and every
+// description starts at one x, beside its own label.
 func TestQuestionOptionsWrap(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
@@ -235,8 +235,16 @@ func TestQuestionOptionsWrap(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "one file, no server") || !regexp.MustCompile(`\[2\] Postgres +a server to run`).MatchString(frame) {
-		t.Fatalf("a description is lost or pushed off its row:\n%s", frame)
+	x := func(desc string) int {
+		for l := range strings.SplitSeq(frame, "\n") {
+			if i := strings.Index(l, desc); i >= 0 {
+				return ansi.StringWidth(l[:i])
+			}
+		}
+		return -1
+	}
+	if x("recommended") < 0 || x("recommended") != x("a server to run") || !regexp.MustCompile(`\[2\] Postgres +a server to run`).MatchString(frame) {
+		t.Fatalf("descriptions are lost or out of their column:\n%s", frame)
 	}
 	pressKeys(app, "esc")
 }

@@ -228,8 +228,9 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
-// next to what it does, descriptions in one column, the selected one marked
-// like a selected list row; a choice with no key keeps the column blank.
+// next to what it does, the selected one marked like a selected list row; a
+// choice with no key keeps the column blank. Labels and descriptions are two
+// columns, each wrapping in its own, so every description starts at one x.
 // Every row carries the choice's 1-based Hit, so a click answers it. A label
 // wraps, since the user answers what it says, unless short cuts each choice
 // to one row.
@@ -242,9 +243,8 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		}
 	}
 	textW := max(w-kw-5, 8)
-	// a label too long to share its row sets no column: its description
-	// follows it, and the short labels keep theirs
 	lw = min(lw, textW/2)
+	descW := textW - lw - 2
 	var rows [][]hostapi.Segment
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
@@ -258,18 +258,25 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		if i == sel { // marked like a selected list row
 			btn, textHL = []hostapi.Segment{{Text: "› " + open + c.key + shut + pad, HL: "Host:Title"}}, "Host:Title"
 		}
-		line := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
+		labelW, desc := textW, [][]hostapi.Segment(nil)
 		if c.desc != "" {
-			line = append(line, hostapi.Segment{Text: strings.Repeat(" ", max(lw-ansi.StringWidth(c.label), 0)+2) + c.desc, HL: "Host:Hint"})
+			labelW, desc = lw, hostapi.WrapSegs([]hostapi.Segment{{Text: c.desc, HL: "Host:Hint"}}, descW)
 		}
-		wrapped := hostapi.WrapSegs(line, textW)
+		label := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}, labelW)
 		if short {
-			wrapped = capRows(wrapped, 1, textW)
+			label, desc = capRows(label, 1, labelW), capRows(desc, 1, descW)
 		}
-		for j, r := range wrapped {
+		for j := range max(len(label), len(desc)) {
+			var r []hostapi.Segment
+			if j < len(label) {
+				r = label[j]
+			}
+			if j < len(desc) {
+				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-segsWidth(r), 2)), HL: "Host:Hint"}}, desc[j])
+			}
 			row := slices.Concat(btn, r)
 			if j > 0 {
-				row = append([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r...)
+				row = slices.Concat([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r)
 			}
 			for k := range row {
 				row[k].Hit = i + 1
