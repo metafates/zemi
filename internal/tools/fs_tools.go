@@ -29,6 +29,47 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
+// progress shows the command's last output line under its row while it
+// runs, polled every 300 ms and sent only when it changed (each send
+// redraws); the returned func stops the poll and clears the line, so a
+// call handed on as a job keeps no stale one.
+func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
+	id, _ := ctx.Value(callIDKey{}).(string)
+	if p == nil || p.Progress == nil || id == "" {
+		return func() {}
+	}
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		t := time.NewTicker(300 * time.Millisecond)
+		defer t.Stop()
+		last := ""
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+			}
+			raw, _ := buf.Snapshot()
+			line := ""
+			for l := range strings.SplitSeq(strings.TrimRight(ansi.Strip(raw), "\n"), "\n") {
+				if strings.TrimSpace(l) != "" {
+					line = l
+				}
+			}
+			if line != last {
+				last = line
+				p.Progress(id, line)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
+		p.Progress(id, "")
+	}
+}
+
 // runBash executes the command in the session directory with a timeout
 // (default 60s, capped at 10min). Every call is a fresh process.
 func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
@@ -88,6 +129,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(c) }()
+	stopProgress := p.progress(ctx, buf)
 	timedOut := false
 	select {
 	case err = <-wait:
@@ -98,6 +140,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case <-time.After(timeout):
 		timedOut = true
 	}
+	stopProgress()
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
 	out := strings.TrimRight(ansi.Strip(raw), "\n")

@@ -215,6 +215,9 @@ type Pipeline struct {
 	// runs once it ended and reports the files it changed: a line for the
 	// model, a diff for the row (the result's Metadata) and every path. nil = none.
 	Changes func(dir string) func() (note, diff string, paths []string)
+	// Progress shows a running call's last output line under its row, ""
+	// once it ended; nil = none.
+	Progress func(callID, line string)
 
 	// changed is what a bash run found changed, kept on its per-run copy for post
 	changed []string
@@ -445,6 +448,9 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	return Verdict{Decision: perm.Deny, Reason: who, DecidedBy: by}
 }
 
+// callIDKey carries the tool call id to a run function, for Progress.
+type callIDKey struct{}
+
 // tool implements fantasy.AgentTool over a plain run function.
 type tool struct {
 	info     fantasy.ToolInfo
@@ -467,6 +473,7 @@ func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	ctx = context.WithValue(ctx, callIDKey{}, call.ID)
 	if t.edits {
 		// the calls before this one on the same file land first, so the
 		// stale check and the edit see what they wrote; released on every

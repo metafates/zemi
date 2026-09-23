@@ -70,7 +70,7 @@ type StreamTool struct {
 	ID      string
 	Label   string // the model's short description of a command
 	Started time.Time
-	Detail  string // live progress line (subagents, workflows)
+	Detail  string // live progress line (subagents, workflows, a bash command's last output line)
 	Run     string // agent tool: the run id, so the row can open its transcript
 	Diff    string // file tools: the change as "- "/"+ " lines
 	Output  string // the last lines of the result (shortOutput)
@@ -2147,6 +2147,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.afterWrite,
 		Changes:     h.bashChanges,
+		Progress:    func(id, line string) { h.setToolDetail(id, sanitize.String(line)) },
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return readOnly },
