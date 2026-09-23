@@ -246,6 +246,11 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
 	defer f.Close()
+	// every outcome of opening a file counts as seen, a page included: the
+	// edit guard is about what changed under the model, an exact old_string
+	// is its own proof, and a refused binary is all the model can know of a
+	// file write replaces whole
+	p.markRead(path, fi)
 	rel := workRel(path)
 	br := bufio.NewReaderSize(f, 64<<10)
 	head, _ := br.Peek(8000)
@@ -265,9 +270,6 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case bytes.IndexByte(head, 0) >= 0:
 		return fantasy.NewTextErrorResponse(rel + " is a binary file"), nil
 	}
-	// a page of a file still counts as seen: the edit guard is about what
-	// changed under the model, and an exact old_string is its own proof
-	p.markRead(path, fi)
 	start := 0
 	if v, ok := input["offset"].(float64); ok && v > 1 {
 		start = int(v) - 1

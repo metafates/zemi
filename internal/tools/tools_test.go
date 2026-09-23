@@ -572,6 +572,14 @@ func TestEditSafety(t *testing.T) {
 		t.Fatalf("changed file must be read again: %q", resp.Content)
 	}
 
+	// a refused binary still counts as read: write replaces it whole
+	bin := filepath.Join(dir, "b.bin")
+	os.WriteFile(bin, []byte("a\x00b"), 0o644)
+	call(t, read, js(map[string]any{"path": bin}))
+	if resp := call(t, all[2], js(map[string]any{"path": bin, "content": "text\n"})); resp.IsError {
+		t.Fatalf("write over a read binary: %q", resp.Content)
+	}
+
 	// an unread file is refused before the gate, so the user is never asked
 	// to approve a change that cannot happen
 	ask, asked := testPipeline(t, true)
