@@ -355,41 +355,59 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
 	}
-	limits := sandboxLimits()
+	limits := policyLimits(pol)
 	if pol != nil && len(pol.Write) > 0 {
 		// the exact paths, so a retry does not guess at a sibling of the
 		// scratchpad or a temp dir the policy never named
 		limits += ". Writable: " + strings.Join(pol.Write, ", ") + ", and what is below them"
 	}
-	if !p.SandboxParam {
+	network := pol != nil && pol.Network
+	plan := p.Plan != nil && p.Plan()
+	// sandbox: false is denied for a read-only agent, so it is not offered
+	if !p.SandboxParam || plan && network {
 		return "\nThe sandbox may have blocked this: " + limits + "."
 	}
-	if p.Plan != nil && p.Plan() {
-		// sandbox: false is denied for a read-only agent, so it is not offered
+	if plan {
 		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (needs approval) adds only the network."
 	}
 	retry := " It looks like a network failure: call it again with network: true, which keeps the sandbox and needs approval."
-	if !sandbox.LikelyNetwork(out, err) {
+	switch {
+	case network:
+		// the run had the network already: offering it again repeats the ask
+		retry = " If it needs more, call it again with sandbox: false (no limits), which needs approval."
+	case !sandbox.LikelyNetwork(out, err):
 		retry = " If it needs the network, call it again with network: true (sandbox kept); if it needs more, sandbox: false (no limits). Both need approval."
 	}
 	return "\nThe sandbox may have blocked this: " + limits + "." + retry
 }
 
-// sandboxLimits names what the live backend enforces. Every wrapped run
+// sandboxLimits names what the live backend enforces on a settled command.
+func sandboxLimits() string { return policyLimits(nil) }
+
+// policyLimits names what the live backend enforces under pol, the policy a
+// command ran with; nil is the one a settled command gets. Every wrapped run
 // goes through sandbox.Probe's backend, so that is the one to describe.
-func sandboxLimits() string {
+func policyLimits(pol *sandbox.Policy) string {
 	b, _ := sandbox.Probe()
 	// a backend that keeps .git read-only also gives loopback: seatbelt the
 	// machine's, the Linux namespace variant one of its own; Landlock +
 	// seccomp blocks every inet socket
 	// NOTE: a refused connection to a host service matches no LikelyDenied
 	// pattern, so on Linux it gets no hint; the limit text is all it gets.
-	s := "no network, writes only in the scratchpad and a private $TMPDIR, the project read-only"
+	net, write, sep := "no network", "writes only in the scratchpad and a private $TMPDIR, the project read-only", ", "
 	switch {
 	case b.EnforcesProtect && runtime.GOOS == "linux":
-		s = "no network at all, not even to servers running on this machine; writes only in a trusted project, the scratchpad and a private $TMPDIR; .git and .zemi read-only"
+		net, sep = "no network at all, not even to servers running on this machine", "; "
 	case b.EnforcesProtect:
-		s = "no network beyond localhost, writes only in a trusted project, the scratchpad and a private $TMPDIR, .git and .zemi read-only"
+		net = "no network beyond localhost"
+	}
+	// the project is a write root only where sandboxPolicy found it safe
+	if b.EnforcesProtect && (pol == nil || slices.Contains(pol.Write, workdir())) {
+		write = "writes only in a trusted project, the scratchpad and a private $TMPDIR" + sep + ".git and .zemi read-only"
+	}
+	s := net + sep + write
+	if pol != nil && pol.Network {
+		s = write
 	}
 	if b.HidesSecretFiles {
 		return s + ", secret files unreadable"

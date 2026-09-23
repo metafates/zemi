@@ -99,6 +99,39 @@ func TestJobReadSandboxHint(t *testing.T) {
 	}
 }
 
+// TestSandboxHintFollowsPolicy: a run that had the network is not told to
+// ask for it again, and a project left out of the write roots reads as read-only.
+func TestSandboxHintFollowsPolicy(t *testing.T) {
+	denied := errors.New("exit status 1")
+	out := "curl: (6) Could not resolve host: example.com"
+	if !sandbox.LikelyDenied(out, denied) {
+		t.Skip("no denial pattern on this platform")
+	}
+	for _, c := range []struct {
+		name           string
+		plan           bool
+		want, unwanted []string
+	}{
+		{"network already given", false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
+		{"network already given while planning", true, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
+			hint := p.sandboxHint(&sandbox.Policy{Network: true, Write: []string{"/tmp/x"}}, out, denied)
+			for _, w := range c.want {
+				if !strings.Contains(hint, w) {
+					t.Errorf("hint lacks %q: %s", w, hint)
+				}
+			}
+			for _, w := range c.unwanted {
+				if strings.Contains(hint, w) {
+					t.Errorf("hint says %q: %s", w, hint)
+				}
+			}
+		})
+	}
+}
+
 // TestBashTimeoutBecomesJob: a command still running at its timeout keeps
 // going as a job, so a slow build is not thrown away half done.
 func TestBashTimeoutBecomesJob(t *testing.T) {
