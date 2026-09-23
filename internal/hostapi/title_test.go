@@ -17,6 +17,7 @@ func TestAutoTitle(t *testing.T) {
 		zemi.config.set("models.main", "c/m")
 	`)
 	m := reflectStub(t, h, "Parser Fix")
+	h.SetUIHooks(&fakeUI{})
 	h.reflectMu.Lock() // no detached reflector in this test
 	defer h.reflectMu.Unlock()
 	if err := h.AgentSend("the parser drops the last token, can you look?"); err != nil {
@@ -34,5 +35,22 @@ func TestAutoTitle(t *testing.T) {
 	}
 	if po, ok := (*m.lastOpts.Load())["openai-compat"].(*openaicompat.ProviderOptions); !ok || po.ExtraBody["service_tier"] != "flex" {
 		t.Fatalf("title call options = %+v", m.lastOpts.Load())
+	}
+}
+
+func TestHeadlessTurnNamesNoTitle(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "Parser Fix")
+	h.reflectMu.Lock() // no detached reflector in this test
+	defer h.reflectMu.Unlock()
+	if err := h.AgentSend("hi"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	h.agents.mu.Lock()
+	titled := h.agents.titled
+	h.agents.mu.Unlock()
+	if titled || m.calls.Load() != 0 {
+		t.Fatal("a headless turn started a title call")
 	}
 }

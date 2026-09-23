@@ -1236,9 +1236,11 @@ func TestActiveProfileKey(t *testing.T) {
 	for _, c := range []struct {
 		name, src string
 		want      string // the resolved profile, "" for the shipped one
+		system    string
 		wantErr   bool
 	}{
 		{name: "unset runs the shipped profile"},
+		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
 		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
 		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
@@ -1246,16 +1248,27 @@ func TestActiveProfileKey(t *testing.T) {
 		h, r := newTestHost(t)
 		runUser(t, r, c.src)
 		p, err := h.resolveProfile("")
-		got := ""
+		got, system := "", ""
 		if p != nil {
-			got = p.Name
+			got, system = p.Name, p.System
 		}
-		if (err != nil) != c.wantErr || got != c.want {
-			t.Errorf("%s: profile %q, err %v", c.name, got, err)
+		if (err != nil) != c.wantErr || got != c.want || system != c.system {
+			t.Errorf("%s: profile %q system %q, err %v", c.name, got, system, err)
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", {})`)
+	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", { model = "x/big" }) zemi.agent.profile("default", {})`)
+	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
+		t.Errorf("names %v", names)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big - every tool" {
+		t.Errorf("the defined planner's picker row %v", ui.opened)
+	}
+	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
+		t.Errorf("cycling from planner went to %q", h.Settings.Str("agent.profile"))
+	}
 	h.PurgeGeneration()
 	if _, err := h.resolveProfile("p"); err == nil {
 		t.Error("a purge kept the definition")
@@ -1405,30 +1418,49 @@ func TestConcurrentSendsQueue(t *testing.T) {
 }
 
 // TestRetryRestreamsStep: a provider retry streams the step again from its
-// start, so the failed attempt's text is dropped instead of shown twice.
+// start, so the failed attempt's text and tool rows are dropped instead of
+// shown twice or as a failed call that never ran.
 func TestRetryRestreamsStep(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
-	type hooks interface {
-		TextDelta(string)
-		StepStart()
-		Retrying(error, time.Duration)
-	}
+	epoch := h.trEpoch.Load()
 	for name, c := range map[string]struct {
-		hooks hooks
+		hooks agent.StreamHooks
 		text  func() string
+		rows  func() int // transcript rows plus live tool rows
 	}{
-		"main":     {h.streamHooks().(*streamAdapter), func() string { return h.AgentStream().Text }},
-		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run}, func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text }},
+		"main": {h.streamHooks(), func() string { return h.AgentStream().Text },
+			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) }},
+		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run},
+			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
+			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) }},
 	} {
+		base := c.rows()
+		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
+		c.hooks.ToolCallEnd("c0", "read", true, "", "")
 		c.hooks.TextDelta("before ")
 		c.hooks.StepStart()
+		// the stream breaks while a call's arguments stream in
 		c.hooks.TextDelta("partial")
+		c.hooks.ToolCallPending("c1", "glob")
 		c.hooks.Retrying(nil, 0)
 		c.hooks.TextDelta("full")
-		if got := c.text(); got != "before full" {
-			t.Errorf("%s: text %q, want %q", name, got, "before full")
+		if got, rows := c.text(), c.rows(); got != "before full" || rows != base+1 {
+			t.Errorf("%s: text %q and %d rows, want %q and the one earlier call", name, got, rows, "before full")
 		}
+	}
+	if h.trEpoch.Load() == epoch {
+		t.Error("the cut kept the transcript epoch, so the chat widget draws its cached rows")
+	}
+	main := h.streamHooks()
+	h.agents.mu.Lock()
+	h.agents.thought = time.Second
+	h.agents.mu.Unlock()
+	main.StepStart()
+	main.ToolCallPending("c2", "glob") // flushes the text row, taking the thought time with it
+	main.Retrying(nil, 0)
+	if h.agents.thought != time.Second {
+		t.Errorf("the retry left thought at %v, want the step start's 1s", h.agents.thought)
 	}
 }
 
