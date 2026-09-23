@@ -10,6 +10,8 @@ import (
 
 	"charm.land/fantasy"
 	anthropic "charm.land/fantasy/providers/anthropic"
+
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // StreamHooks receives streaming updates; implementations must be safe
@@ -235,6 +237,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
+			tools.CallStart(tc.ToolCallID, tc.ToolName, tc.Input)
 			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
 			return nil
 		},
@@ -266,6 +269,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		}
 	}
 	call.OnStepFinish = func(s fantasy.StepResult) error {
+		tools.StepDone()
 		steps = append(steps, s)
 		save(s.Messages...)
 		hooks.StepDone(s.Usage)

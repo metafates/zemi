@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -199,7 +200,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case fi != nil && fi.IsDir():
 		return listDir(p, path), nil
 	case err != nil:
-		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
+		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
 	defer f.Close()
 	rel := workRel(path)
@@ -407,6 +408,70 @@ func lockFile(path string) func() {
 	return mu.Unlock
 }
 
+// callOrder keeps the write tools' calls on one file in the order the
+// model made them: fantasy runs a parallel step's calls as goroutines, and
+// the second of two edits to one file, run first, finds text the first was
+// to write. Ids arrive from CallStart, which fantasy fires for every call of
+// a step before it dispatches any; Run waits until its id leads its file.
+var callOrder = struct {
+	mu    sync.Mutex
+	cond  *sync.Cond
+	path  map[string]string   // call id -> file key
+	ahead map[string][]string // file key -> call ids, in call order
+}{path: map[string]string{}, ahead: map[string][]string{}}
+
+// CallStart records a write tool's call as the model made it; other tools
+// are ignored. The agent runner calls it from fantasy's OnToolCall.
+func CallStart(id, tool, input string) {
+	if tool != ToolWrite && tool != ToolEdit && tool != ToolMultiedit {
+		return
+	}
+	var in struct{ Path string }
+	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
+		return
+	}
+	key := absPath(in.Path)
+	callOrder.mu.Lock()
+	callOrder.path[id] = key
+	callOrder.ahead[key] = append(callOrder.ahead[key], id)
+	callOrder.mu.Unlock()
+}
+
+// StepDone drops what a step recorded and never ran (a finish that was no
+// tool call), so nothing waits on it. The agent runner calls it from
+// fantasy's OnStepFinish, once every call of the step returned.
+func StepDone() {
+	callOrder.mu.Lock()
+	clear(callOrder.path)
+	clear(callOrder.ahead)
+	callOrder.mu.Unlock()
+	callOrder.cond.Broadcast()
+}
+
+// turn blocks until call id leads the calls on its file, or was never
+// recorded, and returns the release the caller runs once its write landed.
+func turn(id string) func() {
+	c := &callOrder
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key, ok := c.path[id]
+	for ok && c.ahead[key][0] != id {
+		c.cond.Wait()
+		key, ok = c.path[id]
+	}
+	return func() {
+		c.mu.Lock()
+		if key, ok := c.path[id]; ok {
+			delete(c.path, id)
+			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
+		}
+		c.mu.Unlock()
+		c.cond.Broadcast()
+	}
+}
+
+func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
+
 // absPath is the key both the read log and the file locks use, the same
 // form fs rules match: an alias and its target, or main.go and Main.go
 // where the filesystem folds case, take the same lock.
@@ -469,7 +534,7 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
+		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
 	if msg := p.stale(path, fi); msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
@@ -508,6 +573,55 @@ func numbered(lines []string, at, n int) string {
 		fmt.Fprintf(&b, "\n%6d\t%s", j+1, lines[j])
 	}
 	return b.String()
+}
+
+// notFound words a path error; for a missing file it names up to three
+// siblings a typo could have meant (app.go for apps.go or ap.go), leaving
+// out secret-shaped and ruled-out names as listDir does.
+func (p *Pipeline) notFound(path string, err error) string {
+	msg := relErr(err).Error()
+	if !errors.Is(err, os.ErrNotExist) {
+		return msg
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	base := strings.ToLower(filepath.Base(path))
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	ruledOut, dir := p.ruledOut(), filepath.Dir(path)
+	var near []string
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		s := strings.TrimSuffix(name, filepath.Ext(name))
+		if len(near) == 3 || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
+			continue
+		}
+		if s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || editDistance(s, stem) <= 2 {
+			near = append(near, e.Name())
+		}
+	}
+	if len(near) > 0 {
+		msg += " (did you mean " + strings.Join(near, ", ") + "?)"
+	}
+	return msg
+}
+
+// editDistance is the Levenshtein distance between two short names.
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := []int{i}
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur = append(cur, min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost))
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }
 
 // relErr shortens the path in an os error the way the results do.

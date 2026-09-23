@@ -466,6 +466,12 @@ func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	if t.edits {
+		// the calls before this one on the same file land first, so the
+		// stale check and the edit see what they wrote; released on every
+		// return, or the next call on the file would wait out the step
+		defer turn(call.ID)()
+	}
 	input, err := ParseInput(t.info, call.Input)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -507,10 +513,14 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	if t.edits {
 		// before the gate, so the user is never asked to approve a change
 		// the tool then refuses; the tool checks again under the file lock
-		if fi, err := os.Stat(str(input["path"])); err == nil {
+		switch fi, err := os.Stat(str(input["path"])); {
+		case err == nil:
 			if msg := pipe.stale(str(input["path"]), fi); msg != "" {
 				return t.post(pipe, input, fantasy.NewTextErrorResponse(msg)), nil
 			}
+		case t.info.Name != ToolWrite && errors.Is(err, os.ErrNotExist):
+			// a missing file is write's normal case; an edit of one is a typo
+			return t.post(pipe, input, fantasy.NewTextErrorResponse(pipe.notFound(str(input["path"]), err))), nil
 		}
 	}
 	if t.check != nil {

@@ -147,6 +147,61 @@ func TestBashGate(t *testing.T) {
 	}
 }
 
+// TestEditsOnOneFileKeepCallOrder: two edits to one file in one step, the
+// second depending on the first, apply in call order whichever goroutine
+// runs first.
+func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
+	p, _ := testPipeline(t, false,
+		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
+		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p.Seen = &sync.Map{}
+	read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
+	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
+	for i := range 20 {
+		os.WriteFile(path, []byte("a\n"), 0o644)
+		call(t, read, `{"path":"`+path+`"}`)
+		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
+		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
+		CallStart("c1", "edit", first)
+		CallStart("c2", "edit", second)
+		var wg sync.WaitGroup
+		var r1, r2 fantasy.ToolResponse
+		wg.Go(func() {
+			r2, _ = edit.Run(context.Background(), fantasy.ToolCall{ID: "c2", Name: "edit", Input: second})
+		})
+		wg.Go(func() { r1, _ = edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first}) })
+		wg.Wait()
+		StepDone()
+		got, _ := os.ReadFile(path)
+		if r1.IsError || r2.IsError || string(got) != "c\n" {
+			t.Fatalf("round %d: %q %q, file %q", i, r1.Content, r2.Content, got)
+		}
+	}
+}
+
+// TestNotFoundNamesSiblings: a mistyped path names the files it could have
+// meant, for read and edit alike, without asking anyone about the edit.
+func TestNotFoundNamesSiblings(t *testing.T) {
+	p, asked := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p.Seen = &sync.Map{}
+	dir := t.TempDir()
+	for _, name := range []string{"app.go", "apps.go", "apt.go", "main.go", "app.env"} {
+		os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644)
+	}
+	for _, c := range []struct{ tool, input string }{
+		{"read", `{"path":"` + filepath.Join(dir, "ap.go") + `"}`},
+		{"edit", `{"path":"` + filepath.Join(dir, "ap.go") + `","old_string":"a","new_string":"b"}`},
+	} {
+		resp := call(t, toolNamed(t, c.tool, p), c.input)
+		if !resp.IsError || !strings.Contains(resp.Content, "did you mean app.go, apps.go, apt.go?") || strings.Contains(resp.Content, "app.env") || len(*asked) != 0 {
+			t.Errorf("%s: %+v asked %+v", c.tool, resp, *asked)
+		}
+	}
+	if resp := call(t, toolNamed(t, "read", p), `{"path":"`+filepath.Join(dir, "zzz.txt")+`"}`); !resp.IsError || strings.Contains(resp.Content, "did you mean") {
+		t.Errorf("no near name: %+v", resp)
+	}
+}
+
 // TestSandboxHintForPlanner: a read-only agent is denied sandbox: false, so
 // its hint does not offer it; network: true stays.
 func TestSandboxHintForPlanner(t *testing.T) {

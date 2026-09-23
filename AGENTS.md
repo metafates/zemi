@@ -207,7 +207,11 @@ into an ask (`expandsToDotDot`).
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file the
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
-changes. `ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
+changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
+`OnToolCall`, which fires for every call before any is dispatched, `tools.StepDone` after), so
+two edits to one file emitted together apply as written. A mistyped path names up to three
+siblings it could have meant (`Pipeline.notFound`), for read and edit alike, before any ask.
+`ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
 files touched after the last message. `tool.Run` runs the same check before the gate
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 (`perm.RealPath`) before the gate; the tools open exactly that path through `openGated` (an
@@ -505,7 +509,9 @@ lua-language-server is installed.
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
-  `attachMarker`, which the live transcript and resume cut off.
+  `attachMarker`, which the live transcript and resume cut off. `/agents` lists the live
+  session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
+  named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
   removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
   agent; a program may read it, never run from it.
