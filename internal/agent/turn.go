@@ -416,6 +416,8 @@ func (r *Runner) Snapshot() []fantasy.Message {
 // this runner's system prompt, tools and cache breakpoints, so the provider's
 // prefix cache holds. Tool choice stays as a turn sends it, since Anthropic
 // drops the message cache when it changes; the tools refuse to run instead.
+// It streams: Anthropic's SDK refuses a large max_tokens otherwise, and the
+// idle timer covers only a stream.
 func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text string) (*fantasy.AgentResult, error) {
 	msgs := append(closeToolCalls(history), UserMessage(text))
 	if r.TextOnly {
@@ -425,12 +427,14 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	for i, t := range r.tools {
 		inert[i] = inertTool{t}
 	}
-	call := fantasy.AgentCall{
+	call := fantasy.AgentStreamCall{
 		Messages:        msgs,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		Temperature:     r.Temperature,
 		MaxRetries:      &maxRetries,
 		ProviderOptions: r.ProviderOptions,
+		// past lastErr, which the turn this may run beside writes
+		ModelProvider: func() fantasy.LanguageModel { return r.last.LanguageModel },
 		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
 			res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(o.Messages), Tools: inert}
 			if r.ActiveTools != nil {
@@ -442,7 +446,7 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	if n := r.MaxOutputTokens; n > 0 {
 		call.MaxOutputTokens = &n
 	}
-	return r.agent.Generate(ctx, call)
+	return r.agent.Stream(ctx, call)
 }
 
 // inertTool sends a tool's schema and refuses to run it.

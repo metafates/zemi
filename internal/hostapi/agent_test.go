@@ -1670,21 +1670,24 @@ func TestModelDesc(t *testing.T) {
 	}
 }
 
-// btwModel records the one Generate call /btw makes and answers it with a
-// tool call along with the text; turns stream from the script.
+// btwModel records the one call /btw makes and answers it with a tool call
+// along with the text; turns stream from the script.
 type btwModel struct {
 	*scriptModel
 	call fantasy.Call
 }
 
-func (m *btwModel) Generate(_ context.Context, call fantasy.Call) (*fantasy.Response, error) {
+func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if !strings.HasSuffix(concatText(call.Prompt[len(call.Prompt)-1].Content), "what failed?") {
+		return m.scriptModel.Stream(ctx, call)
+	}
 	m.call = call
-	return &fantasy.Response{
+	return streamOf(&fantasy.Response{
 		Content: fantasy.ResponseContent{fantasy.TextContent{Text: "the build"},
 			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`}},
 		FinishReason: fantasy.FinishReasonToolCalls,
 		Usage:        fantasy.Usage{InputTokens: 100, OutputTokens: 7},
-	}, nil
+	}), nil
 }
 
 // TestBtw: a side question asked mid-turn sees the turn's finished steps on

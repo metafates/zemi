@@ -100,3 +100,22 @@ func TestStepBillsLiveTally(t *testing.T) {
 		t.Fatalf("stored input tokens = %+v, %v; want 13", sess, err)
 	}
 }
+
+// streamOnly answers every call with a stream; its Generate fails.
+type streamOnly struct{ *scriptModel }
+
+func (streamOnly) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return streamOf(&fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "a title"}}, FinishReason: fantasy.FinishReasonStop}), nil
+}
+
+// TestGenerateStreams: titles, summaries and the reflector stream, since
+// Anthropic's SDK refuses a large max_tokens without streaming.
+func TestGenerateStreams(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
+	maxOut := int64(128_000)
+	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, "models.small")
+	if err != nil || res.Response.Content.Text() != "a title" {
+		t.Fatalf("generate = %+v, %v", res, err)
+	}
+}

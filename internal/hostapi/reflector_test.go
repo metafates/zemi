@@ -23,8 +23,9 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// reflectStubModel answers Generate and Stream with a fixed text (Stream
-// backs agent turns and records the prompt size); object calls refuse.
+// reflectStubModel answers side calls through Generate and turns through
+// Stream with a fixed text (Stream records the prompt size); object calls
+// refuse.
 type reflectStubModel struct {
 	resp       string
 	err        error
@@ -67,7 +68,14 @@ func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fa
 	}, nil
 }
 
-func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if sideCall(call) {
+		res, err := m.Generate(ctx, call)
+		if err != nil {
+			return nil, err
+		}
+		return streamOf(res), nil
+	}
 	m.streams.Add(1)
 	m.lastPrompt.Store(int32(len(call.Prompt)))
 	if used := m.toolStep.Swap(0); used > 0 {
@@ -95,6 +103,33 @@ func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy
 			}
 		}
 	}, nil
+}
+
+// sideCall reports a title, summary or reflector call, which a turn's script
+// does not answer.
+func sideCall(call fantasy.Call) bool {
+	return len(call.Prompt) > 0 && slices.Contains([]string{titleSystem, compactSystem, reflectorSystem}, concatText(call.Prompt[0].Content))
+}
+
+// streamOf replays a reply as the stream a side call reads.
+func streamOf(res *fantasy.Response) fantasy.StreamResponse {
+	return func(yield func(fantasy.StreamPart) bool) {
+		for _, c := range res.Content {
+			switch c := c.(type) {
+			case fantasy.TextContent:
+				if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextStart, ID: "t"}) ||
+					!yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextDelta, ID: "t", Delta: c.Text}) ||
+					!yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextEnd, ID: "t"}) {
+					return
+				}
+			case fantasy.ToolCallContent:
+				if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: c.ToolCallID, ToolCallName: c.ToolName, ToolCallInput: c.Input}) {
+					return
+				}
+			}
+		}
+		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: res.FinishReason, Usage: res.Usage})
+	}
 }
 
 func (m *reflectStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {

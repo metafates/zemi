@@ -508,6 +508,17 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	}
 }
 
+// TestAsideStreams: /btw streams, since Anthropic's SDK refuses a large
+// max_tokens without streaming (the mock's Generate always fails).
+func TestAsideStreams(t *testing.T) {
+	r := NewRunner(&mockModel{parts: textParts("answer")}, nil, "sys")
+	r.MaxOutputTokens = 128_000
+	res, err := r.Aside(context.Background(), nil, "what did I say")
+	if err != nil || res.Response.Content.Text() != "answer" {
+		t.Fatalf("aside = %+v, %v", res, err)
+	}
+}
+
 func TestSecondSendWhileActive(t *testing.T) {
 	block := make(chan struct{})
 	m := &mockModel{
