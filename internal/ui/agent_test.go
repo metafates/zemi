@@ -886,23 +886,27 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// working drifts the two eye dots in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.· ") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
 		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
 	}
 	// a long command keeps the working drift, there is no waiting state
 	long := []hostapi.StreamTool{{Name: "bash", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.· ") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
 		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(800); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.. ") {
+	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(500); !strings.Contains(r, "· Working · 20s · esc interrupt ─") || !strings.HasSuffix(r, "─") {
-		t.Fatalf("the status is not right after the snail: %q", r)
+	// the status sits at the right end and the label stays put as the clock
+	// gains digits
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
+	short := row(500)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 65 * time.Second})
+	if r := row(500); !strings.HasSuffix(r, " Working · esc interrupt · 1m 05s ") || strings.Index(r, "Working") != strings.Index(short, "Working") {
+		t.Fatalf("the status is not at the right end or slid: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no label, and no esc, which the prompt takes
@@ -938,7 +942,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Steering: []string{"x"}})
 	app.Update(tea.WindowSizeMsg{Width: 44, Height: 16})
 	app.renderSync(t)
-	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 44)); !strings.Contains(r, " Working · 20s · esc interrupt ─") {
+	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 44)); !strings.Contains(r, " Working · esc interrupt · 20s ─") {
 		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
 	}
 }
