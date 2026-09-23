@@ -7,7 +7,7 @@ description: "Load to check a UI or agent change end to end, capture a screen, o
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
 pickers) or crosses the model loop (tools, permission asks, compaction, resume).
-Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
+Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not. Give every run its own server (`tmux -L <name>`): parallel testers share the default one, and killing it kills everyone's sessions.
 
 ## 1. A throwaway tree, always
 
@@ -44,15 +44,15 @@ L
 ## 3. Drive it
 
 ```sh
-tmux new-session -d -s zt -x 140 -y 40 "cd $T/proj && $S/zemi-safe $T --trust"
-sleep 1.5; tmux capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
-tmux send-keys -t zt "call bash {\"command\":\"ls\",\"about\":\"list\"}" Enter
-sleep 1; tmux capture-pane -t zt -p
-tmux send-keys -t zt "/model" Enter               # pickers, palettes, overlays
-tmux send-keys -t zt Escape
-tmux resize-window -t zt -x 60 -y 15              # narrow and short layouts
-tmux send-keys -t zt C-c C-c                      # quit
-tmux kill-session -t zt; pkill -f "fake_openai.py 18472"
+tmux -L zt new-session -d -s zt -x 140 -y 40 "cd $T/proj && $S/zemi-safe $T --trust"
+sleep 1.5; tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
+tmux -L zt send-keys -t zt "call bash {\"command\":\"ls\",\"about\":\"list\"}" Enter
+sleep 1; tmux -L zt capture-pane -t zt -p
+tmux -L zt send-keys -t zt "/model" Enter               # pickers, palettes, overlays
+tmux -L zt send-keys -t zt Escape
+tmux -L zt resize-window -t zt -x 60 -y 15              # narrow and short layouts
+tmux -L zt send-keys -t zt C-c C-c                      # quit
+tmux -L zt kill-session -t zt; pkill -f "fake_openai.py 18472"
 ```
 
 Headless checks need no tmux: `$S/zemi-safe $T --health`, `(cd $T/proj && $S/zemi-safe $T
