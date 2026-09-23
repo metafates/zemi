@@ -173,7 +173,7 @@ Contracts that make this safe:
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
   dropped `LState`. Lua-added permission rules are the exception: they stay
-  in force until the replay succeeds (then those it did not add again are
+  in force until the replay succeeds (a failed one keeps the deny and ask ones; then those it did not add again are
   dropped), and `tool.pre` and `permission.request` vetoes wait for a
   running reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and

@@ -156,8 +156,8 @@ command can plant a nested repo whose config zemi would run.
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a
    permission mode's `decide`) are generation-tagged (`hostapi.Gen`) and purged before replay,
-   so never keep a pointer into an old generation. `ForceReload` keeps the old Lua permission
-   rules (`staleRules`) until the replay succeeds, and `tool.pre` and `permission.request`
+   so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does not parse, keeps the old Lua permission
+   rules (`staleRules`) until the replay succeeds (a failed one, init.lua included, keeps the deny and ask ones and skips `cfgSettle`), and `tool.pre` and `permission.request`
    vetoes wait out a reload, so a turn is never checked against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi

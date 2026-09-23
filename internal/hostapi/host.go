@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua/parse"
 )
 
 // UIHooks is what the host API needs from the UI layer. Implemented by
@@ -331,6 +333,7 @@ type Host struct {
 	// config, instructions and language servers load only when it is set,
 	// and auto mode settles less without it.
 	projectTrusted atomic.Bool
+	trustDropped   atomic.Bool // trust went off: the next reload must run to drop project config
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store, the scratchpad and
 	// the sandbox cache, and finding it walks the disk. project is the same
@@ -362,6 +365,9 @@ type Host struct {
 // skills.
 func (h *Host) SetProjectTrusted(ok bool) {
 	prev := h.projectTrusted.Swap(ok)
+	if prev && !ok {
+		h.trustDropped.Store(true)
+	}
 	var found []skills.Skill
 	if ok {
 		found = h.discoverProjectSkills()
@@ -1585,19 +1591,56 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 
 	h.reloadRun.Lock()
 	defer h.reloadRun.Unlock()
+	// a reload after trust went off still runs, so the project config goes
+	if !h.trustDropped.Swap(false) {
+		if err := h.checkInits(); err != nil {
+			return err
+		}
+	}
 	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
-	// a failed replay keeps the old rules: the last whole config beats part of one
+	if err == nil && h.InitError() != "" {
+		err = errors.New(h.InitError())
+	}
+	// A failed replay keeps the old deny and ask rules and the settings it
+	// did not write: part of a config never loosens what the whole one set.
+	h.luaRulesMu.Lock()
+	h.staleRules = slices.DeleteFunc(h.staleRules, func(r perm.Rule) bool {
+		drop := err == nil || r.Decision == perm.Allow
+		if drop {
+			h.Perm.Remove(r)
+		}
+		return drop
+	})
+	h.luaRulesMu.Unlock()
 	if err == nil {
 		h.cfgSettle()
 		h.dropStaleLayout()
-		h.luaRulesMu.Lock()
-		for _, r := range h.staleRules {
-			h.Perm.Remove(r)
-		}
-		h.staleRules = nil
-		h.luaRulesMu.Unlock()
 	}
 	return err
+}
+
+// checkInits parses the init files a reload runs, so a half-saved one
+// fails the reload before it retires the working generation.
+func (h *Host) checkInits() error {
+	dirs := []string{h.Dirs.ConfigHome}
+	if h.ProjectTrusted() {
+		dirs = append(dirs, h.Dirs.ProjectConfigDir())
+	}
+	for _, dir := range dirs {
+		p := filepath.Join(dir, "init.lua")
+		src, err := os.ReadFile(p)
+		if dir == "" || err != nil {
+			continue // the boot step skips or reports it
+		}
+		_, err = parse.Parse(bytes.NewReader(src), p)
+		if pe, ok := errors.AsType[*parse.Error](err); ok {
+			if pe.Pos.Line == parse.EOF {
+				return fmt.Errorf("%s:%d: %s at end of file", TildePath(p), bytes.Count(bytes.TrimRight(src, "\n"), []byte("\n"))+1, pe.Message)
+			}
+			return fmt.Errorf("%s:%d: %s near '%s'", TildePath(p), pe.Pos.Line, pe.Message, pe.Token)
+		}
+	}
+	return nil
 }
 
 // claimStale reports whether r is a rule the replaced generation added,
