@@ -2,6 +2,7 @@ package lua
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -347,6 +348,14 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 	}
 	untag := func(s string) string { return strings.ReplaceAll(s, origin.ChunkName(rel), rel) }
 	msg := untag(api.Object.String())
+	if _, ok := api.Object.(*glua.LTable); ok {
+		// error({ code = 1 }) prints as its address otherwise
+		if v, err := ToGo(api.Object); err == nil {
+			if data, err := json.Marshal(v); err == nil {
+				msg = string(data)
+			}
+		}
+	}
 	if !strings.Contains(msg, rel) {
 		msg = rel + ": " + msg
 	}

@@ -11,6 +11,7 @@ package hostapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -29,7 +30,9 @@ import (
 
 // luaToolCeiling bounds one run: it holds the interpreter the UI renders
 // through. Cancelling stops the script at its next opcode.
-const luaToolCeiling = 10 * time.Second
+// luaToolCeiling bounds one Lua tool run on the interpreter; a var so a
+// test can hit it without waiting.
+var luaToolCeiling = 10 * time.Second
 
 // luaToolChunk names the tool's chunks; an approved run appends "#<n>".
 const luaToolChunk = "lua-tool"
@@ -203,10 +206,10 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			arg = in.Path
 		}
 		preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-		req := tools.Request{Tool: "lua", Subject: "tool.lua", Arg: arg, Reason: in.Description, Preview: preview}
+		req := tools.Request{Tool: "lua", Subject: "tool.lua", Arg: arg, Description: in.Description, Preview: preview}
 		if len(unlisted) > 0 {
 			req.Unsandboxed = true
-			req.Reason = strings.TrimSuffix("uses "+strings.Join(unlisted, ", ")+", which can change zemi or start programs outside the sandbox: "+in.Description, ": ")
+			req.Reason = "uses " + strings.Join(unlisted, ", ") + ", which can change zemi or start programs outside the sandbox"
 		}
 		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
@@ -220,6 +223,11 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	out, err := h.runModelLua(ctx, src, rel)
 	if err != nil {
 		msg := err.Error()
+		// the ceiling, not an interrupt: the model can tell them apart and
+		// move the work, as the bash tool's timeout line lets it
+		if ctx.Err() == nil && errors.Is(err, context.Canceled) {
+			msg = fmt.Sprintf("stopped after %s: the script must finish quickly; move long work to zemi.job or a bash command", luaToolCeiling)
+		}
 		if in.Path != "" {
 			// the chunk keeps its tool name, which the sandbox guard reads;
 			// the error names the file the model can edit

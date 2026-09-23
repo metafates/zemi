@@ -301,7 +301,7 @@ func (g *Generation) execute(r *request) {
 	case reqCtx.Err() != nil:
 		// A reply arriving after cancellation is canceled, whatever the Lua
 		// returned (DESIGN §4).
-		r.reply <- result{err: fmt.Errorf("%w: %w", ErrCanceled, reqCtx.Err())}
+		r.reply <- result{err: reqCtx.Err()}
 	case err != nil:
 		r.reply <- result{err: err}
 	default:

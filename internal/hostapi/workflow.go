@@ -623,7 +623,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
 	preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-	if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Reason: in.Description, Preview: preview}); v.Decision != perm.Allow {
+	if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Description: in.Description, Preview: preview}); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
 	start := time.Now()

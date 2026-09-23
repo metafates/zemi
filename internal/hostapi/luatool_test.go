@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -106,6 +107,10 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, c.scan) || !strings.Contains(out, "permission denied") {
 				t.Errorf("pre-ask: %+v %q", ui.asked, out)
 			}
+			// the model's words are the description, not part of zemi's reason
+			if a := ui.asked[0]; a.Description != "x" || strings.HasSuffix(a.Reason, ": x") {
+				t.Errorf("ask fields: %+v", a)
+			}
 			if ui, out = run(c.script, true); len(ui.asked) != 1 || strings.Contains(out, "asks before") {
 				t.Errorf("approved run: %q", out)
 			}
@@ -168,5 +173,30 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		return n, table.concat(open, " ")`, luaToolChunk)
 	if err != nil || !strings.HasSuffix(out, `,""]`) || strings.HasPrefix(out, "return: [0,") {
 		t.Errorf("unguarded members: %s %v", out, err)
+	}
+}
+
+// TestLuaToolCeiling: a script the ceiling stops is told so, not "context
+// canceled", and a table error value reads as JSON.
+func TestLuaToolCeiling(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	old := luaToolCeiling
+	luaToolCeiling = 50 * time.Millisecond
+	t.Cleanup(func() { luaToolCeiling = old })
+	tool := h.luaEvalTool()
+	for _, c := range []struct{ script, want string }{
+		{"while true do end", "error: stopped after 50ms: the script must finish quickly"},
+		{"error({ code = 1 })", `error: lua-tool: {"code":1}`},
+	} {
+		input, _ := json.Marshal(map[string]string{"description": "x", "script": c.script})
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, "context canceled") {
+			t.Errorf("%s: %+v (%v)", c.script, resp, err)
+		}
 	}
 }
