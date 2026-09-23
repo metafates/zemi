@@ -111,7 +111,8 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("fresh session prompt has %d messages, want 2", n)
 	}
 
-	if err := h.ResumeSession(first); err != nil {
+	// a bare /resume from the latest session goes to the one before it
+	if err := h.ResumeSession(""); err != nil {
 		t.Fatalf("resume: %v", err)
 	}
 	if tr := h.Session().Transcript; len(tr) != 2 || tr[0].Text != "one" || tr[1].Text != "ok" {

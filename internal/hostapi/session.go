@@ -33,23 +33,25 @@ func (h *Host) NewSession() error {
 	return nil
 }
 
-// ResumeSession reopens a stored session ("" means the most recent one).
+// ResumeSession reopens a stored session ("" means the most recent other one).
 func (h *Host) ResumeSession(id string) error {
 	if h.DB == nil {
 		return errors.New("session store unavailable")
 	}
+	live := h.AgentSessionID()
 	if id == "" {
-		list, err := h.DB.ListSessions(1)
+		list, err := h.DB.ListSessions(2)
 		if err != nil {
 			return err
 		}
-		if len(list) == 0 {
-			h.Notify("warn", "Nothing to resume", "no sessions in this project yet")
+		i := slices.IndexFunc(list, func(s *store.Session) bool { return s.ID != live })
+		if i < 0 {
+			h.Notify("warn", "Nothing to resume", "no other session in this project yet")
 			return nil
 		}
-		id = list[0].ID
+		id = list[i].ID
 	}
-	if id == h.AgentSessionID() {
+	if id == live {
 		return nil
 	}
 	sess, err := h.DB.GetSession(id)
