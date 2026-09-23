@@ -1201,8 +1201,8 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
-// not models.main, and so does compaction; a subagent without one takes the
-// main tier, which is the worker tier whatever the conversation runs on.
+// not models.main; compaction and a subagent without a model take a tier,
+// whatever the conversation runs on.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -1221,8 +1221,8 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		t.Fatal("the profile's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if m, _, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
-		t.Fatalf("summary model %v, err %v, want the profile's", m, err)
+	if _, id, err := h.modelFor("compact.model"); err != nil || id != "a/small" {
+		t.Fatalf("summary model %q, err %v, want the small tier", id, err)
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
 		t.Fatalf("subagent model %q, want the main tier", id)

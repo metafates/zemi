@@ -83,8 +83,8 @@ func (h *Host) modelErr(id string) error {
 	return nil
 }
 
-// modelFor resolves the model the first set key names, the session's model
-// when none is set, and returns its id for pricing.
+// modelFor resolves the model the first set key names, the small tier when
+// none is set, and returns its id for pricing.
 func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 	for _, key := range keys {
 		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
@@ -92,7 +92,7 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 			return m, id, err
 		}
 	}
-	id := h.sessionModelID()
+	id := cmp.Or(h.tierModel("small"), h.sessionModelID())
 	m, err := h.resolveModel(&Profile{Model: id})
 	return m, id, err
 }
