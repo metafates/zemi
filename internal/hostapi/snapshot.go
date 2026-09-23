@@ -93,8 +93,12 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 	s.state.Unlock()
 	jobs := h.jobsRunning()
 	root, before := h.snapshot(dir)
+	mid := h.turnMsgID()
 	return func() (string, string, []string) {
 		_, after := h.snapshot(dir)
+		// a command adopted as a job reports after its turn: its changes
+		// belong to no later prompt's rewind
+		ckpt := mid != "" && mid == h.turnMsgID()
 		s.state.Lock()
 		mixed, wrote := s.mixed || jobs || h.jobsRunning(), s.wrote
 		if s.open--; s.open == 0 {
@@ -104,7 +108,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 		if before == "" || after == "" || before == after {
 			return "", "", nil
 		}
-		return h.treeDiff(root, before, after, mixed, wrote)
+		return h.treeDiff(root, before, after, mixed, ckpt, wrote)
 	}
 }
 
@@ -135,7 +139,7 @@ func (h *Host) noteWrite(path string) {
 	}
 }
 
-func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string][32]byte) (note, diff string, changed []string) {
+func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[string][32]byte) (note, diff string, changed []string) {
 	out, err := h.git(root, "diff", "--name-status", "--no-renames", "-z", before, after)
 	if err != nil {
 		return "", "", nil
@@ -155,7 +159,7 @@ func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string
 		// rewind: what the command deleted or changed, as the before tree
 		// holds it (one git process per path, so capped); an ignored file is
 		// in no tree and stays as the command left it
-		if len(changed) <= snapCheckpoints {
+		if ckpt && len(changed) <= snapCheckpoints {
 			if fields[i] == "A" {
 				h.checkpoint(abs, false, nil)
 			} else if data, err := h.runGit(root, nil, "cat-file", "-p", before+":"+fields[i+1]); err == nil {

@@ -45,6 +45,12 @@ func (h *Host) checkpointFile(path string) {
 	h.checkpoint(abs, existed, data)
 }
 
+func (h *Host) turnMsgID() string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.agents.turnMsgID
+}
+
 // checkpoint records a file as it was before the running turn changed it:
 // the file tools read it from disk, a bash call's changes come from the
 // tree treeDiff compared against. First write per turn wins in the store.
@@ -52,10 +58,7 @@ func (h *Host) checkpoint(abs string, existed bool, data []byte) {
 	if h.DB == nil {
 		return
 	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid, mid := ag.sessionID, ag.turnMsgID
-	ag.mu.Unlock()
+	sid, mid := h.AgentSessionID(), h.turnMsgID()
 	if sid == "" || mid == "" {
 		return
 	}

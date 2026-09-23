@@ -8,10 +8,11 @@ import (
 	"testing"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 func TestBashChanges(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, _ := newTestHostDB(t)
 	h.Dirs.StateHome = t.TempDir()
 	dir := h.Dirs.ProjectDir
 	write := func(name, text string) {
@@ -56,6 +57,29 @@ func TestBashChanges(t *testing.T) {
 	}
 	if now, _ := h.git(dir, "status", "--porcelain"); !strings.Contains(now, "A  staged.txt") || !strings.Contains(now, "?? new.txt") {
 		t.Errorf("the user's index moved: %q", now)
+	}
+
+	// a command that outlived its turn checkpoints nothing: a later prompt's
+	// rewind must not restore what an earlier command changed
+	h.DB.CreateSession("s", "", "t", "")
+	for _, id := range []string{"m1", "m2"} {
+		h.DB.AddMessage(&store.Message{ID: id, SessionID: "s", Role: "user", PartsJSON: "{}"})
+	}
+	h.agents.mu.Lock()
+	h.agents.sessionID, h.agents.turnMsgID = "s", "m1"
+	h.agents.mu.Unlock()
+	late, now := h.bashChanges(dir), h.bashChanges(dir)
+	write("a.txt", "three\n")
+	h.agents.mu.Lock()
+	h.agents.turnMsgID = "m2"
+	h.agents.mu.Unlock()
+	late()
+	h.agents.mu.Lock()
+	h.agents.turnMsgID = "m1"
+	h.agents.mu.Unlock()
+	now()
+	if paths, _ := h.DB.CheckpointPaths("s"); len(paths["m1"]) != 1 || len(paths["m2"]) != 0 {
+		t.Errorf("checkpoints = %v, want a.txt under m1 only", paths)
 	}
 
 	// two calls at once cannot be told apart
