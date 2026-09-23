@@ -463,6 +463,9 @@ func (h *Host) ViewedAgent() string {
 // "" shows the session again. A run this process no longer holds (an
 // earlier zemi, or evicted) is read from its child session.
 func (h *Host) ViewAgent(id string) error {
+	if _, err := h.Screen(); err != nil {
+		return err
+	}
 	if id != "" {
 		run := h.tasks.find(id)
 		if run == nil {

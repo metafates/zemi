@@ -303,8 +303,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			return nil
 		}},
 		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
-			h.OpenHelp()
-			return nil
+			return h.OpenHelp()
 		}},
 		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.NewSession()
@@ -391,7 +390,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "errors", NArgs: "*", Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
 			return h.OpenErrors(args)
 		}},
-		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(*hostapi.Host, string) error {
+		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string) error {
+			if _, err := h.Screen(); err != nil {
+				return fmt.Errorf("%w; --trust trusts the project for one run", err)
+			}
 			trust()
 			return nil
 		}},

@@ -1319,11 +1319,32 @@ const btwPrompt = `Side question. Answer only it, in this one reply, from what t
 Question: `
 
 // Btw runs /btw: a side question answered in an overlay from the
-// conversation so far, a running turn included, and never stored.
+// conversation so far, a running turn included, and never stored. Headless
+// the answer is a transcript row, which -p prints; the call claims the agent
+// like /compact, so -p waits on it and its ctrl+c cancels it.
 func (h *Host) Btw(question string) error {
 	ui := h.hooks()
 	if ui == nil {
-		return errors.New("/btw shows its answer in the TUI")
+		ag := h.agents
+		ag.mu.Lock()
+		if ag.active {
+			ag.mu.Unlock()
+			return errors.New("a turn is running; ask after it")
+		}
+		ag.active = true
+		scope := h.beginScope()
+		ag.mu.Unlock()
+		h.GoSafe("btw", func() {
+			defer h.endTurnAfterPanic()
+			answer, err := h.btw(scope.ctx, question)
+			row := ChatMessage{Role: "assistant", Text: answer}
+			if err != nil {
+				row = ChatMessage{Role: "assistant", Kind: "error", Text: sanitize.String(h.errorRowText(err))}
+			}
+			h.AppendChat(row)
+			h.handOff(scope)
+		})
+		return nil
 	}
 	h.GoSafe("btw", func() {
 		answer, err := h.btw(context.Background(), question)
@@ -1650,9 +1671,9 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 
 // OpenModelPicker lists the registered models; enter runs /model <id>.
 func (h *Host) OpenModelPicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	p, _ := h.resolveProfile("")
 	cur, sel := h.currentModelID(p), 0 // what the next send reads, not the running turn's
@@ -1926,9 +1947,9 @@ func plainTextEnd(runner *agent.Runner) string {
 
 // OpenProfilePicker lists the profiles with what each changes; enter switches.
 func (h *Host) OpenProfilePicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	cur, sel := h.Settings.Str("agent.profile"), 0
 	var items []any

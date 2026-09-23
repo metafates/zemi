@@ -476,9 +476,9 @@ var healthActions = map[string]string{"errors": "Show errors", "trust": "Change 
 
 // OpenHealth shows the checks in the list overlay.
 func (h *Host) OpenHealth() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI attached")
+	ui, err := h.Screen()
+	if err != nil {
+		return fmt.Errorf("%w; --health prints the checks", err)
 	}
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.

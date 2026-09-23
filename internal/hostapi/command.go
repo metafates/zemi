@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -226,7 +227,11 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 		return err
 	}
 	if cmd.GoFn != nil {
-		return cmd.GoFn(h, argString)
+		err := cmd.GoFn(h, argString)
+		if errors.Is(err, ErrNeedsTUI) {
+			err = fmt.Errorf("/%s %w", name, err)
+		}
+		return err
 	}
 	return h.runLuaCommand(ctx, cmd, argString)
 }

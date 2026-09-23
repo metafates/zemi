@@ -253,10 +253,14 @@ func (h *Host) memoryCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
+		ui, err := h.Screen()
+		if err != nil {
+			return err
+		}
 		if h.memReview.TryLock() {
 			h.GoSafe("memory review", func() {
 				defer h.memReview.Unlock()
-				h.openMemoryReview()
+				h.openMemoryReview(ui)
 			})
 			return nil
 		}
@@ -284,12 +288,7 @@ func (h *Host) memoryCommand(args string) error {
 // memories removed from their scope's DB. A row marked for editing opens
 // in the user's editor after the other decisions apply, then the screen
 // opens again.
-func (h *Host) openMemoryReview() {
-	ui := h.hooks()
-	if ui == nil {
-		h.Notify("warn", "Memory review unavailable", "")
-		return
-	}
+func (h *Host) openMemoryReview(ui UIHooks) {
 	for h.reviewMemoriesOnce(ui) {
 	}
 }

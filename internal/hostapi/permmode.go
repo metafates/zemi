@@ -111,9 +111,9 @@ func modeIndex(list []PermModeDef, name string) int {
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	cur, sel := h.PermMode(), 0
 	var items []any
@@ -134,9 +134,9 @@ func (h *Host) OpenModePicker() error {
 // removable; config rules come back on the next reload, so they show
 // read-only.
 func (h *Host) OpenPermissions() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "permissions", Title: "Permissions", Origin: lua.OriginBuiltin,

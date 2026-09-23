@@ -94,8 +94,11 @@ func (h *Host) ResumeSession(id string) error {
 
 // OpenSessions lists recent sessions; enter on a row resumes it.
 func (h *Host) OpenSessions() error {
-	ui := h.hooks()
-	if h.DB == nil || ui == nil {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if h.DB == nil {
 		return errors.New("session store unavailable")
 	}
 	list, err := h.DB.ListSessions(50)

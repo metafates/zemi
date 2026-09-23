@@ -719,9 +719,9 @@ func (h *Host) restartMCP(name string) error {
 }
 
 func (h *Host) openMCP() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var items []any
 	for _, s := range h.mcp.list() {

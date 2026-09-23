@@ -372,8 +372,7 @@ func (h *Host) skillsCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
-		h.openSkills()
-		return nil
+		return h.openSkills()
 	case len(fields) >= 2 && fields[0] == "use":
 		return h.useSkill(fields[1], strings.Join(fields[2:], " "))
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
@@ -414,9 +413,9 @@ func (h *Host) deleteRecipe(name string) error {
 // openSkillFile opens a skill's SKILL.md in the user's editor, so its
 // instructions can be read and fixed before it is enabled.
 func (h *Host) openSkillFile(name string) error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		if s.Name != name {
@@ -469,12 +468,15 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 // openSkills lists discovered skills with their state; space toggles the
 // selected one through the same enable/disable path as the command and the
 // list stays open, enter opens its detail.
-func (h *Host) openSkills() {
-	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
-			Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-			Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+func (h *Host) openSkills() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
+	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
+		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
+		Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+	return nil
 }
 
 // sourceSection names a list section after where its rows come from.

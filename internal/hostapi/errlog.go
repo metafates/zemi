@@ -4,7 +4,6 @@
 package hostapi
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -100,16 +99,16 @@ func (h *Host) HasUnseenErrors() bool {
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
 // explain and fix.
 func (h *Host) OpenErrors(args string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
 	l := &h.errs
 	l.mu.Lock()
 	entries := append([]errEntry(nil), l.entries...)
 	l.unseen = false
 	l.mu.Unlock()
 	h.refresh()
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI attached")
-	}
 	f := strings.Fields(args)
 	sel := 0
 	if len(f) > 0 {

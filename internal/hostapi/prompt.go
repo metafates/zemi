@@ -470,9 +470,9 @@ func (h *Host) forgetInstructions() {
 // OpenPrompt shows the system prompt the last send assembled, which /usage
 // only measures.
 func (h *Host) OpenPrompt() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	sys := h.SystemPrompt()
 	if sys == "" {

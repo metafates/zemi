@@ -1274,14 +1274,16 @@ provenance string.
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
-  answered in an overlay from the conversation so far, never stored), `/health` (one row per
-  check, problems first: store, model key, context window, git, ripgrep,
+  answered in an overlay, on stdout under `-p`, from the conversation so far,
+  never stored), `/health` (one row per check, problems first: store, model
+  key, context window, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
   `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
+  Under `-p` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
   in place of the list with its full text and the actions as a list, so a restart, a

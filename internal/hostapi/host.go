@@ -454,7 +454,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help": func(h *Host, _ string) error { h.OpenHelp(); return nil },
+		"zemi.ui.help": func(h *Host, _ string) error { return h.OpenHelp() },
 		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
 			h.ToggleReasoning()
 			return nil
@@ -503,6 +503,14 @@ func (h *Host) hooks() UIHooks {
 	h.uiMu.RLock()
 	defer h.uiMu.RUnlock()
 	return h.ui
+}
+
+// Screen is the UI to open a screen on; headless it is ErrNeedsTUI.
+func (h *Host) Screen() (UIHooks, error) {
+	if ui := h.hooks(); ui != nil {
+		return ui, nil
+	}
+	return nil, ErrNeedsTUI
 }
 
 func (h *Host) SetUIHooks(ui UIHooks) {
@@ -616,10 +624,10 @@ var goKeys = [][2]string{
 }
 
 // OpenHelp opens the help overlay listing keymaps and slash commands.
-func (h *Host) OpenHelp() {
-	ui := h.hooks()
-	if ui == nil {
-		return
+func (h *Host) OpenHelp() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var items []any
 	for _, k := range goKeys {
@@ -641,6 +649,7 @@ func (h *Host) OpenHelp() {
 		items = append(items, map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "fill": "/" + c.Name + " "})
 	}
 	ui.OpenOverlay(Overlay{ID: "help", Title: "Help", Origin: lua.OriginBuiltin, Items: items})
+	return nil
 }
 
 func describeRHS(rhs RHS) string {
@@ -1555,9 +1564,9 @@ func (h *Host) ReloadConfig() error {
 	if h.RT.Booting() {
 		return errors.New("config is still loading; a reload from config would repeat forever")
 	}
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("reload needs the TUI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	h.GoSafe("reload", func() {
 		// a reload cancels what the interpreter runs, which is the caller when

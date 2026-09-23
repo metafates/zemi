@@ -666,9 +666,9 @@ func (h *Host) lspCommands() []*Command {
 				h.Notify("info", "LSP", name+" starts again on the next file it serves")
 				return nil
 			}
-			ui := h.hooks()
-			if ui == nil {
-				return errors.New("no UI")
+			ui, err := h.Screen()
+			if err != nil {
+				return err
 			}
 			empty := "No language server for this project. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
 			if !h.ProjectTrusted() {

@@ -104,7 +104,10 @@ reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, su
 rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
 agent tool's `background` and `send_to` (a detached report would outlive the run), and the
 prompt lines naming them. A headless run with no saved trust decision runs untrusted and says
-so.
+so. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
+`RunCommand` names ("/help needs the TUI", status 1; `/trust` points at `--trust`); `/btw`
+claims the agent like `/compact`, so `-p` waits on it and ctrl+c cancels it, and appends its
+answer as a transcript row, which `-p` prints.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`). Builtin
 providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
@@ -483,7 +486,7 @@ lua-language-server is installed.
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
-  tool choice changes, with every tool refusing to run. Billed, never persisted; `-p` refuses it.
+  tool choice changes, with every tool refusing to run. Billed, never persisted.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's

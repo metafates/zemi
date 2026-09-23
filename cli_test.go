@@ -361,8 +361,9 @@ func TestStdinOverCap(t *testing.T) {
 }
 
 // fakeOpenAI is an OpenAI-compatible chat server: "call NAME {json}" calls
-// that tool, "say X" replies X, "hang" waits for the request to end, and a
-// tool result gets "done".
+// that tool, "say X" replies X, a message ending in "hang" waits for the
+// request to end (10s at most, so a cancel that never comes fails a test
+// instead of hanging it), and a tool result gets "done".
 func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Stream   bool
@@ -401,8 +402,12 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 		ev(map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "t1", "type": "function",
 			"function": map[string]any{"name": call[1], "arguments": call[2]}}}}, nil)
 		ev(map[string]any{}, "tool_calls")
-	case last.Role == "user" && text == "hang":
-		<-r.Context().Done()
+	case last.Role == "user" && strings.HasSuffix(text, "hang"):
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+			http.Error(w, "hung", http.StatusBadRequest) // not retried
+		}
 		return
 	default:
 		ev(map[string]any{"role": "assistant", "content": cmp.Or(say, "done")}, nil)
@@ -477,22 +482,75 @@ func TestPrintTurn(t *testing.T) {
 	}
 }
 
-// TestPrintInterruptJSON: an interrupted run still prints its report, so a
-// script keeps the session id it resumes.
-func TestPrintInterruptJSON(t *testing.T) {
+// TestPrintScreenCommands: a command that opens a screen fails under -p and
+// says why, /trust and /health naming their flags; /btw prints its answer.
+func TestPrintScreenCommands(t *testing.T) {
 	h := printHost(t)
-	var out strings.Builder
-	code := make(chan int)
-	go func() { code <- printTurn(h, "hang", true, &out, io.Discard) }()
-	for !h.AgentActive() {
-		runtime.Gosched()
+	if printTurn(h, "say hi", false, io.Discard, io.Discard) != 0 {
+		t.Fatal("first turn failed")
 	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		prompt, stdout, stderr string
+		code                   int
+	}{
+		{"/help", "", "zemi: /help needs the TUI\n", 1},
+		{"/sessions", "", "zemi: /sessions needs the TUI\n", 1},
+		{"/rewind", "", "zemi: /rewind needs the TUI\n", 1},
+		{"/profile", "", "zemi: /profile needs the TUI\n", 1},
+		{"/usage", "", "zemi: /usage needs the TUI\n", 1},
+		{"/prompt", "", "zemi: /prompt needs the TUI\n", 1},
+		{"/messages", "", "zemi: /messages needs the TUI\n", 1},
+		{"/copy", "", "zemi: /copy needs the TUI\n", 1},
+		{"/reload", "", "zemi: /reload needs the TUI\n", 1},
+		{"/errors", "", "zemi: /errors needs the TUI\n", 1},
+		{"/trust", "", "zemi: /trust needs the TUI; --trust trusts the project for one run\n", 1},
+		{"/health", "", "zemi: /health needs the TUI; --health prints the checks\n", 1},
+		{"/model", "", "zemi: /model needs the TUI\n", 1},
+		{"/permissions", "", "zemi: /permissions needs the TUI\n", 1},
+		{"/mode", "", "zemi: /mode needs the TUI\n", 1},
+		{"/memory", "", "zemi: /memory needs the TUI\n", 1},
+		{"/skills", "", "zemi: /skills needs the TUI\n", 1},
+		{"/skills open zemi-lua", "", "zemi: /skills needs the TUI\n", 1},
+		{"/agents", "", "zemi: /agents needs the TUI\n", 1},
+		{"/agents view x", "", "zemi: /agents needs the TUI\n", 1},
+		{"/workflow", "", "zemi: /workflow needs the TUI\n", 1},
+		{"/mcp", "", "zemi: /mcp needs the TUI\n", 1},
+		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
+		{"/btw why", "why", "", 0},
+	} {
+		var out, errOut strings.Builder
+		if code := printTurn(h, c.prompt, false, &out, &errOut); code != c.code || !strings.Contains(out.String(), c.stdout) || c.stdout == "" && out.Len() > 0 || errOut.String() != c.stderr {
+			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out.String(), errOut.String())
+		}
 	}
-	var rep report
-	if c := <-code; c != 130 || json.Unmarshal([]byte(out.String()), &rep) != nil || !rep.IsError || rep.Error != "interrupted" || rep.SessionID == "" {
-		t.Fatalf("code %d, stdout %q", c, out.String())
+}
+
+// TestPrintInterruptJSON: an interrupted run, /btw included, still prints
+// its report, so a script keeps the session id it resumes.
+func TestPrintInterruptJSON(t *testing.T) {
+	for _, prompt := range []string{"hang", "/btw hang"} {
+		h := printHost(t)
+		if printTurn(h, "say hi", false, io.Discard, io.Discard) != 0 {
+			t.Fatal("first turn failed")
+		}
+		var out strings.Builder
+		code := make(chan int, 1)
+		go func() { code <- printTurn(h, prompt, true, &out, io.Discard) }()
+		for !h.AgentActive() {
+			select {
+			case c := <-code:
+				t.Fatalf("%s: ended with %d before the interrupt", prompt, c)
+			default:
+				runtime.Gosched()
+			}
+		}
+		if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+			t.Fatal(err)
+		}
+		var rep report
+		if c := <-code; c != 130 || json.Unmarshal([]byte(out.String()), &rep) != nil || !rep.IsError || rep.Error != "interrupted" || rep.SessionID == "" || h.AgentActive() {
+			t.Errorf("%s: code %d, stdout %q, still active %v", prompt, c, out.String(), h.AgentActive())
+		}
 	}
 }
 

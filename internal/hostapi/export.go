@@ -28,8 +28,12 @@ import (
 // drag copies rendered, wrapped screen rows). args is "" (a picker when the
 // reply has code blocks), "reply", "code" (every block) or "code <n>".
 func (h *Host) CopyReply(args string) error {
-	sid, ui := h.AgentSessionID(), h.hooks()
-	if sid == "" || h.DB == nil || ui == nil {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	sid := h.AgentSessionID()
+	if sid == "" || h.DB == nil {
 		return errors.New("no reply to copy")
 	}
 	rows, err := h.DB.Messages(sid)
@@ -263,8 +267,11 @@ func (h *Host) todoSnapshot() []store.Todo {
 // and token use and cost: the live session, then today, the last 7 days and
 // all time across this project's sessions.
 func (h *Host) OpenUsage() error {
-	ui := h.hooks()
-	if ui == nil || h.DB == nil {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if h.DB == nil {
 		return errors.New("usage needs the session store")
 	}
 	s := h.AgentStream()
