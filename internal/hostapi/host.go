@@ -7,7 +7,9 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -142,12 +144,22 @@ type ChatMessage struct {
 	Stat   *TurnStat
 }
 
+var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
+
 // shortOutput keeps 10 lines of a tool result for the transcript row, each
 // capped at 300 runes and sanitized: the first three, which say what went
 // wrong, and the last six, with a row counting what fell out between them.
 func shortOutput(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	if n := len(lines) - 9; n > 0 {
+		// a tools.TruncOut marker stands for the lines it cut
+		for _, l := range lines[3 : len(lines)-6] {
+			if m := cutLines.FindStringSubmatch(l); m != nil {
+				a, _ := strconv.Atoi(m[1])
+				b, _ := strconv.Atoi(m[2])
+				n += b - a
+			}
+		}
 		cut := append([]string{fmt.Sprintf("... %d more lines", n)}, lines[len(lines)-6:]...)
 		lines = append(lines[:3:3], cut...)
 	}

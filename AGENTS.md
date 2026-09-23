@@ -221,7 +221,9 @@ files touched after the last message. `tool.Run` runs the same check before the 
 between check and open. The three writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
 shows a hit a deny or ask `fs.read` rule covers, and grep hides secret-shaped files. Output too
-long for a result is cut head and tail and saved whole to the scratchpad (`tools.Spill`). A
+long for a result is cut head and tail at line breaks, the marker naming the cut lines, and
+saved to the scratchpad (`tools.Spill`); command output, `!command` included, goes through
+`tools.CmdOut`, which also counts what the 1 MB buffer dropped. A
 bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
 (which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the

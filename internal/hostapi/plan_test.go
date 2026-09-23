@@ -294,7 +294,8 @@ func TestShellNotes(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	h.RunShell("echo shell-output")
+	// the model reads it as a bash result: escapes stripped
+	h.RunShell(`printf '\033[1mshell-output\033[0m\n'`)
 	waitFor(t, func() error {
 		if tr := h.Session().Transcript; len(tr) != 1 || tr[0].Kind != "shell" || tr[0].Detail != "shell-output" {
 			return fmt.Errorf("shell row missing: %+v", tr)
@@ -306,7 +307,7 @@ func TestShellNotes(t *testing.T) {
 	}
 	waitIdle(t, h)
 	got, _ := seen.Load().(string)
-	if !strings.HasPrefix(got, "what did it print?"+attachMarker) || !strings.Contains(got, "shell-output") {
+	if !strings.HasPrefix(got, "what did it print?"+attachMarker) || !strings.Contains(got, "\nshell-output\n") {
 		t.Fatalf("model saw %q", got)
 	}
 	if h.takeShellNotes() != "" {

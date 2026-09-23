@@ -13,6 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -709,6 +710,12 @@ func TestShortOutput(t *testing.T) {
 	}
 	if got := shortOutput("a\nb"); got != "a\nb" {
 		t.Errorf("short output changed: %q", got)
+	}
+	for i := 30; i < 3000; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	if got := shortOutput(tools.TruncOut(strings.Join(lines, "\n"), 10_000)); !strings.Contains(got, "\n... 2991 more lines\n") {
+		t.Errorf("a cut result counts the lines it cut:\n%s", got)
 	}
 }
 

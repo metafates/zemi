@@ -314,10 +314,10 @@ func TestSubagentReportTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Content) > 31_200 || !strings.Contains(resp.Content, "characters cut") {
+	if len(resp.Content) > 31_200 || !strings.Contains(resp.Content, " cut) ...") {
 		t.Fatalf("report is %d bytes and ends %q", len(resp.Content), truncRunes(resp.Content, 20))
 	}
-	_, path, ok := strings.Cut(resp.Content, "(full output: ")
+	_, path, ok := strings.Cut(resp.Content, "(output saved to ")
 	path = strings.TrimSuffix(strings.TrimSpace(path), ")")
 	if !ok {
 		t.Fatalf("no spill file named: %q", truncRunes(resp.Content, 40))

@@ -16,10 +16,7 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-const (
-	shellTimeout = 2 * time.Minute
-	shellMaxOut  = 16 << 10
-)
+const shellTimeout = 2 * time.Minute
 
 // RunShell runs cmd (typed by the user, so no permission gate) without
 // blocking the caller.
@@ -35,10 +32,11 @@ func (h *Host) RunShell(cmd string) {
 		c := proc.CommandContext(ctx, "sh", "-c", cmd)
 		c.Dir = h.Dirs.ProjectDir
 		c.Env = append(os.Environ(), proc.NonInteractiveEnv...)
-		out := &proc.Buffer{Max: 4 * shellMaxOut}
+		out := &proc.Buffer{Max: 1 << 20}
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)
-		text := tools.TruncOut(strings.TrimRight(out.String(), "\n"), shellMaxOut)
+		raw, written := out.Snapshot()
+		text := tools.CmdOut(h.ScratchDir(), "shell", raw, written-int64(out.Max))
 		status := "ok"
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
@@ -46,8 +44,8 @@ func (h *Host) RunShell(cmd string) {
 		case err != nil:
 			status, text = "err", strings.TrimSpace(text+"\n"+err.Error())
 		}
-		// the transcript keeps the head and the tail, where the failure is;
-		// the model gets the whole output through shellNotes
+		// the model reads the output as a bash call's, through shellNotes; the
+		// row keeps its head and its tail, where the failure is
 		h.AppendChat(ChatMessage{Role: "user", Kind: "shell", Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
 		ag.mu.Lock()

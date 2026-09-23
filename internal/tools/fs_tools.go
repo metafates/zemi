@@ -143,14 +143,8 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	stopProgress()
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
-	out := cmdText(raw)
 	var b strings.Builder
-	// compare the text, not lengths: the cut marker can outgrow a small cut
-	if cut := TruncOut(out, cmdMaxOut); cut != out {
-		b.WriteString(cut + p.spill("bash", out))
-	} else {
-		b.WriteString(out)
-	}
+	b.WriteString(CmdOut(p.scratch(), "bash", raw, written-int64(buf.Max)))
 	if timedOut {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -234,6 +228,23 @@ func lastFrames(s string) string {
 // is spilled to the scratchpad.
 const cmdMaxOut = 10_000
 
+// CmdOut is a command's output as a result carries it: cmdText cut to
+// cmdMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
+// already dropped from the middle, which no spill file can hold.
+func CmdOut(dir, name, raw string, lost int64) string {
+	out := cmdText(raw)
+	// compare the text, not lengths: the cut marker can outgrow a small cut
+	cut := TruncOut(out, cmdMaxOut)
+	if cut == out {
+		return out
+	}
+	cut += Spill(dir, name, out)
+	if lost > 0 {
+		cut += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
+	}
+	return cut
+}
+
 // Spill saves output too long for a result under dir and names the file,
 // so the cut part stays one read away; "" when it cannot be written.
 func Spill(dir, name, s string) string {
@@ -248,14 +259,18 @@ func Spill(dir, name, s string) string {
 	if _, err := f.WriteString(s); err != nil {
 		return ""
 	}
-	return "\n(full output: " + f.Name() + ")"
+	return "\n(output saved to " + f.Name() + ")"
 }
 
-func (p *Pipeline) spill(name, s string) string {
+func (p *Pipeline) scratch() string {
 	if p == nil || p.ScratchDir == nil {
 		return ""
 	}
-	return Spill(p.ScratchDir(), name, s)
+	return p.ScratchDir()
+}
+
+func (p *Pipeline) spill(name, s string) string {
+	return Spill(p.scratch(), name, s)
 }
 
 const (

@@ -88,25 +88,33 @@ func (j *Job) Output() string {
 // since returns the output written after the previous read and the exit
 // state: a job that is polled while it runs would otherwise resend its
 // whole buffer every time.
-func (j *Job) since() (out, errOut string, running bool, errText string) {
+func (j *Job) since() (out, errOut chunk, running bool, errText string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	// Count bytes ever written, not buffer length: a saturated buffer drops
 	// its middle, so its length stops growing while output keeps arriving.
 	// Whatever is new sits at the end of what the buffer still holds.
-	rest := func(b *proc.Buffer, sent *int64) string {
+	rest := func(b *proc.Buffer, sent *int64) chunk {
 		s, written := b.Snapshot()
 		n := written - *sent
 		*sent = written
 		switch {
 		case n <= 0:
-			return ""
+			return chunk{}
 		case n >= int64(len(s)):
-			return s
+			// all of it is new, and past Max the buffer dropped the middle
+			return chunk{s, n - int64(b.Max)}
 		}
-		return s[int64(len(s))-n:]
+		return chunk{s[int64(len(s))-n:], 0}
 	}
 	return rest(j.stdout, &j.sent[0]), rest(j.stderr, &j.sent[1]), j.Running(), j.err
+}
+
+// chunk is output a job_read has not returned yet; lost counts what the
+// buffer dropped before it was read.
+type chunk struct {
+	text string
+	lost int64
 }
 
 // Jobs owns every model-started job for one host.
@@ -312,21 +320,14 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		fmt.Fprintf(&b, "error: %s\n", errText)
 	}
 	// since() has already moved past what it returns, so a cut chunk is
-	// gone unless it is spilled here
-	show := func(s string) string {
-		s = cmdText(s)
-		if cut := TruncOut(s, cmdMaxOut); cut != s {
-			return cut + p.spill("job", s)
-		}
-		return s
+	// gone unless CmdOut spills it
+	if out.text != "" {
+		b.WriteString("[stdout]\n" + CmdOut(p.scratch(), "job", out.text, out.lost) + "\n")
 	}
-	if out != "" {
-		b.WriteString("[stdout]\n" + show(out) + "\n")
+	if errOut.text != "" {
+		b.WriteString("[stderr]\n" + CmdOut(p.scratch(), "job", errOut.text, errOut.lost) + "\n")
 	}
-	if errOut != "" {
-		b.WriteString("[stderr]\n" + show(errOut) + "\n")
-	}
-	if running && out == "" && errOut == "" {
+	if running && out.text == "" && errOut.text == "" {
 		b.WriteString("(no new output)")
 	}
 	if !running && j.sandboxed {

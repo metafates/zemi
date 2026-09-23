@@ -634,9 +634,13 @@ func TestReadAndBashShapes(t *testing.T) {
 	}
 	// just over the cap: the cut marker is longer than what it cuts
 	res, _ := runBash(ctx, p, map[string]any{"command": `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
-	_, name, _ := strings.Cut(res.Content, "END\n(full output: ")
+	_, name, _ := strings.Cut(res.Content, "END\n(output saved to ")
 	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 10002 {
 		t.Fatalf("cut output not saved (%v): %q", err, res.Content[len(res.Content)-100:])
+	}
+	// past the 1 MB buffer the note counts what no spill file holds
+	if res, _ := runBash(ctx, p, map[string]any{"command": "seq 1 300000"}); !strings.Contains(res.Content, "more bytes in the middle were not kept") {
+		t.Fatalf("buffer drop not counted: %q", res.Content[len(res.Content)-200:])
 	}
 }
 
@@ -737,8 +741,21 @@ func TestOutputLimits(t *testing.T) {
 	if n := strings.Count(res.Content, "\n"); n != grepMaxMatches || !strings.Contains(res.Content, "stopped at 100 matches") {
 		t.Fatalf("grep lines = %d: %q", n, res.Content[len(res.Content)-120:])
 	}
-	if out := TruncOut(strings.Repeat("a", 20000)+"the error", cmdMaxOut); len(out) > 10100 || !strings.HasSuffix(out, "the error") {
-		t.Fatalf("TruncOut kept %d bytes, tail %q", len(out), out[len(out)-20:])
+}
+
+func TestTruncOut(t *testing.T) {
+	for _, c := range []struct {
+		name, s string
+		n       int
+		want    string
+	}{
+		{"fits", "abc", 10, "abc"},
+		{"cuts fall on line breaks", "aaaa\nbb\ncccccc\nd\neeeee\nff", 20, "aaaa\n... (lines 2-3 of 6 cut) ...\nd\neeeee\nff"},
+		{"one huge line is cut by bytes", strings.Repeat("x", 30), 10, "xxx\n... (20 bytes cut) ...\nxxxxxxx"},
+	} {
+		if got := TruncOut(c.s, c.n); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

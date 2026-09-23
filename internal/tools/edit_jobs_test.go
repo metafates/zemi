@@ -48,21 +48,21 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 	j := &Job{stdout: &proc.Buffer{Max: 64}, stderr: &proc.Buffer{Max: 64}, done: make(chan struct{})}
 	close(j.done)
 	j.stdout.Write([]byte(strings.Repeat("a", 40)))
-	if out, _, _, _ := j.since(); out != strings.Repeat("a", 40) {
-		t.Fatalf("first read: %q", out)
+	if out, _, _, _ := j.since(); out.text != strings.Repeat("a", 40) {
+		t.Fatalf("first read: %+v", out)
 	}
-	if out, _, _, _ := j.since(); out != "" {
-		t.Fatalf("nothing written since: %q", out)
+	if out, _, _, _ := j.since(); out.text != "" {
+		t.Fatalf("nothing written since: %+v", out)
 	}
 	// more arrived than the buffer holds, so it returns what is left of it,
 	// skip marker and all, rather than reporting nothing new
 	j.stdout.Write([]byte(strings.Repeat("b", 200)))
 	out, _, _, _ := j.since()
-	if !strings.HasSuffix(out, "bb") || !strings.Contains(out, "skipped") {
-		t.Fatalf("new output after the drop: %q", out)
+	if !strings.HasSuffix(out.text, "bb") || !strings.Contains(out.text, "skipped") || out.lost <= 0 {
+		t.Fatalf("new output after the drop: %+v", out)
 	}
-	if out, _, _, _ := j.since(); out != "" {
-		t.Fatalf("nothing written since the drop: %q", out)
+	if out, _, _, _ := j.since(); out.text != "" {
+		t.Fatalf("nothing written since the drop: %+v", out)
 	}
 }
 
@@ -171,7 +171,7 @@ func TestJobReadSpillsTheCut(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"})
-		if _, file, ok := strings.Cut(out.Content, "(full output: "); ok {
+		if _, file, ok := strings.Cut(out.Content, "(output saved to "); ok {
 			file, _, _ = strings.Cut(file, ")")
 			b, err := os.ReadFile(file)
 			if err != nil || !strings.Contains(string(b), "\n2000\n") {

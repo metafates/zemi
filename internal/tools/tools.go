@@ -1226,13 +1226,22 @@ func searchRoot(in map[string]any) string {
 }
 
 // TruncOut cuts tool output to at most n bytes, keeping the start and the
-// larger end: a command prints its errors and its summary last.
+// larger end: a command prints its errors and its summary last. Both cuts
+// move back to a line break within half their side, so no line shows half,
+// and the marker names the cut lines, the offset to read them at in a spill
+// file; one huge line (minified JSON) is cut by bytes.
 func TruncOut(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	head := n * 3 / 10
-	return strings.ToValidUTF8(s[:head], "") +
-		fmt.Sprintf("\n... (%d characters cut) ...\n", len(s)-n) +
-		strings.ToValidUTF8(s[len(s)-(n-head):], "")
+	h, t := n*3/10, len(s)-(n-n*3/10)
+	hl, tl := strings.LastIndexByte(s[:h], '\n'), strings.IndexByte(s[t:], '\n')
+	if hl < h/2 || tl < 0 || tl > (len(s)-t)/2 {
+		return strings.ToValidUTF8(s[:h], "") +
+			fmt.Sprintf("\n... (%d bytes cut) ...\n", t-h) +
+			strings.ToValidUTF8(s[t:], "")
+	}
+	h, t = hl+1, t+tl+1
+	a := strings.Count(s[:h], "\n") + 1
+	return s[:h] + fmt.Sprintf("... (lines %d-%d of %d cut) ...\n", a, a+strings.Count(s[h:t], "\n")-1, strings.Count(strings.TrimSuffix(s, "\n"), "\n")+1) + s[t:]
 }
