@@ -101,19 +101,28 @@ func TestTurnReport(t *testing.T) {
 		{Role: "user", Text: "go"},
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
-		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err"},
+		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "exit: status 1\nrm: /: is a directory"},
 		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
 			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
 		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
 			Output: "permission denied (mode): tool.lua: print mode cannot ask"},
+		{Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
+			Output: "permission denied (default): memory.write: print mode cannot ask"},
 		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},
 	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 4 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
+	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 5 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
 		t.Fatalf("report = %+v", rep)
 	}
-	if rep.denied != 2 || rep.tuiOnly != 1 {
-		t.Fatalf("denied = %d tuiOnly = %d, want 2 and 1", rep.denied, rep.tuiOnly)
+	// a failed call says why and whether the gate refused it
+	if rt := rep.Tools[1]; rt.Error != "exit: status 1" || rt.Denied || rep.Tools[0].Error != "" {
+		t.Fatalf("bash row = %+v", rt)
+	}
+	if rt := rep.Tools[2]; !rt.Denied || !strings.HasPrefix(rt.Error, "permission denied (mode)") {
+		t.Fatalf("write row = %+v", rt)
+	}
+	if rep.denied != 3 || rep.tuiOnly != 2 {
+		t.Fatalf("denied = %d tuiOnly = %d, want 3 and 2", rep.denied, rep.tuiOnly)
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)

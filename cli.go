@@ -375,6 +375,10 @@ type reportTool struct {
 	Input  string `json:"input"`
 	OK     bool   `json:"ok"`
 	Detail string `json:"detail,omitempty"`
+	// Error is the first line of a failed call's output, so a script driving
+	// -p reads why; Denied marks the ones the permission gate refused
+	Error  string `json:"error,omitempty"`
+	Denied bool   `json:"denied,omitempty"`
 }
 
 // turnReport summarizes the transcript rows one turn added.
@@ -387,16 +391,21 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "":
 			replies = append(replies, strings.TrimSpace(m.Text))
 		case m.Kind == "tool":
-			if m.Status != "ok" && strings.Contains(m.Output, "permission denied") {
+			rt := reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail}
+			if !rt.OK {
+				rt.Error, _, _ = strings.Cut(strings.TrimSpace(m.Output), "\n")
+				rt.Denied = strings.Contains(m.Output, "permission denied")
+			}
+			if rt.Denied {
 				rep.denied++
 				switch {
 				case strings.Contains(m.Output, "permission denied (unsandboxed)"):
 					rep.unsandboxed++
-				case m.Tool == tools.ToolLua || strings.HasPrefix(m.Tool, "memory_"):
+				case m.Tool == tools.ToolLua || m.Tool == tools.ToolMemory:
 					rep.tuiOnly++
 				}
 			}
-			rep.Tools = append(rep.Tools, reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail})
+			rep.Tools = append(rep.Tools, rt)
 		case m.Kind == "compact":
 			rep.Compactions++
 		case m.Kind == "error":
