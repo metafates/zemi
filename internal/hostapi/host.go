@@ -1298,6 +1298,12 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
+		// $HOME and / are nobody's project, so /init is not offered there
+		"instructions_missing": func(L *glua.LState) glua.LValue {
+			mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+			return glua.LBool(h.ProjectTrusted() && !TrustUnsaved(h.Dirs.RepoRoot()) &&
+				!slices.ContainsFunc(h.instructionFiles(), func(p string) bool { return p != mine }))
+		},
 		"recent": func(L *glua.LState) glua.LValue {
 			if len(sess.Transcript) > 0 {
 				return glua.LNil

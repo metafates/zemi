@@ -649,10 +649,10 @@ function zemi.event.stats() end
 --- What a widget's render function is given. Everything is a snapshot:
 --- render must be pure and finish in about 10 ms: only the read-only
 --- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
---- it, any other raises. `transcript`, `agent`, `todos` and `recent` are
---- built on first read, so a widget that does not read them does not pay
---- for them; kept past the render, a ctx reads nil for the ones render did
---- not read.
+--- it, any other raises. `transcript`, `agent`, `todos`, `recent` and
+--- `instructions_missing` are built on first read, so a widget that does
+--- not read them does not pay for them; kept past the render, a ctx reads
+--- nil for the ones render did not read.
 ---@class zemi.WidgetCtx
 ---@field width integer Cells of the layout node drawing the widget's region.
 ---@field height integer Rows of that node; for a content-sized node, the most it could get.
@@ -678,6 +678,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
+---@field instructions_missing boolean The project is trusted, is not $HOME or /, and has no ZEMI.md, AGENTS.md or CLAUDE.md for the prompt: what /init writes.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean

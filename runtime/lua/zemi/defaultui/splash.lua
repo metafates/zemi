@@ -25,7 +25,8 @@ function M.render(ctx)
   if ctx.init_error ~= "" then
     models = { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
   end
-  local base = 8 + #models
+  local hint = ctx.instructions_missing
+  local base = 8 + #models + (hint and 1 or 0)
   local extra = #recent > 0 and #recent + 3 or 0
   if base + extra > fit then recent, extra = {}, 0 end
   local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
@@ -61,6 +62,10 @@ function M.render(ctx)
     cwd = "…" .. table.concat(chars, "", #chars - room + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
+  if hint then
+    row({ { text = string.rep(" ", 9) .. "no AGENTS.md yet · ", hl = "Comment" }, { text = "/init", hl = "SplashKey" },
+      { text = " writes one", hl = "Comment" } })
+  end
   if #recent > 0 then
     row({ { text = "" } })
     row({ { text = "recent", hl = "Title" } })

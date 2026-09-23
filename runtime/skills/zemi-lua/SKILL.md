@@ -208,7 +208,7 @@ Agent files and workflow scripts are not config Lua: zemi-customize has both.
 
 Widget `ctx` carries `width`, `height`, `time` (`"15:04"`), `version`, `cwd`, `project` (the trust
 root, `~`-shortened), `trusted`, `model`, `profile`,
-`effort`, `permission_mode`, `permission_mode_base`, `profile_read_only`, `model_hint` (what to do when no model is set), `init_error` and `init_path` (a failed init.lua), `focus`, `agent_active`, `transcript`,
+`effort`, `permission_mode`, `permission_mode_base`, `profile_read_only`, `model_hint` (what to do when no model is set), `init_error` and `init_path` (a failed init.lua), `instructions_missing` (a trusted project with no AGENTS.md, ZEMI.md or CLAUDE.md, where the splash offers `/init`), `focus`, `agent_active`, `transcript`,
 `transcript_count` (its rows, without building it),
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
 `thought`, `elapsed`, `reports` (background reports among `steering`), `compacting`, `retry`

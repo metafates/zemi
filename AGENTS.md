@@ -780,7 +780,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   moves by itself (a turn, a toast, an armed flag) and always lands on a 50 ms wall boundary,
   so `ctx.frame` steps one per tick while a turn re-renders every one; a change goes through
   `App.bump`, which wakes it, and all stale widgets render as one message. A render's ctx
-  builds `transcript`, `agent`, `todos` and `recent` on first read (`widgetCtxTable`,
+  builds `transcript`, `agent`, `todos`, `recent` and `instructions_missing` on first read (`widgetCtxTable`,
   `BenchmarkWidgetCtx`): keep new expensive fields lazy. A widget never changes a line table
   it returned: `Widget.tableSegments` converts one it saw last render only once and
   `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript

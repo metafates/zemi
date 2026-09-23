@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,5 +94,34 @@ zemi.ui.widget.add({
 	frame := ansi.Strip(app.Frame())
 	if !strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY or add a provider to") || !strings.Contains(frame, "         ~/.config/zemi/init.lua") {
 		t.Fatalf("hint cut:\n%s", frame)
+	}
+}
+
+// TestSplashInitHint: only a trusted project with no instruction file is
+// offered /init.
+func TestSplashInitHint(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 30)
+	host.Dirs.ProjectDir = t.TempDir()
+	for _, c := range []struct {
+		name    string
+		trusted bool
+		file    string
+		want    bool
+	}{
+		{"untrusted", false, "", false},
+		{"trusted", true, "", true},
+		{"has CLAUDE.md", true, "CLAUDE.md", false},
+	} {
+		host.SetProjectTrusted(c.trusted)
+		if c.file != "" {
+			if err := os.WriteFile(filepath.Join(host.Dirs.ProjectDir, c.file), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		app.frameGen++
+		app.renderSync(t)
+		if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "no AGENTS.md yet · /init writes one") != c.want {
+			t.Errorf("%s: want hint %v\n%s", c.name, c.want, frame)
+		}
 	}
 }
