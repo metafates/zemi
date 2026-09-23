@@ -107,28 +107,37 @@ func TestQueuePriorityOrder(t *testing.T) {
 // TestQueueCancellationPreempts verifies §4 cancellation: the context is
 // installed on the LState, the VM raises a catchable "context canceled" at
 // the next opcode, and the caller gets context.Canceled without the runtime
-// going hot.
+// going hot. A request the ceiling stopped says so.
 func TestQueueCancellationPreempts(t *testing.T) {
-	r := newTestRuntime(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(30 * time.Millisecond)
-		cancel()
-	}()
-	start := time.Now()
-	err := r.ExecuteChunk(ctx, "while true do end", "spin.lua", OriginUser)
-	elapsed := time.Since(start)
-	cancel()
-
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
-	}
-	if elapsed > 900*time.Millisecond {
-		t.Fatalf("cancellation did not preempt the loop: %s", elapsed)
-	}
-	if r.IsHot() {
-		t.Fatal("runtime went hot from a plain cancellation")
+	for _, c := range []struct {
+		name          string
+		ceiling, stop time.Duration
+		want          string
+	}{
+		{"caller cancels", 0, 30 * time.Millisecond, "context canceled"},
+		{"ceiling fires", 30 * time.Millisecond, 0, "stopped after its 30ms ceiling"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newTestRuntime(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if c.stop > 0 {
+				time.AfterFunc(c.stop, cancel)
+			}
+			start := time.Now()
+			_, err := r.Do(ctx, ClassUI, c.ceiling, 0, func(L *glua.LState) ([]any, error) {
+				return nil, L.DoString("while true do end")
+			})
+			if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v, want context.Canceled saying %q", err, c.want)
+			}
+			if time.Since(start) > 900*time.Millisecond {
+				t.Fatalf("cancellation did not preempt the loop: %s", time.Since(start))
+			}
+			if r.IsHot() {
+				t.Fatal("runtime went hot from a plain cancellation")
+			}
+		})
 	}
 }
 

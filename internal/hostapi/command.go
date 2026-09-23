@@ -109,6 +109,9 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		if cmd == nil {
 			return luaResult(L, fmt.Errorf("not a command: %s", name))
 		}
+		if err := nargsOK(name, cmd.NArgs, args); err != nil {
+			return luaResult(L, err)
+		}
 		if cmd.GoFn != nil {
 			// a Go-owned command acts with the user's authority (/export
 			// writes a file, /reload reloads config), so only the user's own
@@ -123,9 +126,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 				}
 			})
 			return luaResult(L, nil)
-		}
-		if err := nargsOK(name, cmd.NArgs, args); err != nil {
-			return luaResult(L, err)
 		}
 		// the body runs under the command's origin, so a lower caller would
 		// borrow that authority with arguments it picks
@@ -219,6 +219,9 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	if cmd == nil {
 		return fmt.Errorf("not a command: %s", name)
 	}
+	if err := nargsOK(name, cmd.NArgs, argString); err != nil {
+		return err
+	}
 	if cmd.GoFn != nil {
 		return cmd.GoFn(h, argString)
 	}
@@ -226,9 +229,6 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 }
 
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	if err := nargsOK(cmd.Name, cmd.NArgs, argString); err != nil {
-		return err
-	}
 	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		if h.currentGen() != cmd.Gen {
 			return nil, lua.ErrReloaded

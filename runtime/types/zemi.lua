@@ -306,8 +306,8 @@ zemi.keymap = {}
 --- node with that id; without one, the stage's scrolled region). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
 --- (`<leader>` is the `keymap.leader` setting, ctrl+x by default). A key the
---- terminal never reports ("ctrl-q", "control+q") raises rather than binding
---- something nothing can press. Setting
+--- terminal never reports ("ctrl-q", "control+q") or zemi keeps (ctrl+c)
+--- raises rather than binding something nothing can press. Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix
 --- or extension of a key sequence) a more trusted origin bound raises.
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
@@ -557,6 +557,8 @@ function zemi.event.on(name, fn, opts) end
 function zemi.event.off(id) end
 
 --- Emit a `user.*` event, the only names Lua may emit from any origin.
+--- Handlers get a copy made the way JSON copies: a table that is not a
+--- sequence arrives with string keys (`{ [7] = "x" }` reads as `ev["7"]`).
 ---@param name string
 ---@param payload? table
 function zemi.event.emit(name, payload) end
