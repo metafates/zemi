@@ -1186,7 +1186,7 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 }
 
 // todoNagAfter is how many of the main agent's steps an in_progress todo
-// may stay static before zemi nudges the model to tick it (a "force live
+// may stay static before zemi nudges the model to mark it done (a "force live
 // todos" remind). Steps, not calls: the prompt asks for independent calls
 // in one batch, so one step may be eight reads.
 // NOTE: a fixed knob, not config; every todos write resets the count.
@@ -1216,7 +1216,7 @@ func (h *Host) maybeNagTodos() {
 	}
 	ag.todoPending = true
 	ag.todoNag = agent.Note(fmt.Sprintf(
-		"Some todos are still unfinished: %q has been in_progress for %d steps. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+		"%q has been in_progress for %d steps. If it is done, mark it done with the todos tool and set the next item in_progress; if not, carry on.",
 		ag.todoInProgress, ag.todoSteps))
 }
 
@@ -1278,9 +1278,9 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 
 // btwPrompt frames a side question, after maki's: nothing it says is kept,
 // so the answer has to come from what the conversation already holds.
-const btwPrompt = `This is a side question. Answer it directly in a single response. You have NO tools: answer ONLY from the existing conversation context. Never say "Let me...". If you do not know, say so; do not offer to look it up.
+const btwPrompt = `Side question. Answer only it, in this one reply, from what the conversation already shows. Call no tools: none will run. If the conversation does not tell you, say so.
 
-`
+Question: `
 
 // Btw runs /btw: a side question answered in an overlay from the
 // conversation so far, a running turn included, and never stored.
@@ -1793,7 +1793,7 @@ func (h *Host) cycleProfile(step int) error {
 
 // implementNow is the message a fresh send carries to the restored agent after
 // its plan is approved; the plan itself stays in history.
-var implementNow = agent.Note("The user approved the plan above. Implement it (track its steps with todos when it has several), verify, and report.")
+var implementNow = agent.Note("The user approved the plan above. " + tools.ImplementPlan)
 
 func (h *Host) setPlanApproved(msg string) {
 	h.agents.mu.Lock()
@@ -1816,7 +1816,7 @@ func (h *Host) takePlanApproved() string {
 // the tools give the user something to answer in place.
 var planNudge = agent.Note(planNudgeText)
 
-const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
+const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer. If it asked something, ask it with the question tool; if it was a plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 
 // nudgesPlan reports whether a turn run as p is nudged for ending in plain
 // text: a read-only agent with the plan tool. Headless drops the tool and
