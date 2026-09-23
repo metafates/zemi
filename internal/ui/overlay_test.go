@@ -419,14 +419,14 @@ func TestOverlayHints(t *testing.T) {
 		want      string
 	}{
 		{hostapi.Overlay{Items: []any{"inert"}}, false, "y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter confirm · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, false, "enter fill · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "pick"}, false, "enter pick · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, false, "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter confirm · esc back"},
-		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter confirm · esc back"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter confirm · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},
+		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter fill · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)

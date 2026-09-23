@@ -188,16 +188,18 @@ func formatOverlayItem(item any) string {
 }
 
 // enterVerb names what enter does on item idx: "open" its detail view,
-// the overlay's own verb ("confirm" by default), "back" from a detail view,
-// or "" when it does nothing.
+// "fill" the composer, the overlay's own verb ("confirm" by default), "back"
+// from a detail view, or "" when it does nothing.
 func (st *overlayState) enterVerb(idx int) string {
 	m, _ := st.o.Items[idx].(map[string]any)
 	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
 	switch {
 	case has("detail") || m["actions"] != nil:
 		return "open"
-	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
+	case rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
 		return cmp.Or(st.o.Verb, "confirm")
+	case has("fill"):
+		return "fill"
 	case has("copy"):
 		return "copy"
 	case st.back:
