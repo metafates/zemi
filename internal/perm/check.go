@@ -25,8 +25,9 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}
 	}
 	eval := s.evaluator(subject, principal, true)
-	// the rule an allow rests on: the first that is not the user's own
-	// (a model always answer, a project file), else the last one
+	// the rule an allow rests on: a network-marked one (its run stays
+	// confined), else the first that is not the user's own (a model always
+	// answer, a project file), else the last one
 	var weak *Rule
 	for i, seg := range n.Segments {
 		o := eval(seg)
@@ -45,7 +46,7 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 			o.Reason = joinReason("segment "+seg, o.Reason)
 			return o
 		}
-		if weak == nil || weak.Principal == "" && weak.Source == "" {
+		if weak == nil || !weak.Network && (weak.Principal == "" && weak.Source == "" || o.Rule != nil && o.Rule.Network) {
 			weak = o.Rule
 		}
 	}

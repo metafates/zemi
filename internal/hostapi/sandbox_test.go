@@ -79,6 +79,26 @@ func TestUnsettled(t *testing.T) {
 			t.Errorf("read-only agent, allowed by %s: policy %+v", by, pol)
 		}
 	}
+	// a rule an "always" answer wrote from a network ask keeps the sandbox
+	// and adds sockets when the next call comes without the flag
+	h.SetProfile("default")
+	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true})
+	if len(rules) != 2 || !rules[0].Network || !rules[1].Network {
+		t.Fatalf("network always rules: %+v", rules)
+	}
+	if label, _ := h.projectChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true}, "allow `curl`", rules); label != "" {
+		t.Errorf("a network ask offers a project line: %q", label)
+	}
+	for _, r := range rules {
+		h.Perm.Add(r)
+	}
+	o := h.Perm.CheckCommand("curl https://x.example -o /tmp/x", "model")
+	if o.Decision != perm.Allow || o.Rule == nil || !o.Rule.Network {
+		t.Fatalf("network rule lookup: %+v", o)
+	}
+	if pol := h.PipelineFor().SandboxFor(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example -o /tmp/x"}, tools.Verdict{Decision: perm.Allow, DecidedBy: "rule", Rule: o.Rule}); pol == nil || !pol.Network {
+		t.Errorf("network rule: policy %+v", pol)
+	}
 }
 
 // sandboxedBash is a trusted host on the live seatbelt backend and its bash

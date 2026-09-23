@@ -320,11 +320,12 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	// so the verdict is always the user's. Read-only is absolute: the policy
 	// is what keeps the project unwritable, and Check denies the escape
 	plan := p.Plan != nil && p.Plan()
-	if !plan && !strings.HasPrefix(v.DecidedBy, "mode:") && !req.Network {
+	network := req.Network || v.Rule != nil && v.Rule.Network
+	if !plan && !strings.HasPrefix(v.DecidedBy, "mode:") && !network {
 		return nil
 	}
 	pol := p.Sandbox()
-	if pol != nil && req.Network {
+	if pol != nil && network {
 		pol.Network = true
 	}
 	return pol

@@ -241,7 +241,10 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				return "", nil
 			}
 			for _, p := range patterns {
-				rules = append(rules, rule("tool.bash", p))
+				r := rule("tool.bash", p)
+				// the ask said "staying sandboxed", so the rule keeps it
+				r.Network = req.Network
+				rules = append(rules, r)
 			}
 			// one pattern is the exact form of a deleting command, named only
 			// by count; two (p, "p *") is a command allowed as a whole
@@ -366,11 +369,13 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 // then), for a non-bash request, when the command has no safe rule
 // (alwaysLabel is ""), for a multi-line command (each file line loads as its
 // own command, so a line continuation there would widen what the user
-// approved), and when the file would load more than the label names: the
+// approved), for a network ask (a file line runs unconfined, and the ask
+// said the command stays sandboxed), and when the file would load more than the label names: the
 // session answer skips a segment a model rule already allows, but the file
 // outlives that rule.
 func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
-	if req.Subject != "tool.bash" || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
+	// a file line runs unconfined, which a network ask promised not to
+	if req.Subject != "tool.bash" || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
 	patterns, ok := bashRulePatterns(perm.Normalize(req.Arg))

@@ -46,6 +46,10 @@ type Rule struct {
 	// say what to edit: "" for user config, "permissions" for a project's
 	// .zemi/permissions file, else the Lua origin that added it
 	Source string `json:"source,omitempty"`
+	// Network marks a session rule written from a network: true ask: a
+	// command it allows keeps the sandbox and gets sockets, as the ask said,
+	// instead of running unconfined like other rule-allowed commands
+	Network bool `json:"network,omitempty"`
 }
 
 // Store holds rules in evaluation order; lookups re-sort by specificity.

@@ -135,6 +135,9 @@ func (h *Host) permItems() []any {
 		if r.NotMatch != "" {
 			desc = "except " + r.NotMatch
 		}
+		if r.Network {
+			desc = "sandboxed, with the network"
+		}
 		item := map[string]any{
 			"text": r.Subject + " " + r.Pattern, "desc": desc,
 			"section": string(r.Decision) + " rules",
