@@ -127,7 +127,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if v.Path != "" {
 		saved = "\nThe plan is saved at " + v.Path + "."
 	}
-	implement := " Implement it now: track its steps with todos, carry them through, verify, and report." + saved
+	implement := " Implement it now (track its steps with todos when it has several), verify, and report." + saved
 	switch {
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil

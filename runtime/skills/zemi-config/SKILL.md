@@ -328,7 +328,7 @@ Several questions show as tabs (tab/shift+tab, or left/right) ending in a review
 every answer; enter on a row there reopens that question, and submit sends them all, unanswered
 ones included. `plan` opens a "Plan" popup with the full plan as scrollable
 markdown: enter approves, typing asks for changes (the agent revises and presents again), and
-esc dismisses. The agent and mode that ran before the planner are remembered (never yolo), so
+esc dismisses. The agent and mode that ran before the planner are remembered, yolo included, so
 approving returns to them without a per-plan prompt.
 Without a UI (`zemi -p`) both tell the model nobody can answer, and it decides itself.
 Subagents cannot ask.

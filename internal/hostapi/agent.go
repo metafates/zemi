@@ -1707,7 +1707,7 @@ func (h *Host) cycleProfile(step int) error {
 
 // implementNow is the message a fresh send carries to the restored agent after
 // its plan is approved; the plan itself stays in history.
-var implementNow = modelNote("The user approved the plan above. Implement it: track its steps with todos, carry them through, verify, and report.")
+var implementNow = modelNote("The user approved the plan above. Implement it (track its steps with todos when it has several), verify, and report.")
 
 func (h *Host) setPlanApproved(msg string) {
 	h.agents.mu.Lock()
