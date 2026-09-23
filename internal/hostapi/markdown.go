@@ -378,29 +378,32 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	// Code takes the groups through a chroma style of its own: glamour
 	// registers its Chroma config once per process, so a theme switch would
 	// keep the first theme's colors.
-	entries := chroma.StyleEntries{}
-	for _, cg := range codeGroups {
-		var p gansi.StylePrimitive
-		apply(&p, cg.group)
-		var e []string
-		// chroma takes hex only: a group in the terminal's own colors
-		// falls back to the text color
-		if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
-			e = append(e, *p.Color)
-		}
-		// the canvas already paints Normal's background
-		if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") && cg.tok != chroma.Text {
-			e = append(e, "bg:"+*p.BackgroundColor)
-		}
-		if cg.tok == chroma.Comment {
-			e = append(e, "italic")
-		}
-		entries[cg.tok] = strings.Join(e, " ")
+	var code [len(codeGroups)]gansi.StylePrimitive
+	for i, cg := range codeGroups {
+		apply(&code[i], cg.group)
 	}
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
 	// NOTE: every distinct theme key stays registered for the process; a
 	// session that sets thousands of highlight overrides would grow it.
 	if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
+		entries := chroma.StyleEntries{}
+		for i, cg := range codeGroups {
+			p := code[i]
+			var e []string
+			// chroma takes hex only: a group in the terminal's own colors
+			// falls back to the text color
+			if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
+				e = append(e, *p.Color)
+			}
+			// the canvas already paints Normal's background
+			if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") && cg.tok != chroma.Text {
+				e = append(e, "bg:"+*p.BackgroundColor)
+			}
+			if cg.tok == chroma.Comment {
+				e = append(e, "italic")
+			}
+			entries[cg.tok] = strings.Join(e, " ")
+		}
 		s, err := chroma.NewStyle(cfg.CodeBlock.Theme, entries)
 		if err != nil {
 			cfg.CodeBlock.Theme = ""
@@ -413,7 +416,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 
 // codeGroups is how code draws: the chroma style markdownStyle registers
 // for code blocks and the groups Highlight names both come from it.
-var codeGroups = []struct {
+var codeGroups = [...]struct {
 	tok   chroma.TokenType
 	group string
 }{
