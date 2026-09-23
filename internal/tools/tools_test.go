@@ -166,8 +166,8 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 		call(t, read, `{"path":"`+path+`","limit":0}`)
 		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
 		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
-		CallStart("c1", "edit", first)
-		CallStart("c2", "edit", second)
+		CallStart(context.Background(), "c1", "edit", first)
+		CallStart(context.Background(), "c2", "edit", second)
 		var wg sync.WaitGroup
 		var r1, r2 fantasy.ToolResponse
 		wg.Go(func() {
@@ -185,7 +185,7 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 // TestCallOrderReleases: a recorded call nothing runs must not hold the
 // next call on its file: fantasy answers an invalid call without Run and the
 // runner reports it through CallDone; another runner's CallDone releases
-// its own ids only; a cancelled ctx gives up the wait.
+// its own ids only, the same id included; a cancelled ctx gives up the wait.
 func TestCallOrderReleases(t *testing.T) {
 	p, _ := testPipeline(t, false,
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
@@ -206,7 +206,8 @@ func TestCallOrderReleases(t *testing.T) {
 			return fantasy.ToolResponse{}
 		}
 	}
-	cancelled, cancel := context.WithCancel(context.Background())
+	bg := context.Background()
+	cancelled, cancel := context.WithCancel(bg)
 	cancel()
 	for _, c := range []struct {
 		name    string
@@ -216,23 +217,24 @@ func TestCallOrderReleases(t *testing.T) {
 		want    string
 	}{
 		{"invalid first call answered", func() {
-			CallStart("c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
-			CallStart("c2", "edit", second)
-			CallDone("c1")
+			CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
+			CallStart(bg, "c2", "edit", second)
+			CallDone(bg, "c1")
 		}, context.Background(), true, "a\n"},
 		{"another runner's step done keeps the order", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
-			CallStart("b1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
-			CallDone("b1")
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
+			other := CallScope(bg)
+			CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
+			CallDone(other, "c1")
 			go func() {
 				time.Sleep(50 * time.Millisecond)
 				edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
 			}()
 		}, context.Background(), false, "c\n"},
 		{"cancelled ctx gives up", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
 		}, cancelled, true, "a\n"},
 	} {
 		os.WriteFile(path, []byte("a\n"), 0o644)
@@ -243,7 +245,7 @@ func TestCallOrderReleases(t *testing.T) {
 		if r.IsError != c.wantErr || string(got) != c.want {
 			t.Errorf("%s: %+v file %q", c.name, r, got)
 		}
-		CallDone("c1", "c2")
+		CallDone(bg, "c1", "c2")
 	}
 }
 

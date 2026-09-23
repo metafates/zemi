@@ -195,7 +195,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		return ErrTurnActive
 	}
 	r.active, r.cut, r.live = true, false, nil
-	tctx, cancel := context.WithCancel(ctx)
+	tctx, cancel := context.WithCancel(tools.CallScope(ctx))
 	r.cancel = cancel
 	hooks := r.Hooks
 	persist := r.Persist
@@ -257,7 +257,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// what a step recorded and never ran (a finish that was no tool call, a
 	// callback that failed the step) is released when the turn is over
 	var recorded []string
-	defer func() { tools.CallDone(recorded...) }()
+	defer func() { tools.CallDone(tctx, recorded...) }()
 	// the tool whose arguments the step was streaming: a reply cut there
 	// may leave no tool call behind for closeToolCalls to answer
 	pending := ""
@@ -277,7 +277,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
-			if tools.CallStart(tc.ToolCallID, tc.ToolName, tc.Input) {
+			if tools.CallStart(tctx, tc.ToolCallID, tc.ToolName, tc.Input) {
 				recorded = append(recorded, tc.ToolCallID)
 			}
 			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
@@ -285,7 +285,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		},
 		OnToolResult: func(res fantasy.ToolResultContent) error {
 			// fires for a call fantasy refused to run too, which Run never releases
-			tools.CallDone(res.ToolCallID)
+			tools.CallDone(tctx, res.ToolCallID)
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},

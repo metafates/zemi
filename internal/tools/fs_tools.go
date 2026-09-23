@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -616,18 +617,34 @@ func lockFile(path string) func() {
 // to write. Ids arrive from CallStart, which fantasy fires for every call of
 // a step before it dispatches any; Run waits until its id leads its file.
 // The maps are shared by every runner, so nothing here clears more than the
-// ids a caller names.
+// ids a caller names, and ids are keyed by the turn's CallScope: a provider
+// that numbers calls per conversation (functions.edit:0) repeats them
+// across agents.
 var callOrder = struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
-	path  map[string]string   // call id -> file key
-	ahead map[string][]string // file key -> call ids, in call order
+	path  map[string]string   // call key -> file key
+	ahead map[string][]string // file key -> call keys, in call order
 }{path: map[string]string{}, ahead: map[string][]string{}}
+
+type callScopeKey struct{}
+
+var callScopes atomic.Uint64
+
+// CallScope gives the calls a turn makes under ctx their own keys.
+func CallScope(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
+}
+
+func callKey(ctx context.Context, id string) string {
+	n, _ := ctx.Value(callScopeKey{}).(uint64)
+	return strconv.FormatUint(n, 10) + "\x00" + id
+}
 
 // CallStart records a write tool's call as the model made it and reports
 // whether it did; other tools are ignored. The agent runner calls it from
 // fantasy's OnToolCall and owes a CallDone for every recorded id.
-func CallStart(id, tool, input string) bool {
+func CallStart(ctx context.Context, id, tool, input string) bool {
 	if tool != ToolWrite && tool != ToolEdit && tool != ToolMultiedit {
 		return false
 	}
@@ -635,7 +652,7 @@ func CallStart(id, tool, input string) bool {
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
 		return false
 	}
-	key := absPath(in.Path)
+	key, id := absPath(in.Path), callKey(ctx, id)
 	callOrder.mu.Lock()
 	callOrder.path[id] = key
 	callOrder.ahead[key] = append(callOrder.ahead[key], id)
@@ -647,10 +664,11 @@ func CallStart(id, tool, input string) bool {
 // answered without running it (invalid input, a tool the profile dropped)
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
-func CallDone(ids ...string) {
+func CallDone(ctx context.Context, ids ...string) {
 	c := &callOrder
 	c.mu.Lock()
 	for _, id := range ids {
+		id = callKey(ctx, id)
 		if key, ok := c.path[id]; ok {
 			delete(c.path, id)
 			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
@@ -669,12 +687,13 @@ func turn(ctx context.Context, id string) func() {
 	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	key, ok := c.path[id]
-	for ok && c.ahead[key][0] != id && ctx.Err() == nil {
+	k := callKey(ctx, id)
+	key, ok := c.path[k]
+	for ok && c.ahead[key][0] != k && ctx.Err() == nil {
 		c.cond.Wait()
-		key, ok = c.path[id]
+		key, ok = c.path[k]
 	}
-	return func() { CallDone(id) }
+	return func() { CallDone(ctx, id) }
 }
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
