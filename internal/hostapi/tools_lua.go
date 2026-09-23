@@ -428,13 +428,13 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 	ev := map[string]any{"name": "tool.pre", "from": "host", "tool": tool, "input": input}
 	ret, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
 	if err != nil {
-		h.Log.Error("tools", "tool.pre handler failed", map[string]any{"tool": tool, "error": err.Error()})
+		h.logHandlerError(hd, err) // proceed is the tool.pre default (DESIGN §4)
 		return "", "", nil
 	}
 	tb, d, bad := vetoDecision(ret, "deny", "halt", "rewrite")
 	if bad != "" {
 		// a misspelled deny must not read as consent (DESIGN §6.2)
-		h.Log.Error("tools", "tool.pre handler returned a bad shape", map[string]any{"tool": tool, "error": bad})
+		h.logHandlerError(hd, errors.New(bad))
 		return "deny", "tool.pre: " + bad, nil
 	}
 	switch d {

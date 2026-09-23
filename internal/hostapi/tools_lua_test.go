@@ -45,6 +45,21 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	}
 }
 
+// TestToolPreHandlerErrorRecorded: a tool.pre handler that raises lets the
+// call proceed, and one that raises or returns a bad shape shows in /errors.
+func TestToolPreHandlerErrorRecorded(t *testing.T) {
+	for _, c := range []struct{ body, want string }{
+		{`return ev.input.path:match("%.env$") and { decision = "deny" }`, ""},
+		{`return "deny"`, "deny"},
+	} {
+		h, r := newTestHost(t)
+		runUser(t, r, `zemi.event.on("tool.pre", function(ev) `+c.body+` end)`)
+		if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "cat .env"}); d != c.want || !h.HasUnseenErrors() {
+			t.Errorf("%s: decision %q, want %q; unseen errors %v", c.body, d, c.want, h.HasUnseenErrors())
+		}
+	}
+}
+
 func TestLuaToolFailures(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "tool.ticket", Pattern: "*", Decision: perm.Allow})
