@@ -156,7 +156,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
-			id := p.Jobs.Adopt(cmd, c, buf, written, wait, after)
+			id := p.Jobs.Adopt(cmd, c, buf, written, wait, p.Sandboxed, after)
 			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it exits or goes quiet), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
 		}
@@ -182,7 +182,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		} else {
 			b.WriteString(err.Error())
 			if p != nil && p.Sandboxed != nil {
-				b.WriteString(p.sandboxHint(raw, err))
+				b.WriteString(p.sandboxHint(p.Sandboxed, raw, err))
 			}
 		}
 		b.WriteString(note)

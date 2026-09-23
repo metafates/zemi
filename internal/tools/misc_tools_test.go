@@ -270,7 +270,7 @@ func TestJobToolsLifecycle(t *testing.T) {
 	list := toolNamed(t, "job_list", p)
 	kill := toolNamed(t, "job_kill", p)
 
-	resp := call(t, start, `{"command":"echo","args":["hello-job"]}`)
+	resp := call(t, start, `{"command":"echo hello-job"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "started job-") {
 		t.Fatalf("start echo: %+v", resp)
 	}
@@ -294,7 +294,7 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("list: %+v", resp)
 	}
 
-	resp = call(t, start, `{"command":"sh","args":["-c","printf out; printf err >&2; exit 3"],"env":{"ZEMI_T1":"v"}}`)
+	resp = call(t, start, `{"command":"printf out; printf err >&2; exit 3"}`)
 	if resp.IsError {
 		t.Fatalf("start sh: %+v", resp)
 	}
@@ -302,12 +302,12 @@ func TestJobToolsLifecycle(t *testing.T) {
 	waitJobDone(t, j)
 	resp = call(t, read, `{"id":"`+j.ID+`"}`)
 	if !strings.Contains(resp.Content, "exited (3)") ||
-		!strings.Contains(resp.Content, "out") || !strings.Contains(resp.Content, "err") {
+		!strings.Contains(resp.Content, "[stdout]\nout") || !strings.Contains(resp.Content, "[stderr]\nerr") {
 		t.Fatalf("read sh: %+v", resp)
 	}
 
 	// wait_ms returns once new output goes quiet, well before it elapses
-	resp = call(t, start, `{"command":"sh","args":["-c","sleep 0.3; echo late; sleep 30"]}`)
+	resp = call(t, start, `{"command":"sleep 0.3; echo late; sleep 30"}`)
 	if resp.IsError {
 		t.Fatalf("start late: %+v", resp)
 	}
@@ -324,17 +324,17 @@ func TestJobToolsLifecycle(t *testing.T) {
 	waitJobDone(t, j)
 
 	// a chatty job is read whole in one wait, not one call per line
-	resp = call(t, start, `{"command":"sh","args":["-c","for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo line$i; sleep 0.1; done"]}`)
+	resp = call(t, start, `{"command":"for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo line$i; sleep 0.1; done"}`)
 	if resp.IsError {
 		t.Fatalf("start chatty: %+v", resp)
 	}
 	j = p.Jobs.List()[3]
 	resp = call(t, read, `{"id":"`+j.ID+`","wait_ms":10000}`)
-	if !strings.Contains(resp.Content, "exited (0)") || !strings.Contains(resp.Content, "line1\n") || !strings.Contains(resp.Content, "line15") {
+	if !strings.Contains(resp.Content, "exited (0)") || !strings.Contains(resp.Content, "\nline1\n") || strings.Contains(resp.Content, "[stdout]") || !strings.Contains(resp.Content, "line15") {
 		t.Fatalf("read chatty: %+v", resp)
 	}
 
-	resp = call(t, start, `{"command":"sleep","args":["30"]}`)
+	resp = call(t, start, `{"command":"sleep 30"}`)
 	if resp.IsError {
 		t.Fatalf("start sleep: %+v", resp)
 	}
@@ -353,10 +353,6 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("kill unknown: %+v", resp)
 	}
 
-	resp = call(t, start, `{"command":"echo","args":["x"],"env":{"MY_SECRET":"1"}}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "refused by the environment gate") {
-		t.Fatalf("secret env extra must be refused: %+v", resp)
-	}
 }
 
 func TestJobNilHooksFailClosed(t *testing.T) {

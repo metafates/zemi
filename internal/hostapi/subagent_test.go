@@ -476,7 +476,7 @@ func TestAgentsListsJobs(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	id, err := h.jobs.Start(t.TempDir(), []string{"sh", "-c", "echo up; sleep 30"}, nil, nil, nil)
+	id, err := h.jobs.Start(t.TempDir(), "echo up; sleep 30", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

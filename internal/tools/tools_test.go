@@ -283,11 +283,11 @@ func TestSandboxHintForPlanner(t *testing.T) {
 	if !sandbox.LikelyDenied(out, denied) {
 		t.Skip("no denial pattern on this platform")
 	}
-	if hint := p.sandboxHint(out, denied); !strings.Contains(hint, "sandbox: false") {
+	if hint := p.sandboxHint(nil, out, denied); !strings.Contains(hint, "sandbox: false") {
 		t.Fatalf("plain hint: %q", hint)
 	}
 	p.Plan = func() bool { return true }
-	if hint := p.sandboxHint(out, denied); strings.Contains(hint, "sandbox: false") || !strings.Contains(hint, "network: true") || !strings.Contains(hint, "read-only while planning") {
+	if hint := p.sandboxHint(nil, out, denied); strings.Contains(hint, "sandbox: false") || !strings.Contains(hint, "network: true") || !strings.Contains(hint, "read-only while planning") {
 		t.Fatalf("planner hint: %q", hint)
 	}
 }
@@ -306,28 +306,6 @@ func TestAskDenialText(t *testing.T) {
 		if !resp.IsError || !strings.HasSuffix(resp.Content, "echo j > out.txt: "+c.want) {
 			t.Errorf("%s: %q", c.by, resp.Content)
 		}
-	}
-}
-
-func TestJobLineChecksWhatRuns(t *testing.T) {
-	for _, c := range []struct {
-		command string
-		args    []string
-		env     map[string]any
-		segs    []string
-	}{
-		{"echo ready && sleep 30", nil, nil, []string{"echo ready", "sleep 30"}},
-		{"sh", []string{"-c", "cat ~/.ssh/id_rsa"}, nil, []string{"cat ~/.ssh/id_rsa"}},
-		{"echo", []string{"a;b", "it's"}, nil, []string{"echo a;b it's"}},
-		{"go test ./...", nil, map[string]any{"GOFLAGS": "-toolexec=./x.sh"}, []string{"go test ./..."}},
-	} {
-		line := jobLine(c.command, c.args, c.env)
-		if got := perm.Normalize(line).Segments; !slices.Equal(got, c.segs) {
-			t.Errorf("%q %q %v: %q checks as %q, want %q", c.command, c.args, c.env, line, got, c.segs)
-		}
-	}
-	if perm.ReadCommand(jobLine("rg foo", nil, map[string]any{"RIPGREP_CONFIG_PATH": "x"}), nil) {
-		t.Error("an env extra must keep job_start from settling as a read command")
 	}
 }
 

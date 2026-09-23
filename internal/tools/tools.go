@@ -4,7 +4,6 @@
 package tools
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -362,15 +361,15 @@ func (p *Pipeline) guard() func() string {
 // sandboxHint is the line a confined command's failure gets when the
 // sandbox may be why; "" otherwise. The sandbox: false retry is offered only
 // where someone can answer its ask.
-func (p *Pipeline) sandboxHint(out string, err error) string {
+func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) string {
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
 	}
 	limits := sandboxLimits()
-	if p.Sandboxed != nil && len(p.Sandboxed.Write) > 0 {
+	if pol != nil && len(pol.Write) > 0 {
 		// the exact paths, so a retry does not guess at a sibling of the
 		// scratchpad or a temp dir the policy never named
-		limits += ". Writable, these directories and what is below them only: " + strings.Join(p.Sandboxed.Write, ", ")
+		limits += ". Writable: " + strings.Join(pol.Write, ", ") + ", and what is below them"
 	}
 	if !p.SandboxParam {
 		return "\nThe sandbox may have blocked this: " + limits + "."
@@ -1004,18 +1003,15 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			return err
 		}),
 
-		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (wait_ms returns once a server's ready line prints and goes quiet, so never sleep) and job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with sh -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
-				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server; with network: true or sandbox: false, also what it needs that for"},
+				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server. With network or sandbox set, also why it needs that."},
 				"command": map[string]any{"type": "string"},
-				"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"env":     map[string]any{"type": "object", "description": "extra environment variables"},
 			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
-				env, _ := in["env"].(map[string]any)
-				return bashRequests(jobLine(str(in["command"]), strList(in["args"]), env), in)
+				return bashRequests(str(in["command"]), in)
 			},
 			runJobStart),
 
@@ -1155,27 +1151,8 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Description: cmp.Or(str(in["about"]), str(in["description"])),
+	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["about"]),
 		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}
-}
-
-// jobLine is what job_start runs, as the shell line the gate checks. With
-// args the program is exec'd, so every word is quoted where sh would split
-// or expand it: sh -c 'cat ~/.ssh/id_rsa' must not check as a bare cat.
-// Env extras lead as assignments, so GOFLAGS=-toolexec=x is seen too.
-func jobLine(command string, args []string, env map[string]any) string {
-	var words []string
-	for _, k := range slices.Sorted(maps.Keys(env)) {
-		words = append(words, k+"="+ShellQuote(fmt.Sprint(env[k])))
-	}
-	if len(args) == 0 {
-		return strings.Join(append(words, command), " ")
-	}
-	words = append(words, ShellQuote(command))
-	for _, a := range args {
-		words = append(words, ShellQuote(a))
-	}
-	return strings.Join(words, " ")
 }
 
 // ShellQuote quotes s as one sh word, leaving words sh would not split or
@@ -1195,19 +1172,7 @@ func str(v any) string {
 	return ""
 }
 
-func strList(v any) []string {
-	list, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(list))
-	for _, s := range list {
-		out = append(out, str(s))
-	}
-	return out
-}
-
-// searchRoot is where glob and grep look: path, or the project root.
+// searchRoot is where glob and grep look: path, or the working directory.
 func searchRoot(in map[string]any) string {
 	if s := str(in["path"]); s != "" {
 		return s

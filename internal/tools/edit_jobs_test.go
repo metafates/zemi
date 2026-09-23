@@ -67,14 +67,16 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 }
 
 // TestJobReadSandboxHint: a sandboxed job's denial read while it ran still
-// gets the hint once it exits, naming the directories it may write, and the
+// gets the hint once, after it exits, naming the directories it may write, and the
 // sandbox: false retry is offered only where someone can answer the ask.
 func TestJobReadSandboxHint(t *testing.T) {
 	for _, param := range []bool{true, false} {
-		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param, Sandboxed: &sandbox.Policy{Write: []string{"/pad/s1"}}}
+		// job_read's own pipeline is unconfined: the job keeps its policy
+		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param}
+		pol := &sandbox.Policy{Write: []string{"/pad/s1"}}
 		out := &proc.Buffer{Max: 1 << 20}
 		wait := make(chan error, 1)
-		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, func() string { return "\nguard note" })
+		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, pol, func() string { return "\nguard note" })
 		out.Write([]byte("touch: x: Operation not permitted\n"))
 		read := func() string {
 			res, _ := runJobRead(context.Background(), p, map[string]any{"id": id})
@@ -90,6 +92,9 @@ func TestJobReadSandboxHint(t *testing.T) {
 		if !strings.Contains(got, "The sandbox may have blocked this") || !strings.Contains(got, "/pad/s1") ||
 			strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
 			t.Errorf("param %v: after exit %q", param, got)
+		}
+		if got := read(); strings.Contains(got, "sandbox may") || strings.Contains(got, "guard note") {
+			t.Errorf("param %v: the hint came twice: %q", param, got)
 		}
 	}
 }
