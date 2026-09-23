@@ -137,7 +137,7 @@ func stepRunner(f []string) (_ []string, ok bool) {
 		switch a := f[0]; {
 		case slices.Contains(opts, a):
 			f = f[min(2, len(f)):]
-		case strings.HasPrefix(a, "-") || assign || a[0] >= '0' && a[0] <= '9':
+		case strings.HasPrefix(a, "-") || assign || a != "" && a[0] >= '0' && a[0] <= '9':
 			f = f[1:]
 		default:
 			return f, true

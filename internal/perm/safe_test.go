@@ -321,6 +321,7 @@ func TestGitWrites(t *testing.T) {
 		{"time git push", true},
 		{"time -p git commit -m x", true},
 		{"timeout 5 git commit -m x", true},
+		{`timeout "" git commit -m x`, true},
 		{"nice -n 5 git commit -m x", true},
 		{"stdbuf -o L git commit -m x", true},
 		{"go test ./... && git commit -am x", true},
