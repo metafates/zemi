@@ -488,14 +488,11 @@ func (n *Normalized) fold(seg []string) {
 	if len(argv) == 0 {
 		return
 	}
-	if len(argv) >= 3 && isShell(argv[0]) {
-		for i := 1; i < len(argv); i++ {
-			if argv[i] == "-c" && i+1 < len(argv) {
-				inner := Normalize(argv[i+1])
-				n.absorb(inner)
-				n.Opaque = true
-				return
-			}
+	if isShell(argv[0]) {
+		if body, ok := shellBody(argv[1:]); ok {
+			n.absorb(Normalize(body))
+			n.Opaque = true
+			return
 		}
 	}
 	n.Segments = append(n.Segments, strings.Join(argv, " "))
@@ -524,6 +521,23 @@ func isShell(s string) bool {
 		return true
 	}
 	return false
+}
+
+// shellBody is the command a shell's argv runs through -c, alone or in a
+// bundle (-lc, -ec, the spelling most models write): the word after it.
+func shellBody(args []string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-o" || a == "+o":
+			i++
+		case !strings.HasPrefix(a, "-") || a == "-" || a == "--":
+			return "", false
+		case !strings.HasPrefix(a, "--") && strings.Contains(a[1:], "c") && i+1 < len(args):
+			return args[i+1], true
+		}
+	}
+	return "", false
 }
 
 // assignmentName recognizes NAME=value and NAME+=value, and NAME[i]=value,

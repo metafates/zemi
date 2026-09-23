@@ -300,19 +300,19 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		return nil, false
 	}
 	// npm exec, uv run and the like run a package named after them, as npx does
-	if i := perm.Subcommand(f); i > 0 && wrapperSubcommands[strings.ToLower(filepath.Base(f[0]))+" "+f[i]] {
+	if i := perm.Subcommand(f); i > 0 && wrapperSubcommands[programName(f[0])+" "+f[i]] {
 		return nil, false
 	}
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
-	if destructiveProgram(filepath.Base(f[0])) || perm.Destructive(seg) != "" {
+	if destructiveProgram(programName(f[0])) || perm.Destructive(seg) != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
 	switch {
 	case p != "":
-	case subcommandPrograms[f[0]]:
+	case subcommandPrograms[programName(f[0])]:
 		// git --version and a bare git have no subcommand; `git *` would allow every one
 		return []string{seg}, true
 	default:
@@ -399,7 +399,13 @@ var wrapperSubcommands = map[string]bool{
 }
 
 func wrapperProgram(prog string) bool {
-	return perm.WrapperPrograms[strings.ToLower(filepath.Base(prog))]
+	return perm.WrapperPrograms[programName(prog)]
+}
+
+// programName is the name a command word is judged by: the pattern keeps
+// the word as written, so `/usr/bin/git push` still allows only git push.
+func programName(word string) string {
+	return strings.ToLower(filepath.Base(word))
 }
 
 // destructivePrograms are programs that, with one more argument, can delete
@@ -423,7 +429,7 @@ func destructiveProgram(prog string) bool {
 func commandPrefix(seg string) string {
 	f := strings.Fields(seg)
 	i := perm.Subcommand(f)
-	if !subcommandPrograms[f[0]] || i < 0 || !subcommandWord.MatchString(f[i]) {
+	if !subcommandPrograms[programName(f[0])] || i < 0 || !subcommandWord.MatchString(f[i]) {
 		return ""
 	}
 	return strings.Join(f[:i+1], " ")

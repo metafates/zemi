@@ -616,6 +616,24 @@ func runner(prog string) bool {
 // Normalize keeps "then rm -rf ." as one segment.
 var reserved = map[string]bool{"if": true, "then": true, "else": true, "elif": true, "while": true, "until": true, "do": true, "{": true, "!": true}
 
+// shellBodies are the commands the shells in f run through -c: f's own
+// program, or one a wrapper (xargs, env, timeout, find -exec) hands a shell.
+// Normalize folds only a segment's leading shell.
+func shellBodies(f []string) []string {
+	var bodies []string
+	for i, w := range f {
+		if i > 0 && !runner(f[0]) {
+			break
+		}
+		if isShell(filepath.Base(w)) {
+			if body, ok := shellBody(f[i+1:]); ok {
+				bodies = append(bodies, body)
+			}
+		}
+	}
+	return bodies
+}
+
 // program is f without its leading reserved words; "function name" is
 // skipped as a pair (the () spelling makes Normalize split at the brace).
 func program(f []string) []string {
@@ -668,6 +686,11 @@ func GitWrites(cmd string) string {
 	}
 	for _, f := range n.Args {
 		f = program(f)
+		for _, body := range shellBodies(f) {
+			if why := GitWrites(body); why != "" {
+				return why
+			}
+		}
 		// xargs, find and fd hand git arguments nothing here sees
 		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, filepath.Base(f[0])) {
 			f = f[1:]
@@ -723,6 +746,11 @@ func Destructive(cmd string) string {
 	}
 	for _, f := range n.Args {
 		f = program(f)
+		for _, body := range shellBodies(f) {
+			if why := Destructive(body); why != "" {
+				return why
+			}
+		}
 		for i, w := range f {
 			if i > 0 && !runner(f[0]) {
 				break

@@ -922,6 +922,10 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
+		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
+		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow `/usr/bin/git push`", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "Git push"}, "allow `Git push`", []string{"Git push", "Git push *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git"}, "allow this exact command", []string{"/usr/bin/git"}},
 		// a bare subcommand program stays exact too: `git *` is every subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "git"}, "allow this exact command", []string{"git"}},
 		{tools.Request{Subject: "tool.bash", Arg: "npx prettier --check ."}, "", nil},
