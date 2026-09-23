@@ -429,10 +429,10 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string 
 	if hasTool(toolset, tools.ToolRead) {
 		read = readPrompt
 	}
-	return "You are " + def.Name + ", a subagent of zemi working in " + h.Dirs.ProjectDir + "." +
-		" The caller cannot see your work, only your final message: end with a complete," +
-		" concise report of the facts it needs, with file paths where they matter.\n\n" + def.System +
-		"\n\n# Using tools\n" + batchPrompt + read
+	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
+		" end with a complete, concise report of what it needs, citing path:line where it matters," +
+		" and say plainly what you did not find or could not verify.\n\n" + def.System +
+		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
 }
 
 func lastAssistantText(history []fantasy.Message) string {

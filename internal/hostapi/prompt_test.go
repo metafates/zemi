@@ -33,13 +33,13 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the system's default rules", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the rules above", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
 	}
 	lean := h.buildSystem(&Profile{Tools: []string{"bash"}})
-	for _, gone := range []string{"# Delegating", "zemi-customize", "Lua tool", "# Skills"} {
+	for _, gone := range []string{"# Delegating", "zemi-customize", "zemi-lua", "# Skills"} {
 		if strings.Contains(lean, gone) {
 			t.Errorf("a bash-only prompt names %q", gone)
 		}
@@ -76,15 +76,15 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "redirect it", "offset and limit", "Use todos", `"job_start"`, "zemi-config before changing its settings"}, []string{"in one message"}, []string{"in one response"}},
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message"}, []string{"in one response"}},
 		// a subagent: explore reads and searches, and writes nothing
-		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit"}, []string{"redirect it", "Put notes", "Use todos"}, nil},
+		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit"}, []string{"Put notes"}, nil},
 		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}, nil},
+			[]string{"workflow", "zemi-lua", "job_start", `"lsp"`}, nil},
 		// the plan's shape lives in the plan tool's description only
 		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil, []string{"how to verify, the assumptions"}},
 		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}, nil},
-		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}, nil},
+		{"no read", &Profile{Tools: []string{"-read"}}, nil, []string{"offset and limit"}, nil},
 	} {
 		toolset := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)

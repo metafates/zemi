@@ -649,7 +649,7 @@ how many rows the frame takes, so nothing above it reflows.
   of each Lua tool in the tool set), skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
-  or `todos` drops its "Using tools" line, and a read-only agent without the `plan` tool
+  drops its "Using tools" line, and a read-only agent without the `plan` tool
   (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
