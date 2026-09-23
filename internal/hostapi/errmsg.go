@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/fantasy"
 
@@ -78,12 +80,19 @@ func hostOf(err error) string {
 	return ""
 }
 
-// errorRowText is the transcript error row: the headline, then the raw
-// error on a second line when it adds detail.
+// errorRowText is the transcript error row: the headline, capitalized as
+// a transcript headline is, then the raw error on a second line when it
+// adds detail.
 func (h *Host) errorRowText(err error) string {
 	head, raw := h.friendlyError(err), err.Error()
-	if head == raw || strings.Contains(head, raw) || errors.Is(err, context.Canceled) {
-		return head
+	pe, _ := errors.AsType[*fantasy.ProviderError](err)
+	detail := !strings.Contains(head, raw) && !errors.Is(err, context.Canceled) &&
+		(pe == nil || pe.Message == "" || !strings.Contains(head, pe.Message))
+	if r, n := utf8.DecodeRuneInString(head); n > 0 {
+		head = string(unicode.ToUpper(r)) + head[n:]
 	}
-	return head + "\n" + raw
+	if detail {
+		head += "\n" + raw
+	}
+	return head
 }

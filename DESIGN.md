@@ -1250,8 +1250,8 @@ provenance string.
   off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
-  command does not. Persisted reasoning blocks
-  collapse to one `✻ thought Xs (ctrl+o to expand)` line unless shown
+  command does not. Reasoning blocks
+  collapse to one `✻ Thought for Xs` line unless shown
   (default keymaps below); a finished tool call collapses the same way and a
   click on its row opens that one row, command and output, with the rest of
   the transcript untouched.

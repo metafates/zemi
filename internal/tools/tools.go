@@ -230,8 +230,8 @@ type Pipeline struct {
 	// runs once it ended and reports the files it changed: a line for the
 	// model, a diff for the row (the result's Metadata) and every path. nil = none.
 	Changes func(dir string) func() (note, diff string, paths []string)
-	// Progress shows a running call's last output line under its row, ""
-	// once it ended; nil = none.
+	// Progress shows a running call's last output line under its row;
+	// nil = none.
 	Progress func(callID, line string)
 
 	// changed is what a bash run found changed, kept on its per-run copy for post

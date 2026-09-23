@@ -51,8 +51,8 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		text   string
 		status string
 	}{
-		{errors.New("dial tcp: no route to host"), "dial tcp: no route to host", ""},
-		{context.Canceled, "interrupted", "cancelled"},
+		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", ""},
+		{context.Canceled, "Interrupted", "cancelled"},
 	} {
 		sa.TurnDone(c.err, fantasy.Usage{})
 		tr := h.Session().Transcript

@@ -137,11 +137,13 @@ type agentHost struct {
 	reasoningShown *bool
 
 	// turn timing: turnStart pins the wall clock at AgentSend, thinking
-	// tracks the open reasoning block, thought accumulates closed ones.
-	turnStart  time.Time
-	thinkStart time.Time
-	thinking   bool
-	thought    time.Duration
+	// tracks the open reasoning block, thought accumulates closed ones
+	// since the last flush and stepThought those of the current step.
+	turnStart   time.Time
+	thinkStart  time.Time
+	thinking    bool
+	thought     time.Duration
+	stepThought time.Duration
 
 	// retryAt is when the next provider retry fires; retries counts them
 	// this turn (the working row counts down instead of looking stuck).
@@ -636,20 +638,17 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 func (h *Host) deliverSteering() []string {
 	ag := h.agents
 	ag.mu.Lock()
-	msgs, text, reason, tools := ag.steering, ag.textBuf, ag.reasonBuf, ag.tools
+	msgs := ag.steering
 	if ag.todoNag != "" {
 		msgs = append(msgs, ag.todoNag)
 	}
-	ag.endThinking()
-	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
-	if len(msgs) > 0 {
-		ag.steering, ag.todoNag, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", "", nil, 0
-	}
-	ag.mu.Unlock()
 	if len(msgs) == 0 {
+		ag.mu.Unlock()
 		return nil
 	}
-	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
+	ag.steering, ag.todoNag = nil, ""
+	h.flushOutput(TurnStat{})
+	ag.mu.Unlock()
 	for _, m := range msgs {
 		h.appendUserRows(m)
 	}
@@ -752,7 +751,7 @@ func (s *streamAdapter) TextDelta(text string) {
 func (s *streamAdapter) StepStart() {
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.stepText, ag.stepReason = len(ag.textBuf), len(ag.reasonBuf)
+	ag.stepText, ag.stepReason, ag.stepThought = len(ag.textBuf), len(ag.reasonBuf), 0
 	ag.mu.Unlock()
 }
 
@@ -776,6 +775,10 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
+	// a new step thinks: what the last one showed goes above it
+	if len(ag.tools) > 0 || strings.TrimSpace(ag.textBuf) != "" {
+		s.h.flushOutput(TurnStat{})
+	}
 	ag.beginThinking()
 	ag.reasonBuf += text
 	ag.mu.Unlock()
@@ -790,16 +793,21 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 	s.openToolRow(StreamTool{ID: id, Name: name, Status: "wait"})
 }
 
-func (s *streamAdapter) ToolCallStart(id, name, input string) {
-	// the diff reads the file: outside the lock, which UI readers share
-	diff := ""
-	if name == tools.ToolWrite || name == tools.ToolEdit || name == tools.ToolMultiedit {
-		var in map[string]any
-		if json.Unmarshal([]byte(input), &in) == nil {
-			diff = capLines(tools.ChangeDiff(name, in), 24)
-		}
+// inputDiff is a file tool's change as its input describes it, before it
+// runs. It reads the file: call it outside the locks UI readers share.
+func inputDiff(name, input string) string {
+	if name != tools.ToolWrite && name != tools.ToolEdit && name != tools.ToolMultiedit {
+		return ""
 	}
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: diff}
+	var in map[string]any
+	if json.Unmarshal([]byte(input), &in) != nil {
+		return ""
+	}
+	return capLines(tools.ChangeDiff(name, in), 24)
+}
+
+func (s *streamAdapter) ToolCallStart(id, name, input string) {
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -833,41 +841,42 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
-	reason, tools, text := ag.reasonBuf, ag.tools, ag.textBuf
-	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
-	flush := strings.TrimSpace(text) != ""
-	if flush {
-		ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
+	if strings.TrimSpace(ag.textBuf) != "" {
+		s.h.flushOutput(TurnStat{})
 	}
 	ag.tools = append(ag.tools, row)
 	ag.mu.Unlock()
-	if flush {
-		s.h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
-	}
 	s.h.agentStream()
 }
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
 	ag := s.h.agents
-	diff := ""
+	status := toolStatus(name, ok, output)
+	if t := s.h.turn.Load(); !ok && t != nil && t.ctx.Err() != nil {
+		status = "stopped" // esc cut it off
+	}
+	row := StreamTool{ID: id, Name: name}
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
-		if ag.tools[i].ID == id && (ag.tools[i].Status == "run" || ag.tools[i].Status == "wait") {
-			ag.tools[i].Status = toolStatus(ok, output)
-			ag.tools[i].Output = shortOutput(output)
+		t := &ag.tools[i]
+		if t.ID == id && (t.Status == "run" || t.Status == "wait") {
+			t.Status, t.Output = status, shortOutput(output)
 			if !ok {
-				ag.tools[i].Diff = "" // the change did not happen
+				t.Diff = "" // the change did not happen
 			}
 			if changed != "" {
-				ag.tools[i].Diff = changed // bash: what the command changed, failed or not
+				t.Diff = changed // bash: what the command changed, failed or not
 			}
-			diff = ag.tools[i].Diff
+			if name == tools.ToolBash {
+				t.Detail = "" // its last output line, which the result now holds
+			}
+			row = *t
 			break
 		}
 	}
 	ag.mu.Unlock()
 	s.h.agentStream()
-	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
+	s.h.recordToolCall(s.h.AgentSessionID(), row, ok)
 	if name == tools.ToolTodos {
 		ag.mu.Lock()
 		ag.todoTouched = true
@@ -876,9 +885,13 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 }
 
 // toolStatus is a finished call's row status: "stopped" when the user
-// denied or dismissed it, so the row does not read as a failure.
-func toolStatus(ok bool, output string) string {
+// denied or dismissed it, so the row does not read as a failure, and "bg"
+// when its work goes on in the background.
+func toolStatus(name string, ok bool, output string) string {
 	switch {
+	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
+		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff):
+		return "bg"
 	case ok:
 		return "ok"
 	case tools.UserStopped(output):
@@ -930,24 +943,16 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
 	ag.mu.Lock()
-	ag.endThinking()
-	text, reason, tools := ag.textBuf, ag.reasonBuf, ag.tools
-	stat := TurnStat{
-		In:        usage.InputTokens,
-		Out:       usage.OutputTokens,
-		ThoughtMS: ag.thought.Milliseconds(),
-	}
+	text, tools := ag.textBuf, ag.tools
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens}
 	if !ag.turnStart.IsZero() {
 		stat.ElapsedMS = time.Since(ag.turnStart).Milliseconds()
 	}
-	ag.turnStart, ag.thinkStart = time.Time{}, time.Time{}
-	ag.thinking, ag.thought = false, 0
-	ag.textBuf, ag.reasonBuf = "", ""
-	ag.tools = nil
+	ag.turnStart = time.Time{}
+	h.flushOutput(stat)
 	sid := ag.sessionID
 	ag.mu.Unlock()
-
-	h.appendTurnOutput(reason, TurnStat{ThoughtMS: stat.ThoughtMS, ElapsedMS: stat.ElapsedMS}, tools, text, stat)
+	h.refresh()
 	if hold {
 		return
 	}
@@ -989,24 +994,53 @@ func billedInput(u fantasy.Usage) int64 {
 	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens
 }
 
-// appendTurnOutput moves one stretch of turn output into the transcript in
-// display order: the collapsible reasoning block (§8), the tool rows, then
-// the reply. A tool still running here was cut off by a cancel.
-func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []StreamTool, text string, textStat TurnStat) {
-	if strings.TrimSpace(reason) != "" {
-		h.AppendReasoning(reason, reasonStat)
+// flushOutput moves the live output into the transcript in the order it
+// streamed: the reasoning, the tool rows, then the reply with stat. Both
+// change under ag.mu, which liveView reads them under, so no frame draws a
+// row twice or not at all (ag.mu held). A tool still running here was cut
+// off by a cancel.
+func (h *Host) flushOutput(stat TurnStat) {
+	ag := h.agents
+	ag.endThinking()
+	var rows []ChatMessage
+	if strings.TrimSpace(ag.reasonBuf) != "" {
+		rows = append(rows, ChatMessage{Role: "assistant", Kind: "reasoning", Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ag.thought.Milliseconds()}})
 	}
-	for _, t := range tools {
-		status := t.Status
-		if status == "run" || status == "wait" {
-			status = "err"
-			t.Diff = ""
+	for _, t := range ag.tools {
+		if t.Status == "run" || t.Status == "wait" {
+			t.Status, t.Diff = "stopped", ""
 		}
-		h.AppendChat(ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
-	if strings.TrimSpace(text) != "" {
-		h.AppendTurnResult(text, textStat)
+	if strings.TrimSpace(ag.textBuf) != "" {
+		rows = append(rows, ChatMessage{Role: "assistant", Text: ag.textBuf, Stat: &stat})
 	}
+	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
+	ag.stepText, ag.stepReason = 0, 0
+	h.tMu.Lock()
+	h.session.Transcript = append(h.session.Transcript, rows...)
+	h.tMu.Unlock()
+}
+
+// appendAfterLive adds m to the transcript where the turn has got to: after
+// the live rows that finished, which move there first, and above the calls
+// still running.
+func (h *Host) appendAfterLive(m ChatMessage) {
+	ag := h.agents
+	ag.mu.Lock()
+	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == "run" || t.Status == "wait" })
+	if i < 0 {
+		i = len(ag.tools)
+	}
+	running := slices.Clone(ag.tools[i:])
+	ag.tools = ag.tools[:i]
+	h.flushOutput(TurnStat{})
+	ag.tools = running
+	h.tMu.Lock()
+	h.session.Transcript = append(h.session.Transcript, m)
+	h.tMu.Unlock()
+	ag.mu.Unlock()
+	h.refresh()
 }
 
 func addUsage(a, b fantasy.Usage) fantasy.Usage {
@@ -1149,6 +1183,19 @@ func toolSummary(input string) string {
 			return s
 		}
 	}
+	// any other tool (an MCP one): its first string argument, in the order
+	// the model wrote them
+	dec := json.NewDecoder(strings.NewReader(input))
+	_, _ = dec.Token() // the object's opening brace
+	for dec.More() {
+		var v any
+		if _, err := dec.Token(); err != nil || dec.Decode(&v) != nil {
+			break
+		}
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
 	return input
 }
 
@@ -1172,6 +1219,21 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	if err := h.DB.AddMessage(row); err != nil {
 		return err
 	}
+	// how long the step thought, which the message does not keep: a resume
+	// reads it back (historyFrom)
+	if slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
+		ag := h.agents
+		ag.mu.Lock()
+		d := ag.stepThought
+		if ag.thinking {
+			d += time.Since(ag.thinkStart)
+		}
+		ag.mu.Unlock()
+		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()})
+		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
+			return err
+		}
+	}
 	if role == "user" {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
@@ -1184,18 +1246,19 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 // call gets its own "tool" message row so tool_calls.message_id stays a
 // real FK). The output is not kept: the history row already holds it. A
 // file tool's diff is, keyed by call id: it is computed against the file
-// as it was, so a resumed session could never rebuild it (historyFrom).
-func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
+// as it was, so a resumed session could never rebuild it (historyFrom); so
+// is an agent call's run and summary line.
+func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	if h.DB == nil || sid == "" {
 		return
 	}
-	row := map[string]any{"tool": name}
-	if diff != "" {
-		row["id"], row["diff"] = id, diff
+	row := map[string]any{"tool": t.Name}
+	if t.Diff != "" || t.Run != "" {
+		row["id"], row["diff"], row["run"], row["detail"] = t.ID, t.Diff, t.Run, t.Detail
 	}
 	parts, _ := json.Marshal(row)
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
-	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: name, OK: ok}); err != nil {
+	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: t.Name, OK: ok}); err != nil {
 		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
 	}
 }
@@ -1386,13 +1449,28 @@ type StreamSnapshot struct {
 }
 
 func (h *Host) AgentStream() StreamSnapshot {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.streamLocked()
+}
+
+// liveView is the transcript and the live turn read together, as
+// flushOutput changes them.
+func (h *Host) liveView() (Session, StreamSnapshot) {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.Session(), h.streamLocked()
+}
+
+// streamLocked is AgentStream with ag.mu held.
+func (h *Host) streamLocked() StreamSnapshot {
 	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	thought := ag.thought
 	if ag.thinking {
 		thought += time.Since(ag.thinkStart)
 	}
+	// milliseconds, as the settled row stores it, so both read alike
+	thought = thought.Truncate(time.Millisecond)
 	var elapsed time.Duration
 	if ag.active && !ag.turnStart.IsZero() {
 		elapsed = time.Since(ag.turnStart)
@@ -1468,7 +1546,9 @@ func (ag *agentHost) beginThinking() {
 
 func (ag *agentHost) endThinking() {
 	if ag.thinking {
-		ag.thought += time.Since(ag.thinkStart)
+		d := time.Since(ag.thinkStart)
+		ag.thought += d
+		ag.stepThought += d
 		ag.thinking = false
 	}
 }

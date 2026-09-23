@@ -603,7 +603,7 @@ function zemi.event.stats() end
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status "wait"|"run"|"ok"|"err"|"stopped" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs. "stopped": the user denied or dismissed it.
+---@field status "wait"|"run"|"ok"|"err"|"stopped"|"bg" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs. "stopped": the user denied, dismissed or interrupted it. "bg": its work goes on in the background (a job, a background agent).
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -617,7 +617,7 @@ function zemi.event.stats() end
 ---@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"notice"|"error"
 ---@field text string
 ---@field tool string
----@field status string Tool and shell rows: "wait", "run", "ok", "err" or "stopped" (the user denied or dismissed it); error rows: "cancelled" for an interrupt.
+---@field status string Tool and shell rows: "wait", "run", "ok", "err", "stopped" (the user denied, dismissed or interrupted it) or "bg" (it goes on in the background); error rows: "cancelled" for an interrupt.
 ---@field label string
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".

@@ -33,18 +33,19 @@ zemi.ui.widget.add({
       -- starts together
       for _, t in ipairs(ag.tools or {}) do
         if t.status == "run" then
-          label = t.label ~= "" and t.label or ("Running " .. t.name)
+          local verb, rest = fmt.head(t.name, t.label)
+          label = verb .. rest
           if READS[t.name] then state = "reading" end
           break
         end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
-      parts = { fmt.elapsed(ag.elapsed) }
+      parts = { fmt.duration(ag.elapsed) }
       if ag.retry then
         label, state = "Retrying", "error"
         parts = { "attempt " .. ag.retry.attempt }
         if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
-        parts[#parts + 1] = "next try in " .. fmt.elapsed(ag.retry.next_in)
+        parts[#parts + 1] = "next try in " .. fmt.duration(ag.retry.next_in)
       end
       if ag.compacting then label, state = "Compacting", "reading" end
       if ctx.cancelling then label = "Cancelling" end

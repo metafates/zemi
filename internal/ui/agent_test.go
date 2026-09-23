@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -826,7 +827,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, " Retrying · attempt 2 · next try in 4s · esc interrupt ─") {
+	if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(` Retrying · attempt 2 · next try in \d\.\ds · esc interrupt ─`).MatchString(frame) {
 		t.Fatalf("retry row missing:\n%s", frame)
 	}
 	// the label shimmers: every rune gets its own color
@@ -1078,11 +1079,11 @@ func TestFileRowClickIDs(t *testing.T) {
 		}
 	}
 	for text, want := range map[string]string{
-		"✓ Edit /w/a.go":  "tool:-1",
-		"7 - old":         "tool:-1",
-		"7 + new":         "tool:-1",
-		"8 keep":          "tool:-1",
-		"✓ Ran 1 command": "tool:-2",
+		"✓ Edit /w/a.go":           "tool:-1",
+		"7 - old":                  "tool:-1",
+		"7 + new":                  "tool:-1",
+		"8 keep":                   "tool:-1",
+		"✓ Ran 1 command: go test": "tool:-2",
 	} {
 		if click[text] != want {
 			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
@@ -1105,7 +1106,7 @@ func TestToolRows(t *testing.T) {
 		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 		{Name: "bash", Input: "cat > n.txt <<EOT\nfirst line\nEOT", Label: "Write notes", Status: "err"},
 		{Name: "bash", Input: "printf a\nprintf b", Status: "err"},
-		{Name: "bash", Input: "make slow", Label: "Build it", Status: "ok", Output: "still running, so it " + tools.JobHandoff + "job-1"},
+		{Name: "bash", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
 		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
 		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
 		{Name: "write", Input: "b.go", Status: "stopped", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
@@ -1114,9 +1115,9 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX",
+	for _, want := range []string{"Read 2 files, ran 1 command: Vet the code", "⧗ Build it", "    still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
 		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
-		"■ Write b.go", "    denied by you", "    dismissed by you", "    approved, saved to /data/plans/s1.md", "    changes requested: use go"} {
+		"■ Write b.go", "  ⎿ denied by you", "  ⎿ dismissed by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
@@ -1130,12 +1131,12 @@ func TestToolRows(t *testing.T) {
 	if !strings.Contains(frame, "✓ Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
 	}
-	// an open row keeps a multi-line command's lines, under its first
+	// an open row keeps a multi-line command's lines, each a detail row
 	rows := strings.Split(frame, "\r\n")
 	for _, c := range []struct{ first, next string }{{"cat > n.txt <<EOT", "first line"}, {"printf a", "printf b"}} {
 		col := func(r, s string) int { return ansi.StringWidth(r[:max(strings.Index(r, s), 0)]) }
 		i := slices.IndexFunc(rows, func(r string) bool { return strings.Contains(r, c.first) })
-		if i < 0 || i+1 == len(rows) || !strings.Contains(rows[i+1], c.next) || col(rows[i+1], c.next) != col(rows[i], c.first) {
+		if i < 0 || i+1 == len(rows) || !strings.Contains(rows[i+1], c.next) || col(rows[i+1], c.next) != 4 {
 			t.Fatalf("%q not under %q:\n%s", c.next, c.first, frame)
 		}
 	}

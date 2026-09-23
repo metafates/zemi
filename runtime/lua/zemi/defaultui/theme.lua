@@ -41,9 +41,6 @@ local function theme(palette)
     ThinkingMark = { link = "Accent" },
     ThinkingBar = { link = "Rule" },
     AgentToolName = { fg = "fg", bold = true },
-    AgentToolRun = { link = "Dim" },
-    AgentToolOk = { link = "Ok" },
-    AgentToolErr = { link = "Danger" },
     -- a diff keeps the terminal's green and red on the sign and the line
     -- number, and tints the row no further than it has to
     DiffAdd = { bg = "addbg" },

@@ -13,7 +13,7 @@ import (
 // TestBashStops: an interrupt or a timeout ends a command whose children
 // keep its output pipe open, instead of waiting on them forever.
 // TestBashProgress: the last output line reaches Progress while the command
-// runs, and the line is cleared once it exits.
+// runs, and nothing clears it: the result replaces the row in one change.
 func TestBashProgress(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	var mu sync.Mutex
@@ -29,7 +29,7 @@ func TestBashProgress(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(lines) < 2 || lines[0] != "t1:two" || lines[len(lines)-1] != "t1:" {
+	if len(lines) != 1 || lines[0] != "t1:two" {
 		t.Fatalf("progress lines = %q", lines)
 	}
 }

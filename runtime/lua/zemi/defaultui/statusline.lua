@@ -110,8 +110,8 @@ zemi.ui.widget.add({
     if agents == 0 and jobs == 0 then return {} end
     ---@type string[]
     local parts = {}
-    if agents > 0 then parts[#parts + 1] = agents .. (agents == 1 and " agent" or " agents") end
-    if jobs > 0 then parts[#parts + 1] = jobs .. (jobs == 1 and " job" or " jobs") end
+    if agents > 0 then parts[#parts + 1] = fmt.count(agents, "agent", "agents") end
+    if jobs > 0 then parts[#parts + 1] = fmt.count(jobs, "job", "jobs") end
     return { { { text = "⧗ " .. table.concat(parts, ", "), hl = "Title", click = "agents" }, { text = " /agents", hl = "Comment", click = "agents" } } }
   end,
 })
@@ -162,7 +162,7 @@ zemi.event.on("reflector.done", function(ev)
   ---@param one string
   ---@param many string
   local function add(n, one, many)
-    if (n or 0) > 0 then parts[#parts + 1] = n .. " " .. (n == 1 and one or many) end
+    if n and n > 0 then parts[#parts + 1] = fmt.count(n, one, many) end
   end
   add(ev.stored, "memory stored", "memories stored")
   add(ev.queued, "memory to review in /memory", "memories to review in /memory")

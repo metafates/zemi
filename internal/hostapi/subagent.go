@@ -472,20 +472,33 @@ func (s *subagentHooks) TextDelta(text string) {
 	s.h.refreshViewed(s.run)
 }
 
-func (s *subagentHooks) ReasoningDelta(string) {}
+// ReasoningDelta keeps one collapsed Thought row per stretch of thinking,
+// under what streamed before it.
+func (s *subagentHooks) ReasoningDelta(text string) {
+	run := s.run
+	run.mu.Lock()
+	run.flush()
+	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "reasoning"})
+	}
+	run.tr[len(run.tr)-1].Text += text
+	run.mu.Unlock()
+	s.h.refreshViewed(run)
+}
 
 // a run's row carries the command, which only the finished input holds
 func (s *subagentHooks) ToolCallPending(string, string) {}
 func (s *subagentHooks) ToolInputDelta(string, string)  {}
 
 func (s *subagentHooks) ToolCallStart(id, name, input string) {
+	diff := inputDiff(name, input)
 	run := s.run
 	run.mu.Lock()
 	run.flush()
 	run.calls++
 	n := run.calls
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "wait"})
+	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: diff})
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
@@ -507,14 +520,20 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) 
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
-		run.tr[i].Status = toolStatus(ok, out)
-		run.tr[i].Output = shortOutput(out)
-		run.tr[i].Diff = diff
+		t := &run.tr[i]
+		t.Status, t.Output = toolStatus(name, ok, out), shortOutput(out)
+		switch {
+		case diff != "":
+			t.Diff = diff // bash: what the command changed
+		case !ok:
+			t.Diff = "" // the change did not happen
+		}
+		diff = t.Diff
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 	// memoryAuto reads the child's tools: a web agent's report is outside text
-	s.h.recordToolCall(s.sid, id, name, diff, ok)
+	s.h.recordToolCall(s.sid, StreamTool{ID: id, Name: name, Diff: diff}, ok)
 }
 
 func (s *subagentHooks) StepStart() {
@@ -699,6 +718,10 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 }
 
+// bgAgentStarted opens the result of an agent call that went on in the
+// background, whose row reads as still running (toolStatus).
+const bgAgentStarted = "Started background agent "
+
 func (t *agentTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *agentTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
@@ -763,7 +786,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
-		return fantasy.NewTextResponse("Started background agent " + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
+		return fantasy.NewTextResponse(bgAgentStarted + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
 	}
 	run, rctx := t.h.newRun(ctx, def, in.Description, in.Prompt, false)
 	_ = t.h.tasks.add(run)
@@ -837,12 +860,19 @@ func (h *Host) postNotify(tool, input string, reply *fantasy.ToolResponse) {
 	h.toolPostHook()(tool, m, !reply.IsError, reply.Content, nil)
 }
 
+// fmtDuration reads as the chat's durations do (defaultui text.duration).
 func fmtDuration(d time.Duration) string {
-	s := int(d.Seconds())
-	if s < 60 {
-		return fmt.Sprintf("%ds", s)
+	if d < 9950*time.Millisecond {
+		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
-	return fmt.Sprintf("%dm %02ds", s/60, s%60)
+	switch s := int(d.Round(time.Second).Seconds()); {
+	case s < 60:
+		return fmt.Sprintf("%ds", s)
+	case s < 3600:
+		return fmt.Sprintf("%dm %02ds", s/60, s%60)
+	default:
+		return fmt.Sprintf("%dh %02dm", s/3600, s/60%60)
+	}
 }
 
 // ---------------------------------------------------------------------------

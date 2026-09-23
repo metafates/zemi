@@ -314,16 +314,20 @@ func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	run.flush()
+	cut := "err"
+	if errors.Is(err, context.Canceled) {
+		cut = "stopped"
+	}
 	for _, i := range run.rows {
 		if run.tr[i].Status == "run" || run.tr[i].Status == "wait" {
-			run.tr[i].Status = "err"
+			run.tr[i].Status, run.tr[i].Diff = cut, ""
 		}
 	}
 	run.finished = time.Now()
 	switch {
 	case errors.Is(err, context.Canceled):
 		run.status = "cancelled"
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Status: "cancelled", Text: "stopped"})
+		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Status: "cancelled", Text: "Stopped"})
 	case err != nil:
 		run.status = "failed"
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(h.friendlyError(err)), 400)})

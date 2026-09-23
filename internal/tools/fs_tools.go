@@ -36,8 +36,8 @@ import (
 
 // progress shows the command's last output line under its row while it
 // runs, polled every 300 ms and sent only when it changed (each send
-// redraws); the returned func stops the poll and clears the line, so a
-// call handed on as a job keeps no stale one.
+// redraws); the returned func stops the poll. The line stays until the
+// result replaces it, so the row changes once.
 func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	id, _ := ctx.Value(callIDKey{}).(string)
 	if p == nil || p.Progress == nil || id == "" {
@@ -71,7 +71,6 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	return func() {
 		close(done)
 		<-stopped
-		p.Progress(id, "")
 	}
 }
 

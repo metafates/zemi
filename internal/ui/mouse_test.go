@@ -246,8 +246,8 @@ func TestHoverTargets(t *testing.T) {
 		{"a prompt choice keeps the fixed hover", perm, "No ", 0, 1, "Host:Hover"},
 		{"a choice's key button answers it too", perm, "No ", -3, 1, "Host:Hover"},
 		{"the padding right of a choice is not a target", perm, "No ", 30, 0, ""},
-		// a chat body row acts on a click and keeps its own groups
-		{"thought line text is a target", thought, "Thought for", 1, 1, ""},
+		// a chat body row acts on a click and keeps its own groups; a header hovers
+		{"thought line text is a target", thought, "Thought for", 1, 1, "Hover"},
 		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
 		{"right of the thought line is not a target", thought, "Thought for", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
@@ -275,6 +275,9 @@ func TestHoverTargets(t *testing.T) {
 			}
 			for _, sp := range spans {
 				seg := dropCells(app.lastRows[sp.y], sp.lo)
+				for len(seg) > 1 && seg[0].NoHover { // a row's mark never lights
+					seg = seg[1:]
+				}
 				// a prompt choice's fixed style replaces HL, every other hover
 				// draws Over, and a body row keeps its own style
 				got := ""
@@ -462,7 +465,7 @@ func TestToolRowClickExpands(t *testing.T) {
 	if strings.Contains(frame, "first idea") {
 		t.Fatalf("one row expanded the whole transcript:\n%s", frame)
 	}
-	x, y = findCell(t, app, "run the hostapi tests")
+	x, y = findCell(t, app, "Run the hostapi tests")
 	clickAt(app, x+1, y)
 	app.renderSync(t)
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {

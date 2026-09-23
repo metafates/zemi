@@ -265,19 +265,30 @@ func resumeRows(rows []*store.Message) []*store.Message {
 }
 
 // historyFrom decodes stored messages into model history and transcript
-// rows. Rows that are not fantasy messages (tool telemetry) are skipped.
+// rows, the rows the live turn drew. Rows that are not fantasy messages
+// are tool telemetry: a call's diff, run and summary, a step's thought time.
 func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	var history []fantasy.Message
 	var tr []ChatMessage
 	toolRow := map[string]int{} // tool call id -> transcript index
-	diffs := map[string]string{}
+	type telemetry struct {
+		ID, Diff, Run, Detail string
+		ThoughtMS             int64 `json:"thought_ms"`
+	}
+	calls := map[string]telemetry{}
 	for _, row := range rows {
-		var tc struct{ ID, Diff string }
-		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.Diff != "" {
-			diffs[tc.ID] = tc.Diff
+		var tc telemetry
+		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.ID != "" {
+			calls[tc.ID] = tc
 		}
 	}
+	reasoning := -1 // the transcript index of the latest reasoning row
 	for _, row := range rows {
+		var tc telemetry
+		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.ThoughtMS > 0 && reasoning >= 0 {
+			tr[reasoning].Stat.ThoughtMS += tc.ThoughtMS
+			continue
+		}
 		var m fantasy.Message
 		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil || len(m.Content) == 0 {
 			continue
@@ -292,22 +303,31 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			case fantasy.TextPart:
 				text.WriteString(p.Text)
 			case fantasy.ReasoningPart:
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text})
+				switch {
+				case strings.TrimSpace(p.Text) == "":
+				case reasoning >= 0 && reasoning == len(tr)-1:
+					// the live turn shows reasoning with nothing after it as one block
+					tr[reasoning].Text += p.Text
+				default:
+					reasoning = len(tr)
+					tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text, Stat: &TurnStat{}})
+				}
 			case fantasy.ToolCallPart:
 				toolRow[p.ToolCallID] = len(tr)
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok", Diff: diffs[p.ToolCallID]})
+				tc := calls[p.ToolCallID]
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok", Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
 					tr[i].Output = shortOutput(out)
-					tr[i].Status = toolStatus(p.Output.GetType() != fantasy.ToolResultContentTypeError, out)
+					tr[i].Status = toolStatus(tr[i].Tool, p.Output.GetType() != fantasy.ToolResultContentTypeError, out)
 				}
 			}
 		}
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
 			if _, ok := summaryOf(m); ok {
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "compacted earlier messages"})
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "Compacted earlier messages"})
 				continue
 			}
 			var tail string

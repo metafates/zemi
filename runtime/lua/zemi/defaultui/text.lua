@@ -17,23 +17,67 @@ function M.tokens(n)
   return (s:gsub("%.0([kM])$", "%1"))
 end
 
---- A duration as "4.2s" or "3m05s"; nil for none.
----@param s number|nil seconds
----@return string|nil
-function M.secs(s)
-  if not s or s <= 0 then return nil end
-  if s >= 60 then return string.format("%dm%02ds", s / 60, s % 60) end
-  return string.format("%.1fs", s)
-end
-
---- Elapsed time as "42s", "3m 05s" or "1h 02m 05s".
----@param s number|nil seconds
+--- A duration as "4.2s" under ten seconds, then "42s", "3m 05s", "1h 02m".
+---@param s number seconds
 ---@return string
-function M.elapsed(s)
-  s = math.floor(s or 0)
+function M.duration(s)
+  if s < 9.95 then return string.format("%.1fs", math.max(s, 0)) end
+  s = math.floor(s + 0.5)
   if s < 60 then return s .. "s" end
   if s < 3600 then return string.format("%dm %02ds", math.floor(s / 60), s % 60) end
-  return string.format("%dh %02dm %02ds", math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
+  return string.format("%dh %02dm", math.floor(s / 3600), math.floor(s / 60) % 60)
+end
+
+--- A count with its noun: "1 file", "3 files".
+---@param n integer
+---@param one string
+---@param many string
+---@return string
+function M.count(n, one, many)
+  return n .. " " .. (n == 1 and one or many)
+end
+
+--- Row marks, one glyph and one meaning each: finished, failed, stopped by
+--- the user, going on in the background, waiting on the user, reasoning and
+--- a notice.
+---@type table<string, { [1]: string, [2]: string }>
+M.MARK = {
+  ok = { "✓", "Ok" }, err = { "✗", "Danger" }, stop = { "■", "Dim" }, bg = { "⧗", "Dim" },
+  wait = { "·", "Dim" }, thought = { "✻", "ThinkingMark" }, note = { "◦", "Dim" },
+}
+
+--- What a tool call does, as its row and the working rule say it.
+---@type table<string, string>
+M.VERB = {
+  read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
+  fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
+  job_list = "List jobs", job_kill = "Stop job", memory = "Remember",
+  diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",
+  agent = "Agent", workflow = "Workflow", lua = "Run Lua", tool_search = "Find tools", lsp = "Look up",
+}
+
+--- A tool name as words for a row with no verb of its own: underscores
+--- split, the first word capitalized, and an MCP tool's mcp_ dropped
+--- ("mcp_tracker_list_issues" -> "Tracker list issues").
+---@param name string
+---@return string
+function M.title(name)
+  local s = name:gsub("^mcp_", ""):gsub("_", " ")
+  return s:sub(1, 1):upper() .. s:sub(2)
+end
+
+--- A call's headline as a verb and the rest: "Read", " a.go". A command's
+--- about is itself a verb phrase ("Run the tests"), so its first word is the verb.
+---@param name string
+---@param label string The model's description of the call, or "".
+---@return string verb
+---@return string rest
+function M.head(name, label)
+  if name == "bash" and label ~= "" then
+    local verb, rest = label:match("^(%S+)(.*)$")
+    return verb:sub(1, 1):upper() .. verb:sub(2), rest
+  end
+  return M.VERB[name] or M.title(name), label ~= "" and " " .. label or ""
 end
 
 --- Display width of a string in terminal cells.

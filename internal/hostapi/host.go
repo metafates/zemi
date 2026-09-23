@@ -1189,7 +1189,7 @@ func TildePath(p string) string {
 // over a long session renders 50 times faster), and read nil once the
 // render returned, so a ctx kept in an upvalue pins nothing. done ends it.
 func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
-	sess := h.Session()
+	sess, stream := h.liveView()
 	tb = L.CreateTable(0, 32)
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
@@ -1211,7 +1211,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
 	tb.RawSetString("model_hint", glua.LString(h.noModelHint(true)))
-	stream := h.AgentStream()
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
@@ -1321,7 +1320,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 		retry := L.CreateTable(0, 3)
 		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
 		retry.RawSetString("why", glua.LString(sanitize.String(stream.RetryWhy)))
-		retry.RawSetString("next_in", glua.LNumber(stream.RetryIn.Round(time.Second).Seconds()))
+		retry.RawSetString("next_in", glua.LNumber(stream.RetryIn.Seconds()))
 		at.RawSetString("retry", retry)
 	}
 	toolsTb := L.CreateTable(len(stream.Tools), 0)
@@ -1561,7 +1560,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.76.0"))
+	api.RawSetString("version", glua.LString("0.77.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

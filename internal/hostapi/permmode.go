@@ -253,7 +253,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 			v.Path = path
 		}
 	}
-	h.AppendChat(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
+	h.appendAfterLive(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
 	restore, mode := "", ""
 	if h.readOnly() {
 		h.modes.mu.Lock()

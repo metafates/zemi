@@ -352,7 +352,7 @@ func TestRecipes(t *testing.T) {
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
 		{name: "a name an authored skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
-		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, "c1", "fetch", "", true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load", outside: true},
+		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load", outside: true},
 		{name: "only a recipe is deleted", do: func() {
 			if h.skillsCommand("delete ship") == nil || h.skillsCommand("delete lint") == nil {
 				t.Error("deleted a skill that is no recipe")

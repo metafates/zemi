@@ -361,10 +361,10 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.tool != "" {
-				h.recordToolCall(sid, "c1", tc.tool, "", true)
+				h.recordToolCall(sid, StreamTool{ID: "c1", Name: tc.tool}, true)
 			}
 			if tc.inTool != "" {
-				h.recordToolCall(child, "c2", tc.inTool, "", true)
+				h.recordToolCall(child, StreamTool{ID: "c2", Name: tc.inTool}, true)
 			}
 			if tc.fork {
 				if _, err := h.ForkSession(); err != nil {

@@ -3,8 +3,10 @@ package hostapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,56 @@ func waitIdle(t *testing.T, h *Host) {
 		}
 		return nil
 	})
+}
+
+// TestResumeDrawsLiveRows: a turn that thinks, calls a tool, thinks again
+// and answers keeps its rows in the order they streamed, and a resume
+// rebuilds the same rows from the store.
+func TestResumeDrawsLiveRows(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	think := func(text string) []fantasy.StreamPart {
+		return []fantasy.StreamPart{
+			{Type: fantasy.StreamPartTypeReasoningStart, ID: "r"},
+			{Type: fantasy.StreamPartTypeReasoningDelta, ID: "r", Delta: text},
+			{Type: fantasy.StreamPartTypeReasoningEnd, ID: "r"},
+		}
+	}
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return append(think("now answer"), textParts("done")...)
+			}
+			return append(think("look first"), toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	shape := func(tr []ChatMessage) string {
+		var b strings.Builder
+		for _, m := range tr {
+			fmt.Fprintf(&b, "%s/%s %s %s %q\n", m.Role, m.Kind, m.Tool, m.Status, m.Text)
+		}
+		return b.String()
+	}
+	live := shape(h.Session().Transcript)
+	want := `user/   "go"
+assistant/reasoning   "look first"
+assistant/tool glob err "*.go"
+assistant/reasoning   "now answer"
+assistant/   "done"
+`
+	if live != want {
+		t.Fatalf("live rows:\n%s", live)
+	}
+	rows, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, tr := historyFrom(rows); shape(tr) != live {
+		t.Fatalf("resumed rows:\n%s\nlive:\n%s", shape(tr), live)
+	}
 }
 
 // TestSessionLifecycle: /new starts clean, /resume rebuilds the transcript
@@ -118,7 +170,7 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 	if err := h.persistMessage("assistant", call); err != nil {
 		t.Fatal(err)
 	}
-	h.recordToolCall(sid, "c1", "edit", "12 +added\n13 -gone", true)
+	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "edit", Diff: "12 +added\n13 -gone"}, true)
 
 	if err := h.NewSession(); err != nil {
 		t.Fatal(err)

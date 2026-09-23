@@ -478,8 +478,14 @@ lua-language-server is installed.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's
-  diff back from the telemetry row that carries it (computed against the files as they were, so
-  a resume could not rebuild it).
+  diff, an agent call's run and summary line and a step's thought time back from the
+  telemetry rows that carry them (a resume could not rebuild them).
+- **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
+  reply); `flushOutput` moves it into the transcript whenever the next part would break that
+  order (reasoning after a call or a reply, a call after a reply), so a step's reasoning lands
+  under the calls before it, and it moves both sides under `ag.mu`, which the widget ctx reads
+  them under (`liveView`), so no frame draws a row twice or not at all. `historyFrom` merges
+  reasoning the same way, so a resume draws the rows the live turn drew.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `e` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.
