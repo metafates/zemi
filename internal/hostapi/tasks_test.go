@@ -312,6 +312,54 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 	}
 }
 
+// TestReportStoredWhenSessionMoved: a background report that finishes after
+// the user moved on is stored in the session that started the run, so a
+// resume shows it and the next send carries it.
+func TestReportStoredWhenSessionMoved(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	release := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
+			if strings.Contains(system, "a subagent of zemi") {
+				<-release
+				return textParts("found it")
+			}
+			return textParts("ok: " + last)
+		}}, nil
+	}
+	parent := seedSession(t, h)
+	def, _ := h.agentDef("explore")
+	id, err := h.startBackgroundAgent(def, "left behind", "look")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	waitFor(t, func() error {
+		rows, _ := h.DB.Messages(parent)
+		if len(rows) == 0 || !strings.Contains(rows[len(rows)-1].PartsJSON, "agent-report") {
+			return errors.New("report never stored")
+		}
+		return nil
+	})
+	if err := h.ResumeSession(parent); err != nil {
+		t.Fatal(err)
+	}
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished") {
+		t.Fatalf("resume lacks the report: %+v", tr)
+	}
+	if err := h.AgentSend("next"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if tr := h.Session().Transcript; tr[len(tr)-1].Text != "ok: next" {
+		t.Fatalf("send after the stored report: %+v", tr)
+	}
+}
+
 // TestSendTo: a continuation keeps the run's model and its row counts only
 // its own calls; a model change and another session's run are refused.
 func TestSendTo(t *testing.T) {

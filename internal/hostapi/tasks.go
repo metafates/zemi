@@ -8,6 +8,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -370,11 +371,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			h.notifyReport(run.id, def.Name, status, description, report)
 			return
 		}
-		// the whole message is for the model, behind the marker where @ refs
-		// do not attach (the description is model text); the user gets the
-		// head as a notice row where the model reads it (appendUserRows), so
-		// it never lands above the rows of the turn it arrives in
-		if err := h.AgentSend(agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
+		if err := h.AgentSend(h.reportMessage(run.id, def.Name, status, description, report)); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})
@@ -386,9 +383,29 @@ func reportHead(id, agent, status string) string {
 	return fmt.Sprintf("Background agent %s (%s) %s.", id, agent, status)
 }
 
-// notifyReport tells the user of a report no conversation will read.
-func (h *Host) notifyReport(id, agent, status, description, report string) {
-	h.Notify("info", "Background agent "+id, reportHead(id, agent, status)+" "+description+"\n"+truncRunes(report, 300))
+// reportMessage is the user message a report reaches the model as. The whole
+// message is for the model, behind the marker where @ refs do not attach (the
+// description is model text); the user gets the head as a notice row where the
+// model reads it (appendUserRows), so it never lands above the rows of the
+// turn it arrives in.
+func (h *Host) reportMessage(id, agentName, status, description, report string) string {
+	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"
+}
+
+// notifyReport tells the user of a report the live conversation will not
+// read, and stores it in the session that started the run, where a resume
+// hands it to the model.
+func (h *Host) notifyReport(id, agentName, status, description, report string) {
+	if run := h.tasks.find(id); run != nil && run.parent != "" && h.DB != nil {
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(id, agentName, status, description, report)))
+		if err == nil {
+			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: "user", PartsJSON: string(parts)})
+		}
+		if err != nil {
+			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})
+		}
+	}
+	h.Notify("info", "Background agent "+id, reportHead(id, agentName, status)+" "+description+"\n"+truncRunes(report, 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
