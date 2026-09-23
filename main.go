@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -49,6 +50,11 @@ func run(args []string) int {
 	}
 	if err := opts.readStdin(os.Stdin); err != nil {
 		fmt.Fprintf(os.Stderr, "zemi: %v\nRun 'zemi --help' for usage.\n", err)
+		return 2
+	}
+	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
+	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 && !opts.print && !opts.health {
+		fmt.Fprintln(os.Stderr, "zemi: stdout is not a terminal; use -p to print the answer\nRun 'zemi --help' for usage.")
 		return 2
 	}
 	if opts.print && opts.prompt == "" {
@@ -212,7 +218,11 @@ func run(args []string) int {
 	// closing does not reach them: stop them here. Exit even if some cleanup
 	// hangs.
 	proc.KillAll()
-	fmt.Print("\x1b]22;default\x07") // hand the terminal its normal pointer back (hover sets OSC 22)
+	// hand the terminal its normal pointer back (hover sets OSC 22); an error
+	// that is not ErrProgramKilled means the program never started
+	if err == nil || errors.Is(err, tea.ErrProgramKilled) {
+		fmt.Print("\x1b]22;default\x07")
+	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
 		return fail(err)
