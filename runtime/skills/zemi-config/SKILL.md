@@ -281,7 +281,7 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   return to their state before it, the conversation is cut there (memories learned and todos set
   since go with it) and the prompt comes back
   in the composer. Files a command changed go back too when they are in the repository, not
-  ignored and not a symbolic link. Lua: `zemi.session.rewind(id)`.
+  ignored, not a symbolic link and not secret-shaped. Lua: `zemi.session.rewind(id)`.
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/copy` puts the last reply's raw markdown on
   the clipboard (a drag copies the wrapped screen rows); when the reply has code blocks it
