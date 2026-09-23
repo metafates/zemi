@@ -458,7 +458,7 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
 			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
-			{grep, `{"pattern":"package (y|secret)"}`, "(1 matches hidden in secret-shaped files: ", "y.go"},
+			{grep, `{"pattern":"package (y|secret)"}`, "(no matches; secret-shaped", "y.go"},
 			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
 			{grep, `{"pattern":"needle"}`, "src/a.txt:1", "gen/"},
 			{glob, `{"pattern":"**/*.txt"}`, "src/a.txt", "gen/"},
@@ -485,6 +485,10 @@ func TestGlobAndGrep(t *testing.T) {
 			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, c.not) {
 				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
 			}
+		}
+		// a hit in .env must not change the answer
+		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"package (y|secret)"}`), call(t, grep, `{"path":"`+dir+`","pattern":"package (y|zzz)"}`); a.Content != b.Content {
+			t.Errorf("rg=%q grep answers on .env content: %q vs %q", bin, a.Content, b.Content)
 		}
 		// a mistyped path must say so instead of reading as an empty tree
 		for _, tool := range []fantasy.AgentTool{glob, grep} {

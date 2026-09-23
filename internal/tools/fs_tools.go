@@ -14,7 +14,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -507,21 +506,16 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 		}
 	}
 	if len(secret) > 0 {
-		shown = append(shown, hiddenSecrets(fmt.Sprintf("(%d secret-shaped entries hidden", len(secret)), secret))
+		n := len(secret)
+		if n > 5 {
+			secret = append(secret[:5:5], "...")
+		}
+		shown = append(shown, fmt.Sprintf("(%d secret-shaped entries hidden: %s; read them to ask)", n, strings.Join(secret, ", ")))
 	}
 	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(empty directory)")
 	}
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
-}
-
-// hiddenSecrets is the line grep and a listing add for the secret-shaped
-// files they hid, so an answer is never a false "no matches".
-func hiddenSecrets(lead string, names []string) string {
-	if len(names) > 5 {
-		names = append(names[:5:5], "...")
-	}
-	return lead + ": " + strings.Join(names, ", ") + "; read them to ask)"
 }
 
 // OpenRegular opens a file for reading through openGated. fi is set once
@@ -1097,9 +1091,9 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Hits in strict secret-shaped files are hidden
-// and counted. A pattern that is no regexp (an unbalanced paren) is searched
-// as text.
+// matching the include glob. Strict secret-shaped files are left out whole:
+// a count or a name of the ones that matched leaks a key one bit per call. A
+// pattern that is no regexp (an unbalanced paren) is searched as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
 	re, err := regexp.Compile(pattern)
@@ -1114,21 +1108,15 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		root, file = filepath.Dir(root), filepath.Base(root)
 	}
 	var hits []string
-	// secret counts the hidden matches of each secret-shaped file
-	hidden, secret, ruledOut := map[string]bool{}, map[string]int{}, p.ruledOut()
+	hidden, ruledOut := map[string]bool{}, p.ruledOut()
 	add := func(rel string, line int, text string) bool {
 		path := filepath.Join(root, rel)
 		h, ok := hidden[rel]
 		if !ok {
-			h = ruledOut(path)
+			h = perm.PathIsStrictSecret(rel) || ruledOut(path)
 			hidden[rel] = h
-			if !h && perm.PathIsStrictSecret(rel) {
-				secret[rel] = 0
-			}
 		}
-		if n, ok := secret[rel]; ok {
-			secret[rel] = n + 1
-		} else if !h {
+		if !h {
 			hits = append(hits, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(path), line, truncLine(text)))
 		}
 		return len(hits) < grepMaxMatches
@@ -1152,9 +1140,6 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}, args...)
 	if !ok {
 		hits = hits[:0]
-		for rel := range secret {
-			secret[rel] = 0
-		}
 		match := func(string) bool { return true }
 		if include != "" {
 			if match, err = glob.Match(include); err != nil {
@@ -1162,7 +1147,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 		}
 		visit := func(path, rel string) error {
-			if !match(rel) || !isTextFile(path) {
+			if !match(rel) || perm.PathIsStrictSecret(rel) || !isTextFile(path) {
 				return nil
 			}
 			data, err := os.ReadFile(path)
@@ -1193,15 +1178,8 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if len(hits) >= grepMaxMatches {
 		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
 	}
-	if len(secret) > 0 {
-		n, names := 0, []string{}
-		for _, rel := range slices.Sorted(maps.Keys(secret)) {
-			n += secret[rel]
-			names = append(names, filepath.ToSlash(filepath.Join(root, rel)))
-		}
-		out = append(out, hiddenSecrets(fmt.Sprintf("(%d matches hidden in secret-shaped files", n), names))
-	} else if len(hits) == 0 {
-		out = append(out, "(no matches)")
+	if len(hits) == 0 {
+		out = append(out, "(no matches; secret-shaped files like .env are not searched, read one to ask)")
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
