@@ -407,7 +407,7 @@ zemi.ui.widget.add({
         for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
         end
-      elseif m.kind == "compact" then
+      elseif m.kind == "compact" or m.kind == "notice" then
         gap("activity")
         lines[#lines + 1] = { { text = "✻ ", hl = "AgentReason", copy = false }, { text = m.text, hl = "AgentReason" } }
       elseif m.kind == "error" then

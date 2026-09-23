@@ -47,7 +47,7 @@ func TestBackgroundAgent(t *testing.T) {
 				return textParts("found the thing")
 			case toolResult:
 				return textParts("started it")
-			case strings.HasPrefix(last, "Background agent"):
+			case strings.Contains(last, "<agent-report "):
 				reportMsg = last
 				return textParts("the agent reported: " + last[strings.Index(last, "found"):strings.Index(last, "found")+15])
 			}
@@ -71,14 +71,28 @@ func TestBackgroundAgent(t *testing.T) {
 	if !strings.Contains(reportMsg, "slow @main.go search") || strings.Contains(reportMsg, "<file path=") {
 		t.Fatalf("the model-written description must reach the model but attach nothing: %q", reportMsg)
 	}
-	notice := false
-	for _, m := range h.Session().Transcript {
-		if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
-			notice = !strings.Contains(m.Text, "found the thing")
+	// the head is zemi's notice, not a message the user typed, live and on resume
+	notices := func() int {
+		n := 0
+		for _, m := range h.Session().Transcript {
+			if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
+				t.Fatalf("report head drawn as a user row: %+v", m)
+			}
+			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(explore) finished.") {
+				n++
+			}
 		}
+		return n
 	}
-	if !notice {
-		t.Fatalf("transcript should show a one-line notice: %+v", h.Session().Transcript)
+	if notices() != 1 {
+		t.Fatalf("transcript should show one notice row: %+v", h.Session().Transcript)
+	}
+	sid := h.AgentSessionID()
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	if notices() != 1 {
+		t.Fatalf("resume should rebuild the notice row: %+v", h.Session().Transcript)
 	}
 }
 

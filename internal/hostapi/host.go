@@ -130,7 +130,7 @@ type OverlayKey struct {
 // block the chat widget collapses to a one-line summary).
 type ChatMessage struct {
 	Role   string
-	Kind   string // "", "reasoning", "tool", "compact" or "error"
+	Kind   string // "", "reasoning", "tool", "compact", "notice" or "error"
 	Text   string // tool rows: the input summary
 	Label  string // tool rows: the model's description of a command
 	Tool   string

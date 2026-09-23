@@ -304,7 +304,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "compacted earlier messages"})
 				continue
 			}
-			s, _, _ = strings.Cut(s, attachMarker) // show what was typed
+			var tail string
+			s, tail, _ = strings.Cut(s, attachMarker) // show what was typed
+			if head := storedReportHead(tail); head != "" {
+				tr = append(tr, ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+			}
 		}
 		if s = strings.TrimSpace(s); s != "" {
 			role := "assistant"

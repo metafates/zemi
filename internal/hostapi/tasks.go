@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -323,18 +324,39 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		if err != nil {
 			report = strings.TrimSpace("the agent failed: " + h.friendlyError(err) + "\n\n" + text)
 		}
-		head := fmt.Sprintf("Background agent %s (%s) %s.", run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil])
+		status := map[bool]string{true: "finished", false: "failed"}[err == nil]
+		head := reportHead(run.id, def.Name, status)
 		if h.AgentSessionID() != run.parent {
 			// the user moved on; do not drop the report into another conversation
 			h.Notify("info", "Background agent "+run.id, head+" "+description+"\n"+truncRunes(report, 300))
 			return
 		}
-		// the description is model text, so it stays behind the marker where @ refs do not attach
-		if err := h.AgentSend(head + attachMarker + fmt.Sprintf("\n<agent-report description=%q>\n", description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
+		// the whole message is for the model, behind the marker where @ refs
+		// do not attach (the description is model text); the user gets the
+		// head as a notice row, and a resume rebuilds it from the element
+		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+		if err := h.AgentSend(attachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})
 	return run.id, nil
+}
+
+// reportHead is the one line the user sees of a background report.
+func reportHead(id, agent, status string) string {
+	return fmt.Sprintf("Background agent %s (%s) %s.", id, agent, status)
+}
+
+var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
+
+// storedReportHead rebuilds the notice row from a stored report message,
+// "" when the message is no report.
+func storedReportHead(tail string) string {
+	m := reportAttrs.FindStringSubmatch(tail)
+	if m == nil {
+		return ""
+	}
+	return reportHead(m[1], m[2], m[3])
 }
 
 // stopRun cancels a running agent; "" means the one the chat shows.

@@ -612,7 +612,7 @@ function zemi.event.stats() end
 --- One transcript entry.
 ---@class zemi.TranscriptRow
 ---@field role "user"|"assistant"
----@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"error"
+---@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"notice"|"error"
 ---@field text string
 ---@field tool string
 ---@field status string Tool and shell rows: "run", "ok" or "err"; error rows: "cancelled" for an interrupt.
