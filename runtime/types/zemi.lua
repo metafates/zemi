@@ -596,7 +596,7 @@ function zemi.event.stats() end
 ---@field steering string[] Messages queued mid-turn; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
 ---@field elapsed number Seconds since the turn started.
----@field reports integer Background agent reports among steering; they stay queued, so they are not "queued, up to edit".
+---@field reports integer Background agent reports among steering; they stay queued, so the rule does not count them as queued.
 ---@field compacting boolean History is being summarized.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits.
 

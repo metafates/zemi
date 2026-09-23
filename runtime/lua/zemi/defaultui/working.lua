@@ -5,10 +5,11 @@ local snail = require("zemi.defaultui.snail")
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
--- left corner in the state of the turn and, at the right end, a shimmering
+-- left corner in the state of the turn and, right after it, a shimmering
 -- label naming what the agent does, the elapsed time, the interrupt key and
--- the queue depth. The label stays away for the first 300ms so instant turns
--- do not flash it, and the done mark stays a few seconds after the turn.
+-- the queue depth. Left-anchored, so ticking and changing text grows into the
+-- rule and never moves the label. The label stays away for the first 300ms so
+-- instant turns do not flash it, and the done mark stays a few seconds after.
 zemi.ui.widget.add({
   id = "working",
   region = "working",
@@ -56,21 +57,24 @@ zemi.ui.widget.add({
       if ctx.waiting ~= "" then
         label, state, parts = "", "asking", {}
       elseif ctx.cancelling then
-        parts[#parts + 1] = "ctrl+c quits"
+        parts[#parts + 1] = "ctrl+c quit"
       elseif not ctx.view then
-        parts[#parts + 1] = ctx.interrupt_armed and "esc again to interrupt" or "esc to interrupt"
+        parts[#parts + 1] = ctx.interrupt_armed and "esc again" or "esc interrupt"
       end
       local queued = #ag.steering - ag.reports
-      if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end
+      if queued > 0 then parts[#parts + 1] = queued .. " queued · up edit" end
     end
-    local tail = #parts > 0 and "  " .. table.concat(parts, " · ") or ""
-    -- a narrow rule keeps the label and the snail at least 8 cells
-    if zemi.ui.width(label .. tail) + 10 > ctx.width then tail = "" end
+    -- a narrow rule keeps the label and the snail at least 8 cells, dropping
+    -- the queue depth first and the elapsed time last
+    while #parts > 0 and zemi.ui.width(label .. " · " .. table.concat(parts, " · ")) + 10 > ctx.width do
+      parts[#parts] = nil
+    end
+    local tail = #parts > 0 and " · " .. table.concat(parts, " · ") or ""
     local text = label .. tail ~= "" and zemi.ui.width(label .. tail) + 2 or 0
     local row = snail.rule(state, ctx.frame, ctx.width - text)
     if text > 0 then
-      row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
-      row[#row + 1] = { text = tail .. " ", hl = "Comment" }
+      table.insert(row, 3, { text = " " .. label, hl = "Comment", effect = "shimmer" })
+      table.insert(row, 4, { text = tail .. " ", hl = "Comment" })
     end
     return { row }
   end,

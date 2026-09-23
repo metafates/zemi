@@ -242,8 +242,8 @@ Contracts that make this safe:
   and join the running turn as user-role messages at the next step
   boundary (before the next model call). Whatever is still queued when
   the turn ends starts one follow-up turn. `up` on an empty composer
-  takes the queue back for editing; `esc` or `ctrl+c` cancels the turn
-  and returns the queue to the composer.
+  takes the queue back for editing; a second `esc` within 2s or `ctrl+c`
+  cancels the turn and returns the queue to the composer.
 
 Cancellation: `ctrl+c` (the cancel trigger, §8; the action is
 Go-reserved, §6.2, and in v1 its trigger is fixed: no origin, the user
@@ -1156,7 +1156,7 @@ provenance string.
   `working` widget: the snail mascot fixed in the left corner on a plain
   rule, the state in its eyes alone: swapping while the model thinks or
   tools run, `??` while the user is asked, `^^` once the turn ends,
-  `><` on an error; at the right end a shimmering
+  `><` on an error; right after it a shimmering
   label naming the current activity, elapsed
   time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
   `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting` and

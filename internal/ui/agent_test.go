@@ -427,11 +427,13 @@ func TestGoldenAgentStream(t *testing.T) {
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s and an agent view takes it as back; ctrl+c interrupts at once, clears a
 // draft into the history, and on an empty composer arms quit. A held key
-// prefix replays as plain keys when the next key breaks it or it times out.
+// prefix replays as plain keys when the next key breaks it or it times out,
+// and ctrl+c drops it.
 func TestInterruptKeys(t *testing.T) {
 	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
 	ctrlK, x := tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
-	var wait tea.KeyPressMsg // advances the clock 3s
+	var wait tea.KeyPressMsg          // advances the clock 3s
+	view := tea.KeyPressMsg{Code: -1} // opens an agent view
 	for _, c := range []struct {
 		name          string
 		active, view  bool
@@ -440,19 +442,21 @@ func TestInterruptKeys(t *testing.T) {
 		cancel        bool
 		composer, row string
 	}{
-		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, "", "esc again to interrupt"},
+		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, "", "esc again"},
 		{"esc esc interrupts", true, false, "", []tea.KeyPressMsg{esc, esc}, true, "also this", "Cancelling"},
-		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, "", "esc again to interrupt"},
-		{"esc in an agent view goes back", true, true, "", []tea.KeyPressMsg{esc}, false, "", "esc to interrupt"},
+		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, "", "esc again"},
+		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, "", "esc again"},
 		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, "also this", "Cancelling"},
 		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, "draft", ""},
 		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c again to quit"},
 		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, x}, false, "x", ""},
 		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, wait}, false, "", ""},
+		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlK, ctrlC}, false, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 90, 16)
 			clock := time.UnixMilli(1000)
+			agentID := store.NewID()
 			app.now = func() time.Time { return clock }
 			runLua(t, app, `zemi.keymap.set("ctrl+k s", "zemi.ui.help")`)
 			if c.active {
@@ -465,13 +469,18 @@ func TestInterruptKeys(t *testing.T) {
 				}
 				t.Cleanup(func() { db.Close() })
 				host.DB, clock = db, clock.Add(time.Hour)
-				id := store.NewID()
-				if err := db.CreateSession(id, store.NewID(), "run", "explore"); err != nil || host.ViewAgent(id) != nil {
+				if err := db.CreateSession(agentID, store.NewID(), "run", "explore"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			app.composer.text = c.draft
 			for _, k := range c.keys {
+				if k == view {
+					if err := host.ViewAgent(agentID); err != nil {
+						t.Fatal(err)
+					}
+					continue
+				}
 				if k == wait {
 					clock = clock.Add(3 * time.Second)
 					app.onFrame()
@@ -481,7 +490,7 @@ func TestInterruptKeys(t *testing.T) {
 			}
 			app.renderSync(t)
 			frame := ansi.Strip(app.Frame())
-			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != strings.HasSuffix(c.row, "quit") {
+			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != strings.HasSuffix(c.row, "quit") || len(app.keySeq) > 0 {
 				t.Fatalf("cancelling=%v composer=%q view=%q frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), frame)
 			}
 		})
@@ -570,8 +579,9 @@ func lastToast(app *App) string {
 }
 
 // TestPaletteArgumentCompletion: past "/name " the palette lists the
-// command's argument candidates, tab fills the argument under the cursor
-// and enter runs the command with the highlighted one.
+// command's argument candidates, tab fills the argument under the cursor,
+// enter runs the command with the highlighted one once the user moved to it
+// and a bare "/name " as typed.
 func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""
@@ -590,14 +600,24 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	if app.composer.text != "/greet bob " {
 		t.Fatalf("composer = %q", app.composer.text)
 	}
-	app.clearComposer()
-	for _, k := range "/greet " {
-		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
-	}
-	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if ran != "bob" {
-		t.Fatalf("enter ran /greet %q", ran)
+	for _, c := range []struct {
+		keys []tea.KeyPressMsg
+		want string
+	}{
+		{nil, ""},
+		{[]tea.KeyPressMsg{{Code: tea.KeyDown}}, "bob"},
+	} {
+		app.clearComposer()
+		ran = "-"
+		for _, k := range "/greet " {
+			app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+		}
+		for _, k := range append(c.keys, tea.KeyPressMsg{Code: tea.KeyEnter}) {
+			app.Update(k)
+		}
+		if ran != c.want {
+			t.Fatalf("%v enter ran /greet %q, want %q", c.keys, ran, c.want)
+		}
 	}
 }
 
@@ -806,7 +826,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "─ Retrying  attempt 2 · next try in 4s · esc to interrupt ┐") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, " Retrying · attempt 2 · next try in 4s · esc interrupt ─") {
 		t.Fatalf("retry row missing:\n%s", frame)
 	}
 	// the label shimmers: every rune gets its own color
@@ -845,23 +865,23 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// working drifts the two eye dots in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.· ") {
 		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
 	}
 	// a long command keeps the working drift, there is no waiting state
 	long := []hostapi.StreamTool{{Name: "bash", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.· ") {
 		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
+	if a, b := row(0), row(800); !strings.HasPrefix(a, "@·· ") || !strings.HasPrefix(b, "@.. ") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(500); !strings.HasSuffix(r, "─ Working  20s · esc to interrupt ") {
-		t.Fatalf("the status left the right end: %q", r)
+	if r := row(500); !strings.Contains(r, "· Working · 20s · esc interrupt ─") || !strings.HasSuffix(r, "─") {
+		t.Fatalf("the status is not right after the snail: %q", r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no label, and no esc, which the prompt takes
@@ -883,6 +903,13 @@ func TestWorkingRowMascot(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})
 	if a, b := row(3200), row(3600); !strings.HasPrefix(a, "@..") || !strings.HasPrefix(b, "@?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
+	}
+	// a narrow rule drops the queue depth before the interrupt key
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Steering: []string{"x"}})
+	app.Update(tea.WindowSizeMsg{Width: 44, Height: 16})
+	app.renderSync(t)
+	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 44)); !strings.Contains(r, " Working · 20s · esc interrupt ─") {
+		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
 	}
 }
 

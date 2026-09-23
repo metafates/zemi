@@ -21,6 +21,7 @@ type cmdPalette struct {
 	args     []hostapi.CompletionItem // argument candidates once the cursor is past "/name "
 	argStart int                      // rune index where the argument under the cursor starts
 	selected int
+	moved    bool // the user moved the highlight in this argument list
 	view     viewport
 	size     boxSize // typing never narrows or shortens the popup
 }
@@ -58,7 +59,7 @@ func (a *App) updatePalette() {
 	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
 	show := func(cands []hostapi.CompletionItem) {
 		if p := &a.palette; p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
-			p.selected, p.view, p.size = 0, viewport{}, boxSize{}
+			p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
 		}
 		lead := strings.ToLower(typed)
 		args := []hostapi.CompletionItem{}
@@ -95,7 +96,7 @@ func (a *App) updatePalette() {
 
 func (p *cmdPalette) close() {
 	p.open = false
-	p.selected, p.view, p.size = 0, viewport{}, boxSize{}
+	p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
 	p.matches, p.args = nil, nil
 }
 

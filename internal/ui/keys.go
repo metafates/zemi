@@ -23,9 +23,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.mouse = mouseSel{}
 	top := a.topChrome()
 	// an armed key acts only when pressed again right away on the bare
-	// composer: an esc that answers a box in between does not count
-	if key != a.armed.key || top != "" || a.palette.open || a.completion.shown() {
+	// composer: an esc that answers a box in between does not count, and a
+	// held key prefix never outlives a key that bypasses keySequence
+	elsewhere := top != "" || a.palette.open || a.completion.shown()
+	if elsewhere || key != a.armed.key {
 		a.armed = armed{}
+	}
+	if elsewhere || key == "ctrl+c" {
+		a.keySeq = nil
 	}
 
 	// A focused node takes every key but ctrl+c: its own keymaps, then the
@@ -197,6 +202,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	popupMove := !slices.Contains([]string{"k", "j", "home", "end"}, key)
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
+			p.moved = true
 			return nil
 		}
 		switch key {
@@ -207,11 +213,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			a.palette.close()
 			return nil
 		case "enter":
-			// the highlighted argument replaces the one under the cursor, and
-			// a typed name that is not a command runs the highlighted one
+			// the highlighted argument replaces a typed or picked one, so a
+			// bare "/name " runs as typed, and a typed name that is not a
+			// command runs the highlighted one
 			name, args := splitCommand(strings.TrimPrefix(c.text, "/"))
 			switch {
-			case p.args != nil && p.selected < len(p.args):
+			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
 				c.replace(p.argStart, p.args[p.selected].Text)
 			case p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil:
 				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
@@ -276,6 +283,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// transcript, or else interrupts on a second press: esc closes every
 		// box, and one press too many must not kill the turn.
 		if a.host.ViewedAgent() != "" {
+			a.armed = armed{}
 			_ = a.host.ViewAgent("")
 		} else if a.host.AgentActive() && a.arm(key) {
 			a.interrupt()
