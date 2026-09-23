@@ -541,8 +541,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			}
 			st.view.reveal(sel, end)
 			list = st.view.window(list, inner)
-			if len(st.visible) > 0 {
-				hints = append(hints, hintPair{"enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back")})
+			if len(st.visible) > 0 { // one verb for every button: a changing one shifts the row
+				hints = append(hints, hintPair{"enter", "confirm"})
 			}
 		case len(st.visible) > 0:
 			if key := (listKey{st.query, st.selected, st.view.top, limit, st.size.w, inner}); st.rows == nil || key != st.rowsKey {

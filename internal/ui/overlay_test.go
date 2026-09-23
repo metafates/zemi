@@ -321,7 +321,7 @@ func TestOverlayNavigation(t *testing.T) {
 				d.o.Body = strings.Repeat("line\n", 60)
 				before := segsWidth(a.overlayBox(d, 80, 20)[0])
 				a.wheel(0, 0, 1)
-				d.selected = 1 // enter confirm -> enter back
+				d.selected = 1
 				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
@@ -423,11 +423,31 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "pick"}, false, "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter confirm · esc back"},
+		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter confirm · esc back"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter confirm · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
+		}
+	}
+}
+
+// TestHintOrder: pairs sort into their slots, and a narrow row drops the
+// middle pairs last first, never enter or esc.
+func TestHintOrder(t *testing.T) {
+	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"pgup/pgdn", "scroll"}}
+	for _, c := range []struct {
+		w    int
+		want string
+	}{
+		{80, "enter open · a keep · d drop · pgup/pgdn scroll · y copy · esc close"},
+		{40, "enter open · a keep · d drop · esc close"},
+		{5, "enter open · esc close"},
+	} {
+		if got := plainSegs(hint(c.w, pairs...)); got != c.want {
+			t.Errorf("%d cells: %q, want %q", c.w, got, c.want)
 		}
 	}
 }

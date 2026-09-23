@@ -613,7 +613,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for _, c := range choices {
 		btns = append(btns, promptChoice{key: c.key, label: c.label})
 	}
-	hints := []hintPair{{"enter", map[bool]string{true: "allow", false: "deny"}[choices[pa.sel].ok]}, {"esc", "deny"}}
+	hints := []hintPair{{"enter", "answer"}, {"esc", "deny"}} // one verb for every button: a changing one shifts the row
 	placeholder := oneRow
 	if len(content) == 0 {
 		placeholder = nil
