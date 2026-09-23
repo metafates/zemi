@@ -202,7 +202,10 @@ verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff
 A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
 and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word
 the shell could still expand into a climb (`{`, `$`, a glob after a leading dot) turns an allow
-into an ask (`expandsToDotDot`).
+into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the segment's `perm.canonical` form
+(reserved words and runner prefixes like `env`, `sudo`, `timeout 5` stepped past, the program
+by base name, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
+allow is judged as written, and a git alias still slips past (NOTE in the code).
 
 File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file the
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get

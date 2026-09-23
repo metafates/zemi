@@ -80,6 +80,40 @@ func TestEvaluateCanonicalPaths(t *testing.T) {
 	}
 }
 
+// TestDenyMeetsEverySpelling: a deny, ask or not_match rule written for a
+// program also fires behind a runner prefix, a path, reserved words and the
+// options before its subcommand; an allow stays judged as written.
+func TestDenyMeetsEverySpelling(t *testing.T) {
+	s := store(t,
+		Rule{Subject: "tool.bash", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
+		Rule{Subject: "tool.bash", Pattern: "curl *", Decision: Deny},
+		Rule{Subject: "tool.bash", Pattern: "make deploy*", Decision: Ask},
+		Rule{Subject: "tool.bash", Pattern: "env *", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "make *", Decision: Allow},
+	)
+	for _, c := range []struct {
+		cmd  string
+		want Decision
+	}{
+		{"git -C . status", Allow},
+		{"git -C . push", Ask},
+		{"/usr/bin/git --no-pager push origin", Ask},
+		{"git -c alias.p=push p", Allow}, // the ceiling: an alias is decided at run time
+		{"command curl x", Deny},
+		{"env A=1 curl x", Deny},
+		{"sudo -u root curl x", Deny},
+		{"timeout -s KILL 5 nice -n 5 curl x", Deny},
+		{"if curl x; then true; fi", Deny},
+		{"! /opt/bin/curl x", Deny},
+		{"env A=1 make -j4 deploy", Ask},
+		{"env A=1 make test", Allow},
+	} {
+		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
+			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
+		}
+	}
+}
+
 func TestEvaluateNotMatch(t *testing.T) {
 	s := store(t,
 		Rule{Subject: "tool.bash", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},

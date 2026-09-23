@@ -311,7 +311,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	case perm.Deny:
 		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
 	}
-	req.Explicit = o.Rule != nil || strings.Contains(o.Reason, "excluded by not_match")
+	req.Explicit = o.Ruled()
 	return p.resolveAsk(req, o.Reason)
 }
 
