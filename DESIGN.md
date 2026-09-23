@@ -1484,7 +1484,7 @@ provenance string.
   recursive `rm`, or one with a glob operand, `git clean`, `find -delete`,
   `shred`, `truncate`, `dd`, `rsync --delete`, also behind `xargs`,
   `find -exec`, `sh -c`, `eval` or a shell keyword, and a bare `rm` in a
-  shell body `xargs` or `find -exec` repeats), a git command that writes `.git` (`perm.GitWrites`:
+  loop body or a shell body `xargs` or `find -exec` repeats), a git command that writes `.git` (`perm.GitWrites`:
   the sandbox keeps `.git` read-only, so a confined commit could only
   fail and the ask comes first), and on a backend that cannot hide files
   a command naming an existing secret-shaped file. Anything a

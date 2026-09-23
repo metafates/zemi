@@ -849,14 +849,24 @@ func repeats(prog string) bool {
 }
 
 // destructive is Destructive with repeated set for a shell body a
-// repeating runner hands a shell (xargs sh -c 'rm "$@"').
+// repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop body
+// between do and done repeats too.
 func destructive(cmd string, repeated bool) string {
 	n := Normalize(cmd)
 	if n.Fail != "" {
 		return n.Fail
 	}
+	loops := 0
 	for _, f := range n.Args {
-		f = program(f)
+		g := program(f)
+		if slices.Contains(f[:len(f)-len(g)], "do") {
+			loops++
+		}
+		if len(f) > 0 && f[0] == "done" {
+			loops = max(loops-1, 0)
+		}
+		f = g
+		repeated := repeated || loops > 0
 		for _, body := range shellBodies(f) {
 			if why := destructive(body, repeated || len(f) > 0 && repeats(f[0])); why != "" {
 				return why

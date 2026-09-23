@@ -158,7 +158,7 @@ func substVars(s string, vars map[string]string) string {
 }
 
 var (
-	leadingAssign = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z0-9_./:@%+,=${}-]+)\s*(;|&&)\s*`)
+	leadingAssign = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z0-9_./:@%+,=${}-]+)[ \t]*(;|&&|\n)\s*`)
 	varRef        = regexp.MustCompile(`^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
 )
 
