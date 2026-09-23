@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/url"
@@ -8,8 +9,10 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
+	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openaicompat"
 )
@@ -69,6 +72,50 @@ func TestCallOptionsBody(t *testing.T) {
 		}
 		if (po.ReasoningEffort != nil) != (effort != "") {
 			t.Fatalf("effort %q: reasoning effort %v", effort, po.ReasoningEffort)
+		}
+	}
+}
+
+// generateStub answers Generate with a fixed usage.
+type generateStub struct {
+	fantasy.LanguageModel
+	usage fantasy.Usage
+}
+
+func (s generateStub) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
+	return &fantasy.Response{Usage: s.usage}, nil
+}
+
+func (s generateStub) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return func(yield func(fantasy.StreamPart) bool) {
+		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, Usage: s.usage})
+	}, nil
+}
+
+// TestGoogleUsage: Gemini's prompt count includes its cached tokens and its
+// output count leaves out the thinking; a 180k-of-200k cached prompt bills
+// 20k input and counts 200k of context plus the whole reply.
+func TestGoogleUsage(t *testing.T) {
+	raw := fantasy.Usage{InputTokens: 200_000, CacheReadTokens: 180_000, OutputTokens: 100, ReasoningTokens: 50}
+	for _, c := range []struct {
+		kind          string
+		input, output int64
+	}{{KindGoogle, 20_000, 150}, {KindAnthropic, 200_000, 100}} {
+		m := idleModel{LanguageModel: generateStub{usage: raw}, idle: time.Minute, kind: c.kind}
+		res, err := m.Generate(t.Context(), fantasy.Call{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		seq, _ := m.Stream(t.Context(), fantasy.Call{})
+		for part := range seq {
+			for _, u := range []fantasy.Usage{res.Usage, part.Usage} {
+				if u.InputTokens != c.input || u.OutputTokens != c.output || u.CacheReadTokens != 180_000 {
+					t.Errorf("%s: %+v", c.kind, u)
+				}
+			}
+			if c.kind == KindGoogle && ContextUsed(part.Usage) != 200_150 {
+				t.Errorf("context used %d", ContextUsed(part.Usage))
+			}
 		}
 	}
 }

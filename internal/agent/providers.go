@@ -451,7 +451,7 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	if err != nil {
 		return nil, err
 	}
-	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID}, nil
+	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID, kind: spec.Kind}, nil
 }
 
 // ModelError tags a model failure with its provider, so the advice can
@@ -494,6 +494,18 @@ type idleModel struct {
 	fantasy.LanguageModel
 	idle     time.Duration
 	provider string
+	kind     string
+}
+
+// usage brings Gemini's counts to the shape billing and ContextUsed read:
+// its prompt count includes the cached tokens and its output count leaves
+// out the thinking, which is billed as output.
+func (m idleModel) usage(u fantasy.Usage) fantasy.Usage {
+	if m.kind == KindGoogle {
+		u.InputTokens = max(0, u.InputTokens-u.CacheReadTokens)
+		u.OutputTokens += u.ReasoningTokens
+	}
+	return u
 }
 
 func (m idleModel) wrap(err error) error {
@@ -507,6 +519,9 @@ func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Re
 	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
 	defer cancel()
 	res, err := m.LanguageModel.Generate(ctx, call)
+	if res != nil {
+		res.Usage = m.usage(res.Usage)
+	}
 	return res, m.wrap(err)
 }
 
@@ -532,6 +547,9 @@ func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 			}
 			if part.Type == fantasy.StreamPartTypeError {
 				part.Error = m.wrap(part.Error)
+			}
+			if part.Type == fantasy.StreamPartTypeFinish {
+				part.Usage = m.usage(part.Usage)
 			}
 			sawErr = sawErr || part.Type == fantasy.StreamPartTypeError
 			if !yield(part) {
