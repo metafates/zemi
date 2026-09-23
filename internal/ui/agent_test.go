@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
@@ -1019,6 +1020,46 @@ func TestToolRows(t *testing.T) {
 	}
 	if words != 30 {
 		t.Fatalf("expanded input shows %d of 30 words:\n%s", words, frame)
+	}
+}
+
+// TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
+// progress and the pending ones first, and folds the done tail into one row.
+func TestTodoRowsKeepTheLiveItem(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 40)
+	// the test host has no project dir, so no project store came with it
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	sid := store.NewID()
+	if err := host.DB.CreateSession(sid, "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	var todos []store.Todo
+	for i := range 13 {
+		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done", Ord: i})
+	}
+	todos[12].Status = "in_progress"
+	todos = append(todos, store.Todo{Content: "step 14", Status: "pending", Ord: 13})
+	if err := host.PipelineFor().TodosWrite(todos); err != nil {
+		t.Fatal(err)
+	}
+	host.AppendMessage("user", "do it")
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 2 done"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q:\n%s", want, frame)
+		}
+	}
+	if strings.Contains(frame, "step 11") || strings.Contains(frame, "step 12") {
+		t.Fatalf("the done tail must fold:\n%s", frame)
 	}
 }
 

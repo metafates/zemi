@@ -526,9 +526,29 @@ zemi.ui.widget.add({
         head[#head + 1] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
       end
       lines[#lines + 1] = head
-      for n, td in ipairs(todos) do
+      -- at most 12 rows, the live ones first: in progress, then pending,
+      -- then done, so a long list never hides the item being worked on
+      local rank = { in_progress = 1, pending = 2, done = 3 }
+      ---@type { td: zemi.Todo, n: integer }[]
+      local shown = {}
+      for n, td in ipairs(todos) do shown[#shown + 1] = { td = td, n = n } end
+      table.sort(shown, function(a, b)
+        local ra, rb = rank[a.td.status] or 2, rank[b.td.status] or 2
+        if ra ~= rb then return ra < rb end
+        return a.n < b.n
+      end)
+      for n, it in ipairs(shown) do
+        local td = it.td
         if n > 12 then
-          lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = (#todos - 12) .. " more", hl = "Comment" } }
+          local hidden, done = #shown - 12, 0
+          for i = 13, #shown do
+            if shown[i].td.status == "done" then done = done + 1 end
+          end
+          if done == hidden then
+            lines[#lines + 1] = { { text = "  ✓ ", hl = "TodoDone", copy = false }, { text = done .. " done", hl = "Comment" } }
+          else
+            lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = hidden .. " more", hl = "Comment" } }
+          end
           break
         end
         local mark, mhl, hl, item = "  ○ ", "Rule", "Normal", td.content
