@@ -56,6 +56,7 @@ type mcpServer struct {
 	tools   []mcp.Tool
 	status  string // starting, ready, failed, stopped
 	err     string
+	signIn  string // the sign-in URL while one waits in the browser
 	stopped bool
 }
 
@@ -123,7 +124,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		if errors.Is(err, mcp.ErrAuthRequired) {
 			s.status, s.err = "needs sign-in", ""
 			s.mu.Unlock()
-			h.Notify("info", "MCP", s.name+" needs you to sign in: open /mcp")
+			h.Notify("info", s.name+" needs sign-in", "open /mcp")
 			h.refresh()
 			return
 		}
@@ -582,7 +583,7 @@ func (h *Host) mcpCommands() []*Command {
 				if err := h.restartMCP(name); err != nil {
 					return err
 				}
-				h.Notify("info", "MCP", "restarting "+name)
+				h.Notify("info", "Restarting "+name, "")
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
@@ -617,7 +618,7 @@ func (h *Host) openMCP() error {
 	var items []any
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
-		status, errText := s.status, s.err
+		status, errText, signIn := s.status, s.err, s.signIn
 		var tools []string
 		for _, t := range s.tools {
 			tools = append(tools, t.Name)
@@ -632,6 +633,9 @@ func (h *Host) openMCP() error {
 			detail = "url: " + s.spec.URL
 		}
 		detail += "\nstatus: " + status
+		if signIn != "" {
+			detail += "\nsign in at: " + signIn
+		}
 		if errText != "" {
 			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
@@ -695,16 +699,23 @@ func (h *Host) signInMCP(name string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		err := auth.Authorize(ctx, func(u string) {
-			h.Notify("info", "Sign in to "+name, "Finish in your browser. If it did not open, visit "+u)
+			// too long for a toast: /mcp shows it whole, to copy
+			s.mu.Lock()
+			s.signIn = u
+			s.mu.Unlock()
+			h.Notify("info", "Sign in to "+name, "finish in your browser, or open /mcp for the link")
 			h.openBrowser(u)
 		})
+		s.mu.Lock()
+		s.signIn = ""
+		s.mu.Unlock()
 		if err != nil {
-			h.Notify("error", "MCP", "signing in to "+name+" failed: "+err.Error())
+			h.Notify("error", "Could not sign in to "+name, err.Error())
 			return
 		}
-		h.Notify("info", "MCP", "signed in to "+name)
+		h.Notify("info", "Signed in to "+name, "")
 		if err := h.restartMCP(name); err != nil {
-			h.Notify("error", "MCP", err.Error())
+			h.Notify("error", "Could not restart "+name, err.Error())
 		}
 	})
 	return nil
@@ -718,7 +729,7 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
-	h.Notify("info", "MCP", "signed out of "+name)
+	h.Notify("info", "Signed out of "+name, "")
 	return h.restartMCP(name)
 }
 
