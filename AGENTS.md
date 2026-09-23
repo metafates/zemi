@@ -290,7 +290,8 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
 `.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
 its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten; the
-project `permissions` file is listed the same way), with
+project `permissions` file is listed the same way, and the ignore file lists itself so git
+status does not show `.zemi/`), with
 each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until

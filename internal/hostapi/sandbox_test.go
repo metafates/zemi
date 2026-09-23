@@ -518,7 +518,7 @@ func TestWorktreesDir(t *testing.T) {
 			t.Fatalf("write %v protect %v", p.Write, p.Protect)
 		}
 	}
-	if b, _ := os.ReadFile(ignore); string(b) != "cache\nworktrees/\n" {
+	if b, _ := os.ReadFile(ignore); string(b) != "cache\nworktrees/\n.gitignore\n" {
 		t.Fatalf(".gitignore %q", b)
 	}
 	if found, _ := configEntries(project); found[filepath.Join(zemi, "skills", ".git")] {

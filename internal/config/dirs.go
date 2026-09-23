@@ -223,6 +223,11 @@ func (d Dirs) IgnoreLocal(extra ...string) error {
 	if len(add) == 0 {
 		return nil
 	}
+	// the file ignores itself, or git status shows .zemi/ as untracked; a
+	// team's tracked copy gets the line only with an entry it lacked anyway
+	if !have[".gitignore"] {
+		add = append(add, ".gitignore")
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
