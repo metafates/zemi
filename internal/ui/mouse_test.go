@@ -519,3 +519,30 @@ func TestScrollbarDrag(t *testing.T) {
 		})
 	}
 }
+
+// TestWheelUnderPointer: in a box with overflowing text and a list, the
+// wheel moves whichever the pointer is over.
+func TestWheelUnderPointer(t *testing.T) {
+	for _, c := range []struct {
+		over      string
+		sel, text int
+	}{
+		{"intro 0", 0, 1},
+		{"beta", 1, 0},
+	} {
+		t.Run(c.over, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 24)
+			var body []string
+			for i := range 12 {
+				body = append(body, fmt.Sprintf("intro %d", i))
+			}
+			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []any{"alpha", "beta", "gamma"}})
+			app.renderSync(t)
+			x, y := findCell(t, app, c.over)
+			app.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+			if st := app.overlays[0]; st.selected != c.sel || st.body.top != c.text {
+				t.Fatalf("selected %d, text top %d; want %d, %d", st.selected, st.body.top, c.sel, c.text)
+			}
+		})
+	}
+}

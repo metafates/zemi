@@ -552,14 +552,20 @@ func (a *App) topChrome() string {
 
 // wheel scrolls the box on top: the modal chrome, else an open composer
 // popup, else the scrolled region under the pointer. In a box, text that
-// overflows takes the wheel before the list; a list moves one item.
+// overflows takes the wheel unless the pointer is on a list row; a list
+// moves one item.
 func (a *App) wheel(x, y, step int) {
 	text, sel, n, ok := a.boxScroll()
+	onRow := false // over a list row or a choice, which carry a Hit
+	if y >= 0 && y < len(a.lastRows) {
+		rest := dropCells(a.lastRows[y], x)
+		onRow = len(rest) > 0 && rest[0].Hit > 0
+	}
 	switch {
 	case !ok:
 		a.scrollRows(a.scrollAt(x, y), step*chatWheelStep)
 		return
-	case text != nil && text.overflows():
+	case text != nil && text.overflows() && !(sel != nil && onRow):
 		text.scroll(step * chatWheelStep)
 	case sel != nil:
 		*sel = max(0, min(*sel+step, n-1))
