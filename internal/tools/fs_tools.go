@@ -247,7 +247,7 @@ const (
 // pages like any other file instead of ending the process.
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	path := str(input["path"])
-	f, fi, err := openRegular(path)
+	f, fi, err := OpenRegular(path)
 	switch {
 	case fi != nil && fi.IsDir():
 		return listDir(p, path), nil
@@ -375,10 +375,10 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
 }
 
-// openRegular opens a file for reading through openGated. fi is set once
+// OpenRegular opens a file for reading through openGated. fi is set once
 // the file is open, so a directory or a FIFO is reported without reading
 // it; the caller closes f.
-func openRegular(path string) (f *os.File, fi os.FileInfo, err error) {
+func OpenRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 	// nonblocking: opening a FIFO must not wait for a writer
 	f, err = openGated(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
@@ -396,7 +396,7 @@ func openRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 // multiedit). A file over editMaxBytes is refused rather than allocated:
 // the edit would have to hold it twice over.
 func readGated(path string) (data []byte, fi os.FileInfo, err error) {
-	f, fi, err := openRegular(path)
+	f, fi, err := OpenRegular(path)
 	if err != nil {
 		return nil, fi, err
 	}

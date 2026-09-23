@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -193,13 +194,24 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: "fs.read", Arg: path}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "fs.read "+in.Path)), nil
 		}
-		s, err := readRegularFile(path)
+		// opened the way the file tools open theirs, so a directory swapped
+		// for a symlink after the check fails instead of leading elsewhere
+		f, fi, err := tools.OpenRegular(path)
+		var b []byte
+		if err == nil {
+			if fi.Size() > maxAgentFileBytes {
+				err = fmt.Errorf("%s: exceeds %d bytes", in.Path, maxAgentFileBytes)
+			} else {
+				b, err = io.ReadAll(f)
+			}
+			f.Close()
+		}
 		if pe, ok := errors.AsType[*fs.PathError](err); ok {
 			return fantasy.NewTextErrorResponse(in.Path + ": " + pe.Err.Error()), nil
 		} else if err != nil {
-			return fantasy.NewTextErrorResponse(strings.ReplaceAll(err.Error(), path, in.Path)), nil
+			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		src = s
+		src = string(b)
 	}
 	if strings.TrimSpace(src) == "" {
 		return fantasy.NewTextErrorResponse("pass script or path"), nil
