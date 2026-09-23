@@ -14,9 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
+	"github.com/metafates/zemi/internal/ui"
 )
 
 const usage = `zemi - a terminal coding agent that learns how you work
@@ -28,7 +31,7 @@ Usage:
   zemi "fix the failing test"   open the TUI and send a first message
   zemi -p "explain main.go"     answer on stdout and exit
   zemi -p "/review HEAD~1"      a prompt naming a command runs it
-  git diff | zemi -p "review"   piped stdin is appended to the prompt
+  git diff | zemi -p "review"   piped stdin is attached to the prompt
   zemi -- why does ls -la fail  flags are read anywhere; after -- it is all prompt
 
 Flags:
@@ -152,9 +155,9 @@ func normalizeVersion(v string) string {
 	return v
 }
 
-// readStdin appends piped stdin to the prompt in print mode; --health
-// ignores stdin. The TUI needs
-// the terminal on stdin, so a pipe there is a usage error.
+// readStdin attaches piped stdin to the prompt in print mode, behind the
+// marker that ends what the user typed; --health ignores stdin. The TUI
+// needs the terminal on stdin, so a pipe there is a usage error.
 func (o *options) readStdin(stdin *os.File) error {
 	fi, err := stdin.Stat()
 	if o.health || err != nil || fi.Mode()&os.ModeCharDevice != 0 {
@@ -163,14 +166,14 @@ func (o *options) readStdin(stdin *os.File) error {
 	if !o.print {
 		return errors.New("stdin is not a terminal; use -p to answer from a pipe")
 	}
-	// NOTE: stdin is capped at 1 MiB; larger input belongs in a file the
+	// NOTE: stdin over 1 MiB is refused; larger input belongs in a file the
 	// agent reads.
 	first, got := make(chan struct{}), make(chan []byte, 1)
 	go func() {
 		head := make([]byte, 1)
 		n, _ := stdin.Read(head)
 		close(first)
-		rest, _ := io.ReadAll(io.LimitReader(stdin, 1<<20-1))
+		rest, _ := io.ReadAll(io.LimitReader(stdin, 1<<20))
 		got <- append(head[:n], rest...)
 	}()
 	// Schedulers and editors often leave an idle pipe on stdin: with a
@@ -184,8 +187,12 @@ func (o *options) readStdin(stdin *os.File) error {
 			return nil
 		}
 	}
-	if in := strings.TrimSpace(string(<-got)); in != "" {
-		o.prompt = strings.TrimSpace(o.prompt + "\n\n" + in)
+	in := <-got
+	if len(in) > 1<<20 {
+		return errors.New("stdin is over 1 MiB; write it to a file and name the file in the prompt")
+	}
+	if in := strings.TrimSpace(string(in)); in != "" {
+		o.prompt += agent.Attached("stdin", in)
 	}
 	return nil
 }
@@ -227,8 +234,14 @@ func applyOptions(h *hostapi.Host, o options) error {
 }
 
 // printHealth writes the /health checks for a headless run; any failed
-// check makes the exit status 1, so a script can gate on it.
+// check makes the exit status 1, so a script can gate on it. MCP servers
+// settle first, so their row says what a run would get.
 func printHealth(h *hostapi.Host, stdout io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+	if h.WaitMCP(ctx); ctx.Err() != nil {
+		return 130
+	}
 	code := 0
 	for _, r := range h.HealthRows() {
 		if r.Level == "error" {
@@ -255,12 +268,15 @@ func failPrint(err error, jsonOut bool, stdout, stderr io.Writer) int {
 // sendPrompt starts a turn from a command-line prompt. A prompt naming a
 // registered command runs it, as the composer would, so /review, /workflow
 // and the markdown commands reach a script or a git hook; anything else is
-// a message for the model.
+// a message for the model. Its one send builds the tool set, so MCP servers
+// still starting get to finish first.
 func sendPrompt(h *hostapi.Host, prompt string) error {
-	if rest, ok := strings.CutPrefix(prompt, "/"); ok {
-		name, args, _ := strings.Cut(rest, " ")
+	h.WaitMCP(context.Background())
+	typed, attached := agent.CutAttached(prompt)
+	if rest, ok := strings.CutPrefix(typed, "/"); ok {
+		name, args := ui.SplitCommand(rest)
 		if h.Commands.Lookup(name) != nil {
-			return h.RunCommand(context.Background(), name, strings.TrimLeft(args, " "))
+			return h.RunCommand(context.Background(), name, args+attached)
 		}
 	}
 	return h.AgentSend(prompt)
@@ -270,38 +286,51 @@ func sendPrompt(h *hostapi.Host, prompt string) error {
 // JSON report with --output json), a failure to stderr with status 1, an
 // interrupt ends with 130.
 func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.Writer) int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	start := len(h.Session().Transcript)
-	began, before := time.Now(), h.AgentStream()
-	if err := sendPrompt(h, prompt); err != nil {
-		if !jsonOut && errors.Is(err, hostapi.ErrNoModel) && h.InitError() != "" {
-			return 1 // the init failure on stderr is the cause
+	h.WaitMCP(ctx)
+	sid, start := h.AgentSessionID(), len(h.Session().Transcript)
+	began, before, denied := time.Now(), h.AgentStream(), h.HeadlessDenials()
+	interrupted := ctx.Err() != nil
+	if !interrupted {
+		if err := sendPrompt(h, prompt); err != nil {
+			if !jsonOut && errors.Is(err, hostapi.ErrNoModel) && h.InitError() != "" {
+				return 1 // the init failure on stderr is the cause
+			}
+			return failPrint(err, jsonOut, stdout, stderr)
 		}
-		return failPrint(err, jsonOut, stdout, stderr)
 	}
-	interrupted := false
+	// a command that swapped the session (/new, /resume) ran no turn, and
+	// none of the rows or usage it brought are this run's.
+	// NOTE: a command whose turn starts a session and ends before this check
+	// (a markdown command's quick reply) reads as a swap and prints nothing;
+	// a swap the command reported itself would tell them apart.
+	if strings.HasPrefix(prompt, "/") && h.AgentSessionID() != sid && !h.AgentActive() {
+		start, before = len(h.Session().Transcript), h.AgentStream()
+	}
+wait:
 	for h.AgentActive() {
 		select {
 		case <-ctx.Done():
-			if !interrupted {
-				interrupted = true
-				h.AgentCancel()
-				// the turn gets a moment to stop, then print mode leaves anyway
-				ctx, stop = context.WithTimeout(context.Background(), 5*time.Second)
-				defer stop()
-			} else {
-				proc.KillAll()
-				return 130
+			if interrupted {
+				break wait
 			}
+			interrupted = true
+			h.AgentCancel()
+			// the turn gets a moment to stop, then print mode leaves anyway
+			ctx, stop = context.WithTimeout(context.Background(), 5*time.Second)
+			defer stop()
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
+	rows := h.Session().Transcript
+	rep := turnReport(rows[min(start, len(rows)):])
 	if interrupted {
 		proc.KillAll()
-		return 130
+		rep.IsError, rep.Error = true, "interrupted"
 	}
-	rep := turnReport(h.Session().Transcript[start:])
+	d := h.HeadlessDenials()
+	rep.Denied, rep.unsandboxed, rep.tuiOnly = d.Asked-denied.Asked, d.Unsandboxed-denied.Unsandboxed, d.TUIOnly-denied.TUIOnly
 	if jsonOut {
 		after := h.AgentStream()
 		rep.SessionID, rep.DurationMS = h.AgentSessionID(), time.Since(began).Milliseconds()
@@ -320,21 +349,30 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 		}
 		// The denied calls are in the JSON report but nowhere in the text
 		// reply, so a run that did nothing looks like a lazy model.
-		if n := rep.denied; n > 0 {
-			calls := "calls"
-			if n == 1 {
-				calls = "call"
-			}
-			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can approve a call with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted()))
+		if n := rep.Denied; n > 0 {
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can approve a call with -p, %s\n", n, plural(n, "call", "calls"), deniedHint(rep, h.ProjectTrusted()))
+		}
+		if n := rep.refused; n > 0 {
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied by a rule, the mode, the profile or a permission.request handler\n", n, plural(n, "call", "calls"))
 		}
 		if rep.Result != "" {
-			fmt.Fprintln(stdout, rep.Result)
+			fmt.Fprintln(stdout, sanitize.String(rep.Result))
 		}
 	}
-	if rep.IsError {
+	switch {
+	case interrupted:
+		return 130
+	case rep.IsError:
 		return 1
 	}
 	return 0
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // deniedHint says what would let print mode's denied calls through.
@@ -359,6 +397,8 @@ type report struct {
 	SessionID  string       `json:"session_id"`
 	DurationMS int64        `json:"duration_ms"`
 	Tools      []reportTool `json:"tools"`
+	// asks nobody could answer, subagents' and workflows' included
+	Denied int `json:"denied"`
 	// times the turn compacted or cleared old tool output to fit the window
 	Compactions int `json:"compactions"`
 	Usage       struct {
@@ -367,9 +407,9 @@ type report struct {
 		CostUSD float64 `json:"cost_usd"`
 	} `json:"usage"`
 
-	denied      int // tool calls the permission gate refused; text mode notes them
-	unsandboxed int // of those, asks to run outside the sandbox
-	tuiOnly     int // of those, asks no permission mode ever settles
+	unsandboxed int // of Denied, asks to run outside the sandbox
+	tuiOnly     int // of Denied, asks no permission mode ever settles
+	refused     int // main-agent calls a rule, mode, profile or handler denied
 }
 
 type reportTool struct {
@@ -416,14 +456,9 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				// the gate's DeniedText; a bare "permission denied" is also EACCES
 				rt.Denied = strings.HasPrefix(strings.TrimSpace(m.Output), "permission denied (")
 			}
-			if rt.Denied {
-				rep.denied++
-				switch {
-				case strings.Contains(m.Output, "permission denied (unsandboxed)"):
-					rep.unsandboxed++
-				case m.Tool == tools.ToolLua || m.Tool == tools.ToolMemory:
-					rep.tuiOnly++
-				}
+			// an unanswered ask is counted at the gate (Host.HeadlessDenials)
+			if by, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(m.Output), "permission denied ("), ")"); rt.Denied && by != "default" && by != "unsandboxed" && by != "network" {
+				rep.refused++
 			}
 			rep.Tools = append(rep.Tools, rt)
 		case m.Kind == "compact":

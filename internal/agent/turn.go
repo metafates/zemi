@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,12 +111,23 @@ var ErrTurnActive = errors.New("agent: a turn is already active")
 // stores or recalls the user's words cuts the text there.
 const AttachMarker = "\n\n<attached-files>"
 
-// Note wraps text zemi itself sends the model (a nag, a plan handoff) behind
-// AttachMarker, in its own element, so it never reads as the user's words or
-// as unlabeled attachment text.
-func Note(text string) string {
-	return AttachMarker + "\n<zemi-note>\n" + text + "\n</zemi-note>\n</attached-files>"
+// Attached puts text the user did not type (piped stdin, a command file's
+// body, a note from zemi) behind AttachMarker as one element, so it never
+// reads as the user's words or as unlabeled attachment text.
+func Attached(tag, text string) string {
+	return AttachMarker + "\n<" + tag + ">\n" + text + "\n</" + tag + ">\n</attached-files>"
 }
+
+// CutAttached splits a message into what was typed and its trailer.
+func CutAttached(s string) (typed, trailer string) {
+	if i := strings.Index(s, AttachMarker); i >= 0 {
+		return s[:i], s[i:]
+	}
+	return s, ""
+}
+
+// Note wraps text zemi itself sends the model (a nag, a plan handoff).
+func Note(text string) string { return Attached("zemi-note", text) }
 
 // ErrReplyCut ends a turn whose last reply hit the output token limit.
 var ErrReplyCut = errors.New("the reply hit the output token limit (the model's max_output) and was cut off")

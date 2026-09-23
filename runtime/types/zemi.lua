@@ -347,8 +347,8 @@ function zemi.keymap.list() end
 -- ---------------------------------------------------------------------------
 -- zemi.command
 
---- What a command handler receives: the raw argument string and it split
---- into words.
+--- What a command handler receives: the raw argument string, with piped
+--- stdin attached behind what was typed, and the typed words.
 ---@class zemi.CommandArgs
 ---@field args string
 ---@field list string[]

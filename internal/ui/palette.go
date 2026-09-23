@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -191,7 +192,7 @@ func (a *App) runSlashCommand(text string) {
 		}
 		return
 	}
-	name, args := splitCommand(raw)
+	name, args := SplitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
 		a.pushToast("warn", "Not a command", "/"+name)
@@ -241,9 +242,13 @@ func (a *App) restoreQueue() bool {
 	return true
 }
 
-// splitCommand splits "name arg string" into the command name and the raw
-// argument string.
-func splitCommand(raw string) (name, args string) {
-	name, args, _ = strings.Cut(raw, " ")
-	return name, strings.TrimLeft(args, " ")
+// SplitCommand splits "name arg string" into the command name and the raw
+// argument string. The name ends at any whitespace: a shift+enter line may
+// follow it.
+func SplitCommand(raw string) (name, args string) {
+	i := strings.IndexFunc(raw, unicode.IsSpace)
+	if i < 0 {
+		return raw, ""
+	}
+	return raw[:i], strings.TrimLeftFunc(raw[i:], unicode.IsSpace)
 }

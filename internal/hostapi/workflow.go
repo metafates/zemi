@@ -26,6 +26,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
@@ -690,7 +691,8 @@ func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
 		Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
 		GoFn: func(h *Host, args string) error {
-			name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+			typed, attached := agent.CutAttached(args)
+			name, rest, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			if name == "" {
 				return h.openWorkflows()
 			}
@@ -703,7 +705,7 @@ func (h *Host) workflowCommands() []*Command {
 			if rest = strings.TrimSpace(rest); rest != "" {
 				msg += " and args " + strconv.Quote(rest)
 			}
-			return h.AgentSend(msg + ", then relay its result.")
+			return h.AgentSend(msg + ", then relay its result." + attached)
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string

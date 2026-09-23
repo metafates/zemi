@@ -50,6 +50,35 @@ type modeReg struct {
 	list           []PermModeDef // nil = builtinModes
 	prePlanMode    string        // the mode active before a read-only agent was picked
 	prePlanProfile string        // the agent active before a read-only agent was picked
+
+	headless Denials // asks denied because no UI could answer them
+}
+
+// Denials counts asks nobody could answer (-p), every pipeline's:
+// subagents and workflows run no rows the main transcript shows.
+type Denials struct {
+	Asked       int // all of them
+	Unsandboxed int // of those, a command asking to leave the sandbox
+	TUIOnly     int // of those, a Lua script or a memory edit
+}
+
+func (r *modeReg) noteHeadless(req tools.Request) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headless.Asked++
+	switch {
+	case req.Unsandboxed && req.Subject == "tool.bash":
+		r.headless.Unsandboxed++
+	case req.Tool == tools.ToolLua || req.Tool == tools.ToolMemory:
+		r.headless.TUIOnly++
+	}
+}
+
+// HeadlessDenials is the count so far; -p reads the change over a turn.
+func (h *Host) HeadlessDenials() Denials {
+	h.modes.mu.Lock()
+	defer h.modes.mu.Unlock()
+	return h.modes.headless
 }
 
 func (h *Host) PermModeList() []PermModeDef {

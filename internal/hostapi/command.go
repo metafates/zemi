@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
@@ -41,8 +42,10 @@ func validNargs(n string) bool {
 }
 
 // nargsOK validates a raw argument string against command name's nargs spec.
+// Attached text (piped stdin) is no argument.
 func nargsOK(name, nargs, args string) error {
-	fields := strings.Fields(args)
+	typed, _ := agent.CutAttached(args)
+	fields := strings.Fields(typed)
 	switch nargs {
 	case "":
 		if len(fields) != 0 {
@@ -251,7 +254,8 @@ func commandArgs(L *glua.LState, argString string) *glua.LTable {
 	args := L.NewTable()
 	args.RawSetString("args", glua.LString(argString))
 	list := L.NewTable()
-	for i, f := range strings.Fields(argString) {
+	typed, _ := agent.CutAttached(argString)
+	for i, f := range strings.Fields(typed) {
 		list.RawSetInt(i+1, glua.LString(f))
 	}
 	args.RawSetString("list", list)

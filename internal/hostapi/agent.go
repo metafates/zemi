@@ -1286,7 +1286,12 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	if p != nil {
 		name = p.Name
 	}
-	first, _, _ := strings.Cut(strings.TrimSpace(firstText), "\n")
+	typed, attached := agent.CutAttached(firstText)
+	if strings.TrimSpace(typed) == "" {
+		// piped stdin alone: its first line, past the element's tag
+		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
 	title := truncRunes(first, 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()

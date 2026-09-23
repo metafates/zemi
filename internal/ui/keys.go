@@ -185,7 +185,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		case "enter":
 			// a typed name that is not a command runs the highlighted one
-			name, args := splitCommand(strings.TrimPrefix(c.text, "/"))
+			name, args := SplitCommand(strings.TrimPrefix(c.text, "/"))
 			if p := &a.palette; p.args == nil && p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil {
 				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
 			}

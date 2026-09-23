@@ -100,7 +100,7 @@ Language servers (gopls, pyright, typescript-language-server, clangd, rust-analy
 
 ## Command line
 
-`zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the prompt; from a script add `</dev/null`, or it waits 3 s for input), `--output json` with `-p`, `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`, `--mode`, `--profile`, `--trust`, `--health` (exits 1 when a check errors). A prompt naming a command runs it: `zemi -p "/review HEAD~1"`. Under `-p` nobody can approve, so a call the mode does not allow is denied and stderr counts them. A `-p` run makes no title call; the first line of its first message names the session.
+`zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin, 1 MiB at most, is attached to the prompt; from a script add `</dev/null`, or it waits 3 s for input), `--output json` with `-p`, `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`, `--mode`, `--profile`, `--trust`, `--health` (exits 1 when a check errors). A prompt naming a command runs it: `zemi -p "/review HEAD~1"`. Under `-p` nobody can approve, so a call the mode does not allow is denied and stderr counts them. A `-p` run makes no title call; the first line of its first message names the session.
 
 ## Commands and input
 

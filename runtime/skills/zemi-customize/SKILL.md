@@ -61,7 +61,7 @@ argument-hint: <file> <symptom>
 Read $1 and add a failing test showing: $ARGUMENTS. Do not fix the bug.
 ```
 
-`/<name> args` sends the body with `$ARGUMENTS` (everything after the name) and `$1`..`$9` (single words) filled in.
+`/<name> args` sends the body with `$ARGUMENTS` (everything after the name) and `$1`..`$9` (single words) filled in. The body goes behind the typed line, so an `@file` in it attaches nothing; the model reads the file itself.
 
 ## Permission modes (`init.lua`, user config only)
 

@@ -87,22 +87,24 @@ or settled builds.
 
 `zemi` opens the TUI; a prompt argument is sent as the first message, or run as a command when
 it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git hook). `--help`
-lists the flags. Piped stdin is appended to the prompt and is a usage error without `-p`. Flags
-apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
-reads. `-m` and `/model` write the tier the conversation reads (`Host.ConversationKey`:
-`models.smart` when config set it, else `models.main`). Both, and `zemi.model.set`, refuse
-while the active profile sets its own model (`Host.ProfileModelErr`; `--profile` applies
-before `-m`), since the tier would change and the conversation would not. `--profile` and
-`/profile` (`Host.SetProfile`; no argument opens the picker, which the statusline's profile
-segment clicks into) write `agent.profile` for the next send: a switch changes the prompt
-and the tool set, so it busts the provider's prompt cache once; ctrl+t and ctrl+shift+t cycle it.
+lists the flags. Piped stdin (1 MiB at most) is attached behind the typed prompt and is a usage
+error without `-p`. Flags apply after boot so they win over `init.lua`, except `--trust`, which
+the trust boot step reads. `-m` and `/model` write the tier the conversation reads
+(`Host.ConversationKey`: `models.smart` when config set it, else `models.main`). Both, and
+`zemi.model.set`, refuse while the active profile sets its own model (`Host.ProfileModelErr`;
+`--profile` applies before `-m`), since the tier would change and the conversation would not.
+`--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
+statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
+changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
+ctrl+shift+t cycle it.
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
-reports on stderr how many tool calls the gate denied - nobody can answer an ask headless, so
-`deniedHint` points at `--trust` or at an allow rule. It also drops what needs a user
-(`headlessExcluded`), the agent tool's `background` and `send_to` (a detached report would
-outlive the run), and the prompt lines naming them. A headless run with no saved trust decision
-runs untrusted and says so.
+reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, subagents' too;
+`deniedHint` points at `--trust` or at an allow rule) and, on its own line, how many calls a
+rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
+agent tool's `background` and `send_to` (a detached report would outlive the run), and the
+prompt lines naming them. A headless run with no saved trust decision runs untrusted and says
+so.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`). Builtin
 providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
@@ -261,7 +263,7 @@ read-only - and hands the rest to the user with a reason naming why (`askHook`; 
 included).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
-command asks.
+command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
