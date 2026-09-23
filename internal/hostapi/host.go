@@ -425,6 +425,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		lsp:       newLSPReg(),
 	}
 	h.Perm.Default = h.fsDefault
+	h.jobs.OnExit = h.refresh
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })

@@ -104,6 +104,9 @@ type Jobs struct {
 	mu   sync.Mutex
 	seq  int
 	jobs map[string]*Job
+	// OnExit runs after a job's exit is recorded: the statusline's job
+	// count has nothing else to redraw it.
+	OnExit func()
 }
 
 func NewJobs() *Jobs {
@@ -180,6 +183,9 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
+		if m.OnExit != nil {
+			m.OnExit()
+		}
 	}()
 	return j.ID
 }
