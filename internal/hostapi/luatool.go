@@ -28,8 +28,6 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// luaToolCeiling bounds one run: it holds the interpreter the UI renders
-// through. Cancelling stops the script at its next opcode.
 // luaToolCeiling bounds one Lua tool run on the interpreter; a var so a
 // test can hit it without waiting.
 var luaToolCeiling = 10 * time.Second
