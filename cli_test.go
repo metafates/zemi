@@ -101,7 +101,7 @@ func TestTurnReport(t *testing.T) {
 		{Role: "user", Text: "go"},
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
-		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "rm: /: is a directory\nexit: status 1\nchanged: x"},
+		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "rm: /: is a directory\nexit status 1\nchanged: x"},
 		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
 			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
 		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
@@ -115,7 +115,7 @@ func TestTurnReport(t *testing.T) {
 		t.Fatalf("report = %+v", rep)
 	}
 	// a failed call says why and whether the gate refused it
-	if rt := rep.Tools[1]; rt.Error != "exit: status 1" || rt.Denied || rep.Tools[0].Error != "" {
+	if rt := rep.Tools[1]; rt.Error != "exit status 1" || rt.Denied || rep.Tools[0].Error != "" {
 		t.Fatalf("bash row = %+v", rt)
 	}
 	if rt := rep.Tools[2]; !rt.Denied || !strings.HasPrefix(rt.Error, "permission denied (mode)") {

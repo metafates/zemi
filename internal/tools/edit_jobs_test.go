@@ -240,3 +240,18 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 		t.Fatalf("outside the jail: %d entries, secret %q, read leaked %v", len(entries), got, leaked)
 	}
 }
+
+// TestBashResultText pins what the model reads back: binary is named, not
+// sent, and a failure ends in its exit status.
+func TestBashResultText(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ cmd, want string }{
+		{`printf 'a\0b'`, "(binary output, 3 bytes)"},
+		{"echo hi; exit 3", "hi\nexit status 3"},
+	} {
+		res, _ := runBash(context.Background(), &Pipeline{}, map[string]any{"command": tc.cmd})
+		if res.Content != tc.want {
+			t.Errorf("%s: %q, want %q", tc.cmd, res.Content, tc.want)
+		}
+	}
+}

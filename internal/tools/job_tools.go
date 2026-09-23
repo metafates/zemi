@@ -314,6 +314,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	// since() has already moved past what it returns, so a cut chunk is
 	// gone unless it is spilled here
 	show := func(s string) string {
+		s = cmdText(s)
 		if cut := TruncOut(s, cmdMaxOut); cut != s {
 			return cut + p.spill("job", s)
 		}

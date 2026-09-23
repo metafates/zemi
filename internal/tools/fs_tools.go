@@ -143,7 +143,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	stopProgress()
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
-	out := strings.TrimRight(ansi.Strip(raw), "\n")
+	out := cmdText(raw)
 	var b strings.Builder
 	// compare the text, not lengths: the cut marker can outgrow a small cut
 	if cut := TruncOut(out, cmdMaxOut); cut != out {
@@ -181,7 +181,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		if ctx.Err() != nil {
 			b.WriteString("stopped: the user interrupted the command")
 		} else {
-			b.WriteString("exit: " + err.Error())
+			b.WriteString(err.Error())
 			if p != nil && p.Sandboxed != nil {
 				b.WriteString(p.sandboxHint(raw, err))
 			}
@@ -194,6 +194,15 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	b.WriteString(note)
 	return changed(fantasy.NewTextResponse(b.String()))
+}
+
+// cmdText is command output as the model reads it: like read and fetch,
+// binary is named instead of sent as control bytes the model cannot use.
+func cmdText(raw string) string {
+	if strings.IndexByte(raw[:min(len(raw), 8000)], 0) >= 0 {
+		return fmt.Sprintf("(binary output, %d bytes)", len(raw))
+	}
+	return strings.TrimRight(ansi.Strip(raw), "\n")
 }
 
 // cmdMaxOut is what a command's output may take in a tool result; the rest

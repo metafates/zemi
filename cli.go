@@ -382,7 +382,7 @@ type reportTool struct {
 }
 
 // failureLine is why a failed call failed: a bash result ends in its
-// "exit:" or "stopped:" line under the command's output, so the last such
+// exit status, signal or "stopped:" line under the command's output, so the last such
 // line (the output may hold one too), else the last line; other tools
 // lead with it.
 func failureLine(tool, output string) string {
@@ -391,7 +391,7 @@ func failureLine(tool, output string) string {
 		return lines[0]
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
-		if l := lines[i]; strings.HasPrefix(l, "exit: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
+		if l := lines[i]; strings.HasPrefix(l, "exit status ") || strings.HasPrefix(l, "signal: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
 			return l
 		}
 	}
