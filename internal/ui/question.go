@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -150,10 +151,14 @@ func (a *App) questionKey(key, text string) {
 	if moveSel(&st.sel, q.ListRows(), st.view.pageItems(q.ListRows()), key) {
 		return
 	}
-	// a digit picks the option directly; yes_no and single answer at once
-	if n := optionDigit(text); n >= 0 && n < len(q.Options) {
+	// a digit picks the option directly; yes_no and single answer at once,
+	// and single's last digit starts the typed answer
+	if n := optionDigit(text); n >= 0 && n < q.ListRows() && (n < len(q.Options) || !q.Multi()) {
 		st.sel = n
-		if !q.Multi() {
+		switch {
+		case n == len(q.Options):
+			st.typing = true
+		case !q.Multi():
 			a.answerQuestion(q.Options[n].Label)
 		}
 		return
@@ -174,11 +179,21 @@ func (a *App) questionKey(key, text string) {
 		// the marks are the answer, so leaving the tab with tab keeps them
 		st.picked[st.sel] = !st.picked[st.sel]
 		st.answered = st.marked(q)
-	case q.Multi() && key == "enter":
-		a.answerQuestion(cmp.Or(st.marked(q), q.Options[st.sel].Label))
-	case key == "enter":
-		a.answerQuestion(q.Options[st.sel].Label)
+	case key == "enter" && st.sel < len(q.Options):
+		ans := q.Options[st.sel].Label
+		if q.Multi() {
+			ans = cmp.Or(st.marked(q), ans)
+		}
+		a.answerQuestion(ans)
 	}
+}
+
+// optionKey is the digit that picks option i, "" past the ninth.
+func optionKey(i int) string {
+	if i < 9 {
+		return strconv.Itoa(i + 1)
+	}
+	return ""
 }
 
 // optionDigit maps a "1".."9" key to its zero-based option index, or -1.
@@ -325,22 +340,23 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
+	// a multi-select is a list whose marks sit in the key column, the other
+	// types buttons keyed by their digit
 	var items []listItem
+	var choices []promptChoice
 	if q.Type != tools.TypeFreeText {
-		items = make([]listItem, 0, len(q.Options)+1)
 		for i, opt := range q.Options {
-			it := listItem{label: opt.Label, desc: opt.Description}
+			label, desc := opt.Label, opt.Description
 			// the model marks its pick in the label; the tool strips it from the answer
-			if l, ok := strings.CutSuffix(it.label, " (Recommended)"); ok {
-				it.label, it.desc = l, strings.TrimSuffix("recommended · "+it.desc, " · ")
+			if l, ok := strings.CutSuffix(label, " (Recommended)"); ok {
+				label, desc = l, strings.TrimSuffix("recommended · "+desc, " · ")
 			}
-			if q.Multi() && st.picked[i] {
-				it.key = "on"
-			}
-			items = append(items, it)
+			items = append(items, listItem{label: label, desc: desc, key: map[bool]string{true: "on"}[st.picked[i]]})
+			choices = append(choices, promptChoice{key: optionKey(i), label: label, desc: desc})
 		}
 		if q.Type != tools.TypeYesNo {
 			items = append(items, listItem{label: "Type your own answer"})
+			choices = append(choices, promptChoice{key: optionKey(len(q.Options)), label: "Type your own answer"})
 		}
 	}
 	askText := st.text.at(func(w int) [][]hostapi.Segment {
@@ -362,7 +378,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	case q.Multi():
 		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, {"enter", "answer"}, {"esc", "dismiss"}})
 	default:
-		hints = slices.Concat(moves, []hintPair{{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick"}, {"enter", "answer"}, {"esc", "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{{"enter", "answer"}, {"esc", "dismiss"}})
 	}
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
@@ -377,9 +393,12 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		st.ask.viewH = max(room-min(len(items), 4), 1)
 		ask := st.ask.window(st.ask.wrap(askText, inner), inner)
 		var opts [][]hostapi.Segment
-		if len(items) > 0 {
-			// a multi-select's "on" sits in the key column at the right edge
+		switch {
+		case q.Multi():
 			opts = listRowsW(items, items, st.sel, &st.view, max(room-len(ask), 1), qp.size.w, inner)
+		case len(choices) > 0:
+			st.view.viewH = max(room-len(ask), 1)
+			opts = choiceView(choices, st.sel, &st.view, inner, level > 1)
 		}
 		views := []viewport{st.ask}
 		if !st.typing { // typing, the page keys scroll only the question

@@ -1317,13 +1317,15 @@ provenance string.
   command?"), and the model's description sits quoted on its own line,
   never in the title. The choices are a vertical list with their keys:
   `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
-  when the request has an always choice, plus a wider read choice `r` and,
+  when the request has an always choice; a command's `<what>` ends in where the
+  rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
   for a trusted project's safe bash command, a `for this project` choice
   `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
-  (permission, trust, plan, an open memory, an overlay's detail view)
-  draws its buttons through one renderer, which puts
+  (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
+  last, an open memory, an overlay's detail view; a multi-select stays a list whose
+  marks read `on` in the key column) draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last

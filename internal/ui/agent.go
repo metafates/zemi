@@ -229,9 +229,10 @@ type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
 // next to what it does, descriptions in one column, the selected one marked
-// like a selected list row. Every row carries the choice's 1-based Hit, so
-// a click answers it. sel of -1 selects none. A label wraps, since the user
-// answers what it says, unless short cuts each choice to one row.
+// like a selected list row; a choice with no key keeps the column blank.
+// Every row carries the choice's 1-based Hit, so a click answers it. A label
+// wraps, since the user answers what it says, unless short cuts each choice
+// to one row.
 func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segment {
 	kw, lw := 0, 0
 	for _, c := range choices {
@@ -244,11 +245,15 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 	var rows [][]hostapi.Segment
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
+		open, shut := "[", "]"
+		if c.key == "" {
+			open, shut = " ", " "
+		}
 		btn, textHL := []hostapi.Segment{
-			{Text: "  [", HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: "]" + pad, HL: "Host:Hint"},
+			{Text: "  " + open, HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: shut + pad, HL: "Host:Hint"},
 		}, "Host:Value"
 		if i == sel { // marked like a selected list row
-			btn, textHL = []hostapi.Segment{{Text: "› [" + c.key + "]" + pad, HL: "Host:Title"}}, "Host:Title"
+			btn, textHL = []hostapi.Segment{{Text: "› " + open + c.key + shut + pad, HL: "Host:Title"}}, "Host:Title"
 		}
 		line := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
 		if c.desc != "" {
@@ -270,6 +275,21 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		}
 	}
 	return rows
+}
+
+// choiceView is choiceRows in v, whose viewH the caller sets, scrolled to
+// keep the selected answer in view.
+func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool) [][]hostapi.Segment {
+	list := v.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, sel, w, short) }, w)
+	v.rows = len(list)
+	top, end := len(list), 0
+	for y, r := range list {
+		if len(r) > 0 && r[0].Hit == sel+1 {
+			top, end = min(top, y), y+1
+		}
+	}
+	v.reveal(top, end)
+	return v.window(list, w)
 }
 
 // hostBoxW is hostBox with its own width cap and a width its rows pad to.

@@ -117,7 +117,8 @@ func TestQuestionAnswers(t *testing.T) {
 		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
 		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
-		{"esc dismisses an open question", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"esc"}, questionResult{nil, false}},
+		{"the typed answer's digit starts it", yes, []string{"2", "no", "enter"}, questionResult{[]string{"no"}, true}},
+		{"esc out of an open question's input dismisses, enter after is safe", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"enter", "esc", "enter"}, questionResult{nil, false}},
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -170,6 +171,14 @@ func TestQuestionBatch(t *testing.T) {
 			}
 		})
 	}
+	// esc out of an open question's input dismisses the whole batch, and the
+	// enter after it reaches only the composer
+	app, _ := bootAgentApp(t, 70, 20)
+	done := askAsync(t, app, qs[0], tools.Question{Type: tools.TypeFreeText, Question: "Name?"})
+	pressKeys(app, "enter", "enter", "esc", "enter")
+	if r := awaitAnswer(t, app, done); r.ok {
+		t.Fatalf("got %q, want the batch dismissed", r.answers)
+	}
 }
 
 // TestQuestionBoxShowsTyping: the typed answer shows with its end in view,
@@ -207,7 +216,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	}
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"› Type your own answer", "█", "esc dismiss", "└"} {
+	for _, want := range []string{"›     Type your own answer", "█", "esc dismiss", "└"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q missing:\n%s", want, frame)
 		}

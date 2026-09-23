@@ -429,6 +429,10 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			return nil, nil, false // the row is an input, not a choice
 		}
 		sel, n := qp.sel()
+		if !qp.reviewing() && !qp.qs[qp.at].Multi() { // buttons: a click answers
+			spans, ok := item(n)
+			return spans, func() { *sel = hit - 1; a.questionKey("enter", "") }, ok
+		}
 		return list(n, sel, func() { a.questionKey("enter", "") })
 	case top == "memReview":
 		mr := a.memReview

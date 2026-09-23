@@ -336,8 +336,8 @@ list that only removes still gets whatever a later release adds. A name nothing 
 fails an agent file and lands in `/errors` for a profile. `tool_search` (past ten MCP tools)
 is added after that filter, so no list can name it.
 
-Asking the user: `question` shows 1-4 questions; the user picks an option (space toggles several
-in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.
+Asking the user: `question` shows 1-4 questions; the user picks an option (by its digit, or
+space toggles several in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.
 Several questions show as tabs (tab/shift+tab, or left/right) ending in a review tab that lists
 every answer; enter on a row there reopens that question, and submit sends them all, unanswered
 ones included. `plan` opens a "Plan" popup with the full plan as scrollable

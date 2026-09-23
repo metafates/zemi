@@ -531,16 +531,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
 			}
 			st.view.viewH = limit
-			list = st.view.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, st.selected, w, level > 1) }, inner)
-			st.view.rows = len(list)
-			sel, end := len(list), 0 // the selected action's rows
-			for y, r := range list {
-				if len(r) > 0 && r[0].Hit == st.selected+1 {
-					sel, end = min(sel, y), y+1
-				}
-			}
-			st.view.reveal(sel, end)
-			list = st.view.window(list, inner)
+			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
 			if len(st.visible) > 0 { // one verb for every button: a changing one shifts the row
 				hints = append(hints, hintPair{"enter", "confirm"})
 			}
