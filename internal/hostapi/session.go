@@ -310,8 +310,8 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			continue // the transcript already has the original
 		}
 		var text strings.Builder
-		// text streamed before a call or more reasoning is a row of its own
-		// above it, as the live turn flushed it
+		// text streamed before a call is a row of its own above it, as the
+		// live turn flushed it; reasoning never cuts a reply (ReasoningDelta)
 		reply := func() {
 			if s := strings.TrimSpace(text.String()); s != "" {
 				tr = append(tr, ChatMessage{Role: "assistant", Text: s})
@@ -326,7 +326,6 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				if strings.TrimSpace(p.Text) == "" {
 					break
 				}
-				reply()
 				if reasoning >= 0 && reasoning == len(tr)-1 {
 					// the live turn shows reasoning with nothing after it as one block
 					tr[reasoning].Text += p.Text

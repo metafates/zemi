@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -1775,5 +1776,58 @@ func TestBtw(t *testing.T) {
 	sawResult := slices.ContainsFunc(p, func(msg fantasy.Message) bool { return msg.Role == fantasy.MessageRoleTool })
 	if !sawResult || !strings.HasSuffix(concatText(p[len(p)-1].Content), "what failed?") || len(m.call.Tools) == 0 {
 		t.Fatalf("request: tool result %v, %d tools, last %+v", sawResult, len(m.call.Tools), p[len(p)-1])
+	}
+}
+
+// TestLateReasoningKeepsReplyWhole: a reasoning chunk a provider sends after
+// the reply started joins the thought above it, live, in a subagent's run and
+// on resume alike, so the reply is never cut after its first word.
+func TestLateReasoningKeepsReplyWhole(t *testing.T) {
+	const want = "reasoning:pondering summary. | :Here's it"
+	rowsOf := func(tr []ChatMessage) string {
+		var out []string
+		for _, m := range tr {
+			out = append(out, m.Kind+":"+m.Text)
+		}
+		return strings.Join(out, " | ")
+	}
+	stream := func(hk agent.StreamHooks) {
+		hk.ReasoningDelta("pondering")
+		hk.TextDelta("Here")
+		hk.ReasoningDelta(" summary.")
+		hk.TextDelta("'s it")
+	}
+	for name, got := range map[string]func() string{
+		"main": func() string {
+			h, _ := newTestHostDB(t)
+			stream(h.streamHooks())
+			h.streamHooks().TurnDone(nil, fantasy.Usage{})
+			return rowsOf(h.Session().Transcript)
+		},
+		"subagent": func() string {
+			h, _ := newTestHostDB(t)
+			run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+			stream(&subagentHooks{h: h, def: builtinAgents[0], run: run})
+			run.mu.Lock()
+			defer run.mu.Unlock()
+			run.flush()
+			return rowsOf(run.tr[1:]) // after the task row
+		},
+		"resume": func() string {
+			m := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+				fantasy.ReasoningPart{Text: "pondering"}, fantasy.TextPart{Text: "Here"},
+				fantasy.ReasoningPart{Text: " summary."}, fantasy.TextPart{Text: "'s it"},
+			}}
+			raw, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, tr := historyFrom([]*store.Message{{Role: "assistant", PartsJSON: string(raw)}})
+			return rowsOf(tr)
+		},
+	} {
+		if g := got(); g != want {
+			t.Errorf("%s: rows %q, want %q", name, g, want)
+		}
 	}
 }

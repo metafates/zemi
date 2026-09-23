@@ -803,11 +803,14 @@ func (h *Host) cutAssistantRows(n int) {
 func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	// a new step thinks: what the last one showed goes above it
+	// a new step thinks: what the last one showed goes above it. Reasoning
+	// after text with no call between is a late chunk of the same thought
+	// (providers send one after the reply starts), so it joins the block
+	// above and the reply is never cut. Only a call closes a thought.
 	// NOTE: reasoning a provider interleaves after a call still open in the
 	// same step draws above that call live and below it on resume; an
 	// ordered live list would fix it.
-	if len(ag.tools) > 0 || strings.TrimSpace(ag.textBuf) != "" {
+	if len(ag.tools) > 0 {
 		s.h.flushOutput(TurnStat{})
 	}
 	ag.beginThinking()

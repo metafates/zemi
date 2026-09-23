@@ -479,11 +479,14 @@ func (s *subagentHooks) TextDelta(text string) {
 }
 
 // ReasoningDelta keeps one collapsed Thought row per stretch of thinking,
-// under what streamed before it.
+// under what streamed before it. A chunk after text with no call between
+// joins the row above, as the main agent's does, so the reply stays whole.
 func (s *subagentHooks) ReasoningDelta(text string) {
 	run := s.run
 	run.mu.Lock()
-	run.flush()
+	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
+		run.flush()
+	}
 	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "reasoning"})
 		s.thinkAt = time.Now()
