@@ -427,8 +427,9 @@ func TestSubagentModelChoice(t *testing.T) {
 	h.Settings.SetQuiet("models.main", "")
 	h.Settings.SetQuiet("models.small", "")
 	tool := h.agentTool()
-	if desc := tool.Info().Description; !strings.Contains(desc, "Configured: myllm/main, myllm/mini") {
-		t.Fatalf("description lacks the model list: %q", desc)
+	// the catalog can be thousands of tokens; a bad id names it instead
+	if desc := tool.Info().Description; strings.Contains(desc, "myllm/main") {
+		t.Fatalf("description lists models: %q", desc)
 	}
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "agent", Input: `{"description":"x","prompt":"p","agent":"explore","model":"other/x"}`})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, `unknown model "other/x"; tiers: small, main, smart; configured models: myllm/main, myllm/mini`) {
