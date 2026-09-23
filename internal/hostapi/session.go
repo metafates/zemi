@@ -202,7 +202,7 @@ func (h *Host) closeSession(open func()) error {
 		ag.mu.Unlock()
 		return errors.New("a turn is running; esc interrupts it")
 	}
-	prev := ag.sessionID
+	prev, reports := ag.sessionID, ag.steering
 	h.recentStale.Store(true)
 	// turnMsgID too: a write arriving late would checkpoint against a
 	// message of the session just closed
@@ -217,6 +217,9 @@ func (h *Host) closeSession(open func()) error {
 		open()
 	}
 	ag.mu.Unlock()
+	// only background reports wait at idle: the user hears of them, as of
+	// one that arrives after the session moved on
+	h.notifyReports(reports)
 	h.refreshPending()
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})

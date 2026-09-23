@@ -498,6 +498,31 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("follow-up with a report = %q", text)
 	}
 
+	// a report a cancel leaves queued is announced at once, and a closing
+	// session tells it whole instead of dropping it
+	notes := func() string {
+		h.evlog.mu.Lock()
+		defer h.evlog.mu.Unlock()
+		var b strings.Builder
+		for _, n := range h.evlog.notes {
+			b.WriteString(n.body + "\n")
+		}
+		return b.String()
+	}
+	scope = claim()
+	send(attachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
+	h.AgentCancel()
+	h.nextTurn(scope)
+	if !strings.Contains(notes(), "Background agent a1 (explore) finished. It goes with your next message.") {
+		t.Fatalf("no waiting notice: %q", notes())
+	}
+	if err := h.closeSession(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(notes(), "Background agent a1 (explore) finished. find \"x\"\nx is in y.go") {
+		t.Fatalf("closing dropped the report: %q", notes())
+	}
+
 	h.AgentCancel() // no runner: must not panic
 }
 

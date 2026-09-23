@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -352,10 +353,9 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			report = strings.TrimSpace("the agent failed: " + h.friendlyError(err) + "\n\n" + text)
 		}
 		status := map[bool]string{true: "finished", false: "failed"}[err == nil]
-		head := reportHead(run.id, def.Name, status)
 		if h.AgentSessionID() != run.parent {
 			// the user moved on; do not drop the report into another conversation
-			h.Notify("info", "Background agent "+run.id, head+" "+description+"\n"+truncRunes(report, 300))
+			h.notifyReport(run.id, def.Name, status, description, report)
 			return
 		}
 		// the whole message is for the model, behind the marker where @ refs
@@ -372,6 +372,23 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 // reportHead is the one line the user sees of a background report.
 func reportHead(id, agent, status string) string {
 	return fmt.Sprintf("Background agent %s (%s) %s.", id, agent, status)
+}
+
+// notifyReport tells the user of a report no conversation will read.
+func (h *Host) notifyReport(id, agent, status, description, report string) {
+	h.Notify("info", "Background agent "+id, reportHead(id, agent, status)+" "+description+"\n"+truncRunes(report, 300))
+}
+
+var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
+
+// notifyReports tells the user of the queued reports a closing session drops.
+func (h *Host) notifyReports(queued []string) {
+	for _, m := range queued {
+		for _, r := range reportBody.FindAllStringSubmatch(m, -1) {
+			desc, _ := strconv.Unquote(r[4])
+			h.notifyReport(r[1], r[2], r[3], desc, r[5])
+		}
+	}
 }
 
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)

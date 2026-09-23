@@ -572,7 +572,13 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text, handoff := "", false
-	if done.ctx.Err() == nil {
+	var waiting []string // reports a cancel left for the next message
+	if done.ctx.Err() != nil {
+		for _, m := range ag.steering {
+			_, tail, _ := strings.Cut(m, attachMarker)
+			waiting = append(waiting, reportHeads(tail)...)
+		}
+	} else {
 		if ag.planApproved != "" {
 			ag.steering = append(ag.steering, ag.planApproved)
 			ag.planApproved, handoff = "", true
@@ -598,6 +604,10 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	done.cancel()
 	switch {
 	case text == "":
+		// its notice row is drawn when the model reads it; say now that it waits
+		if len(waiting) > 0 {
+			h.Notify("info", "Background report waiting", strings.Join(waiting, " ")+" It goes with your next message.")
+		}
 		h.refresh()
 	case handoff:
 		if err := h.sendClaimed(next, text); err != nil {

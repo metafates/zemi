@@ -529,8 +529,10 @@ lua-language-server is installed.
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
   `attachMarker`, which the live transcript and resume cut off; the notice row is drawn from
   the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
-  drained queue, a resume), so it sits under the rows of the turn it arrived in. `/agents` lists the live
-  session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
+  drained queue, a resume), so it sits under the rows of the turn it arrived in. A report an
+  esc leaves queued gets a toast saying it waits for the next message, and one a closing
+  session drops (`/new`, `/resume`) is notified whole, like one for a session that moved on.
+  `/agents` lists the live session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
   named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
   removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
