@@ -211,8 +211,8 @@ func newAgentHost() *agentHost {
 func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
 
 // resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key. default is the implicit shipped shape (nil); planner
-// is the shipped read-only agent. Any other name must be defined.
+// agent.profile key. A defined profile wins; else default is the implicit
+// shipped shape (nil) and planner the shipped read-only agent.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -220,11 +220,11 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
 	}
-	if name == "planner" {
-		return &Profile{Name: "planner", ReadOnly: true}, nil
-	}
 	if p, ok := ag.profiles[name]; ok {
 		return p, nil
+	}
+	if name == "planner" {
+		return &Profile{Name: "planner", ReadOnly: true}, nil
 	}
 	if name != "default" {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
@@ -1762,7 +1762,13 @@ func (h *Host) setWatched(path, val string) error {
 func (h *Host) ProfileNames() []string {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	return append([]string{"default", "planner"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
+	names := []string{"default", "planner"}
+	for _, n := range slices.Sorted(maps.Keys(h.agents.profiles)) {
+		if n != "default" && n != "planner" {
+			names = append(names, n)
+		}
+	}
+	return names
 }
 
 // SetProfile switches the profile the next send runs as (/profile <name>).

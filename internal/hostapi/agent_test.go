@@ -1236,9 +1236,11 @@ func TestActiveProfileKey(t *testing.T) {
 	for _, c := range []struct {
 		name, src string
 		want      string // the resolved profile, "" for the shipped one
+		system    string
 		wantErr   bool
 	}{
 		{name: "unset runs the shipped profile"},
+		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
 		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
 		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
@@ -1246,16 +1248,22 @@ func TestActiveProfileKey(t *testing.T) {
 		h, r := newTestHost(t)
 		runUser(t, r, c.src)
 		p, err := h.resolveProfile("")
-		got := ""
+		got, system := "", ""
 		if p != nil {
-			got = p.Name
+			got, system = p.Name, p.System
 		}
-		if (err != nil) != c.wantErr || got != c.want {
-			t.Errorf("%s: profile %q, err %v", c.name, got, err)
+		if (err != nil) != c.wantErr || got != c.want || system != c.system {
+			t.Errorf("%s: profile %q system %q, err %v", c.name, got, system, err)
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", {})`)
+	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", {}) zemi.agent.profile("default", {})`)
+	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
+		t.Errorf("names %v", names)
+	}
+	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
+		t.Errorf("cycling from planner went to %q", h.Settings.Str("agent.profile"))
+	}
 	h.PurgeGeneration()
 	if _, err := h.resolveProfile("p"); err == nil {
 		t.Error("a purge kept the definition")
