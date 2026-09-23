@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -49,7 +50,8 @@ func TestPlanApproval(t *testing.T) {
 		want  bool
 	}{
 		{"enter approves", "auto", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
-		{"approve outside plan mode", "", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
+		{"a approves outside plan mode", "", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
+		{"down enter opens the changes input", "", []string{"j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
 		{"typing requests changes", "", []string{"e", "u", "s", "e", " ", "s", "q", "l", "enter"}, tools.PlanVerdict{Feedback: "use sql"}, true},
 		{"esc dismisses", "", []string{"esc"}, tools.PlanVerdict{}, false},
 	}
@@ -84,14 +86,13 @@ func TestPlanScroll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := planAsync(t, app, strings.Repeat("# h\n\nline\n", 30), "")
 	app.Frame()
-	pressKeys(app, "j")
-	if app.planAsk.view.top != 1 || app.planAsk.typing {
-		t.Fatalf("j should scroll the plan, got top=%d typing=%v", app.planAsk.view.top, app.planAsk.typing)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift})
+	if app.planAsk.view.top != 1 || app.planAsk.sel != 0 {
+		t.Fatalf("shift+down should scroll the plan, got top=%d sel=%d", app.planAsk.view.top, app.planAsk.sel)
 	}
-	pressKeys(app, "k")
 	pressKeys(app, "enter")
 	if r := awaitPlan(t, app, done); !r.ok || !r.v.Approved {
-		t.Fatalf("j/k scroll then enter should approve, got %+v ok=%v", r.v, r.ok)
+		t.Fatalf("scroll then enter should approve, got %+v ok=%v", r.v, r.ok)
 	}
 }
 

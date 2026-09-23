@@ -1,6 +1,6 @@
 // plan.go is the Go-owned plan approval overlay (DESIGN §6.4, §8): the plan
 // tool shows its plan as a scrollable markdown "Plan" popup the user approves
-// (enter), asks to change (type), or dismisses (esc). The agent to return to
+// (a), asks to change (e, then type), or dismisses (esc). The agent to return to
 // on approval is remembered when the read-only agent started, so approval
 // never asks which agent or mode.
 package ui
@@ -19,6 +19,7 @@ import (
 type planAskPrompt struct {
 	plan   string
 	view   viewport
+	sel    int // the highlighted button: approve, then request changes
 	typing bool
 	input  composerState
 	mode   string // "in <mode> mode" when a mode switch follows approval
@@ -57,13 +58,12 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 	a.bump()
 }
 
-// planKey handles a key on the plan popup: scrolling, approve, open the
-// changes input with e, or dismiss. Only in the changes input do keys type.
+// planKey handles a key on the plan popup: scrolling, the buttons, or
+// dismiss. Only in the changes input do keys type.
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
 	defer a.bump()
-	// the arrows and j/k scroll only while no input takes them
-	if scrollKey(&p.view, key, !p.typing) {
+	if scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
 		return
 	}
 	if p.typing {
@@ -81,8 +81,11 @@ func (a *App) planKey(key, text string) {
 		}
 		return
 	}
+	if key == "enter" {
+		key = []string{"a", "e"}[p.sel]
+	}
 	switch key {
-	case "enter":
+	case "a":
 		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
 	case "e": // edit: every key, j/k included, types from here on
 		p.typing, p.input = true, composerState{}
@@ -96,8 +99,8 @@ func (a *App) planKey(key, text string) {
 // nothing.
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	act := choiceRows([]promptChoice{{key: "enter", label: "Approve"}, {key: "e", label: "Request changes"}}, -1, inner, true)
-	hints := []hintPair{{"enter", "approve"}, {"esc", "dismiss"}}
+	act := choiceRows([]promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}, p.sel, inner, true)
+	hints := []hintPair{{"enter", "confirm"}, {"esc", "dismiss"}}
 	if p.typing {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}, p.input.inputRow(inner)}
 		hints = []hintPair{{"enter", "send changes"}, {"esc", "back"}}
