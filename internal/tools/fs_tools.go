@@ -897,20 +897,33 @@ var globMaxScan = 20_000
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
 func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	pattern, root := str(input["pattern"]), searchRoot(input)
+	pattern, root := strings.TrimPrefix(str(input["pattern"]), "./"), searchRoot(input)
+	// the gate saw only root, so an absolute pattern may not reach past it
+	if filepath.IsAbs(pattern) {
+		abs, _ := filepath.Abs(root)
+		rel, err := filepath.Rel(abs, pattern)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is not under %s: pass its directory as path and a pattern relative to it", pattern, root)), nil
+		}
+		pattern = filepath.ToSlash(rel)
+	}
+	// matched here, not by rg --glob: an rg glob that matches a directory
+	// name ("*") would list .git and gitignored trees
+	match, err := glob.Match(pattern)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
 	var rels []string
 	collect := func(rel string) bool {
-		rels = append(rels, rel)
+		if match(rel) {
+			rels = append(rels, rel)
+		}
 		return len(rels) < globMaxScan
 	}
-	if !ripgrep(ctx, root, collect, "--files", "--glob", pattern) {
+	if !ripgrep(ctx, root, collect, "--files") {
 		rels = rels[:0]
-		match, err := glob.Match(pattern)
-		if err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
 		err = walk(ctx, root, func(path, rel string) error {
-			if match(rel) && !collect(rel) {
+			if !collect(rel) {
 				return filepath.SkipAll
 			}
 			return nil
@@ -991,7 +1004,8 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		args = append(args, "--glob", include)
 	}
 	if file != "" {
-		args = append(args, "--with-filename", "--", file)
+		// no "--": ripgrep appends its exclusions after these args
+		args = append(args, "--with-filename", "./"+file)
 	}
 	ok := ripgrep(ctx, root, func(out string) bool {
 		rel, rest, _ := strings.Cut(out, "\x00")
@@ -1091,7 +1105,11 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	c := proc.CommandContext(cctx, rgBin, append([]string{"--hidden", "--no-require-git", "--glob", "!.git", "--glob", "!.zemi/worktrees"}, args...)...)
+	// the exclusions go last: rg's last matching glob wins. NOTE: a grep
+	// include that matches a directory name ("*") still un-ignores gitignored
+	// trees; rg has no glob for files only
+	args = append(append([]string{"--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
+	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
 	out, err := c.StdoutPipe()
 	if err != nil || proc.Start(c) != nil {

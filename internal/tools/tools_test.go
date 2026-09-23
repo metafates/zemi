@@ -423,10 +423,11 @@ func TestGlobAndGrep(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "sub", "node_modules"), 0o755)
 	os.MkdirAll(filepath.Join(dir, "private"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
 		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
-		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
+		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
 	} {
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
@@ -452,8 +453,14 @@ func TestGlobAndGrep(t *testing.T) {
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
 			{grep, `{"pattern":"sub("}`, "(pattern taken literally)\n", "bad pattern"},
 			{grep, `{"pattern":"sub("}`, "call.go:1: x := sub(1)", "x.go"},
+			{glob, `{"pattern":"./sub/*.go"}`, "sub/x.go", "main.go"},
+			{glob, `{"pattern":"DIR/sub/*.go"}`, "sub/x.go", "main.go"},
+			{glob, `{"pattern":"/etc/*"}`, "pass its directory as path", "hosts"},
+			{glob, `{"pattern":"*"}`, "main.go", ".git/"},
+			{glob, `{"pattern":"**"}`, "sub/x.go", "node_modules"},
+			{glob, `{"pattern":"**/*"}`, "sub/x.go", ".git/"},
 		} {
-			input := strings.Replace(c.input, "{", `{"path":"`+dir+`",`, 1)
+			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", dir), "{", `{"path":"`+dir+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
 				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
 			}
