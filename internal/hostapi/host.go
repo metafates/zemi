@@ -1598,6 +1598,7 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 		}
 	}
 	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
+	h.mcp.stopParked()
 	if err == nil && h.InitError() != "" {
 		err = errors.New(h.InitError())
 	}
@@ -1721,7 +1722,7 @@ func (h *Host) PurgeGeneration() {
 	h.completions.purge()
 	h.luaTools.purge(h.currentGen())
 	h.stops.purge()
-	h.mcp.stopAll()
+	h.mcp.park()
 	h.lsp.stopAll()
 	// An overlay left open would keep drawing with callbacks that are now
 	// dropped (submitOverlay), which reads as a frozen picker.

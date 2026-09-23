@@ -71,6 +71,15 @@ func TestMCPBridge(t *testing.T) {
 	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {
 		t.Fatalf("screenshot = %+v", resp)
 	}
+
+	first, _ := h.mcpServerNamed("fake")
+	readd := lua.BootStep{Name: "mcp", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", first.spec) }}
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s != first || s.currentClient() == nil {
+		t.Fatal("a reload with the same spec restarted the server")
+	}
 }
 
 // TestMCPStoppedStartSilent: a server replaced or reloaded while it starts

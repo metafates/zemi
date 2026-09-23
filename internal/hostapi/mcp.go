@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"slices"
@@ -62,9 +63,12 @@ type mcpServer struct {
 type mcpReg struct {
 	mu      sync.Mutex
 	servers map[string]*mcpServer
+	parked  map[string]*mcpServer // the replaced generation's, until its replay is done
 }
 
-func newMCPReg() *mcpReg { return &mcpReg{servers: map[string]*mcpServer{}} }
+func newMCPReg() *mcpReg {
+	return &mcpReg{servers: map[string]*mcpServer{}, parked: map[string]*mcpServer{}}
+}
 
 // no "_" in server names: mcp_<server>_<tool> must split one way
 var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
@@ -79,14 +83,31 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 	}
 	s := &mcpServer{name: name, spec: spec, status: "starting"}
 	h.mcp.mu.Lock()
-	old := h.mcp.servers[name]
+	old, parked := h.mcp.servers[name], h.mcp.parked[name]
+	delete(h.mcp.parked, name)
+	// a reload that adds a live server again keeps it: a restart would lose
+	// its state (a browser, a connection) and move the tool list
+	if old == nil && parked != nil && parked.keeps(spec) {
+		h.mcp.servers[name] = parked
+		h.mcp.mu.Unlock()
+		return nil
+	}
 	h.mcp.servers[name] = s
 	h.mcp.mu.Unlock()
-	if old != nil {
-		old.stop()
+	for _, o := range []*mcpServer{old, parked} {
+		if o != nil {
+			o.stop()
+		}
 	}
 	h.GoSafe("mcp start "+name, func() { h.startMCP(s) })
 	return nil
+}
+
+// keeps reports whether s can serve spec as it is: a failed server restarts.
+func (s *mcpServer) keeps(spec MCPSpec) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return (s.status == "ready" || s.status == "starting") && reflect.DeepEqual(s.spec, spec)
 }
 
 func (h *Host) startMCP(s *mcpServer) {
@@ -196,16 +217,28 @@ func (s *mcpServer) stop() {
 	}
 }
 
-// stopAll stops every server and forgets them (reload replays the
-// registrations).
-func (r *mcpReg) stopAll() {
+// park sets the servers aside for a reload: addMCP takes back each one the
+// replay adds with the same spec, and stopParked stops the rest.
+func (r *mcpReg) park() {
 	r.mu.Lock()
-	servers := r.servers
+	maps.Copy(r.parked, r.servers)
 	r.servers = map[string]*mcpServer{}
 	r.mu.Unlock()
-	for _, s := range servers {
+}
+
+func (r *mcpReg) stopParked() {
+	r.mu.Lock()
+	parked := r.parked
+	r.parked = map[string]*mcpServer{}
+	r.mu.Unlock()
+	for _, s := range parked {
 		s.stop()
 	}
+}
+
+func (r *mcpReg) stopAll() {
+	r.park()
+	r.stopParked()
 }
 
 func (r *mcpReg) list() []*mcpServer {
