@@ -176,7 +176,8 @@ type agentHost struct {
 	// how many tool calls have run since, and whether a remind is already
 	// queued. Any todos write resets it, so an update (or a tick) stops it.
 	todoInProgress string
-	todoCalls      int
+	todoSteps      int  // main-runner steps since the last todos write
+	todoTouched    bool // a todos call ran this step
 	todoPending    bool
 
 	// planApproved is set when a read-only agent's plan is approved; the ended
@@ -824,23 +825,30 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	ag.mu.Unlock()
 	s.h.agentStream()
 	s.h.recordToolCall(s.h.AgentSessionID(), id, name, diff, ok)
-	if name != tools.ToolTodos {
-		s.h.maybeNagTodos()
+	if name == tools.ToolTodos {
+		ag.mu.Lock()
+		ag.todoTouched = true
+		ag.mu.Unlock()
 	}
 }
 
 // StepDone bills a completed step's usage to the live session tally, so the
-// token count moves during the turn instead of only at TurnDone.
+// token count moves during the turn instead of only at TurnDone, and counts
+// the step for the todo nag unless a todos call ran in it.
 func (s *streamAdapter) StepDone(usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	sid, model := ag.sessionID, ag.turnModel
+	sid, model, touched := ag.sessionID, ag.turnModel, ag.todoTouched
+	ag.todoTouched = false
 	ag.mu.Unlock()
 	if model == "" {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
 	h.bill(sid, model, usage)
+	if !touched {
+		h.maybeNagTodos()
+	}
 }
 
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
@@ -1136,17 +1144,19 @@ func (h *Host) recordToolCall(sid, id, name, diff string, ok bool) {
 	}
 }
 
-// todoNagAfter is how many of the main agent's tool calls an in_progress
-// todo may stay static before zemi nudges the model to tick it (a "force
-// live todos" remind): a step is several reads and an edit, not three calls.
+// todoNagAfter is how many of the main agent's steps an in_progress todo
+// may stay static before zemi nudges the model to tick it (a "force live
+// todos" remind). Steps, not calls: the prompt asks for independent calls
+// in one batch, so one step may be eight reads.
 // NOTE: a fixed knob, not config; every todos write resets the count.
-const todoNagAfter = 8
+const todoNagAfter = 4
 
-// maybeNagTodos nudges a stale in_progress todo, once per todos write: the
-// model is free to forget, and the next write re-arms the remind. It rides
-// the model-only steering channel (attachMarker), so it never reads as the
-// user's own message. Only the main agent's calls during its turn count:
-// a subagent's would arm the nag while nobody can be nudged.
+// maybeNagTodos counts a main-runner step against a stale in_progress
+// todo and nudges once per todos write: the model is free to forget, and
+// the next write re-arms the remind. It rides the model-only steering
+// channel (attachMarker), so it never reads as the user's own message.
+// Only the main agent's steps during its turn count: a subagent's would
+// arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
 	// a call esc ended arms nothing: PrepareStep would persist the nag for
 	// a step that never runs, ahead of the user's next message
@@ -1159,14 +1169,14 @@ func (h *Host) maybeNagTodos() {
 	if !ag.active || ag.todoInProgress == "" || ag.todoPending {
 		return
 	}
-	ag.todoCalls++
-	if ag.todoCalls < todoNagAfter {
+	ag.todoSteps++
+	if ag.todoSteps < todoNagAfter {
 		return
 	}
 	ag.todoPending = true
 	ag.steering = append(ag.steering, modelNote(fmt.Sprintf(
-		"Some todos are still unfinished: %q has been in_progress for %d tool calls. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
-		ag.todoInProgress, ag.todoCalls)))
+		"Some todos are still unfinished: %q has been in_progress for %d steps. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+		ag.todoInProgress, ag.todoSteps)))
 }
 
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A
@@ -1176,7 +1186,7 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	ag.todoInProgress, ag.todoCalls, ag.todoPending = "", 0, false
+	ag.todoInProgress, ag.todoSteps, ag.todoPending = "", 0, false
 	if len(todos) < 2 {
 		return
 	}

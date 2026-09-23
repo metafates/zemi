@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -752,7 +753,8 @@ func TestPipelineTodos(t *testing.T) {
 }
 
 // TestTodoNag: a stale in_progress todo earns a model-only remind after
-// todoNagAfter tool calls, once per engagement; any todos write re-arms it.
+// todoNagAfter steps, once per engagement; any todos write re-arms it, and
+// a step counts once however many calls it batched.
 func TestTodoNag(t *testing.T) {
 	both := []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "in_progress"}}
 	set := func(h *Host, todos []store.Todo) {
@@ -789,6 +791,30 @@ func TestTodoNag(t *testing.T) {
 		engage(h, 5)
 		if got := steering(h); len(got) != 1 {
 			t.Fatalf("nag must not repeat without an update: %q", got)
+		}
+	})
+
+	t.Run("a step counts once whatever its calls, none with a todos call", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, 0)
+		s := h.streamHooks()
+		for i := range todoNagAfter * 2 {
+			s.ToolCallEnd(fmt.Sprint(i), "read", true, "", "")
+		}
+		s.StepDone(fantasy.Usage{})
+		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
+		s.StepDone(fantasy.Usage{})
+		for range todoNagAfter - 2 {
+			s.StepDone(fantasy.Usage{})
+		}
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("a batch of calls is one step: %q", got)
+		}
+		s.StepDone(fantasy.Usage{})
+		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], fmt.Sprintf("for %d steps", todoNagAfter)) {
+			t.Fatalf("steering after the threshold: %q", got)
 		}
 	})
 
