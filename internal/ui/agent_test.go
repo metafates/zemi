@@ -387,8 +387,9 @@ func TestGoldenModelPicker(t *testing.T) {
 func TestGoldenAgentStream(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 
-	host.AppendMessage("user", "why does the build fail?")
-	host.AppendTurnResult("Read the build log and checked the fixture dir.", hostapi.TurnStat{
+	// the user's own text is plain; a reply keeps a generic that is no HTML
+	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
+	host.AppendTurnResult("Read the build log: Vec<String> moved.", hostapi.TurnStat{
 		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
 	})
 	host.SeedStream(hostapi.StreamSnapshot{

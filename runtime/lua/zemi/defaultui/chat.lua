@@ -453,11 +453,14 @@ zemi.ui.widget.add({
           first = false
         end
       elseif m.role == "user" then
-        -- Markdown like replies, keeping the line breaks the user typed.
+        -- plain text: what the user typed is not markdown
         gap("user")
-        for _, segs in ipairs(zemi.ui.markdown(m.text, width - 2)) do
+        for _, segs in ipairs(zemi.ui.wrap(m.text, width - 2)) do
           local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
-          for _, sg in ipairs(segs) do row[#row + 1] = sg end
+          for _, sg in ipairs(segs) do
+            sg.hl = "Normal"
+            row[#row + 1] = sg
+          end
           lines[#lines + 1] = row
         end
       else
@@ -551,13 +554,16 @@ zemi.ui.widget.add({
       for _, q in ipairs(queued) do
         gap("queued")
         local first = true
-        for _, segs in ipairs(zemi.ui.markdown(q, width - 2)) do
+        for _, segs in ipairs(zemi.ui.wrap(q, width - 2)) do
           local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
           if first then
             row[#row + 1] = { text = " queued ", hl = "Queued", copy = false }
             first = false
           end
-          for _, sg in ipairs(segs) do row[#row + 1] = sg end
+          for _, sg in ipairs(segs) do
+            sg.hl = "Normal"
+            row[#row + 1] = sg
+          end
           lines[#lines + 1] = row
         end
       end

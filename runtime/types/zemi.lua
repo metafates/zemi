@@ -1051,6 +1051,13 @@ function zemi.ui.width(text) end
 ---@return zemi.Line[]
 function zemi.ui.markdown(text, width) end
 
+--- Wrap plain text into widget rows of at most `width` cells, a new row at
+--- each line break; a row that wrapped ends in `soft_wrap`.
+---@param text string
+---@param width integer
+---@return zemi.Line[]
+function zemi.ui.wrap(text, width) end
+
 --- The drawn screen as plain text, one line per row, styling and trailing
 --- padding dropped. This is how zemi reads its own UI instead of asking what
 --- the user sees.

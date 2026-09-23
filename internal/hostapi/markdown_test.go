@@ -243,3 +243,16 @@ func TestMarkdownHexColors(t *testing.T) {
 		}
 	}
 }
+
+func TestEscapeHTML(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"a Vec<String> and </div>", "a Vec\\<String> and \\</div>"},
+		{"1 < 2, <https://x.dev> and \\<b>", "1 < 2, <https://x.dev> and \\<b>"},
+		{"`Vec<T>` or ``a`<T>``", "`Vec<T>` or ``a`<T>``"},
+		{"```go\nx := []Vec<T>{}\n```\nVec<T>", "```go\nx := []Vec<T>{}\n```\nVec\\<T>"},
+	} {
+		if got := escapeHTML(c.in); got != c.want {
+			t.Errorf("escapeHTML(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

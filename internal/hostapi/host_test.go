@@ -74,7 +74,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.69.1", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.70.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -98,7 +98,7 @@ func TestNamespaceVersion(t *testing.T) {
 		for _, fn in ipairs({ "add", "set", "get", "list" }) do
 			assert(type(zemi.ui.theme[fn]) == "function", "zemi.ui.theme." .. fn .. " missing")
 		end
-		assert(type(zemi.ui.markdown) == "function", "zemi.ui.markdown missing")
+		assert(type(zemi.ui.markdown) == "function" and type(zemi.ui.wrap) == "function", "zemi.ui.markdown or wrap missing")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width missing or not in cells")
 		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
 		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")

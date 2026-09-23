@@ -126,7 +126,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 	}
 	// a tab occupies no cell once drawn into the buffer, so code would lose
 	// its indentation; a marker may only ever come from markDecorations
-	text = sanitize.String(strings.NewReplacer("\t", "    ", markOpen, "", markClose, "").Replace(text))
+	text = escapeHTML(sanitize.String(strings.NewReplacer("\t", "    ", markOpen, "", markClose, "").Replace(text)))
 	var lines [][]Segment
 	for i, chunk := range splitTables(text) {
 		var rows [][]Segment
@@ -458,6 +458,84 @@ func swatchColors(row []Segment) []Segment {
 		}
 	}
 	return out
+}
+
+// WrapText wraps plain text into rows of at most w cells, one logical line
+// per line break, sanitized like markdown (zemi.ui.wrap).
+func WrapText(text string, w int) [][]Segment {
+	var rows [][]Segment
+	for line := range strings.SplitSeq(text, "\n") {
+		rows = append(rows, WrapSegs([]Segment{{Text: sanitize.String(line)}}, w)...)
+	}
+	return rows
+}
+
+// escapeHTML backslash-escapes a '<' that would open raw HTML outside code:
+// glamour drops inline HTML, so "Vec<String>" in prose would lose "<String>".
+// An autolink (<https://...>) stays a link.
+func escapeHTML(s string) string {
+	if !strings.Contains(s, "<") {
+		return s
+	}
+	var b strings.Builder
+	fence := ""
+	for line := range strings.SplitAfterSeq(s, "\n") {
+		f := fenceRun(strings.TrimLeft(line, " "))
+		switch {
+		case fence == "" && f != "":
+			fence = f
+		case fence != "" && strings.HasPrefix(f, fence):
+			fence = ""
+		case fence == "":
+			line = escapeLine(line)
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+func escapeLine(line string) string {
+	if !strings.Contains(line, "<") {
+		return line
+	}
+	var b strings.Builder
+	tick := 0 // the backtick run that opened a code span on this line
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if c == '`' {
+			n := len(line[i:]) - len(strings.TrimLeft(line[i:], "`"))
+			if tick == 0 {
+				tick = n
+			} else if n == tick {
+				tick = 0
+			}
+			b.WriteString(line[i : i+n])
+			i += n - 1
+			continue
+		}
+		if c == '<' && tick == 0 && i+1 < len(line) && tagStart(line[i+1]) &&
+			(i == 0 || line[i-1] != '\\') && !autolink.MatchString(line[i:]) {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+var autolink = regexp.MustCompile(`^<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>`)
+
+func tagStart(c byte) bool {
+	return c == '/' || c == '!' || c == '?' || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+}
+
+// fenceRun is the ``` or ~~~ run a code fence line starts with, or "".
+func fenceRun(t string) string {
+	for _, c := range []string{"`", "~"} {
+		if run := t[:len(t)-len(strings.TrimLeft(t, c))]; len(run) >= 3 {
+			return run
+		}
+	}
+	return ""
 }
 
 // WrapSegs word-wraps one logical line into rows of at most w cells,

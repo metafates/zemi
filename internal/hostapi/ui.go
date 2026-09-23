@@ -355,31 +355,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
-		text := L.CheckString(1)
-		width := L.CheckInt(2)
-		lines := h.Markdown(text, width)
-		// NewTable reserves 32 array and 32 hash slots, which a long chat
-		// pays for once per segment
-		out := L.CreateTable(len(lines), 0)
-		for _, line := range lines {
-			row := L.CreateTable(len(line), 0)
-			for _, s := range line {
-				seg := L.CreateTable(0, 4)
-				seg.RawSetString("text", glua.LString(s.Text))
-				if s.HL != "" {
-					seg.RawSetString("hl", glua.LString(s.HL))
-				}
-				if s.NoCopy {
-					seg.RawSetString("copy", glua.LFalse)
-				}
-				if s.Soft {
-					seg.RawSetString("soft_wrap", glua.LTrue)
-				}
-				row.Append(seg)
-			}
-			out.Append(row)
-		}
-		L.Push(out)
+		L.Push(linesTable(L, h.Markdown(L.CheckString(1), L.CheckInt(2))))
+		return 1
+	}))
+	tb.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
+		L.Push(linesTable(L, WrapText(L.CheckString(1), L.CheckInt(2))))
 		return 1
 	}))
 
@@ -706,4 +686,30 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 // ActiveThemeName returns the configured theme.
 func (h *Host) ActiveThemeName() string {
 	return cmp.Or(h.Settings.Str("ui.theme"), "default")
+}
+
+// linesTable is segment rows as zemi.Line tables.
+func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {
+	// NewTable reserves 32 array and 32 hash slots, which a long chat
+	// pays for once per segment
+	out := L.CreateTable(len(lines), 0)
+	for _, line := range lines {
+		row := L.CreateTable(len(line), 0)
+		for _, s := range line {
+			seg := L.CreateTable(0, 4)
+			seg.RawSetString("text", glua.LString(s.Text))
+			if s.HL != "" {
+				seg.RawSetString("hl", glua.LString(s.HL))
+			}
+			if s.NoCopy {
+				seg.RawSetString("copy", glua.LFalse)
+			}
+			if s.Soft {
+				seg.RawSetString("soft_wrap", glua.LTrue)
+			}
+			row.Append(seg)
+		}
+		out.Append(row)
+	}
+	return out
 }
