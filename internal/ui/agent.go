@@ -559,9 +559,12 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	tail = append(tail, list...)
 	// panels span the box, and the box fits its content (at least 56 wide):
 	// a padded panel counts by its text, other rows whole as hostBoxW counts them
-	fit := 56
+	fit, bar := 56, 0
+	if len(content) > pa.view.viewH {
+		bar = 1 // a scrolled panel's text keeps its cells beside the bar
+	}
 	for _, r := range content {
-		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
+		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
 	}
 	for _, r := range slices.Concat(banner, head, tail, [][]hostapi.Segment{hint}) {
 		fit = max(fit, segsWidth(r))

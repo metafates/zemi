@@ -324,6 +324,8 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"EOT ", "enter confirm · esc deny"}},
 		{"always label wraps", 70, 30, hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/ and below"},
 			[]string{"session", "esc deny"}},
+		{"scrolled preview keeps its last column", 80, 16, hostapi.PermRequest{Subject: "tool.bash", Arg: strings.Repeat("abcdefghij", 60)},
+			[]string{strings.Repeat("abcdefghij", 6) + "abcdefghi█"}},
 		{"runs outside sandbox", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "git push origin main", Outside: true, Reason: "run outside the sandbox"},
 			[]string{"Runs outside the sandbox", "Run this command outside the sandbox?"}},
 	}
