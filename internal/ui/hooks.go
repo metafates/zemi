@@ -78,6 +78,7 @@ type trustPrompt struct {
 	state     string // the current decision, shown by /trust; "" at boot
 	answer    chan string
 	opened    time.Time // a reload can open it mid-typing (permGrace)
+	sel       int       // the highlighted answer, Later at first
 	view      viewport  // what trusting means
 	size      boxSize
 }
@@ -89,7 +90,7 @@ type trustPrompt struct {
 func (a *App) AskTrust(root, cwd, state string) string {
 	ch := make(chan string, 1)
 	a.await(func() tea.Cmd {
-		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now()}
+		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
 		return nil
 	})
 	return <-ch
@@ -109,14 +110,14 @@ func (a *App) answerTrust(answer string) {
 var trustAnswers = []string{"trust", "untrust", "later"}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
-// styles, with no Lua text inside. It has no cursor: trusting runs project
-// code, so it takes y or a click on its row. On a short screen what
-// trusting means scrolls, so the answers stay visible.
+// styles, with no Lua text inside. The cursor starts on Later, so an enter
+// typed by habit trusts nothing. On a short screen what trusting means
+// scrolls, so the answers stay visible.
 func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	width := min(boxInner(w), 64)
 	saved, what := "saved for this project", "project"
 	if hostapi.TrustUnsaved(tp.root) {
-		saved, what = "this run only", "directory"
+		saved, what = "kept for this run only", "directory"
 	}
 	explain := func(width int) [][]hostapi.Segment {
 		// a long path wraps at its slashes: the user trusts every character
@@ -137,7 +138,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 			rows = append(rows, wrapText("Covers the whole project, not only "+rel+".", "Host:Hint", width)...)
 		}
 		if tp.state != "" {
-			rows = append(rows, wrapText("Currently "+tp.state+".", "Host:Hint", width)...)
+			rows = append(append(rows, nil), wrapText("Currently "+tp.state+".", "Host:Hint", width)...)
 		}
 		rows = append(rows, nil)
 		rows = append(rows, wrapText("Trusting lets this "+what+" run code and steer zemi:", "", width)...)
@@ -149,23 +150,23 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		} {
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: "Host:Value"}}, width)...)
 		}
-		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads.", "Host:Hint", width)...)
+		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads. Either answer is "+saved+".", "Host:Hint", width)...)
 	}
-	later, laterDesc := "Later", "ask again next start"
+	laterDesc := "ask again next start"
 	if tp.state != "" {
-		later, laterDesc = "Keep as is", ""
+		laterDesc = "stays " + tp.state
 	}
 	choices := []promptChoice{
-		{key: "y", label: "Trust", desc: saved},
-		{key: "n", label: "Don't trust", desc: saved},
-		{key: "esc", label: later, desc: laterDesc},
+		{key: "y", label: "Trust"},
+		{key: "n", label: "Don't trust"},
+		{key: "l", label: "Later", desc: laterDesc},
 	}
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
-		list := choiceRows(choices, -1, width, level > 1)
+		list := choiceRows(choices, tp.sel, width, level > 1)
 		tp.view.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
 		text := tp.view.window(tp.view.wrap(explain, width), width)
-		hintRow := hint(width, slices.Concat(scrolls(tp.view), []hintPair{{"esc", strings.ToLower(later)}})...)
+		hintRow := hint(width, slices.Concat([]hintPair{{"enter", "confirm"}}, scrolls(tp.view), []hintPair{{"esc", "later"}})...)
 		return stack(tight, text, list, [][]hostapi.Segment{hintRow}), tp.view.viewH < min(tp.view.rows, 3)
 	})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)

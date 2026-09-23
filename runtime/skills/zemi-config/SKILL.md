@@ -388,8 +388,8 @@ from `.agents/` and `.claude/` at the repository root, so files written for anot
 harness load unchanged; the nearest `.zemi` wins a name clash.
 
 It loads only in a project the user trusts. The first start in a repository asks once
-(`y` trust, `n` don't trust, both saved, or a click on the row; esc, enter or ctrl+c: not now,
-asked again next start),
+(`y` trust, `n` don't trust, both saved; `l` later, esc or ctrl+c: asked again next start;
+the cursor starts on Later, so enter alone trusts nothing),
 and `/trust` asks again any time. The decision covers the whole repository, its linked
 worktrees included, and later changes to `.zemi/` do not ask again. Project code
 cannot register providers, MCP or LSP servers, allow rules, permission modes,

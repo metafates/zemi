@@ -548,8 +548,8 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	}
 }
 
-// TestTrustAnswers: enter and ctrl+c are the safe not now; trusting takes
-// an explicit y or a click on its row.
+// TestTrustAnswers: the cursor starts on Later, so enter, esc and ctrl+c
+// trust nothing; trusting takes y, moving to its row or a click on it.
 func TestTrustAnswers(t *testing.T) {
 	click := func(label string) func(*App) {
 		return func(app *App) {
@@ -567,6 +567,7 @@ func TestTrustAnswers(t *testing.T) {
 		{"n", "untrust", key(tea.KeyPressMsg{Code: 'n', Text: "n"})},
 		{"esc", "later", key(tea.KeyPressMsg{Code: tea.KeyEscape})},
 		{"enter", "later", key(tea.KeyPressMsg{Code: tea.KeyEnter})},
+		{"up enter", "untrust", func(app *App) { pressKeys(app, "k", "enter") }},
 		{"ctrl+c", "later", key(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})},
 		{"d", "", key(tea.KeyPressMsg{Code: 'd', Text: "d"})},
 		{"click on Trust", "trust", click("Trust  ")},

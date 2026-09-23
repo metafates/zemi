@@ -85,17 +85,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.program != nil && a.now().Sub(a.trust.opened) < permGrace {
 			return nil
 		}
-		if scrollKey(&a.trust.view, key, true) {
+		tp := a.trust
+		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(trustAnswers), len(trustAnswers), key) {
 			return nil
 		}
-		// enter is "later": trusting runs project code, so it takes an explicit y
 		switch key {
 		case "y":
 			a.answerTrust("trust")
 		case "n":
 			a.answerTrust("untrust")
-		case "esc", "enter":
+		case "l", "esc":
 			a.answerTrust("later")
+		case "enter":
+			a.answerTrust(trustAnswers[tp.sel])
 		}
 	case "perm":
 		pa := a.permAsk
