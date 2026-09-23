@@ -27,9 +27,9 @@ func waitIdle(t *testing.T, h *Host) {
 	})
 }
 
-// TestResumeDrawsLiveRows: a turn that thinks, calls a tool, thinks again
-// and answers keeps its rows in the order they streamed, and a resume
-// rebuilds the same rows from the store.
+// TestResumeDrawsLiveRows: a turn that thinks, says what it will do, calls
+// a tool, thinks again and answers keeps its rows in the order they
+// streamed, and a resume rebuilds the same rows from the store.
 func TestResumeDrawsLiveRows(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	think := func(text string) []fantasy.StreamPart {
@@ -44,7 +44,8 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 			if toolResult {
 				return append(think("now answer"), textParts("done")...)
 			}
-			return append(think("look first"), toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
+			step := append(think("look first"), textParts("I will look first.")[:3]...)
+			return append(step, toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -61,6 +62,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 	live := shape(h.Session().Transcript)
 	want := `user/   "go"
 assistant/reasoning   "look first"
+assistant/   "I will look first."
 assistant/tool glob err "*.go"
 assistant/reasoning   "now answer"
 assistant/   "done"

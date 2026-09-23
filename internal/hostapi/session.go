@@ -298,21 +298,32 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			continue // the transcript already has the original
 		}
 		var text strings.Builder
+		// text streamed before a call or more reasoning is a row of its own
+		// above it, as the live turn flushed it
+		reply := func() {
+			if s := strings.TrimSpace(text.String()); s != "" {
+				tr = append(tr, ChatMessage{Role: "assistant", Text: s})
+				text.Reset()
+			}
+		}
 		for _, part := range m.Content {
 			switch p := part.(type) {
 			case fantasy.TextPart:
 				text.WriteString(p.Text)
 			case fantasy.ReasoningPart:
-				switch {
-				case strings.TrimSpace(p.Text) == "":
-				case reasoning >= 0 && reasoning == len(tr)-1:
+				if strings.TrimSpace(p.Text) == "" {
+					break
+				}
+				reply()
+				if reasoning >= 0 && reasoning == len(tr)-1 {
 					// the live turn shows reasoning with nothing after it as one block
 					tr[reasoning].Text += p.Text
-				default:
+				} else {
 					reasoning = len(tr)
 					tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text, Stat: &TurnStat{}})
 				}
 			case fantasy.ToolCallPart:
+				reply()
 				toolRow[p.ToolCallID] = len(tr)
 				tc := calls[p.ToolCallID]
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok", Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
