@@ -552,7 +552,7 @@ zemi.ui.widget.add({
           if done == hidden then
             lines[#lines + 1] = { { text = "  ✓ ", hl = "TodoDone", copy = false }, { text = done .. " done", hl = "Comment" } }
           else
-            lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = fmt.count(hidden, "more line", "more lines"), hl = "Comment" } }
+            lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = fmt.count(hidden, "more todo", "more todos"), hl = "Comment" } }
           end
           break
         end
