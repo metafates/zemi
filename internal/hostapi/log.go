@@ -99,11 +99,11 @@ func (h *Host) OpenMessages() error {
 	for _, e := range slices.Backward(h.messages()) {
 		b.WriteString(e.at.Format("15:04:05") + " " + e.source + "  " + e.text + "\n")
 	}
-	body := strings.TrimRight(b.String(), "\n")
-	if body == "" {
-		body = "Nothing printed since zemi started."
+	o := Overlay{ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin, Body: strings.TrimRight(b.String(), "\n")}
+	if o.Body == "" {
+		o.Empty = "Nothing printed since zemi started."
 	}
-	ui.OpenOverlay(Overlay{ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin, Body: body})
+	ui.OpenOverlay(o)
 	return nil
 }
 

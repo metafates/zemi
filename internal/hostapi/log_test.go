@@ -19,12 +19,19 @@ func TestMessagesRing(t *testing.T) {
 		assert(rows[1].message == "second note", rows[1].message)
 		assert(rows[1].source == "user warn", rows[1].source)
 	`)
+	// nothing printed reads as an empty list, which offers no copy
+	h2, _ := newTestHost(t)
+	ui2 := &fakeUI{}
+	h2.SetUIHooks(ui2)
+	if err := h2.OpenMessages(); err != nil || ui2.opened[0].Body != "" || ui2.opened[0].Empty == "" {
+		t.Fatalf("empty messages: %v %+v", err, ui2.opened)
+	}
 	h.RecordMessage("user", "printed line")
 	if err := h.OpenMessages(); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("messages: %v %+v", err, ui.opened)
 	}
 	body := ui.opened[0].Body
-	if !strings.Contains(body, "printed line") || strings.Index(body, "printed line") > strings.Index(body, "first note") {
+	if ui.opened[0].Empty != "" || !strings.Contains(body, "printed line") || strings.Index(body, "printed line") > strings.Index(body, "first note") {
 		t.Fatalf("body is not newest first:\n%s", body)
 	}
 }
