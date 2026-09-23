@@ -39,9 +39,10 @@ type Model struct {
 	CostPer1MIn   float64 `json:"cost_per_1m_in,omitempty"`  // USD per million prompt tokens
 	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
 	// prompt cache prices, billed apart from the prompt tokens
-	CostPer1MInCached  float64 `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
-	CostPer1MOutCached float64 `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
-	TextOnly           bool    `json:"text_only,omitempty"`              // the model refuses image parts
+	CostPer1MInCached  float64  `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
+	CostPer1MOutCached float64  `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
+	TextOnly           bool     `json:"text_only,omitempty"`              // the model refuses image parts
+	Efforts            []string `json:"-"`                                // a builtin's reasoning levels; empty takes no effort
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.
@@ -109,8 +110,7 @@ var builtinKinds = map[catwalk.Type]string{
 // first, then the rest), which is the order Default prefers. Catalog
 // default_headers are dropped: they attribute requests to crush, and zemi
 // sends no header the user did not write. NOTE: model options
-// (temperature, top_p) and reasoning levels are not carried; /effort sends
-// its level to every model.
+// (temperature, top_p) are not carried.
 func Builtin(getenv func(string) string) Catalog {
 	return builtin(embedded.GetAll(), getenv)
 }
@@ -144,7 +144,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		for _, m := range p.Models {
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
 				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
-				TextOnly: !m.SupportsImages})
+				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels})
 		}
 		c.Specs = append(c.Specs, spec)
 		c.Keys[spec.ID] = key
@@ -328,16 +328,23 @@ var Efforts = []string{"low", "medium", "high"}
 
 // CallOptions are the provider options a turn runs with: the reasoning
 // effort and the spec's extra body fields, in the model's provider kind;
-// nil when neither applies to the kind. A model that does not support an
-// option fails its turn with the provider's error.
+// nil when neither applies to the kind. A catalog model gets the nearest
+// level it lists, or none; any other model that does not support an option
+// fails its turn with the provider's error.
 func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
-	providerID, _, _ := strings.Cut(modelID, "/")
+	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
 	}
+	if !slices.Contains(Efforts, effort) {
+		effort = ""
+	}
+	if i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model }); effort != "" && spec.Builtin && i >= 0 {
+		effort = nearestEffort(spec.Models[i].Efforts, effort)
+	}
 	var re *openai.ReasoningEffort
-	if slices.Contains(Efforts, effort) {
+	if effort != "" {
 		e := openai.ReasoningEffort(effort)
 		re = &e
 	}
@@ -365,6 +372,22 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 		}
 	}
 	return nil
+}
+
+// effortRank orders the catalog's reasoning levels.
+var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// nearestEffort is the listed level closest to effort, the lower on a tie
+// (lists are ascending); "" when the model lists none.
+func nearestEffort(levels []string, effort string) string {
+	if len(levels) == 0 {
+		return ""
+	}
+	dist := func(l string) int {
+		d := slices.Index(effortRank, l) - slices.Index(effortRank, effort)
+		return max(d, -d)
+	}
+	return slices.MinFunc(levels, func(a, b string) int { return dist(a) - dist(b) })
 }
 
 // Resolve turns "provider/model" into a fantasy language model; a missing

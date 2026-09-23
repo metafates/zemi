@@ -53,6 +53,7 @@ Tiers: `models.main` runs everything; `models.small` (titles, compaction summari
 
 - `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile` (zemi-customize); `/profile` or ctrl+t switches.
 - `agent.effort`: `low`, `medium`, `high`, or empty for the provider default; `/effort`.
+  A builtin catalog model gets the nearest level it lists, or none when it lists none.
 - `reflector.model`, `compact.model`: a model for those jobs instead of the small tier.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (zemi-learning).

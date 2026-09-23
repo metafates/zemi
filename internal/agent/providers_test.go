@@ -10,11 +10,13 @@ import (
 	"testing"
 
 	"charm.land/catwalk/pkg/catwalk"
+	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openaicompat"
 )
 
 func TestCallOptions(t *testing.T) {
 	r := NewRegistry()
+	r.Reset(Catalog{Specs: []Spec{{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{{ID: "haiku"}, {ID: "pro", Efforts: []string{"low", "high"}}}}}})
 	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
@@ -24,15 +26,18 @@ func TestCallOptions(t *testing.T) {
 		t.Fatalf("openai_compat without base_url: %v", err)
 	}
 	for _, c := range []struct {
-		model, effort, key string
+		model, effort, key, sent string
 	}{
-		{"a/claude", "high", "anthropic"},
-		{"o/gpt", "low", "openai"},
-		{"c/deepseek", "medium", "openai-compat"},
-		{"g/gemini-3-pro", "high", "google"},
-		{"a/claude", "", ""},
-		{"a/claude", "extreme", ""},
-		{"missing/x", "high", ""},
+		{"a/claude", "high", "anthropic", "high"},
+		{"o/gpt", "low", "openai", ""},
+		{"c/deepseek", "medium", "openai-compat", ""},
+		{"g/gemini-3-pro", "high", "google", ""},
+		{"a/claude", "", "", ""},
+		{"a/claude", "extreme", "", ""},
+		{"missing/x", "high", "", ""},
+		{"b/haiku", "high", "", ""},
+		{"b/pro", "medium", "anthropic", "low"},
+		{"b/unlisted", "medium", "anthropic", "medium"},
 	} {
 		opts := r.CallOptions(c.model, c.effort)
 		if c.key == "" {
@@ -43,6 +48,9 @@ func TestCallOptions(t *testing.T) {
 		}
 		if _, ok := opts[c.key]; !ok || len(opts) != 1 {
 			t.Fatalf("%s %q: options %v, want key %s", c.model, c.effort, opts, c.key)
+		}
+		if o, ok := opts[c.key].(*anthropic.ProviderOptions); ok && string(*o.Effort) != c.sent {
+			t.Fatalf("%s %q: sent %q, want %q", c.model, c.effort, *o.Effort, c.sent)
 		}
 	}
 }
