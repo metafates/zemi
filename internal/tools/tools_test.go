@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -782,6 +783,7 @@ func TestFitImage(t *testing.T) {
 		{"a long side is shrunk", "image/png", encode(3000, 150), "2000x100 image/png"},
 		{"garbage", "image/png", []byte("not a png"), "not a readable image"},
 		{"a big webp", "image/webp", make([]byte, imageMaxBytes+1), "over the 3750000 byte limit"},
+		{"too many pixels to decode", "image/png", encode(7000, 6000), "over the 40 megapixels"},
 	} {
 		got := ""
 		data, mt, err := FitImage(c.data, c.mt)
@@ -793,6 +795,12 @@ func TestFitImage(t *testing.T) {
 		if !strings.Contains(got, c.want) {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
+	}
+	img := image.NewNRGBA(image.Rect(3, 0, 5, 1))
+	img.Set(3, 0, color.NRGBA{255, 0, 0, 255})
+	img.Set(4, 0, color.NRGBA{0, 0, 255, 255})
+	if got := boxScale(img, 1, 1).RGBAAt(0, 0); got != (color.RGBA{127, 0, 127, 255}) {
+		t.Errorf("boxScale averaged red and blue into %v", got)
 	}
 }
 

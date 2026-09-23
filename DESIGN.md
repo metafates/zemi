@@ -66,10 +66,11 @@ update, the user's own `zemi.provider.add` on top. Not taken:
 `fsnotify` (config reload is a one-second fingerprint walk of the config
 trees). Ripgrep is
 not a dependency either: `glob` and `grep` exec whatever
-`rg` `exec.LookPath` found at init, passing the pattern as `--regexp`
-and globs as `--glob` so neither can be read as a flag, and fall back to
-a Go walker with the same glob rules when `rg` is missing (Go-side and
-cancellable either way).
+`rg` `exec.LookPath` found at init and fall back to a Go walker with the
+same rules when `rg` is missing (Go-side and cancellable either way).
+`glob` lists `rg --files` and matches the pattern in Go; `grep` passes
+its pattern as `--regexp` and its include as `--glob`, so neither can be
+read as a flag.
 
 ## 3. High-level architecture
 

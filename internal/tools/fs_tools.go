@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/color"
+	"image/draw"
 	_ "image/gif" // FitImage decodes the gifs read and attach send
 	"image/jpeg"
 	"image/png"
@@ -201,6 +201,9 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 const (
 	imageMaxSide  = 2000
 	imageMaxBytes = 3_750_000
+	// NOTE: a decode holds 4 to 8 bytes a pixel, and a 1 MB PNG can declare
+	// 30000x30000; past this ceiling an image is refused, not tiled.
+	imageMaxPixels = 40_000_000
 )
 
 // FitImage returns an image a provider takes: as it is when it fits, else
@@ -224,6 +227,9 @@ func FitImage(data []byte, mt string) ([]byte, string, error) {
 	if long <= imageMaxSide && len(data) <= imageMaxBytes {
 		return data, mt, nil
 	}
+	if cfg.Width*cfg.Height > imageMaxPixels {
+		return nil, "", fmt.Errorf("a %dx%d image, over the %d megapixels zemi decodes", cfg.Width, cfg.Height, imageMaxPixels/1_000_000)
+	}
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", fmt.Errorf("not a readable image: %w", err)
@@ -244,24 +250,29 @@ func FitImage(data []byte, mt string) ([]byte, string, error) {
 	return nil, "", tooBig
 }
 
-// boxScale averages each w x h cell of src into one pixel.
-// NOTE: At per pixel: a 5K screenshot takes about half a second; a fast path
-// for *image.RGBA is the upgrade.
-func boxScale(src image.Image, w, h int) *image.RGBA64 {
+// boxScale averages each cell of src into one pixel of a w x h image.
+func boxScale(src image.Image, w, h int) *image.RGBA {
 	b := src.Bounds()
-	dst := image.NewRGBA64(image.Rect(0, 0, w, h))
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	// one band of source rows at a time goes through draw's fast paths
+	// (RGBA, NRGBA, YCbCr, Gray), so a screenshot never calls At per pixel
+	band := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()/h+1))
 	for y := range h {
-		y0, y1 := b.Min.Y+y*b.Dy()/h, b.Min.Y+max((y+1)*b.Dy()/h, y*b.Dy()/h+1)
+		y0, y1 := y*b.Dy()/h, max((y+1)*b.Dy()/h, y*b.Dy()/h+1)
+		draw.Draw(band, image.Rect(0, 0, b.Dx(), y1-y0), src, image.Pt(b.Min.X, b.Min.Y+y0), draw.Src)
 		for x := range w {
-			x0, x1 := b.Min.X+x*b.Dx()/w, b.Min.X+max((x+1)*b.Dx()/w, x*b.Dx()/w+1)
-			var r, g, bl, a, n uint64
-			for yy := y0; yy < y1; yy++ {
-				for xx := x0; xx < x1; xx++ {
-					cr, cg, cb, ca := src.At(xx, yy).RGBA()
-					r, g, bl, a, n = r+uint64(cr), g+uint64(cg), bl+uint64(cb), a+uint64(ca), n+1
+			x0, x1 := x*b.Dx()/w, max((x+1)*b.Dx()/w, x*b.Dx()/w+1)
+			var sum [4]int
+			for yy := range y1 - y0 {
+				row := band.Pix[yy*band.Stride+x0*4 : yy*band.Stride+x1*4]
+				for i := 0; i < len(row); i += 4 {
+					sum[0], sum[1], sum[2], sum[3] = sum[0]+int(row[i]), sum[1]+int(row[i+1]), sum[2]+int(row[i+2]), sum[3]+int(row[i+3])
 				}
 			}
-			dst.SetRGBA64(x, y, color.RGBA64{uint16(r / n), uint16(g / n), uint16(bl / n), uint16(a / n)})
+			n, o := (x1-x0)*(y1-y0), dst.PixOffset(x, y)
+			for c := range 4 {
+				dst.Pix[o+c] = uint8(sum[c] / n)
+			}
 		}
 	}
 	return dst
@@ -989,6 +1000,9 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	// matched here, not by rg --glob: an rg glob that matches a directory
 	// name ("*") would list .git and gitignored trees
+	// NOTE: globMaxScan counts matches, so a narrow pattern lists the whole
+	// tree; a pattern that cannot name a directory (one ending in an
+	// extension) could go to rg as --glob too, as a pre-filter.
 	match, err := glob.Match(pattern)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
