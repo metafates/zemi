@@ -48,8 +48,8 @@ func NewStore() *Store {
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
 		{Path: "models.main", Kind: "string", Default: "", Desc: "the model everything runs on unless a tier or a definition names another (provider/model)"},
-		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for short jobs: session titles, compaction summaries, the reflector and the web subagent (provider/model; empty uses models.main)"},
-		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses models.main)"},
+		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for short jobs: session titles, compaction summaries, the reflector and the web subagent (provider/model; empty uses the small model of main's provider, else models.main)"},
+		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses the small model of main's provider, else models.main)"},
 		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: "string", Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},

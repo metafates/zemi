@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -476,7 +477,7 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 
 // listDir lists a directory one level deep, sorted, directories ending in
 // "/". Like glob and grep it hides entries a deny or ask read rule covers,
-// and secret-shaped names.
+// and like grep the strict secret shapes, which it names.
 func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	f, err := openGated(path, os.O_RDONLY, 0)
 	if err != nil {
@@ -488,18 +489,29 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut, shown := p.ruledOut(), []string{}
+	ruledOut, shown, secret := p.ruledOut(), []string{}, []string{}
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
 			break
 		}
-		if name := e.Name(); !perm.PathIsSecret(name) && !ruledOut(filepath.Join(path, name)) {
+		switch name := e.Name(); {
+		case ruledOut(filepath.Join(path, name)):
+		case perm.PathIsStrictSecret(name):
+			secret = append(secret, name)
+		default:
 			if e.IsDir() {
 				name += "/"
 			}
 			shown = append(shown, name)
 		}
+	}
+	if len(secret) > 0 {
+		n := len(secret)
+		if n > 5 {
+			secret = append(secret[:5:5], "...")
+		}
+		shown = append(shown, fmt.Sprintf("(%d secret-shaped entries hidden: %s; read them to ask)", n, strings.Join(secret, ", ")))
 	}
 	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(empty directory)")
@@ -599,18 +611,34 @@ func lockFile(path string) func() {
 // to write. Ids arrive from CallStart, which fantasy fires for every call of
 // a step before it dispatches any; Run waits until its id leads its file.
 // The maps are shared by every runner, so nothing here clears more than the
-// ids a caller names.
+// ids a caller names, and ids are keyed by the turn's CallScope: a provider
+// that numbers calls per conversation (functions.edit:0) repeats them
+// across agents.
 var callOrder = struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
-	path  map[string]string   // call id -> file key
-	ahead map[string][]string // file key -> call ids, in call order
+	path  map[string]string   // call key -> file key
+	ahead map[string][]string // file key -> call keys, in call order
 }{path: map[string]string{}, ahead: map[string][]string{}}
+
+type callScopeKey struct{}
+
+var callScopes atomic.Uint64
+
+// CallScope gives the calls a turn makes under ctx their own keys.
+func CallScope(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
+}
+
+func callKey(ctx context.Context, id string) string {
+	n, _ := ctx.Value(callScopeKey{}).(uint64)
+	return strconv.FormatUint(n, 10) + "\x00" + id
+}
 
 // CallStart records a write tool's call as the model made it and reports
 // whether it did; other tools are ignored. The agent runner calls it from
 // fantasy's OnToolCall and owes a CallDone for every recorded id.
-func CallStart(id, tool, input string) bool {
+func CallStart(ctx context.Context, id, tool, input string) bool {
 	if tool != ToolWrite && tool != ToolEdit {
 		return false
 	}
@@ -618,7 +646,7 @@ func CallStart(id, tool, input string) bool {
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
 		return false
 	}
-	key := absPath(in.Path)
+	key, id := absPath(in.Path), callKey(ctx, id)
 	callOrder.mu.Lock()
 	callOrder.path[id] = key
 	callOrder.ahead[key] = append(callOrder.ahead[key], id)
@@ -630,10 +658,11 @@ func CallStart(id, tool, input string) bool {
 // answered without running it (invalid input, a tool the profile dropped)
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
-func CallDone(ids ...string) {
+func CallDone(ctx context.Context, ids ...string) {
 	c := &callOrder
 	c.mu.Lock()
 	for _, id := range ids {
+		id = callKey(ctx, id)
 		if key, ok := c.path[id]; ok {
 			delete(c.path, id)
 			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
@@ -652,12 +681,13 @@ func turn(ctx context.Context, id string) func() {
 	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	key, ok := c.path[id]
-	for ok && c.ahead[key][0] != id && ctx.Err() == nil {
+	k := callKey(ctx, id)
+	key, ok := c.path[k]
+	for ok && c.ahead[key][0] != k && ctx.Err() == nil {
 		c.cond.Wait()
-		key, ok = c.path[id]
+		key, ok = c.path[k]
 	}
-	return func() { CallDone(id) }
+	return func() { CallDone(ctx, id) }
 }
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
@@ -1055,7 +1085,8 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Secret-shaped files are never searched. A
+// matching the include glob. Strict secret-shaped files are left out whole:
+// a count or a name of the ones that matched leaks a key one bit per call. A
 // pattern that is no regexp (an unbalanced paren) is searched as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
@@ -1076,7 +1107,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		path := filepath.Join(root, rel)
 		h, ok := hidden[rel]
 		if !ok {
-			h = perm.PathIsSecret(rel) || ruledOut(path)
+			h = perm.PathIsStrictSecret(rel) || ruledOut(path)
 			hidden[rel] = h
 		}
 		if !h {
@@ -1110,7 +1141,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 		}
 		visit := func(path, rel string) error {
-			if !match(rel) || !isTextFile(path) {
+			if !match(rel) || perm.PathIsStrictSecret(rel) || !isTextFile(path) {
 				return nil
 			}
 			data, err := os.ReadFile(path)
@@ -1133,18 +1164,18 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	out := ""
+	var out []string
 	if literal {
-		out = "(pattern taken literally)\n"
+		out = append(out, "(pattern taken literally)")
+	}
+	out = append(out, hits...)
+	if len(hits) >= grepMaxMatches {
+		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
 	}
 	if len(hits) == 0 {
-		return fantasy.NewTextResponse(out + "(no matches)"), nil
+		out = append(out, "(no matches; secret-shaped files like .env are not searched, read one to ask)")
 	}
-	out += strings.Join(hits, "\n") + "\n"
-	if len(hits) >= grepMaxMatches {
-		out += fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
-	}
-	return fantasy.NewTextResponse(out), nil
+	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
 // ListFiles lists up to limit files under root, relative to it, in no
@@ -1186,7 +1217,8 @@ func (p *Pipeline) ruledOut() func(path string) bool {
 var rgBin, _ = exec.LookPath("rg")
 
 // ripgrep streams rg's output lines, run in root, to fn until fn returns
-// false. false means rg is missing or failed and the caller falls back.
+// false. false means rg is missing or refused the pattern or a glob, and the
+// caller falls back; an unreadable path (exit 2 after the search) is not.
 func ripgrep(ctx context.Context, root string, fn func(line string) bool, args ...string) bool {
 	if rgBin == "" {
 		return false
@@ -1200,6 +1232,8 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
 	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
 	out, err := c.StdoutPipe()
 	if err != nil || proc.Start(c) != nil {
 		return false
@@ -1219,7 +1253,8 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	}
 	err = proc.Wait(c)
 	var exit *exec.ExitError
-	return stopped || err == nil || (errors.As(err, &exit) && exit.ExitCode() == 1)
+	refused := bytes.Contains(stderr.Bytes(), []byte("regex parse error")) || bytes.Contains(stderr.Bytes(), []byte("error parsing glob"))
+	return stopped || err == nil || (errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 2 && !refused))
 }
 
 // walk visits the regular files under root for the Go fallback, which skips

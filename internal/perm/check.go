@@ -110,24 +110,8 @@ var runnerOpts = map[string][]string{
 // missing from runnerOpts or a program picked at run time still slips past.
 func canonical(argv []string) string {
 	f := program(argv)
-	for len(f) > 1 {
-		opts, ok := runnerOpts[filepath.Base(f[0])]
-		if !ok {
-			break
-		}
-		f = f[1:]
-	options:
-		for len(f) > 1 {
-			_, assign := assignmentName(f[0])
-			switch a := f[0]; {
-			case slices.Contains(opts, a):
-				f = f[min(2, len(f)):]
-			case strings.HasPrefix(a, "-") || assign || a[0] >= '0' && a[0] <= '9':
-				f = f[1:]
-			default:
-				break options
-			}
-		}
+	for ok := true; ok && len(f) > 1; {
+		f, ok = stepRunner(f)
 	}
 	if len(f) == 0 {
 		return ""
@@ -137,6 +121,29 @@ func canonical(argv []string) string {
 		i = 1
 	}
 	return strings.Join(append([]string{filepath.Base(f[0])}, f[i:]...), " ")
+}
+
+// stepRunner steps past the runnerOpts runner f starts with and the options
+// and values it takes (timeout 5, nice -n 5); ok is false when f starts with
+// none.
+func stepRunner(f []string) (_ []string, ok bool) {
+	opts, ok := runnerOpts[filepath.Base(f[0])]
+	if !ok {
+		return f, false
+	}
+	f = f[1:]
+	for len(f) > 1 {
+		_, assign := assignmentName(f[0])
+		switch a := f[0]; {
+		case slices.Contains(opts, a):
+			f = f[min(2, len(f)):]
+		case strings.HasPrefix(a, "-") || assign || a != "" && a[0] >= '0' && a[0] <= '9':
+			f = f[1:]
+		default:
+			return f, true
+		}
+	}
+	return f, true
 }
 
 // Ruled reports an outcome a rule decided: a deny, ask or allow rule, or an

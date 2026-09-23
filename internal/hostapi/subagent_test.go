@@ -21,9 +21,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// scriptModel answers every stream call with the parts its script returns
-// for that call (scripts must be safe for concurrent calls); Generate is
-// unused by agent turns.
+// scriptModel answers every turn's stream call with the parts its script
+// returns for that call (scripts must be safe for concurrent calls); side
+// calls fail.
 type scriptModel struct {
 	script func(system, last string, toolResult bool) []fantasy.StreamPart
 }
@@ -33,6 +33,9 @@ func (m *scriptModel) Generate(context.Context, fantasy.Call) (*fantasy.Response
 }
 
 func (m *scriptModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if sideCall(call) {
+		return nil, errors.New("not implemented")
+	}
 	var system, last string
 	toolResult := false
 	for _, msg := range call.Prompt {

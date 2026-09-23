@@ -350,57 +350,88 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 		t.Fatalf("tool message: %+v", m.lastCall.Prompt[2])
 	}
 
-	// a provider that drops the cut call leaves only its input start: the
-	// history gets a note naming the tool instead of nothing
-	m = &mockModel{steps: [][]fantasy.StreamPart{
-		{
-			{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
-			{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonLength},
-		},
-		textParts("done"),
-	}}
-	r = NewRunner(m, nil, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
-		t.Fatalf("dropped cut call: %v, want ErrReplyCut", err)
-	}
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "go on"); err != nil {
-		t.Fatal(err)
-	}
-	var texts []string
-	for _, msg := range m.lastCall.Prompt {
-		for _, p := range msg.Content {
-			if tp, ok := p.(fantasy.TextPart); ok && msg.Role == fantasy.MessageRoleUser {
-				texts = append(texts, tp.Text)
+	// an abnormal finish fails the turn, and a call dropped mid-arguments,
+	// which leaves only its input start, gets a note naming the tool; unknown
+	// on plain text is a gateway that sent no reason
+	for _, c := range []struct {
+		finish fantasy.FinishReason
+		call   bool
+		err    string
+	}{
+		{fantasy.FinishReasonLength, true, "output token limit"},
+		{fantasy.FinishReasonError, true, "ended the reply early (error)"},
+		{fantasy.FinishReasonContentFilter, false, "ended the reply early (content-filter)"},
+		{fantasy.FinishReasonOther, true, "ended the reply early (other)"},
+		{fantasy.FinishReasonUnknown, false, ""},
+	} {
+		step := textParts("partial")
+		step = step[:len(step)-1]
+		if c.call {
+			step = append(step, fantasy.StreamPart{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
+				fantasy.StreamPart{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{"})
+		}
+		m = &mockModel{steps: [][]fantasy.StreamPart{append(step, fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: c.finish}), textParts("done")}}
+		r = NewRunner(m, nil, "")
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "hi"); (err != nil) != (c.err != "") || err != nil && !strings.Contains(err.Error(), c.err) {
+			t.Errorf("finish %s, call %v: err %v, want %q", c.finish, c.call, err, c.err)
+			continue
+		}
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "go on"); err != nil {
+			t.Fatal(err)
+		}
+		var texts []string
+		for _, msg := range m.lastCall.Prompt {
+			for _, p := range msg.Content {
+				if tp, ok := p.(fantasy.TextPart); ok && msg.Role == fantasy.MessageRoleUser {
+					texts = append(texts, tp.Text)
+				}
 			}
 		}
-	}
-	if !slices.ContainsFunc(texts, func(s string) bool {
-		return strings.HasPrefix(s, AttachMarker) && strings.Contains(s, "while writing the echo call")
-	}) {
-		t.Fatalf("no note about the cut call in the prompt: %q", texts)
+		if noted := slices.ContainsFunc(texts, func(s string) bool {
+			return strings.HasPrefix(s, AttachMarker) && strings.Contains(s, "while writing the echo call")
+		}); noted != c.call {
+			t.Errorf("finish %s: note about the cut call %v, want %v: %q", c.finish, noted, c.call, texts)
+		}
 	}
 }
 
 // TestToolLoopEndsTurn: the same tool call with the same result, step after
-// step, ends the turn on its sixth repeat with ErrToolLoop.
+// step, ends the turn on its sixth repeat with ErrToolLoop; a failing poll
+// whose error text moves is progress.
 func TestToolLoopEndsTurn(t *testing.T) {
-	m := &mockModel{parts: []fantasy.StreamPart{
-		{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
-		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
-	}}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("same"), nil
-	})
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
-		t.Fatalf("err = %v, want ErrToolLoop", err)
-	}
-	if n := len(r.History); n != 1+2*loopMinSteps {
-		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopMinSteps)
+	for _, c := range []struct {
+		name string
+		res  func(n int) fantasy.ToolResponse
+		loop bool
+	}{
+		{"same result", func(int) fantasy.ToolResponse { return fantasy.NewTextResponse("same") }, true},
+		{"error text moves", func(n int) fantasy.ToolResponse {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("jobs done: %d/9", n))
+		}, false},
+	} {
+		// the text reply is the fallback: without it a missed loop would hang
+		m := &mockModel{parts: textParts("done")}
+		for range loopMinSteps {
+			m.steps = append(m.steps, []fantasy.StreamPart{
+				{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+				{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+			})
+		}
+		n := 0
+		echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			n++
+			return c.res(n), nil
+		})
+		r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "hi"); errors.Is(err, ErrToolLoop) != c.loop {
+			t.Errorf("%s: err = %v, want a loop %v", c.name, err, c.loop)
+		}
+		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
+			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
+		}
 	}
 }
 
@@ -431,7 +462,8 @@ func TestToolLoopCatchesTwoStepCycle(t *testing.T) {
 
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
-// tool result, and an empty Send continues without a second user message.
+// tool result, an empty Send continues without a second user message, and a
+// tool that ends the turn itself is not cut.
 func TestFullCutsAtStepBoundary(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{
 		{
@@ -441,8 +473,12 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 		},
 		textParts("done"),
 	}}
+	m.steps = append(m.steps, m.steps[0])
+	stop := false
 	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
+		res := fantasy.NewTextResponse("ok")
+		res.StopTurn = stop
+		return res, nil
 	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	var used []int64
@@ -454,11 +490,13 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	}
 	for _, c := range []struct {
 		text, roles string
-		cut         bool
+		cut, stop   bool
 	}{
-		{"hi", "user,assistant,tool", true},
-		{"", "user,assistant,tool,assistant", false},
+		{"hi", "user,assistant,tool", true, false},
+		{"", "user,assistant,tool,assistant", false, false},
+		{"plan", "user,assistant,tool,assistant,user,assistant,tool", false, true},
 	} {
+		stop = c.stop
 		r.Hooks = newRecHooks()
 		if err := r.Send(context.Background(), c.text); err != nil {
 			t.Fatal(err)
@@ -467,8 +505,19 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 			t.Fatalf("send %q persisted roles: %s, cut %v; want %s, cut %v", c.text, got, r.CutShort(), c.roles, c.cut)
 		}
 	}
-	if got := fmt.Sprint(used); got != "[105 15]" {
-		t.Fatalf("Full saw %s, want [105 15]", got)
+	if got := fmt.Sprint(used); got != "[105 15 105]" {
+		t.Fatalf("Full saw %s, want [105 15 105]", got)
+	}
+}
+
+// TestAsideStreams: /btw streams, since Anthropic's SDK refuses a large
+// max_tokens without streaming (the mock's Generate always fails).
+func TestAsideStreams(t *testing.T) {
+	r := NewRunner(&mockModel{parts: textParts("answer")}, nil, "sys")
+	r.MaxOutputTokens = 128_000
+	res, err := r.Aside(context.Background(), nil, "what did I say")
+	if err != nil || res.Response.Content.Text() != "answer" {
+		t.Fatalf("aside = %+v, %v", res, err)
 	}
 }
 

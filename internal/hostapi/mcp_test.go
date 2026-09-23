@@ -188,6 +188,9 @@ type toolsModel struct {
 }
 
 func (m *toolsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if sideCall(call) {
+		return m.scriptModel.Stream(ctx, call)
+	}
 	var names []string
 	for _, tl := range call.Tools {
 		if n := tl.GetName(); strings.HasPrefix(n, mcpToolPrefix) || n == tools.ToolSearch {

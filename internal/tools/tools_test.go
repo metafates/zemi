@@ -166,8 +166,8 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 		call(t, read, `{"path":"`+path+`","limit":0}`)
 		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
 		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
-		CallStart("c1", "edit", first)
-		CallStart("c2", "edit", second)
+		CallStart(context.Background(), "c1", "edit", first)
+		CallStart(context.Background(), "c2", "edit", second)
 		var wg sync.WaitGroup
 		var r1, r2 fantasy.ToolResponse
 		wg.Go(func() {
@@ -185,7 +185,7 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 // TestCallOrderReleases: a recorded call nothing runs must not hold the
 // next call on its file: fantasy answers an invalid call without Run and the
 // runner reports it through CallDone; another runner's CallDone releases
-// its own ids only; a cancelled ctx gives up the wait.
+// its own ids only, the same id included; a cancelled ctx gives up the wait.
 func TestCallOrderReleases(t *testing.T) {
 	p, _ := testPipeline(t, false,
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
@@ -206,7 +206,8 @@ func TestCallOrderReleases(t *testing.T) {
 			return fantasy.ToolResponse{}
 		}
 	}
-	cancelled, cancel := context.WithCancel(context.Background())
+	bg := context.Background()
+	cancelled, cancel := context.WithCancel(bg)
 	cancel()
 	for _, c := range []struct {
 		name    string
@@ -216,23 +217,24 @@ func TestCallOrderReleases(t *testing.T) {
 		want    string
 	}{
 		{"invalid first call answered", func() {
-			CallStart("c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
-			CallStart("c2", "edit", second)
-			CallDone("c1")
+			CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
+			CallStart(bg, "c2", "edit", second)
+			CallDone(bg, "c1")
 		}, context.Background(), true, "a\n"},
 		{"another runner's step done keeps the order", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
-			CallStart("b1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
-			CallDone("b1")
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
+			other := CallScope(bg)
+			CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
+			CallDone(other, "c1")
 			go func() {
 				time.Sleep(50 * time.Millisecond)
 				edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
 			}()
 		}, context.Background(), false, "c\n"},
 		{"cancelled ctx gives up", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
 		}, cancelled, true, "a\n"},
 	} {
 		os.WriteFile(path, []byte("a\n"), 0o644)
@@ -243,7 +245,7 @@ func TestCallOrderReleases(t *testing.T) {
 		if r.IsError != c.wantErr || string(got) != c.want {
 			t.Errorf("%s: %+v file %q", c.name, r, got)
 		}
-		CallDone("c1", "c2")
+		CallDone(bg, "c1", "c2")
 	}
 }
 
@@ -389,10 +391,15 @@ func TestGlobAndGrep(t *testing.T) {
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
 		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
-		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		".gitignore": "node_modules/\ngen/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		"src/credential.ts": "export function loadCredential() {}\n", "src/a.txt": "needle\n", "gen/b.txt": "needle\n", "locked/c.txt": "needle\n",
 	} {
+		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
+	// rg reports the unreadable dir and exits 2 after searching the rest
+	os.Chmod(filepath.Join(dir, "locked"), 0)
+	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "locked"), 0o755) })
 	glob, grep := toolNamed(t, "glob", p), toolNamed(t, "grep", p)
 	saved := rgBin
 	t.Cleanup(func() { rgBin = saved })
@@ -409,7 +416,10 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
 			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
-			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
+			{grep, `{"pattern":"package (y|secret)"}`, "(no matches; secret-shaped", "y.go"},
+			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
+			{grep, `{"pattern":"needle"}`, "src/a.txt:1", "gen/"},
+			{glob, `{"pattern":"**/*.txt"}`, "src/a.txt", "gen/"},
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
@@ -422,6 +432,9 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"**"}`, "sub/x.go", "node_modules"},
 			{glob, `{"pattern":"**/*"}`, "sub/x.go", ".git/"},
 		} {
+			if bin == "" && c.not == "gen/" {
+				continue // the walker reads no .gitignore
+			}
 			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", dir), "{", `{"path":"`+dir+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
 				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
@@ -430,6 +443,10 @@ func TestGlobAndGrep(t *testing.T) {
 			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, c.not) {
 				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
 			}
+		}
+		// a hit in .env must not change the answer
+		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"package (y|secret)"}`), call(t, grep, `{"path":"`+dir+`","pattern":"package (y|zzz)"}`); a.Content != b.Content {
+			t.Errorf("rg=%q grep answers on .env content: %q vs %q", bin, a.Content, b.Content)
 		}
 		// a mistyped path must say so instead of reading as an empty tree
 		for _, tool := range []fantasy.AgentTool{glob, grep} {

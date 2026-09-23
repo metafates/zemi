@@ -9,17 +9,33 @@ import (
 )
 
 // SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-// The seatbelt policy (internal/sandbox) hides the strict names of this
-// list too, and DESIGN §9 lists it: the three move together.
-var SecretPathShape = []string{".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
-	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*", "*credential*", "*secret*",
+// The seatbelt policy (internal/sandbox) hides strictSecretShape, .env
+// templates included, and DESIGN §9 lists it: the three move together.
+var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*secret*")
+
+// strictSecretShape is SecretPathShape without the broad names, which also
+// match source files (credential.ts, secret_prompt.py).
+var strictSecretShape = []string{".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
+	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
 	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf"}
 
 // PathIsSecret folds on every OS: a shape that asks one file too many is
 // cheaper than a darwin spelling that slips past.
-func PathIsSecret(p string) bool {
+func PathIsSecret(p string) bool { return secretShaped(fold(filepath.Base(p)), SecretPathShape) }
+
+// PathIsStrictSecret is what grep and a directory listing hide: the strict
+// shapes, minus the committed .env templates a setup step copies.
+func PathIsStrictSecret(p string) bool {
 	base := fold(filepath.Base(p))
-	return slices.ContainsFunc(SecretPathShape, func(pat string) bool {
+	if ext := filepath.Ext(base); strings.HasPrefix(base, ".env.") && (ext == ".example" || ext == ".sample" || ext == ".template") {
+		return false
+	}
+	return secretShaped(base, strictSecretShape)
+}
+
+// secretShaped takes a folded base name.
+func secretShaped(base string, shapes []string) bool {
+	return slices.ContainsFunc(shapes, func(pat string) bool {
 		ok, _ := filepath.Match(pat, base)
 		// an ssh public key is meant to be shared
 		return ok && !(strings.HasPrefix(pat, "id_") && strings.HasSuffix(base, ".pub"))
@@ -836,7 +852,11 @@ func GitWrites(cmd string) string {
 		}
 		// xargs, find and fd hand git arguments nothing here sees
 		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, filepath.Base(f[0])) {
-			f = f[1:]
+			if g, ok := stepRunner(f); ok {
+				f = g
+			} else {
+				f = f[1:]
+			}
 		}
 		i := Subcommand(f)
 		if len(f) == 0 || filepath.Base(f[0]) != "git" || i < 0 {

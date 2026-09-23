@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
@@ -98,5 +100,50 @@ func TestStepBillsLiveTally(t *testing.T) {
 	}
 	if sess, err := h.DB.GetSession(h.AgentSessionID()); err != nil || sess.PromptTokens != 13 {
 		t.Fatalf("stored input tokens = %+v, %v; want 13", sess, err)
+	}
+}
+
+// streamOnly answers every call with a stream; its Generate fails.
+type streamOnly struct{ *scriptModel }
+
+func (streamOnly) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return streamOf(&fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "a title"}}, FinishReason: fantasy.FinishReasonStop}), nil
+}
+
+// TestGenerateStreams: titles, summaries and the reflector stream, since
+// Anthropic's SDK refuses a large max_tokens without streaming.
+func TestGenerateStreams(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
+	maxOut := int64(128_000)
+	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, "models.small")
+	if err != nil || res.Response.Content.Text() != "a title" {
+		t.Fatalf("generate = %+v, %v", res, err)
+	}
+}
+
+// TestSmallTierAfterPick: a /model pick moves the conversation, and the
+// short jobs stay on the catalog's small model of that provider, or on the
+// pick when the provider names none.
+func TestSmallTierAfterPick(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, s := range []agent.Spec{
+		{ID: "a", Kind: agent.KindAnthropic, DefaultLarge: "big", DefaultSmall: "tiny", Models: []agent.Model{{ID: "big"}, {ID: "huge"}, {ID: "tiny"}}},
+		{ID: "p", Kind: agent.KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Models: []agent.Model{{ID: "m"}}},
+	} {
+		if err := h.Providers.Register(s, "k"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ pick, small string }{
+		{"a/huge", "a/tiny"},
+		{"p/m", "p/m"},
+	} {
+		if err := h.SetModel(c.pick); err != nil {
+			t.Fatal(err)
+		}
+		if _, got, _ := h.modelFor("reflector.model", "models.small"); got != c.small {
+			t.Errorf("small after /model %s = %s, want %s", c.pick, got, c.small)
+		}
 	}
 }

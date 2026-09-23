@@ -228,11 +228,13 @@ files touched after the last message. `tool.Run` runs the same check before the 
 `openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a symlink
 between check and open. The three writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
-shows a hit a deny or ask `fs.read` rule covers, and grep hides secret-shaped files. Output too
-long for a result is cut head and tail at line breaks, the marker naming the cut lines, and
-saved to the scratchpad (`tools.Spill`); command output, `!command` included, goes through
-`tools.CmdOut`, which also counts what the 1 MB buffer dropped. A
-bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
+shows a hit a deny or ask `fs.read` rule covers. grep and a directory listing leave out the
+strict secret shapes (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a
+`.env.example`): a listing names what it hid, and grep's answer never depends on them, since a
+count of their hits would leak a key one bit per call. Output too long for a result is cut
+head and tail at line breaks, the marker naming the cut lines, and saved to the scratchpad
+(`tools.Spill`); command output, `!command` included, goes through `tools.CmdOut`, which also
+counts what the 1 MB buffer dropped. A bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
 (which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the
 repository before and after, written through a warm temp index and object directory so the
@@ -439,8 +441,10 @@ lua-language-server is installed.
 
 - **Models are tiers.** `models.main` runs everything; `models.small` (session titles,
   compaction summaries, the reflector, the builtin `web` agent) and `models.smart` (the main
-  conversation) fall back to it. Anything that takes a model - an agent definition, the `agent` tool, a
-  workflow - takes a tier name or a `provider/model` id (`modelRef`).
+  conversation) fall back to it, an unset small first to the catalog's small model of main's
+  provider (`tierModel`), so a `/model` pick of a big model leaves the short jobs cheap.
+  Anything that takes a model - an agent definition, the `agent` tool, a workflow - takes a
+  tier name or a `provider/model` id (`modelRef`).
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields

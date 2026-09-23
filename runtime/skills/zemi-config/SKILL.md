@@ -45,7 +45,7 @@ Model fields besides `id` and `display`:
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
 - `images = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
 
-Tiers: `models.main` runs everything; `models.small` (titles, compaction summaries, the reflector, the `web` agent) and `models.smart` (the main conversation, which delegates; subagents stay on main) fall back to it. An unset main runs the first added provider's default model, else the first usable builtin's. `/model` and `-m` write the tier the conversation reads (smart when set, else main) and refuse while the active profile sets its own model. Agent files, the `agent` tool and workflows take a tier name or a `provider/model`.
+Tiers: `models.main` runs everything; `models.small` (titles, compaction summaries, the reflector, the `web` agent) and `models.smart` (the main conversation, which delegates; subagents stay on main) fall back to it, an unset small first to the catalog's small model of main's provider, so a `/model` pick of a big model leaves the short jobs cheap. An unset main runs the first added provider's default model, else the first usable builtin's. `/model` and `-m` write the tier the conversation reads (smart when set, else main) and refuse while the active profile sets its own model. Agent files, the `agent` tool and workflows take a tier name or a `provider/model`.
 
 ## Settings
 
