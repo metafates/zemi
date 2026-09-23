@@ -1289,16 +1289,17 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
-// TestModelPickerOdd: the picker ends with the keyless builtin providers by
-// env var, explained only when nothing is usable, and a configured id the
-// provider does not list is the selected row, which the reload toast also names.
+// TestModelPickerOdd: with nothing usable the picker opens by itself, unless
+// init.lua failed, and ends with the keyless builtin providers by env var,
+// explained only when nothing is usable; a configured id the provider does
+// not list is the selected row, which the reload toast also names.
 func TestModelPickerOdd(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}})
-	if h.modelRow().level == "ok" || h.OpenModelPicker() != nil {
-		t.Fatal("no model: no warning or the picker did not open")
+	if h.OfferModel(); len(ui.opened) != 1 {
+		t.Fatal("no model: the picker did not open")
 	}
 	// an id naming the keyless builtin gets the same listing, not a "current" row
 	runUser(t, r, `zemi.config.set("models.main", "deepseek/x")`)
@@ -1327,6 +1328,9 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
 		t.Fatalf("warning %q", w)
+	}
+	if h.OfferModel(); len(ui.opened) != 3 {
+		t.Fatal("a model that runs opened the picker")
 	}
 }
 

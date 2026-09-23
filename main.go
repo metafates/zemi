@@ -196,6 +196,8 @@ func run(args []string) int {
 			host.RecordError("flag", err.Error())
 			app.Notify("error", "Could not apply a flag", err.Error())
 		}
+		// here, not in app.ready: once per process, after -m, never on a reload
+		host.OfferModel()
 		if opts.prompt != "" {
 			if err := sendPrompt(host, opts.prompt); err != nil {
 				app.Notify("error", "Could not send", err.Error())

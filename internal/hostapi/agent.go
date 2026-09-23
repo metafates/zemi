@@ -1903,6 +1903,14 @@ func (h *Host) WarnModel() {
 	}
 }
 
+// OfferModel opens the model picker when no model can run the next send,
+// so a first run starts on the keys to export rather than a failed send.
+func (h *Host) OfferModel() {
+	if h.modelRow().level == "error" {
+		_ = h.OpenModelPicker()
+	}
+}
+
 // ProfileModelErr refuses a tier write the active profile would hide: the
 // tier would change and the conversation would not.
 func (h *Host) ProfileModelErr() error {
