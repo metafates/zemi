@@ -818,7 +818,9 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) 
 	case "rewrite":
 		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true, nil
 	case "halt":
-		return fantasy.ToolResponse{}, true, fmt.Errorf("halted by hook: %s", reason)
+		resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
+		resp.StopTurn = true // as tools.Run: the step completes, the turn ends
+		return resp, true, nil
 	}
 	return fantasy.ToolResponse{}, false, nil
 }

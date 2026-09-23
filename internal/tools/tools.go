@@ -499,7 +499,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		case "deny":
 			return fantasy.NewTextErrorResponse("denied by hook: " + reason), nil
 		case "halt":
-			return fantasy.ToolResponse{}, fmt.Errorf("halted by hook: %s", reason)
+			// a result, not a Go error: that would fail the step and drop
+			// the calls that already ran in it from the history
+			resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
+			resp.StopTurn = true
+			return resp, nil
 		case "rewrite":
 			if rewritten != nil {
 				// The rewritten input re-enters at the permission gate
