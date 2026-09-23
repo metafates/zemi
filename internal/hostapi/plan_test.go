@@ -3,6 +3,7 @@ package hostapi
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -183,6 +184,10 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	waitIdle(t, h)
 	if ui.planAsked != 0 || nudges() != 1 {
 		t.Fatalf("asked %d, nudges %d after the nudged reply ended in text again", ui.planAsked, nudges())
+	}
+	// the second reply follows a notice row, never a bare gap
+	if !slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == "notice" && strings.Contains(m.Text, "Asked the planner") }) {
+		t.Fatalf("no nudge notice: %+v", h.Session().Transcript)
 	}
 	// a submit that claimed the agent first is left alone
 	h.agents.mu.Lock()

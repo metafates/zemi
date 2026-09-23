@@ -1720,7 +1720,9 @@ func (h *Host) takePlanApproved() string {
 // instead of the question or plan tool: the text is not a plan to approve
 // (a question, a report or a refusal would get an approve key), and only
 // the tools give the user something to answer in place.
-var planNudge = modelNote("Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool.")
+var planNudge = modelNote(planNudgeText)
+
+const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool."
 
 // planFollowup runs after a turn goroutine ends. An approved plan left for
 // a cancelled turn (nextTurn hands off an ended one) is sent to the restored

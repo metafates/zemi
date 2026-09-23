@@ -612,7 +612,8 @@ how many rows the frame takes, so nothing above it reflows.
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
   agent never passes through idle. A read-only turn that ends in plain text instead of the
-  `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`):
+  `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`,
+  drawn as a notice row by `reportHeads`):
   a question or a report is not a plan, so the text is never presented for approval.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
   (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and

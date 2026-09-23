@@ -377,11 +377,15 @@ func reportHead(id, agent, status string) string {
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
-// attachMarker (a joined queue may carry several); none for no report.
+// attachMarker (a joined queue may carry several) and the planner's nudge,
+// so a reply that follows no user row says why; none for neither.
 func reportHeads(tail string) []string {
 	var heads []string
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, reportHead(m[1], m[2], m[3]))
+	}
+	if strings.Contains(tail, planNudgeText) {
+		heads = append(heads, "Asked the planner to end with the plan or question tool.")
 	}
 	return heads
 }
