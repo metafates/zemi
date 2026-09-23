@@ -44,18 +44,19 @@ Flags:
   -v, --version       print the version and exit
   -h, --help          show this help
 
-With -p nobody can answer a permission ask, so a call the mode would ask
-about is denied. A project not trusted in the TUI runs untrusted with -p,
-where little runs without asking, unless --trust is given.
+With -p nobody can approve a call, so one that needs the user's approval is
+denied. A project not trusted in the TUI runs untrusted with -p, where little
+runs without approval, unless --trust is given.
 
 Environment:
   ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
   ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
   ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
   ZEMI_CACHE_HOME     cache dir: language server builds (default ~/.cache/zemi)
-                      Each defaults under $XDG_CONFIG_HOME and the like when those are set.
+                      each defaults to $XDG_<NAME>_HOME/zemi when that is set
   ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
-                      a builtin provider is on while its key is exported (/model lists them)
+                      a builtin provider is on while its key is exported
+                      (/model lists them)
 
 Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 `
@@ -324,7 +325,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 			if n == 1 {
 				calls = "call"
 			}
-			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can answer an ask with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted()))
+			fmt.Fprintf(stderr, "zemi: %d tool %s denied; nobody can approve a call with -p, %s\n", n, calls, deniedHint(rep, h.ProjectTrusted()))
 		}
 		if rep.Result != "" {
 			fmt.Fprintln(stdout, rep.Result)
