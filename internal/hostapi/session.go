@@ -230,11 +230,14 @@ func (h *Host) closeSession(open func()) error {
 	return nil
 }
 
+// setTranscript replaces the chat (new, resume, rewind), which opens at its
+// tail: a place scrolled to in the old one means nothing in the new.
 func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Title, h.session.Transcript, h.view = title, tr, ""
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
+	h.scroll("bottom", "")
 	h.refresh()
 }
 

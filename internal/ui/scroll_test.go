@@ -135,22 +135,35 @@ func withoutStatus(frame string) string {
 	return strings.Join(rows[:len(rows)-1], "\r\n")
 }
 
-// TestChatScrollSubmitFollows pins the snap-back: sending a message returns
-// the view to the tail.
-func TestChatScrollSubmitFollows(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 14)
-	fillChat(host)
-	app.renderSync(t)
-	app.Frame()
-
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if app.scrolls["chat"].follow {
-		t.Fatalf("precondition: scrolled off the tail")
-	}
-	app.composer.text = "next question"
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !app.scrolls["chat"].follow {
-		t.Fatalf("submit should snap back to the tail")
+// TestChatScrollFollows pins the snap-back: sending a message, or a new
+// transcript (new, resume, rewind), returns the view to the tail.
+func TestChatScrollFollows(t *testing.T) {
+	for name, act := range map[string]func(*App, *hostapi.Host) error{
+		"submit": func(app *App, _ *hostapi.Host) error {
+			app.composer.text = "next question"
+			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			return nil
+		},
+		"new session": func(_ *App, host *hostapi.Host) error { return host.NewSession() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 80, 14)
+			fillChat(host)
+			app.renderSync(t)
+			app.Frame()
+			press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+			if app.scrolls["chat"].follow {
+				t.Fatalf("precondition: scrolled off the tail")
+			}
+			if err := act(app, host); err != nil {
+				t.Fatal(err)
+			}
+			for app.Pump() {
+			}
+			if !app.scrolls["chat"].follow {
+				t.Fatalf("should snap back to the tail")
+			}
+		})
 	}
 }
 
