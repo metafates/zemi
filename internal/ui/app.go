@@ -110,6 +110,7 @@ type App struct {
 	activeBump time.Time
 	turnActive bool             // what onFrame last saw of the agent
 	turnEnd    time.Time        // when it last stopped, so the mascot can bow
+	turnOK     bool             // it finished: not failed, interrupted or dismissed
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
@@ -254,7 +255,10 @@ type widgetRender struct {
 
 type (
 	agentStreamMsg struct{}
-	turnDoneMsg    struct{ err string }
+	turnDoneMsg    struct {
+		err     string
+		stopped bool
+	}
 )
 
 // uiFunc is a state change posted from another goroutine; it runs on the
@@ -297,6 +301,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.streamPending.Store(false)
 	case turnDoneMsg:
 		a.bump()
+		a.turnOK = msg.err == "" && !msg.stopped
 		text := "zemi finished"
 		if msg.err != "" {
 			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "...")
@@ -507,6 +512,7 @@ func (a *App) onFrame() tea.Cmd {
 	}
 	if active != a.turnActive {
 		a.turnActive, a.turnEnd = active, now
+		a.turnOK = a.turnOK && !active
 	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
@@ -536,7 +542,7 @@ func (a *App) termBackground() color.Color {
 
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
-		Time: a.timeStr, Frame: a.frame(), Done: !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger,
+		Time: a.timeStr, Frame: a.frame(), Done: a.turnOK && !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger,
 		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
 	}

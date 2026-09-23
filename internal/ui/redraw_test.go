@@ -91,6 +91,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 	}
 
 	host.SeedStream(hostapi.StreamSnapshot{})
+	app.Update(turnDoneMsg{})
 	app.Update(frameTickMsg{}) // the turn ends: the mascot bows
 	gen = app.frameGen
 	app.now = func() time.Time { return app.turnEnd.Add(doneLinger + time.Second) }

@@ -641,12 +641,12 @@ func (f *fakeUI) Reload() {
 	}
 	f.reloads.Add(1)
 }
-func (f *fakeUI) Refresh()                         {}
-func (f *fakeUI) Scroll(kind, id string)           {}
-func (f *fakeUI) LayoutRects() map[string]Rect     { return nil }
-func (f *fakeUI) AgentStream()                     {}
-func (f *fakeUI) TurnDone(err string)              { f.turnsDone.Add(1) }
-func (f *fakeUI) ComposerEdit(string, string, int) {}
+func (f *fakeUI) Refresh()                          {}
+func (f *fakeUI) Scroll(kind, id string)            {}
+func (f *fakeUI) LayoutRects() map[string]Rect      { return nil }
+func (f *fakeUI) AgentStream()                      {}
+func (f *fakeUI) TurnDone(err string, stopped bool) { f.turnsDone.Add(1) }
+func (f *fakeUI) ComposerEdit(string, string, int)  {}
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {
 		f.edit(req.Path)

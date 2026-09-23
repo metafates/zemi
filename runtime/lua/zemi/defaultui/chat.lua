@@ -16,7 +16,6 @@ local HOME = zemi.env.get("HOME") or ""
 local function plan_verdict(output)
   local feedback = output:match("^The user has not approved the plan and asked for changes: (.-)\nRevise the plan")
   if feedback then return "changes requested: " .. feedback end
-  if output:match("^The user dismissed") then return "dismissed" end
   if not output:match("^The user approved") then return output end
   local path = output:match("The plan is saved at (.-)%.$")
   if not path then return "approved" end
@@ -254,6 +253,8 @@ zemi.ui.widget.add({
         mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
         mark, hl = "✗ ", "AgentToolErr"
+      elseif t.status == "stopped" then
+        mark, hl = "■ ", "Comment"
       end
       local input = relpath(t.text or t.input or "")
       -- a collapsed row is one line; an open one keeps a heredoc's lines
@@ -356,8 +357,9 @@ zemi.ui.widget.add({
       -- what the user just decided needs no restating: the model's text
       -- carries the reason and the instructions, the row the verdict
       if output:match("^permission denied %(user") then output = "denied by you" end
+      if output:match("^The user dismissed") then output = "dismissed by you" end
       if name == "plan" then output = plan_verdict(output) end
-      if output ~= "" and (t.status == "err" or name == "question" or name == "plan" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
+      if output ~= "" and (t.status == "err" or t.status == "stopped" or name == "question" or name == "plan" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
         local ohl = t.status == "err" and "AgentToolErr" or "Comment"
         for ol in (output .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "    ", copy = false }, { text = ol, hl = ohl } }
@@ -537,7 +539,7 @@ zemi.ui.widget.add({
       local waiting = false
       local ti = 1
       while ti <= #tools do
-        if tools[ti].status ~= "ok" and tools[ti].status ~= "err" then waiting = true end
+        if tools[ti].status == "wait" or tools[ti].status == "run" then waiting = true end
         gap("activity")
         ti = add_tools(tools, ti, true)
       end

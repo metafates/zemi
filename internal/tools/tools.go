@@ -104,6 +104,12 @@ func DeniedText(v Verdict, what string) string {
 	return s + ": " + v.Reason
 }
 
+// UserStopped reports a failed call's output as the user's own answer (a
+// denied ask, a dismissed question or plan), which is no failure.
+func UserStopped(output string) bool {
+	return strings.HasPrefix(output, "permission denied (user)") || strings.HasPrefix(output, "The user dismissed")
+}
+
 // PreHook runs the tool.pre Lua events; decision is "" (pass),
 // "deny", "rewrite" or "halt". Rewritten carries the replacement input
 // (already shallow-merged over the original). Loosened reports a rewrite

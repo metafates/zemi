@@ -53,8 +53,9 @@ type UIHooks interface {
 	// AgentStream says a streaming update landed; the UI only invalidates
 	// the frame, so these coalesce.
 	AgentStream()
-	// TurnDone ends a turn; err is "" when it finished cleanly.
-	TurnDone(err string)
+	// TurnDone ends a turn; err is "" when it finished cleanly, and stopped
+	// says the user ended it by dismissing a question or plan.
+	TurnDone(err string, stopped bool)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
 	// Screenshot is the last drawn frame as plain text, "" before the
@@ -137,7 +138,7 @@ type ChatMessage struct {
 	Text   string // tool rows: the input summary
 	Label  string // tool rows: the model's description of a command
 	Tool   string
-	Status string // tool rows: "ok" or "err"; error rows: "cancelled" for an interrupt
+	Status string // tool rows: "ok", "err" or "stopped" (denied or dismissed by the user); error rows: "cancelled" for an interrupt
 	Detail string // tool rows: subagent or workflow progress summary
 	Run    string // agent tool rows: the run id
 	Diff   string // file tool rows: the applied change as "- "/"+ " lines
@@ -1141,7 +1142,7 @@ type UIState struct {
 	Time  string
 	Frame int // 500ms animation tick, the mascot's cadence; 0 with ui.animations off
 
-	Done       bool   // a turn ended a moment ago, so the mascot can bow
+	Done       bool   // a turn finished a moment ago, not failed or stopped, so the mascot can bow
 	QuitArmed  bool   // a second ctrl+c quits
 	KeySeq     string // keys of a bound sequence typed so far
 	RowsBelow  int    // transcript rows under a scrolled-up viewport
@@ -1536,7 +1537,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.74.0"))
+	api.RawSetString("version", glua.LString("0.75.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

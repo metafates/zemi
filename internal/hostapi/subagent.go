@@ -507,7 +507,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) 
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
-		run.tr[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+		run.tr[i].Status = toolStatus(ok, out)
 		run.tr[i].Output = shortOutput(out)
 		run.tr[i].Diff = diff
 	}

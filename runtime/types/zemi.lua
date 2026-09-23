@@ -603,7 +603,7 @@ function zemi.event.stats() end
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status "wait"|"run"|"ok"|"err" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs.
+---@field status "wait"|"run"|"ok"|"err"|"stopped" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs. "stopped": the user denied or dismissed it.
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -617,7 +617,7 @@ function zemi.event.stats() end
 ---@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"notice"|"error"
 ---@field text string
 ---@field tool string
----@field status string Tool and shell rows: "wait", "run", "ok" or "err"; error rows: "cancelled" for an interrupt.
+---@field status string Tool and shell rows: "wait", "run", "ok", "err" or "stopped" (the user denied or dismissed it); error rows: "cancelled" for an interrupt.
 ---@field label string
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".
@@ -684,7 +684,7 @@ function zemi.event.stats() end
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
 ---@field frame integer The shared animation tick: one step every 50 ms; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
----@field done boolean A turn ended a moment ago, so the mascot can show its done frame while the working row is otherwise gone.
+---@field done boolean A turn finished a moment ago (it did not fail and nobody interrupted or dismissed it), so the mascot can show its done frame while the working row is otherwise gone.
 ---@field reflecting boolean
 ---@field pending_memory integer
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.

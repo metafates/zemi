@@ -78,7 +78,7 @@ type StreamTool struct {
 	Output  string // the last lines of the result (shortOutput)
 	Name    string
 	Input   string
-	Status  string // "wait" (arguments streaming, or queued behind a serial call), "run", "ok", "err"
+	Status  string // "wait" (arguments streaming, or queued behind a serial call), "run", "ok", "err", "stopped"
 	partial string // the head of the streaming input, until Label is known
 }
 
@@ -853,7 +853,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		if ag.tools[i].ID == id && (ag.tools[i].Status == "run" || ag.tools[i].Status == "wait") {
-			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
+			ag.tools[i].Status = toolStatus(ok, output)
 			ag.tools[i].Output = shortOutput(output)
 			if !ok {
 				ag.tools[i].Diff = "" // the change did not happen
@@ -873,6 +873,18 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 		ag.todoTouched = true
 		ag.mu.Unlock()
 	}
+}
+
+// toolStatus is a finished call's row status: "stopped" when the user
+// denied or dismissed it, so the row does not read as a failure.
+func toolStatus(ok bool, output string) string {
+	switch {
+	case ok:
+		return "ok"
+	case tools.UserStopped(output):
+		return "stopped"
+	}
+	return "err"
 }
 
 // StepDone bills a completed step's usage to the live session tally, so the
@@ -940,7 +952,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		return
 	}
 	if ui := h.hooks(); ui != nil {
-		ui.TurnDone(errString(err))
+		stopped := text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
+		ui.TurnDone(errString(err), stopped)
 	}
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()

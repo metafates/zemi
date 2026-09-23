@@ -88,7 +88,9 @@ func (a *App) AgentStream() {
 }
 
 // TurnDone implements hostapi.UIHooks: the end of a turn always gets in.
-func (a *App) TurnDone(err string) { a.dispatch(turnDoneMsg{err: err}) }
+func (a *App) TurnDone(err string, stopped bool) {
+	a.dispatch(turnDoneMsg{err: err, stopped: stopped})
+}
 
 // AskPermission implements hostapi.UIHooks. It blocks the caller (a tool
 // run on the turn goroutine) until the user answers the overlay; safe from

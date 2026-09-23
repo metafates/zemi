@@ -819,6 +819,10 @@ func TestWorkingRowMascot(t *testing.T) {
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.turnEnd = time.UnixMilli(2000)
+	if r := row(2500); !strings.HasPrefix(r, "@··─") {
+		t.Fatalf("a turn that did not finish bows: %q", r)
+	}
+	app.Update(turnDoneMsg{})
 	if r := row(2500); !strings.HasPrefix(r, "@^^─") {
 		t.Fatalf("no done frame after the turn: %q", r)
 	}
@@ -1010,7 +1014,7 @@ func TestFileRowClickIDs(t *testing.T) {
 // line, edits and failures keep their rows, a command shows the model's
 // description with the command under it, and ctrl+o shows every call.
 func TestToolRows(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 44)
+	app, host := bootAgentApp(t, 100, 48)
 	host.AppendMessage("user", "fix it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
@@ -1022,8 +1026,9 @@ func TestToolRows(t *testing.T) {
 		{Name: "bash", Input: "cat > n.txt <<EOT\nfirst line\nEOT", Label: "Write notes", Status: "err"},
 		{Name: "bash", Input: "printf a\nprintf b", Status: "err"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "ok", Output: "still running, so it " + tools.JobHandoff + "job-1"},
-		// a verdict the user gave shows as one line; the model keeps the reason and the instructions
-		{Name: "write", Input: "b.go", Status: "err", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
+		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
+		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
+		{Name: "write", Input: "b.go", Status: "stopped", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user approved the plan. Implement it now: track its steps with todos, carry them through, verify, and report.\nThe plan is saved at /data/plans/s1.md."},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user has not approved the plan and asked for changes: use go\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."},
 	}})
@@ -1031,12 +1036,12 @@ func TestToolRows(t *testing.T) {
 	frame := ansi.Strip(app.Frame())
 	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX",
 		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
-		"✗ Write b.go", "    denied by you", "    approved, saved to /data/plans/s1.md", "    changes requested: use go"} {
+		"■ Write b.go", "    denied by you", "    dismissed by you", "    approved, saved to /data/plans/s1.md", "    changes requested: use go"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Implement it now") {
+	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
 		t.Fatalf("command output shows only with ctrl+o, a verdict row shows only the verdict:\n%s", frame)
 	}
 	host.ToggleReasoning()
@@ -1138,7 +1143,7 @@ func TestStreamEventsCoalesce(t *testing.T) {
 	if n := len(app.testQueue); n != 1 {
 		t.Fatalf("queued %d stream events, want 1", n)
 	}
-	app.TurnDone("")
+	app.TurnDone("", false)
 	if n := len(app.testQueue); n != 2 {
 		t.Fatalf("turn_done must always queue, got %d", n)
 	}
