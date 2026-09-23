@@ -43,22 +43,34 @@ func TestPanicsDoNotKillZemi(t *testing.T) {
 
 // TestFailedTurnLeavesErrorRow: a turn that fails ends with an error row in
 // the transcript (and the agent idle); an interrupt reads as interrupted.
+// Reasoning mid-step settles the finished call and keeps the open one live,
+// which the end then marks failed, or stopped after an interrupt.
 func TestFailedTurnLeavesErrorRow(t *testing.T) {
 	h, _ := newTestHost(t)
 	sa := &streamAdapter{h: h}
 	for _, c := range []struct {
-		err    error
-		text   string
-		status string
+		err          error
+		text, status string
+		call         string
 	}{
-		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", ""},
-		{context.Canceled, "Interrupted", "cancelled"},
+		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", "", "err"},
+		{context.Canceled, "Interrupted", "cancelled", "stopped"},
 	} {
+		sa.ToolCallStart("a", "glob", `{"pattern":"*"}`)
+		sa.ToolCallEnd("a", "glob", true, "x.go", "")
+		sa.ToolCallPending("b", "read")
+		sa.ReasoningDelta("then b")
+		if tr := h.Session().Transcript; tr[len(tr)-1].Status != "ok" || len(h.agents.tools) != 1 {
+			t.Fatalf("%v: reasoning settled an open call: live %+v", c.err, h.agents.tools)
+		}
 		sa.TurnDone(c.err, fantasy.Usage{})
 		tr := h.Session().Transcript
 		last := tr[len(tr)-1]
 		if last.Kind != "error" || last.Text != c.text || last.Status != c.status {
 			t.Fatalf("%v: last row = %+v", c.err, last)
+		}
+		if call := tr[len(tr)-2]; call.Tool != "read" || call.Status != c.call {
+			t.Fatalf("%v: open call = %+v", c.err, call)
 		}
 	}
 }
