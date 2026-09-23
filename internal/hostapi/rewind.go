@@ -3,7 +3,8 @@
 // Rewinding to a message restores every file changed since, drops the
 // message and the rest of the conversation, and hands its text back to the
 // composer. A bash call's changes are rewound only for repository files git
-// does not ignore, at most snapCheckpoints of them per call.
+// does not ignore and the sandbox does not hide, at most snapCheckpoints of
+// them per call.
 package hostapi
 
 import (
@@ -64,15 +65,23 @@ func (h *Host) checkpoint(abs string, existed bool, data []byte) {
 		return
 	}
 	if len(data) > maxCheckpointBytes {
-		h.Log.Warn("rewind", "file too large to checkpoint", map[string]any{"path": abs, "bytes": len(data)})
-		// say it now: a later rewind reports only the files it restored, and
-		// this one would quietly stay changed
-		h.Notify("warn", "Rewind", filepath.Base(abs)+" is too large to checkpoint; a rewind will not restore it")
+		h.uncheckpointed(abs, "is too large to checkpoint")
 		return
 	}
 	if err := h.DB.AddCheckpoint(sid, mid, abs, existed, data); err != nil {
 		h.Log.Warn("rewind", "checkpoint failed", map[string]any{"path": abs, "error": err.Error()})
 	}
+}
+
+// uncheckpointed says, once per file and turn, that a rewind will not restore
+// abs: a later rewind reports only the files it restored, and this one would
+// quietly stay changed.
+func (h *Host) uncheckpointed(abs, why string) {
+	if _, said := h.snaps.skipped.LoadOrStore(h.turnMsgID()+"\x00"+abs, true); said {
+		return
+	}
+	h.Log.Warn("rewind", "file not checkpointed", map[string]any{"path": abs, "why": why})
+	h.Notify("warn", "Rewind", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
 }
 
 // userText returns what the user typed in a stored user message; compaction
@@ -179,15 +188,18 @@ func (h *Host) RewindTo(id string) (int, error) {
 }
 
 func restoreCheckpoint(cp store.Checkpoint) error {
-	// the key was resolved when saved: a symlink swapped in since for the file
-	// or a parent would send the content somewhere never checked
-	if perm.RealPath(cp.Path) != cp.Path {
+	// the key was resolved when saved: a parent swapped for a symlink since
+	// would send the content somewhere never checked
+	if dir := filepath.Dir(cp.Path); perm.RealPath(dir) != dir {
 		return errors.New("the path now leads through a symlink")
 	}
-	if !cp.Existed {
+	// a link at the file itself is replaced, never written through
+	if fi, err := os.Lstat(cp.Path); err == nil && fi.Mode()&fs.ModeSymlink != 0 || !cp.Existed {
 		if err := os.Remove(cp.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+	}
+	if !cp.Existed {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(cp.Path), 0o755); err != nil {

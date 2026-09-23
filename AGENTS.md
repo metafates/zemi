@@ -231,8 +231,8 @@ saved to the scratchpad (`tools.Spill`); command output, `!command` included, go
 bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
 (which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the
-repository before and after, written through a warm temp index so the user's index is never
-touched, diffed into the result's `Metadata`; the model gets one line of paths and
+repository before and after, written through a warm temp index and object directory so the user's
+index and object store are never touched and leaving out the secret shapes the sandbox hides, diffed into the result's `Metadata`; the model gets one line of paths and
 `tool.post` every path as `ev.changed`, next to the file tools' own. `read` carries
 the nearest instruction file not already in the prompt, once per session, so a monorepo
 package's own AGENTS.md reaches the model.
@@ -626,7 +626,7 @@ how many rows the frame takes, so nothing above it reflows.
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
   restore leaves the conversation intact. A bash call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
-  a repository, and not once two slow snapshots switched the snapshot off).
+  a repository, no symbolic link or submodule, and not once two slow snapshots switched the snapshot off).
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
   allows and a rule's bash allow other than `ReadCommand` flip to ask; the sandbox keeps the

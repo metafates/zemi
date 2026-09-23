@@ -241,3 +241,58 @@ func TestRestoreRefusesSwappedSymlink(t *testing.T) {
 		t.Fatal("wrote outside the project")
 	}
 }
+
+// TestRewindBashSymlink: a command's change to a symbolic link never blocks
+// a rewind or leaves a text file in its place.
+func TestRewindBashSymlink(t *testing.T) {
+	for _, c := range []struct {
+		name, path string
+		run        func(dir string) error
+		want       string // the link's target after the rewind, "" for no file there
+	}{
+		{name: "deleted", path: "link", run: func(dir string) error { return os.Remove(filepath.Join(dir, "link")) }},
+		{name: "retargeted", path: "link", want: "b.txt", run: func(dir string) error {
+			os.Remove(filepath.Join(dir, "link"))
+			return os.Symlink("b.txt", filepath.Join(dir, "link"))
+		}},
+		{name: "created", path: "new", run: func(dir string) error { return os.Symlink("a.txt", filepath.Join(dir, "new")) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			dir := h.Dirs.ProjectDir
+			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644)
+			os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0o644)
+			if err := os.Symlink("a.txt", filepath.Join(dir, "link")); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
+				if out, err := h.runGit(dir, nil, args...); err != nil {
+					t.Fatalf("git %v: %v %s", args, err, out)
+				}
+			}
+			h.DB.CreateSession("s", "", "s", "")
+			parts, _ := json.Marshal(fantasy.NewUserMessage("go"))
+			m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
+			h.DB.AddMessage(m)
+			if err := h.ResumeSession("s"); err != nil {
+				t.Fatal(err)
+			}
+			h.agents.turnMsgID = m.ID
+			done := h.bashChanges(dir)
+			if err := c.run(dir); err != nil {
+				t.Fatal(err)
+			}
+			done()
+			if _, err := h.RewindTo(m.ID); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.Readlink(filepath.Join(dir, c.path))
+			if _, missing := os.Lstat(filepath.Join(dir, c.path)); err != nil && missing == nil {
+				got = "<not a link>"
+			}
+			if got != c.want {
+				t.Fatalf("%s is %q, want %q", c.path, got, c.want)
+			}
+		})
+	}
+}
