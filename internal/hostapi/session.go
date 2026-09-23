@@ -201,7 +201,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return errors.New("a turn is running; esc interrupts it")
+		return errors.New("a turn is running; esc twice interrupts it")
 	}
 	prev, reports := ag.sessionID, ag.steering
 	h.recentStale.Store(true)

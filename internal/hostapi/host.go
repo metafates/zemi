@@ -305,7 +305,7 @@ type Host struct {
 	// compaction, the model, tools and auto-mode screening.
 	turn atomic.Pointer[turnScope]
 
-	modes modeReg // permission modes in tab order
+	modes modeReg // permission modes in cycle order
 
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer

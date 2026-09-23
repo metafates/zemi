@@ -177,7 +177,7 @@ func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	}
 }
 
-// TestModeSwitchQuiet: tab-style switches only change the pill, and a
+// TestModeSwitchQuiet: a mode switch only changes the pill, and a
 // picker opens by the statusline instead of mid-chat, its border in line
 // with the composer frame on the side of the pill that opened it.
 func TestModeSwitchQuiet(t *testing.T) {

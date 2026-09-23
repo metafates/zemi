@@ -98,7 +98,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return 0, errors.New("a turn is running; esc interrupts it")
+		return 0, errors.New("a turn is running; esc twice interrupts it")
 	}
 	// claimed like a turn, so no send starts on the history being cut
 	ag.active = true

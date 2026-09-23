@@ -43,7 +43,7 @@ var builtinModes = []PermModeDef{
 	{Name: "yolo", Base: "yolo", Description: "everything runs without asking"},
 }
 
-// modeReg is the mode list in tab order: the builtins until user config
+// modeReg is the mode list in cycle order: the builtins until user config
 // changes it, reset on reload so init.lua replays onto a clean list.
 type modeReg struct {
 	mu             sync.Mutex
@@ -216,7 +216,7 @@ func (h *Host) permModeDef() PermModeDef {
 	return list[0]
 }
 
-// SetPermMode switches the mode at runtime (/mode, tab).
+// SetPermMode switches the mode at runtime (/mode, ctrl+y).
 func (h *Host) SetPermMode(mode string) error {
 	list := h.PermModeList()
 	i := modeIndex(list, mode)
@@ -289,7 +289,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	return v, true
 }
 
-// cyclePermMode steps through the modes (tab forward, shift+tab back).
+// cyclePermMode steps through the modes (the mode cycle and prev actions).
 func (h *Host) cyclePermMode(step int) error {
 	list := h.PermModeList()
 	n := len(list)

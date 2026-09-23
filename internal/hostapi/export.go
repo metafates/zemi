@@ -223,7 +223,7 @@ func (h *Host) ForkSession() (string, error) {
 		return "", errors.New("no session to fork")
 	}
 	if h.AgentActive() {
-		return "", errors.New("a turn is running; esc interrupts it")
+		return "", errors.New("a turn is running; esc twice interrupts it")
 	}
 	if n := h.tasks.runningFor(sid); n > 0 {
 		return "", fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
