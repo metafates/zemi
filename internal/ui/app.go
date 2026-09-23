@@ -146,6 +146,7 @@ type widgetCache struct {
 	width, height int
 	gen           int64
 	err           string // last recorded render error; a repeat is not recorded again
+	partial       bool   // lines of a render that asked to run again: older rows are still to come
 
 	// wrapped holds the lines re-wrapped for wrapW cells: compose runs
 	// every frame and wrapping the transcript is its biggest cost.
@@ -590,7 +591,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	if c := a.caches[msg.id]; c != nil && c.gen > msg.gen {
 		return
 	}
-	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen}
+	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, partial: msg.more}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows = old.wrapW, old.lineRows
@@ -601,7 +602,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		// A reader scrolled up keeps the last whole render until the new one
 		// is whole: anchoring on partial rows would lose their place.
 		if old != nil && len(old.lines) > 0 && a.scrolledUp(msg.id) {
-			c.lines, c.wrapped = old.lines, old.wrapped
+			c.lines, c.wrapped, c.partial = old.lines, old.wrapped, old.partial
 		}
 	}
 	a.caches[msg.id] = c

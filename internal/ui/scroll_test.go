@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -225,5 +226,40 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	app.renderSync(t)
 	if got := visible(app.Frame()); got != want {
 		t.Fatalf("expanding the thoughts moved the view from %q to %q", want, got)
+	}
+}
+
+// TestChatScrollAnchorsThroughFill: a long chat fills its latest rows first,
+// and a reader who scrolled up in them keeps their place when the older rows
+// land above, though every reply repeats the same lines.
+func TestChatScrollAnchorsThroughFill(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	for i := 1; i <= 30; i++ {
+		host.AppendMessage("user", fmt.Sprintf("message %d", i))
+		host.AppendTurnResult("line a\n\nline b\n\nline c\n\nline d\n\nline e", hostapi.TurnStat{Out: 100, ElapsedMS: 1500})
+	}
+	app.renderSync(t)
+	app.Frame()
+	var chat shownWidget
+	for _, w := range app.shownWidgets() {
+		if w.Region == app.scrolls["chat"].region {
+			chat = w
+		}
+	}
+	full := app.caches[chat.ID].lines
+	fill := func(lines [][]hostapi.Segment, more bool) {
+		app.onWidgetRendered(widgetRender{id: chat.ID, lines: lines, more: more, width: chat.width, height: chat.height, gen: app.frameGen})
+		app.Frame()
+	}
+	// the text on screen: the bar's thumb shrinks as the rows land
+	text := func() string { return strings.ReplaceAll(ansi.Strip(app.Frame()), "█", "│") }
+	// the first pass draws the last three turns
+	first := slices.IndexFunc(full, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l), "message 28") })
+	fill(full[first:], true)
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	want, below := text(), app.rowsBelow()
+	fill(full, false)
+	if got := text(); got != want || app.rowsBelow() != below {
+		t.Fatalf("the fill moved the view (%d rows below, want %d):\n%s\nwant:\n%s", app.rowsBelow(), below, got, want)
 	}
 }

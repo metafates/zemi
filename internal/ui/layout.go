@@ -511,6 +511,7 @@ type scrollState struct {
 	bottom    bool
 	anchor    []string
 	anchorOff int
+	filling   bool         // the rows drawn are a fill's latest, older ones still to land above
 	rect      uv.Rectangle // where it was drawn on the last frame
 	region    string
 }
@@ -531,6 +532,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	a.scrollIDs = append(a.scrollIDs, n.ID)
 	if !st.follow && prevRows > 0 && st.rows != prevRows {
 		st.top = reanchor(lines, st, prevRows)
+	}
+	st.filling = false
+	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
+		if c := a.caches[wgt.ID]; c != nil && c.partial {
+			st.filling = true
+		}
 	}
 	rows := st.window(lines, w)
 	st.anchor, st.anchorOff = nil, 0
@@ -578,11 +585,21 @@ func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 
 // reanchor puts the viewport back on the content it was showing after the
 // row count moved: a thought block expanding above it, or a rewrap at a new
-// width, would otherwise slide unrelated lines under the user. The
-// remembered row is looked for nearest where a proportional scroll would
-// land, since the same text can appear more than once; with no match that
-// proportional position is the answer.
+// width, would otherwise slide unrelated lines under the user. The same
+// text can appear more than once, so the remembered rows are looked for
+// first where rows added below (a streaming turn) or above (a fill, first
+// when one was drawn) would put them, then nearest where a proportional
+// scroll would land; with no match that proportional position is the answer.
 func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
+	tops := []int{st.top, st.top + st.rows - prevRows}
+	if st.filling {
+		slices.Reverse(tops)
+	}
+	for _, top := range tops {
+		if anchoredAt(lines, top+st.anchorOff, st.anchor) {
+			return top
+		}
+	}
 	want := st.top*st.rows/prevRows + st.anchorOff
 	best := -1
 	for i := range lines {
