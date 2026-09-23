@@ -451,20 +451,32 @@ func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 		return resp, err
 	}
 	defer t.h.postNotify(tools.ToolSearch, call.Input, &reply)
-	names := searchMCP(t.tools, in.Query)
-	if len(names) == 0 {
-		return fantasy.NewTextResponse("No deferred MCP tool matches; this tool's description lists them all."), nil
+	var fresh, had []string
+	for _, n := range searchMCP(t.tools, in.Query, t.loaded) {
+		if _, dup := t.loaded.LoadOrStore(n, true); dup {
+			had = append(had, n)
+		} else {
+			fresh = append(fresh, n)
+		}
 	}
-	for _, n := range names {
-		t.loaded.Store(n, true)
+	var lines []string
+	if len(fresh) > 0 {
+		lines = append(lines, "Loaded, callable from your next step on: "+strings.Join(fresh, ", "))
 	}
-	return fantasy.NewTextResponse("Loaded, callable from your next step on: " + strings.Join(names, ", ")), nil
+	if len(had) > 0 {
+		lines = append(lines, "Already loaded: "+strings.Join(had, ", "))
+	}
+	if len(lines) == 0 {
+		return fantasy.NewTextResponse("No deferred MCP tool that is not loaded yet matches; this tool's description lists them all."), nil
+	}
+	return fantasy.NewTextResponse(strings.Join(lines, "\n")), nil
 }
 
 // searchMCP ranks tools by how many keywords their name, description and
 // parameter names contain, an exact name above any count, and returns at
-// most mcpSearchMax names.
-func searchMCP(list []*mcpTool, query string) []string {
+// most mcpSearchMax names. A tool already loaded counts only by exact name,
+// so repeating a search reaches the next matches.
+func searchMCP(list []*mcpTool, query string, loaded *sync.Map) []string {
 	words := strings.Fields(strings.ToLower(query))
 	type hit struct {
 		name  string
@@ -474,14 +486,17 @@ func searchMCP(list []*mcpTool, query string) []string {
 	for _, m := range list {
 		name := mcpToolName(m.srv.name, m.tool.Name)
 		text := strings.ToLower(name + " " + m.tool.Description + " " + strings.Join(slices.Collect(maps.Keys(m.props)), " "))
-		score := 0
+		score, exact := 0, false
 		for _, w := range words {
 			switch {
 			case w == strings.ToLower(name) || w == strings.ToLower(m.shortName()):
-				score += len(words) + 1
+				score, exact = score+len(words)+1, true
 			case strings.Contains(text, w):
 				score++
 			}
+		}
+		if _, ok := loaded.Load(name); ok && !exact {
+			continue
 		}
 		if score > 0 {
 			hits = append(hits, hit{name, score})
