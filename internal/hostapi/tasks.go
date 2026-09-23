@@ -557,7 +557,7 @@ func (h *Host) agentRunItems() []any {
 	for _, run := range h.tasks.list(sid) {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
-		row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d %s", calls, plural(calls, "call", "calls")))
+		row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}
 	// a run another session started still writes files and blocks /rewind,
 	// so it is listed, named by that session
@@ -567,7 +567,7 @@ func (h *Host) agentRunItems() []any {
 		if sess, err := h.DB.GetSession(run.parent); h.DB != nil && err == nil && sess.Title != "" {
 			from = sess.Title
 		}
-		row(run.id, status, run.agent, took, run.description+" (from "+from+")", fmt.Sprintf(" · %d %s", calls, plural(calls, "call", "calls")))
+		row(run.id, status, run.agent, took, run.description+" (from "+from+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)

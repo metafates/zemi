@@ -265,7 +265,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := fmt.Sprint(h.agentRunItems())
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	// enter on a run opens its transcript, and the footer says so
