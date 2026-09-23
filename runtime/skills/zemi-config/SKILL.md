@@ -214,8 +214,8 @@ guessing. Common keys:
 
 ## Command line
 
-`zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin joins the
-prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
+`zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin is attached
+to the prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`,
 `--mode auto|yolo`, `--output text|json` (json needs `-p`), `-v` version,
 `--health` prints the checks `/health` shows and exits 1 when any of them errors.
 A prompt starting with a registered command runs it instead of reaching the model, so

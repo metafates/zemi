@@ -87,7 +87,7 @@ or settled builds.
 
 `zemi` opens the TUI; a prompt argument is sent as the first message, or run as a command when
 it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git hook). `--help`
-lists the flags. Piped stdin is appended to the prompt and is a usage error without `-p`. Flags
+lists the flags. Piped stdin (1 MiB at most) is attached behind the typed prompt and is a usage error without `-p`. Flags
 apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `-m` and `/model` write the tier the conversation reads (`Host.ConversationKey`:
 `models.smart` when config set it, else `models.main`). Both, and `zemi.model.set`, refuse
@@ -98,8 +98,8 @@ segment clicks into) write `agent.profile` for the next send: a switch changes t
 and the tool set, so it busts the provider's prompt cache once; ctrl+t and ctrl+shift+t cycle it.
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
-reports on stderr how many tool calls the gate denied - nobody can answer an ask headless, so
-`deniedHint` points at `--trust` or at an allow rule. It also drops what needs a user
+reports on stderr how many asks nobody could answer (`Host.HeadlessDenials`, subagents' too), where
+`deniedHint` points at `--trust` or at an allow rule, and apart what a rule or the profile denied. It also drops what needs a user
 (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached report would
 outlive the run), and the prompt lines naming them. A headless run with no saved trust decision
 runs untrusted and says so.

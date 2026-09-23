@@ -1,14 +1,20 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -17,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -107,7 +114,7 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
 			Output: "permission denied (mode): tool.lua: print mode cannot ask"},
 		{Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
-			Output: "permission denied (default): memory.write: print mode cannot ask"},
+			Output: "permission denied (default): memory.write: nobody could answer the ask"},
 		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},
 	})
@@ -121,8 +128,9 @@ func TestTurnReport(t *testing.T) {
 	if rt := rep.Tools[2]; !rt.Denied || !strings.HasPrefix(rt.Error, "permission denied (mode)") {
 		t.Fatalf("write row = %+v", rt)
 	}
-	if rep.denied != 3 || rep.tuiOnly != 2 {
-		t.Fatalf("denied = %d tuiOnly = %d, want 3 and 2", rep.denied, rep.tuiOnly)
+	// an unanswered ask is the gate's to count; the rest were refused
+	if rep.refused != 2 {
+		t.Fatalf("refused = %d, want 2", rep.refused)
 	}
 	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
 		t.Fatalf("error report = %+v", rep)
@@ -141,7 +149,7 @@ func TestDeniedHint(t *testing.T) {
 		{"outside the sandbox", 1, true, "outside the sandbox needs the TUI"},
 		{"lua script", 0, true, "only the TUI can approve a Lua script"},
 	} {
-		rep := report{denied: 1, unsandboxed: c.unsandboxed}
+		rep := report{Denied: 1, unsandboxed: c.unsandboxed}
 		if c.name == "lua script" {
 			rep.tuiOnly = 1
 		}
@@ -292,7 +300,8 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 }
 
 // TestSendPromptRunsCommands: a prompt on the command line that names a
-// command runs it, the way the composer would; anything else is a message.
+// command runs it, the way the composer would, with piped stdin behind the
+// marker; anything else is a message.
 func TestSendPromptRunsCommands(t *testing.T) {
 	_, h, _ := newTrustGate(t)
 	got := ""
@@ -302,15 +311,187 @@ func TestSendPromptRunsCommands(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sendPrompt(h, "/note the args"); err != nil || got != "the args" {
-		t.Fatalf("command prompt: ran with %q, %v", got, err)
+	for _, c := range []struct{ prompt, stdin, args string }{
+		{"/note the args", "", "the args"},
+		{"/note\nnext line", "", "next line"},
+		{"/note", "diff --git a/x b/x", hostapi.Attached("stdin", "diff --git a/x b/x")},
+	} {
+		o := options{print: true, prompt: c.prompt}
+		if c.stdin != "" {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			w.WriteString(c.stdin)
+			w.Close()
+			err = o.readStdin(r)
+			r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		got = "unset"
+		if err := sendPrompt(h, o.prompt); err != nil || got != c.args {
+			t.Errorf("%q: ran with %q, %v", c.prompt, got, err)
+		}
 	}
 	// no such command: the text is the model's, and this host has no model
-	if err := sendPrompt(h, "/notes please"); err == nil {
-		t.Fatal("an unknown command must reach the agent")
+	got = "unset"
+	if err := sendPrompt(h, "/notes please"); err == nil || got != "unset" {
+		t.Fatalf("an unknown command must reach the agent: %v, ran %q", err, got)
 	}
-	if got != "the args" {
-		t.Fatalf("an unknown command ran one: %q", got)
+}
+
+// TestStdinOverCap: more than 1 MiB of stdin is refused, not cut.
+func TestStdinOverCap(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	go func() {
+		w.Write(make([]byte, 1<<20+1))
+		w.Close()
+	}()
+	o := options{print: true}
+	if err := o.readStdin(r); err == nil || !strings.Contains(err.Error(), "over 1 MiB") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// fakeOpenAI is an OpenAI-compatible chat server: "call NAME {json}" calls
+// that tool, "say X" replies X, "hang" waits for the request to end, and a
+// tool result gets "done".
+func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Stream   bool
+		Messages []struct {
+			Role    string
+			Content any
+		}
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	last := body.Messages[len(body.Messages)-1]
+	text, _ := last.Content.(string)
+	if parts, ok := last.Content.([]any); ok {
+		for _, p := range parts {
+			m, _ := p.(map[string]any)
+			s, _ := m["text"].(string)
+			text += s
+		}
+	}
+	usage := map[string]int{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
+	if !body.Stream {
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "c", "object": "chat.completion", "model": "m", "usage": usage,
+			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}}})
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	ev := func(delta map[string]any, fin any) {
+		b, _ := json.Marshal(map[string]any{"id": "c", "object": "chat.completion.chunk", "model": "m", "usage": usage,
+			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": fin}}})
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		w.(http.Flusher).Flush()
+	}
+	call := regexp.MustCompile(`call (\w+) (\{.*\})`).FindStringSubmatch(text)
+	_, say, _ := strings.Cut(text, "say ")
+	switch {
+	case last.Role == "user" && call != nil:
+		ev(map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "t1", "type": "function",
+			"function": map[string]any{"name": call[1], "arguments": call[2]}}}}, nil)
+		ev(map[string]any{}, "tool_calls")
+	case last.Role == "user" && text == "hang":
+		<-r.Context().Done()
+		return
+	default:
+		ev(map[string]any{"role": "assistant", "content": cmp.Or(say, "done")}, nil)
+		ev(map[string]any{}, "stop")
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+// printHost is a host with /new and a fake model, in an untrusted project.
+func printHost(t *testing.T) *hostapi.Host {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(fakeOpenAI))
+	t.Cleanup(srv.Close)
+	_, h, r := newTrustGate(t)
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT, api_key = "x", base_url = %q, models = { { id = "m", context_window = 128000 } } })
+		zemi.config.set("models.main", "fake/m")`, srv.URL+"/v1")
+	if err := r.ExecuteChunk(context.Background(), cfg, "init.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// TestPrintTurn: what -p prints for a turn, and why calls were denied.
+func TestPrintTurn(t *testing.T) {
+	for _, c := range []struct {
+		name, prompt      string
+		first             []string // turns run before, -c style
+		setup             func(h *hostapi.Host)
+		stdout, stderr    string // wanted substrings
+		notStdout, notErr string
+		denied            int
+	}{
+		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", notStdout: "\x1b"},
+		{name: "a deny rule is no ask", prompt: `call bash {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
+			h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "ls*", Decision: perm.Deny})
+		}, stderr: "1 tool call denied by a rule", notErr: "allow rule"},
+		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
+			if err := h.SetProfile("planner"); err != nil {
+				t.Fatal(err)
+			}
+		}, stderr: "1 tool call denied by a rule", notErr: "allow rule"},
+		{name: "a subagent's unanswered ask counts", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
+			stderr: "1 tool call denied; nobody can answer an ask with -p", denied: 1},
+		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
+	} {
+		h := printHost(t)
+		if c.setup != nil {
+			c.setup(h)
+		}
+		for _, p := range c.first {
+			if printTurn(h, p, false, io.Discard, io.Discard) != 0 {
+				t.Fatalf("%s: %q failed", c.name, p)
+			}
+		}
+		var out, errOut strings.Builder
+		code := printTurn(h, c.prompt, false, &out, &errOut)
+		if code != 0 || !strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) ||
+			c.notStdout != "" && strings.Contains(out.String(), c.notStdout) || c.notErr != "" && strings.Contains(errOut.String(), c.notErr) {
+			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
+		}
+		out.Reset()
+		if c.denied > 0 {
+			var rep report
+			printTurn(h, c.prompt, true, &out, io.Discard)
+			if err := json.Unmarshal([]byte(out.String()), &rep); err != nil || rep.Denied != c.denied {
+				t.Errorf("%s: json denied = %d (%v)", c.name, rep.Denied, err)
+			}
+		}
+	}
+}
+
+// TestPrintInterruptJSON: an interrupted run still prints its report, so a
+// script keeps the session id it resumes.
+func TestPrintInterruptJSON(t *testing.T) {
+	h := printHost(t)
+	var out strings.Builder
+	code := make(chan int)
+	go func() { code <- printTurn(h, "hang", true, &out, io.Discard) }()
+	for !h.AgentActive() {
+		runtime.Gosched()
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	var rep report
+	if c := <-code; c != 130 || json.Unmarshal([]byte(out.String()), &rep) != nil || !rep.IsError || rep.Error != "interrupted" || rep.SessionID == "" {
+		t.Fatalf("code %d, stdout %q", c, out.String())
 	}
 }
 
