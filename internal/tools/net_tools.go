@@ -155,6 +155,9 @@ func ParseNetURL(raw string) (*url.URL, error) {
 // the whole URL under net.<host>, so the same rules answer both. The
 // resolve-time Control hook covers the IP side.
 func netGate(p *Pipeline, u *url.URL, reason string) error {
+	if err := checkFetchHost(p, u); err != nil {
+		return err
+	}
 	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
 	if v.Decision != perm.Allow {
 		return errors.New(DeniedText(v, "net."+u.Hostname()+" "+u.String()))

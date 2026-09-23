@@ -417,6 +417,9 @@ func TestFetchGates(t *testing.T) {
 		io.WriteString(w, "{}")
 	})
 	srv := httptest.NewServer(mux)
+	mux.HandleFunc("/r", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)+"/x", http.StatusFound)
+	})
 	defer srv.Close()
 	// a host private as written is refused before an ask no answer could pass
 	for _, raw := range []string{srv.URL + "/x", "http://localhost:1/", "http://LocalHost./", "http://a.localhost/", "http://[::1]/"} {
@@ -431,7 +434,7 @@ func TestFetchGates(t *testing.T) {
 		principal string
 		wantErr   bool
 	}{{"", false}, {"model", true}} {
-		local, _ := testPipeline(t, false, perm.Rule{Subject: "net.127.0.0.1", Pattern: "*", Decision: perm.Allow, Principal: c.principal})
+		local, localAsked := testPipeline(t, false, perm.Rule{Subject: "net.127.0.0.1", Pattern: "*", Decision: perm.Allow, Principal: c.principal})
 		local.Principal = "model"
 		res := call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
 		if res.IsError != c.wantErr {
@@ -444,6 +447,10 @@ func TestFetchGates(t *testing.T) {
 			}
 			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
 				t.Fatalf("json body = %q", res.Content)
+			}
+			// a redirect hop to a private host is refused like a first URL, before any ask
+			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/r")); !res.IsError || !strings.Contains(res.Content, "only an allow rule for net.localhost") || len(*localAsked) != 0 {
+				t.Fatalf("redirect to localhost: %+v asked %+v", res, *localAsked)
 			}
 		}
 	}
