@@ -151,10 +151,13 @@ func TestCompactionMidTurn(t *testing.T) {
 	for _, c := range []struct {
 		name       string
 		summaryErr error
+		cancel     bool // esc while the summary runs
 		streams    int32
+		errRow     string // the error row's status, "" for no error row
 	}{
-		{"continues after the summary", nil, 2},
-		{"ends the turn when the summary fails", errors.New("summary down"), 1},
+		{"continues after the summary", nil, false, 2, ""},
+		{"ends the turn when the summary fails", errors.New("summary down"), false, 1, ""},
+		{"esc during the summary reads as interrupted", nil, true, 1, "cancelled"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -168,7 +171,23 @@ func TestCompactionMidTurn(t *testing.T) {
 			m.toolStep.Store(90_000)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
+			// the summary runs inside the turn: the working rule has a clock
+			// to show "Compacting" against, and esc reaches it
+			var elapsed time.Duration
+			m.during = func() {
+				// the title's call comes after the turn
+				if s := h.AgentStream(); s.Compacting {
+					elapsed = s.Elapsed
+				}
+				if c.cancel {
+					h.AgentCancel()
+					m.block = time.Second
+				}
+			}
 			sender(t, h)("go")
+			if elapsed <= 0 {
+				t.Fatal("no turn clock while summarizing")
+			}
 			if n := m.streams.Load(); n != c.streams {
 				t.Fatalf("model streamed %d times, want %d", n, c.streams)
 			}
@@ -183,11 +202,15 @@ func TestCompactionMidTurn(t *testing.T) {
 				}
 			}
 			var kinds []string
+			errRow := ""
 			for _, row := range h.Session().Transcript {
 				kinds = append(kinds, row.Kind)
+				if row.Kind == "error" {
+					errRow = row.Status
+				}
 			}
-			if got := strings.Join(kinds, ","); strings.Contains(got, "compact") != (c.summaryErr == nil) || strings.Contains(got, "error") {
-				t.Fatalf("transcript kinds: %s", got)
+			if got := strings.Join(kinds, ","); strings.Contains(got, "compact") != (c.summaryErr == nil && !c.cancel) || errRow != c.errRow {
+				t.Fatalf("transcript kinds: %s, error row %q", got, errRow)
 			}
 			if u := h.agents.cutUsage; u != (fantasy.Usage{}) {
 				t.Fatalf("cut usage still banked: %+v", u)

@@ -180,14 +180,20 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		default:
 			return
 		}
-		if !h.compactReporting(ctx, runner, reason, "") {
-			// the held finish: the error, or a cut that stays cut
-			h.streamHooks().TurnDone(err, fantasy.Usage{})
-			return
-		}
+		// the held TurnDone zeroed the turn clock; the working rule shows
+		// "Compacting", the elapsed time and the esc hint only with one
 		ag.mu.Lock()
 		ag.beginTurn()
 		ag.mu.Unlock()
+		if !h.compactReporting(ctx, runner, reason, "") {
+			// the held finish: the error, or a cut that stays cut; an esc
+			// during the summary reads as interrupted like any other
+			if ctx.Err() != nil {
+				err = ctx.Err()
+			}
+			h.streamHooks().TurnDone(err, fantasy.Usage{})
+			return
+		}
 	}
 }
 
