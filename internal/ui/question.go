@@ -152,8 +152,9 @@ func (a *App) questionKey(key, text string) {
 		return
 	}
 	// a digit picks the option directly; yes_no and single answer at once,
-	// and single's last digit starts the typed answer
-	if n := optionDigit(text); n >= 0 && n < q.ListRows() && (n < len(q.Options) || !q.Multi()) {
+	// and single's last digit starts the typed answer. On the typed answer
+	// row a digit is its first character instead.
+	if n := optionDigit(text); n >= 0 && n < q.ListRows() && (n < len(q.Options) || !q.Multi()) && st.sel != len(q.Options) {
 		st.sel = n
 		switch {
 		case n == len(q.Options):
