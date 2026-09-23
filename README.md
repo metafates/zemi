@@ -1,19 +1,19 @@
 # zemi
 
-An AI assistant for your terminal that remembers how you work. It edits files, runs
-commands, searches your code, and asks before anything risky. Everything you see is Lua
-you can change, like Neovim.
+A terminal coding agent that learns how you work. It reads and edits your code, runs
+commands in a sandbox, and asks before anything that leaves it. The layout, widgets,
+keys and commands are Lua you can change, like Neovim.
 
 ## Install
 
 ```sh
 go install github.com/metafates/zemi@latest
-zemi
 ```
 
 Needs Go 1.27. Export a key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
-`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, ...; `/model` lists them) and run `zemi`. A local
-server, or a gateway in front of a known provider, goes in `~/.config/zemi/init.lua`:
+`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, ...; `/model` lists them) and run `zemi` in a
+project. A local server, or a gateway in front of a known provider, goes in
+`~/.config/zemi/init.lua`; the starter file there has the block:
 
 ```lua
 zemi.provider.add({
@@ -24,20 +24,21 @@ zemi.provider.add({
 })
 ```
 
-The starter `init.lua` has the block. `/health` checks your setup. `/help` lists every key and
-command.
+`/health` checks the setup. To change anything else, ask zemi: it knows its own config.
 
-## The basics
+## Use
 
-- `tab` cycles the safety mode at the left of the bar: `auto` (default, runs safe things
-  on its own), `plan` (looks around and suggests, changes nothing), `yolo` (`ctrl+y`, no
-  questions).
-- It asks once per project before trusting it; `/trust` or `--trust` decide.
-- `/memory` saves facts, `/rewind` undoes a turn, `/compact` summarizes long chats.
-- Long chats learn into a summary; skills and memories carry over between sessions.
+- zemi asks once per project whether to trust it. Trusted, the project's `.zemi` config,
+  AGENTS.md and language servers load; untrusted, zemi asks before anything but reads.
+  `/trust` changes the answer.
+- `tab` switches the permission mode: `auto` edits the project and runs sandboxed
+  commands on its own and asks for the rest, `yolo` asks for nothing. `ctrl+y` toggles yolo.
+- `ctrl+t` switches to the `planner` profile: it reads and proposes a plan, and nothing
+  changes until you approve it.
+- `/rewind` undoes a turn and its file changes. `/btw` asks a side question.
+- After a session zemi keeps what it learned about you and the project as memories.
+  `/memory` reviews them, `/memory <note>` adds one.
+- `zemi -p "prompt"` answers on stdout for scripts and git hooks; `zemi --help` lists the flags.
 
-## More
-
-See [DESIGN.md](DESIGN.md) for the full spec, [AGENTS.md](AGENTS.md) for internals, and
-`/help` in the app for keys and commands including `/model`, `/sessions`, `/resume`,
-`/agents`, `/workflow`, `/mcp`, `/lsp`, `/skills`, `/export`, `/review`.
+`/help` lists every key and command. [DESIGN.md](DESIGN.md) is the spec,
+[AGENTS.md](AGENTS.md) the internals.
