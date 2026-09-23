@@ -19,6 +19,11 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - Never `go install` or write `~/go/bin/zemi` from a branch: that is the owner's daily binary. Build into a scratch dir and run it through `zemi-safe`.
 - After a merge to main, boot the merged binary once with `zemi-safe <tree> --health`, the tree holding copies of `~/.config/zemi` and `~/.local/state/zemi`: `make check` cannot see a user's data.
 
+- Parallel workers in worktrees: never `git stash` (the stash is shared by every worktree of
+  the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display
+  diff tool that `git apply` cannot read). When copying state for a boot check, leave out
+  `sandbox-cache`, `sandbox-tmp` and `tmp`, which run to gigabytes.
+
 ## Prompt cache
 
 Anything in the prefix that varies per request busts the provider cache for the rest of the session. Pin per session (`environmentPrompt`, `ag.env`), never per turn: no dates, git status, map-ordered schemas or a plan re-injected every step. A profile or tool-set switch may bust it once, since the user asked. Check by diffing two consecutive request bodies from the fake server (zemi-tui-test).
