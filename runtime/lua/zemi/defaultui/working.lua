@@ -3,10 +3,6 @@ local snail = require("zemi.defaultui.snail")
 
 ---@type table<string, boolean>
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
--- a retry countdown keeps the width it started at, so what follows it
--- never moves left as it counts down
----@type integer?, integer
-local retry_attempt, retry_w = nil, 0
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
 -- left corner in the state of the turn and, right after it, a shimmering
@@ -24,8 +20,8 @@ zemi.ui.widget.add({
   render = function(ctx)
     local ag = ctx.agent or {}
     -- each part with its worth: a narrow rule sheds the least worth first;
-    -- the elapsed time also has the cells it grows to in ten minutes, so the
-    -- label is clipped once and not again each time it gains a digit
+    -- a ticking part also has the cells it grows to, so the label is clipped
+    -- once and not again each time it gains a digit
     ---@type { [1]: string, [2]: integer, [3]: integer? }[]
     local parts = {}
     local label, state = "", "idle"
@@ -54,34 +50,32 @@ zemi.ui.widget.add({
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
       parts = { { fmt.duration(ag.elapsed, true), 5, 6 } }
       if ag.compacting then label, state = "Compacting", "reading" end
+      ---@type string?
+      local countdown
       if ag.retry then
         label, state = "Retrying", "error"
         parts = { { "attempt " .. ag.retry.attempt, 3 } }
         if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
-        local next_in = fmt.duration(math.ceil(ag.retry.next_in), true)
-        if retry_attempt ~= ag.retry.attempt then retry_attempt, retry_w = ag.retry.attempt, #next_in end
-        local countdown = "next try in " .. string.rep(" ", retry_w - #next_in) .. next_in
-        if ag.retry.next_in <= 0 then countdown = "retrying now" .. string.rep(" ", #countdown - 12) end
-        parts[#parts + 1] = { countdown, 5 }
-      else
-        retry_attempt = nil
+        countdown = ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now"
       end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
-        label, state = "Editing " .. ctx.editing, "idle"
+        label, state, countdown = "Editing " .. ctx.editing, "idle", nil
         parts = { { "save and close the editor to continue", 5 } }
       end
       -- the open prompt says what answers it, so the rule shrinks to the
       -- mascot alone rather than repeating it; in an agent view esc goes back
       if ctx.waiting ~= "" then
-        label, state, parts = "", "asking", {}
+        label, state, parts, countdown = "", "asking", {}, nil
       elseif ctx.cancelling then
-        parts[#parts + 1] = { "ctrl+c quit", 4 }
+        parts[#parts + 1] = { "ctrl+c quit", 6 }
       elseif not ctx.view then
-        parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 4 }
+        parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6 }
       end
       local queued = #ag.steering - ag.reports
       if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
+      -- last, where its changing width moves nothing
+      if countdown then parts[#parts + 1] = { countdown, 5, 15 } end
     end
     ---@return integer
     local function room()
