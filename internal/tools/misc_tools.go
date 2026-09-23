@@ -108,6 +108,9 @@ type PlanVerdict struct {
 	Path     string // where the plan was saved, "" when not saved
 }
 
+// ImplementPlan is what an approved plan's result tells the agent to do.
+const ImplementPlan = "Implement it; track its steps with todos if it has several."
+
 func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	plan := strings.TrimSpace(str(input["plan"]))
 	if plan == "" {
@@ -121,7 +124,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if v.Path != "" {
 		saved = "\nThe plan is saved at " + v.Path + "."
 	}
-	implement := " Implement it now (track its steps with todos when it has several), verify, and report." + saved
+	implement := " " + ImplementPlan + saved
 	switch {
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
@@ -248,7 +251,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	for i, q := range qs {
 		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
 		if ans == "" {
-			ans = "(not answered)"
+			ans = "(not answered: go with your recommendation)"
 		}
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}

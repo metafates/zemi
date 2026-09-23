@@ -376,11 +376,11 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	}
 	if p.Plan != nil && p.Plan() {
 		// sandbox: false is denied for a read-only agent, so it is not offered
-		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (which asks the user) adds only the network."
+		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (needs approval) adds only the network."
 	}
-	retry := " If the command needs the network, call it again with network: true, which keeps the sandbox and asks the user; sandbox: false, which drops every limit, is the last resort."
+	retry := " It looks like the network: call it again with network: true, which keeps the sandbox and needs approval."
 	if !sandbox.LikelyNetwork(out, err) {
-		retry = " If the command needs more, call it again with network: true (the network, sandbox kept) or sandbox: false (no limits at all); both ask the user."
+		retry = " If it needs the network, call it again with network: true (sandbox kept); if it needs more, sandbox: false (no limits). Both need approval."
 	}
 	return "\nThe sandbox may have blocked this: " + limits + "." + retry
 }
@@ -397,9 +397,9 @@ func sandboxLimits() string {
 	s := "no network, writes only in the scratchpad and a private $TMPDIR, the project read-only"
 	switch {
 	case b.EnforcesProtect && runtime.GOOS == "linux":
-		s = "no network at all, not even to servers running on this machine; writes only in the project (except for a read-only agent), the scratchpad and a private $TMPDIR; .git and .zemi read-only"
+		s = "no network at all, not even to servers running on this machine; writes only in a trusted project, the scratchpad and a private $TMPDIR; .git and .zemi read-only"
 	case b.EnforcesProtect:
-		s = "no network beyond localhost, writes only in the project (except for a read-only agent), the scratchpad and a private $TMPDIR, .git and .zemi read-only"
+		s = "no network beyond localhost, writes only in a trusted project, the scratchpad and a private $TMPDIR, .git and .zemi read-only"
 	}
 	if b.HidesSecretFiles {
 		return s + ", secret files unreadable"
@@ -411,12 +411,12 @@ func sandboxLimits() string {
 // sockets. It is the answer to almost every sandbox denial, since the file
 // rules are the ones a settled command is meant to keep.
 func NetworkProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "keeps the sandbox and adds the network (go mod download, npm install, curl); asks the user, so say why in about. Try this before sandbox: false, which drops every limit."}
+	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
 }
 
 // SandboxProp is the escape bash and job_start take while a backend is live.
 func SandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "a command zemi settles on its own runs sandboxed (" + sandboxLimits() + "); false runs it unconfined and asks the user, so say why in about. Only after network: true was not enough."}
+	return map[string]any{"type": "boolean", "description": "Commands that run without the user's approval are sandboxed: " + sandboxLimits() + ". false drops every limit and needs approval; only when network: true was not enough."}
 }
 
 func decidedBy(o perm.Outcome) string {
@@ -837,16 +837,16 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolBash, `Run a command with sh -c in the project directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over; stdin is empty and there is no terminal. stdout and stderr are merged and long output is cut, with the whole of it saved to a file the result names. At the timeout the command is not killed but handed on as a background job whose id the result gives you.
-Not for anything that does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help. Not for interactive programs (vim, less, REPLs, git rebase -i): use the non-interactive form (git --no-pager, -m, --yes, CI=1). Not for files when you have read, grep, glob, edit and write: what a command prints does not count as reading a file.
+		mk(ToolBash, `Run a command with sh -c in the working directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
+Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for edit.
 Chain dependent steps with &&.`,
 			false,
 			withSandbox(map[string]any{
 				// "about", not "description": a schema's properties reach the model
 				// sorted by name, and this one has to stream before the command
-				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests; with network: true or sandbox: false, also what it needs that for"},
+				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests. With network or sandbox set, also why it needs that."},
 				"command":    map[string]any{"type": "string"},
-				"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
+				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}),
 			[]string{"command"},
 			func(in map[string]any) []Request {
@@ -854,11 +854,11 @@ Chain dependent steps with &&.`,
 			},
 			runBash),
 
-		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. A read cut short ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
+		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the project root"},
-				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
-				"limit":  map[string]any{"type": "number", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 characters"},
+				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the working directory"},
+				"offset": map[string]any{"type": "integer", "description": "1-based line to start at"},
+				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 bytes"},
 			},
 			[]string{"path", "limit"},
 			func(in map[string]any) []Request {
@@ -866,7 +866,7 @@ Chain dependent steps with &&.`,
 			},
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file, or overwrite one with its full new content (parent directories are created). Prefer edit for an existing file, which must have been read this session or the call is refused.", true,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read with the read tool and not changed since. To change part of a file use edit.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -877,7 +877,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool this session and be unchanged since; otherwise read it and retry. old_string must match exactly once, indentation included (never read's line-number prefix): add surrounding lines to make it unique, or set replace_all. Keep it as small as still unique; whole lines also match when only whitespace differs. A failed match means the text differs: read that region again and copy it, never guess. Do not re-read after success.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count) and not changed since except by your edits. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Whole lines also match when only whitespace differs. Several edits to one file can go in the same response; they apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -893,7 +893,7 @@ Chain dependent steps with &&.`,
 		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
-				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
+				"path":    map[string]any{"type": "string", "description": "directory to search under; default the working directory"},
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
@@ -901,10 +901,10 @@ Chain dependent steps with &&.`,
 			},
 			runGlob),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. A match is not a read: edit still needs the read tool.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
-				"path":    map[string]any{"type": "string", "description": "file or directory to search; default the project root"},
+				"path":    map[string]any{"type": "string", "description": "file or directory to search; default the working directory"},
 				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},
@@ -913,7 +913,7 @@ Chain dependent steps with &&.`,
 			},
 			runGrep),
 
-		checked(mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused unless the user's config allows the host.",
+		checked(mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -933,7 +933,7 @@ Chain dependent steps with &&.`,
 			return checkFetchHost(p, u)
 		}),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress while work remains; mark each done the moment it finishes, as the very next tool call, never batching the updates, so the visible list always equals your current state - never report a step done in your reply before the list shows it. Without todos it returns the list.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains. Mark an item done as soon as it is, in the same response as the next step's first calls, and never call a step done in your reply before the list does. Do not repeat the list in your reply. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{
@@ -941,7 +941,7 @@ Chain dependent steps with &&.`,
 					"properties": map[string]any{
 						"content":     map[string]any{"type": "string"},
 						"status":      map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done"}},
-						"active_form": map[string]any{"type": "string", "description": "present tense shown while in progress, e.g. Running tests"},
+						"active_form": map[string]any{"type": "string", "description": "on the in_progress item only: present tense shown while it runs, e.g. Running tests"},
 					},
 					"required": []string{"content", "status"},
 				}},
@@ -950,17 +950,17 @@ Chain dependent steps with &&.`,
 			func(in map[string]any) []Request { return nil },
 			runTodos),
 
-		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, expected behavior, preferences, tradeoffs. Never ask what reading code would tell you, never ask to approve a routine action, and never ask whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Every question needs a type (see the schema): yes_no for a yes/no, single_choice and multi_choice for selectable options (2-4, 1-5 word labels, the one you recommend first ending in "(Recommended)"; multi_choice lets the user mark several), free_text for an open answer. Add a short markdown description when a question needs context the options cannot carry. Never add an "Other": the user can always type their own answer.`,
+		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
 			false,
 			map[string]any{
 				"questions": map[string]any{"type": "array", "description": "1 to 4, shown as tabs the user moves between before submitting", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"type":        map[string]any{"type": "string", "enum": []string{"yes_no", "single_choice", "multi_choice", "free_text"}, "description": "how the question is asked"},
+						"type":        map[string]any{"type": "string", "enum": []string{"yes_no", "single_choice", "multi_choice", "free_text"}, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
-						"description": map[string]any{"type": "string", "description": "optional markdown shown under the question"},
-						"header":      map[string]any{"type": "string", "description": "a 1-3 word tab label, e.g. Auth method"},
-						"options": map[string]any{"type": "array", "description": "required for single_choice and multi_choice; yes_no gets Yes and No", "items": map[string]any{
+						"description": map[string]any{"type": "string", "description": "markdown context the options cannot carry, shown under the question"},
+						"header":      map[string]any{"type": "string", "description": "with several questions, a 1-3 word tab label, e.g. Auth method"},
+						"options": map[string]any{"type": "array", "description": "required for single_choice and multi_choice", "items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
 								"label":       map[string]any{"type": "string"},
@@ -976,20 +976,20 @@ Chain dependent steps with &&.`,
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. As a read-only agent, call it once nothing is left to decide; outside it, only before a large or ambiguous change, since a clear task is done and a research question answered, not planned. Ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change, or as a read-only agent once nothing is left to decide: a clear task is done, not planned, and a question is answered. Ask open questions with the question tool first.
 
-The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. The user approves it (implement it, and you return to the agent that ran before), asks for changes (revise and call again), or dismisses it (stop and wait).`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most.`,
 			false,
 			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
 			[]string{"plan"},
 			func(in map[string]any) []Request { return nil },
 			runPlan),
 
-		checked(mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
+		checked(mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading.",
 			true,
 			map[string]any{
 				"query":       map[string]any{"type": "string"},
-				"max_results": map[string]any{"type": "number"},
+				"max_results": map[string]any{"type": "integer"},
 			},
 			[]string{"query"},
 			func(in map[string]any) []Request {
@@ -1019,7 +1019,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			true,
 			map[string]any{
 				"id":      map[string]any{"type": "string"},
-				"wait_ms": map[string]any{"type": "number", "description": "block until the job exits or its output has been quiet for 2s, at most this long (max 600000); default 0 returns at once"},
+				"wait_ms": map[string]any{"type": "integer", "description": "wait until the job exits, or prints and then stays quiet for 2s, at most this long (max 600000); a silent job waits it all out. Default 0 returns at once."},
 			},
 			[]string{"id"},
 			func(in map[string]any) []Request { return nil },
@@ -1041,19 +1041,19 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runJobKill),
 
-		mk(ToolMemory, "Keep one durable fact for future sessions: call it when the user says to remember something, states a preference or corrects you, and when you hit a gotcha the code does not say. One sentence, at most 300 characters, as it holds now, naming the file, command or flag it is about (\"the user wants commits made without being asked once checks pass\", \"the goldens are regenerated by make golden\"); never an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. Anything about the user needs quote: their exact words from this session. A repository procedure is a recipe, not a memory. Never a secret: name the env var that holds it. replaces=<id> rewrites that line under # Memory; empty text with replaces drops it. A memory shows from the next session on; it may be queued for the user's review.",
+		mk(ToolMemory, "Keep one durable fact for future sessions: call it when the user says to remember something, states a preference or corrects you, and when you hit a gotcha the code does not say. One sentence, at most 300 characters, as it holds now, naming the file, command or flag it is about (\"the user wants commits made without being asked once checks pass\", \"the goldens are regenerated by make golden\"); never an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. A user-scope memory needs quote. A repository procedure is a recipe, not a memory. Never a secret: name the env var that holds it.",
 			false,
 			map[string]any{
 				"text":     map[string]any{"type": "string"},
 				"scope":    map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: holds in every project"},
-				"quote":    map[string]any{"type": "string", "description": "the user's exact words this memory rests on"},
+				"quote":    map[string]any{"type": "string", "description": "the user's exact words from this session that this memory rests on"},
 				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory, the first 8 characters or more"},
 			},
 			[]string{"text"},
 			func(in map[string]any) []Request { return nil },
 			runMemory),
 
-		mk(ToolDiagnostics, "Report a file's compiler and linter diagnostics from its language server. write, edit and multiedit already append errors for the file they change, so use this for a file you did not change.",
+		mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
@@ -1075,7 +1075,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 
 		mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
 
-		mk(ToolSkill, "Load a skill's full instructions by name. Call it before the first edit, write or bash of any task a listed skill covers, even a small one you know how to do: the description is the trigger, the body is the procedure. Not for a keyword match alone, and not for a skill already loaded.",
+		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone, and not for a skill already loaded.",
 			true,
 			map[string]any{
 				"name": map[string]any{"type": "string"},

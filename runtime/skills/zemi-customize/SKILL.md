@@ -89,7 +89,7 @@ zemi.agent.profile("lean", { tools = { "-workflow", "-lua", "-job_start", "-lsp"
 ```
 
 The default set minus `workflow`, `lua`, `job_start` and `lsp` is about 40% of the builtin
-schema text (1.8k tokens a request). It gives up workflow scripts, reading or changing
+schema text (1.7k tokens a request). It gives up workflow scripts, reading or changing
 zemi's live state, starting a server or watcher in the background (bash still hands a
 command past its timeout to `job_read` and `job_kill`), and language server queries;
 diagnostics after an edit stay. Apply it with `/profile lean`, `--profile lean`, or
