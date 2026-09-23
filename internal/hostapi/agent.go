@@ -91,14 +91,15 @@ type agentHost struct {
 	active    bool
 	textBuf   string
 	reasonBuf string
-	// stepText and stepReason are the buffer lengths when the current step
-	// began; a provider retry streams the step again from there.
-	stepText   int
-	stepReason int
-	tools      []StreamTool
-	steering   []string
-	modelSeed  string
-	turnModel  string // model id the running turn was built with, for its price
+	// the stream state and transcript length when the current step began: a
+	// provider retry streams the step again from there
+	stepText, stepReason string
+	stepTools            []StreamTool
+	stepRows             int
+	tools                []StreamTool
+	steering             []string
+	modelSeed            string
+	turnModel            string // model id the running turn was built with, for its price
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
@@ -748,27 +749,47 @@ func (s *streamAdapter) TextDelta(text string) {
 }
 
 func (s *streamAdapter) StepStart() {
+	rows := len(s.h.Session().Transcript)
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.stepText, ag.stepReason = len(ag.textBuf), len(ag.reasonBuf)
+	// capped, so a pending row appended later cannot write into the saved slice
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows
 	ag.mu.Unlock()
 }
 
+// Retrying also takes back what a call opened in the failed attempt moved
+// into the transcript (openToolRow), or its text shows twice above a failed row.
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.textBuf = ag.textBuf[:min(ag.stepText, len(ag.textBuf))]
-	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
+	ag.textBuf, ag.reasonBuf, ag.tools = ag.stepText, ag.stepReason, ag.stepTools
+	rows := ag.stepRows
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
 	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
 	why := ag.retryWhy
 	ag.mu.Unlock()
+	s.h.cutAssistantRows(rows)
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
 	if s.h.hooks() == nil { // print mode: the countdown is on no screen
 		fmt.Fprintf(os.Stderr, "zemi: retrying in %s: %s\n", delay.Round(time.Second), why)
 	}
 	s.h.agentStream()
+}
+
+// cutAssistantRows drops the assistant rows past the first n. A !command row
+// that landed meanwhile stays.
+func (h *Host) cutAssistantRows(n int) {
+	h.tMu.Lock()
+	if t := h.session.Transcript; len(t) > n {
+		kept := slices.DeleteFunc(slices.Clone(t[n:]), func(m ChatMessage) bool { return m.Role == "assistant" })
+		// replaced whole, like setTranscript: readers share the old array
+		// (Host.Session) and the chat widget caches rows by index
+		h.session.Transcript = append(slices.Clip(t[:n]), kept...)
+		h.trEpoch.Add(1)
+	}
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 func (s *streamAdapter) ReasoningDelta(text string) {

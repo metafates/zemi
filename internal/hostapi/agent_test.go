@@ -1413,30 +1413,39 @@ func TestConcurrentSendsQueue(t *testing.T) {
 }
 
 // TestRetryRestreamsStep: a provider retry streams the step again from its
-// start, so the failed attempt's text is dropped instead of shown twice.
+// start, so the failed attempt's text and tool rows are dropped instead of
+// shown twice or as a failed call that never ran.
 func TestRetryRestreamsStep(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
-	type hooks interface {
-		TextDelta(string)
-		StepStart()
-		Retrying(error, time.Duration)
-	}
+	epoch := h.trEpoch.Load()
 	for name, c := range map[string]struct {
-		hooks hooks
+		hooks agent.StreamHooks
 		text  func() string
+		rows  func() int // transcript rows plus live tool rows
 	}{
-		"main":     {h.streamHooks().(*streamAdapter), func() string { return h.AgentStream().Text }},
-		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run}, func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text }},
+		"main": {h.streamHooks(), func() string { return h.AgentStream().Text },
+			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) }},
+		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run},
+			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
+			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) }},
 	} {
+		base := c.rows()
+		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
+		c.hooks.ToolCallEnd("c0", "read", true, "", "")
 		c.hooks.TextDelta("before ")
 		c.hooks.StepStart()
+		// the stream breaks while a call's arguments stream in
 		c.hooks.TextDelta("partial")
+		c.hooks.ToolCallPending("c1", "glob")
 		c.hooks.Retrying(nil, 0)
 		c.hooks.TextDelta("full")
-		if got := c.text(); got != "before full" {
-			t.Errorf("%s: text %q, want %q", name, got, "before full")
+		if got, rows := c.text(), c.rows(); got != "before full" || rows != base+1 {
+			t.Errorf("%s: text %q and %d rows, want %q and the one earlier call", name, got, rows, "before full")
 		}
+	}
+	if h.trEpoch.Load() == epoch {
+		t.Error("the cut kept the transcript epoch, so the chat widget draws its cached rows")
 	}
 }
 
