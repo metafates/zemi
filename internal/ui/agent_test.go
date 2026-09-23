@@ -466,15 +466,16 @@ func TestPermissionPreview(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	<-done
 
-	// a long target wraps at its slashes instead of losing its end
-	long := "/opt/src/github.com/example/project/internal/interpreter/starlark/int_test.go"
+	// a long target wraps at its slashes, keeping its start, its end and
+	// the choices below it on screen
+	long := "/opt/src/" + strings.Repeat("github.com/example/project/", 100) + "int_test.go"
 	go func() {
 		app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: long, Reason: "read"})
 		close(done2)
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
 	app.renderSync(t)
-	if plain := ansi.Strip(app.Frame()); !strings.Contains(plain, "int_test.go") || !strings.Contains(plain, "/opt/src/") {
+	if plain := ansi.Strip(app.Frame()); !strings.Contains(plain, "int_test.go") || !strings.Contains(plain, "/opt/src/") || !strings.Contains(plain, "esc") {
 		t.Fatalf("target cut:\n%s", plain)
 	}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})

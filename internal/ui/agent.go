@@ -475,7 +475,13 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		for _, part := range strings.SplitAfter(target, "/") {
 			segs = append(segs, hostapi.Segment{Text: part, HL: "Host:Value"})
 		}
-		head = append(head, hostapi.WrapSegs(segs, inner)...)
+		head = hostapi.WrapSegs(segs, inner)
+		// a target of thousands of characters keeps its first and last rows,
+		// so the choices below still fit
+		if n := max(chatH/3, 3); len(head) > n {
+			more := []hostapi.Segment{{Text: fmt.Sprintf("… %d more rows …", len(head)-n+1), HL: "Host:Hint"}}
+			head = append(append(head[:n-2:n-2], more), head[len(head)-1])
+		}
 	}
 	var content [][]hostapi.Segment
 	switch {
