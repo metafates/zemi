@@ -552,6 +552,19 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 
 // TestListDescColumn: descriptions start in one column, and a row that
 // does not fit gives way from its description, never its label or key.
+// TestListDescUnderLabel: a list too narrow for its description column
+// puts each description under its label instead of dropping them all.
+func TestListDescUnderLabel(t *testing.T) {
+	items := []listItem{{label: "shift+enter, alt+enter, ctrl+j", desc: "newline"}, {label: "esc", desc: "back, or twice to interrupt"}}
+	var got []string
+	for _, row := range listRows(items, 0, nil, 10, 30) {
+		got = append(got, strings.TrimRight(plainSegs(row), " "))
+	}
+	if want := "› shift+enter, alt+enter…|  newline|  esc|  back, or twice to interrupt"; strings.Join(got, "|") != want {
+		t.Fatalf("rows %q", got)
+	}
+}
+
 func TestListDescColumn(t *testing.T) {
 	for _, c := range []struct {
 		name  string

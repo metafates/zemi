@@ -412,6 +412,9 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 				keyW = max(keyW, 2+ansi.StringWidth(it.key))
 			}
 		}
+		// too narrow for a description column beside the widest label, every
+		// description goes under its label instead of giving way
+		under := maxW > 0 && labelW > maxW-7
 		if maxW > 0 {
 			// the marker and the gap before a description take 2 cells each
 			labelW = max(min(labelW, maxW-4-keyW), 1)
@@ -454,11 +457,11 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					row = styled(it.segs)
 				}
 				descW := -1 // no cut
-				if maxW > 0 && it.desc != "" {
+				if maxW > 0 && it.desc != "" && !under {
 					row = ellipsizeSegs(row, labelW)
 					descW = maxW - 4 - labelW - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
 				}
-				if it.desc != "" && (descW < 0 || descW > 2) {
+				if it.desc != "" && !under && (descW < 0 || descW > 2) {
 					desc := []hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}
 					if descW > 0 {
 						desc = ellipsizeSegs(desc, descW)
@@ -470,6 +473,9 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					keys[len(rows)] = hostapi.Segment{Text: it.key, HL: "Host:HintKey", Hit: hit}
 				}
 				itemRows = append(itemRows, row)
+				if under && it.desc != "" {
+					itemRows = append(itemRows, ellipsizeSegs([]hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}, maxW-2))
+				}
 			}
 			for _, r := range it.more {
 				itemRows = append(itemRows, styled(r))
