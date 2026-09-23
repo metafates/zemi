@@ -13,12 +13,11 @@ func TestChangePreview(t *testing.T) {
 		in   map[string]any
 		want string
 	}{
-		{"write", map[string]any{"content": "a\nb\n"}, "+ a\n+ b"},
-		{"edit", map[string]any{"old_string": "x", "new_string": "y"}, "- x\n+ y"},
-		{"multiedit with a deletion", map[string]any{"edits": []any{
+		{"write", map[string]any{"path": "f", "content": "a\nb\n"}, "--- f\n+++ f\n@@\n+a\n+b"},
+		{"multiedit with a deletion", map[string]any{"path": "f", "edits": []any{
 			map[string]any{"old_string": "1", "new_string": "2"},
 			map[string]any{"old_string": "3", "new_string": ""},
-		}}, "- 1\n+ 2\n- 3"},
+		}}, "--- f\n+++ f\n@@\n-1\n+2\n@@\n-3"},
 	} {
 		if got := ChangePreview(c.in); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
@@ -37,10 +36,10 @@ func TestChangeDiff(t *testing.T) {
 			t.Fatalf("diff misses %q:\n%s", want, d)
 		}
 	}
-	if d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "nope", "new_string": "x"}); d != "- nope\n+ x" {
+	if d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "nope", "new_string": "x"}); d != "--- "+path+"\n+++ "+path+"\n@@\n-nope\n+x" {
 		t.Fatalf("fallback = %q", d)
 	}
-	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "content": "x"}); d != "+ x" {
+	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "content": "x"}); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+x" {
 		t.Fatalf("device fallback = %q", d)
 	}
 }

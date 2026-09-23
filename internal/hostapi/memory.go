@@ -843,7 +843,7 @@ func (h *Host) forgetMemory(sid, id string) (string, error) {
 	short := m.ID[:8]
 	switch {
 	case m.Origin == learn.OriginUser:
-		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: short, Reason: "forget a memory the user saved", Preview: "- " + m.Text, Unsandboxed: true}
+		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: short, Reason: "forget a memory the user saved", Preview: m.Text, Unsandboxed: true}
 		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, short)
 		}

@@ -841,6 +841,8 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 		switch {
 		case l == "", strings.HasPrefix(l, "--- "), strings.HasPrefix(l, "+++ "), strings.HasPrefix(l, "\\ "):
 		case strings.HasPrefix(l, "@@"):
+			// a bare "@@" (a fragment's preview) numbers nothing: line 0 stays 0
+			o, n = 0, 0
 			if m := hunkHeader.FindStringSubmatch(l); m != nil {
 				o, _ = strconv.Atoi(m[1])
 				n, _ = strconv.Atoi(m[2])
@@ -850,14 +852,13 @@ func diffRows(d string, width int) [][]hostapi.Segment {
 			}
 		case l[0] == '+':
 			lines = append(lines, line{'+', 0, n, l[1:]})
-			n++
+			n += min(n, 1)
 		case l[0] == '-':
 			lines = append(lines, line{'-', o, 0, l[1:]})
-			o++
+			o += min(o, 1)
 		default:
 			lines = append(lines, line{' ', o, n, strings.TrimPrefix(l, " ")})
-			o++
-			n++
+			o, n = o+min(o, 1), n+min(n, 1)
 		}
 	}
 	nw := len(strconv.Itoa(max(o, n)))

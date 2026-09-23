@@ -57,7 +57,7 @@ type PermRequest struct {
 	Subject string
 	Arg     string
 	Reason  string
-	Preview string // file tools: the proposed change as "- "/"+ " lines
+	Preview string // a file tool's unified diff, a script, a memory's text
 	// Description is the model's summary of a command, not checked against it
 	Description string
 	// Outside means this bash command escapes the sandbox and can reach the

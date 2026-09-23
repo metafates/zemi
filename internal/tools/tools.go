@@ -66,7 +66,7 @@ type Request struct {
 	Subject string // tool.bash, fs.read, fs.write, net.<host>
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
-	Preview string // file tools: the proposed change as "- "/"+ " lines
+	Preview string // file tools: the proposed change as a unified diff
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string
@@ -1158,26 +1158,30 @@ func ChangeDiff(tool string, in map[string]any) string {
 }
 
 // ChangePreview renders a file tool's change for the permission overlay
-// from the input alone (the file is not read before the gate): "- " lines
-// for replaced text, "+ " lines for new text.
+// from the input alone (the file is not read before the gate): a unified
+// diff with one unnumbered hunk per replaced or new text.
 func ChangePreview(in map[string]any) string {
-	var lines []string
-	add := func(prefix, text string) {
-		if text == "" {
+	lines := []string{"--- " + str(in["path"]), "+++ " + str(in["path"])}
+	hunk := func(old, new string) {
+		if old == "" && new == "" {
 			return
 		}
-		for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
-			lines = append(lines, prefix+l)
+		lines = append(lines, "@@")
+		for _, p := range [][2]string{{"-", old}, {"+", new}} {
+			if p[1] == "" {
+				continue
+			}
+			for l := range strings.SplitSeq(strings.TrimRight(p[1], "\n"), "\n") {
+				lines = append(lines, p[0]+l)
+			}
 		}
 	}
-	add("+ ", str(in["content"]))
-	add("- ", str(in["old_string"]))
-	add("+ ", str(in["new_string"]))
+	hunk("", str(in["content"]))
+	hunk(str(in["old_string"]), str(in["new_string"]))
 	if edits, ok := in["edits"].([]any); ok {
 		for _, e := range edits {
 			if m, ok := e.(map[string]any); ok {
-				add("- ", str(m["old_string"]))
-				add("+ ", str(m["new_string"]))
+				hunk(str(m["old_string"]), str(m["new_string"]))
 			}
 		}
 	}

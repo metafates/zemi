@@ -278,7 +278,7 @@ func TestMemoryGate(t *testing.T) {
 			},
 			want: "permission denied",
 			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
-				if len(ui.asked) != 1 || ui.asked[0].Subject != "memory.write" || ui.asked[0].Preview != "- deploy by hand" {
+				if len(ui.asked) != 1 || ui.asked[0].Subject != "memory.write" || ui.asked[0].Preview != "deploy by hand" {
 					t.Fatalf("asked: %+v", ui.asked)
 				}
 			}},

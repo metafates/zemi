@@ -130,7 +130,7 @@ func TestTurnExtras(t *testing.T) {
 			diffs = append(diffs, m.Diff)
 		}
 	}
-	if len(diffs) != 2 || diffs[0] != "- x\n+ y" || diffs[1] != "" {
+	if len(diffs) != 2 || diffs[0] != "--- a.go\n+++ a.go\n@@\n-x\n+y" || diffs[1] != "" {
 		t.Fatalf("diffs = %q", diffs)
 	}
 

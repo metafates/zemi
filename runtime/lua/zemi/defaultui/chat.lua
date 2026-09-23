@@ -306,15 +306,15 @@ zemi.ui.widget.add({
         end
       end
       -- File tools show what they changed as numbered, tinted rows.
-      local old, new, hunks = 0, 0, 0
+      local old, new, hunks, numbered = 0, 0, 0, true
       for dl in ((t.diff or "") .. "\n"):gmatch("(.-)\n") do
         local a, b = dl:match("^@@ %-(%d+),?%d* %+(%d+),?%d* @@")
         local kind = dl:sub(1, 1)
-        if a then
+        -- a bare "@@" is a hunk of the input-only preview: no numbers
+        if a or dl == "@@" then
           if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment", copy = false } } end
           hunks = hunks + 1
-          old = tonumber(a) --[[@as integer]]
-          new = tonumber(b) --[[@as integer]]
+          old, new, numbered = tonumber(a) or 0, tonumber(b) or 0, a ~= nil
         -- file headers come before the first hunk; after it "---" is a removed "-- " line
         elseif dl ~= "" and (hunks > 0 or (dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++")) then
           local num, style = 0, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
@@ -329,12 +329,11 @@ zemi.ui.widget.add({
             if kind == " " then old = old + 1 end
           end
           if style then
-            -- without a hunk header this is the input-only preview ("- old", "+ new"): no numbers
-            local lead = hunks > 0 and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
+            local lead = numbered and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
             local room = math.max(width - fmt.cells(lead), 1)
             local blank_lead = string.rep(" ", fmt.cells(lead))
             -- the number and +/- are decoration: a copy gives the code
-            local parts = fmt.chunks((dl:sub(hunks > 0 and 2 or 3):gsub("\t", "    ")), room)
+            local parts = fmt.chunks((dl:sub(2):gsub("\t", "    ")), room)
             for j, part in ipairs(parts) do
               -- a diff line is body: no hover, but the click expands like the head
               lines[#lines + 1] = {

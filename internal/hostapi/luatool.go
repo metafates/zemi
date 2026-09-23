@@ -227,8 +227,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if in.Path != "" {
 			arg = in.Path
 		}
-		preview := "+ " + strings.ReplaceAll(strings.TrimRight(src, "\n"), "\n", "\n+ ")
-		req := tools.Request{Tool: "lua", Subject: "tool.lua", Arg: arg, Description: in.Description, Preview: preview}
+		req := tools.Request{Tool: "lua", Subject: "tool.lua", Arg: arg, Description: in.Description, Preview: src}
 		if len(unlisted) > 0 {
 			req.Unsandboxed = true
 			req.Reason = "uses " + strings.Join(unlisted, ", ") + ", which can change zemi or start programs outside the sandbox"
