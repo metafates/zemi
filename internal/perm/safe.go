@@ -9,8 +9,8 @@ import (
 )
 
 // SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-// The seatbelt policy (internal/sandbox) hides the strict names of this
-// list too, and DESIGN §9 lists it: the three move together.
+// The seatbelt policy (internal/sandbox) hides strictSecretShape, .env
+// templates included, and DESIGN §9 lists it: the three move together.
 var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*secret*")
 
 // strictSecretShape is SecretPathShape without the broad names, which also
@@ -21,7 +21,7 @@ var strictSecretShape = []string{".env", "*.env", ".env.*", ".envrc", "*.pem", "
 
 // PathIsSecret folds on every OS: a shape that asks one file too many is
 // cheaper than a darwin spelling that slips past.
-func PathIsSecret(p string) bool { return secretShaped(p, SecretPathShape) }
+func PathIsSecret(p string) bool { return secretShaped(fold(filepath.Base(p)), SecretPathShape) }
 
 // PathIsStrictSecret is what grep and a directory listing hide: the strict
 // shapes, minus the committed .env templates a setup step copies.
@@ -33,8 +33,8 @@ func PathIsStrictSecret(p string) bool {
 	return secretShaped(base, strictSecretShape)
 }
 
-func secretShaped(p string, shapes []string) bool {
-	base := fold(filepath.Base(p))
+// secretShaped takes a folded base name.
+func secretShaped(base string, shapes []string) bool {
 	return slices.ContainsFunc(shapes, func(pat string) bool {
 		ok, _ := filepath.Match(pat, base)
 		// an ssh public key is meant to be shared
