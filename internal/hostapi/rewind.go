@@ -171,7 +171,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 		return 0, err
 	}
 	h.clampReflectSeen(sid, cut)
-	h.forgetLearned(sid, rows[cut].CreatedAt)
+	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
 	todos := todosIn(rows[:cut])
 	if err := h.DB.SetTodos(sid, todos); err != nil {
 		h.Log.Warn("rewind", "todo list not rewound", map[string]any{"error": err.Error()})
@@ -196,18 +196,21 @@ func (h *Host) RewindTo(id string) (int, error) {
 	return len(cps), nil
 }
 
-// forgetLearned undoes what session sid learned from since on: its learned
-// memories and pending proposals go, and what they replaced is live again.
-// The user's own memories stay, and a learned forget cannot come back.
-func (h *Host) forgetLearned(sid string, since int64) {
+// forgetLearned undoes what session sid learned from its rows from to until:
+// its learned memories and pending proposals go, and what they replaced is
+// live again. The user's own memories stay, and a learned forget cannot come
+// back. A memory tool write lands before its step's rows; a reflector run or
+// an accepted proposal after the last row is kept.
+// NOTE: an accept or a reflector run between two rewound rows goes too.
+func (h *Host) forgetLearned(sid string, from, until int64) {
 	var gone []string
 	dbs := []*store.DB{h.DB, h.GlobalDB}
 	for _, db := range dbs {
 		if db == nil {
 			continue
 		}
-		ids, err := db.DeleteLearnedSince(sid, since)
-		if err = errors.Join(err, db.DeleteProposalsSince(sid, since)); err != nil {
+		ids, err := db.DeleteLearnedBetween(sid, from, until)
+		if err = errors.Join(err, db.DeleteProposalsBetween(sid, from, until)); err != nil {
 			h.Log.Warn("rewind", "learned memories not rewound", map[string]any{"error": err.Error()})
 		}
 		gone = append(gone, ids...)

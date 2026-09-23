@@ -97,19 +97,26 @@ func TestRewind(t *testing.T) {
 		}
 	}
 
-	// what the session learned in the rewound turns goes, the user's own stays
+	// what the session learned in the rewound turns goes; the user's own and
+	// what was learned after the last row (a reflector run, an accept) stay
 	sid := h.AgentSessionID()
+	rows, _ := h.DB.Messages(sid)
+	last := rows[len(rows)-1].CreatedAt
 	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1}
-	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid}
+	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last}
+	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1}
 	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid}
-	for _, m := range []*store.Memory{old, learned, mine} {
+	for _, m := range []*store.Memory{old, learned, reflected, mine} {
 		if err := h.DB.AddMemory(m); err != nil {
 			t.Fatal(err)
 		}
 	}
 	h.DB.SupersedeMemory(old.ID, learned.ID)
-	if err := h.addProposal(memoryProposal{Memory: store.Memory{Scope: "project", Text: "proposed", Origin: "learned", ProvenanceSessionID: sid}}); err != nil {
-		t.Fatal(err)
+	for _, at := range []int64{last, last + 1} {
+		payload, _ := json.Marshal(memoryProposal{Memory: store.Memory{Scope: "project", Text: fmt.Sprint(at), Origin: "learned", ProvenanceSessionID: sid}})
+		if err := h.DB.AddProposal(&store.Proposal{Kind: "memory", Payload: string(payload), CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for _, c := range []struct {
@@ -159,8 +166,8 @@ func TestRewind(t *testing.T) {
 	for _, m := range live {
 		texts = append(texts, m.Text)
 	}
-	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old"}) || len(h.memoryProposals()) != 0 {
-		t.Fatalf("memories %q and %d proposals, want mine and old and none", texts, len(h.memoryProposals()))
+	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
+		t.Fatalf("memories %q and %d proposals, want mine, old and reflected and one", texts, len(h.memoryProposals()))
 	}
 	if _, err := h.RewindTo(prompts[0]); err == nil {
 		t.Fatal("rewinding to a removed prompt must fail")

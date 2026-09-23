@@ -107,11 +107,11 @@ func (s *DB) DeleteMemory(id string) error {
 	return s.execOne("delete memory", `DELETE FROM memory WHERE id = ?`, id)
 }
 
-// DeleteLearnedSince deletes the learned memories a session wrote from since
-// on and returns their ids.
-func (s *DB) DeleteLearnedSince(sessionID string, since int64) ([]string, error) {
+// DeleteLearnedBetween deletes the learned memories a session wrote from
+// from to until, both included, and returns their ids.
+func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string, error) {
 	rows, err := s.db.Query(`DELETE FROM memory WHERE origin = 'learned'
-		AND provenance_session_id = ? AND created_at >= ? RETURNING id`, sessionID, since)
+		AND provenance_session_id = ? AND created_at BETWEEN ? AND ? RETURNING id`, sessionID, from, until)
 	return collect(rows, err, func(r scanner) (id string, err error) {
 		err = r.Scan(&id)
 		return
