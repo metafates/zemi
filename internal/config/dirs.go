@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -211,8 +212,11 @@ func (d Dirs) IgnoreLocal(extra ...string) error {
 		return err
 	}
 	have := map[string]bool{}
+	own := true // every line is one zemi writes, so the file is zemi's
 	for line := range strings.Lines(string(b)) {
-		have[strings.TrimSpace(line)] = true
+		l := strings.TrimSpace(line)
+		have[l] = true
+		own = own && (l == "" || l == ".gitignore" || slices.Contains(entries, l))
 	}
 	var add []string
 	for _, e := range entries {
@@ -220,13 +224,13 @@ func (d Dirs) IgnoreLocal(extra ...string) error {
 			add = append(add, e)
 		}
 	}
+	// the file ignores itself, or git status shows .zemi/ as untracked; a
+	// team's copy gets the line only with an entry it lacked anyway
+	if !have[".gitignore"] && (own || len(add) > 0) {
+		add = append(add, ".gitignore")
+	}
 	if len(add) == 0 {
 		return nil
-	}
-	// the file ignores itself, or git status shows .zemi/ as untracked; a
-	// team's tracked copy gets the line only with an entry it lacked anyway
-	if !have[".gitignore"] {
-		add = append(add, ".gitignore")
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

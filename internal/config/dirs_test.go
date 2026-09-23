@@ -125,3 +125,28 @@ func TestProjectConfigDir(t *testing.T) {
 		}
 	}
 }
+
+func TestIgnoreLocal(t *testing.T) {
+	for _, c := range []struct{ name, have, want string }{
+		{"new file", "", "worktrees/\n.gitignore\n"},
+		{"an older zemi's file gets the self line", "worktrees/\n", "worktrees/\n.gitignore\n"},
+		{"a team's complete file is left alone", "cache\nworktrees/\n", "cache\nworktrees/\n"},
+	} {
+		tmp := t.TempDir()
+		path := filepath.Join(tmp, ".zemi", ".gitignore")
+		for _, d := range []string{filepath.Join(tmp, ".git"), filepath.Dir(path)} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.have != "" {
+			os.WriteFile(path, []byte(c.have), 0o644)
+		}
+		if err := (Dirs{ProjectDir: tmp}).IgnoreLocal(); err != nil {
+			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(path); string(b) != c.want {
+			t.Errorf("%s: %q, want %q", c.name, b, c.want)
+		}
+	}
+}
