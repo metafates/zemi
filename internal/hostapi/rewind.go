@@ -2,7 +2,8 @@
 // turn, its content is checkpointed against that turn's user message.
 // Rewinding to a message restores every file changed since, drops the
 // message and the rest of the conversation, and hands its text back to the
-// composer. Files changed through bash are not tracked.
+// composer. A bash call's changes are rewound only for repository files git
+// does not ignore, at most snapCheckpoints of them per call.
 package hostapi
 
 import (

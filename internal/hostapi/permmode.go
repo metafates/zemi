@@ -437,9 +437,10 @@ func (h *Host) protectedWrite(p string) bool {
 // allowed it, so those fail on their own and an ask would only add a prompt.
 // Anywhere else it would run unconfined, so only readers settle.
 // NOTE: nothing parses what a sandboxed command does, so the sandbox policy
-// is the only limit: it may rewrite any project file (rewind does not track
-// bash), run the project's code, delete through a variable or an interpreter,
-// and read what the policy does not hide, outside the project too (without
+// is the only limit: it may rewrite any project file (rewind restores only
+// repository files git does not ignore, at most snapCheckpoints per call),
+// run the project's code, delete through a variable or an interpreter, and
+// read what the policy does not hide, outside the project too (without
 // HidesSecretFiles, a .env it names by a glob). Screening the text again
 // would bring the asks back; tighten sandboxPolicy instead.
 func (h *Host) unsettled(cmd string, readOnly bool) string {
