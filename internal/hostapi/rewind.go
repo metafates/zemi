@@ -241,28 +241,15 @@ func todosIn(rows []*store.Message) []store.Todo {
 					calls[p.ToolCallID] = p.Input
 				}
 			case fantasy.ToolResultPart:
-				var in struct {
-					Todos []struct {
-						Content, Status string
-						ActiveForm      string `json:"active_form"`
-					}
-				}
+				var in map[string]any
 				input, ok := calls[p.ToolCallID]
-				// a refused call set nothing, and one without a list only read it
+				// a refused call set nothing
 				if !ok || p.Output == nil || p.Output.GetType() == fantasy.ToolResultContentTypeError ||
-					json.Unmarshal([]byte(input), &in) != nil || in.Todos == nil {
+					json.Unmarshal([]byte(input), &in) != nil {
 					continue
 				}
-				list = nil
-				for _, td := range in.Todos {
-					// the tool's own mapping of the names other harnesses use
-					switch td.Status {
-					case "cancelled":
-						continue
-					case "completed":
-						td.Status = "done"
-					}
-					list = append(list, store.Todo{Content: td.Content, Status: td.Status, ActiveForm: td.ActiveForm, Ord: len(list)})
+				if todos, _, set, err := tools.ParseTodos(in); set && err == nil {
+					list = todos
 				}
 			}
 		}
