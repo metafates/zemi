@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ func (h *Host) explain(err error) (cause, advice string) {
 	var pe *fantasy.ProviderError
 	var dns *net.DNSError
 	var ne net.Error
+	var garbled *json.SyntaxError
 	key := "check api_key in init.lua"
 	if me, ok := errors.AsType[agent.ModelError](err); ok {
 		key = "check api_key for " + me.Provider + " in init.lua"
@@ -56,6 +58,8 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return "network: the connection dropped mid-reply", "send again"
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
 		return "network: the provider timed out", "check your connection and send again"
+	case errors.As(err, &garbled):
+		return "the provider sent a reply zemi could not read", "send again"
 	}
 	return err.Error(), ""
 }
