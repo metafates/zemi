@@ -95,6 +95,9 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 		if err := checkKey(tokens[i]); err != nil {
 			return "", err
 		}
+		if tokens[i] == "ctrl+c" { // the UI takes it before any keymap or sequence, focused or not
+			return "", errors.New("ctrl+c is reserved for cancel and quit")
+		}
 	}
 	if len([]rune(tokens[0])) == 1 && !focused {
 		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: pass opts.focus to scope it to a node, or start with a non-printable key such as ctrl+x", tokens[0])

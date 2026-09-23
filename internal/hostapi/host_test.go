@@ -331,8 +331,9 @@ func TestKeymapFromLua(t *testing.T) {
 		zemi.keymap.del("tab")
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
 		assert(zemi.keymap.del("tab") == false, "unbinding twice reports false, not an error")
-		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp" }) do
+		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp", "Ctrl+C", "ctrl+c x", "ctrl+x ctrl+c" }) do
 			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
+			assert(not pcall(zemi.keymap.set, bad, function() end, { focus = "sidebar" }), "bound focused " .. bad)
 		end
 		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "esc" }) do
 			zemi.keymap.set(good, function() end)

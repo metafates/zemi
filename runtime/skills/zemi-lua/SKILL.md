@@ -56,7 +56,7 @@ loads fresh.
   (stored under `plugin:` or `project:`) and never see user keys; user config sees them all.
 - Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette
   key or an ANSI color name, a rule subject outside `tool. fs. net. lua. mcp. memory.`, a printable key
-  with no `focus`, a `zemi.config.watch` path outside the schema, and a tool spec with no
+  with no `focus`, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no
   `description` or with a wrapped `input` all raise. A vetoable handler that returns
   anything but nil or `{ decision = ... }` denies (`tool.pre`, `permission.request`).
 
