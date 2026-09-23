@@ -269,11 +269,6 @@ func (r *mcpReg) stopParked() {
 	}
 }
 
-func (r *mcpReg) stopAll() {
-	r.park()
-	r.stopParked()
-}
-
 func (r *mcpReg) list() []*mcpServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()

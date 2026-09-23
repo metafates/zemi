@@ -38,7 +38,8 @@ func TestMCPBridge(t *testing.T) {
 	}))
 	defer srv.Close()
 	h, r := newTestHostDB(t)
-	defer h.mcp.stopAll()
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, enabled_tools = { "echo", "shot", "fail", "serach" }, disabled_tools = { "fail" } })`, srv.URL))
 	if err := r.ExecuteChunk(context.Background(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
 		t.Fatal("project config must not add MCP servers")
@@ -235,7 +236,8 @@ func TestMCPDeferred(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
-			defer h.mcp.stopAll()
+			defer h.mcp.stopParked()
+			defer h.mcp.park()
 			h.reflectMu.Lock() // a session close must not start a reflect run
 			defer h.reflectMu.Unlock()
 			for _, name := range []string{"a", "b", "c", "d"}[:tc.servers] {
