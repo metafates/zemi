@@ -194,6 +194,20 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	if nudges() != 1 {
 		t.Fatal("nudged under another claim")
 	}
+	// headless has no plan tool to present with: the reply is the plan
+	headless, _ := newTestHostDB(t)
+	if err := headless.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	var headlessSent atomic.Int32
+	headless.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { headlessSent.Add(1); return textParts("text") }}, nil
+	}
+	headless.planFollowup(runner)
+	waitIdle(t, headless)
+	if n := headlessSent.Load(); n != 0 {
+		t.Fatalf("headless planner nudged %d times", n)
+	}
 	// the user's next message re-arms the nudge
 	if err := h.AgentSend("go on"); err != nil {
 		t.Fatal(err)

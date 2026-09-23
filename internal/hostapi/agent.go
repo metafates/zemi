@@ -1692,6 +1692,11 @@ func (h *Host) planFollowup(runner *agent.Runner) {
 	if !h.readOnly() || plainTextEnd(runner) == "" {
 		return
 	}
+	// headless drops the plan tool and planHeadless asks for the plan as
+	// the reply, so there is nothing to present it with
+	if p, _ := h.resolveProfile(""); !hasTool(h.profileTools(p), tools.ToolPlan) {
+		return
+	}
 	// a submit that claimed the agent first moves the conversation on
 	ag := h.agents
 	ag.mu.Lock()
