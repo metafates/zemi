@@ -478,6 +478,6 @@ func (h *Host) OpenPrompt() error {
 		h.Notify("warn", "Nothing to show yet", "the prompt is assembled on the first send")
 		return nil
 	}
-	ui.OpenOverlay(Overlay{ID: "prompt", Title: "System prompt", Origin: lua.OriginBuiltin, Body: sys})
+	ui.OpenOverlay(Overlay{ID: "prompt", Title: "System prompt", Origin: lua.OriginBuiltin, Body: sys, BodyMD: true})
 	return nil
 }
