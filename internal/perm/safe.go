@@ -8,8 +8,11 @@ import (
 )
 
 // SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-var SecretPathShape = []string{".env", ".env.*", ".envrc", "*.pem", "*.key", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
-	"*credential*", "*secret*", ".netrc"}
+// The seatbelt policy (internal/sandbox) hides the strict names of this
+// list too, and DESIGN §9 lists it: the three move together.
+var SecretPathShape = []string{".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
+	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*", "*credential*", "*secret*",
+	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf"}
 
 // PathIsSecret folds on every OS: a shape that asks one file too many is
 // cheaper than a darwin spelling that slips past.
@@ -294,6 +297,29 @@ func safeArgs(args []string, pathOK func(pos int, a string) bool) bool {
 	return true
 }
 
+// ReadsSecret reports whether a command's reader (cat, grep, jq, ...)
+// names a secret-shaped path, or a word the shell may expand into one
+// (cat .e*), judged by secret on each path word; a search pattern is no
+// path. Other programs are not judged: an always rule keeps a deleter
+// exact and offers a wrapper nothing.
+func ReadsSecret(cmd string, secret func(path string) bool) bool {
+	n := Normalize(cmd)
+	found := false
+	for _, f := range n.Args {
+		if len(f) == 0 || !readOnlyPrograms[filepath.Base(f[0])] {
+			continue
+		}
+		use, _ := argUses(f)
+		safeArgs(f[1:], func(pos int, a string) bool {
+			if (pos < 0 || use(pos) != ArgText) && (strings.ContainsAny(a, "*?[{") || secret(a)) {
+				found = true
+			}
+			return true
+		})
+	}
+	return found || slices.ContainsFunc(n.ReadPaths, secret)
+}
+
 var readOnlyPrograms = map[string]bool{
 	"ls": true, "cat": true, "head": true, "tail": true, "wc": true, "cut": true,
 	"tr": true, "pwd": true, "which": true, "whoami": true, "date": true, "echo": true,
@@ -563,30 +589,57 @@ func hasFlag(args []string, flags ...string) bool {
 	return false
 }
 
-// runners start the program their arguments name, so Destructive looks for
-// one past them.
-var runners = []string{"xargs", "find", "fd", "parallel", "env", "sudo", "nohup", "time", "timeout", "nice", "command", "exec"}
+// WrapperPrograms run whatever they are handed, as code (node -e) or as
+// another command (sudo, xargs, busybox), so what such a segment does is in
+// its arguments: Destructive and GitWrites look past them for the program,
+// and an always answer offers no rule for them, since none written from
+// the wrapper says what a later call would run.
+var WrapperPrograms = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true, "fish": true, "csh": true, "tcsh": true,
+	"node": true, "nodejs": true, "deno": true, "python": true, "python2": true, "python3": true,
+	"perl": true, "ruby": true, "php": true, "lua": true, "luajit": true, "julia": true, "rscript": true, "osascript": true,
+	"env": true, "sudo": true, "doas": true, "su": true, "xargs": true, "eval": true, "exec": true, "source": true, ".": true,
+	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
+	"nice": true, "ionice": true, "chrt": true, "caffeinate": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
+	"npx": true, "pnpx": true, "bunx": true, "uvx": true, "pipx": true, "busybox": true, "toybox": true,
+	"awk": true, // an inline program, like perl -e
+}
+
+// runner reports a program Destructive looks past: a wrapper, or find and
+// fd, whose -exec runs what follows.
+func runner(prog string) bool {
+	prog = strings.ToLower(filepath.Base(prog))
+	return WrapperPrograms[prog] || prog == "find" || prog == "fd"
+}
 
 // reserved are the shell words a segment may start with before its program:
 // Normalize keeps "then rm -rf ." as one segment.
 var reserved = map[string]bool{"if": true, "then": true, "else": true, "elif": true, "while": true, "until": true, "do": true, "{": true, "!": true}
 
-// program is f without its leading reserved words.
+// program is f without its leading reserved words; "function name" is
+// skipped as a pair (the () spelling makes Normalize split at the brace).
 func program(f []string) []string {
-	for len(f) > 0 && reserved[f[0]] {
-		f = f[1:]
+	for len(f) > 0 {
+		switch {
+		case f[0] == "function" && len(f) > 1:
+			f = f[2:]
+		case reserved[f[0]]:
+			f = f[1:]
+		default:
+			return f
+		}
 	}
 	return f
 }
 
 // Subcommand is the index in f of a program's subcommand word, past its
 // leading options (git -C dir status, git -c k=v diff, cargo +nightly
-// build, npm --prefix web run); -1 when there is none. -C, -c and --prefix
-// take the next word.
+// build, npm --prefix web run); -1 when there is none. -C, -c, --prefix
+// and git's --git-dir, --work-tree and --namespace take the next word.
 func Subcommand(f []string) int {
 	for i := 1; i < len(f); i++ {
 		switch a := f[i]; {
-		case a == "-C" || a == "-c" || a == "--prefix":
+		case a == "-C" || a == "-c" || a == "--prefix" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
 			i++
 		case strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+"):
 		default:
@@ -600,9 +653,10 @@ func Subcommand(f []string) int {
 // keeps read-only, so a confined run can only fail on it.
 var gitWriters = map[string]bool{
 	"add": true, "am": true, "apply": true, "bisect": true, "checkout": true, "cherry-pick": true, "clone": true,
-	"commit": true, "fetch": true, "filter-branch": true, "gc": true, "init": true, "merge": true, "mergetool": true,
-	"mv": true, "pack-refs": true, "prune": true, "pull": true, "push": true, "rebase": true, "repack": true,
-	"reset": true, "restore": true, "revert": true, "rm": true, "switch": true, "update-ref": true,
+	"commit": true, "commit-tree": true, "fetch": true, "filter-branch": true, "gc": true, "init": true, "maintenance": true,
+	"merge": true, "mergetool": true, "mv": true, "pack-refs": true, "prune": true, "pull": true, "push": true,
+	"read-tree": true, "rebase": true, "repack": true, "replace": true, "reset": true, "restore": true, "revert": true,
+	"rm": true, "sparse-checkout": true, "switch": true, "symbolic-ref": true, "update-index": true, "update-ref": true,
 }
 
 // GitWrites says why a git command cannot run with .git read-only: its
@@ -614,7 +668,8 @@ func GitWrites(cmd string) string {
 	}
 	for _, f := range n.Args {
 		f = program(f)
-		for len(f) > 1 && slices.Contains(runners, filepath.Base(f[0])) && filepath.Base(f[0]) != "xargs" && filepath.Base(f[0]) != "find" && filepath.Base(f[0]) != "fd" {
+		// xargs, find and fd hand git arguments nothing here sees
+		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, filepath.Base(f[0])) {
 			f = f[1:]
 		}
 		i := Subcommand(f)
@@ -641,7 +696,10 @@ func GitWrites(cmd string) string {
 		case "remote":
 			writes = len(words) > 0 && first != "show" && first != "get-url"
 		case "worktree", "submodule", "notes":
-			writes = first != "list" && first != "status" && first != "summary" && first != "show"
+			// bare, they list
+			writes = first != "" && first != "list" && first != "status" && first != "summary" && first != "show"
+		case "hash-object":
+			writes = hasFlag(rest, "-w")
 		case "config":
 			writes = len(words) > 1 || hasFlag(rest, "--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e", "--remove-section", "--rename-section")
 		case "reflog":
@@ -666,7 +724,7 @@ func Destructive(cmd string) string {
 	for _, f := range n.Args {
 		f = program(f)
 		for i, w := range f {
-			if i > 0 && !slices.Contains(runners, filepath.Base(f[0])) {
+			if i > 0 && !runner(f[0]) {
 				break
 			}
 			name, rest := filepath.Base(w), f[i+1:]

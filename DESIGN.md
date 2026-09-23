@@ -664,10 +664,13 @@ otherwise return a decision table:
   directory rule is the same ask again one package over. A call §9
   gate-forces to `ask` (heredoc/herestring, dangerous assignment), a
   pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
-  a stripped assignment) and a wrapper program that runs what it is
-  handed (a shell, an interpreter, `sudo`, `xargs`) offer no `always`
-  option at all, so they re-ask every time: no rule written from such a
-  segment says what the next call would run.
+  a stripped assignment), a wrapper program that runs what it is
+  handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, and the
+  `npm exec`/`uv run` spellings of `npx`) and a secret-shaped file offer
+  no `always` option at all, so they re-ask every time: no rule written
+  from such a segment says what the next call would run. A reader
+  command naming a secret-shaped file (`cat .env`) goes back to the ask
+  even under an `always` rule, as a file read does.
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.
@@ -1437,9 +1440,11 @@ provenance string.
   `zemi.ui.*`, `zemi.keymap`, `zemi.command`,
   `zemi.model.pick`) are allow; `fs.read`
   inside the jail is allow except secret-shaped paths (matched
-  case-insensitively on the resolved path: `.env`, `.env.*`, `.envrc`,
-  `*.pem`, `*.key`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*` but not their
-  `.pub`, `*credential*`, `*secret*`, `.netrc`; folded like APFS),
+  case-insensitively on the resolved path: `.env`, `*.env`, `.env.*`, `.envrc`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa*`, `id_dsa*`,
+  `id_ecdsa*`, `id_ed25519*` but not their `.pub`, `*credential*`, `*secret*`,
+  `.netrc`, `.npmrc`, `.yarnrc.yml`, `.pgpass`, `.pypirc`, `.htpasswd`, `.my.cnf`;
+  folded like APFS),
   which ask by default and whose contents are
   scrubbed at the memory store boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,

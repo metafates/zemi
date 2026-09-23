@@ -195,6 +195,22 @@ func TestReadCommandPathCheck(t *testing.T) {
 	}
 }
 
+func TestPathIsSecret(t *testing.T) {
+	for _, c := range []struct {
+		path   string
+		secret bool
+	}{
+		{".env", true}, {"prod.env", true}, {".env.local", true}, {".npmrc", true}, {".yarnrc.yml", true},
+		{".pgpass", true}, {".pypirc", true}, {".htpasswd", true}, {".my.cnf", true}, {"x.p12", true},
+		{"x.pfx", true}, {"x.jks", true}, {"x.keystore", true}, {"secrets.tfvars", true}, {"id_ed25519", true},
+		{"id_ed25519.pub", false}, {"main.tfvars", false}, {".yarnrc", false}, {"environment.go", false}, {"main.go", false},
+	} {
+		if got := PathIsSecret(c.path); got != c.secret {
+			t.Errorf("PathIsSecret(%q) = %v, want %v", c.path, got, c.secret)
+		}
+	}
+}
+
 func TestDestructive(t *testing.T) {
 	for _, c := range []struct {
 		cmd  string
@@ -217,6 +233,12 @@ func TestDestructive(t *testing.T) {
 		{"echo $(rm -rf x)", true},
 		{`eval "rm -rf x"`, true},
 		{"sudo shred x", true},
+		{"function f { rm -rf x; }; f", true},
+		{"function f() { rm -rf x; }; f", true},
+		{"setsid rm -rf x", true},
+		{"busybox rm -rf x", true},
+		{"ionice -c3 rm -rf x", true},
+		{"doas rm -rf x", true},
 		{"truncate -s 0 x", true},
 		{"dd if=/dev/zero of=x", true},
 		{"rsync -a --delete a/ b/", true},
@@ -255,6 +277,11 @@ func TestGitWrites(t *testing.T) {
 		{"git worktree add ../w", true},
 		{"time git push", true},
 		{"go test ./... && git commit -am x", true},
+		{"git update-index --add x", true},
+		{"git sparse-checkout set a", true},
+		{"git --git-dir x commit -m x", true},
+		{"git hash-object -w f", true},
+		{"git notes add -m x", true},
 
 		{"git --no-pager log -5", false},
 		{"git status --short", false},
@@ -266,6 +293,9 @@ func TestGitWrites(t *testing.T) {
 		{"git config user.name", false},
 		{"git config --get a.b", false},
 		{"git worktree list", false},
+		{"git notes", false},
+		{"git submodule", false},
+		{"git hash-object f", false},
 		{"git", false},
 		{"echo git commit", false},
 		{"go build ./...", false},
