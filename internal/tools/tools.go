@@ -840,7 +840,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		mk(ToolBash, `Run a command with sh -c in the project directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over; stdin is empty and there is no terminal. stdout and stderr are merged and long output is cut, with the whole of it saved to a file the result names. At the timeout the command is not killed but handed on as a background job whose id the result gives you.
 Not for anything that does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help. Not for interactive programs (vim, less, REPLs, git rebase -i): use the non-interactive form (git --no-pager, -m, --yes, CI=1). Not for files when you have read, grep, glob, edit and write: what a command prints does not count as reading a file.
-Chain dependent steps with &&; independent commands are separate calls in one response.`,
+Chain dependent steps with &&.`,
 			false,
 			withSandbox(map[string]any{
 				// "about", not "description": a schema's properties reach the model

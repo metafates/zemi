@@ -76,9 +76,9 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "redirect it", "offset and limit", "Use todos", `"job_start"`, "zemi-config before changing its settings"}, nil, nil},
+		{"default", nil, []string{"Scratchpad: ", "redirect it", "offset and limit", "Use todos", `"job_start"`, "zemi-config before changing its settings"}, []string{"in one message"}, []string{"in one response"}},
 		// a subagent: explore reads and searches, and writes nothing
-		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reads and searches run in parallel", "offset and limit"}, []string{"redirect it", "Put notes", "Use todos"}, nil},
+		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit"}, []string{"redirect it", "Put notes", "Use todos"}, nil},
 		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
 			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}, nil},
 		// the plan's shape lives in the plan tool's description only

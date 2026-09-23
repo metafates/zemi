@@ -428,7 +428,7 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string 
 	return "You are " + def.Name + ", a subagent of zemi working in " + h.Dirs.ProjectDir + "." +
 		" The caller cannot see your work, only your final message: end with a complete," +
 		" concise report of the facts it needs, with file paths where they matter.\n\n" + def.System +
-		"\n\n# Using tools\n" + parallelPrompt + read
+		"\n\n# Using tools\n" + batchPrompt + read
 }
 
 func lastAssistantText(history []fantasy.Message) string {
@@ -651,7 +651,7 @@ func (t *agentTool) names() []string {
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Launch a subagent for a self-contained task; it works with its own context and returns one final report." +
-		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code: it only reads files" +
+		" Prefer explore for questions about code: it only reads files" +
 		" (a fetch or web search still asks). The subagent cannot see this conversation: the prompt must carry everything it needs," +
 		" what to report back and how to verify the work. Its report is not shown to the user; relay what matters.")
 	// a detached run outlives a headless turn, which exits as soon as the
