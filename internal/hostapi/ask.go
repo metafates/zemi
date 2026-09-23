@@ -122,7 +122,7 @@ func (h *Host) askHook() tools.Asker {
 				// a settled command would run unconfined
 				note("not settled: no sandbox")
 			case req.Subject == "tool.bash":
-				note("not settled: " + h.unsettled(req.Arg))
+				note("not settled: " + h.unsettled(req.Arg, req.ReadOnly))
 			default:
 				note("not settled: auto mode settles reads and edits inside the project")
 			}

@@ -271,8 +271,10 @@ mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor`
 `h.sandboxPolicy(readOnly)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
 `Jobs.Start`/`Adopt` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
-`zemi.job`, MCP servers and `Host.git` stay unconfined; language servers run under
-`serverPolicy`. `NewHost` probes the backend synchronously, so `--health` and the first turn's
+`zemi.job`, MCP servers and `Host.git` stay unconfined, except under a read-only agent, whose
+every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` then skips the
+`Destructive` and `GitWrites` asks, since the confined run fails on its own); language servers
+run under `serverPolicy`. `NewHost` probes the backend synchronously, so `--health` and the first turn's
 schema see it.
 
 `sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir is never the shared

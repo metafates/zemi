@@ -413,7 +413,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// write there (init.lua, .zemi/) changes what zemi allows
 		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case "tool.bash":
-		return h.unsettled(req.Arg) == ""
+		return h.unsettled(req.Arg, req.ReadOnly) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
@@ -433,9 +433,11 @@ func (h *Host) protectedWrite(p string) bool {
 		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
-// unsettled says why auto mode and a read-only agent leave a bash command to the user,
-// or "" when they run it. In a trusted project with a sandbox every command
-// runs, confined (Pipeline.SandboxFor), but the few that delete in bulk.
+// unsettled says why auto mode leaves a bash command to the user, or ""
+// when it runs. In a trusted project with a sandbox every command runs,
+// confined (Pipeline.SandboxFor), but the few that delete in bulk; a
+// read-only agent's run is confined with the project unwritable whoever
+// allowed it, so those fail on their own and an ask would only add a prompt.
 // Anywhere else it would run unconfined, so only readers settle.
 // NOTE: nothing parses what a sandboxed command does, so the sandbox policy
 // is the only limit: it may rewrite any project file (rewind does not track
@@ -443,20 +445,22 @@ func (h *Host) protectedWrite(p string) bool {
 // and read what the policy does not hide, outside the project too (without
 // HidesSecretFiles, a .env it names by a glob). Screening the text again
 // would bring the asks back; tighten sandboxPolicy instead.
-func (h *Host) unsettled(cmd string) string {
+func (h *Host) unsettled(cmd string, readOnly bool) string {
 	if !h.ProjectTrusted() || !h.sandboxLive() {
 		if perm.ReadCommand(cmd, h.safeCommandPath) {
 			return ""
 		}
 		return "only commands that just read run without a trusted project and a sandbox"
 	}
-	if why := perm.Destructive(cmd); why != "" {
-		return why
-	}
-	// a confined git write can only fail; asking first saves the failed run
-	// and the sandbox: false retry
-	if why := perm.GitWrites(cmd); why != "" {
-		return why
+	if !readOnly {
+		if why := perm.Destructive(cmd); why != "" {
+			return why
+		}
+		// a confined git write can only fail; asking first saves the failed
+		// run and the sandbox: false retry
+		if why := perm.GitWrites(cmd); why != "" {
+			return why
+		}
 	}
 	if h.sandbox.Load().backend.HidesSecretFiles {
 		return ""

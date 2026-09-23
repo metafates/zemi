@@ -79,6 +79,9 @@ type Request struct {
 	// exclusion): auto settles nothing here, the user answers; set by the
 	// pipeline
 	Explicit bool
+	// ReadOnly marks a read-only agent's request (Pipeline.Plan), whose
+	// command runs confined whoever allows it; set by the pipeline
+	ReadOnly bool
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -257,6 +260,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
+	req.ReadOnly = plan
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
 		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: "profile:readonly"}
 	}
@@ -305,16 +309,18 @@ func (p *Pipeline) Check(req Request) Verdict {
 }
 
 // SandboxFor is the policy a checked command runs under: one a permission
-// mode settled runs confined, rule-allowed and user-approved ones as they
-// are. nil = unconfined.
+// mode settled or a read-only agent runs confined, rule-allowed and
+// user-approved ones as they are. nil = unconfined.
 func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || req.Unsandboxed {
 		return nil
 	}
 	// network: true keeps the sandbox, which is what the model and the user
 	// were told, so it stays confined whoever allowed it; no mode settles it,
-	// so the verdict is always the user's
-	if !strings.HasPrefix(v.DecidedBy, "mode:") && !req.Network {
+	// so the verdict is always the user's. Read-only is absolute: the policy
+	// is what keeps the project unwritable, and Check denies the escape
+	plan := p.Plan != nil && p.Plan()
+	if !plan && !strings.HasPrefix(v.DecidedBy, "mode:") && !req.Network {
 		return nil
 	}
 	pol := p.Sandbox()

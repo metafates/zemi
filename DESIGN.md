@@ -1534,9 +1534,9 @@ provenance string.
   whose `decide` answers nothing is how a user gets every ask.
 - Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`
   or `job_start` call whose verdict a mode gave
-  (`DecidedBy` `mode:<name>`, any base but `yolo`) runs confined; rule-allowed
-  and user-approved runs, `!command`, `zemi.job`, MCP servers and
-  zemi's own git stay unconfined. Stdio MCP servers start in the data dir
+  (`DecidedBy` `mode:<name>`, any base but `yolo`) or a read-only agent
+  made runs confined; rule-allowed and user-approved runs, `!command`,
+  `zemi.job`, MCP servers and zemi's own git stay unconfined. Stdio MCP servers start in the data dir
   with `ZEMI_PROJECT_DIR` in their environment, trusted project or not:
   `npx` and `uv` read `.npmrc`, `node_modules/.bin` and uv config from the
   working directory, which settled commands and writes may change, and
