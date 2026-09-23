@@ -592,16 +592,15 @@ func (h *Host) AppendReasoning(text string, stat TurnStat) {
 }
 
 // goKeys are the bindings the key router owns (internal/ui/keys.go): they
-// are not Lua keymaps, so /help would list none of them. Keep them in step
-// with the README table.
+// are not Lua keymaps, so /help would list none of them.
 var goKeys = [][2]string{
 	{"enter", "send the message"},
-	{"alt+enter, ctrl+j", "newline"},
+	{"shift+enter, alt+enter", "newline"},
 	{"esc", "interrupt the turn, or leave an agent view"},
 	{"ctrl+c", "interrupt; twice while idle quits"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
-	{"up, ctrl+p", "earlier prompts (empty composer: queued messages)"},
+	{"up, ctrl+p", "earlier prompts (empty: queued messages)"},
 	{"down, ctrl+n", "later prompts"},
 	{"ctrl+z", "undo in the composer"},
 	{"alt+left, alt+right", "move by word"},
