@@ -247,7 +247,10 @@ zemi.ui.widget.add({
       local name = tool_name(t)
       local open = ctx.show_reasoning or expanded[idx] or false
       local mark, hl = BRAILLE[ctx.frame % #BRAILLE + 1] .. " ", "AgentToolRun"
-      if t.status == "ok" then
+      if t.status == "wait" then
+        -- not started: its arguments stream, or a serial call ahead of it runs
+        mark, hl = "· ", "Comment"
+      elseif t.status == "ok" then
         mark, hl = "✓ ", "AgentToolOk"
       elseif t.status == "err" then
         mark, hl = "✗ ", "AgentToolErr"

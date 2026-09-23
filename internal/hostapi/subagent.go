@@ -481,11 +481,21 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.calls++
 	n := run.calls
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "run"})
+	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "wait"})
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
 		truncRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
+	s.h.refreshViewed(run)
+}
+
+func (s *subagentHooks) ToolCallRunning(id string) {
+	run := s.run
+	run.mu.Lock()
+	if i, found := run.rows[id]; found {
+		run.tr[i].Status = "run"
+	}
+	run.mu.Unlock()
 	s.h.refreshViewed(run)
 }
 

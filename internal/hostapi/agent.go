@@ -76,7 +76,7 @@ type StreamTool struct {
 	Output  string // the last lines of the result (shortOutput)
 	Name    string
 	Input   string
-	Status  string // "run", "ok", "err"
+	Status  string // "wait" (arguments streaming, or queued behind a serial call), "run", "ok", "err"
 	partial string // the head of the streaming input, until Label is known
 }
 
@@ -767,7 +767,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 // arguments: a write's file body or a long heredoc takes seconds that a
 // spinner alone says nothing about.
 func (s *streamAdapter) ToolCallPending(id, name string) {
-	s.openToolRow(StreamTool{ID: id, Name: name, Started: time.Now(), Status: "run"})
+	s.openToolRow(StreamTool{ID: id, Name: name, Status: "wait"})
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
@@ -779,7 +779,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
 		}
 	}
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Started: time.Now(), Status: "run", Diff: diff}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: diff}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -788,8 +788,19 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 		s.openToolRow(row) // this provider reports no input start
 		return
 	}
-	row.Started = ag.tools[i].Started
 	ag.tools[i] = row
+	ag.mu.Unlock()
+	s.h.agentStream()
+}
+
+// ToolCallRunning starts a row's clock: until then it waits, drawn with no
+// timer, so a call queued behind a serial one does not read as running.
+func (s *streamAdapter) ToolCallRunning(id string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == "wait" }); i >= 0 {
+		ag.tools[i].Status, ag.tools[i].Started = "run", time.Now()
+	}
 	ag.mu.Unlock()
 	s.h.agentStream()
 }
@@ -821,7 +832,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	diff := ""
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
-		if ag.tools[i].ID == id && ag.tools[i].Status == "run" {
+		if ag.tools[i].ID == id && (ag.tools[i].Status == "run" || ag.tools[i].Status == "wait") {
 			ag.tools[i].Status = map[bool]string{true: "ok", false: "err"}[ok]
 			ag.tools[i].Output = shortOutput(output)
 			if !ok {
@@ -954,7 +965,7 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 	}
 	for _, t := range tools {
 		status := t.Status
-		if status == "run" {
+		if status == "run" || status == "wait" {
 			status = "err"
 			t.Diff = ""
 		}

@@ -118,6 +118,12 @@ func (h *recHooks) ToolCallStart(id, name, input string) {
 	h.mu.Unlock()
 }
 
+func (h *recHooks) ToolCallRunning(string) {
+	h.mu.Lock()
+	h.tools = append(h.tools, "running")
+	h.mu.Unlock()
+}
+
 func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "end:"+name)
@@ -259,7 +265,7 @@ func TestToolRowOpensAtInputStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitDone(t, hooks)
-	if got := strings.Join(hooks.tools, ","); got != "pending:echo,start:echo,end:echo" {
+	if got := strings.Join(hooks.tools, ","); got != "pending:echo,start:echo,running,end:echo" {
 		t.Fatalf("hook order: %s", got)
 	}
 }

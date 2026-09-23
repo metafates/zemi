@@ -601,7 +601,7 @@ function zemi.event.stats() end
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status "run"|"ok"|"err"
+---@field status "wait"|"run"|"ok"|"err" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs.
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -615,7 +615,7 @@ function zemi.event.stats() end
 ---@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"notice"|"error"
 ---@field text string
 ---@field tool string
----@field status string Tool and shell rows: "run", "ok" or "err"; error rows: "cancelled" for an interrupt.
+---@field status string Tool and shell rows: "wait", "run", "ok" or "err"; error rows: "cancelled" for an interrupt.
 ---@field label string
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".

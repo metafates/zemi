@@ -28,10 +28,13 @@ zemi.ui.widget.add({
       end
     elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
       label, state = "Working", "working"
+      -- the first: serial calls run in call order, and a parallel batch
+      -- starts together
       for _, t in ipairs(ag.tools or {}) do
         if t.status == "run" then
           label = t.label ~= "" and t.label or ("Running " .. t.name)
           if READS[t.name] then state = "reading" end
+          break
         end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end

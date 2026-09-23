@@ -314,7 +314,7 @@ func (run *agentRun) finish(h *Host, err error) {
 	defer run.mu.Unlock()
 	run.flush()
 	for _, i := range run.rows {
-		if run.tr[i].Status == "run" {
+		if run.tr[i].Status == "run" || run.tr[i].Status == "wait" {
 			run.tr[i].Status = "err"
 		}
 	}

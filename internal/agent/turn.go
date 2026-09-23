@@ -26,6 +26,9 @@ type StreamHooks interface {
 	// ToolInputDelta is a piece of the pending call's JSON arguments.
 	ToolInputDelta(id, delta string)
 	ToolCallStart(id, name, input string)
+	// ToolCallRunning is when the call starts to run: a serial call (bash)
+	// holds every later call of its step until it returns.
+	ToolCallRunning(id string)
 	ToolCallEnd(id, name string, ok bool, output, diff string)
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
@@ -100,15 +103,37 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
+	r := &Runner{last: &lastErr{LanguageModel: model}}
 	opts := []fantasy.AgentOption{}
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
 	}
 	if len(tools) > 0 {
-		opts = append(opts, fantasy.WithTools(tools...))
+		wrapped := make([]fantasy.AgentTool, len(tools))
+		for i, t := range tools {
+			wrapped[i] = runningTool{t, r}
+		}
+		opts = append(opts, fantasy.WithTools(wrapped...))
 	}
-	rec := &lastErr{LanguageModel: model}
-	return &Runner{agent: fantasy.NewAgent(rec, opts...), last: rec}
+	r.agent = fantasy.NewAgent(r.last, opts...)
+	return r
+}
+
+// runningTool reports when fantasy starts a call, which is later than its
+// arguments end when a serial call ahead of it still runs.
+type runningTool struct {
+	fantasy.AgentTool
+	r *Runner
+}
+
+func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	t.r.mu.Lock()
+	hooks := t.r.Hooks
+	t.r.mu.Unlock()
+	if hooks != nil {
+		hooks.ToolCallRunning(call.ID)
+	}
+	return t.AgentTool.Run(ctx, call)
 }
 
 // lastErr remembers a model call's failure: fantasy's retry callback gets
