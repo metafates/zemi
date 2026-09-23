@@ -372,8 +372,10 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 }
 
 // stale refuses changing a file the model has not read, or one that changed
-// since (the user's editor, a formatter, another agent): writing over it
-// would silently drop those changes. "" when the view is current.
+// since (a command it ran, the user's editor, a formatter, another agent):
+// writing over it would silently drop those changes. bash never updates
+// Seen, so the model re-reads what a command rewrote. "" when the view is
+// current.
 func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	rel := workRel(path)
 	// before the read log: a directory listing never marks it seen, so the
@@ -389,7 +391,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	case !ok:
 		return "read " + rel + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
 	case !t.(time.Time).Equal(fi.ModTime()):
-		return rel + " changed since you read it (the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
+		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
 	return ""
 }
@@ -666,9 +668,11 @@ func plural(n int) string {
 
 const (
 	globMaxFiles   = 200
-	globMaxScan    = 20_000
 	grepMaxMatches = 100
 )
+
+// globMaxScan is where a glob stops collecting; a var so a test can hit it
+var globMaxScan = 20_000
 
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
@@ -710,7 +714,13 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	ruledOut, shown := p.ruledOut(), rels[:0]
 	for i, rel := range rels {
 		if len(shown) == globMaxFiles {
-			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
+			// the scan stopped at globMaxScan, so the rest is unknown; below
+			// it "up to" holds, since ruledOut may hide some of the remainder
+			if len(rels) == globMaxScan {
+				shown = append(shown, fmt.Sprintf("... (scan stopped at %d files; narrow the pattern or path)", globMaxScan))
+			} else {
+				shown = append(shown, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
+			}
 			break
 		}
 		if !ruledOut(rel) {

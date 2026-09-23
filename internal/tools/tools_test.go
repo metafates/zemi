@@ -341,6 +341,12 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
 		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
 	}
+	// a scan that hit its cap has no count to give
+	defer func(n int) { globMaxScan = n }(globMaxScan)
+	globMaxScan = 500
+	if resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
+		t.Errorf("capped scan: %q", resp.Content[max(0, len(resp.Content)-80):])
+	}
 }
 
 // TestEditSafety: write tools refuse files the model has not seen as they
