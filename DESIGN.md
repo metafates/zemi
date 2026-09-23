@@ -1617,7 +1617,7 @@ provenance string.
   wrap that fails is a tool error, never an unconfined run.
   While a backend is live, bash and `job_start` take two escapes,
   fixed per process so the prompt cache holds. `network: true`
-  (`Request.Network`) keeps the sandbox and adds sockets (`Policy.Network`),
+  (`Request.Network`) keeps the sandbox and adds IP sockets, no unix one (`Policy.Network`),
   which is all a dependency fetch or a `gh` call needs, and it stays confined
   whichever verdict allowed it, the user's ask included; `sandbox: false`
   (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
