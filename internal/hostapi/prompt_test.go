@@ -73,13 +73,15 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		p    *Profile
 		keep []string
 		gone []string
+		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", `"job_start"`}, nil},
+		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", `"job_start"`}, nil, nil},
 		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}},
-		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil},
-		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}},
-		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}},
+			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}, nil},
+		// the plan's shape lives in the plan tool's description only
+		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil, []string{"how to verify, the assumptions"}},
+		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}, nil},
+		{"no read", &Profile{Tools: []string{"-read", "-todos"}}, nil, []string{"offset and limit", "Use todos"}, nil},
 	} {
 		toolset := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)
@@ -89,6 +91,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		for _, want := range c.keep {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s: misses %q", c.name, want)
+			}
+		}
+		for _, once := range c.once {
+			if n := strings.Count(text, once); n != 1 {
+				t.Errorf("%s: %q %d times", c.name, once, n)
 			}
 		}
 		for _, gone := range c.gone {

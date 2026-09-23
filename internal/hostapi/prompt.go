@@ -179,8 +179,8 @@ You are planning: work out the plan with the user and do not do it until they ap
 // headless run and a profile that drops it have none.
 const planAsking = `
 2. Ask what only the user can answer (goal, scope, behavior, tradeoffs) with the question tool, related questions in one call. A vague request needs several rounds; a focused fix may need none.
-3. When nothing is left to decide, call the plan tool with the plan. Structure the plan as short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and a Critical Files section naming the 3-5 files that matter most.
-End every turn with the question tool or the plan tool; never ask in plain text whether the plan is good. Approving the plan switches you back to the agent you replaced: then implement it.`
+3. When nothing is left to decide, call the plan tool with the plan.
+End every turn with the question tool or the plan tool, even one that only answers a question; never ask in plain text whether the plan is good. Approving the plan switches you back to the agent you replaced: then implement it.`
 
 const planHeadless = `
 2. Write the plan as your reply and stop there: nothing in this run can approve it.`

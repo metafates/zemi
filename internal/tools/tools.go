@@ -975,7 +975,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. As a read-only agent, call it once nothing is left to decide; outside it, only before a large or ambiguous change. A clear task is done, not planned, and a research question is answered, not planned; ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user to approve it before changing anything. As a read-only agent, call it once nothing is left to decide; outside it, only before a large or ambiguous change, since a clear task is done and a research question answered, not planned. Ask open questions with the question tool first.
 
 The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. The user approves it (implement it, and you return to the agent that ran before), asks for changes (revise and call again), or dismisses it (stop and wait).`,
 			false,
