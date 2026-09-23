@@ -70,6 +70,15 @@ func TestComposerUndo(t *testing.T) {
 	if want := "hi there|hi |hi|"; strings.Join(got, "|") != want {
 		t.Fatalf("undo steps %q, want %q", got, want)
 	}
+	// ctrl+c clearing a draft is one step too
+	for _, r := range "alpha beta" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "alpha beta" {
+		t.Fatalf("ctrl+z after ctrl+c: %q", app.composer.text)
+	}
 }
 
 func TestComposerLineMoves(t *testing.T) {

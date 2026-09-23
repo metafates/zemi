@@ -89,10 +89,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case a.host.AgentActive():
 			a.interrupt()
 		case !a.composer.empty():
-			// the draft stays one up away
+			// the draft stays one up away, and one ctrl+z
 			a.seedHistory()
 			a.composer.pushHistory(a.composer.text, a.historySize())
+			prev := composerSnap{a.composer.text, a.composer.cursor}
 			a.clearComposer()
+			a.composer.snapshot(prev, false)
 		case a.arm(key):
 			a.Quit()
 		}
