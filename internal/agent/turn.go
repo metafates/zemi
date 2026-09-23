@@ -358,21 +358,22 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		err = persistErr
 	}
 	if err == nil && len(steps) > 0 {
-		// fantasy records the calls of an abnormal finish and never runs them;
-		// some gateways omit the reason on plain text, so unknown fails only there
-		last, cut, advice := steps[len(steps)-1], "at the output limit", "; split the work into smaller calls"
+		// fantasy runs a step's calls only on a tool-calls finish and records
+		// the rest unrun; on plain text a gateway may send no reason or "other"
+		last, how, advice := steps[len(steps)-1], "at the output limit", "; split the work into smaller calls"
+		calls := pending != "" || len(last.Content.ToolCalls()) > 0
 		switch reason := last.FinishReason; {
 		case reason == fantasy.FinishReasonLength:
 			err = ErrReplyCut
 		case reason == fantasy.FinishReasonError || reason == fantasy.FinishReasonContentFilter ||
-			reason == fantasy.FinishReasonUnknown && (pending != "" || len(last.Content.ToolCalls()) > 0):
+			reason != fantasy.FinishReasonToolCalls && calls:
 			err = fmt.Errorf("the provider ended the reply early (%s)", reason)
-			cut, advice = "by the provider ("+string(reason)+")", ""
+			how, advice = "by the provider ("+string(reason)+")", ""
 		}
 		// some providers drop a call cut mid-arguments from the step, so the
 		// history would show nothing and the model repeats the same call
 		if err != nil && pending != "" && len(last.Content.ToolCalls()) == 0 {
-			m := r.compose("the reply was cut " + cut + " while calling " + pending + advice)
+			m := r.compose("the reply was cut " + how + " while calling " + pending + advice)
 			steered = append(steered, steeredMsg{at: len(stepMessages(steps)), msg: m})
 			save(m)
 		}

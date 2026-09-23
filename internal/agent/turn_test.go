@@ -361,7 +361,7 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 		{fantasy.FinishReasonLength, true, "output token limit"},
 		{fantasy.FinishReasonError, true, "ended the reply early (error)"},
 		{fantasy.FinishReasonContentFilter, false, "ended the reply early (content-filter)"},
-		{fantasy.FinishReasonUnknown, true, "ended the reply early (unknown)"},
+		{fantasy.FinishReasonOther, true, "ended the reply early (other)"},
 		{fantasy.FinishReasonUnknown, false, ""},
 	} {
 		step := textParts("partial")
