@@ -97,6 +97,11 @@ func TestWorkflowRun(t *testing.T) {
 			script: `local out, errs = parallel({function() return agent("ok") end, function() local r, e = agent("fail") return r or error(e) end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
 			want:   "ok! true",
 		},
+		{
+			name:   "a branch returning agent's nil, err reports through errs",
+			script: `local out, errs = parallel({function() return agent("ok") end, function() return agent("fail") end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
+			want:   "ok! true",
+		},
 		{name: "crashed agent", script: `local r, e = agent("panic") return e`, want: "the agent crashed"},
 		{name: "agent inside pcall refused", script: `local ok, err = pcall(agent, "x") return tostring(ok) .. " " .. err`, want: "false"},
 		{name: "pcall without a function", script: `return pcall()`, wantErr: true, want: "bad argument #1"},

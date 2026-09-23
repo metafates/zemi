@@ -469,7 +469,15 @@ func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 	case glua.ResumeError:
 		r.finish(t, glua.LNil, err)
 	case glua.ResumeOK:
-		r.finish(t, vals[0], nil)
+		// `return agent(...)` hands back agent's nil, err: a failure, not a nil result
+		val, err := glua.LValue(glua.LNil), error(nil)
+		if len(vals) > 0 {
+			val = vals[0]
+		}
+		if val == glua.LNil && len(vals) > 1 && vals[1] != glua.LNil {
+			err = errors.New(vals[1].String())
+		}
+		r.finish(t, val, err)
 	default:
 		switch {
 		case t.req != nil:
