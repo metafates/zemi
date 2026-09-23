@@ -458,7 +458,7 @@ type subagentHooks struct {
 	sid      string
 	ctx      context.Context // the run's: cancelled, a call cut off was stopped
 	stepText int             // len(run.text) when the step began, where a retry restarts
-	thinkAt  time.Time       // when the Thought row being streamed began
+	thinkAt  time.Time       // when the Thought row being streamed began, zero once it ended
 }
 
 func (s *subagentHooks) report(line string) {
@@ -469,13 +469,14 @@ func (s *subagentHooks) report(line string) {
 
 func (s *subagentHooks) TextDelta(text string) {
 	s.run.mu.Lock()
+	s.endThinking()
 	s.run.text += text
 	s.run.mu.Unlock()
 	s.h.refreshViewed(s.run)
 }
 
 // ReasoningDelta keeps one collapsed Thought row per stretch of thinking,
-// under what streamed before it, timed from its first delta to its last.
+// under what streamed before it.
 func (s *subagentHooks) ReasoningDelta(text string) {
 	run := s.run
 	run.mu.Lock()
@@ -484,10 +485,7 @@ func (s *subagentHooks) ReasoningDelta(text string) {
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "reasoning"})
 		s.thinkAt = time.Now()
 	}
-	m := &run.tr[len(run.tr)-1]
-	m.Text += text
-	// a new Stat, never a write through the old one a reader may hold
-	m.Stat = &TurnStat{ThoughtMS: time.Since(s.thinkAt).Milliseconds()}
+	run.tr[len(run.tr)-1].Text += text
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 }
@@ -496,10 +494,20 @@ func (s *subagentHooks) ReasoningDelta(text string) {
 func (s *subagentHooks) ToolCallPending(string, string) {}
 func (s *subagentHooks) ToolInputDelta(string, string)  {}
 
+// endThinking times the Thought row the next text or call ends, as the
+// main agent's is timed (run.mu held).
+func (s *subagentHooks) endThinking() {
+	if n := len(s.run.tr); !s.thinkAt.IsZero() && n > 0 && s.run.tr[n-1].Kind == "reasoning" {
+		s.run.tr[n-1].Stat = &TurnStat{ThoughtMS: time.Since(s.thinkAt).Milliseconds()}
+	}
+	s.thinkAt = time.Time{}
+}
+
 func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	diff := inputDiff(name, input)
 	run := s.run
 	run.mu.Lock()
+	s.endThinking()
 	run.flush()
 	run.calls++
 	n := run.calls
