@@ -24,8 +24,8 @@ import (
 
 // Transcript budget for the reflect prompt: the last reflectMsgsMax user
 // and assistant messages, each truncated to reflectMsgMax runes. Tool calls
-// reach it as usage stats plus the first reflectResultMax runes of the
-// newest reflectFailedMax failed results. Instruction files get
+// reach it as the first reflectResultMax runes of the newest
+// reflectFailedMax failed results. Instruction files get
 // reflectInstructionsMax bytes.
 const (
 	reflectMsgsMax         = 120
@@ -39,17 +39,17 @@ const reflectorSystem = `You are zemi's reflector. You read what one coding sess
 
 What a memory is
 - One declarative sentence, at most 300 characters, about the project or the user as they are now, naming the file, command or flag it is about: "the repo regenerates goldens with make golden", "the user wants commits made without being asked once checks pass". Never an instruction ("always run make golden"): an instruction is re-read as an order in a later session and overrides what the user asks then. Never a narrative of this session (what was done, changed, built, fixed, or how a bug was found) and never a description of a change ("ctrl+t, previously ctrl+shift+t"). No dates, ticket numbers or commit hashes: a memory must stand without the incident behind it.
-- Worth keeping only if skipping it would cost a future session real work or a mistake: a gotcha the code does not say, with its mechanism in one clause; a command with a surprising flag; a convention the user enforces; a preference or decision the user stated. Not: anything the instruction files below say, anything a tool description says, anything one file read reveals, failures caused by the environment (a missing binary, an unset credential, a fresh install), claims that a tool or feature does not work, errors a retry fixed, attempts that never worked.
-- Scope "project" is this repository only: its layout, commands, conventions, decisions about it. Scope "user" holds in every project: the user's habits, machine, tools, accounts, models. A fact about a repository is never "user"; a fact about the person is never "project".
+- Worth keeping only if skipping it would cost a future session real work or a mistake: a gotcha the code does not say, with its mechanism in one clause; a command with a surprising flag; a convention the user enforces; a preference or decision the user stated. Not: anything the instruction files, recipes or project skills below say, how zemi's own tools behave, anything one file read reveals, failures caused by the environment (a missing binary, an unset credential, a fresh install), claims that a tool or feature does not work, errors a retry fixed, attempts that never worked.
+- Scope "project" is this repository only: its layout, commands, conventions, decisions about it. Scope "user" holds in every project: what the user said about their habits, machine, tools, accounts or models. A fact about a repository is never "user"; a fact about the person is never "project".
 - Anything about the user (a preference, a decision, a correction, a habit) carries "quote": the user's own words from this session, copied exactly, at most 160 characters. No quote, no memory: a discussion, an audit the user asked for, or your own advice is not a decision. A quote that is not in the transcript is discarded.
 - A procedure is not a memory: a repository procedure is a recipe the live agent writes.
 - Never secrets, credentials, tokens or key material; short identifiers at most, and an env var by name.
 
 The index
-- The index below is every memory the prompt of every session carries, as [id scope origin age], with each scope's budget use. Do not repeat one, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id (the first field) and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. The user reviews every retirement.
+- The index below is every memory the prompt of every session carries, as [id scope origin age], with each scope's budget use. Do not repeat one, or a memory awaiting review, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id (the first field) and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. The user reviews every retirement.
 - A scope the index marks full takes no new memory unless it replaces one. To merge two lines: set replaces to one id and write the merged sentence, then retire the other with replaces and empty text.
 
-Answer with ONLY a JSON object, no prose and no code fences:
+Answer with a JSON object and nothing else, no code fences:
 {"memories":[{"scope":"project","text":"...","quote":"","replaces":""}]}
 When there is nothing worth keeping, answer {}.`
 
@@ -306,7 +306,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 // count and returns how many of its stored messages that covers. Every
 // transcript line is scrubbed before it leaves the machine.
 func (h *Host) reflectPrompt(sid string) (string, int, error) {
-	all, seen, after, err := h.reflectDelta(sid)
+	all, seen, _, err := h.reflectDelta(sid)
 	if err != nil {
 		return "", 0, err
 	}
@@ -331,18 +331,8 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 			b.WriteString("- " + f + "\n")
 		}
 	}
-	if stats, err := h.DB.ToolCallStats(sid, after); err == nil && len(stats) > 0 {
-		b.WriteString("\n# Tool usage\n")
-		for _, s := range stats {
-			line := fmt.Sprintf("- %s: %d calls", s.Tool, s.Calls)
-			if s.Failed > 0 {
-				line += fmt.Sprintf(", %d failed", s.Failed)
-			}
-			b.WriteString(line + "\n")
-		}
-	}
 	if s := h.instructionSections(h.instructionFiles(), reflectInstructionsMax); s != "" {
-		b.WriteString("\n# Instruction files\nEvery session's prompt carries these already; nothing they say is a memory, and you cannot read files." + s + "\n")
+		b.WriteString("\n# Instruction files" + s + "\n")
 	}
 	// only this session's: memoryAuto(sid) stores what comes back, and
 	// another session's suggestion may carry outside text it queued for
@@ -362,7 +352,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		for _, m := range mems {
 			used[m.Scope] += learn.LineSize(m.Text)
 		}
-		fmt.Fprintf(&b, "\n# Memory index (every memory the prompt carries, as [id scope origin age]; project %s, user %s)\n",
+		fmt.Fprintf(&b, "\n# Memory index (project %s, user %s)\n",
 			budgetUse(used["project"]), budgetUse(used["user"]))
 		now := time.Now()
 		for _, m := range mems {
@@ -431,6 +421,9 @@ func reflectLine(m *store.Message) string {
 	role, text := m.Role, concatText(fm.Content)
 	if s, ok := summaryOf(fm); ok {
 		role, text = "summary", s
+	} else if role == "user" {
+		// what zemi appended is not the user's, and quoteInSession drops quotes from it
+		text, _, _ = strings.Cut(text, agent.AttachMarker)
 	}
 	if text = strings.TrimSpace(text); text == "" {
 		return ""

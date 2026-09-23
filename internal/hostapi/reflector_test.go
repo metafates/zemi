@@ -348,6 +348,10 @@ func TestReflectPrompt(t *testing.T) {
 		{name: "a secret in a user line is redacted", seed: func(t *testing.T, h *Host, sid string) {
 			addText(t, h, sid, "user", "the "+secret+" lives in deploy")
 		}, want: []string{"user: the [redacted"}, absent: []string{"sk-abcdefghijklmnopqrs"}},
+		{name: "a user line keeps only what was typed", seed: func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", "read @notes.md"+agent.AttachMarker+"\nattached notes\n</attached-files>")
+			addText(t, h, sid, "user", agent.Note("mark it done"))
+		}, want: []string{"user: read @notes.md\n"}, absent: []string{"attached notes", "mark it done"}},
 		{name: "this session's pending proposals only", seed: func(t *testing.T, h *Host, sid string) {
 			for _, m := range []store.Memory{
 				{Scope: "project", Text: "ours to review", ProvenanceSessionID: sid},
@@ -361,7 +365,7 @@ func TestReflectPrompt(t *testing.T) {
 		{name: "the index with budget use and quotes", seed: func(t *testing.T, h *Host, sid string) {
 			learnedMemory(t, h, "project", "deploy needs the labels sequence bumped", "")
 			learnedMemory(t, h, "user", "the user prefers short replies", "keep it short")
-		}, want: []string{"# Memory index (every memory the prompt carries, as [id scope origin age]; project 0.1/3 KB, user 0.1/3 KB)", " project learned] deploy needs the labels sequence bumped", " user learned] the user prefers short replies\n  quote: \"keep it short\""}},
+		}, want: []string{"# Memory index (project 0.1/3 KB, user 0.1/3 KB)", " project learned] deploy needs the labels sequence bumped", " user learned] the user prefers short replies\n  quote: \"keep it short\""}},
 		{name: "a scope past 80% of its budget is marked full", seed: func(t *testing.T, h *Host, sid string) {
 			for i := range 9 {
 				learnedMemory(t, h, "project", strings.Repeat(string(rune('a'+i)), 280), "")
