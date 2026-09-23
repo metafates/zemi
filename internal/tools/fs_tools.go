@@ -905,12 +905,14 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Secret-shaped files are never searched.
+// matching the include glob. Secret-shaped files are never searched. A
+// pattern that is no regexp (an unbalanced paren) is searched as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
 	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return fantasy.NewTextErrorResponse("bad pattern: " + err.Error()), nil
+	literal := err != nil
+	if literal {
+		re = regexp.MustCompile(regexp.QuoteMeta(pattern))
 	}
 	// a file root is searched as one file of its directory, so rel keeps
 	// its shape
@@ -933,6 +935,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return len(hits) < grepMaxMatches
 	}
 	args := []string{"--line-number", "--no-heading", "--null", "--max-columns", "1000", "--max-columns-preview", "--regexp", pattern}
+	if literal {
+		args = append(args, "--fixed-strings")
+	}
 	if include != "" {
 		args = append(args, "--glob", include)
 	}
@@ -977,10 +982,14 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	if len(hits) == 0 {
-		return fantasy.NewTextResponse("(no matches)"), nil
+	out := ""
+	if literal {
+		out = "(pattern taken literally)\n"
 	}
-	out := strings.Join(hits, "\n") + "\n"
+	if len(hits) == 0 {
+		return fantasy.NewTextResponse(out + "(no matches)"), nil
+	}
+	out += strings.Join(hits, "\n") + "\n"
 	if len(hits) >= grepMaxMatches {
 		out += fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
 	}

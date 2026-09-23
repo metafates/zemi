@@ -425,7 +425,7 @@ func TestGlobAndGrep(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "private"), 0o755)
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
-		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n",
+		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
 		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
 	} {
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
@@ -450,6 +450,8 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
+			{grep, `{"pattern":"sub("}`, "(pattern taken literally)\n", "bad pattern"},
+			{grep, `{"pattern":"sub("}`, "call.go:1: x := sub(1)", "x.go"},
 		} {
 			input := strings.Replace(c.input, "{", `{"path":"`+dir+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
