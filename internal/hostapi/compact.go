@@ -100,7 +100,7 @@ func (h *Host) contextFull(used int64) bool {
 	ag.mu.Unlock()
 	if judge {
 		if h.compactDue() {
-			h.compactFailed()
+			h.compactFailed("the context was still full after compacting")
 		} else {
 			ag.mu.Lock()
 			ag.compactFails = 0
@@ -110,15 +110,18 @@ func (h *Host) contextFull(used int64) bool {
 	return h.compactDue()
 }
 
-func (h *Host) compactFailed() {
+// compactFailed counts a failed auto compaction and reports whether it was
+// the one that turned auto compaction off, which then says so with the cause.
+func (h *Host) compactFailed(cause string) bool {
 	ag := h.agents
 	ag.mu.Lock()
 	ag.compactFails++
 	off := ag.compactFails == compactMaxFails
 	ag.mu.Unlock()
 	if off {
-		h.Notify("warn", "Auto compaction off", fmt.Sprintf("auto compaction is off for this session after %d failed tries: /compact or /new", compactMaxFails))
+		h.Notify("warn", "Auto compaction off", cause+"; /compact or /new")
 	}
+	return off
 }
 
 // contextTooLarge also matches Anthropic's "input length and `max_tokens`
@@ -246,8 +249,9 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 			h.Notify("error", "Could not compact", h.friendlyError(err))
 		} else {
 			// the turn goes on, or ends on its own error
-			h.Notify("warn", "Could not compact", h.friendlyError(err))
-			h.compactFailed()
+			if cause := h.friendlyError(err); !h.compactFailed(cause) {
+				h.Notify("warn", "Could not compact", cause)
+			}
 		}
 	}
 	return false

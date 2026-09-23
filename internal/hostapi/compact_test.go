@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -282,6 +283,16 @@ func TestCompactionStopsAfterFailures(t *testing.T) {
 	}
 	if n := m.calls.Load(); n != compactMaxFails {
 		t.Fatalf("summarizer called %d times, want %d", n, compactMaxFails)
+	}
+	// the failure that turns it off is one toast, not its own and another
+	h.evlog.mu.Lock()
+	defer h.evlog.mu.Unlock()
+	var titles []string
+	for _, n := range h.evlog.notes {
+		titles = append(titles, n.title)
+	}
+	if want := []string{"Could not compact", "Could not compact", "Auto compaction off"}; !slices.Equal(titles, want) {
+		t.Fatalf("toasts %q, want %q", titles, want)
 	}
 }
 
