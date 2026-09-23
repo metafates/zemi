@@ -780,11 +780,16 @@ func Subcommand(f []string) int {
 
 var subcommandValues = map[string]bool{"-C": true, "-c": true, "--prefix": true, "--git-dir": true, "--work-tree": true, "--namespace": true}
 
-// plainFlags are leading options known to take no value.
-var plainFlags = map[string]bool{
-	"--no-pager": true, "-p": true, "--paginate": true, "--bare": true, "--no-replace-objects": true,
-	"--literal-pathspecs": true, "--no-optional-locks": true, "-q": true, "--quiet": true, "-v": true,
-	"--verbose": true, "--offline": true, "--locked": true, "--frozen": true, "-s": true, "--silent": true,
+// plainFlags are the leading options known to take no value, per program:
+// kubectl's -s and -v take one, so a shared list would misplace the subcommand.
+var plainFlags = map[string][]string{
+	"git":   {"--no-pager", "-p", "--paginate", "--bare", "--no-replace-objects", "--literal-pathspecs", "--no-optional-locks"},
+	"cargo": {"--offline", "--locked", "--frozen", "-q", "--quiet", "-v", "--verbose"},
+	"npm":   {"-s", "--silent", "-q", "--quiet"},
+	"pnpm":  {"-s", "--silent"},
+	"yarn":  {"-s", "--silent"},
+	"make":  {"-s", "--silent", "-q", "--quiet"},
+	"uv":    {"-q", "--quiet", "-v", "--verbose", "--offline", "--locked", "--frozen"},
 }
 
 // LeadKnown reports whether Subcommand read every word before f[i] for
@@ -792,11 +797,12 @@ var plainFlags = map[string]bool{
 // +toolchain or a flag known to take none. An unknown option may take the
 // next word (npm -w web test), which Subcommand then calls the subcommand.
 func LeadKnown(f []string, i int) bool {
+	plain := plainFlags[strings.ToLower(filepath.Base(f[0]))]
 	for j := 1; j < i; j++ {
 		switch a := f[j]; {
 		case subcommandValues[a]:
 			j++
-		case strings.HasPrefix(a, "+") || strings.HasPrefix(a, "--") && strings.Contains(a, "=") || plainFlags[a]:
+		case strings.HasPrefix(a, "+") || strings.HasPrefix(a, "--") && strings.Contains(a, "=") || slices.Contains(plain, a):
 		default:
 			return false
 		}

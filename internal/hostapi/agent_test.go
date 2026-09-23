@@ -1009,6 +1009,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow `git -C /other/... status`", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
+		// kubectl's -s takes a value, so prod is not its subcommand
+		{tools.Request{Subject: "tool.bash", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
 		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow `/usr/bin/git push`", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "Git push"}, "allow `Git push`", []string{"Git push", "Git push *"}},
