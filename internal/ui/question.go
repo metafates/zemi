@@ -23,6 +23,7 @@ type questionPrompt struct {
 	states    []qState
 	at        int // the tab shown: a question, or len(qs) for the review tab
 	reviewSel int // a question row, or len(qs) for submit
+	review    viewport
 	width     int // the widest body so far: the box only grows between tabs
 	answer    chan qAnswer
 }
@@ -33,9 +34,9 @@ type qState struct {
 	picked   map[int]bool // multi-select marks
 	typing   bool
 	input    composerState
-	top      int    // first option row shown
-	qscroll  int    // first question row shown, when the question does not fit
-	answered string // "" until answered
+	view     viewport // the options
+	ask      viewport // the question text
+	answered string   // "" until answered
 }
 
 type qAnswer struct {
@@ -123,12 +124,7 @@ func (a *App) questionKey(key, text string) {
 		return
 	}
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	switch key {
-	case "shift+down":
-		st.qscroll++
-		return
-	case "shift+up":
-		st.qscroll = max(0, st.qscroll-1)
+	if st.ask.overflows() && scrollKey(&st.ask, key, false) {
 		return
 	}
 	if st.typing {
@@ -147,7 +143,7 @@ func (a *App) questionKey(key, text string) {
 		return
 	}
 	hasTail := q.Type == tools.TypeSingle || q.Type == tools.TypeMulti
-	if moveSel(&st.sel, q.ListRows(), key) {
+	if moveSel(&st.sel, q.ListRows(), st.view.pageItems(q.ListRows()), key) {
 		return
 	}
 	// a digit picks the option directly; yes_no and single answer at once
@@ -204,7 +200,7 @@ func (st *qState) marked(q tools.Question) string {
 
 func (a *App) reviewKey(key string) {
 	qp := a.question
-	if moveSel(&qp.reviewSel, len(qp.qs)+1, key) {
+	if moveSel(&qp.reviewSel, len(qp.qs)+1, qp.review.pageItems(len(qp.qs)+1), key) {
 		return
 	}
 	switch key {
@@ -287,15 +283,10 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 			}
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
-		// borders, the blank row and the hint take four rows; each answer
-		// takes three with its gap, the submit row one
-		limit := chatH - len(body) - 4
-		if len(items)*3+1 > limit {
-			limit = max(limit-1, 3) // the i/n counter row
-		}
-		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, nil, limit)...)
+		// borders, the blank row and the hint take four rows
+		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, &qp.review, max(chatH-len(body)-4, 3), boxInner(w))...)
 		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
-		return box("enter", enter, "shift+tab", "back", "esc", "cancel")
+		return box(slices.Concat([]string{"enter", enter, "shift+tab", "back"}, scrolls(qp.review), []string{"esc", "cancel"})...)
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
@@ -317,51 +308,44 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 			items = append(items, listItem{label: "Type your own answer"})
 		}
 	}
-	// wrapped: an ellipsis would hide what is asked, unless the question
-	// would push the first options and the hint off screen
-	var ask [][]hostapi.Segment
-	for l := range strings.SplitSeq(q.Question, "\n") {
-		ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, boxInner(w))...)
-	}
-	if q.Description != "" {
-		ask = append(ask, []hostapi.Segment{{Text: "", HL: "Host:Hint"}})
-		ask = append(ask, a.host.Markdown(q.Description, boxInner(w))...)
-	}
-	// what is left after the two borders, the blank row under the question,
-	// the blank row and hint below the options, and the options themselves
-	keep := chatH - len(body) - 5 - min(len(items), 4)
+	// wrapped, never cut: what is asked scrolls when it would push the
+	// first options and the hint off screen. Room is what is left after
+	// the two borders, the blank row under the question, the blank row and
+	// hint below the options, and the options themselves.
+	st.ask.viewH = max(chatH-len(body)-5-min(len(items), 4), 1)
 	if st.typing {
-		keep--
+		st.ask.viewH = max(st.ask.viewH-1, 1)
 	}
-	if keep = max(keep, 1); len(ask) > keep {
-		// an ellipsis would hide what is asked: window it like the
-		// permission prompt's preview, with the counter row saying so
-		keep = max(keep-1, 1)
-		st.qscroll = max(0, min(st.qscroll, len(ask)-keep))
-		more := fmt.Sprintf("  lines %d-%d of %d (shift+up/down)", st.qscroll+1, st.qscroll+keep, len(ask))
-		ask = append(ask[st.qscroll:st.qscroll+keep:st.qscroll+keep], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
-	}
-	body = append(append(body, ask...), blank)
+	ask := st.ask.wrap(func(w int) [][]hostapi.Segment {
+		var ask [][]hostapi.Segment
+		for l := range strings.SplitSeq(q.Question, "\n") {
+			ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
+		}
+		if q.Description != "" {
+			ask = append(ask, []hostapi.Segment{{Text: "", HL: "Host:Hint"}})
+			ask = append(ask, a.host.Markdown(q.Description, w)...)
+		}
+		return ask
+	}, boxInner(w))
+	body = append(append(body, st.ask.window(ask, boxInner(w))...), blank)
 	// borders, the blank row and the hint take four rows, typing one more
 	limit := chatH - len(body) - 4
 	if st.typing {
 		limit--
 	}
 	if len(items) > 0 {
-		if len(items) > limit {
-			limit = max(limit-1, 3) // the i/n counter row
-		}
-		body = append(body, listRows(items, st.sel, &st.top, limit)...)
+		body = append(body, listRows(items, st.sel, &st.view, max(limit, 3), boxInner(w))...)
 	}
+	more := scrolls(st.ask, st.view)
 	var hints []string
 	switch {
 	case st.typing:
 		body = append(body, st.input.inputRow(boxInner(w)))
-		hints = []string{"enter", "answer", "esc", "back"}
+		hints = slices.Concat([]string{"enter", "answer"}, scrolls(st.ask), []string{"esc", "back"})
 	case q.Multi():
-		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, []string{"esc", "cancel"})
+		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, more, []string{"esc", "cancel"})
 	default:
-		hints = slices.Concat([]string{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
+		hints = slices.Concat([]string{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick", "enter", "answer"}, tabs, more, []string{"esc", "cancel"})
 	}
 	return box(hints...)
 }

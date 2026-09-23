@@ -21,7 +21,7 @@ type cmdPalette struct {
 	args     []hostapi.CompletionItem // argument candidates once the cursor is past "/name "
 	argStart int                      // rune index where the argument under the cursor starts
 	selected int
-	top      int // first row shown
+	view     viewport
 }
 
 func (p *cmdPalette) count() int {
@@ -91,7 +91,7 @@ func (a *App) updatePalette() {
 
 func (p *cmdPalette) close() {
 	p.open = false
-	p.selected, p.top = 0, 0
+	p.selected, p.view = 0, viewport{}
 	p.matches, p.args = nil, nil
 }
 
@@ -113,8 +113,6 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
-func (p *cmdPalette) move(d int) { p.selected = max(0, min(p.selected+d, p.count()-1)) }
-
 // accept fills the composer with the selected "/name " and closes.
 func (a *App) acceptPalette() {
 	p := &a.palette
@@ -130,8 +128,9 @@ func (a *App) acceptPalette() {
 	p.close()
 }
 
-// paletteRows renders the popup rows shown above the composer.
-func (a *App) paletteRows() [][]hostapi.Segment {
+// paletteRows renders the popup rows shown above the composer, at most
+// room rows of at most maxW cells.
+func (a *App) paletteRows(maxW, room int) [][]hostapi.Segment {
 	p := &a.palette
 	if !p.open || p.count() == 0 {
 		return nil
@@ -143,7 +142,7 @@ func (a *App) paletteRows() [][]hostapi.Segment {
 	for _, c := range p.args {
 		items = append(items, listItem{label: c.Text, desc: c.Desc})
 	}
-	return listRows(items, p.selected, &p.top, 8)
+	return listRows(items, p.selected, &p.view, min(8, room), maxW)
 }
 
 // clearComposer empties the draft and closes both popups. The paste map
@@ -163,11 +162,11 @@ func (a *App) submitComposer() {
 	if text == "" {
 		return
 	}
-	a.followStage()
 	if strings.HasPrefix(text, "/") {
-		a.runSlashCommand(text)
+		a.runSlashCommand(text) // a command leaves the reader where they are
 		return
 	}
+	a.followStage()
 	// !command runs in the user's shell; the output joins the next message
 	if cmd, ok := strings.CutPrefix(text, "!"); ok && strings.TrimSpace(cmd) != "" {
 		a.composer.pushHistory(text, a.historySize())

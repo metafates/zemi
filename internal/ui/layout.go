@@ -271,7 +271,7 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 	switch n.Kind {
 	case "region":
-		return len(a.regionLines(n.Region, width))
+		return len(a.regionLines(n.Region, regionWidth(n, width)))
 	case "composer":
 		if n.Frame {
 			return len(a.composerRows(frameInner(width))) + 2
@@ -281,6 +281,15 @@ func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 		return 1
 	}
 	return 0
+}
+
+// regionWidth is the cells a region's widgets render at: a scrolled one
+// keeps its bar's column.
+func regionWidth(n *hostapi.LayoutNode, w int) int {
+	if n.Scroll != "" {
+		return barInner(w)
+	}
+	return w
 }
 
 // shownWidget is a widget of a region the layout draws, with the cells it
@@ -307,7 +316,7 @@ func (a *App) shownWidgets() []shownWidget {
 	walk = func(l laid) {
 		switch l.node.Kind {
 		case "region":
-			add(l.node.Region, l.rect.Dx(), l.rows)
+			add(l.node.Region, regionWidth(l.node, l.rect.Dx()), l.rows)
 		case "bar":
 			add(l.node.Left, l.rect.Dx(), 1)
 			add(l.node.Right, l.rect.Dx(), 1)
@@ -379,43 +388,151 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	return rows[:h]
 }
 
-// scrollState is where a scrolled region's viewport is (DESIGN §8
-// scrollback). follow pins it to the tail (top may go negative when the
-// content is shorter than the viewport, which bottom-anchors it);
-// otherwise top is the absolute first visible row, clamped so content
-// growth or a narrower rewrap never shows blank rows. anchor is the text
-// of the first few visible rows from the first non-blank one, anchorOff how
-// far below top that one sat, so a re-render that moves rows around keeps
-// the same content in view instead of the same row number.
-type scrollState struct {
+// viewport is the one scroll model (chat, Lua scroll nodes, box text,
+// lists): rows of content, viewH of them shown from top. follow pins it to
+// the tail, where top goes negative while the content is shorter than the
+// view, which bottom-anchors it.
+type viewport struct {
 	top, rows, viewH int
-	follow, bottom   bool
-	anchor           []string
-	anchorOff        int
-	rect             uv.Rectangle // where it was drawn on the last frame
-	region           string
+	follow           bool
+}
+
+func (v *viewport) clamp() {
+	if v.follow {
+		v.top = v.rows - v.viewH
+		return
+	}
+	v.top = max(0, min(v.top, v.rows-v.viewH))
+}
+
+// scroll moves n rows (negative = up) and leaves the tail.
+func (v *viewport) scroll(n int) {
+	if v.follow {
+		v.top, v.follow = max(v.rows-v.viewH, 0), false
+	}
+	v.top += n
+	v.clamp()
+}
+
+// page moves a page with one row of overlap, so no row is skipped.
+func (v *viewport) page(dir int) { v.scroll(dir * max(v.viewH-1, 1)) }
+
+func (v *viewport) edge(dir int) { v.scroll(dir * max(v.rows, 1)) }
+
+// reveal moves the least so rows [a, b) show, the top of a taller span.
+func (v *viewport) reveal(a, b int) {
+	v.top = max(min(v.top, a), min(b-v.viewH, a))
+	v.clamp()
+}
+
+func (v viewport) overflows() bool { return v.rows > v.viewH }
+
+// pageItems is how many items of an n-item list a page holds.
+func (v viewport) pageItems(n int) int { return max(v.viewH*n/max(v.rows, 1), 1) }
+
+// barInner is what a row of a width-cell viewport may use once the bar's
+// column is reserved; a viewport under 8 cells draws no bar.
+func barInner(width int) int {
+	if width >= 8 {
+		return width - 1
+	}
+	return width
+}
+
+// wrap builds content at width, again a cell narrower when it overflows the
+// view, so the bar never covers a character. viewH must be set.
+func (v *viewport) wrap(build func(width int) [][]hostapi.Segment, width int) [][]hostapi.Segment {
+	lines := build(width)
+	if len(lines) > v.viewH && barInner(width) < width {
+		lines = build(barInner(width))
+	}
+	return lines
+}
+
+// window is the rows of lines the view shows, each with its bar cell while
+// the content overflows; rows before the content (a bottom-anchored tail)
+// are nil. lines must fit barInner(width) when they overflow.
+func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segment {
+	v.rows = len(lines)
+	v.clamp()
+	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: width}
+	out := make([][]hostapi.Segment, 0, max(min(v.viewH, len(lines)), 0))
+	for i := range v.viewH {
+		j := v.top + i
+		if j >= len(lines) {
+			break
+		}
+		var row []hostapi.Segment
+		if j >= 0 {
+			row = lines[j]
+		}
+		if bar.on() {
+			row = bar.row(padSegs(truncateSegs(row, barInner(width)), barInner(width)), i)
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// scrollKey applies a scroll key to a text viewport: shift+up/down a line,
+// the page keys a page, ctrl+home/end the edges, and in a box with nothing
+// to select (textOnly) the list keys a line.
+func scrollKey(v *viewport, key string, textOnly bool) bool {
+	switch key {
+	case "shift+up":
+		v.scroll(-1)
+	case "shift+down":
+		v.scroll(1)
+	case "pgup":
+		v.page(-1)
+	case "pgdown":
+		v.page(1)
+	case "ctrl+home":
+		v.edge(-1)
+	case "ctrl+end":
+		v.edge(1)
+	default:
+		d := listMove(key)
+		if !textOnly || d == 0 {
+			return false
+		}
+		v.scroll(d)
+	}
+	return true
+}
+
+// scrollState is a scrolled layout region's viewport (DESIGN §8
+// scrollback). While it does not follow, anchor is the text of the first
+// few visible rows from the first non-blank one, anchorOff how far below
+// top that one sat, so a re-render that moves rows around keeps the same
+// content in view instead of the same row number.
+type scrollState struct {
+	viewport
+	bottom    bool
+	anchor    []string
+	anchorOff int
+	rect      uv.Rectangle // where it was drawn on the last frame
+	region    string
 }
 
 // anchorRows is how many rows identify the viewport. One is not enough:
 // a turn footer or a blank line repeats down the transcript.
 const anchorRows = 3
 
-// paintScrolled draws a scrolled region into r.
+// paintScrolled draws a scrolled region into r. Its widgets render at
+// barInner of its width whether or not the bar shows, so the bar
+// appearing never rewraps them.
 func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
 	w, h := r.Dx(), r.Dy()
 	st := a.scrollOf(n)
-	lines := a.regionLines(n.Region, w)
+	lines := a.regionLines(n.Region, regionWidth(n, w))
 	prevRows := st.rows
 	st.rows, st.viewH, st.rect, st.region = len(lines), h, r, n.Region
 	a.scrollIDs = append(a.scrollIDs, n.ID)
-	if st.follow {
-		st.top = st.rows - h
-	} else {
-		if prevRows > 0 && st.rows != prevRows {
-			st.top = reanchor(lines, st, prevRows)
-		}
-		st.top = max(0, min(st.top, st.rows-h))
+	if !st.follow && prevRows > 0 && st.rows != prevRows {
+		st.top = reanchor(lines, st, prevRows)
 	}
+	rows := st.window(lines, w)
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(plainSegs(lines[i])) == "" {
@@ -427,14 +544,8 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 		break
 	}
-	bar := scrollbar{h: h, top: st.top, total: st.rows, width: w}
-	rows := make([][]hostapi.Segment, h)
 	for i := range rows {
-		var row []hostapi.Segment
-		if j := st.top + i; j >= 0 && j < len(lines) {
-			row = truncateSegs(lines[j], bar.inner())
-		}
-		rows[i] = bar.row(padSegs(row, bar.inner()), i)
+		rows[i] = padSegs(rows[i], w)
 	}
 	return rows
 }
@@ -445,18 +556,11 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 // nothing while everything fits.
 type scrollbar struct{ h, top, total, width int }
 
-func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && b.width >= 8 }
-
-// inner is the cells a row may use, the bar's own left out.
-func (b scrollbar) inner() int {
-	if b.on() {
-		return b.width - 1
-	}
-	return b.width
-}
+func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && barInner(b.width) < b.width }
 
 // row appends the bar cell for viewport row i to a row already padded to
-// inner cells.
+// barInner cells. A box pads the row before its bar, so the bar keeps to
+// the box's right inner edge.
 func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	if !b.on() {
 		return row

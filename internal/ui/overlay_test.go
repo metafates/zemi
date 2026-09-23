@@ -136,7 +136,7 @@ func TestTopChromeTakesInput(t *testing.T) {
 
 	a.openOverlay(hostapi.Overlay{Items: []any{"a", "b", "c"}})
 	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3)}
-	a.wheelChrome(1)
+	a.wheel(0, 0, 1)
 	if a.memReview.sel != 1 || a.overlays[0].selected != 0 {
 		t.Fatalf("wheel: memory sel=%d overlay sel=%d", a.memReview.sel, a.overlays[0].selected)
 	}
@@ -290,11 +290,11 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
-		{"the detail view has a breadcrumb title and scrolls its body",
-			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter", "down"},
+		{"the detail view has a breadcrumb title",
+			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter"},
 			func(a *App) string {
 				d := a.overlays[len(a.overlays)-1]
-				if len(a.overlays) != 2 || d.o.Title != "Errors › err" || d.scroll != 1 || !d.back {
+				if len(a.overlays) != 2 || d.o.Title != "Errors › err" || !d.back {
 					return fmt.Sprintf("%+v", d)
 				}
 				return ""
@@ -305,10 +305,10 @@ func TestOverlayNavigation(t *testing.T) {
 				d := &a.overlays[1]
 				d.o.Body = strings.Repeat("line\n", 60)
 				before := segsWidth(a.overlayBox(d, 80, 20)[0])
-				a.wheelChrome(1)
+				a.wheel(0, 0, 1)
 				d.selected = 1 // enter select -> enter back
-				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.scroll != 1 || after != before {
-					return fmt.Sprintf("scroll=%d width %d -> %d", d.scroll, before, after)
+				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
+					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
 				return ""
 			}},
@@ -348,9 +348,9 @@ func TestOverlayNavigation(t *testing.T) {
 				a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.quitArmed.IsZero()]
 			}},
-		{"a read-only body scrolls by line",
-			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down", "pgdown"},
-			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].scroll == 11] }},
+		{"the list keys scroll a body with no list",
+			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down"},
+			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].body.top == 1] }},
 		{"a multi-line label stays on one row",
 			hostapi.Overlay{Items: []any{"fix: empty input\n\nThe parser crashed."}}, nil,
 			func(a *App) string {
@@ -375,6 +375,7 @@ func TestOverlayNavigation(t *testing.T) {
 			c.o.Origin = cmp.Or(c.o.Origin, lua.OriginBuiltin)
 			a.openOverlay(c.o)
 			for _, k := range c.keys {
+				a.overlayBox(&a.overlays[len(a.overlays)-1], 80, 20) // keys act on the box drawn
 				a.overlayKey(k, "")
 			}
 			if msg := c.check(a); msg != "" {

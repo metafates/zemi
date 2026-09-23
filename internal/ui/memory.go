@@ -23,7 +23,7 @@ type memReviewPrompt struct {
 	items  []hostapi.MemoryRow
 	gone   []hostapi.MemoryRow // dropped rows, still answered
 	sel    int
-	top    int // first row shown
+	view   viewport
 	undo   []memUndo
 	answer chan []hostapi.MemoryRow
 }
@@ -170,14 +170,15 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 			info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 		}
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
-		more := hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-2)
+		// the marker's two cells and the bar's one
+		more := hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-3)
 		if it.Quote != "" {
-			more = append(more, hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}}, boxInner(w)-2)...)
+			more = append(more, hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}}, boxInner(w)-3)...)
 		}
 		items = append(items, listItem{section: sections[suggested(it)], more: append(more, meta)})
 	}
-	// borders, the blank row, the hint and the counter take five rows
-	lines := listRows(items, mr.sel, &mr.top, max(chatH-5, 3))
+	// borders, the blank row and the hint take four rows
+	lines := listRows(items, mr.sel, &mr.view, max(chatH-4, 3), boxInner(w))
 	if len(mr.items) == 0 {
 		lines = hostapi.WrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
 	}
@@ -207,6 +208,7 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 	if len(mr.undo) > 0 {
 		hints = append(hints, "u", "undo")
 	}
+	hints = append(hints, scrolls(mr.view)...)
 	lines = append(lines, nil, padSegs(hintLine(boxInner(w), append(hints, "esc", "close")...), widest))
 	return hostBox(" Memory ", "Host:Title", "", lines, w)
 }

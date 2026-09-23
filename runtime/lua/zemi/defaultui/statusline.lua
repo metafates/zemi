@@ -52,8 +52,9 @@ zemi.ui.widget.add({
   end,
 })
 
--- The altscreen has no scrollbar: while the chat is scrolled up, say how
--- much is below and how to get back.
+-- While the chat is scrolled up, say how many rows are below and which key
+-- goes back: the bar shows only where the reader is, not what a running
+-- turn added under them or how a keyboard gets back.
 zemi.ui.widget.add({
   id = "statusline.scroll",
   region = "statusline.left",

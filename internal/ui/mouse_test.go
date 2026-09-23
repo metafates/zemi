@@ -313,7 +313,7 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 // TestBoxEllipsisOnlyOnLongRows: a long row ends in an ellipsis, a short row
 // padded to its width does not.
 func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
-	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10), 40)
+	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40)
 	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
 	}
@@ -333,18 +333,17 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 		{"header", []listItem{{label: "a", section: "One"}, {label: "b", section: "One"}, {label: "c", section: "Two"}}, 5, "Two"},
 		{"multi-line item", []listItem{{label: "x"}, {more: more}}, 4, "m1"},
 	} {
-		top := 0
-		rows := listRows(c.items, 0, &top, c.limit)
-		if len(rows) != c.limit+1 || strings.Contains(plainSegs(slices.Concat(rows...)), c.hidden) {
+		rows := listRows(c.items, 0, &viewport{}, c.limit, 0)
+		if len(rows) != c.limit || strings.Contains(plainSegs(slices.Concat(rows...)), c.hidden) {
 			t.Errorf("%s: %q", c.name, plainSegs(slices.Concat(rows...)))
 		}
 	}
 	// scrolling down, every window starts on an item's first row
 	items := slices.Repeat([]listItem{{label: "item", more: more[:1]}}, 5)
 	for _, limit := range []int{4, 6, 7} {
-		top := 0
+		v := viewport{}
 		for sel := range items {
-			if rows := listRows(items, sel, &top, limit); !strings.Contains(plainSegs(rows[0]), "item") {
+			if rows := listRows(items, sel, &v, limit, 0); !strings.Contains(plainSegs(rows[0]), "item") {
 				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, plainSegs(rows[0]))
 			}
 		}

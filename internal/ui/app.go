@@ -332,8 +332,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
-		if step != 0 && !a.wheelChrome(step) {
-			a.scrollRows(a.scrollAt(msg.X, msg.Y), step*chatWheelStep)
+		if step != 0 {
+			a.wheel(msg.X, msg.Y, step)
 		}
 		return a, nil
 	case editorDoneMsg:
@@ -758,7 +758,12 @@ func (a *App) compose(w, h int) string {
 	var popup [][]hostapi.Segment
 	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		popup, popX, pop = a.floatPopup(append(a.completionRows(), a.paletteRows()...), lay, len(rows), w)
+		popup, popX, pop = a.floatPopup(func(maxW, room int) [][]hostapi.Segment {
+			if rows := a.paletteRows(maxW, room); rows != nil {
+				return rows
+			}
+			return a.completionRows(maxW, room)
+		}, lay, len(rows), w)
 	}
 	for i, line := range popup {
 		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
@@ -907,15 +912,13 @@ func dimRows(rows [][]hostapi.Segment) {
 	}
 }
 
-// floatPopup frames a completion popup for the bottom rows of the stage,
+// floatPopup frames a composer popup for the bottom rows of the stage,
 // left-aligned with it, when the stage is above the composer; otherwise
 // beside the composer on the side with more rows, aligned with it. It covers
-// only its own cells; a popup taller than its room is clipped. It returns the rows
-// to draw, their left column and the cells they cover.
-func (a *App) floatPopup(popup [][]hostapi.Segment, lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
-	if len(popup) == 0 {
-		return nil, 0, uv.Rectangle{}
-	}
+// only its own cells. render draws the popup's rows for the cells and rows
+// its frame leaves. It returns the rows to draw, their left column and the
+// cells they cover.
+func (a *App) floatPopup(render func(maxW, room int) [][]hostapi.Segment, lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
 	stage, c := lay.stage, lay.rects["composer"]
 	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
@@ -925,24 +928,24 @@ func (a *App) floatPopup(popup [][]hostapi.Segment, lay screenLayout, h, w int) 
 			top, bottom = c.Max.Y, h
 		}
 	}
+	popup := render(boxInner(width), bottom-top-2)
+	if len(popup) == 0 || bottom-top < 3 {
+		return nil, 0, uv.Rectangle{}
+	}
 	box := hostBox("", "", "", popup, width)
 	if up {
 		top = max(top, bottom-len(box))
-	} else {
-		bottom = min(bottom, top+len(box))
 	}
-	out := box[:max(bottom-top, 0)]
 	bw := 0
-	for _, row := range out {
+	for _, row := range box {
 		bw = max(bw, segsWidth(row))
 	}
-	return out, x, uv.Rect(x, top, bw, len(out))
+	return box, x, uv.Rect(x, top, bw, len(box))
 }
 
 // rowsBelow counts the rows under the default scrolled region's viewport
-// while it is off the tail. The altscreen has no scrollbar, so without it
-// nothing says how far up the reader is, or that a running turn is still
-// filling the bottom.
+// while it is off the tail: the bar shows where the reader is, not how many
+// rows a running turn has added below or which key goes back.
 func (a *App) rowsBelow() int {
 	st := a.scrolls[a.scrollDef]
 	if st == nil || st.follow {
@@ -980,11 +983,7 @@ func (a *App) scrollRows(id string, n int) {
 	if st == nil || n > 0 && st.follow {
 		return
 	}
-	if n < 0 && st.follow {
-		st.follow = false
-		st.top = max(0, st.rows-st.viewH)
-	}
-	st.top = max(0, min(st.top+n, st.rows-st.viewH))
+	st.scroll(n)
 	st.follow = st.bottom && st.top+st.viewH >= st.rows
 	a.bump()
 }
@@ -1012,9 +1011,9 @@ func (a *App) applyScroll(kind, id string) {
 	case "down":
 		a.scrollRows(id, page)
 	case "top":
-		a.scrollRows(id, -st.rows)
+		a.scrollRows(id, -max(st.rows, 1))
 	case "bottom":
-		a.scrollRows(id, st.rows)
+		a.scrollRows(id, max(st.rows, 1))
 	}
 }
 

@@ -100,7 +100,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		choices := pa.choices()
-		if moveSel(&pa.sel, len(choices), key) {
+		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
 			return nil
 		}
 		// any single-letter choice key answers directly (y, a, r, t; "o" is
@@ -116,17 +116,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case key == "n" || key == "esc":
 			a.answerPerm(false, "user")
-		case key == "shift+down":
-			pa.scroll++
-		case key == "shift+up":
-			pa.scroll = max(0, pa.scroll-1)
-		case key == "pgdown":
-			pa.scroll += 10
-		case key == "pgup":
-			pa.scroll = max(0, pa.scroll-10)
 		}
 	case "memReview":
-		if moveSel(&a.memReview.sel, len(a.memReview.items), key) {
+		mr := a.memReview
+		if moveSel(&mr.sel, len(mr.items), mr.view.pageItems(len(mr.items)), key) {
 			return nil
 		}
 		switch key {
@@ -166,14 +159,11 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	t := keyText(msg)
 	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
 
-	// Popups take only the ctrl moves: plain k/j are typed text.
-	popupMove := 0
-	if key != "k" && key != "j" {
-		popupMove = listMove(key)
-	}
-	if a.palette.open {
-		if popupMove != 0 {
-			a.palette.move(popupMove)
+	// Popups take the list moves but for the ones that edit text: k, j,
+	// home and end.
+	popupMove := !slices.Contains([]string{"k", "j", "home", "end"}, key)
+	if p := &a.palette; p.open {
+		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			return nil
 		}
 		switch key {
@@ -193,9 +183,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// enter falls through: it submits the "/name args" line
 	}
 
-	if a.completion.shown() {
-		if popupMove != 0 {
-			moveSel(&a.completion.selected, a.completion.count(), key)
+	if f := &a.completion; f.shown() {
+		if popupMove && moveSel(&f.selected, f.count(), f.view.viewH, key) {
 			return nil
 		}
 		switch {
@@ -279,17 +268,26 @@ func (a *App) interrupt() {
 	a.cancelling = true
 }
 
-// moveSel applies up/down to a list selection over n items; it reports
+// moveSel applies a list key to a selection over n items: the list moves
+// one item, the page keys page items, home and end the ends. It reports
 // whether the key was a move.
-func moveSel(sel *int, n int, key string) bool {
-	switch listMove(key) {
-	case -1:
-		*sel = max(*sel-1, 0)
-	case 1:
-		*sel = max(min(*sel+1, n-1), 0)
+func moveSel(sel *int, n, page int, key string) bool {
+	switch key {
+	case "pgup":
+		*sel -= page
+	case "pgdown":
+		*sel += page
+	case "home", "ctrl+home":
+		*sel = 0
+	case "end", "ctrl+end":
+		*sel = n - 1
 	default:
-		return false
+		if listMove(key) == 0 {
+			return false
+		}
+		*sel += listMove(key)
 	}
+	*sel = max(min(*sel, n-1), 0)
 	return true
 }
 
@@ -340,19 +338,6 @@ func listMove(key string) int {
 		return 1
 	}
 	return 0
-}
-
-// scrollDelta is how many rows a scroll key moves a text viewport: the page
-// keys move a page, the list keys (j/k, arrows) a line. A viewport that also
-// lists rows uses only the page keys, since the list keys select (overlay.go).
-func scrollDelta(key string) int {
-	switch key {
-	case "pgup":
-		return -10
-	case "pgdown":
-		return 10
-	}
-	return listMove(key)
 }
 
 // runRHS executes a keymap right-hand side on the ui class under the
@@ -474,37 +459,48 @@ func (a *App) topChrome() string {
 	return ""
 }
 
-// wheelChrome scrolls the topmost prompt or list instead of the chat;
-// it reports whether one took the wheel.
-func (a *App) wheelChrome(step int) bool {
-	move := func(sel *int, n int) { *sel = max(0, min(*sel+step, n-1)) }
+// wheel scrolls the box on top: the modal chrome, else an open composer
+// popup, else the scrolled region under the pointer. In a box, text that
+// overflows takes the wheel before the list; a list moves one item.
+func (a *App) wheel(x, y, step int) {
+	var text *viewport
+	var sel *int
+	n := 0
 	switch a.topChrome() {
 	case "perm":
-		a.permAsk.scroll = max(0, a.permAsk.scroll+step)
+		text, sel, n = &a.permAsk.view, &a.permAsk.sel, len(a.permAsk.choices())
 	case "plan":
-		if !a.planAsk.typing { // the wheel scrolls the plan, not a text field
-			a.planAsk.scroll = max(0, a.planAsk.scroll+step)
+		text = &a.planAsk.view
+	case "memReview":
+		sel, n = &a.memReview.sel, len(a.memReview.items)
+	case "question":
+		if qp := a.question; !qp.reviewing() {
+			text = &qp.states[qp.at].ask
+		}
+		sel, n = a.question.sel()
+	case "overlay":
+		if st := &a.overlays[len(a.overlays)-1]; !st.o.Input {
+			text, sel, n = &st.body, &st.selected, len(st.visible)
 		}
 	case "trust":
-	case "memReview":
-		move(&a.memReview.sel, len(a.memReview.items))
-	case "question":
-		move(a.question.sel())
-	case "overlay":
-		st := &a.overlays[len(a.overlays)-1]
-		switch {
-		case st.o.Input:
-			return false
-		case st.o.Body != "": // the body scrolls, the arrow keys move between actions
-			st.scroll = max(0, st.scroll+step)
-		default:
-			move(&st.selected, len(st.visible))
-		}
 	default:
-		return false
+		switch {
+		case a.popRect.Empty():
+			a.scrollRows(a.scrollAt(x, y), step*chatWheelStep)
+			return
+		case a.palette.open:
+			sel, n = &a.palette.selected, a.palette.count()
+		default:
+			sel, n = &a.completion.selected, a.completion.count()
+		}
+	}
+	switch {
+	case text != nil && text.overflows():
+		text.scroll(step * chatWheelStep)
+	case sel != nil:
+		*sel = max(0, min(*sel+step, n-1))
 	}
 	a.bump()
-	return true
 }
 
 // pasteChrome sends a paste to the topmost filter or input instead of the

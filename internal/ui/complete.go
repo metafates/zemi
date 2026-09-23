@@ -23,6 +23,7 @@ type fileCompleter struct {
 	matches  []string
 	extra    []listItem // the Lua sources' items, ahead of matches
 	selected int
+	view     viewport
 
 	scanning bool
 	walkGen  int  // bumps so stale scan results are dropped
@@ -35,7 +36,7 @@ const scanMaxFiles = 50000
 
 func (a *App) completionEnabled() bool { return a.host.Settings.Bool("ui.completion.files") }
 
-// completionMax is the popup row cap, clamped to what a popup can show.
+// completionMax is the rows the popup shows, clamped to what a popup can show.
 func (a *App) completionMax() int {
 	return min(max(a.host.Settings.Int("ui.completion.max_items"), 1), 50)
 }
@@ -89,7 +90,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	if !files {
 		return nil
 	}
-	f.rematch(a.completionMax())
+	f.rematch()
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands.
 	if opening {
@@ -109,14 +110,14 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 	a.completion.files = msg.files
 	a.completion.partial = len(msg.files) >= scanMaxFiles
 	if a.completion.open {
-		a.completion.rematch(a.completionMax())
+		a.completion.rematch()
 	}
 }
 
 func (f *fileCompleter) close() {
 	f.open = false
 	f.token = ""
-	f.selected = 0
+	f.selected, f.view = 0, viewport{}
 	f.matches, f.extra = f.matches[:0], nil
 }
 
@@ -127,7 +128,7 @@ func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
 func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
 // rematch re-filters and re-ranks the file list against the token.
-func (f *fileCompleter) rematch(maxItems int) {
+func (f *fileCompleter) rematch() {
 	f.matches = f.matches[:0]
 	if f.token == "" {
 		f.matches = append(f.matches, f.files...)
@@ -148,9 +149,6 @@ func (f *fileCompleter) rematch(maxItems int) {
 		for _, c := range cands {
 			f.matches = append(f.matches, c.path)
 		}
-	}
-	if len(f.matches) > maxItems {
-		f.matches = f.matches[:maxItems]
 	}
 	f.selected = max(0, min(f.selected, f.count()-1))
 }
@@ -206,8 +204,10 @@ func (a *App) acceptCompletion() {
 	f.close()
 }
 
-// completionRows renders the popup rows shown above the composer.
-func (a *App) completionRows() [][]hostapi.Segment {
+// completionRows renders the popup rows shown above the composer, at most
+// room rows of at most maxW cells. Only the window of matches is built: a
+// bare "@" lists every file of the repository.
+func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 	f := &a.completion
 	if !f.shown() {
 		return nil
@@ -218,16 +218,41 @@ func (a *App) completionRows() [][]hostapi.Segment {
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{note("scanning files...")}
 	}
-	if f.count() == 0 && f.trigger == '@' && !f.partial {
+	partial := note("more files than the list holds - type more of the path")
+	switch {
+	case f.count() == 0 && f.partial:
+		return [][]hostapi.Segment{partial}
+	case f.count() == 0:
 		return [][]hostapi.Segment{note("no matches")}
+	case f.partial:
+		room--
 	}
-	items := append([]listItem(nil), f.extra...)
-	for _, m := range f.matches {
-		items = append(items, listItem{label: m})
+	v := &f.view
+	v.rows, v.viewH = f.count(), max(min(a.completionMax(), room), 1)
+	v.reveal(f.selected, f.selected+1)
+	items := make([]listItem, 0, v.viewH)
+	for i := v.top; i < min(v.top+v.viewH, f.count()); i++ {
+		if i < len(f.extra) {
+			items = append(items, f.extra[i])
+		} else {
+			items = append(items, listItem{label: f.matches[i-len(f.extra)]})
+		}
 	}
-	rows := listRows(items, f.selected, nil, len(items))
+	if v.overflows() {
+		maxW = barInner(maxW)
+	}
+	rows := listRows(items, f.selected-v.top, nil, len(items), maxW)
+	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: segsWidth(rows[0]) + 1}
+	for i, r := range rows {
+		for k := range r {
+			if r[k].Hit > 0 {
+				r[k].Hit += v.top // the item's place in the whole list
+			}
+		}
+		rows[i] = bar.row(r, i)
+	}
 	if f.partial {
-		rows = append(rows, note("more files than the list holds - type more of the path"))
+		rows = append(rows, partial)
 	}
 	return rows
 }

@@ -6,7 +6,7 @@
 package ui
 
 import (
-	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,7 +18,7 @@ import (
 
 type planAskPrompt struct {
 	plan   string
-	scroll int
+	view   viewport
 	typing bool
 	input  composerState
 	mode   string // "in <mode> mode" when a mode switch follows approval
@@ -60,6 +60,10 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
 	defer a.bump()
+	// the arrows and j/k scroll only while no input takes them
+	if scrollKey(&p.view, key, !p.typing) {
+		return
+	}
 	if p.typing {
 		switch key {
 		case "enter":
@@ -76,28 +80,19 @@ func (a *App) planKey(key, text string) {
 		return
 	}
 	switch key {
-	case "shift+down":
-		p.scroll++
-	case "shift+up":
-		p.scroll = max(0, p.scroll-1)
 	case "enter":
 		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
 	case "e": // edit: every key, j/k included, types from here on
 		p.typing, p.input = true, composerState{}
 	case "esc", "q":
 		a.finishPlan(tools.PlanVerdict{}, false)
-	default:
-		if d := scrollDelta(key); d != 0 { // j/k and the page keys scroll the plan
-			p.scroll = max(0, p.scroll+d)
-		}
 	}
 }
 
-// planBox draws the plan popup: the plan as scrollable markdown, a counter
-// row when it does not fit, the changes input when typing, and the hints.
+// planBox draws the plan popup: the plan as scrollable markdown, the
+// changes input when typing, and the hints.
 func (a *App) planBox(p *planAskPrompt, w, chatH int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	plan := a.host.Markdown(p.plan, inner)
 	var input [][]hostapi.Segment
 	var hints []string
 	if p.typing {
@@ -112,16 +107,13 @@ func (a *App) planBox(p *planAskPrompt, w, chatH int) [][]hostapi.Segment {
 		hints = []string{"enter", "approve", "e", "request changes", "esc", "dismiss"}
 	}
 	// borders, the two blanks and the hint hold five rows; the input takes the rest
-	room := chatH - len(input) - 5
+	p.view.viewH = max(chatH-len(input)-5, 1)
+	plan := p.view.wrap(func(w int) [][]hostapi.Segment { return a.host.Markdown(p.plan, w) }, inner)
 	if len(plan) == 0 {
-		plan = [][]hostapi.Segment{[]hostapi.Segment{{Text: "(empty plan)"}}}
+		plan = [][]hostapi.Segment{{{Text: "(empty plan)"}}}
 	}
-	if len(plan) > room && room > 0 {
-		room-- // the row that says which lines show
-		p.scroll = max(0, min(p.scroll, len(plan)-room))
-		more := fmt.Sprintf("  lines %d-%d of %d (j/k, shift+up/down to scroll)", p.scroll+1, p.scroll+room, len(plan))
-		plan = append(plan[p.scroll:p.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
-	}
+	plan = p.view.window(plan, inner)
+	hints = slices.Insert(hints, len(hints)-2, scrolls(p.view)...)
 	badge := ""
 	if p.mode != "" {
 		badge = "back to " + p.mode + " on approve"

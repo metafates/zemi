@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -74,4 +76,52 @@ func FuzzSpan(f *testing.F) {
 			t.Fatalf("avail %d, kids %+v: %v sums to %d", avail, kids, out, sum)
 		}
 	})
+}
+
+func TestViewport(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		v           viewport
+		rows, width int
+		move        func(v *viewport)
+		top, shown  int
+		bar         bool
+	}{
+		{"fits: no bar", viewport{viewH: 5}, 3, 12, func(v *viewport) { v.page(1) }, 0, 3, false},
+		{"line down", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.scroll(1) }, 1, 5, true},
+		{"line up at the top stays", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.scroll(-1) }, 0, 5, true},
+		{"page keeps one row of overlap", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.page(1) }, 4, 5, true},
+		{"page at the bottom clamps", viewport{top: 14, viewH: 5}, 20, 12, func(v *viewport) { v.page(1) }, 15, 5, true},
+		{"edges", viewport{top: 7, viewH: 5}, 20, 12, func(v *viewport) { v.edge(-1); v.edge(1) }, 15, 5, true},
+		{"reveal below moves the least", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(8, 10) }, 5, 5, true},
+		{"reveal above goes to its top", viewport{top: 10, viewH: 5}, 20, 12, func(v *viewport) { v.reveal(3, 4) }, 3, 5, true},
+		{"reveal taller than the view shows its top", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(6, 16) }, 6, 5, true},
+		{"follow bottom-anchors short content", viewport{viewH: 5, follow: true}, 3, 12, nil, -2, 5, false},
+		{"scrolling up leaves the tail", viewport{viewH: 5, follow: true}, 20, 12, func(v *viewport) { v.scroll(-3) }, 12, 5, true},
+		{"under 8 cells draws no bar", viewport{viewH: 5}, 20, 7, nil, 0, 5, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// content wrapped at what the bar leaves, as viewport.wrap does
+			lines := make([][]hostapi.Segment, c.rows)
+			for i := range lines {
+				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", barInner(c.width), i)}}
+			}
+			v := c.v
+			v.window(lines, c.width) // a frame drew it
+			if c.move != nil {
+				c.move(&v)
+			}
+			out := v.window(lines, c.width)
+			bar := false
+			for i, r := range out {
+				if j := v.top + i; j >= 0 && !strings.HasPrefix(plainSegs(r), lines[j][0].Text) {
+					t.Fatalf("row %d cut: %q", j, plainSegs(r))
+				}
+				bar = bar || len(r) > 0 && strings.HasPrefix(r[len(r)-1].HL, "Scrollbar")
+			}
+			if v.top != c.top || len(out) != c.shown || bar != c.bar {
+				t.Fatalf("top %d, %d rows, bar %v; want %d, %d, %v", v.top, len(out), bar, c.top, c.shown, c.bar)
+			}
+		})
+	}
 }

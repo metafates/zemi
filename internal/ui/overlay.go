@@ -25,10 +25,10 @@ type overlayState struct {
 	items []listItem // render_item's row when given, else the item's text
 	texts []string   // what the filter matches and y copies, per item
 	listFilter
-	input  composerState // text of an input overlay
-	scroll int           // first body row shown
-	back   bool          // a detail view: esc and its actions return to the overlay under it
-	item   any           // a detail view's item: a reload can swap the parent's under it
+	input composerState // text of an input overlay
+	body  viewport
+	back  bool // a detail view: esc and its actions return to the overlay under it
+	item  any  // a detail view's item: a reload can swap the parent's under it
 	// listH is the rows the unfiltered list took at width listW, which the
 	// box keeps while it is open
 	listH, listW int
@@ -40,8 +40,8 @@ type overlayState struct {
 }
 
 type listKey struct {
-	query                       string
-	sel, top, limit, minW, maxW int
+	query                      string
+	sel, top, room, minW, maxW int
 }
 
 func (st *overlayState) refilter() { st.apply(st.texts) }
@@ -54,8 +54,8 @@ type listFilter struct {
 	query    string
 	visible  []int
 	selected int
-	top      int // first row shown
-	width    int // the widest the list has been, so filtering never narrows its box
+	view     viewport // the list, or a detail view's actions
+	width    int      // the widest the list has been, so filtering never narrows its box
 }
 
 func (f *listFilter) apply(texts []string) {
@@ -105,7 +105,7 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 	}
 	f.apply(texts)
 	if f.query != old {
-		f.selected, f.top = 0, 0 // a new query selects its first match
+		f.selected, f.view.top = 0, 0 // a new query selects its first match
 		if f.query == "" {
 			f.selected = max(0, slices.Index(f.visible, prev)) // a cleared one keeps the row
 		}
@@ -324,16 +324,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if key == "space" && o.Reload != nil {
 		text = "" // space toggles rows in a toggle list
 	}
-	// a body scrolls by page, and by line when there is no list to move in
-	d := scrollDelta(key)
-	if len(o.Items) > 0 {
-		d -= listMove(key) // the list keys select; only the page keys scroll the body
-	}
-	if o.Body != "" && d != 0 {
-		st.scroll = max(0, st.scroll+d)
+	// a body that overflows takes the scroll keys, and the list keys too
+	// when there is no list to move in
+	if st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
 		return nil
 	}
-	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), key) {
+	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
 	// a row's key acts like enter on it; one printable character, so no
@@ -489,37 +485,49 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine(boxInner(w), "enter", "confirm", "esc", "cancel")}
 		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
 	}
-	// borders, the blank row, the hint, the counter and the filter line, and
-	// a body's shortest: 3 rows, the row saying which show and a blank row
-	limit := max(h-6, 3)
-	if st.o.Body != "" {
-		limit = max(h-11, 3)
+	// borders, the blank row and the hint, the filter line (a detail view's
+	// actions have none), and a body's shortest: 3 rows and a blank row
+	limit := h - 5
+	if st.back {
+		limit++
 	}
+	if st.o.Body != "" {
+		limit -= 4
+	}
+	limit = max(limit, 3)
 	var list [][]hostapi.Segment
 	var hints []string
 	switch {
 	case st.back && len(st.o.Items) > 0:
-		// a detail view's rows are actions: draw them as the prompts' buttons.
-		// NOTE: they do not scroll, which no detail view has needed (upgrade:
-		// page them like the list below).
+		// a detail view's rows are actions: draw them as the prompts' buttons
 		choices := make([]promptChoice, 0, len(st.visible))
 		for n, i := range st.visible {
 			m, _ := st.o.Items[i].(map[string]any)
 			hl, _ := m["hl"].(string)
 			choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
 		}
-		list = choiceRows(choices, st.selected, boxInner(w))
+		st.view.viewH = limit
+		list = st.view.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, st.selected, w) }, boxInner(w))
+		st.view.rows = len(list)
+		sel, end := len(list), 0 // the selected action's rows
+		for y, r := range list {
+			if len(r) > 0 && r[0].Hit == st.selected+1 {
+				sel, end = min(sel, y), y+1
+			}
+		}
+		st.view.reveal(sel, end)
+		list = st.view.window(list, boxInner(w))
 		if len(st.visible) > 0 {
 			hints = append(hints, "enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back"))
 		}
 	case len(st.o.Items) > 0:
-		if key := (listKey{st.query, st.selected, st.top, limit, st.width, boxInner(w)}); st.rows == nil || key != st.rowsKey {
+		if key := (listKey{st.query, st.selected, st.view.top, limit, st.width, boxInner(w)}); st.rows == nil || key != st.rowsKey {
 			items := make([]listItem, 0, len(st.visible))
 			for _, i := range st.visible {
 				items = append(items, st.items[i])
 			}
-			st.rows = listRowsW(items, st.items, st.selected, &st.top, limit, st.width, boxInner(w))
-			key.top = st.top
+			st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.width, boxInner(w))
+			key.top = st.view.top
 			st.rowsKey = key
 		}
 		list = st.rows
@@ -543,7 +551,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if st.listH == 0 || st.listW != w {
 			st.listH, st.listW = len(list), w
 		}
-		for n := min(st.listH, limit+2); len(list) < n; {
+		for n := min(st.listH, limit+1); len(list) < n; {
 			list = append(list, padSegs(nil, st.width))
 		}
 	case st.o.Body == "" || st.o.Empty != "":
@@ -558,36 +566,33 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if st.back {
 			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
 		}
-		if st.o.BodySegs != nil {
-			for _, row := range st.o.BodySegs {
-				body = append(body, hostapi.WrapSegs(row, bodyW)...)
-			}
-		} else if st.o.BodyMD {
-			body = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), bodyW)
-		} else {
-			body = fieldRows(st.o.Body, bodyW)
-		}
 		// borders, the hint line and a blank row before it, and the list
-		room := h - 4
+		st.body.viewH = h - 4
 		if len(list) > 0 {
-			room -= len(list) + 1
+			st.body.viewH -= len(list) + 1
 		}
-		if room = max(room, 3); len(body) > room {
-			room--
-			hints = append(hints, "pgup/pgdn", "scroll")
-			st.scroll = min(st.scroll, len(body)-room)
-			n := len(body)
-			body = append(body[st.scroll:st.scroll+room:st.scroll+room], []hostapi.Segment{{Text: fmt.Sprintf("lines %d-%d of %d", st.scroll+1, st.scroll+room, n), HL: "Comment"}})
-		} else {
-			st.scroll = 0
-		}
-		if !st.active { // y types into an open filter
-			hints = append(hints, "y", "copy")
-		}
+		st.body.viewH = max(st.body.viewH, 3)
+		body = st.body.window(st.body.wrap(func(w int) (rows [][]hostapi.Segment) {
+			switch {
+			case st.o.BodySegs != nil:
+				for _, row := range st.o.BodySegs {
+					rows = append(rows, hostapi.WrapSegs(row, w)...)
+				}
+			case st.o.BodyMD:
+				rows = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)
+			default:
+				rows = fieldRows(st.o.Body, w)
+			}
+			return rows
+		}, bodyW), bodyW)
 		body[0] = padSegs(body[0], padW)
 		if len(list) > 0 {
 			body = append(body, nil)
 		}
+	}
+	hints = append(hints, scrolls(st.body, st.view)...)
+	if st.o.Body != "" && !st.active { // y types into an open filter
+		hints = append(hints, "y", "copy")
 	}
 	esc := "close"
 	switch {

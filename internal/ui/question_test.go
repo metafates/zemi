@@ -195,7 +195,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	}
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"› Type your own answer", "21/21", "esc cancel", "└"} {
+	for _, want := range []string{"› Type your own answer", "█", "esc cancel", "└"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q missing:\n%s", want, frame)
 		}

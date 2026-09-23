@@ -314,7 +314,7 @@ func TestCompletionPartialNote(t *testing.T) {
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
 	app.composerKey("q", tea.KeyPressMsg{Text: "q"}) // a letter no path holds
-	rows := app.completionRows()
+	rows := app.completionRows(76, 10)
 	if len(rows) == 0 {
 		t.Fatal("no popup rows")
 	}

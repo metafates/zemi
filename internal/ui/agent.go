@@ -30,7 +30,7 @@ type permAskPrompt struct {
 	answer chan permAnswer
 	opened time.Time // keys typed just before it appeared must not answer it
 	sel    int       // highlighted choice
-	scroll int       // first preview row shown
+	view   viewport  // the command or preview
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a
@@ -218,10 +218,15 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 	}}
 	for _, r := range body {
 		line := ellipsizeSegs(r, bw-4)
-		pad := bw - 4 - segsWidth(line)
+		var bar []hostapi.Segment
+		if n := len(line); n > 0 && strings.HasPrefix(line[n-1].HL, "Scrollbar") {
+			line, bar = line[:n-1], line[n-1:]
+		}
+		pad := bw - 4 - segsWidth(line) - segsWidth(bar)
 		row := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
 		row = append(row, line...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)), NoCopy: true}, hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)), NoCopy: true})
+		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
 		box = append(box, row)
 	}
 	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: "Host:Rule", NoCopy: true}})
@@ -260,19 +265,20 @@ type listItem struct {
 // overlays, memory, questions). The selected item gets "› " and bold text
 // on all its rows; descriptions stay dim. more rows, wrapped by the caller,
 // follow the label (or replace it when the label is empty). Every row of an
-// item carries its 1-based Hit. Past limit rows the list scrolls with an
-// "i/n" counter; top is the first row shown, kept across frames so the list
-// moves only when the selection leaves it and a click never moves the item
-// under the pointer (nil for a list that never scrolls).
-func listRows(items []listItem, sel int, top *int, limit int) [][]hostapi.Segment {
-	return listRowsW(items, items, sel, top, limit, 0, 0)
+// item carries its 1-based Hit. Past room rows the list shows a window of
+// whole items with the scrollbar; v keeps it across frames, so it moves only
+// when the selection leaves it and a click never moves the item under the
+// pointer (nil for a list that keeps no position). Rows fit maxW cells when
+// it is set, the bar included.
+func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostapi.Segment {
+	return listRowsW(items, items, sel, v, room, 0, maxW)
 }
 
-// listRowsW is listRows padded to at least minW cells and, when maxW is
-// set, cut to at most maxW: a long label gives way to its description, and
-// a key column always shows. all is the unfiltered list, which sets the
-// description column, so filtering never moves it.
-func listRowsW(items, all []listItem, sel int, top *int, limit, minW, maxW int) [][]hostapi.Segment {
+// listRowsW is listRows padded to at least minW cells, a long label giving
+// way to its description and a key column always showing. all is the
+// unfiltered list, which sets the description column, so filtering never
+// moves it.
+func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	labelW := 0
 	for _, it := range all {
 		if it.desc != "" { // a row with no description needs no column
@@ -369,11 +375,21 @@ func listRowsW(items, all []listItem, sel int, top *int, limit, minW, maxW int) 
 			selTop, selEnd = start, len(rows)
 		}
 	}
+	if v == nil {
+		v = &viewport{}
+	}
+	v.rows, v.viewH = len(rows), max(room, 1)
+	bar := 0 // the scrollbar's column
+	if v.overflows() && barInner(maxW) < maxW {
+		bar, maxW = 1, maxW-1
+	} else if v.overflows() && maxW == 0 {
+		bar = 1
+	}
 	// Every row pads to the widest of the whole list, so a box sized from
 	// the visible window keeps its width while scrolling.
-	widest := minW
+	widest := max(minW-bar, 0)
 	if maxW > 0 { // a width remembered from a wider screen
-		widest = min(minW, maxW)
+		widest = min(widest, maxW)
 	}
 	for y, r := range rows {
 		k, ok := keys[y]
@@ -392,31 +408,33 @@ func listRowsW(items, all []listItem, sel int, top *int, limit, minW, maxW int) 
 		}
 		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r))})
 	}
-	if limit = max(limit, 1); len(rows) > limit {
-		if top == nil {
-			top = new(int)
-		}
-		*top = max(min(*top, selTop, len(rows)-limit), min(selEnd-limit, selTop), 0)
-		for *top < selTop && !starts[*top] {
-			*top++
-		}
-		// start and end the window on whole items, so no item shows cut, no
-		// blank separator shows at an edge and no header shows without its
-		// first item; an item taller than the window is cut anyway
-		end := *top + limit
-		for end > *top+1 && !cut[end-1] {
-			end--
-		}
-		if !cut[end-1] {
-			end = *top + limit
-		}
-		win := slices.Clone(rows[*top:end])
-		for len(win) < limit {
-			win = append(win, padSegs(nil, widest))
-		}
-		rows = append(win, []hostapi.Segment{{Text: fmt.Sprintf("  %d/%d", sel+1, len(items)), HL: "Comment"}})
+	if !v.overflows() {
+		v.top = 0
+		return rows
 	}
-	return rows
+	v.reveal(selTop, selEnd)
+	for v.top < selTop && !starts[v.top] {
+		v.top++
+	}
+	// start and end the window on whole items, so no item shows cut, no
+	// blank separator shows at an edge and no header shows without its
+	// first item; an item taller than the window is cut anyway
+	end := v.top + v.viewH
+	for end > v.top+1 && !cut[end-1] {
+		end--
+	}
+	if !cut[end-1] {
+		end = v.top + v.viewH
+	}
+	win := slices.Clone(rows)
+	for j := end; j < v.top+v.viewH; j++ {
+		if j < len(win) {
+			win[j] = nil
+		} else {
+			win = append(win, nil) // the last item pushed the window past the end
+		}
+	}
+	return v.window(win, widest+bar)
 }
 
 // shimmer is the "shimmer" segment effect: a bright band sweeps across the
@@ -483,15 +501,18 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 			head = append(append(head[:n-2:n-2], more), head[len(head)-1])
 		}
 	}
-	var content [][]hostapi.Segment
-	switch {
-	case req.Subject == "tool.bash":
-		content = codePanel(req.Arg, inner)
-	case isDiff:
-		content = diffRows(req.Preview, inner)
-	case req.Preview != "":
-		content = codePanel(req.Preview, inner)
+	build := func(w int) [][]hostapi.Segment {
+		switch {
+		case req.Subject == "tool.bash":
+			return codePanel(req.Arg, w)
+		case isDiff:
+			return diffRows(req.Preview, w)
+		case req.Preview != "":
+			return codePanel(req.Preview, w)
+		}
+		return nil
 	}
+	content := build(inner)
 	// the model's words sit apart from the chrome, quoted, never in the
 	// title, and a few rows at most so they cannot push the command away
 	var words [][]hostapi.Segment
@@ -525,16 +546,12 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		tail = append(append(tail, words...), blank)
 	}
 	hints := []string{"enter", "confirm"}
-	if room := chatH - fixed - len(tail) + 1; len(content) > room {
-		room-- // the row that says which lines show
-		if room < 1 {
-			content = nil // nothing left to show it in: the choices come first
-		} else {
-			pa.scroll = max(0, min(pa.scroll, len(content)-room))
-			more := fmt.Sprintf("  lines %d-%d of %d", pa.scroll+1, pa.scroll+room, len(content))
-			content = append(content[pa.scroll:pa.scroll+room], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
-			hints = append(hints, "pgup/pgdn", "scroll")
-		}
+	switch pa.view.viewH = chatH - fixed - len(tail) + 1; {
+	case pa.view.viewH < 1:
+		content = nil // nothing left to show it in: the choices come first
+	case len(content) > pa.view.viewH:
+		content = build(barInner(inner)) // the bar's column
+		hints = append(hints, "pgup/pgdn", "scroll")
 	}
 	hint := hintLine(inner, append(hints, "esc", "deny")...)
 	tail = append(tail, list...)
@@ -548,9 +565,14 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
-	for i := range content {
-		content[i] = padPanel(content[i], fit)
+	panelW := fit
+	if len(content) > pa.view.viewH {
+		panelW = barInner(fit)
 	}
+	for i := range content {
+		content[i] = padPanel(content[i], panelW)
+	}
+	content = pa.view.window(content, fit)
 	for i := range banner {
 		banner[i] = padPanel(banner[i], fit)
 	}
@@ -672,6 +694,16 @@ func hintLine(w int, pairs ...string) []hostapi.Segment {
 		return hintLine(w, append(pairs[:n-4:n-4], pairs[n-2:]...)...)
 	}
 	return out
+}
+
+// scrolls is the page keys' hint pair while any of views overflows.
+func scrolls(views ...viewport) []string {
+	for _, v := range views {
+		if v.overflows() {
+			return []string{"pgup/pgdn", "scroll"}
+		}
+	}
+	return nil
 }
 
 // codePanel shows text on a panel background, wrapped to width.

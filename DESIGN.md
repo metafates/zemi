@@ -1205,7 +1205,10 @@ provenance string.
   completion popups go over the stage's bottom when it is above the composer, else beside
   the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
-  draws a thin scrollbar in its last column. Widgets render at their node's width and height; a content-sized node gets
+  keeps its last column for a thin scrollbar and its widgets render one cell narrower,
+  so the bar appearing covers and rewraps nothing; every other scrolling box (overlay
+  bodies and lists, prompts, popups) scrolls through the same viewport and bar.
+  Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.
 - **Rendering loop**: the state generation is bumped at most once per
@@ -1238,7 +1241,8 @@ provenance string.
   lines stay visible instead of truncating. Scrollback (`pgup`/`pgdown`,
   `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
-  sending a message snaps back to the tail. Persisted reasoning blocks
+  sending a message (or a `!command`) snaps back to the tail, a slash
+  command does not. Persisted reasoning blocks
   collapse to one `✻ thought Xs (ctrl+o to expand)` line unless shown
   (default keymaps below); a finished tool call collapses the same way and a
   click on its row opens that one row, command and output, with the rest of

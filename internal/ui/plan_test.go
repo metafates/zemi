@@ -78,13 +78,10 @@ func TestPlanEditKeys(t *testing.T) {
 func TestPlanScroll(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := planAsync(t, app, strings.Repeat("# h\n\nline\n", 30), "")
-	app.planAsk.scroll = len(strings.Split(app.planAsk.plan, "\n")) - 10 // pinned mid-plan
-	if app.planAsk.scroll <= 0 {
-		t.Fatal("test needs a plan tall enough to scroll")
-	}
+	app.Frame()
 	pressKeys(app, "j")
-	if app.planAsk.scroll == 0 || app.planAsk.typing {
-		t.Fatalf("j should scroll the plan, got scroll=%d typing=%v", app.planAsk.scroll, app.planAsk.typing)
+	if app.planAsk.view.top != 1 || app.planAsk.typing {
+		t.Fatalf("j should scroll the plan, got top=%d typing=%v", app.planAsk.view.top, app.planAsk.typing)
 	}
 	pressKeys(app, "k")
 	pressKeys(app, "enter")
