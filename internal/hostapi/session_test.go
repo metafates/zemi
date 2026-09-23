@@ -138,6 +138,21 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := h.ResumeSession(second); err != nil {
 		t.Fatal(err)
 	}
+	// another session's detail keys its actions by letter, the permanent one in the danger color
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.OpenSessions(); err != nil {
+		t.Fatal(err)
+	}
+	acts := ""
+	for _, it := range ui.opened[0].Items {
+		if a, ok := it.(map[string]any)["actions"]; ok {
+			acts = fmt.Sprint(a)
+		}
+	}
+	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[hl:Danger hotkey:x run:sessions delete "+first+" text:Delete]]" {
+		t.Fatalf("session actions: %s", acts)
+	}
 	pad := h.scratchFor(first)
 	if err := os.MkdirAll(pad, 0o700); err != nil {
 		t.Fatal(err)

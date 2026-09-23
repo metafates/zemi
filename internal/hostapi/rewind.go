@@ -320,7 +320,7 @@ func (h *Host) OpenRewind() error {
 			"desc":   desc,
 			"detail": effect + "\n\n" + text, // what it does first: a long prompt scrolls below
 			"actions": []any{
-				map[string]any{"text": "Rewind", "run": "rewind " + row.ID},
+				map[string]any{"text": "Rewind", "hotkey": "r", "run": "rewind " + row.ID},
 			},
 		})
 	}

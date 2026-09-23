@@ -183,7 +183,7 @@ func (h *Host) permItems() []any {
 			answers[id] = item
 			forget := "permissions forget " + id
 			item["key"], item["run"] = "session", forget
-			item["actions"] = []any{map[string]any{"text": "Remove", "run": forget}}
+			item["actions"] = []any{map[string]any{"text": "Remove", "hotkey": "x", "run": forget}}
 			item["detail"] = "an always answer this session; removing it makes the next call ask again"
 		} else {
 			switch r.Source {

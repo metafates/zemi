@@ -134,8 +134,8 @@ func (h *Host) OpenSessions() error {
 		} else {
 			item["detail"] = strings.Join(desc, " · ") + "\n\nDelete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item["actions"] = []any{
-				map[string]any{"text": "Resume", "run": "resume " + s.ID},
-				map[string]any{"text": "Delete", "run": "sessions delete " + s.ID},
+				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
+				map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "sessions delete " + s.ID},
 			}
 		}
 		items = append(items, item)

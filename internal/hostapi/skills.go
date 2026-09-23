@@ -516,7 +516,7 @@ func (h *Host) skillItems() []any {
 			map[string]any{"text": "Use now", "hotkey": "u", "fill": "/skills use " + s.Name + " "},
 		)
 		if s.Source == skills.Recipe {
-			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "run": "skills delete " + s.Name})
+			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "skills delete " + s.Name})
 		}
 		// the description leads, then where it comes from and where it lives;
 		// the markdown renderer keeps the line break inside the paragraph
