@@ -70,6 +70,10 @@ func TestExpandAttachments(t *testing.T) {
 		}
 	}
 
+	// zemi's own notes are an element of the trailer, like files and reports
+	if note := modelNote("tick it"); !strings.HasPrefix(note, attachMarker) || !strings.Contains(note, "<zemi-note>\ntick it\n</zemi-note>\n</attached-files>") {
+		t.Fatalf("modelNote = %q", note)
+	}
 	report := "Background agent a1 finished." + attachMarker + "\nsee @main.go\n</attached-files>"
 	if got, _ := h.expandAttachments(report); got != report {
 		t.Fatalf("model-written text behind the marker must not attach: %q", got)

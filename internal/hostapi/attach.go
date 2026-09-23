@@ -31,8 +31,10 @@ const (
 
 // modelNote wraps text zemi itself sends the model (a nag, a plan handoff)
 // so nothing shows it, stores it or recalls it as the user's own words.
+// Files, images, shell output and agent reports each get an element in the
+// trailer, so a note gets its own too, or it reads as unlabeled attachment text.
 func modelNote(text string) string {
-	return attachMarker + "\n" + text + "\n</attached-files>"
+	return attachMarker + "\n<zemi-note>\n" + text + "\n</zemi-note>\n</attached-files>"
 }
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
