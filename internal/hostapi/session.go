@@ -326,7 +326,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	return history, tr
 }
 
-const titleSystem = `Name a coding conversation for a session list. Reply with the title only: 3 to 6 words, no quotes, no trailing period, in the language of the user's message.`
+const titleSystem = `Name the coding conversation below for a session list. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
 
 // autoTitle names a new session from its first exchange with a short model
 // call in the background; any failure keeps the first-line title.
@@ -340,7 +340,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 	h.GoSafe("session title", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		res, err := h.generate(ctx, sid, titleSystem, "User: "+truncRunes(user, 2000)+"\n\nAssistant: "+truncRunes(reply, 2000), nil, "models.small")
+		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, "models.small")
 		if err != nil {
 			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
 			return
