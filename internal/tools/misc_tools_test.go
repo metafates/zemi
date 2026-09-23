@@ -418,12 +418,12 @@ func TestFetchGates(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
-	if !res.IsError || !strings.Contains(res.Content, "refused: 127.0.0.1 is a private address; only an allow rule for net.127.0.0.1") {
-		t.Fatalf("loopback target must be refused at dial time: %+v", res)
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("one fetch must ask once: %+v", *asked)
+	// a host private as written is refused before an ask no answer could pass
+	for _, raw := range []string{srv.URL + "/x", "http://localhost:1/", "http://LocalHost./", "http://a.localhost/", "http://[::1]/"} {
+		res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, raw))
+		if !res.IsError || !strings.Contains(res.Content, "is a private address; only an allow rule for net.") || len(*asked) != 0 {
+			t.Fatalf("%s: %+v asked %+v", raw, res, *asked)
+		}
 	}
 	// the §9 opt-in: a rule from the user's config allows the private
 	// address, a session "always" answer (principal model) does not

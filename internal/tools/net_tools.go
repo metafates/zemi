@@ -114,6 +114,25 @@ type privateAddrError struct{ ip net.IP }
 
 func (e *privateAddrError) Error() string { return "address " + e.ip.String() + " is private" }
 
+func privateRefused(addr, host string) error {
+	return fmt.Errorf("refused: %s is a private address; only an allow rule for net.%s in the user's init.lua permits it", addr, host)
+}
+
+// checkFetchHost refuses a host that is private as written before the gate
+// asks: only a user config rule permits one (runFetch's allowPrivate), so no
+// answer to the ask could. A name that resolves private is refused at dial.
+func checkFetchHost(p *Pipeline, u *url.URL) error {
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	ip := net.ParseIP(host)
+	if (ip == nil || !ipDenied(ip)) && host != "localhost" && !strings.HasSuffix(host, ".localhost") {
+		return nil
+	}
+	if o := p.Store.Evaluate("net."+u.Hostname(), u.String(), p.Principal); o.Decision == perm.Allow && o.Rule != nil && o.Rule.Principal == "" {
+		return nil
+	}
+	return privateRefused(u.Hostname(), u.Hostname())
+}
+
 // ParseNetURL validates scheme and userinfo for every fetch hop.
 func ParseNetURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
@@ -171,7 +190,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	resp, err := client.Do(req)
 	var private *privateAddrError
 	if errors.As(err, &private) {
-		return fantasy.NewTextErrorResponse(fmt.Sprintf("refused: %s is a private address; only an allow rule for net.%s in the user's init.lua permits it", private.ip, u.Hostname())), nil
+		return fantasy.NewTextErrorResponse(privateRefused(private.ip.String(), u.Hostname()).Error()), nil
 	}
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

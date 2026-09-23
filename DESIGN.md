@@ -1660,7 +1660,9 @@ provenance string.
   resolved address at connect, per hop, so DNS rebinding cannot slip past
   a hostname rule (a public IP literal is an ordinary host). An explicit
   user-origin allow rule for a named host overrides the resolved-address
-  deny (the localhost development opt-in); project rules do not. Userinfo in URLs is a hard
+  deny (the localhost development opt-in); project rules do not. `fetch`
+  refuses a host private as written (an IP literal in the set, `localhost`,
+  `*.localhost`) before its ask, since no answer to it could permit one. Userinfo in URLs is a hard
   error; host rules match the final connected host.
 - Secrets: the env denylist is a case-insensitive substring match on the
   variable's name (`TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,

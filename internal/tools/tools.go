@@ -923,9 +923,12 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 				u, _ := ParseNetURL(str(in["url"]))
 				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}
 			},
-			runFetch), func(_ *Pipeline, in map[string]any) error {
-			_, err := ParseNetURL(str(in["url"]))
-			return err
+			runFetch), func(p *Pipeline, in map[string]any) error {
+			u, err := ParseNetURL(str(in["url"]))
+			if err != nil {
+				return err
+			}
+			return checkFetchHost(p, u)
 		}),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress while work remains; mark each done the moment it finishes, as the very next tool call, never batching the updates, so the visible list always equals your current state - never report a step done in your reply before the list shows it. Without todos it returns the list.",
