@@ -745,7 +745,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 // decodeInput validates a host tool's input against its schema, so a wrong
 // type is worded as it is for a builtin tool, then decodes it into in.
 func decodeInput(info fantasy.ToolInfo, input string, in any) error {
-	if _, err := tools.ParseInput(info, input); err != nil {
+	if _, err := tools.ParseInput(info, input, false); err != nil {
 		return err
 	}
 	return json.Unmarshal([]byte(input), in)

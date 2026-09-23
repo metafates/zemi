@@ -472,7 +472,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		// return, or the next call on the file would wait out the turn
 		defer turn(ctx, call.ID)()
 	}
-	input, err := ParseInput(t.info, call.Input)
+	input, err := ParseInput(t.info, call.Input, false)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -489,7 +489,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 				// The rewritten input re-enters at the permission gate
 				// below (never skips it, DESIGN §6.4); a per-run pipeline
 				// copy keeps concurrent tools race-free.
-				if err := Validate(t.info, rewritten); err != nil {
+				if err := Validate(t.info, rewritten, false); err != nil {
 					return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
 				}
 				input = rewritten
@@ -567,7 +567,9 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 
 // ParseInput decodes a call's input and runs Validate on it: the one place
 // every tool, builtin or host-implemented, gets its type errors worded.
-func ParseInput(info fantasy.ToolInfo, input string) (map[string]any, error) {
+// A schema that admits fields it does not declare (additionalProperties,
+// which the shipped properties map cannot carry) passes open.
+func ParseInput(info fantasy.ToolInfo, input string, open bool) (map[string]any, error) {
 	var m map[string]any
 	if strings.TrimSpace(input) == "" {
 		input = "{}"
@@ -579,26 +581,37 @@ func ParseInput(info fantasy.ToolInfo, input string) (map[string]any, error) {
 	case err != nil:
 		return nil, fmt.Errorf("invalid tool input: %w", err)
 	}
-	return m, Validate(info, m)
+	return m, Validate(info, m, open)
 }
 
 // Validate is the schema check every tool call passes before its events and gate.
-func Validate(info fantasy.ToolInfo, input map[string]any) error {
-	return validateFields(info.Parameters, info.Required, input, "")
+func Validate(info fantasy.ToolInfo, input map[string]any, open bool) error {
+	return validateFields(info.Parameters, info.Required, input, "", open)
+}
+
+// SchemaOpen reports a schema that admits fields it does not declare.
+func SchemaOpen(schema map[string]any) bool {
+	v, ok := schema["additionalProperties"]
+	return ok && v != false
 }
 
 // validateFields checks required fields, the type of every field sent, then
 // the fields of every object in an array: a lax provider can drop a nested
 // field, and a multiedit without new_string would delete the matched text.
-func validateFields(props map[string]any, required []string, input map[string]any, at string) error {
+// A field the schema does not declare is refused unless open: a misspelt
+// one would otherwise run the call with its default and report success.
+func validateFields(props map[string]any, required []string, input map[string]any, at string, open bool) error {
 	for _, r := range required {
 		if input[r] == nil {
 			return fmt.Errorf("missing required field %q", at+r)
 		}
 	}
 	for k, v := range input {
-		ps, _ := props[k].(map[string]any)
+		ps, known := props[k].(map[string]any)
 		// null is how some providers leave an optional field out
+		if !known && !open && v != nil && len(props) > 0 {
+			return fmt.Errorf("unknown field %q (have %s)", at+k, strings.Join(slices.Sorted(maps.Keys(props)), ", "))
+		}
 		if t, _ := ps["type"].(string); v != nil && !typeOK(t, v) {
 			return fmt.Errorf("field %q must be %s", at+k, t)
 		}
@@ -608,7 +621,7 @@ func validateFields(props map[string]any, required []string, input map[string]an
 		for i, e := range list {
 			if m, ok := e.(map[string]any); ok {
 				iprops, _ := items["properties"].(map[string]any)
-				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i)); err != nil {
+				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i), open); err != nil {
 					return err
 				}
 			}

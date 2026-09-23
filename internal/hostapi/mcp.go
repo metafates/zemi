@@ -334,7 +334,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 		return resp, err
 	}
 	defer h.postNotify(mcpToolName(name, t.tool.Name), call.Input, &reply)
-	args, err := tools.ParseInput(t.Info(), call.Input)
+	args, err := tools.ParseInput(t.Info(), call.Input, tools.SchemaOpen(t.tool.InputSchema))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

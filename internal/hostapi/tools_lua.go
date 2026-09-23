@@ -285,7 +285,7 @@ func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions   { return ni
 func (a *luaToolAdapter) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	input, err := tools.ParseInput(a.Info(), call.Input)
+	input, err := tools.ParseInput(a.Info(), call.Input, tools.SchemaOpen(a.t.Schema))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

@@ -641,6 +641,25 @@ func TestValidationErrors(t *testing.T) {
 	if resp = call(t, ag, `[1]`); !resp.IsError || resp.Content != "input must be a JSON object" {
 		t.Fatalf("non-object: %+v", resp)
 	}
+	// a misspelt field would run the call with its default and report success
+	info := fantasy.ToolInfo{Parameters: map[string]any{"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"}}}
+	for _, c := range []struct {
+		input string
+		open  bool
+		want  string
+	}{
+		{`{"command":"ls","timeout":1}`, false, `unknown field "timeout" (have command, timeout_ms)`},
+		{`{"command":"ls","timeout":null}`, false, ""},
+		{`{"command":"ls","timeout":1}`, true, ""},
+	} {
+		_, err := ParseInput(info, c.input, c.open)
+		if got := fmt.Sprint(err); (err != nil && got != c.want) || (err == nil && c.want != "") {
+			t.Errorf("%s open=%v: got %q want %q", c.input, c.open, got, c.want)
+		}
+	}
+	if !SchemaOpen(map[string]any{"additionalProperties": true}) || SchemaOpen(map[string]any{"additionalProperties": false}) || SchemaOpen(nil) {
+		t.Fatal("SchemaOpen")
+	}
 }
 
 func TestPostHookRuns(t *testing.T) {

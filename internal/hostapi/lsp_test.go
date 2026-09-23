@@ -35,7 +35,11 @@ func TestLSPDiagnostics(t *testing.T) {
 		}
 		return h, func(tool, name, content string) string {
 			t.Helper()
-			input, _ := json.Marshal(map[string]string{"path": filepath.Join(h.Dirs.ProjectDir, name), "content": content})
+			in := map[string]string{"path": filepath.Join(h.Dirs.ProjectDir, name)}
+			if tool == "write" {
+				in["content"] = content
+			}
+			input, _ := json.Marshal(in)
 			resp, err := byName[tool].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})
 			if err != nil {
 				t.Fatal(err)
