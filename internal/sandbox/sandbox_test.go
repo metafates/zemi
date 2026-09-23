@@ -320,7 +320,7 @@ func TestNetworkGranted(t *testing.T) {
 	}
 	defer sock.Close()
 	const site = "https://example.com"
-	_, offline := (&http.Client{Timeout: 10 * time.Second}).Head(site)
+	offline := runtime.GOOS != "darwin" || act("https", site) != nil
 	for _, c := range []struct {
 		name, verb, arg string
 		allowed, skip   bool
@@ -329,7 +329,7 @@ func TestNetworkGranted(t *testing.T) {
 		{"read a hidden file", "read", hidden, false, false},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
 		{"read the system CA bundle", "read", "/etc/ssl/cert.pem", true, runtime.GOOS != "darwin"},
-		{"verify TLS through the system", "https", site, true, runtime.GOOS != "darwin" || offline != nil},
+		{"verify TLS through the system", "https", site, true, offline},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if c.skip {
