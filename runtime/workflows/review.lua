@@ -1,6 +1,6 @@
--- Review uncommitted changes, everything since the merge base with args (a
--- git ref), or what one commit introduced (args as a sha), from three angles
--- in parallel, then keep only the findings that hold up in the code.
+-- Review uncommitted changes, the branch since its merge base with args (a
+-- git ref), or one commit (args a sha) from three angles; keeps findings
+-- that hold up.
 local base = type(args) == "string" and args ~= "" and args or nil
 -- a hex name is a commit, and its merge base with HEAD is itself, so
 -- reviewing it as a base would review everything since it instead
