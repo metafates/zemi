@@ -33,7 +33,8 @@ description: How zemi learns - memories, the reflector, skills and recipes. Load
      forgets a stored memory, `s` moves it between this project and everywhere, `e` opens
      it in the user's editor (the saved text becomes the user's own memory, an edited
      suggestion is stored, and the screen comes back on that row), `u` undoes
-     the last mark; esc or `q` closes the screen and applies the marks. `/memory forget <id>`.
+     the last mark, enter opens a memory with those keys as buttons; esc closes the screen
+     and applies the marks. `/memory forget <id>`.
    - `/skills`: space toggles a skill, enter shows one with its full
      body and its actions (Enable or Disable, Use now, Open in the editor),
      or `/skills enable|disable|open <name>`.

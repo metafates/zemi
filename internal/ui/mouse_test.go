@@ -236,7 +236,7 @@ func TestHoverTargets(t *testing.T) {
 	}{
 		{"memory text row lights the whole item", memories, "sigma", 1, 3, "HoverItem"},
 		{"right of memory text is not a target", memories, "sigma", 40, 0, ""},
-		{"the selected memory is not a target", memories, "short one", 1, 0, ""},
+		{"the selected memory opens on a click", memories, "short one", 1, 2, "HoverItem"},
 		{"memory section header is not a target", memories, "Remembered", 1, 0, ""},
 		{"overlay row text is a target", overlay, "alpha", 1, 1, "HoverItem"},
 		{"overlay row padding is not a target", overlay, "alpha", 6, 0, ""},

@@ -432,7 +432,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return list(n, sel, func() { a.questionKey("enter", "") })
 	case top == "memReview":
 		mr := a.memReview
-		return list(len(mr.visible), &mr.selected, nil)
+		if mr.detail {
+			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
+			spans, ok := item(len(acts))
+			return spans, func() { a.memAct(acts[hit-1].key) }, ok
+		}
+		return list(len(mr.visible), &mr.selected, mr.open)
 	case top == "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()

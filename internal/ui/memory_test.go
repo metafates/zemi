@@ -84,6 +84,36 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	}
 }
 
+// TestGoldenMemoryDetail: enter opens a row with its actions as buttons at
+// the list's size; enter runs the selected one and goes back to the list.
+func TestGoldenMemoryDetail(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 18)
+	done := openReview(t, app, []hostapi.MemoryRow{
+		{ID: "m1", Scope: "project", Origin: "learned", Text: "the fts join needs m-qualified columns", Quote: "qualify the fts columns with m", Queued: true},
+		{ID: "m2", Scope: "user", Origin: "user", Text: "the user prefers short replies"},
+	})
+	app.renderSync(t)
+	list := strings.Split(ansi.Strip(app.Frame()), "\r\n")
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+	edges := func(row string) string { // the cells of the box's corners
+		return fmt.Sprint(strings.Index(row, "┌"), ansi.StringWidth(row[:strings.LastIndex(row, "┐")]))
+	}
+	if detail := strings.Split(ansi.Strip(app.Frame()), "\r\n"); edges(detail[0]) != edges(list[0]) {
+		t.Fatalf("the open row moved the box:\n%s\n%s", list[0], detail[0])
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // drop
+	if app.memReview.detail {
+		t.Fatal("an action left the row open")
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := reviewAnswer(t, done); len(got) != 2 || got["m1"] != "reject project" {
+		t.Fatalf("answer = %v", got)
+	}
+}
+
 // TestMemoryReviewEdit: e hands the row back for editing and the screen
 // the host opens next starts on it; a forget suggestion has no text to edit.
 func TestMemoryReviewEdit(t *testing.T) {
@@ -170,9 +200,10 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // and back
 	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // does not close
-	if app.memReview == nil {
-		t.Fatal("enter closed the memory screen")
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // opens the row, esc goes back
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if app.memReview == nil || app.memReview.detail {
+		t.Fatal("enter and esc left the memory list")
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 1 || got["m2"] != "accept user" {
@@ -182,7 +213,7 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 
 // TestMemoryReviewScopeFixed: s leaves a suggestion that forgets a memory
 // in that memory's scope, and on a narrow screen the hint gives up its
-// middle keys before esc.
+// middle keys, which the open row has as buttons, before esc.
 func TestMemoryReviewScopeFixed(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	done := openReview(t, app, []hostapi.MemoryRow{
@@ -194,7 +225,7 @@ func TestMemoryReviewScopeFixed(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "s only this project · esc close") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "enter open · a keep · d drop · esc close") {
 		t.Fatalf("narrow hint:\n%s", frame)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})

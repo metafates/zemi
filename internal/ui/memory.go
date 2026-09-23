@@ -2,9 +2,9 @@
 // chrome, no Lua participates in drawing or answering it. Suggestions from
 // the reflector come first (a keeps one, d drops it), then what zemi
 // remembers (d forgets); s moves a row between this project and everywhere,
-// e closes the screen to edit a row in the user's editor.
-// A key acts at once and u undoes; the edited rows reach the host when the
-// screen closes.
+// e closes the screen to edit a row in the user's editor. Enter opens a row
+// with those actions as buttons. A key acts at once and u undoes; the
+// edited rows reach the host when the screen closes.
 package ui
 
 import (
@@ -23,6 +23,9 @@ type memReviewPrompt struct {
 	items []hostapi.MemoryRow
 	gone  []hostapi.MemoryRow // dropped rows, still answered
 	listFilter
+	detail bool     // the selected row is open, its actions as buttons
+	act    int      // the selected button
+	body   viewport // the open row's text
 	size   boxSize
 	undo   []memUndo
 	answer chan []hostapi.MemoryRow
@@ -42,6 +45,11 @@ func (mr *memReviewPrompt) texts() []string {
 		out[i] = it.Text + "  " + it.Quote
 	}
 	return out
+}
+
+// open shows the selected row with its actions as buttons.
+func (mr *memReviewPrompt) open() {
+	mr.detail, mr.act, mr.body = mr.at() < len(mr.items), 0, viewport{}
 }
 
 // seek filters the rows again and selects item i, or the first shown after it.
@@ -164,6 +172,65 @@ func (a *App) undoMemory() {
 	mr.seek(u.at)
 }
 
+// memActions are what the keys do to row it, as buttons: the hint names
+// the same ones, so each keeps one word everywhere.
+func memActions(it hostapi.MemoryRow, undo bool) []promptChoice {
+	var out []promptChoice
+	switch {
+	case suggested(it) && it.Forget:
+		out = []promptChoice{{key: "a", label: "Forget"}, {key: "d", label: "Keep"}}
+	case suggested(it):
+		out = []promptChoice{{key: "a", label: "Keep"}, {key: "d", label: "Drop"}}
+	case it.Queued:
+		out = []promptChoice{{key: "d", label: "Drop"}}
+	default:
+		out = []promptChoice{{key: "d", label: "Forget"}}
+	}
+	if !it.Forget {
+		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == "user"]}, promptChoice{key: "e", label: "Edit"})
+	}
+	if undo {
+		out = append(out, promptChoice{key: "u", label: "Undo"})
+	}
+	return out
+}
+
+// memAct runs action key on the selected row and closes an open one.
+func (a *App) memAct(key string) {
+	a.memReview.detail = false
+	switch key {
+	case "a":
+		a.markMemory("keep")
+	case "d":
+		a.markMemory("drop")
+	case "s":
+		a.markMemory("scope")
+	case "e":
+		a.editMemory()
+	case "u":
+		a.undoMemory()
+	}
+}
+
+// memMore is row it as the list and its open view show it: the text, the
+// quote it rests on, and its scope, origin and age.
+func (a *App) memMore(it hostapi.MemoryRow) [][]hostapi.Segment {
+	var meta []hostapi.Segment
+	if it.Action == "accept" {
+		meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
+	}
+	info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+	if it.Updated != 0 {
+		info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
+	}
+	meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
+	more := [][]hostapi.Segment{{{Text: sanitize.String(it.Text)}}}
+	if it.Quote != "" {
+		more = append(more, []hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}})
+	}
+	return append(more, meta)
+}
+
 // memReviewBox shows every memory whole, as plain text since markdown could
 // hide part of what gets stored, with the quote it rests on and its scope,
 // origin and age under it; the Remembered title says how much of each
@@ -185,46 +252,24 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
 		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb("project"), kb("user")),
 	}
+	inner := boxInner(w)
+	mr.size.w = max(mr.size.w, 56)
+	if i := mr.at(); mr.detail && i < len(mr.items) {
+		return a.memDetailBox(mr.items[i], w, h, inner)
+	}
+	mr.detail = false
 	items := make([]listItem, 0, len(mr.visible))
 	for _, i := range mr.visible {
 		it := mr.items[i]
-		var meta []hostapi.Segment
-		if it.Action == "accept" {
-			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
-		}
-		info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
-		if it.Updated != 0 {
-			info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
-		}
-		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
-		more := [][]hostapi.Segment{{{Text: sanitize.String(it.Text)}}}
-		if it.Quote != "" {
-			more = append(more, []hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}})
-		}
-		items = append(items, listItem{section: sections[suggested(it)], more: append(more, meta)})
+		items = append(items, listItem{section: sections[suggested(it)], more: a.memMore(it)})
 	}
-	inner := boxInner(w)
-	mr.size.w = max(mr.size.w, 56)
 
 	var hints []hintPair
 	if i := mr.at(); i < len(mr.items) && !mr.active {
-		it := mr.items[i]
-		switch {
-		case suggested(it) && it.Forget:
-			hints = append(hints, hintPair{"a", "forget"}, hintPair{"d", "keep"})
-		case suggested(it):
-			hints = append(hints, hintPair{"a", "keep"}, hintPair{"d", "drop"})
-		case it.Queued:
-			hints = append(hints, hintPair{"d", "drop"})
-		default:
-			hints = append(hints, hintPair{"d", "forget"})
+		hints = append(hints, hintPair{"enter", "open"})
+		for _, c := range memActions(mr.items[i], len(mr.undo) > 0) {
+			hints = append(hints, hintPair{c.key, strings.ToLower(c.label)})
 		}
-		if !it.Forget {
-			hints = append(hints, hintPair{"s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"]}, hintPair{"e", "edit"})
-		}
-	}
-	if len(mr.undo) > 0 && !mr.active {
-		hints = append(hints, hintPair{"u", "undo"})
 	}
 	esc := map[bool]string{true: "back", false: "close"}[mr.active]
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
@@ -260,6 +305,29 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 		return stack(tight, slices.Concat(head, list), [][]hostapi.Segment{hintRow}), len(items) > 0 && mr.view.viewH < min(mr.view.rows, 3)
 	})
 	return promptBox("Memory", "", body, w, h, 100, &mr.size)
+}
+
+// memDetailBox is row it open: its text whole, then its actions as buttons.
+func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Segment {
+	mr := a.memReview
+	acts := memActions(it, len(mr.undo) > 0)
+	mr.act = min(mr.act, len(acts)-1)
+	textW := min(inner, mr.size.w)
+	text := func(w int) (rows [][]hostapi.Segment) {
+		for _, r := range a.memMore(it) {
+			rows = append(rows, hostapi.WrapSegs(r, w)...)
+		}
+		return rows
+	}
+	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		list := choiceRows(acts, mr.act, inner, level > 1)
+		mr.body.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
+		rows := mr.body.window(mr.body.wrap(text, textW), textW)
+		hintRow := hint(inner, slices.Concat([]hintPair{{"enter", "confirm"}}, scrolls(mr.body), []hintPair{{"esc", "back"}})...)
+		return stack(tight, rows, list, [][]hostapi.Segment{hintRow}), mr.body.viewH < min(mr.body.rows, 3)
+	})
+	return promptBox("Memory / "+sanitize.Line(it.Text), "", body, w, h, 100, &mr.size)
 }
 
 func memScope(it hostapi.MemoryRow) string {

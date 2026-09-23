@@ -1321,7 +1321,8 @@ provenance string.
   `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
-  (permission, trust, question) draws through one renderer, which puts
+  (permission, trust, plan, an open memory, an overlay's detail view)
+  draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
@@ -1816,8 +1817,9 @@ by the next startup sweep, since the session still has unseen messages.
   user's editor (the marks apply first; the saved text passes intake again
   as user origin with the same scope and quote and keeps the id, an
   edited suggestion is stored, empty or unchanged text changes nothing,
-  and the screen reopens on that row), `u` undoes the last mark, and esc
-  or `q` closes the screen and applies the marks. Stored rows show their
+  and the screen reopens on that row), `u` undoes the last mark, enter
+  opens a row with those keys as its buttons, and esc closes the screen and
+  applies the marks. Stored rows show their
   age.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (300 chars, and 160 for the quote), provenance required, the quote
