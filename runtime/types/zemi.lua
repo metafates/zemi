@@ -1937,7 +1937,7 @@ function zemi.skills.disable(name) end
 ---@field status string "starting", "ready", "needs sign-in", "failed" or "stopped".
 ---@field error string
 ---@field source string
----@field tools string[]
+---@field tools string[] The tools the model gets, after enabled_tools and disabled_tools.
 
 ---@class zemi.mcp
 zemi.mcp = {}

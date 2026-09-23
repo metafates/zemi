@@ -25,7 +25,7 @@ func TestMCPBridge(t *testing.T) {
 	defer srv.Close()
 	h, r := newTestHostDB(t)
 	defer h.mcp.stopAll()
-	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, disabled_tools = { "fail" } })`, srv.URL))
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, enabled_tools = { "echo", "shot", "fail", "serach" }, disabled_tools = { "fail" } })`, srv.URL))
 	if err := r.ExecuteChunk(context.Background(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
 		t.Fatal("project config must not add MCP servers")
 	}
@@ -43,6 +43,14 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if !slices.Equal(names, []string{"mcp_fake_echo", "mcp_fake_shot"}) {
 		t.Fatalf("tools = %v", names)
+	}
+	if !slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "serach") }) {
+		t.Errorf("the enabled_tools typo was not reported: %v", h.errs.entries)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openMCP(); err != nil || ui.opened[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools · init.lua" {
+		t.Errorf("/mcp row = %v, %v", ui.opened, err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
 		resp, err := list[i].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})

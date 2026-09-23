@@ -165,6 +165,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		fail(err)
 		return
 	}
+	h.checkToolNames(s, list)
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
@@ -196,6 +197,27 @@ func (h *Host) refreshMCPTools(s *mcpServer) {
 	s.mu.Lock()
 	s.tools = list
 	s.mu.Unlock()
+	h.checkToolNames(s, list)
+}
+
+// checkToolNames records the enabled_tools and disabled_tools entries the
+// server lists no tool for: a typo would hide or keep a tool silently.
+func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
+	var unknown []string
+	for _, n := range slices.Concat(s.spec.EnabledTools, s.spec.DisabledTools) {
+		if !slices.ContainsFunc(list, func(t mcp.Tool) bool { return t.Name == n }) {
+			unknown = append(unknown, n)
+		}
+	}
+	if len(unknown) > 0 {
+		h.RecordErrorOnce("mcp "+s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
+	}
+}
+
+// offered reports whether enabled_tools and disabled_tools give the model
+// the tool.
+func (s *mcpServer) offered(name string) bool {
+	return (s.spec.EnabledTools == nil || slices.Contains(s.spec.EnabledTools, name)) && !slices.Contains(s.spec.DisabledTools, name)
 }
 
 func (s *mcpServer) currentClient() *mcp.Client {
@@ -306,7 +328,7 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 			continue
 		}
 		for _, t := range list {
-			if (s.spec.EnabledTools != nil && !slices.Contains(s.spec.EnabledTools, t.Name)) || slices.Contains(s.spec.DisabledTools, t.Name) {
+			if !s.offered(t.Name) {
 				continue
 			}
 			name := mcpToolName(s.name, t.Name)
@@ -588,9 +610,11 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		var rows []any
 		for _, s := range h.mcp.list() {
 			s.mu.Lock()
-			names := make([]string, 0, len(s.tools))
+			names := []string{}
 			for _, t := range s.tools {
-				names = append(names, t.Name)
+				if s.offered(t.Name) {
+					names = append(names, t.Name)
+				}
 			}
 			rows = append(rows, map[string]any{"name": s.name, "status": s.status, "error": s.err, "source": s.spec.Source, "tools": names})
 			s.mu.Unlock()
@@ -653,12 +677,18 @@ func (h *Host) openMCP() error {
 		status, errText := s.status, s.err
 		var tools []string
 		for _, t := range s.tools {
-			tools = append(tools, t.Name)
+			if s.offered(t.Name) {
+				tools = append(tools, t.Name)
+			}
 		}
+		all := len(s.tools)
 		s.mu.Unlock()
 		desc := status
 		if status == "ready" {
 			desc = fmt.Sprintf("ready · %d %s", len(tools), plural(len(tools), "tool", "tools"))
+			if len(tools) < all {
+				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
+			}
 		}
 		detail := "command: " + strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")
 		if s.spec.URL != "" {
