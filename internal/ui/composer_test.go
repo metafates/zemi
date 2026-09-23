@@ -349,7 +349,7 @@ func TestPaletteComplete(t *testing.T) {
 	ran := false
 	add := func(name string, fn func(h *hostapi.Host, args string) error) {
 		if _, err := app.host.Commands.Add(&hostapi.Command{
-			Name: name, Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1), GoFn: fn,
+			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1), GoFn: fn,
 		}); err != nil {
 			t.Fatal(err)
 		}

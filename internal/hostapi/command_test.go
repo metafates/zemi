@@ -42,7 +42,10 @@ func TestCompleteCommand(t *testing.T) {
 	}
 }
 
+// TestNargsOK: a Go command's arguments are checked as typed and through
+// zemi.command.run, so `/new idea` is not a plain /new.
 func TestNargsOK(t *testing.T) {
+	h, r := newTestHost(t)
 	for _, c := range []struct{ nargs, args, want string }{
 		{"", "", ""},
 		{"", "bar", "/foo takes no arguments"},
@@ -50,13 +53,15 @@ func TestNargsOK(t *testing.T) {
 		{"+", " ", "/foo requires an argument"},
 		{"*", "a b c", ""},
 	} {
+		h.Commands.Add(&Command{Name: "foo", NArgs: c.nargs, GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin, Gen: h.currentGen()})
 		got := ""
-		if err := nargsOK("foo", c.nargs, c.args); err != nil {
+		if err := h.RunCommand(context.Background(), "foo", c.args); err != nil {
 			got = err.Error()
 		}
 		if got != c.want {
-			t.Errorf("nargsOK(%q, %q) = %q, want %q", c.nargs, c.args, got, c.want)
+			t.Errorf("/foo %q with nargs %q = %q, want %q", c.args, c.nargs, got, c.want)
 		}
+		runUser(t, r, fmt.Sprintf(`local _, err = zemi.command.run("foo", %q); assert((err or "") == %q, err)`, c.args, c.want))
 	}
 }
 

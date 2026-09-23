@@ -665,7 +665,7 @@ func TestClickWidget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h, r := newTestHost(t)
 			ran := make(chan string, 1)
-			h.Commands.Add(&Command{Name: "probe", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
+			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}
