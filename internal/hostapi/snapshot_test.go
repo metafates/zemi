@@ -1,8 +1,11 @@
 package hostapi
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -26,8 +29,24 @@ func TestBashChanges(t *testing.T) {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
+	// the first snapshot removes the stores of gone processes and of an
+	// earlier process with this pid, and leaves a live one's alone
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ := h.TempDir()
+	stores := map[int]bool{dead.Process.Pid: false, os.Getpid(): false, os.Getppid(): true}
+	for pid := range stores {
+		os.MkdirAll(filepath.Join(tmp, fmt.Sprintf("snap-%d-0.objects", pid)), 0o700)
+	}
 	if note, diff, _ := h.bashChanges(dir)(); note != "" || diff != "" {
 		t.Fatalf("nothing changed, got %q %q", note, diff)
+	}
+	for pid, kept := range stores {
+		if _, err := os.Stat(filepath.Join(tmp, fmt.Sprintf("snap-%d-0.objects", pid))); (err == nil) != kept {
+			t.Errorf("store of pid %d kept: %v, want %v", pid, err == nil, kept)
+		}
 	}
 	done := h.bashChanges(dir)
 	write("a.txt", "one\nTWO\n")
@@ -101,7 +120,9 @@ func TestBashChanges(t *testing.T) {
 	if _, diff, _ := second(); !strings.HasPrefix(diff, snapOverlap) {
 		t.Errorf("overlap not labeled:\n%s", diff)
 	}
-	// a file too large to checkpoint is said so once per turn
+	// a file too large to checkpoint is never read whole and is said so once per turn
+	trace := filepath.Join(t.TempDir(), "trace")
+	t.Setenv("GIT_TRACE", trace)
 	write("big.log", strings.Repeat("w", maxCheckpointBytes+1))
 	for _, fill := range []string{"x", "y"} {
 		done := h.bashChanges(dir)
@@ -116,6 +137,9 @@ func TestBashChanges(t *testing.T) {
 	}
 	if said != 1 {
 		t.Errorf("big.log was reported %d times, want 1", said)
+	}
+	if log, _ := os.ReadFile(trace); regexp.MustCompile(`cat-file -p \S*big\.log`).Match(log) {
+		t.Error("big.log was read whole")
 	}
 
 	// a gc prunes a blob the warm index still names: the next snapshot starts cold

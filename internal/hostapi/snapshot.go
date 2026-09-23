@@ -4,12 +4,14 @@ package hostapi
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -26,9 +28,9 @@ const (
 )
 
 type snapshots struct {
-	mu    sync.Mutex      // one snapshot at a time: they share the warm index
-	slow  int             // slow snapshots in a row; two turn snapshots off
-	fresh map[string]bool // repositories this process has snapshotted
+	mu    sync.Mutex // one snapshot at a time: they share the warm index
+	slow  int        // slow snapshots in a row; two turn snapshots off
+	swept bool       // the stores of gone processes are removed
 
 	skipped sync.Map // turn and path a rewind was said not to restore
 
@@ -53,9 +55,10 @@ var snapPathspec = func() []string {
 }()
 
 // snapshot writes the working tree of dir's repository as a git tree, through
-// a temp index and object directory of its own, so the user's index, stash
-// and object store are never touched. The index stays warm per repository: a
-// later snapshot hashes only what changed. env is what reads the tree back.
+// a temp index and object directory of this process's own, so the user's
+// index, stash and object store are never touched. The index stays warm per
+// repository: a later snapshot hashes only what changed. env is what reads
+// the tree back.
 // "" when there is no repository or snapshots are off.
 func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	s := &h.snaps
@@ -81,18 +84,12 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		}
 	}
 	sum := sha256.Sum256([]byte(root))
-	base := filepath.Join(tmp, fmt.Sprintf("snap-%x", sum[:8]))
+	base := filepath.Join(tmp, fmt.Sprintf("snap-%d-%x", os.Getpid(), sum[:8]))
 	warm, objs := base+".index", base+".objects"
 	env = []string{"GIT_INDEX_FILE=" + warm, "GIT_OBJECT_DIRECTORY=" + objs, "GIT_ALTERNATE_OBJECT_DIRECTORIES=" + objects}
-	if !s.fresh[root] {
-		// nothing prunes the private objects, so each process starts them over.
-		// NOTE: a second zemi on the repository loses one bash row's diff to it.
-		os.Remove(warm)
-		os.RemoveAll(objs)
-		if s.fresh == nil {
-			s.fresh = map[string]bool{}
-		}
-		s.fresh[root] = true
+	if !s.swept {
+		sweepSnaps(tmp)
+		s.swept = true
 	}
 	os.MkdirAll(objs, 0o700)
 	for retry := false; ; retry = true {
@@ -121,6 +118,27 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff", map[string]any{"ms": time.Since(start).Milliseconds()})
 	}
 	return root, env, strings.TrimSpace(out)
+}
+
+// sweepSnaps removes the snapshot stores of processes that are gone, and the
+// ones an earlier process with this pid left: nothing prunes their objects.
+// NOTE: a dead zemi's store stays while a live process holds its pid.
+func sweepSnaps(tmp string) {
+	entries, _ := os.ReadDir(tmp)
+	for _, e := range entries {
+		rest, ok := strings.CutPrefix(e.Name(), "snap-")
+		if !ok {
+			continue
+		}
+		if pid, err := strconv.Atoi(strings.Split(rest, "-")[0]); err != nil || pid == os.Getpid() || processGone(pid) {
+			os.RemoveAll(filepath.Join(tmp, e.Name()))
+		}
+	}
+}
+
+func processGone(pid int) bool {
+	p, err := os.FindProcess(pid)
+	return err != nil || errors.Is(p.Signal(syscall.Signal(0)), os.ErrProcessDone)
 }
 
 // bashChanges is the pipeline's Changes hook: it snapshots dir now, and the
