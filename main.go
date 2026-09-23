@@ -318,7 +318,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if cur == "" {
 					cur = "default"
 				}
-				h.Notify("info", "Effort", cur)
+				h.Notify("info", "Effort: "+cur, "/effort low, medium, high or default sets it")
 				return nil
 			case "default":
 				args = ""
