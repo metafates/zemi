@@ -472,27 +472,45 @@ func WrapText(text string, w int) [][]Segment {
 
 // escapeHTML backslash-escapes a '<' that would open raw HTML outside code:
 // glamour drops inline HTML, so "Vec<String>" in prose would lose "<String>".
-// An autolink (<https://...>) stays a link.
+// An autolink (<https://...>) stays a link. An indented code block is a line
+// 4 columns past the list item it is in, after a blank line or another one.
+// NOTE: tabs are not expanded, so a tab-indented code block is escaped.
 func escapeHTML(s string) string {
 	if !strings.Contains(s, "<") {
 		return s
 	}
 	var b strings.Builder
-	fence := ""
+	fence, list, code, blank := "", 0, false, true
 	for line := range strings.SplitAfterSeq(s, "\n") {
-		f := fenceRun(strings.TrimLeft(line, " "))
+		body := strings.TrimLeft(line, " ")
+		ind := len(line) - len(body)
+		f := fenceRun(body)
+		wasBlank := blank
+		blank = strings.TrimSpace(line) == ""
 		switch {
 		case fence == "" && f != "":
 			fence = f
 		case fence != "" && strings.HasPrefix(f, fence):
 			fence = ""
-		case fence == "":
+		case fence != "" || blank:
+		case ind >= list+4 && (wasBlank || code):
+			code = true
+		default:
+			code = false
+			if m := listItem.FindString(line); m != "" {
+				list = len(m)
+			} else if ind == 0 {
+				list = 0
+			}
 			line = escapeLine(line)
 		}
 		b.WriteString(line)
 	}
 	return b.String()
 }
+
+// listItem is a list marker line up to its content column.
+var listItem = regexp.MustCompile(`^ *([-*+]|\d{1,9}[.)]) +`)
 
 func escapeLine(line string) string {
 	if !strings.Contains(line, "<") {

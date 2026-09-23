@@ -250,6 +250,8 @@ func TestEscapeHTML(t *testing.T) {
 		{"1 < 2, <https://x.dev> and \\<b>", "1 < 2, <https://x.dev> and \\<b>"},
 		{"`Vec<T>` or ``a`<T>``", "`Vec<T>` or ``a`<T>``"},
 		{"```go\nx := []Vec<T>{}\n```\nVec<T>", "```go\nx := []Vec<T>{}\n```\nVec\\<T>"},
+		{"Text:\n\n    let v: Vec<T>;\n    w<T>\nVec<T>", "Text:\n\n    let v: Vec<T>;\n    w<T>\nVec\\<T>"},
+		{"- a\n\n      Vec<T>\n\n  more <T>\n    no <T>", "- a\n\n      Vec<T>\n\n  more \\<T>\n    no \\<T>"},
 	} {
 		if got := escapeHTML(c.in); got != c.want {
 			t.Errorf("escapeHTML(%q) = %q, want %q", c.in, got, c.want)
