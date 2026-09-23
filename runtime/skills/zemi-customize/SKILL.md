@@ -114,8 +114,9 @@ argument-hint: <file> <symptom>
 Read $1 and add a failing test showing: $ARGUMENTS. Do not fix the bug.
 ```
 
-`$ARGUMENTS` is everything after the name, `$1`..`$9` single words. Commands load when
-the file is saved (zemi reloads config on change).
+`$ARGUMENTS` is everything after the name, `$1`..`$9` single words. The body goes behind
+the typed line, so an `@file` in it attaches nothing: the model reads the file itself.
+Commands load when the file is saved (zemi reloads config on change).
 
 ## Permission modes (`init.lua`, user config only)
 
