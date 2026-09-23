@@ -247,8 +247,8 @@ func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 		h.modes.mu.Lock()
 		restore, mode = h.modes.prePlanProfile, h.modes.prePlanMode
 		h.modes.mu.Unlock()
-		if restore == "" { // a read-only agent picked from config: fall back to default
-			restore, mode = "default", "auto"
+		if restore == "" { // a read-only agent picked from config: the shipped profile, the mode as it is
+			restore = "default"
 		}
 		v.Profile = restore
 	}
@@ -261,8 +261,10 @@ func (h *Host) presentPlan(plan string) (tools.PlanVerdict, bool) {
 			if err := h.SetProfile(restore); err != nil {
 				return v, false
 			}
-			if err := h.SetPermMode(mode); err != nil {
-				return v, false
+			if mode != "" {
+				if err := h.SetPermMode(mode); err != nil {
+					return v, false
+				}
 			}
 			// the read-only turn cannot implement the plan itself; the turn-end
 			// hook runs it as the restored agent
