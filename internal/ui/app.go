@@ -31,12 +31,12 @@ import (
 )
 
 const (
-	frameInterval = time.Second / 30
+	frameInterval = frameMS * time.Millisecond
 	// Terminals hide the OSC 9;4 spinner after a few seconds unless the
 	// program keeps sending it, so it is resent on this interval while running.
 	progressInterval = 2 * time.Second
 	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
-	frameMS          = 50                     // one animation tick: the mascot's frames are multiples of it
+	frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	hookQueueSize    = 64
 	chatWheelStep    = 1
@@ -106,7 +106,6 @@ type App struct {
 	pending    map[string]int64 // widget id -> generation of the render in flight
 	frameGen   int64
 	timeStr    string
-	activeBump time.Time
 	turnActive bool             // what onFrame last saw of the agent
 	turnEnd    time.Time        // when the last turn reported its end, so the mascot can bow
 	turnEnded  string           // how it ended: "ok", "error" or "cancelled"
@@ -156,6 +155,10 @@ type widgetCache struct {
 	// segment: a render hands back the lines it did not change
 	// (Widget.tableSegments), so a new reply wraps only its own lines.
 	lineRows map[*hostapi.Segment][][]hostapi.Segment
+	// spare is the lineRows map before it, cleared and reused, and wrapN the
+	// last wrap's row count: a streaming frame allocates neither again
+	spare map[*hostapi.Segment][][]hostapi.Segment
+	wrapN int
 }
 
 // NewApp builds the root model; host hooks are attached by the caller via
@@ -476,14 +479,17 @@ func (a *App) wakeTick() {
 	}
 }
 
+// frameTickCmd ticks on the next frameMS wall boundary at least d away, or
+// the next one after a wake: frame() then advances by exactly one per tick.
 func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
-	last := time.Now()
+	at := time.Now().Add(d).Truncate(frameInterval)
 	return func() tea.Msg {
 		select {
 		case <-a.wake:
-			time.Sleep(time.Until(last.Add(frameInterval))) // a storm of bumps still ticks at 30 fps
-		case <-time.After(d):
+			at = time.Now().Add(frameInterval).Truncate(frameInterval)
+		case <-time.After(time.Until(at)):
 		}
+		time.Sleep(time.Until(at))
 		return frameTickMsg{}
 	}
 }
@@ -506,14 +512,10 @@ func (a *App) onFrame() tea.Cmd {
 		a.timeStr = ts
 		a.frameGen++
 	}
-	// While a turn runs, the thought/elapsed readouts must tick even when
-	// no stream events arrive (long reasoning pauses, slow tools). The
-	// snapshot already computes the live durations; the widgets just need
-	// re-rendering: every other frame (~15/s), so the mascot's 150ms spinner
-	// steps evenly.
+	// While a turn runs every tick re-renders, so the spinner, the eyes and
+	// the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if (active || a.host.Reflecting()) && now.Sub(a.activeBump) >= 60*time.Millisecond {
-		a.activeBump = now
+	if active || a.host.Reflecting() {
 		a.frameGen++
 	}
 	// the outcome is stamped by turnDoneMsg alone: the host can still read
@@ -573,8 +575,8 @@ func (a *App) uiState() hostapi.UIState {
 	return st
 }
 
-// frame is the animation tick every widget animates on: the mascot's own
-// 500ms cadence, blinking markers included. Always 0 with animations off.
+// frame is the frame clock's tick, frameMS each: what the spinner, the eyes
+// and the shimmer step on. Always 0 with animations off.
 func (a *App) frame() int {
 	if !a.host.Settings.Bool("ui.animations") {
 		return 0
@@ -613,7 +615,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, partial: msg.more}
 	old := a.caches[msg.id]
 	if old != nil {
-		c.wrapW, c.lineRows = old.wrapW, old.lineRows
+		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
 	}
 	if msg.more {
 		c.gen-- // stale, so the next frame renders this widget alone again
@@ -642,7 +644,7 @@ func (a *App) renderStaleWidgetsCmd() tea.Cmd {
 		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == w.width && c.height == w.height {
 			continue
 		}
-		// One render per widget in flight: at 30 fps a slow widget would
+		// One render per widget in flight: at 20 fps a slow widget would
 		// otherwise pile up a queue of renders of the same generation.
 		if a.pending[w.ID] == gen {
 			continue
@@ -1085,8 +1087,12 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 			if c.wrapW != width {
 				c.lineRows = nil
 			}
-			var rows [][]hostapi.Segment
-			next := make(map[*hostapi.Segment][][]hostapi.Segment, len(lines))
+			rows := make([][]hostapi.Segment, 0, c.wrapN)
+			next := c.spare
+			if next == nil {
+				next = make(map[*hostapi.Segment][][]hostapi.Segment, len(lines))
+			}
+			clear(next)
 			for _, line := range lines {
 				if len(line) == 0 {
 					rows = append(rows, hostapi.WrapSegs(line, width)...)
@@ -1099,7 +1105,7 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 				next[&line[0]] = wr
 				rows = append(rows, wr...)
 			}
-			c.wrapped, c.wrapW, c.lineRows = rows, width, next
+			c.wrapped, c.wrapW, c.lineRows, c.spare, c.wrapN = rows, width, next, c.lineRows, len(rows)
 		}
 		// the chat is alone in its region: its rows are not copied per frame
 		if out == nil {
@@ -1311,7 +1317,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 			continue
 		}
 		if s.Effect == "shimmer" {
-			for _, r := range a.shimmer(s, a.now(), a.host.Settings.Bool("ui.animations")) {
+			for _, r := range a.shimmer(s, a.frame()*frameMS, a.host.Settings.Bool("ui.animations")) {
 				write(r.Text, r.HL, s.Over)
 			}
 			continue

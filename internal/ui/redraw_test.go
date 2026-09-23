@@ -124,3 +124,22 @@ func TestBumpWakesIdleTick(t *testing.T) {
 		t.Fatalf("a render asking to run again waited out the idle tick: %v", d)
 	}
 }
+
+// TestFrameClock: a tick lands on a frame boundary and never twice in one
+// frame, from the timer and from a wake alike, so the spinner and the eyes
+// step one glyph per tick. Load can only skip a frame, which this allows.
+func TestFrameClock(t *testing.T) {
+	a := &App{wake: make(chan struct{}, 1)}
+	last := time.Now().UnixMilli() / frameMS
+	for i := range 6 {
+		if i%2 == 1 {
+			a.wakeTick()
+		}
+		a.frameTickCmd(frameInterval)()
+		f := time.Now().UnixMilli() / frameMS
+		if f <= last {
+			t.Fatalf("tick %d ran in frame %d, after one in frame %d", i, f, last)
+		}
+		last = f
+	}
+}

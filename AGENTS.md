@@ -751,7 +751,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
   callbacks call `refresh` when they return. The frame tick sleeps 250 ms unless something
-  moves by itself (a turn, a toast, an armed flag); a change goes through
+  moves by itself (a turn, a toast, an armed flag) and always lands on a 50 ms wall boundary,
+  so `ctx.frame` steps one per tick while a turn re-renders every one; a change goes through
   `App.bump`, which wakes it, and all stale widgets render as one message. A render's ctx
   builds `transcript`, `agent`, `todos` and `recent` on first read (`widgetCtxTable`,
   `BenchmarkWidgetCtx`): keep new expensive fields lazy. A widget never changes a line table
@@ -766,7 +767,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `defaultui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
-  cannot render at 30 fps is a segment `effect` the UI applies (`shimmer`). The terminal itself
+  cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets OSC 9 (notify when unfocused), OSC 9;4 (`ui.progress`: a running turn as taskbar
   progress, resent every few seconds so terminals do not hide it, cleared on quit) and OSC 11
   (the theme's Normal bg as its own background, through `tea.View.BackgroundColor` so bubbletea

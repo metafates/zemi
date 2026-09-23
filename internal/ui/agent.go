@@ -561,14 +561,14 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 // text every 2s, each rune blending the segment's color toward Normal by
 // its distance to the band center. Blends are quantized to 8 steps so the
 // sgr style cache stays small.
-func (a *App) shimmer(seg hostapi.Segment, now time.Time, animate bool) []hostapi.Segment {
+func (a *App) shimmer(seg hostapi.Segment, ms int, animate bool) []hostapi.Segment {
 	dim, fg := a.thm.style(seg.HL).Fg, a.thm.style("Normal").Fg
 	if !animate || dim == nil || fg == nil {
 		return []hostapi.Segment{{Text: seg.Text, HL: seg.HL}}
 	}
 	const band = 3.0
 	runes := []rune(seg.Text)
-	pos := float64(now.UnixMilli()%2000)/2000*(float64(len(runes))+2*band) - band
+	pos := float64(ms%2000)/2000*(float64(len(runes))+2*band) - band
 	dr, dg, db, _ := dim.RGBA()
 	fr, fgn, fb, _ := fg.RGBA()
 	out := make([]hostapi.Segment, 0, len(runes))

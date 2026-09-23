@@ -972,7 +972,11 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 	if !list || n == 0 {
 		return nil, false
 	}
-	seen := make(map[*glua.LTable][]Segment, n)
+	if w.spare == nil {
+		w.spare = make(map[*glua.LTable][]Segment, n)
+	}
+	seen := w.spare
+	clear(seen)
 	out = make([][]Segment, 0, n)
 	for i := 1; i <= n; i++ {
 		lt, isTable := top.RawGetInt(i).(*glua.LTable)
@@ -1011,7 +1015,7 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 		seen[lt] = line
 		out = append(out, line)
 	}
-	w.lines = seen
+	w.lines, w.spare = seen, w.lines
 	return out, true
 }
 
@@ -1150,7 +1154,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
 	Time  string
-	Frame int // 500ms animation tick, the mascot's cadence; 0 with ui.animations off
+	Frame int // the 50ms frame clock the spinner, eyes and shimmer step on; 0 with ui.animations off
 
 	Ended          string // how the turn that ended a moment ago ended: "ok", "error" or "cancelled"; "" after that
 	QuitArmed      bool   // a second ctrl+c quits

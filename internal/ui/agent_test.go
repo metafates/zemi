@@ -83,7 +83,8 @@ func seedLongChat(host *hostapi.Host, turns int) {
 	}
 }
 
-// frameTurns: a frame must cost the same over a short and a long transcript.
+// frameTurns: a long transcript costs a frame only a slice of its line
+// headers, never converting or wrapping its lines again.
 var frameTurns = []int{10, 500}
 
 // BenchmarkStreamingFrame is one frame while a reply streams: the widget
@@ -922,9 +923,9 @@ func TestWorkingRowMascot(t *testing.T) {
 			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
 		}
 	}
-	// thinking blinks in place
+	// thinking blinks in place, its cycle starting with the state
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})
-	if a, b := row(3200), row(3600); !strings.HasPrefix(a, "@..") || !strings.HasPrefix(b, "@?.") {
+	if a, b := row(3210), row(3610); !strings.HasPrefix(a, "@.?") || !strings.HasPrefix(b, "@?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
 	// a narrow rule drops the queue depth before the interrupt key

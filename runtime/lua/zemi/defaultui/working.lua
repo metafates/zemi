@@ -11,6 +11,12 @@ local READS = { read = true, grep = true, glob = true, fetch = true, web_search 
 -- rule and never moves the label. The label stays away for the first 300ms so
 -- instant turns do not flash it, and the eyes say how the turn ended for a
 -- few seconds after.
+
+-- the state the eyes last showed and the frame it began on: an eye cycle
+-- starts with its state, whatever the clock read
+---@type string?, integer
+local shown, since = nil, 0
+
 zemi.ui.widget.add({
   id = "working",
   region = "working",
@@ -99,7 +105,8 @@ zemi.ui.widget.add({
     for i, p in ipairs(parts) do texts[i] = p[1] end
     local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
     local text = label .. after ~= "" and fmt.cells(label .. after) + 2 or 0
-    local row = snail.rule(state, ctx.frame, ctx.width - text)
+    if state ~= shown then shown, since = state, ctx.frame end
+    local row = snail.rule(state, ctx.frame - since, ctx.width - text)
     if text > 0 then
       table.insert(row, 3, { text = " " .. label, hl = "Comment", effect = "shimmer" })
       table.insert(row, 4, { text = after .. " ", hl = "Comment" })

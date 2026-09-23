@@ -1,6 +1,6 @@
 -- zemi's mascot: a snail whose shell is the "@". Text only, and only the
 -- shell takes the accent. It never leaves the left corner: the state shows in
--- its eyes. ctx.frame advances every 50ms (0 with ui.animations off).
+-- its eyes, stepped by the 50ms frame clock (still with ui.animations off).
 ---@class zemi.defaultui.snail
 local M = {}
 
@@ -20,7 +20,7 @@ local HEADS = {
 
 --- The eyes of `state` at `frame`.
 ---@param state zemi.defaultui.SnailState
----@param frame integer                   ctx.frame
+---@param frame integer                   frames since the state began
 ---@return string
 function M.eyes(state, frame)
 	local heads = HEADS[state] or HEADS.idle
@@ -29,7 +29,7 @@ end
 
 --- The snail at the left of a plain rule of `room` cells.
 ---@param state zemi.defaultui.SnailState
----@param frame integer                   ctx.frame
+---@param frame integer                   frames since the state began
 ---@param room  integer
 ---@return zemi.Line
 function M.rule(state, frame, room)

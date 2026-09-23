@@ -683,7 +683,7 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
----@field frame integer The shared animation tick: one step every 50 ms; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
+---@field frame integer The frame clock: wall time in 50 ms steps, and a render while anything moves sees it one step on; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended ""|"ok"|"error"|"cancelled" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field reflecting boolean
 ---@field pending_memory integer
