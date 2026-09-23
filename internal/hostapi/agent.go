@@ -46,8 +46,10 @@ type Profile struct {
 
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
-	Tool   string // the asking tool (bash, edit, mcp_github_search)
-	Always string // what the session-long choice allows ("allow `go test`"), "" when none is offered
+	Tool string // the asking tool (bash, edit, mcp_github_search)
+	// Always is what the session-long choice allows ("allow `go test`"),
+	// "" when none is offered; the overlay draws a backticked name bare
+	Always string
 	// Wider is a second session-long choice covering more than Always (a
 	// read's whole repository), "" when there is none
 	Wider string

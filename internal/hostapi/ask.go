@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -265,25 +264,34 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
-				names = append(names, "`"+alwaysName(p)+"`")
+				names = append(names, "`"+p+"`")
 			}
 		}
 		if len(rules) == 0 {
 			return "", nil // every segment is allowed already
 		}
+		// a rule-allowed command runs unconfined, a network one keeps the
+		// sandbox and adds sockets; the label says which
+		effect := ""
+		switch {
+		case req.Network:
+			effect = " with the network"
+		case !req.ReadOnly && h.sandboxLive():
+			effect = " outside the sandbox"
+		}
 		// long lists name two programs and count the rest, so the label
 		// still says how much it covers
 		if len(names) == 0 {
-			return "allow this exact command", rules
+			return "allow this exact command" + effect, rules
 		}
 		shown := names
 		if len(shown) > 2 {
 			shown = names[:2]
 		}
 		if hidden := len(names) - len(shown) + unnamed; hidden > 0 {
-			return fmt.Sprintf("allow %s and %d more", strings.Join(shown, ", "), hidden), rules
+			return fmt.Sprintf("allow %s and %d more%s", strings.Join(shown, ", "), hidden, effect), rules
 		}
-		return "allow " + strings.Join(shown, " and "), rules
+		return "allow " + strings.Join(shown, " and ") + effect, rules
 	case req.Subject == "fs.write" || req.Subject == "fs.read":
 		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
 		// the rule would be "*", which matches every path on disk
@@ -326,19 +334,6 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return "", nil
 	}
 	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
-}
-
-// alwaysName is a pattern as the always label names it: a long one loses
-// its middle, never the program or the subcommand word the rule ends on.
-func alwaysName(p string) string {
-	const n = 24
-	f := strings.Fields(p)
-	if utf8.RuneCountInString(p) <= n || len(f) < 3 {
-		return truncRunes(p, n)
-	}
-	head, last := f[0], f[len(f)-1]
-	room := n - utf8.RuneCountInString(head+last) - len("  ...")
-	return head + " " + truncRunes(strings.Join(f[1:len(f)-1], " "), max(room, 0)) + " " + last
 }
 
 // bashAlwaysPatterns turns one command segment into the allow-lookup patterns

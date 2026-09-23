@@ -687,6 +687,7 @@ func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
 // asking (DESIGN §6.2).
 func TestAskHookAlwaysStoresRules(t *testing.T) {
 	h, _ := newTestHost(t)
+	fakeSandbox(h, true)
 	ui := &fakeUI{askAllowed: true, askBy: "user:always"}
 	h.SetUIHooks(ui)
 
@@ -695,7 +696,7 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
 		t.Fatalf("always bash: %v by %q", v.Decision, v.DecidedBy)
 	}
-	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow `git push`" {
+	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow `git push` outside the sandbox" {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 	rules := h.Perm.Rules()
@@ -1004,6 +1005,7 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 
 func TestAlwaysChoice(t *testing.T) {
 	h, _ := newTestHost(t)
+	fakeSandbox(h, false) // the effect cases below settle it
 	t.Chdir(h.Dirs.ProjectDir)
 	proj := perm.RealPath(h.Dirs.ProjectDir) // rules name the resolved dir
 	home := perm.RealPath(os.Getenv("HOME"))
@@ -1029,7 +1031,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow `git --no-pager log`", []string{"git --no-pager log", "git --no-pager log *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow `git -C /other/... status`", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow `git -C /other/repo status`", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
 		// kubectl's -s takes a value, so prod is not its subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
@@ -1163,6 +1165,17 @@ func TestAlwaysChoice(t *testing.T) {
 	// with no rules would still let the project answer persist the line
 	if label, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); label != "" || len(rules) != 0 {
 		t.Errorf("all-allowed command must offer nothing: %q %+v", label, rules)
+	}
+	// the label says where the allowed command will run
+	fakeSandbox(h, true)
+	for req, want := range map[tools.Request]string{
+		{Subject: "tool.bash", Arg: "ls -la"}:                 "allow `ls` outside the sandbox",
+		{Subject: "tool.bash", Arg: "ls -la", Network: true}:  "allow `ls` with the network",
+		{Subject: "tool.bash", Arg: "ls -la", ReadOnly: true}: "allow `ls`",
+	} {
+		if label, _ := h.alwaysChoice(req); label != want {
+			t.Errorf("%+v: label %q, want %q", req, label, want)
+		}
 	}
 }
 

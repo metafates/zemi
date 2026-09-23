@@ -327,7 +327,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		{"scrolled preview keeps its last column", 80, 16, hostapi.PermRequest{Subject: "tool.bash", Arg: strings.Repeat("abcdefghij", 60)},
 			[]string{strings.Repeat("abcdefghij", 6) + "abcdefghi█"}},
 		{"runs outside sandbox", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "git push origin main", Outside: true, Reason: "run outside the sandbox"},
-			[]string{"Runs outside the sandbox", "Run this command outside the sandbox?"}},
+			[]string{"can reach the whole machine", "Run this command outside the sandbox?"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1216,6 +1216,19 @@ func TestPermNote(t *testing.T) {
 	} {
 		if got, _ := permNote(c.reason); got != c.want {
 			t.Errorf("permNote(%q) = %q, want %q", c.reason, got, c.want)
+		}
+	}
+}
+
+func TestBareNames(t *testing.T) {
+	for _, c := range []struct{ label, want string }{
+		{"allow `go test` and `git diff` outside the sandbox", "allow go test and git diff outside the sandbox"},
+		{"allow `git -C /some/very/long/path/to/a/repo status` for", "allow git -C /some/ver… status for"},
+		{"allow `averyveryverylongprogramname` for", "allow averyveryverylongprogra… for"},
+		{"allow reads in ~/notes/ and below", "allow reads in ~/notes/ and below"},
+	} {
+		if got := bareNames(c.label, 34); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.label, got, c.want)
 		}
 	}
 }

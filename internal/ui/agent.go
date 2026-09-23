@@ -103,11 +103,13 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
 		if a.permAsk != nil {
+			// a queued ask opens as the user answers the one before it
 			a.permQueue = append(a.permQueue, p)
-		} else {
-			a.permAsk = p
+			return nil
 		}
-		return a.notifyIfAway("zemi needs your approval: " + req.Subject)
+		a.permAsk = p
+		title, _ := permTitle(req, a.host.Dirs.ProjectDir)
+		return a.notifyIfAway("zemi: " + title)
 	})
 	ans := <-ch
 	return ans.ok, ans.by
@@ -564,11 +566,11 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := max(min(w-4, maxW)-4, 1)
 
 	title, target := permTitle(req, a.host.Dirs.ProjectDir)
-	// a command that escapes the sandbox gets a full-width warning band above
-	// everything, in red on the panel, so it cannot be missed
+	// a command that escapes the sandbox gets a red band above everything,
+	// so it cannot be missed; the title already says where it runs
 	var banner [][]hostapi.Segment
 	if req.Outside {
-		banner = wrapText("Runs outside the sandbox - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner)
+		banner = codePanel("can reach the whole machine, unconfined", "Host:DangerPanel", inner)
 	}
 	var head [][]hostapi.Segment
 	// the whole target, wrapped at its slashes: a path's file name and a
@@ -589,11 +591,11 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	build := func(w int) [][]hostapi.Segment {
 		switch {
 		case req.Subject == "tool.bash":
-			return codePanel(req.Arg, w)
+			return codePanel(req.Arg, "Host:Panel", w)
 		case isDiff:
 			return diffRows(req.Preview, w)
 		case req.Preview != "":
-			return codePanel(req.Preview, w)
+			return codePanel(req.Preview, "Host:Panel", w)
 		}
 		return nil
 	}
@@ -611,7 +613,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	choices := pa.choices()
 	btns := make([]promptChoice, 0, len(choices))
 	for _, c := range choices {
-		btns = append(btns, promptChoice{key: c.key, label: c.label})
+		btns = append(btns, promptChoice{key: c.key, label: bareNames(c.label, inner-6)})
 	}
 	hints := []hintPair{{"enter", "answer"}, {"esc", "deny"}} // one verb for every button: a changing one shifts the row
 	placeholder := oneRow
@@ -666,6 +668,29 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	body := stack(tight, banner, head, content, words, list, [][]hostapi.Segment{hintRow})
 	return promptBox(title, badge, body, w, h, maxW, &pa.size)
+}
+
+// bareNames draws an always label's backticked names bare, sharing what one
+// w-cell row leaves them; a long one loses its middle, never the program or
+// the word the rule ends on.
+func bareNames(label string, w int) string {
+	parts := strings.Split(label, "`")
+	fixed := 0
+	for i := 0; i < len(parts); i += 2 {
+		fixed += ansi.StringWidth(parts[i])
+	}
+	room := max((w-fixed)/max(len(parts)/2, 1), 12)
+	for i := 1; i < len(parts); i += 2 {
+		f := strings.Fields(parts[i])
+		if ansi.StringWidth(parts[i]) <= room || len(f) < 3 {
+			parts[i] = ansi.Truncate(parts[i], room, "…")
+			continue
+		}
+		head, last := f[0], f[len(f)-1]
+		mid := ansi.Truncate(strings.Join(f[1:len(f)-1], " "), max(room-ansi.StringWidth(head+last)-2, 1), "…")
+		parts[i] = head + " " + mid + " " + last
+	}
+	return strings.Join(parts, "")
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in
@@ -811,15 +836,15 @@ func scrolls(views ...viewport) []hintPair {
 	return nil
 }
 
-// codePanel shows text on a panel background, wrapped to width.
-func codePanel(text string, width int) [][]hostapi.Segment {
+// codePanel shows text on a panel background in hl, wrapped to width.
+func codePanel(text, hl string, width int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
 		l = strings.ReplaceAll(l, "\t", "    ")
 		for _, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
 			line := plainSegs(wrapped)
 			pad := width - 2 - ansi.StringWidth(line)
-			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: "Host:Panel"}})
+			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: hl}})
 		}
 	}
 	return rows
