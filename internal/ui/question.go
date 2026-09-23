@@ -374,7 +374,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var hints []hintPair
 	switch {
 	case st.typing:
-		hints = []hintPair{{"enter", "answer"}, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}}
+		hints = slices.Concat(moves, []hintPair{{"enter", "answer"}, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
 	case q.Multi():
 		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, {"enter", "answer"}, {"esc", "dismiss"}})
 	default:
