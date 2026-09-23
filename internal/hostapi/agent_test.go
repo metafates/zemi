@@ -1257,9 +1257,14 @@ func TestActiveProfileKey(t *testing.T) {
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", {}) zemi.agent.profile("default", {})`)
+	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", { model = "x/big" }) zemi.agent.profile("default", {})`)
 	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
 		t.Errorf("names %v", names)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big - every tool" {
+		t.Errorf("the defined planner's picker row %v", ui.opened)
 	}
 	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
 		t.Errorf("cycling from planner went to %q", h.Settings.Str("agent.profile"))

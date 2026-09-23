@@ -1925,7 +1925,10 @@ func (h *Host) OpenProfilePicker() error {
 	var items []any
 	for i, name := range h.ProfileNames() {
 		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
-		if name == "planner" {
+		h.agents.mu.Lock()
+		_, defined := h.agents.profiles[name]
+		h.agents.mu.Unlock()
+		if name == "planner" && !defined {
 			item["desc"] = "read-only: plan and present for approval"
 		} else if p, _ := h.resolveProfile(name); p != nil {
 			item["desc"] = profileDesc(p)
