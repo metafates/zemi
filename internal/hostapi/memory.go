@@ -210,7 +210,7 @@ func (h *Host) storeProposal(res *learn.Result) error {
 	}
 	m := &res.Memory
 	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
-		return fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(dup.ID, 8))
+		return fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
 	if err := db.AddMemory(m); err != nil {
 		return err
@@ -226,7 +226,7 @@ func (h *Host) storeProposal(res *learn.Result) error {
 
 // Remember stores a user-typed /memory <note> text (origin user, project
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4), and a
-// full scope is refused with the ids to forget, since the user is there.
+// full scope is refused, since the user is there to make room.
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("usage: /memory <note>")
@@ -235,8 +235,8 @@ func (h *Host) Remember(text string) error {
 	if err != nil {
 		return err
 	}
-	if oldest, over := h.scopeOver(res); over {
-		return errScopeFull(res.Memory.Scope, oldest)
+	if _, over := h.scopeOver(res); over {
+		return errScopeFull(res.Memory.Scope)
 	}
 	if err := h.storeProposal(res); err != nil {
 		return err
@@ -443,8 +443,8 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
-		if oldest, over := h.scopeOver(res); over {
-			return false, errScopeFull(p.Scope, oldest)
+		if _, over := h.scopeOver(res); over {
+			return false, errScopeFull(p.Scope)
 		}
 		if h.takeProposal(id) == nil {
 			return false, fmt.Errorf("no such proposal %q", id)
@@ -467,11 +467,11 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	}
 	res.Memory.ID = m.ID
 	// a shorter edit is always taken, so a scope already over can shrink
-	if oldest, over := h.scopeOver(res); over && len(res.Memory.Text) > len(m.Text) {
-		return false, errScopeFull(m.Scope, oldest)
+	if _, over := h.scopeOver(res); over && len(res.Memory.Text) > len(m.Text) {
+		return false, errScopeFull(m.Scope)
 	}
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
-		return false, fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(dup.ID, 8))
+		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
 	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, learn.OriginUser)
 }
@@ -518,8 +518,8 @@ func (h *Host) moveMemory(id, from, to string) error {
 	i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) })
 	switch {
 	case i < 0:
-		if oldest, over := h.scopeOver(&learn.Result{Memory: *m}); over {
-			return errScopeFull(to, oldest)
+		if _, over := h.scopeOver(&learn.Result{Memory: *m}); over {
+			return errScopeFull(to)
 		}
 		err = dst.AddMemory(m)
 	case m.Origin == learn.OriginUser && live[i].Origin != learn.OriginUser:
@@ -569,8 +569,8 @@ func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 	} else {
 		p.Memory.Scope = cmp.Or(scope, p.Memory.Scope)
 		res := &learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}
-		if oldest, over := h.scopeOver(res); over {
-			err = errScopeFull(p.Memory.Scope, oldest)
+		if _, over := h.scopeOver(res); over {
+			err = errScopeFull(p.Memory.Scope)
 		} else {
 			err = h.storeProposal(res)
 		}
@@ -632,11 +632,18 @@ func (h *Host) memoryRows() []MemoryRow {
 		case m.Forget:
 			text = "forget: " + text
 		case m.Supersedes != "":
-			what := ""
-			if _, old, err := h.locateMemory(m.Supersedes); err == nil && old.Scope != m.Scope {
-				what = old.Scope + " memory "
+			// the screen shows no ids, so the row names the memory by its text
+			what := "a memory since deleted"
+			if _, old, err := h.locateMemory(m.Supersedes); err == nil {
+				what = `"` + old.Text + `"`
+				if short := learn.Truncate(old.Text, 40); short != old.Text {
+					what = `"` + short + `..."`
+				}
+				if old.Scope != m.Scope {
+					what = old.Scope + " memory " + what
+				}
 			}
-			text += " (replaces " + what + learn.Truncate(m.Supersedes, 8) + ")"
+			text += " (replaces " + what + ")"
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Origin: m.Origin,
@@ -914,8 +921,8 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	return "", false
 }
 
-func errScopeFull(scope string, oldest []string) error {
-	return fmt.Errorf("%s memory is full; /memory forget one of %s first", scope, strings.Join(oldest, ", "))
+func errScopeFull(scope string) error {
+	return fmt.Errorf("%s memory is full; forget one of the oldest, at the bottom of /memory, first", scope)
 }
 
 // scopeOver reports whether storing res would push its scope past

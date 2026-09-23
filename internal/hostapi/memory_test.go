@@ -57,7 +57,7 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	if err := h.Remember("deploy script lives in bin/deploy"); err != nil {
 		t.Fatalf("remember: %v", err)
 	}
-	if err := h.Remember("Deploy script lives in bin/deploy"); !errors.Is(err, errDuplicateMemory) {
+	if err := h.Remember("Deploy script lives in bin/deploy"); !errors.Is(err, errDuplicateMemory) || !strings.Contains(err.Error(), `"deploy script lives in bin/deploy"`) {
 		t.Fatalf("duplicate remember: %v", err)
 	}
 	rows := projectMemories(t, h)
@@ -316,9 +316,9 @@ func TestMemoryGate(t *testing.T) {
 					t.Fatalf("stored %d", n)
 				}
 			}},
-		{name: "/memory over budget names the oldest", note: true, text: "the deploy script lives in bin/deploy",
+		{name: "/memory over budget points at the oldest", note: true, text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string { return fill(t, h, 11) },
-			want: "project memory is full; /memory forget one of ",
+			want: "project memory is full; forget one of the oldest, at the bottom of /memory, first",
 			check: func(t *testing.T, h *Host, ui *fakeUI, replaces string) {
 				if len(projectMemories(t, h)) != 11 {
 					t.Fatal("stored over budget")
@@ -559,7 +559,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	for i := range rows {
 		if rows[i].Queued {
 			rows[i].Scope = "user"
-			if strings.Contains(rows[i].Text, "(replaces ") {
+			if strings.HasSuffix(rows[i].Text, `(replaces "deploy by hand")`) {
 				rows[i].Action = "accept"
 			}
 		}

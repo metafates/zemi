@@ -564,7 +564,7 @@ lua-language-server is installed.
   with its id and text to merge through `replaces` (a pending one only as queued); a learned user-scope memory needs a `quote`, checked
   against the typed part of the session's user rows (`quoteInSession`, cut at `attachMarker`),
   and a quote not found drops it; a scope over `learn.ScopeBudget` queues with the oldest ids
-  to replace, and `acceptProposal`, `moveMemory` and `rewriteMemory` refuse with them. Text with `replaces`
+  to replace, and `acceptProposal`, `moveMemory` and `rewriteMemory` refuse, pointing at the oldest in `/memory`. Text with `replaces`
   supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
   (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
   `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
