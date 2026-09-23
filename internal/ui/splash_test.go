@@ -98,23 +98,30 @@ zemi.ui.widget.add({
 }
 
 // TestSplashInitHint: only a trusted project with no instruction file is
-// offered /init.
+// offered /init, and $HOME is nobody's project.
 func TestSplashInitHint(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 30)
-	host.Dirs.ProjectDir = t.TempDir()
+	proj := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		name    string
+		dir     string
 		trusted bool
 		file    string
 		want    bool
 	}{
-		{"untrusted", false, "", false},
-		{"trusted", true, "", true},
-		{"has CLAUDE.md", true, "CLAUDE.md", false},
+		{"untrusted", proj, false, "", false},
+		{"trusted", proj, true, "", true},
+		{"has CLAUDE.md", proj, true, "CLAUDE.md", false},
+		{"trusted home", home, true, "", false},
 	} {
+		host.Dirs.ProjectDir = c.dir
 		host.SetProjectTrusted(c.trusted)
 		if c.file != "" {
-			if err := os.WriteFile(filepath.Join(host.Dirs.ProjectDir, c.file), []byte("x"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(c.dir, c.file), []byte("x"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
