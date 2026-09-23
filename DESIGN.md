@@ -1831,11 +1831,10 @@ by the next startup sweep, since the session still has unseen messages.
   queues for review with the oldest ids to replace, and `/memory <note>`,
   accepting a queued one and a move into that scope refuse with them,
   since the user is there. The
-  digest (§10.7) sits behind a
-  Go-inserted data boundary the prompt tells the model to treat as
-  quoted, untrusted material. Residual
-  risk is stated plainly: a fenced quote can still sway a credulous
-  model; the cap, provenance, scrubbing, and the review queue
+  digest (§10.7) tells the model to follow a preference the user stated
+  and to check what any other line names before relying on it. Residual
+  risk is stated plainly: a learned line can still sway a credulous
+  model; the cap, provenance, quote check, scrubbing and the review queue
   narrow that window. `replaces` is the one edit: text with it supersedes
   the old memory, empty text with it forgets. `/memory forget <id>` is the
   other review action: model proposals may

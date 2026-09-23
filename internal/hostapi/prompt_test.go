@@ -33,7 +33,7 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the rules above", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
@@ -78,12 +78,12 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	}{
 		{"default", nil, []string{"Scratchpad: ", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message"}, []string{"in one response"}},
 		// a subagent: explore reads and searches, and writes nothing
-		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit"}, []string{"Put notes"}, nil},
+		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Put notes", "Put temporary files"}, nil},
 		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
 			[]string{"workflow", "zemi-lua", "job_start", `"lsp"`}, nil},
 		// the plan's shape lives in the plan tool's description only
 		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil, []string{"how to verify, the assumptions"}},
-		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool with"}, nil},
+		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool"}, nil},
 		{"no read", &Profile{Tools: []string{"-read"}}, nil, []string{"offset and limit"}, nil},
 	} {
 		toolset := h.profileTools(c.p)
