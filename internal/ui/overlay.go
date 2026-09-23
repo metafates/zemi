@@ -523,6 +523,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), oneRow)) + len(bodyPH) + len(listPH)
 		limit := max(room-min(bodyN, 3), 1) // the list's rows; the body keeps three
+		enterCopies := false
 		switch {
 		case st.back && len(st.o.Items) > 0:
 			// a detail view's rows are actions: draw them as the prompts' buttons
@@ -550,6 +551,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			list = st.rows
 			if verb := st.enterVerb(st.visible[st.selected]); verb != "" {
 				hints = append(hints, hintPair{"enter", verb})
+				enterCopies = verb == "copy"
 			}
 			m, _ := st.o.Items[st.visible[st.selected]].(map[string]any)
 			if st.o.Reload != nil && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
@@ -564,8 +566,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			st.body.viewH = max(room-len(list), 1)
 			body = st.body.window(st.body.wrap(buildBody, bodyW), bodyW)
 		}
-		// y types into an open filter
-		if (bodyN > 0 || len(st.visible) > 0) && !st.active {
+		// y types into an open filter, and says nothing enter does not
+		if (bodyN > 0 || len(st.visible) > 0) && !st.active && !enterCopies {
 			hints = append(hints, hintPair{"y", "copy"})
 		}
 		esc := "close"
