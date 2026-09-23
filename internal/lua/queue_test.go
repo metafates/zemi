@@ -474,7 +474,8 @@ func TestEval(t *testing.T) {
 	// names the function
 	for _, c := range []struct{ src, want, not string }{
 		{"error('boom')", "lua-tool:1: boom", "traceback"},
-		{"local function f() error('boom') end\nf()", "in function 'f'", ""},
+		{"local function f() error('boom') end\nf()", "in function 'f'", "@user:"},
+		{"x = = 1", "lua-tool:1: ", "@user:"},
 	} {
 		_, err := r.Eval(context.Background(), c.src, "lua-tool", OriginUser, time.Second, discard)
 		if err == nil || !strings.Contains(err.Error(), c.want) || c.not != "" && strings.Contains(err.Error(), c.not) {

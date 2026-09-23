@@ -326,12 +326,12 @@ func (r *Runtime) sandboxOf(L *glua.LState) (*Sandbox, error) {
 }
 
 // chunkErr names the file a chunk error came from, unless the error
-// already does: a Lua error carries its chunk name and line. A syntax
-// error gets the same file:line: shape (gopher-lua's own puts the line in
-// the middle and "at EOF" for an unclosed block), and a traceback that
-// holds only the main chunk and Go frames is dropped: it says nothing the
-// message does not.
-func chunkErr(rel, src string, err error) error {
+// already does: a Lua error carries its chunk name and line, shown without
+// the origin tag the chunk name carries. A syntax error gets the same
+// file:line: shape (gopher-lua's own puts the line in the middle and "at
+// EOF" for an unclosed block), and a traceback that holds only the main
+// chunk and Go frames is dropped: it says nothing the message does not.
+func chunkErr(rel, src string, origin Origin, err error) error {
 	var api *glua.ApiError
 	if !errors.As(err, &api) {
 		if strings.Contains(err.Error(), rel) {
@@ -345,12 +345,13 @@ func chunkErr(rel, src string, err error) error {
 		}
 		return fmt.Errorf("%s:%d: %s near '%s'", rel, pe.Pos.Line, pe.Message, pe.Token)
 	}
-	msg := api.Object.String()
+	untag := func(s string) string { return strings.ReplaceAll(s, origin.ChunkName(rel), rel) }
+	msg := untag(api.Object.String())
 	if !strings.Contains(msg, rel) {
 		msg = rel + ": " + msg
 	}
 	if usefulTrace(api.StackTrace) {
-		msg += "\n" + api.StackTrace
+		msg += "\n" + untag(api.StackTrace)
 	}
 	return errors.New(msg)
 }
@@ -376,12 +377,12 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	}
 	fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 	if err != nil {
-		return chunkErr(rel, src, err)
+		return chunkErr(rel, src, origin, err)
 	}
 	defer r.PushFrame(L, origin, rel)()
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
-		return chunkErr(rel, src, err)
+		return chunkErr(rel, src, origin, err)
 	}
 	return nil
 }
@@ -397,7 +398,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		}
 		fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
 		if err != nil {
-			return nil, chunkErr(rel, src, err)
+			return nil, chunkErr(rel, src, origin, err)
 		}
 		// CompileChunk already gave the chunk a fresh env carrying the
 		// protected-global guard. A raw print here shadows the frozen one
@@ -412,7 +413,7 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 		L.Push(fn)
 		if err := L.PCall(0, glua.MultRet, nil); err != nil {
 			L.SetTop(base)
-			return nil, chunkErr(rel, src, err)
+			return nil, chunkErr(rel, src, origin, err)
 		}
 		var vals []any
 		for i := base + 1; i <= L.GetTop(); i++ {
@@ -614,13 +615,13 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	sb := gen.SB
 	fn, cerr := sb.CompileChunk(string(src), origin.ChunkName(rel))
 	if cerr != nil {
-		return glua.LNil, chunkErr(rel, string(src), cerr)
+		return glua.LNil, chunkErr(rel, string(src), origin, cerr)
 	}
 	L := gen.L
 	defer gen.pushFrame(origin, rel)()
 	L.Push(fn)
 	if perr := L.PCall(0, 1, nil); perr != nil {
-		return glua.LNil, chunkErr(rel, string(src), perr)
+		return glua.LNil, chunkErr(rel, string(src), origin, perr)
 	}
 	out := L.Get(-1)
 	if out == glua.LNil {

@@ -219,7 +219,13 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	}
 	out, err := h.runModelLua(ctx, src, rel)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(h.truncOutput("lua", strings.TrimSpace(out+"\nerror: "+err.Error()))), nil
+		msg := err.Error()
+		if in.Path != "" {
+			// the chunk keeps its tool name, which the sandbox guard reads;
+			// the error names the file the model can edit
+			msg = strings.ReplaceAll(msg, rel+":", in.Path+":")
+		}
+		return fantasy.NewTextErrorResponse(h.truncOutput("lua", strings.TrimSpace(out+"\nerror: "+msg))), nil
 	}
 	if out == "" {
 		out = "(no output)"
