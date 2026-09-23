@@ -265,7 +265,11 @@ func (h *Host) memoryCommand(args string) error {
 		if err != nil {
 			return err
 		}
-		return db.DeleteMemory(m.ID)
+		if err := db.DeleteMemory(m.ID); err != nil {
+			return err
+		}
+		h.Notify("info", "Forgotten", m.Text)
+		return nil
 	case fields[0] == "forget":
 		return errors.New("usage: /memory forget <id>")
 	default:
